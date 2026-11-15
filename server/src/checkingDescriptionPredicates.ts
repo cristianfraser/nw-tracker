@@ -1,7 +1,7 @@
 /**
  * Pure cartola description / note classifiers for the checking gastos + deposit-matching
- * engine (`flowsCheckingGastos.ts`). Everything here is string-in → verdict-out — no DB
- * access, no matching state. The engine and its loaders import from this module; keeping
+ * engine (`flowsCheckingGastos.ts`). Everything here is string-in → verdict-out — no matching
+ * state, and no DB access beyond the nav tree's roles (`isInvestmentDepositTarget`). The engine and its loaders import from this module; keeping
  * the predicate layer separate makes the classification rules independently testable and
  * keeps regex knowledge out of the matcher.
  */
@@ -19,6 +19,7 @@ import {
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { bankDescriptionMatchesUnion, bankDescriptionPattern } from "./cards/bankDescriptions.js";
 import { DAP_ABONO_RULES } from "./cards/bankDescriptionRules.js";
+import { isInvestmentDepositTargetGroup } from "./navTreeModel.js";
 
 /** Asset group for cash / efectivo accounts (internal transfer targets from checking). */
 export const CHECKING_GASTOS_CASH_GROUP = "cash_eqs";
@@ -37,10 +38,12 @@ export function checkingOutflowIsAtmWithdrawal(description: string): boolean {
   return /^GIRO\s+(?:EN\s+)?CAJERO|^GIRO\s+POR\s+CAJAS/.test(key);
 }
 
-const INVESTMENT_DEPOSIT_GROUPS = new Set(["real_estate", "brokerage", "retirement"]);
-
+/**
+ * A deposit into this bucket is money put to work outside cash (an investment contribution):
+ * the tree's `investment_deposit_target` role, not a slug list.
+ */
 export function isInvestmentDepositTarget(groupSlug: string): boolean {
-  return INVESTMENT_DEPOSIT_GROUPS.has(groupSlug);
+  return isInvestmentDepositTargetGroup(groupSlug);
 }
 
 /**

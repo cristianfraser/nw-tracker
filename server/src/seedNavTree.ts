@@ -33,6 +33,8 @@ type GroupUpsert = {
   /** Roles (migration 272): set when the node is created, data afterwards. */
   nw_bucket?: boolean;
   investment_root?: boolean;
+  /** A deposit into the bucket is money put to work outside cash (migration 337). */
+  investment_deposit_target?: boolean;
   property_overlay?: boolean;
   /** The group whose owed total this group's value nets. */
   nets_linked_slug?: string;
@@ -48,14 +50,14 @@ const insertGroup = db.prepare(`
     nav_end, show_leaf_hyphen, label_i18n_key, api_group, api_subgroup, asset_group_slug, sidebar_section,
     group_kind, chart_host_slug, kind_slug, exclude_from_parent_total,
     dashboard_sort_order, dashboard_card_kind, dashboard_bucket_slug, dashboard_card_css,
-    dashboard_card_label_i18n_key, nw_bucket, investment_root, property_overlay
+    dashboard_card_label_i18n_key, nw_bucket, investment_root, property_overlay, investment_deposit_target
   )
   VALUES (
     @parent_id, @slug, @label, @sort_order, @color_rgb, @route_path, @active_prefix,
     @nav_end, @show_leaf_hyphen, @label_i18n_key, @api_group, @api_subgroup, @asset_group_slug, @sidebar_section,
     @group_kind, @chart_host_slug, @kind_slug, @exclude_from_parent_total,
     @dashboard_sort_order, @dashboard_card_kind, @dashboard_bucket_slug, @dashboard_card_css,
-    @dashboard_card_label_i18n_key, @nw_bucket, @investment_root, @property_overlay
+    @dashboard_card_label_i18n_key, @nw_bucket, @investment_root, @property_overlay, @investment_deposit_target
   )
   ON CONFLICT(slug) DO NOTHING
 `);
@@ -194,6 +196,7 @@ function upsert(g: GroupUpsert): number {
     dashboard_card_label_i18n_key: g.dashboard?.card_label_i18n_key ?? null,
     nw_bucket: g.nw_bucket ? 1 : 0,
     investment_root: g.investment_root ? 1 : 0,
+    investment_deposit_target: g.investment_deposit_target ? 1 : 0,
     property_overlay: g.property_overlay ? 1 : 0,
   }).changes > 0;
   if (created && g.nets_linked_slug) createdNets.set(g.slug, g.nets_linked_slug);
@@ -671,6 +674,7 @@ export function seedNavTree(): void {
       sidebar_section: "main",
       dashboard: { sort_order: 10, bucket_slug: "real_estate" },
       nw_bucket: true,
+      investment_deposit_target: true,
       property_overlay: true,
     });
     const reId = (groupIdBySlug.get("real_estate") as { id: number }).id;
@@ -701,6 +705,7 @@ export function seedNavTree(): void {
       asset_group_slug: "brokerage",
       dashboard: { sort_order: 30, bucket_slug: "brokerage" },
       nw_bucket: true,
+      investment_deposit_target: true,
       investment_root: true,
     });
     upsert({
@@ -776,6 +781,7 @@ export function seedNavTree(): void {
       asset_group_slug: "retirement",
       dashboard: { sort_order: 20, bucket_slug: "retirement" },
       nw_bucket: true,
+      investment_deposit_target: true,
       investment_root: true,
     });
     upsert({

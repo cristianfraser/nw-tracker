@@ -7,7 +7,8 @@
  *
  * The roles are columns (migration 272): `nw_bucket` (the buckets net worth sums), `investment_root`
  * (the roots of «Inversiones» and the Rentabilidad pages), `nets_linked_group_id` (the group whose
- * owed total this group's value nets; one node declares it, migration 336), `property_overlay` and the reference groups'
+ * owed total this group's value nets; one node declares it, migration 336),
+ * `investment_deposit_target` (migration 337), `property_overlay` and the reference groups'
  * `chart_host_slug`. Nothing here parses a slug or names one: every answer is a walk over the data.
  *
  * Reads no valuation and no clock — a leaf the payload builders and the chart plan depend on.
@@ -29,6 +30,8 @@ export type NavGroup = Readonly<{
   excludeFromParentTotal: boolean;
   nwBucket: boolean;
   investmentRoot: boolean;
+  /** A deposit into this bucket is money put to work outside cash (migration 337). */
+  investmentDepositTarget: boolean;
   netsLinkedGroupId: number | null;
   propertyOverlay: boolean;
   /** A reference group's host page (the page whose chart draws it). */
@@ -66,6 +69,7 @@ type GroupRow = {
   exclude_from_parent_total: number;
   nw_bucket: number;
   investment_root: number;
+  investment_deposit_target: number;
   nets_linked_group_id: number | null;
   property_overlay: number;
   chart_host_slug: string | null;
@@ -84,7 +88,7 @@ function loadNavTreeModel(): NavTreeModel {
     .prepare(
       `SELECT id, slug, label, parent_id, group_kind, kind_slug, asset_group_slug, dashboard_bucket_slug,
               dashboard_sort_order, route_path, exclude_from_parent_total, nw_bucket, investment_root,
-              nets_linked_group_id, property_overlay, chart_host_slug
+              investment_deposit_target, nets_linked_group_id, property_overlay, chart_host_slug
        FROM portfolio_groups ORDER BY sort_order, id`
     )
     .all() as GroupRow[];
@@ -160,6 +164,7 @@ function loadNavTreeModel(): NavTreeModel {
       excludeFromParentTotal: g.exclude_from_parent_total === 1,
       nwBucket: g.nw_bucket === 1,
       investmentRoot: g.investment_root === 1,
+      investmentDepositTarget: g.investment_deposit_target === 1,
       netsLinkedGroupId: g.nets_linked_group_id,
       propertyOverlay: g.property_overlay === 1,
       chartHostSlug: g.chart_host_slug,
@@ -233,6 +238,15 @@ export function investmentRoots(): readonly NavGroup[] {
 
 export function investmentRootSlugs(): readonly string[] {
   return investmentRoots().map((g) => g.slug);
+}
+
+/**
+ * True when a deposit into the group is money put to work outside cash — an investment
+ * contribution, where a deposit into a cash bucket is a move between cash accounts
+ * (`investment_deposit_target`, migration 337).
+ */
+export function isInvestmentDepositTargetGroup(slug: string): boolean {
+  return navGroup(slug)?.investmentDepositTarget === true;
 }
 
 /** The net-worth bucket a group sits in (itself included), or null outside them. */
