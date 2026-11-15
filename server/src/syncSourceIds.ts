@@ -29,13 +29,6 @@ export function isGlobalSyncSource(value: string): value is GlobalSyncSource {
   return (GLOBAL_SYNC_SOURCES as readonly string[]).includes(value);
 }
 
-const LEGACY_EQUITY_EOD_SOURCE = "equity_eod";
-
-/** @deprecated UI/API used `equity_eod` before stocks/crypto split. */
-export function isLegacyEquityEodSyncSource(value: string): boolean {
-  return value === LEGACY_EQUITY_EOD_SOURCE;
-}
-
 /**
  * Sources the hosted demo never runs: they read the author's own Fintual goals, or only serve
  * the Risky Norris proxy of funds the demo does not hold. The demo syncs only the public market

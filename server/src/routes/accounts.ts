@@ -9,7 +9,6 @@ import {
   type PanelAccountCreateBody,
   type PanelAccountUpdateBody,
 } from "../createPanelAccount.js";
-import { NOTE_STOCKS_LEGACY } from "../brokerageAcciones.js";
 import { prettyRgbTripletForAccountId } from "../chartColorRgb.js";
 import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
@@ -23,7 +22,7 @@ import { getCheckingCartolaMonths } from "../checkingCartolaMonthSummary.js";
 import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
 import { isPositiveInteger } from "../requestValidation.js";
-import { asyncHandler, accountIdFromReq } from "./shared.js";
+import { asyncHandler, accountIdFromReq, queryChoice } from "./shared.js";
 import { requestDisplayUnit } from "../displayUnits.js";
 
 export function registerAccountsRoutes(app: express.Express): void {
@@ -48,11 +47,9 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
               g.slug AS bucket_slug, g.label AS bucket_label
        FROM accounts a
        INNER JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (a.import_key IS NULL OR a.import_key != ?)
-         AND g.slug != 'individual_stocks'
        ORDER BY g.sort_order, a.id, a.name`
     )
-    .all(NOTE_STOCKS_LEGACY) as Record<string, unknown>[];
+    .all() as Record<string, unknown>[];
   res.json({ accounts: rows });
 }));
 
@@ -116,7 +113,7 @@ app.delete("/api/accounts/:id", (req, res) => {
       });
       return;
     }
-    res.status(500).json({ error: msg });
+    throw e;
   }
 });
 
@@ -250,7 +247,8 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
     return;
   }
   const unit = requestDisplayUnit(req.query, { surface: "/api/accounts/:id/detail-bundle" });
-  const granularity = req.query.granularity === "daily" ? "daily" : "monthly";
+  const granularity = queryChoice(req, res, "granularity", ["monthly", "daily"] as const, "monthly");
+  if (granularity == null) return;
   const payload = await timeHeavyAsync(`${HeavyWork.accountDetailBundle} ${id} ${unit} ${granularity}`, () =>
     cachedAccountDetailBundle(id, unit, granularity)
   );

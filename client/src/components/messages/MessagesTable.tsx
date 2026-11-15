@@ -7,14 +7,7 @@ import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
 import { Button } from "@crfrsr/ui";
 
-/** Legacy log titles appended ` YYYY-MM-DD HH:MM:SS UTC` (now stored in `created_at` only). */
-const LEGACY_LOG_TITLE_TIMESTAMP = / \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$/;
-
 const MAX_DETAIL_LINES = 5;
-
-function logTitleForDisplay(title: string): string {
-  return title.replace(LEGACY_LOG_TITLE_TIMESTAMP, "");
-}
 
 function formatWhen(iso: string): string {
   const d = new Date(iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`);
@@ -51,7 +44,6 @@ function MessageDetailCell({
   const lines = detailLineCount(body);
   const truncated = lines > MAX_DETAIL_LINES;
   const displayBody = truncated ? detailFirstLines(body, MAX_DETAIL_LINES) : body;
-  const displayTitle = logTitleForDisplay(title);
 
   return (
     <>
@@ -66,7 +58,7 @@ function MessageDetailCell({
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={displayTitle}
+        title={title}
         subtitle={formatWhen(createdAt)}
         closeAriaLabel={t("messages.detailModalClose")}
       >
@@ -131,7 +123,7 @@ export function MessagesTable({
               {formatWhen(r.created_at)}
             </td>
             <td style={{ verticalAlign: "top", fontWeight: r.read_at ? 400 : 600 }}>
-              {logTitleForDisplay(r.title)}
+              {r.title}
             </td>
             <td style={{ verticalAlign: "top" }}>
               <MessageDetailCell body={r.body} title={r.title} createdAt={r.created_at} />

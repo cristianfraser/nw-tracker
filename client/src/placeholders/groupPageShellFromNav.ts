@@ -18,7 +18,7 @@ export function collectNavAccountLeaves(navNode: NavTreeNodeDto): NavAccountLeaf
     if (n.account_id != null && n.account_id > 0) {
       out.push({ node: n, groupSlug: slug, groupLabel: label });
     }
-    for (const c of n.children ?? []) {
+    for (const c of n.children) {
       visit(c, slug, label);
     }
   };

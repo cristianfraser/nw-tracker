@@ -101,7 +101,8 @@ describe("live variables", () => {
   it("ingest: the service URL and the access rule come from the given environment", () => {
     expect(resolveIngestServiceUrl({ INGEST_URL: "http://10.0.0.2:3002//" })).toBe("http://10.0.0.2:3002");
     expect(ingestAuthConfigFromEnv({ INGEST_TOKEN: "t", INGEST_ALLOW_REMOTE: "1" })).toEqual({ token: "t", allowRemote: true, demoMode: false });
-    expect(ingestAuthConfigFromEnv({ DEMO_MODE: "1" }).demoMode).toBe(true);
+    // The demo is the deployment profile's (ingestAuth.test.ts), never the handed environment's.
+    expect(ingestAuthConfigFromEnv({ DEMO_MODE: "1" }).demoMode).toBe(false);
     expect(() => ingestAuthConfigFromEnv({ INGEST_ALLOW_REMOTE: "1" })).toThrow(/requires INGEST_TOKEN/);
   });
 });

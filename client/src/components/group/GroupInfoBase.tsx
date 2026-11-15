@@ -39,7 +39,6 @@ import { queryLoadError } from "../../queries/pageShapeReady";
 export type GroupInfoPortfolioStrip = {
   navNode: NavTreeNodeDto;
   groupSlug?: string;
-  subgroup?: string;
   dash: Pick<
     DashboardResponse,
     "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"

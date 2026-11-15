@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { ingestAccessRefusal, type IngestErrorBody } from "nw-tracker-contracts";
-import { liveEnvFlag, liveEnvText } from "./config.js";
+import { deploymentProfile, liveEnvFlag, liveEnvText } from "./config.js";
 
 export { isLoopbackAddress } from "nw-tracker-contracts";
 
@@ -17,13 +17,17 @@ export interface IngestAuthConfig {
   demoMode: boolean;
 }
 
+/**
+ * The token and the remote switch are read live from `env`; whether this is the demo is the
+ * deployment profile's (`config.ts`), like every other leaf module.
+ */
 export function ingestAuthConfigFromEnv(env?: NodeJS.ProcessEnv): IngestAuthConfig {
   const token = liveEnvText("INGEST_TOKEN", env);
   const allowRemote = liveEnvFlag("INGEST_ALLOW_REMOTE", env);
   if (allowRemote && !token) {
     throw new Error("INGEST_ALLOW_REMOTE=1 requires INGEST_TOKEN");
   }
-  return { token, allowRemote, demoMode: liveEnvFlag("DEMO_MODE", env) };
+  return { token, allowRemote, demoMode: deploymentProfile().demo };
 }
 
 export function ingestAuthMiddleware(

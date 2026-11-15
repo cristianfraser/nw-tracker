@@ -88,7 +88,6 @@ import { GLOBAL_SYNC_SOURCES, isGlobalSyncSource, type GlobalSyncSource } from "
 export {
   GLOBAL_SYNC_SOURCES,
   isGlobalSyncSource,
-  isLegacyEquityEodSyncSource,
   type GlobalSyncSource,
 } from "./syncSourceIds.js";
 export { PUBLISHER_LAG_MAX_POLL_AGE_MS, type SyncPublisherLag } from "./publisherSchedule.js";
@@ -335,18 +334,25 @@ export function isSbifObservedFxStale(
   return maxOnOrBeforeToday < expected;
 }
 
-/** `fetchedAt` of the goals snapshot `runFintual` writes on every poll — null when none exists. */
-export function readFintualLastCheckedAt(): string | null {
-  const file = fintualGoalsSnapshotPath();
+/**
+ * `fetchedAt` of the goals snapshot `runFintual` writes on every poll — null when none exists (no
+ * poll yet). A snapshot that is not JSON, or states no time, throws: a corrupt file is not «never
+ * checked».
+ */
+export function readFintualLastCheckedAt(file: string = fintualGoalsSnapshotPath()): string | null {
   if (!fs.existsSync(file)) return null;
+  const text = fs.readFileSync(file, "utf8");
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as { fetchedAt?: unknown };
-    return typeof parsed.fetchedAt === "string" && Number.isFinite(Date.parse(parsed.fetchedAt))
-      ? parsed.fetchedAt
-      : null;
-  } catch {
-    return null;
+    parsed = JSON.parse(text);
+  } catch (e) {
+    throw new Error(`Fintual goals snapshot ${file} is not JSON (${e instanceof Error ? e.message : String(e)})`);
   }
+  const fetchedAt = (parsed as { fetchedAt?: unknown } | null)?.fetchedAt;
+  if (typeof fetchedAt !== "string" || !Number.isFinite(Date.parse(fetchedAt))) {
+    throw new Error(`Fintual goals snapshot ${file} states no fetchedAt time`);
+  }
+  return fetchedAt;
 }
 
 /**

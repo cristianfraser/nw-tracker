@@ -139,11 +139,7 @@ app.get("/api/flows/overview", (req, res) => {
 
 app.get("/api/flows/deposits/reconciliation", (req, res) => {
   const unit = requestDisplayUnit(req.query, { surface: "/api/flows/deposits/reconciliation" });
-  try {
-    res.json(buildDepositsReconciliationPayload(unit));
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
+  res.json(buildDepositsReconciliationPayload(unit));
 });
 
 app.get("/api/income", (req, res) => {

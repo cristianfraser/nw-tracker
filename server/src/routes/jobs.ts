@@ -8,6 +8,7 @@ import {
 import { ingestAuthMiddleware, type IngestAuthConfig } from "../ingestAuth.js";
 import { claimNextJob, completeClaimedJob, enqueueDeploy } from "../jobClaims.js";
 import { heartbeatJob, jobById } from "../jobQueue.js";
+import { InputError } from "../inputError.js";
 
 /**
  * The job queue's worker endpoints (docs/job-queue-plan.md, contract `jobs.ts`), under
@@ -60,10 +61,12 @@ export function registerJobRoutes(app: express.Express, options: { auth?: Ingest
     if (job.status !== "running" && job.status !== "lost") {
       return refuse(res, 409, { error: "job_not_running", message: `Job ${id} is ${job.status}, not waiting for a report` });
     }
+    // A job no outside worker completes is an `InputError`; a failing completion is a 500.
     try {
       res.json({ job: completeClaimedJob(id, request.data, new Date()) });
     } catch (err) {
-      refuse(res, 409, { error: "invalid_job_request", message: err instanceof Error ? err.message : String(err) });
+      if (!(err instanceof InputError)) throw err;
+      refuse(res, err.status, { error: "invalid_job_request", message: err.message });
     }
   });
 

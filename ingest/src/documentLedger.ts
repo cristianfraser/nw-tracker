@@ -1,7 +1,7 @@
-import fs from "node:fs";
 import path from "node:path";
 import { ensureDir, resolveCfraserDir, writeFileAtomic } from "./paths.js";
 import type { BankName } from "./config.js";
+import { readJsonStateFile } from "./stateFile.js";
 
 /**
  * Which periodic documents have already been fetched.
@@ -27,15 +27,9 @@ function ledgerFile(): string {
   return path.join(ensureDir(resolveCfraserDir()), ".scraper-documents.json");
 }
 
+/** No file is an empty ledger; a corrupt one throws — read as empty, every document in the window is fetched again. */
 function readLedger(): Ledger {
-  const file = ledgerFile();
-  if (!fs.existsSync(file)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as Ledger;
-  } catch {
-    // A corrupt ledger costs one redundant download, not a lost document — start clean.
-    return {};
-  }
+  return (readJsonStateFile(ledgerFile()) ?? {}) as Ledger;
 }
 
 /**

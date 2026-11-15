@@ -152,7 +152,7 @@ export function PortfolioNavEntityCardsStrip({
   const liquidatedChildren = useMemo(() => {
     if (!liquidated) return [];
     const groups = liquidated.group_slugs.map((slug) => {
-      const node = (parentNavNode.children ?? []).find((c) => c.slug === slug);
+      const node = parentNavNode.children.find((c) => c.slug === slug);
       if (!node) throw new Error(`liquidated sub-bucket "${slug}" is not a child of ${parentNavNode.slug}`);
       return node;
     });

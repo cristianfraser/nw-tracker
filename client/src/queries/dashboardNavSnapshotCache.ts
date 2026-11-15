@@ -46,7 +46,7 @@ export function navSnapshotCoversNavTree(
       const entry = cardMetricsBySlug?.[n.slug];
       if (!entry || !navCardMetricsEntryHasCurrentShape(entry)) return false;
     }
-    return (n.children ?? []).every(covers);
+    return n.children.every(covers);
   };
   return roots.every((root) => root == null || covers(root));
 }

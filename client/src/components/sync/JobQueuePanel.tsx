@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 import { Button } from "@crfrsr/ui";
 import type { JobQueueResponse, JobView, JobWaitView } from "../../types";
 import { cn } from "../../cn";
+import { DEMO_BUILD } from "../../dashboardPath";
 import { formatDateTimeLabel } from "../../formatDateLabel";
 import { useJobActionMutation } from "../../queries/hooks";
 import { loadableClass } from "../ui/Loadable";
@@ -58,7 +59,7 @@ function detail(t: TFunction, job: JobView): string | null {
 }
 
 /** The hosted demo runs no queue: its history is generated, so there is nothing to cancel or retry. */
-const JOB_ACTIONS_SHOWN = import.meta.env.VITE_DEMO_MODE !== "1";
+const JOB_ACTIONS_SHOWN = !DEMO_BUILD;
 
 /**
  * The job queue (docs/job-queue-plan.md): what runs, what waits and why, and the latest finished

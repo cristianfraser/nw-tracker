@@ -3,6 +3,7 @@
  * index.ts). Route URLs and handler bodies are verbatim from that file.
  */
 import express from "express";
+import { parseEnvFlag } from "nw-tracker-contracts";
 import { isResolvablePortfolioGroupSlug } from "../portfolioGroupTree.js";
 import { db } from "../db.js";
 
@@ -17,6 +18,43 @@ export function isKnownClassTabGroup(group: string): boolean {
     | { o: number }
     | undefined;
   return Boolean(ag);
+}
+
+/**
+ * A query parameter that names one of `values`: absent (or empty) reads as `fallback`. Any other
+ * value answers 400 and returns null — the caller returns; a mistyped value is never read as the
+ * default.
+ */
+export function queryChoice<T extends string>(
+  req: express.Request,
+  res: express.Response,
+  name: string,
+  values: readonly T[],
+  fallback: T
+): T | null {
+  const raw = req.query[name];
+  if (raw === undefined || raw === "") return fallback;
+  if (typeof raw === "string" && (values as readonly string[]).includes(raw)) return raw as T;
+  res.status(400).json({ error: `${name} must be one of ${values.join(", ")}` });
+  return null;
+}
+
+/**
+ * An on/off query parameter by the one flag rule (`parseEnvFlag`: 1/true/yes, 0/false/no): absent
+ * (or empty) is off. Any other value answers 400 and returns null — the caller returns.
+ */
+export function queryFlag(req: express.Request, res: express.Response, name: string): boolean | null {
+  const raw = req.query[name];
+  if (raw === undefined) return false;
+  if (typeof raw === "string") {
+    try {
+      return parseEnvFlag(name, raw) ?? false;
+    } catch {
+      // Not a flag value: the 400 below.
+    }
+  }
+  res.status(400).json({ error: `${name} must be 1/true/yes or 0/false/no` });
+  return null;
 }
 
 /**

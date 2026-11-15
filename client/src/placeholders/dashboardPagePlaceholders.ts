@@ -155,7 +155,7 @@ export function buildPlaceholderNavStripDash(nav: SidebarNavResponse): NavStripD
     if (n.account_id == null && n.expense_account_id == null && !card_metrics_by_slug[n.slug]) {
       card_metrics_by_slug[n.slug] = zeroNavCardMetrics();
     }
-    for (const c of n.children ?? []) visit(c);
+    for (const c of n.children) visit(c);
   };
   for (const root of [nav.net_worth, ...nav.main]) {
     if (root) visit(root);

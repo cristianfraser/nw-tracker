@@ -313,9 +313,7 @@ const migrationsDir = path.join(__dirname, "..", "migrations");
  * NOTE: naive SQL splitting — statements are split on every `;` and `--` comments are
  * stripped without lexing string literals. Migrations must not contain triggers,
  * multi-statement bodies, or `;` / `--` inside string literals; put such data changes in
- * a post-migration TS hook keyed on the migration filename in `runMigrations` instead
- * (lazy-require the hook module — a static import would form a cycle resolved before
- * `db` exists; see repo history for examples, e.g. 109_account_sync_sources).
+ * a post-migration TS hook keyed on the migration filename (`POST_MIGRATION_HOOKS`) instead.
  */
 function splitMigrationStatements(sql: string): string[] {
   const withoutComments = sql.replace(/--[^\n]*/g, "");
@@ -325,18 +323,14 @@ function splitMigrationStatements(sql: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+/**
+ * Every statement runs or the migration fails: a migration that adds a column its table already
+ * has is an authoring error (the baseline is the schema as of migration 155, and no later file
+ * re-adds one of its columns), not a step to skip.
+ */
 function execMigrationSql(sql: string): void {
   for (const stmt of splitMigrationStatements(sql)) {
-    try {
-      dbInternal.exec(stmt);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // `initSchema()` already reflects many later migrations; re-applying ALTER ADD on a fresh DB is a no-op.
-      if (/duplicate column name/i.test(msg)) {
-        continue;
-      }
-      throw e;
-    }
+    dbInternal.exec(stmt);
   }
 }
 
@@ -604,6 +598,5 @@ initSchema();
 runMigrations();
 // A migrated database must carry the movements flow trigger the code specifies (fail fast, no repair).
 assertMovementFlowTriggerCurrent(dbInternal);
-// account_sync_sources backfill runs from index.ts / scripts via
-// ensureAccountSyncSourcesSeeded() (accountSyncSources.ts): the createRequire cycle from
-// inside this module never worked under tsx for the "accounts exist, links empty" case.
+// The account_sync_sources backfill runs after this module, from index.ts and the demo generator
+// (`ensureAccountSyncSourcesSeeded`, accountSyncSources.ts).

@@ -371,7 +371,6 @@ describe("formats by currency code", () => {
   it("pesos and dollars print as they always have", () => {
     expect(formatCurrency(1234567, "clp")).toBe("$1.234.567");
     expect(formatCurrency(-1234.4, "usd")).toBe("(US$1.234)");
-    expect(formatCurrency(1234.5, "usd-fine")).toBe("US$1.234,50");
     expect(formatCurrencyFine(1234.5, "usd")).toBe(formatUsdFine(1234.5));
     expect(formatCompactMoney(350_000, "usd")).toBe("$350k");
     expect(currencySymbol("usd", "bare")).toBe("$");

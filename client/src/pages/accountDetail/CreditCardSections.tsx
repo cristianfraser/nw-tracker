@@ -46,13 +46,13 @@ function CreditCardInstallmentsSection({
     ledger.has_installment_ledger ||
     ledger.has_imported_statements ||
     ledger.purchases.length > 0 ||
-    (ledger.purchases_completed?.length ?? 0) > 0;
+    ledger.purchases_completed.length > 0;
   // A placeholder ledger (loading, nothing in it) states no installment ledger yet: frame the
   // ledger layout, not the legacy columns.
   const hasLedger = ledger.has_installment_ledger || (loading && !hasData);
   const facturaciones = ledger.facturaciones ?? [];
   const manualBusy = deletePurchase.isPending;
-  const purchasesCompleted = ledger.purchases_completed ?? [];
+  const purchasesCompleted = ledger.purchases_completed;
 
   // The server orders `purchases` (plan finishing soonest first, ties by billing month —
   // `ccActivePurchaseOrder.ts`); the client only picks.

@@ -1,8 +1,8 @@
-import fs from "node:fs";
 import path from "node:path";
 import { ensureDir, resolveCfraserDir, writeFileAtomic } from "./paths.js";
 import type { BankName } from "./config.js";
 import { log } from "./log.js";
+import { readJsonStateFile } from "./stateFile.js";
 
 /**
  * Minimum gap between runs against the same bank.
@@ -19,15 +19,9 @@ function stateFile(): string {
   return path.join(ensureDir(resolveCfraserDir()), ".scraper-run-state.json");
 }
 
+/** No file is «no history»; a corrupt one throws — it must not read as «the bank was never tried». */
 function readState(): RunState {
-  const file = stateFile();
-  if (!fs.existsSync(file)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as RunState;
-  } catch {
-    // A corrupt state file must not block a legitimate run; treat it as "no history".
-    return {};
-  }
+  return (readJsonStateFile(stateFile()) ?? {}) as RunState;
 }
 
 export function lastRunAt(bank: BankName): Date | null {

@@ -1,9 +1,10 @@
+/** This build is the hosted demo's (`VITE_DEMO_MODE=1` at build time): the one read of that variable. */
+export const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "1";
+
 /**
  * Where the dashboard lives. Every build serves it at `/dashboard`; a personal instance also at
  * `/` (its home), while the hosted demo's `/` is the About page (docs/demo-about-plan.md).
  */
-export const DEMO_BUILD = import.meta.env.VITE_DEMO_MODE === "1";
-
 export const DASHBOARD_ALIAS_PATH = "/dashboard";
 
 /** The address links to the dashboard use in this build. */

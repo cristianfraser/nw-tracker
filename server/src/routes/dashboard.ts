@@ -47,6 +47,7 @@ import {
   asyncHandler,
   isKnownClassTabGroup,
   accountIdFromReq,
+  queryFlag,
 } from "./shared.js";
 import { requestDisplayUnit } from "../displayUnits.js";
 
@@ -90,7 +91,8 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
   const accountIdRaw = req.query.account_id != null ? Number(req.query.account_id) : null;
   // Day-mode P/L combos: the scope's day P/L with its YTD / all-time levels anchored on the
   // scope's own monthly rows (`dailyPerfLevels.ts`), so the client only picks.
-  const wantPerfLevels = req.query.perf_levels === "1" || req.query.perf_levels === "true";
+  const wantPerfLevels = queryFlag(req, res, "perf_levels");
+  if (wantPerfLevels == null) return;
   if ((portfolioGroup !== "") === (accountIdRaw != null)) {
     res.status(400).json({ error: "pass exactly one of portfolio_group or account_id" });
     return;
@@ -279,7 +281,8 @@ app.get("/api/groups/:slug/flows", (req, res) => {
     return;
   }
   Object.assign(filters, extra.filters);
-  const excludeSpending = req.query.exclude_spending === "1" || req.query.exclude_spending === "true";
+  const excludeSpending = queryFlag(req, res, "exclude_spending");
+  if (excludeSpending == null) return;
   res.json(buildGroupFlows(tabSlug, filters, page, pageSize, { excludeSpending }));
 });
 
@@ -295,7 +298,9 @@ app.get("/api/accounts/:id/flows", (req, res) => {
   if (typeof req.query.year === "string" && req.query.year.trim()) filters.year = req.query.year.trim();
   if (typeof req.query.type === "string" && req.query.type.trim()) filters.type = req.query.type.trim();
   if (typeof req.query.q === "string" && req.query.q.trim()) filters.q = req.query.q.trim();
-  if (req.query.personal_only === "1" || req.query.personal_only === "true") filters.personal_only = true;
+  const personalOnly = queryFlag(req, res, "personal_only");
+  if (personalOnly == null) return;
+  if (personalOnly) filters.personal_only = true;
   const extra = parseExtraFlowsFilterParams(req.query as Record<string, unknown>);
   if (!extra.ok) {
     res.status(400).json({ error: extra.error });

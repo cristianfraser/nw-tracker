@@ -223,9 +223,9 @@ export function LiabilitiesGroupPage() {
   // Pasivos root: the composition chart's slot shows the liabilities coverage instead, on the
   // same controls. The nav node says so (`chart_coverage`) before any payload lands, so the
   // coverage chart mounts from first paint (pending frame) instead of swapping the composition
-  // chart out; the payload's block (present only where the page has liability accounts and
-  // reference lines) is the fallback for a nav tree that predates the hint.
-  const showCoverage = Boolean(navMatchNode?.chart_coverage || ts?.reference_coverage);
+  // chart out. The server sets the hint and builds the payload's block by one rule
+  // (`groupHostsLiabilitiesCoverage`), so the page follows the hint alone.
+  const showCoverage = navMatchNode?.chart_coverage === true;
   // In Diario it follows the same rule as the other charts: its pending frame until the daily
   // series is this unit's, never the monthly block.
   const coverageBlock = proportionalIsDaily
@@ -424,7 +424,6 @@ export function LiabilitiesGroupPage() {
           ? {
               navNode: navMatchNode,
               groupSlug: portfolioGroup,
-              subgroup: categoryFilter ?? undefined,
               dash: dashForStrip,
               unit: stripUnit,
               // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.

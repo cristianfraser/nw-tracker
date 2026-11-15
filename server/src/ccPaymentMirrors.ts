@@ -47,6 +47,7 @@ import { MATCH_WINDOWS } from "./matching/windows.js";
 import { rankByDistance } from "./matching/pairing.js";
 import { convertCurrency } from "./rates.js";
 import { foreignPaymentAmountLabel } from "./ccPaymentMirrorEvidence.js";
+import { InputError } from "./inputError.js";
 
 /**
  * Checking legs of USD-debt payments («Egreso por Compra de Divisas»). Cross-currency, so the
@@ -375,8 +376,8 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
     for (const ref of requested) {
       const key = `${ref.out_movement_id}|${ref.statement_line_id ?? ""}|${ref.statement_id ?? ""}`;
       const cand = candidates.get(key);
-      if (!cand) throw new Error(`cc payment mirror ${key}: not a current candidate`);
-      if (cand.blocked) throw new Error(`cc payment mirror ${key}: ${cand.blocked_reason}`);
+      if (!cand) throw new InputError(`cc payment mirror ${key}: not a current candidate`, 409);
+      if (cand.blocked) throw new InputError(`cc payment mirror ${key}: ${cand.blocked_reason}`, 409);
 
       // USD evidence has no peso amount: the transfer's CLP leg is the checking debit itself
       // (the exact pesos that left the account), and the card side rides as the USD counter

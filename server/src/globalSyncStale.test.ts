@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
@@ -10,6 +13,7 @@ import {
   allSyncSourceStatuses,
   fintualPublisherLag,
   isFintualSyncStale,
+  readFintualLastCheckedAt,
   staleDimmingSources,
   staleSyncSources,
 } from "./globalSyncStale.js";
@@ -427,5 +431,26 @@ describe("fintual_official_serie", () => {
     expect(isFintualOfficialSerieStale(NOON, { fintualOfficialSerieLastCheckedAt: recent }, { nowMs })).toBe(false);
     expect(isFintualOfficialSerieStale(NOON, { fintualOfficialSerieLastCheckedAt: old }, { nowMs })).toBe(true);
     expect(chileWallClockAt(new Date(nowMs)).ymd).toBe("2099-04-14");
+  });
+});
+
+describe("readFintualLastCheckedAt", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vitest-fintual-snapshot-"));
+  const file = path.join(dir, "goals.json");
+  afterEach(() => fs.rmSync(file, { force: true }));
+
+  it("no snapshot is «never checked»; a snapshot states its time", () => {
+    expect(readFintualLastCheckedAt(file)).toBeNull();
+    fs.writeFileSync(file, JSON.stringify({ fetchedAt: "2031-03-04T21:30:00.000Z", goals: [] }));
+    expect(readFintualLastCheckedAt(file)).toBe("2031-03-04T21:30:00.000Z");
+  });
+
+  it("a corrupt snapshot throws, naming the file", () => {
+    fs.writeFileSync(file, "{ not json");
+    expect(() => readFintualLastCheckedAt(file)).toThrow(`Fintual goals snapshot ${file} is not JSON`);
+    fs.writeFileSync(file, JSON.stringify({ goals: [] }));
+    expect(() => readFintualLastCheckedAt(file)).toThrow(`Fintual goals snapshot ${file} states no fetchedAt time`);
+    fs.writeFileSync(file, "null");
+    expect(() => readFintualLastCheckedAt(file)).toThrow(/states no fetchedAt time/);
   });
 });

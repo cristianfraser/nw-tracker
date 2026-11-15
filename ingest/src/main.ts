@@ -7,6 +7,7 @@ import type { RunOptions } from "./runTypes.js";
 import fs from "node:fs";
 import { DEFAULT_MIN_INTERVAL_MINUTES } from "./runGuard.js";
 import { log } from "./log.js";
+import { parseNonNegativeNumber } from "./numberArgs.js";
 
 /**
  * How long the process may linger after the run is over before it is exited by force.
@@ -59,11 +60,11 @@ function listFlag(argv: string[], name: string): string[] {
   return raw.split(",").map((v) => v.trim()).filter(Boolean);
 }
 
-/** Read `--flag=value`, returning `fallback` when absent or not a number. */
+/** Read `--flag=value`: `fallback` when the flag is absent; a value that is not a number ≥ 0 throws. */
 function numericFlag(argv: string[], name: string, fallback: number): number {
-  const raw = argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
-  const value = Number(raw);
-  return Number.isFinite(value) && value >= 0 ? value : fallback;
+  const arg = argv.find((a) => a.startsWith(`--${name}=`));
+  if (arg === undefined) return fallback;
+  return parseNonNegativeNumber(`--${name}`, arg.slice(`--${name}=`.length));
 }
 
 async function main(): Promise<void> {

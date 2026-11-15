@@ -37,7 +37,7 @@ function formatStockInflow(
   isAfpAccount: boolean,
   unitsKind: "shares" | "coin" | "contracts" = "shares"
 ): string {
-  const u = row.stock_units_inflow ?? 0;
+  const u = row.stock_units_inflow;
   if (!Number.isFinite(u) || u === 0) return "—";
   if (isAfpAccount) return formatInstrumentUnits(u, "shares");
   return formatInstrumentUnits(u, unitsKind);
@@ -132,7 +132,7 @@ export function MonthlyPerfDetailTable({
   const perfRows: PerfDetailRow[] = pageRows.map((row) => {
     const income = "income" in row ? row.income : undefined;
     const expenses = "expenses" in row ? row.expenses : undefined;
-    const units = row.stock_units_inflow ?? 0;
+    const units = row.stock_units_inflow;
     const flows: (PerfDetailFlow | null)[] = [
       ...(showIncome
         ? [

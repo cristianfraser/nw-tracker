@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { InputError } from "./inputError.js";
 
 export type ExpenseGenericUniqueMerchantRow = {
   id: number;
@@ -41,13 +42,13 @@ export function createExpenseGenericUniqueMerchant(
 ): ExpenseGenericUniqueMerchantRow {
   const key = merchantKey.trim();
   if (!key) {
-    throw new Error("merchant_key required");
+    throw new InputError("merchant_key required");
   }
   const existing = db
     .prepare(`SELECT id FROM cc_expense_generic_unique_merchants WHERE merchant_key = ?`)
     .get(key) as { id: number } | undefined;
   if (existing) {
-    throw new Error("merchant_key already exists");
+    throw new InputError("merchant_key already exists", 409);
   }
 
   const maxSort = db
@@ -77,13 +78,13 @@ export function updateExpenseGenericUniqueMerchant(
 ): ExpenseGenericUniqueMerchantRow {
   const key = merchantKey.trim();
   if (!key) {
-    throw new Error("merchant_key required");
+    throw new InputError("merchant_key required");
   }
   const current = db
     .prepare(`SELECT id FROM cc_expense_generic_unique_merchants WHERE id = ?`)
     .get(id) as { id: number } | undefined;
   if (!current) {
-    throw new Error("not found");
+    throw new InputError("not found", 404);
   }
   const clash = db
     .prepare(
@@ -91,7 +92,7 @@ export function updateExpenseGenericUniqueMerchant(
     )
     .get(key, id) as { id: number } | undefined;
   if (clash) {
-    throw new Error("merchant_key already exists");
+    throw new InputError("merchant_key already exists", 409);
   }
 
   db.prepare(`UPDATE cc_expense_generic_unique_merchants SET merchant_key = ? WHERE id = ?`).run(
@@ -113,7 +114,7 @@ export function deleteExpenseGenericUniqueMerchant(id: number): void {
     .prepare(`DELETE FROM cc_expense_generic_unique_merchants WHERE id = ?`)
     .run(id);
   if (result.changes === 0) {
-    throw new Error("not found");
+    throw new InputError("not found", 404);
   }
   invalidateExpenseGenericUniqueMerchantCache();
 }
