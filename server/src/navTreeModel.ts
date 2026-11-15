@@ -296,8 +296,8 @@ export function isInvestmentAccount(accountId: number): boolean {
 
 /**
  * The group whose owed total this group's own value nets (the cash savings node nets the linked
- * cards), or null. Declared on ONE node: a group above it nets through it
- * ({@link nettingGroupWithin}), never by a declaration of its own.
+ * cards), or null. Declared on ONE node: the net-worth bucket above it nets through it
+ * ({@link nettingGroupOf}), never by a declaration of its own.
  */
 export function netsLinkedGroup(slug: string): NavGroup | null {
   const g = navGroup(slug);
@@ -305,22 +305,26 @@ export function netsLinkedGroup(slug: string): NavGroup | null {
 }
 
 /**
- * The node that declares a netting inside a group's subtree (the group itself included), or null:
- * a total over the whole subtree is net of what that node nets. Throws when the subtree holds
- * several — one total cannot net twice.
+ * The node whose netting a group's value carries, or null: the group itself when it declares one,
+ * and for a net-worth bucket the node that declares one inside it (the bucket is one figure, net
+ * of what that node nets). A group above the buckets (the net-worth root, a hub) is asked for no
+ * netting of its own: its total is the sum of its buckets wherever one is shown. Throws when a
+ * bucket holds several netting nodes — one total cannot net twice.
  */
-export function nettingGroupWithin(slug: string): NavGroup | null {
+export function nettingGroupOf(slug: string): NavGroup | null {
   const root = navGroup(slug);
   if (!root) return null;
+  if (root.netsLinkedGroupId != null) return root;
+  if (!root.nwBucket) return null;
   const found: NavGroup[] = [];
-  const seen = new Set<number>();
+  const seen = new Set<number>([root.id]);
   const walk = (g: NavGroup): void => {
-    if (seen.has(g.id)) return;
-    seen.add(g.id);
-    if (g.netsLinkedGroupId != null) found.push(g);
     for (const id of g.childGroupIds) {
       const child = navGroupById(id);
-      if (child) walk(child);
+      if (!child || seen.has(child.id)) continue;
+      seen.add(child.id);
+      if (child.netsLinkedGroupId != null) found.push(child);
+      walk(child);
     }
   };
   walk(root);

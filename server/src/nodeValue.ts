@@ -26,7 +26,7 @@ import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { accountValueAt } from "./accountValue.js";
 import { roundToCurrency } from "./displayUnits.js";
 import { linkedCreditCardClpForCashCardAsOf, linkedCreditCardClpForCashCardByDates } from "./linkedCreditCards.js";
-import { nettingGroupWithin } from "./navTreeModel.js";
+import { nettingGroupOf } from "./navTreeModel.js";
 import type { CurrencyCode } from "./rates.js";
 import { clpToUnitAt } from "./valueConvert.js";
 
@@ -108,13 +108,13 @@ export type NodeValuePolicy = NodeNettingPolicy;
 export type NodePointValuePolicy = NodeValuePolicy;
 
 /**
- * Whether the group nets the linked credit cards: the node that declares the netting
- * (`nets_linked_group_id`, one node of the tree) is the group or sits inside it. The one place a
- * policy's `netsLinkedCards` comes from for a group, a bucket and a chart line alike — lines that
- * split a bucket cover disjoint subtrees, so exactly one of them nets.
+ * Whether the group nets the linked credit cards: it is the node that declares the netting
+ * (`nets_linked_group_id`, one node of the tree) or the net-worth bucket that holds it
+ * (`nettingGroupOf`). The one place a policy's `netsLinkedCards` comes from for a group, a bucket
+ * and a chart line alike — lines that split a bucket cover disjoint subtrees, so one of them nets.
  */
 export function nodeNetsLinkedCards(groupSlug: string): boolean {
-  return nettingGroupWithin(groupSlug) != null;
+  return nettingGroupOf(groupSlug) != null;
 }
 
 /**
