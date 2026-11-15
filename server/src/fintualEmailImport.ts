@@ -21,6 +21,7 @@ import { addDaysIso } from "nw-tracker-contracts";
 import { accountIdForEquityTicker, accountsWithEquityTicker, accountsWithEquityTickerAtBroker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import {
   BROKER_SETTLEMENT_WINDOW_DAYS,
@@ -472,11 +473,6 @@ export function planFintualEmailBatch(
   );
 }
 
-const insTransfer = db.prepare(
-  `INSERT INTO movements (from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind)
-   VALUES (@from_account_id, @to_account_id, @amount, @currency, @counter_amount, @counter_currency, @occurred_on, @note, @units_delta, @flow_kind)`
-);
-
 export function applyFintualEmailMovements(planned: readonly FintualPlannedMovement[]): number {
   return applyFintualEmailMovementsWithIds(planned).written;
 }
@@ -530,24 +526,24 @@ export function applyFintualEmailMovementsWithIds(planned: readonly FintualPlann
         movement_ids[index] = p.promote_movement_id;
         continue;
       }
-      const info = insTransfer.run({
-        from_account_id: p.from_account_id,
-        to_account_id: toAccountId,
+      const movementId = insertMovement({
+        fromAccountId: p.from_account_id,
+        toAccountId,
         amount: p.amount,
         currency: p.currency,
-        counter_amount: p.counter_amount,
-        counter_currency: p.counter_currency,
-        occurred_on: p.occurred_on,
+        counterAmount: p.counter_amount,
+        counterCurrency: p.counter_currency,
+        occurredOn: p.occurred_on,
         note: p.note,
-        units_delta: p.units_delta,
-        flow_kind: p.flow_kind,
+        unitsDelta: p.units_delta,
+        flowKind: p.flow_kind,
       });
-      movement_ids[index] = Number(info.lastInsertRowid);
+      movement_ids[index] = movementId;
       if (p.synthesized) {
         // Provenance + confirmation state. `message_id` is UNIQUE, so even a duplicate-guard
         // miss cannot synthesize the same mail twice — this insert would abort the transaction.
         recordSyntheticRetiroTransfer(
-          Number(info.lastInsertRowid),
+          movementId,
           p.source.message_id,
           p.amount,
           p.occurred_on

@@ -1,6 +1,7 @@
 import { BROKER_SETTLEMENT_WINDOW_DAYS } from "./brokerAdapter.js";
 import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
 import { db } from "./db.js";
+import { promoteSingleLegToTransfer } from "./movementWrites.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 
@@ -102,15 +103,14 @@ export function promoteCheckingCreditToTransfer(
   // The bank's day for the credit: its posting row when the daily import already stored it on
   // an earlier day (a post-cutoff row), else its date.
   const bankDay = before ? bankPostedOn(movementId, checkingAccountId()) : null;
-  const changed = db
-    .prepare(
-      `UPDATE movements
-       SET account_id = NULL, from_account_id = ?, to_account_id = ?, note = ?, units_delta = ?,
-           occurred_on = COALESCE(?, occurred_on)
-       WHERE id = ? AND from_account_id IS NULL AND to_account_id IS NULL`
-    )
-    .run(fromAccountId, checkingAccountId(), note, unitsDelta, occurredOn, movementId).changes;
-  if (changed !== 1) {
+  const promoted = promoteSingleLegToTransfer(movementId, {
+    fromAccountId,
+    toAccountId: checkingAccountId(),
+    note,
+    unitsDelta,
+    occurredOn,
+  });
+  if (!promoted) {
     throw new Error(`Movement ${movementId} was not an unpaired single-leg row — not promoted`);
   }
   // The credit was the bank's listing: when the mail moves it to the payment day, its bank date

@@ -11,6 +11,7 @@
  */
 import type { BrokerMovementsApplyDetails, BrokerMovementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 import { fintualUsdAccountId } from "./brokerAdapter.js";
 import { SAVINGS_EARNINGS_FLOW_KIND } from "./cashAccountInterest.js";
 import { MOVEMENT_USD_LEG_SQL } from "./movementAmounts.js";
@@ -38,10 +39,6 @@ export function applyFintualWalletRead(payload: BrokerMovementsPayload): BrokerM
     `SELECT id, ${MOVEMENT_USD_LEG_SQL} AS usd FROM movements
      WHERE account_id = ? AND flow_kind = ? AND occurred_on = ? AND currency = 'usd'`
   );
-  const insert = db.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
-     VALUES (?, ?, 'usd', ?, ?, ?)`
-  );
 
   const toWrite: { occurred_on: string; amount: number; note: string }[] = [];
   for (const m of payload.movements ?? []) {
@@ -68,7 +65,16 @@ export function applyFintualWalletRead(payload: BrokerMovementsPayload): BrokerM
 
   if (toWrite.length > 0) {
     db.transaction(() => {
-      for (const w of toWrite) insert.run(accountId, w.amount, w.occurred_on, w.note, SAVINGS_EARNINGS_FLOW_KIND);
+      for (const w of toWrite) {
+        insertMovement({
+          accountId,
+          amount: w.amount,
+          currency: "usd",
+          occurredOn: w.occurred_on,
+          note: w.note,
+          flowKind: SAVINGS_EARNINGS_FLOW_KIND,
+        });
+      }
     })();
     out.inserted = toWrite.length;
   }

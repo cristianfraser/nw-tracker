@@ -11,7 +11,9 @@
  */
 import { BROKER_SETTLEMENT_WINDOW_DAYS } from "./brokerAdapter.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 import type { FundAccountTransactionsApplyDetails, FundAccountTransactionsPayload } from "nw-tracker-contracts";
 import { reseedAllAccountSyncSources } from "./accountSyncSources.js";
 import { seedNavTree } from "./seedNavTree.js";
@@ -229,11 +231,6 @@ export function importFintualCertificado(
       return best;
     };
 
-    const insMov = db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-       VALUES (?, ?, 'clp', ?, ?, ?, ?)`
-    );
-
     let matched = 0;
     const missing: FintualCertImportResult["missing"] = [];
     // Sort plan by date so greedy matching consumes flows chronologically.
@@ -248,7 +245,15 @@ export function importFintualCertificado(
         continue;
       }
       missing.push({ importNote: p.importNote, ymd: p.ymd, amountClp: p.amountClp });
-      insMov.run(accountId, p.amountClp, p.ymd, p.note, p.cuotasNet !== 0 ? p.cuotasNet : null, p.flowKind);
+      insertMovement({
+        accountId,
+        amount: p.amountClp,
+        currency: HOME_CURRENCY,
+        occurredOn: p.ymd,
+        note: p.note,
+        unitsDelta: p.cuotasNet !== 0 ? p.cuotasNet : null,
+        flowKind: p.flowKind,
+      });
     }
 
     const dbOnly: FintualCertImportResult["dbOnly"] = [];

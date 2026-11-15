@@ -33,6 +33,7 @@ import { marketSymbol } from "./marketSymbols.js";
 import { accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 import { brokerAdapter, planDepositFromMail, racionalCashAccountId } from "./brokerAdapter.js";
 import type { BrokerNotification } from "nw-tracker-contracts";
 import { notificationChileYmd } from "./brokerNotifications.js";
@@ -288,13 +289,6 @@ export function planRacionalEmailMovements(
   return out;
 }
 
-const insTransfer = db.prepare(
-  `INSERT INTO movements (from_account_id, to_account_id, amount, currency, counter_amount,
-                          counter_currency, occurred_on, note, units_delta, flow_kind)
-   VALUES (@from_account_id, @to_account_id, @amount, @currency, @counter_amount,
-           @counter_currency, @occurred_on, @note, @units_delta, @flow_kind)`
-);
-
 export type RacionalEmailApplyResult = {
   inserted: number;
   duplicates: number;
@@ -346,20 +340,20 @@ export function applyRacionalEmailMovements(
     if (p.from_account_id == null || toAccountId == null) {
       throw new Error(`planned ${p.kind} on ${p.occurred_on} has unresolved legs`);
     }
-    const ins = insTransfer.run({
-      from_account_id: p.from_account_id,
-      to_account_id: toAccountId,
+    const movementId = insertMovement({
+      fromAccountId: p.from_account_id,
+      toAccountId,
       amount: p.amount,
       currency: p.currency,
-      counter_amount: p.counter_amount,
-      counter_currency: p.counter_currency,
-      occurred_on: p.occurred_on,
+      counterAmount: p.counter_amount,
+      counterCurrency: p.counter_currency,
+      occurredOn: p.occurred_on,
       note: p.note,
-      units_delta: p.units_delta,
-      flow_kind: p.flow_kind,
+      unitsDelta: p.units_delta,
+      flowKind: p.flow_kind,
     });
     result.inserted += 1;
-    result.movement_ids.push(Number(ins.lastInsertRowid));
+    result.movement_ids.push(movementId);
   }
   return result;
 }

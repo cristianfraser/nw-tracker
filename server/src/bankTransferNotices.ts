@@ -26,12 +26,13 @@ import { repairMojibake } from "./textRepair.js";
 import type { BankAccountTransferNoticesApplyDetails, BankAccountTransferNoticesPayload, TransferNotice } from "nw-tracker-contracts";
 
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { db } from "./db.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { listOverdueTransferNoticeMovements } from "./transferNoticeMovements.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
-import { redateMovementKeepingBankDay } from "./movementWrites.js";
+import { insertMovement, redateMovementKeepingBankDay } from "./movementWrites.js";
 import { recordBankPosting, type OccurredOnBasis } from "./movementBankPostings.js";
 
 const WINDOW_DAYS = MATCH_WINDOWS.transfer_notice.daysAfter;
@@ -395,15 +396,9 @@ function writeMovementsFromMails(
     ).map((r) => [r.id, { import_key: r.import_key, is_card: r.is_card === 1 }])
   );
   const landing = (accounts: ReadonlySet<number>) => landingAccountFor(accounts, info);
-  const insTransfer = db.prepare(
-    `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note) VALUES (?, ?, ?, 'clp', ?, ?)`
-  );
   const waiting = new Set(match.unpaired_notices.filter((u) => u.reason === NO_BANK_ROW_YET).map((u) => u.message_id));
   const oldest = chileCalendarAddDays(todayYmd, -TRANSFER_NOTICE_MOVEMENT_MAX_AGE_DAYS);
   const known = db.prepare(`SELECT 1 FROM transfer_notice_movements WHERE message_id = ?`);
-  const insMovement = db.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
-  );
   const insRecord = db.prepare(
     `INSERT INTO transfer_notice_movements (message_id, movement_id, account_id, amount, notice_date) VALUES (?, ?, ?, ?, ?)`
   );
@@ -418,11 +413,18 @@ function writeMovementsFromMails(
     // A transfer is recorded on its checking side: that account's feed is the one that confirms it.
     const [account, signed, movementId] =
       mv.kind === "single"
-        ? [mv.account_id, mv.amount, Number(insMovement.run(mv.account_id, mv.amount, day, note).lastInsertRowid)]
+        ? [mv.account_id, mv.amount, insertMovement({ accountId: mv.account_id, amount: mv.amount, currency: HOME_CURRENCY, occurredOn: day, note })]
         : [
             mv.checking_account_id,
             mv.checking_account_id === mv.from_account_id ? -mv.amount : mv.amount,
-            Number(insTransfer.run(mv.from_account_id, mv.to_account_id, mv.amount, day, note).lastInsertRowid),
+            insertMovement({
+              fromAccountId: mv.from_account_id,
+              toAccountId: mv.to_account_id,
+              amount: mv.amount,
+              currency: HOME_CURRENCY,
+              occurredOn: day,
+              note,
+            }),
           ];
     insRecord.run(n.message_id, movementId, account, signed, day);
     out.push({ message_id: n.message_id, movement_id: movementId, account_id: account, date: day, amount: signed });
