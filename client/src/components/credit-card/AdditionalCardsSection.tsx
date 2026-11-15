@@ -11,12 +11,7 @@ import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
-import { Table } from "../ui/Table";
-import {
-  TableMobileCard,
-  TableMobileCardRow,
-  TableMobileCardSection,
-} from "../ui/TableMobileCard";
+import { ColumnTable, type TableColumn } from "../ui/ColumnTable";
 
 const PAGE_SIZE = 12;
 
@@ -69,6 +64,39 @@ export function AdditionalCardsSection({
     net: t("expenses.additionalCards.colNet"),
     balance: t("expenses.additionalCards.colBalance"),
   };
+  const columns: TableColumn<AdditionalCardsPeriodRow>[] = [
+    {
+      key: "period",
+      header: t("accountDetail.monthCloseColumn"),
+      className: "mono",
+      cell: (row) => `${row.as_of_date} (${flowPeriodLabel(row.period_month, granularity)})`,
+      title: true,
+    },
+    {
+      key: "charges",
+      header: labels.charges,
+      className: "mono",
+      cell: (row) => (
+        <>
+          {money(row, "charges")} <span className="muted">({row.charge_count})</span>
+        </>
+      ),
+      card: (row) => `${money(row, "charges")} (${row.charge_count})`,
+    },
+    {
+      key: "reimbursements",
+      header: labels.reimbursements,
+      className: "mono",
+      cell: (row) => (
+        <>
+          {money(row, "reimbursements")} <span className="muted">({row.reimbursement_count})</span>
+        </>
+      ),
+      card: (row) => `${money(row, "reimbursements")} (${row.reimbursement_count})`,
+    },
+    { key: "net", header: labels.net, className: "mono", section: 1, cell: (row) => money(row, "net") },
+    { key: "balance", header: labels.balance, className: "mono", section: 1, cell: (row) => money(row, "balance") },
+  ];
 
   return (
     <PageGridTile id="additional-cards">
@@ -90,57 +118,12 @@ export function AdditionalCardsSection({
         {t("expenses.additionalCards.hint")}
       </p>
       <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-        <Table
+        <ColumnTable
+          rows={pageRows}
+          columns={columns}
+          rowKey={(row) => row.period_month}
           tableStyle={{ fontSize: "var(--font-size-prose)" }}
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only">{t("accountDetail.monthCloseColumn")}</th>
-                <th className="desktop-only">{labels.charges}</th>
-                <th className="desktop-only">{labels.reimbursements}</th>
-                <th className="desktop-only">{labels.net}</th>
-                <th className="desktop-only">{labels.balance}</th>
-                <th className="mobile-only" aria-hidden="true" />
-              </tr>
-            </thead>
-          }
-        >
-          {pageRows.map((row) => {
-            const period = `${row.as_of_date} (${flowPeriodLabel(row.period_month, granularity)})`;
-            return (
-              <tr key={row.period_month}>
-                <td className="mono desktop-only">{period}</td>
-                <td className="mono desktop-only">
-                  {money(row, "charges")} <span className="muted">({row.charge_count})</span>
-                </td>
-                <td className="mono desktop-only">
-                  {money(row, "reimbursements")}{" "}
-                  <span className="muted">({row.reimbursement_count})</span>
-                </td>
-                <td className="mono desktop-only">{money(row, "net")}</td>
-                <td className="mono desktop-only">{money(row, "balance")}</td>
-                <td className="mobile-only">
-                  <TableMobileCard title={period}>
-                    <TableMobileCardSection>
-                      <TableMobileCardRow
-                        label={labels.charges}
-                        value={`${money(row, "charges")} (${row.charge_count})`}
-                      />
-                      <TableMobileCardRow
-                        label={labels.reimbursements}
-                        value={`${money(row, "reimbursements")} (${row.reimbursement_count})`}
-                      />
-                    </TableMobileCardSection>
-                    <TableMobileCardSection>
-                      <TableMobileCardRow label={labels.net} value={money(row, "net")} />
-                      <TableMobileCardRow label={labels.balance} value={money(row, "balance")} />
-                    </TableMobileCardSection>
-                  </TableMobileCard>
-                </td>
-              </tr>
-            );
-          })}
-        </Table>
+        />
       </PaginatedTable>
     </PageGridTile>
   );
