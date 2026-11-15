@@ -47,4 +47,45 @@ describe("ColumnTable", () => {
     );
     expect(flat).not.toContain("table-mobile-card__section");
   });
+
+  it("wraps a card value in its classes, passes header attributes and keys rows by index", () => {
+    const cols: TableColumn<Row>[] = [
+      { key: "name", header: "Name", cell: (r) => r.name, title: true },
+      {
+        key: "amount",
+        header: "Amount",
+        headerProps: { title: "hint" },
+        className: "mono muted",
+        cardClassName: "mono",
+        cell: (r) => String(r.amount),
+      },
+    ];
+    const rows = [
+      { id: 1, name: "Alpha", amount: 1 },
+      { id: 1, name: "Alpha", amount: 2 },
+    ];
+    const html = renderToStaticMarkup(
+      createElement(ColumnTable<Row>, { rows, columns: cols, rowKey: (r, i) => `${r.id}-${i}` })
+    );
+    expect(html).toContain('<th title="hint" class="desktop-only">Amount</th>');
+    expect(html).toContain('<td class="desktop-only mono muted">2</td>');
+    expect(html).toContain('table-mobile-card__value"><span class="mono">2</span></span>');
+  });
+
+  it("draws an open row's detail under the desktop row and inside the card", () => {
+    const rows = [
+      { id: 1, name: "Alpha", amount: 1 },
+      { id: 2, name: "Beta", amount: 2 },
+    ];
+    const html = renderToStaticMarkup(
+      createElement(ColumnTable<Row>, {
+        rows,
+        columns,
+        rowKey: (r) => r.id,
+        rowExpansion: (r) => (r.id === 2 ? "detail" : null),
+      })
+    );
+    expect(html.match(/<tr class="desktop-only"><td colSpan="3">detail<\/td><\/tr>/g)).toHaveLength(1);
+    expect(html.match(/<div>detail<\/div><\/div><\/td>/g)).toHaveLength(1);
+  });
 });
