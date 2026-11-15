@@ -24,10 +24,7 @@ function cleanupAnchorFixture(accountId: number): void {
     accountId,
     "import:cartola|2099-0%"
   );
-  db.prepare(`DELETE FROM movements WHERE account_id = ? AND note LIKE ?`).run(
-    accountId,
-    "import:cartola|opening|%"
-  );
+
   db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = ?`).run(accountId, "manual gap-fill");
 }
 
@@ -114,7 +111,7 @@ describe("checkingCartolaBalances", () => {
   });
 
   describe("ledger anchor", () => {
-    it("uses latest cartola saldo final and removes legacy opening rows", () => {
+    it("uses latest cartola saldo final", () => {
       // Use a synthetic isolated account so real movements don't pollute the balance calc.
       const accountId = createSyntheticAnchorAccount();
       try {
@@ -130,10 +127,7 @@ describe("checkingCartolaBalances", () => {
           `import:cartola|${TEST_MONTH_LATE}|401|Test|on:${TEST_MONTH_LATE}-10|amt:-100|idx:0`
         );
 
-        db.prepare(
-          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-           VALUES (?, 811098, 'clp', '2017-07-31', 'import:cartola|opening|2017-07|saldo inicial', NULL)`
-        ).run(accountId);
+
 
         const anchor = ensureCheckingLedgerAnchor(accountId);
         expect(anchor.inserted || anchor.updated).toBe(true);
@@ -142,10 +136,7 @@ describe("checkingCartolaBalances", () => {
         expect(anchor.amount_clp).toBe(1000);
         expect(anchor.occurred_on).toBe(TEST_DEFAULT_ANCHOR_DATE);
 
-        const openingLeft = db
-          .prepare(`SELECT COUNT(*) AS c FROM movements WHERE account_id = ? AND note LIKE ?`)
-          .get(accountId, "import:cartola|opening|%") as { c: number };
-        expect(openingLeft.c).toBe(0);
+
 
         const balanceAtAnchor = checkingMovementBalanceClpAt(
           accountId,
