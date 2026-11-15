@@ -143,3 +143,30 @@ reviewer to read the topic files of the areas it reviews.
   read of the file, and a section edited mid-move is moved again from its new text.
 - **Non-Claude agents** read `AGENTS.md` only and would lose the topics; nothing in the repo
   shows one in use.
+
+## Status (2026-11-14)
+
+Steps 1 to 5 are done; `AGENTS.md` is 38 KB and ten topic files hold the rest (11 to 115 KB each).
+
+- **Step 3 as built.** Sections moved verbatim, one commit per topic. Three sections were split
+  by bullet: «Ingest API» (protocol bullets to `ingest-protocol.md`, the kinds to
+  `ingest-sources.md` under «Ingest kinds, one per source»), «Import sources vs runtime» (the
+  rule, Depto, Account identity and the closing paragraph stay; the per-source bullets are
+  «Import rules per source» in `ingest-sources.md`) and «UI tables» (as the step 2 finding says;
+  «Display units are currencies» sits in `AGENTS.md` after «An account's value»). «A Gmail
+  session that loses its connection is rerun» went with the sources, not the protocol.
+- **Cross-references are resolved by the index, not rewritten.** Each index line in `AGENTS.md`
+  lists its file's sections, and every topic file opens with a note saying so. The «…»
+  references inside the rule text were left as they are, so the move stays verbatim.
+- **Step 4 as built.** Repointed: the comments in `ccInvestmentProxy.ts`, `groupDailySeries.ts`,
+  `useTableFit.ts`, `render.yaml`; `README.md`, `CLAUDE.md`, `GUIDELINES.md` and the
+  codebase-review skill. Left alone: comments citing sections that stayed in `AGENTS.md`, and
+  the dated `docs/*-plan.md` logs (they record what was true when written; the index finds the
+  section).
+- **Step 5.** Every non-blank line of the pre-split `AGENTS.md` appears exactly once across
+  `AGENTS.md` + `.claude/rules/*.md`, except the one header line that now mentions the topic
+  files; no `## ` heading appears twice.
+- **Open:** step 6 (`PARSERS.md`, 119 KB, still imported whole by `CLAUDE.md`); confirming in a
+  new session that a topic is absent until a matching file is read (the pilot's agents
+  inherited the old `AGENTS.md`); `ingest-sources.md` at 115 KB could split into bank / cards /
+  brokers-and-pensions if it proves heavy.

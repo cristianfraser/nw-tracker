@@ -1,8 +1,9 @@
 # Global engineering rules (nw-tracker)
 
 Project-agnostic rules that apply to all work in this repo, regardless of feature area.
-App-specific conventions and mechanics live in AGENTS.md; where a rule below has an
-app-specific instantiation (file names, helpers, enforcement scripts), AGENTS.md carries it.
+App-specific conventions and mechanics live in AGENTS.md and the topic files under
+`.claude/rules/` that it lists; where a rule below has an app-specific instantiation (file
+names, helpers, enforcement scripts), they carry it.
 
 ## Fail fast — no runtime fallbacks
 

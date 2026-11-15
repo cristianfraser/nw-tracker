@@ -9,14 +9,14 @@
 # /api reads only (server/src/httpSecurity.ts) so an open demo can't be vandalized, and
 # anonymous visit/pageview analytics replace the old login log (server/src/demoAnalytics.ts,
 # pageviews and endpoint timings in the shared usage log, server/src/usageLog.ts).
-# See AGENTS.md "Hosted demo (Render)".
+# See .claude/rules/demo-ops.md "Hosted demo (Render)".
 # The repo is safe to make public: tree and full git history are free of personal data
 # (balances/amounts/account numbers purged; card last4s scrubbed from all history
 # 2026-07-08; per-card config is gitignored; tests use synthetic cards). Author
 # name/email appear as intentional attribution (plus the extracted landing page's
 # contact link in git history).
 #
-# Custom domains (Namecheap DNS, see AGENTS.md):
+# Custom domains (Namecheap DNS, see .claude/rules/demo-ops.md):
 # - nw-tracker.crfrsr.io → nw-tracker-demo — only attaches when the workspace has a free
 #   custom-domain slot (Hobby caps at 2/workspace, both used by pokedex). Until then the
 #   demo is reached at its .onrender.com URL, which the crfrsr.io homepage

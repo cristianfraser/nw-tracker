@@ -18,8 +18,9 @@ paths:
 
 # Tax returns, projections, wealth percentile (nw-tracker)
 
-> Moved verbatim from `AGENTS.md` (index there under «Topic rules»). Sections named in «…» that
-> are not in this file are in `AGENTS.md`.
+> Moved verbatim from `AGENTS.md`, whose «Topic rules» index lists the sections of every file under
+> `.claude/rules/`. A section named in «…» that is not in this file is in `AGENTS.md` or in the file
+> that index names for it.
 
 ## Wealth percentile (/wealth-percentile)
 

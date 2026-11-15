@@ -6,7 +6,7 @@ import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
 /**
  * Resolve a portfolio-group's daily series the ONE canonical way, so every caller shares the
- * same cache entry. AGENTS.md warning is load-bearing: the scope key (`pg:<slug>`), the row set
+ * same cache entry. The warning in `.claude/rules/valuation-series.md` («Chart-host reference overlays in day mode») is load-bearing: the scope key (`pg:<slug>`), the row set
  * (`listAccountsForGroupTab(slug)` filtered to real accounts) and the options must stay
  * byte-identical across the `/api/daily-series` group route and every other consumer, or the
  * cache silently stops matching and both sides rebuild. Returns null when the group has no

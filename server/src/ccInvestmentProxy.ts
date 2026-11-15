@@ -322,8 +322,8 @@ export function computeProxyLot(
  *   zero-length float — always exactly 0 gain — and dropped the purchase → first-pay-by
  *   stretch, the longest float in the lot, from every later cuota too.
  * withdrawals = each cuota a statement printed, sorted by date. It is keyed by the facturación
- *   that billed it: the month the plan schedule bills cuota N (`first_due_month` + N − 1, AGENTS.md
- *   «One schedule framing» — the month whose «cuota a pagar» carries it). It is withdrawn on that
+ *   that billed it: the month the plan schedule bills cuota N (`first_due_month` + N − 1,
+ *   `.claude/rules/cards.md` «The installment schedule is facturación/statement months everywhere» — the month whose «cuota a pagar» carries it). It is withdrawn on that
  *   facturación's pay-by: the payment row's `pay_by_date`, which the import resolved the way the
  *   facturaciones table does (`resolveInstallmentPayByIso`: printed PAGAR HASTA, else derived).
  *   Keying by the pay-by month instead put every cuota's gain on the next facturación's row.

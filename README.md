@@ -68,4 +68,4 @@ Tests run per-workspace:
 cd server && npm run test
 ```
 
-See `AGENTS.md` for architecture and conventions.
+See `AGENTS.md` for architecture and conventions; each area's detail is in its topic file under `.claude/rules/`, listed at the top of `AGENTS.md`.

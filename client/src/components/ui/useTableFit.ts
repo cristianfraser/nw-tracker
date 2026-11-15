@@ -6,7 +6,7 @@ export const TABLE_WRAP_CARDS_CLASS = "table-wrap--cards";
 
 /**
  * Shows a parallel-rendering table (desktop columns + mobile card cell, «UI tables — desktop/mobile
- * sync» in AGENTS.md) as its cards whenever its desktop rendering does not fit the width it is
+ * sync» in `.claude/rules/client-ui.md`) as its cards whenever its desktop rendering does not fit the width it is
  * given — not only below the 880 viewport line. A table's columns are as wide as its data (a
  * peso balance in the hundreds of millions, a «$X → US$Y» conversion), so no fixed breakpoint is
  * right for every table: between 880 and ~1100 the content column is narrower than several of
