@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BankProductSummaryPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { createPanelAccount } from "./createPanelAccount.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { removeAccountPlacement } from "./accountPlacement.js";
 import { applyBankProductSummary } from "./bankProductSummaryApply.js";
 import { runIngestTask } from "./ingestTasks.js";
 
@@ -39,11 +39,10 @@ function cleanup(): void {
   if (accountId) {
     db.prepare(`DELETE FROM bank_account_numbers WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
-    db.prepare(`DELETE FROM portfolio_group_items WHERE account_id = ?`).run(accountId);
+    removeAccountPlacement(accountId);
     db.prepare(`DELETE FROM account_sync_sources WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
     db.prepare(`DELETE FROM asset_groups WHERE slug LIKE '%vitest_summary_usd__usd'`).run();
-    seedNavTree();
   }
 }
 

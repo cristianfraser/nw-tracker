@@ -19,7 +19,7 @@ import { movementCreateSchemaForAccount, validateMovementCreate } from "./moveme
 import { assignOptionContract, assignmentShareLeg, optionAssignmentForStockMovement } from "./optionAssignment.js";
 import { occSymbol, occSymbolSlug, optionContractDisplayName, optionContractForAccount, optionIntrinsicPerShare } from "./optionContracts.js";
 import { optionContractsThroughDate } from "./optionPosition.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { removeAccountPlacement } from "./accountPlacement.js";
 import { convertValue } from "./valueConvert.js";
 
 /**
@@ -137,10 +137,12 @@ afterAll(() => {
   for (const a of created) {
     db.prepare(`DELETE FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`).run(a, a, a);
   }
-  for (const id of created.splice(0)) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+  for (const id of created.splice(0)) {
+    removeAccountPlacement(id);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+  }
   db.prepare(`DELETE FROM asset_groups WHERE slug LIKE 'brokerage_opciones\\_\\_vtoptx%' ESCAPE '\\'`).run();
   db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(TICKER);
-  seedNavTree();
   clearAggregationCache();
 });
 

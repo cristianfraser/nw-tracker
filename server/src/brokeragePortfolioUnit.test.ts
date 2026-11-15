@@ -7,7 +7,7 @@ import { getGroupConsolidatedMonthlyPerfForRows, type ConsolidatedMonthlyPerfRow
 import { buildInversionesConsolidatedMonthly, buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { getSidebarNavPayload } from "./navTree.js";
 import { accountIdsInPortfolioGroup } from "./portfolioGroupTree.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { placeAccount } from "./accountPlacement.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 
@@ -71,7 +71,7 @@ describe("brokerage portfolio unit (holding + fee caja as one bucket)", () => {
     val.run(holdId, monthEndUtcYmd(M1), 1_000_000);
     val.run(holdId, monthEndUtcYmd(M2), 1_020_000);
 
-    seedNavTree();
+    for (const id of [holdId, cajaId]) placeAccount(id);
     before = {
       nw: rowFor(buildNetWorthConsolidatedMonthly("clp"), M2),
       inv: rowFor(buildInversionesConsolidatedMonthly("clp"), M2),
@@ -89,7 +89,8 @@ describe("brokerage portfolio unit (holding + fee caja as one bucket)", () => {
        SELECT id, ?, 'Vitest PFU', 25, ?, ?, 'brokerage', ?, ?, 'nested', 'bucket', ?
        FROM portfolio_groups WHERE slug = 'brokerage'`
     ).run(UNIT_SLUG, `/inversiones/brokerage/${PREFIX}`, `/inversiones/brokerage/${PREFIX}`, UNIT_SLUG, UNIT_SLUG, UNIT_SLUG);
-    seedNavTree();
+    // Their leaves moved under the unit's asset group: each account is placed again.
+    for (const id of [holdId, cajaId]) placeAccount(id);
   });
 
   afterAll(() => {
@@ -100,11 +101,10 @@ describe("brokerage portfolio unit (holding + fee caja as one bucket)", () => {
     db.prepare(`DELETE FROM portfolio_groups WHERE slug = ?`).run(UNIT_SLUG);
     db.prepare(`DELETE FROM accounts WHERE id IN (${mine})`).run();
     db.prepare(`DELETE FROM asset_groups WHERE slug IN (?, ?, ?)`).run(HOLD_LEAF, CAJA_LEAF, UNIT_SLUG);
-    seedNavTree();
     clearAggregationCache();
   });
 
-  it("seeds the unit under brokerage with both members, out of the class buckets", () => {
+  it("places both members in the unit under brokerage, out of the class buckets", () => {
     expect(accountIdsInPortfolioGroup(UNIT_SLUG)).toEqual([holdId, cajaId].sort((a, b) => a - b));
     expect(accountIdsInPortfolioGroup("brokerage_acciones")).not.toContain(holdId);
     expect(accountIdsInPortfolioGroup("brokerage_crypto")).not.toContain(cajaId);

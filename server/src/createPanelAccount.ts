@@ -17,7 +17,7 @@ import {
 } from "./portfolioGroupTree.js";
 import { prettyRgbTripletForAccountId } from "./chartColorRgb.js";
 import { reseedAccountSyncSources } from "./accountSyncSources.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { accountBucketSlug, placeAccount } from "./accountPlacement.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
 import {
   isOptionContractAccount,
@@ -201,9 +201,9 @@ function createOptionContractAccount(acc: PanelAccountCreateBody["account"]): Pa
     ).run(accountId, underlying, o.right, strike, o.expiry, multiplier, occ);
     // Fail fast: the account must dispatch to the contract valuation (no inert accounts).
     if (!isOptionContractAccount(accountId)) fail(500, "created option contract account does not resolve to a contract");
+    placeAccount(accountId);
   })();
 
-  seedNavTree();
   reseedAccountSyncSources(accountId);
   // The underlying's series is what the contract is marked from: the route syncs its EOD bars.
   return { account_id: accountId, asset_group_id: assetGroupId, created_leaf_bucket: createdLeafBucket, ticker: underlying };
@@ -326,10 +326,10 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
     } else if (!isClpCashKindSlug(accountBucketKindSlug(meta.bucket_slug))) {
       fail(500, "created CLP cash account does not resolve to the CLP cash ledger");
     }
+    placeAccount(accountId);
   });
   tx();
 
-  seedNavTree();
   reseedAccountSyncSources(accountId);
 
   return {
@@ -379,7 +379,8 @@ function leafCategoryKey(leafSlug: string, leafParentId: number | null): string 
 /**
  * Panel → Accounts edit: rename and/or move to another non-liability leaf bucket. A move
  * re-files the account on a leaf under the new bucket's asset group (same category key, so
- * `accountBucketKindSlug` behavior is preserved — enforced, not assumed) and reseeds the nav tree.
+ * `accountBucketKindSlug` behavior is preserved — enforced, not assumed). Either change re-places
+ * the account in the tree: a move changes its bucket, a rename its position among the bucket's items.
  */
 export function updatePanelAccount(
   accountId: number,
@@ -454,13 +455,11 @@ export function updatePanelAccount(
     }
   }
 
-  db.prepare(`UPDATE accounts SET name = ?, asset_group_id = ? WHERE id = ?`).run(
-    name,
-    assetGroupId,
-    accountId
-  );
-
-  if (movedBucket) seedNavTree();
+  db.transaction(() => {
+    db.prepare(`UPDATE accounts SET name = ?, asset_group_id = ? WHERE id = ?`).run(name, assetGroupId, accountId);
+    // A liability keeps its own tree: only an account a bucket holds has a place to rewrite.
+    if (movedBucket || (name !== acc.name && accountBucketSlug(accountId) != null)) placeAccount(accountId);
+  })();
 
   return {
     account_id: accountId,

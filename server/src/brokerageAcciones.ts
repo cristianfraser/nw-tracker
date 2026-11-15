@@ -1,6 +1,3 @@
-/** Legacy aggregate account from excel import — excluded from APIs and charts. */
-export const NOTE_STOCKS_LEGACY = "import:excel|key=stocks";
-
 /**
  * The pesos the structural rules read whatever the display unit — which accounts were liquidated,
  * which value-map tiles are hidden and their order, whether a unit could not convert a row — so

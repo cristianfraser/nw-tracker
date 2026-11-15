@@ -11,7 +11,7 @@ import {
   optionTaxLotEventsFromRows,
   type OptionTaxLotRow,
 } from "./optionTaxLotEvents.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { removeAccountPlacement } from "./accountPlacement.js";
 import { declareTestInstrument } from "./test/instrumentFixtures.js";
 import { realizeTaxLots } from "./taxLots.js";
 
@@ -144,10 +144,12 @@ afterAll(() => {
     db.prepare(`DELETE FROM option_assignments WHERE option_movement_id IN (SELECT id FROM movements WHERE account_id = ?)`).run(a);
     db.prepare(`DELETE FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`).run(a, a, a);
   }
-  for (const id of created.splice(0)) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+  for (const id of created.splice(0)) {
+    removeAccountPlacement(id);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+  }
   db.prepare(`DELETE FROM market_symbols WHERE ticker = ?`).run(TICKER);
   db.prepare(`DELETE FROM asset_groups WHERE slug LIKE 'brokerage_opciones\\_\\_vtolot%' ESCAPE '\\'`).run();
-  seedNavTree();
   clearAggregationCache();
 });
 

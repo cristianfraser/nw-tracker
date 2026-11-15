@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
 import { listAccountsForBucketSlug } from "./assetGroupTree.js";
-import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import { db } from "./db.js";
 
@@ -27,7 +26,7 @@ describe("accountTodayValue raw stack", () => {
   });
 
   it("returns a value for brokerage_acciones accounts that have dashboard marks", () => {
-    const rows = listAccountsForBucketSlug("brokerage", "acciones", NOTE_STOCKS_LEGACY);
+    const rows = listAccountsForBucketSlug("brokerage");
     expect(rows.length).toBeGreaterThan(0);
     const mtmRows = rows.filter((r) => accountUsesEquityMtm(r.account_id));
     if (mtmRows.length < 2) return;
@@ -42,7 +41,7 @@ describe("accountTodayValue raw stack", () => {
 
 describe("getGroupValuationTimeseries acciones composition shares", () => {
   it("share series match accounts in leaf bucket with display values", () => {
-    const tabRows = listAccountsForBucketSlug("brokerage", "acciones", NOTE_STOCKS_LEGACY);
+    const tabRows = listAccountsForBucketSlug("brokerage");
     const mtmRows = tabRows.filter((r) => accountUsesEquityMtm(r.account_id));
     if (mtmRows.length < 2) return;
 

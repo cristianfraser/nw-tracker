@@ -1,5 +1,6 @@
 /** Account CRUD, colors, portfolio groups, detail bundle, monthly performance. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
+import { accountBucketSlug, placeAccount, removeAccountPlacement } from "../accountPlacement.js";
 import { isResolvablePortfolioGroupSlug } from "../portfolioGroupTree.js";
 import { syncEquityEodFromYahoo } from "../equityEodSync.js";
 import {
@@ -80,13 +81,18 @@ app.post("/api/accounts", asyncHandler(async (req, res) => {
     res.status(400).json({ error: "asset_group_id and name required" });
     return;
   }
-  const r = db
-    .prepare(
-      `INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, ?, ?)`
-    )
-    .run(asset_group_id, name.trim(), notes ?? null);
-  const id = Number(r.lastInsertRowid);
-  db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(prettyRgbTripletForAccountId(id), id);
+  const id = db.transaction(() => {
+    const r = db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, ?, ?)`
+      )
+      .run(asset_group_id, name.trim(), notes ?? null);
+    const created = Number(r.lastInsertRowid);
+    db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(prettyRgbTripletForAccountId(created), created);
+    // An account a bucket of the net-worth tree holds takes its place with the insert (no boot places it).
+    if (accountBucketSlug(created) != null) placeAccount(created);
+    return created;
+  })();
   res.status(201).json({ id });
 }));
 
@@ -102,7 +108,11 @@ app.delete("/api/accounts/:id", (req, res) => {
     return;
   }
   try {
-    const r = db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+    // Its place in the tree goes with it (one transaction: a refused delete keeps the placement).
+    const r = db.transaction(() => {
+      removeAccountPlacement(id);
+      return db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+    })();
     res.json({ ok: true, deleted: r.changes });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

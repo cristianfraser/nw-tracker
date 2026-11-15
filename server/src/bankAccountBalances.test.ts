@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { IngestConflict } from "./ingestReceiver.js";
 import { createPanelAccount } from "./createPanelAccount.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { removeAccountPlacement } from "./accountPlacement.js";
 import { applyBankAccountBalances, judgeLatestBankAccountBalances } from "./bankAccountBalances.js";
 
 const NUMBER = "005199990077";
@@ -25,11 +25,10 @@ function cleanup(): void {
   db.prepare(`DELETE FROM bank_account_balance_snapshots WHERE source_ref IN (?, ?)`).run(REF_A, REF_B);
   if (accountId) {
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
-    db.prepare(`DELETE FROM portfolio_group_items WHERE account_id = ?`).run(accountId);
+    removeAccountPlacement(accountId);
     db.prepare(`DELETE FROM account_sync_sources WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
     db.prepare(`DELETE FROM asset_groups WHERE slug LIKE '%vitest_bank_usd__usd'`).run();
-    seedNavTree();
   }
 }
 

@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { httpRequestLogMiddleware } from "./httpRequestLog.js";
 import { apiInFlightMiddleware } from "./apiRequestsInFlight.js";
+import { assertAccountsPlaced } from "./accountPlacement.js";
 import { seedNavTree } from "./seedNavTree.js";
 import { startGlobalSyncScheduler } from "./globalSyncScheduler.js";
 import { startLiveMarketQuotesScheduler } from "./liveMarketQuotesScheduler.js";
@@ -51,6 +52,8 @@ import { LIVE_INPUTS_HEADER, liveInputsMiddleware } from "./liveInputsHeader.js"
 import { DisplayUnitRequestError } from "./displayUnits.js";
 
 seedNavTree();
+// The seed places no account: one that is not where its asset group says fails the boot.
+assertAccountsPlaced();
 
 loadRootDotenv();
 // Every flag is parsed once here, with the demo and background-jobs defaults in one declared order.

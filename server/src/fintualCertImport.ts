@@ -16,7 +16,7 @@ import { db } from "./db.js";
 import { insertMovement } from "./movementWrites.js";
 import type { FundAccountTransactionsApplyDetails, FundAccountTransactionsPayload } from "nw-tracker-contracts";
 import { reseedAllAccountSyncSources } from "./accountSyncSources.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { placeAccount } from "./accountPlacement.js";
 import { DEPOSIT_FLOW_KIND_PERSONAL } from "./depositFlowKind.js";
 import { aggregateFintualCertificado, type FintualCertificadoAggregateScan } from "./fintualCertificadoTransacciones.js";
 import {
@@ -38,8 +38,19 @@ function excludeFromGroupTotalsForCategory(categorySlug: string): number {
   return categorySlug === "cuenta_corriente" || categorySlug === "cuenta_vista" ? 1 : 0;
 }
 
-/** Find-or-create a v2 cert account by its `import:fintual|cert|key=…` note; refresh its metadata. */
+/**
+ * Find-or-create a v2 cert account by its `import:fintual|cert|key=…` note; refresh its metadata
+ * and its place in the net-worth tree (the name and the asset group decide it).
+ */
 export function ensureFintualCertV2Account(importNotes: string): number {
+  return db.transaction(() => {
+    const id = writeFintualCertV2Account(importNotes);
+    placeAccount(id);
+    return id;
+  })();
+}
+
+function writeFintualCertV2Account(importNotes: string): number {
   const categorySlug = FINTUAL_CERT_V2_CATEGORY_SLUG[importNotes];
   const displayName = FINTUAL_CERT_V2_ACCOUNT_NAMES[importNotes];
   if (!categorySlug || !displayName) {
@@ -268,9 +279,8 @@ export function importFintualCertificado(
       });
     }
 
-    // Valor-cuota hints and nav/sync reseed are additive/idempotent.
+    // Valor-cuota hints and the sync reseed are additive/idempotent.
     const fundUnitRows = backfillFintualCertValorCuotaFromScan(scan, matchFintualCertGoalV2, false);
-    seedNavTree();
     reseedAllAccountSyncSources();
 
     return {

@@ -5,7 +5,7 @@ import { db } from "./db.js";
 import { navChartBucketNavNodes } from "./groupChartBuckets.js";
 import { getNavChartGroupNodeBySlug, getSidebarNavPayload, type NavTreeNodeDto } from "./navTree.js";
 import { accountIdsInPortfolioGroup, assertNavGroupItemsShape } from "./portfolioGroupTree.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { placeAccount } from "./accountPlacement.js";
 
 /**
  * A managed portfolio unit filed UNDER a class bucket (migration 192's shape, as data): the
@@ -71,7 +71,7 @@ describe("brokerage portfolio unit nested under Acciones", () => {
       UNIT_SLUG,
       UNIT_SLUG
     );
-    seedNavTree();
+    for (const id of [stockId, holdId, cajaId]) placeAccount(id);
     brokerageBefore = accountIdsInPortfolioGroup("brokerage");
   });
 
@@ -84,7 +84,6 @@ describe("brokerage portfolio unit nested under Acciones", () => {
     // Leaves before the unit they sit under (FK on parent_id).
     db.prepare(`DELETE FROM asset_groups WHERE slug IN (?, ?, ?)`).run(HOLD_LEAF, CAJA_LEAF, STOCK_LEAF);
     db.prepare(`DELETE FROM asset_groups WHERE slug = ?`).run(UNIT_SLUG);
-    seedNavTree();
     clearAggregationCache();
   });
 

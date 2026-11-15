@@ -163,9 +163,7 @@ const LIST_BY_BUCKET_IDS = `
          a.exclude_from_group_totals AS exclude_from_group_totals
   FROM accounts a
   INNER JOIN asset_groups g ON g.id = a.asset_group_id
-  WHERE (a.import_key IS NULL OR a.import_key != ?)
-    AND a.asset_group_id IN (__IDS__)
-    AND g.slug != 'individual_stocks'
+  WHERE a.asset_group_id IN (__IDS__)
   ORDER BY g.sort_order, g.id, a.name
 `;
 
@@ -192,14 +190,11 @@ export function ensureChildAssetGroupId(
     .run(leafSlug, childLabel, maxSort.m + 1, parent.id);
   return { id: Number(r.lastInsertRowid), created: true };
 }
-export function listAccountsForBucketIds(
-  bucketIds: number[],
-  excludeLegacyStocksNote: string
-): BucketAccountRow[] {
+export function listAccountsForBucketIds(bucketIds: number[]): BucketAccountRow[] {
   if (bucketIds.length === 0) return [];
   const ph = bucketIds.map(() => "?").join(",");
   const sql = LIST_BY_BUCKET_IDS.replace("__IDS__", ph);
-  return db.prepare(sql).all(excludeLegacyStocksNote, ...bucketIds) as BucketAccountRow[];
+  return db.prepare(sql).all(...bucketIds) as BucketAccountRow[];
 }
 
 const LIST_BY_ACCOUNT_IDS = `
@@ -209,24 +204,18 @@ const LIST_BY_ACCOUNT_IDS = `
          a.exclude_from_group_totals AS exclude_from_group_totals
   FROM accounts a
   INNER JOIN asset_groups g ON g.id = a.asset_group_id
-  WHERE (a.import_key IS NULL OR a.import_key != ?)
-    AND a.id IN (__IDS__)
-    AND g.slug != 'individual_stocks'
+  WHERE a.id IN (__IDS__)
   ORDER BY g.sort_order, g.id, a.name
 `;
 
-export function listAccountsForBucketSlug(
-  bucketSlug: string,
-  _tabSubgroup: string | undefined,
-  excludeLegacyStocksNote: string
-): BucketAccountRow[] {
+export function listAccountsForBucketSlug(bucketSlug: string): BucketAccountRow[] {
   if (portfolioGroupBySlug(bucketSlug)) {
     const ids = groupAccountIds(bucketSlug);
     if (ids.length === 0) return [];
     const ph = ids.map(() => "?").join(",");
     const sql = LIST_BY_ACCOUNT_IDS.replace("__IDS__", ph);
-    return db.prepare(sql).all(excludeLegacyStocksNote, ...ids) as BucketAccountRow[];
+    return db.prepare(sql).all(...ids) as BucketAccountRow[];
   }
   const ids = assetGroupIdsInSubtree(bucketSlug);
-  return listAccountsForBucketIds(ids, excludeLegacyStocksNote);
+  return listAccountsForBucketIds(ids);
 }
