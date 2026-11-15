@@ -2,7 +2,7 @@ import { foreignCashToClpAt, isForeignCashAccount } from "./foreignCashAccounts.
 import { movementCountsAsPersonalDeposit, movementIsStateContribution } from "./depositFlowKind.js";
 import { accountIsMonthPrecisionDated } from "./accountBucket.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
-import { isCreditCardAccountId } from "./ccAccountConfig.js";
+import { isCreditCardAccountId } from "./ccAccountKind.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   loadEquityBrokerageCapitalSortFlows,

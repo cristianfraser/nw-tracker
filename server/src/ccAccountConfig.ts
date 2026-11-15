@@ -5,7 +5,9 @@
  * per currency the card's issuer bills in (primary first), then any other currency on file, a
  * currency without a cupo as null.
  */
-import { accountKindSlugForAccountId } from "./accountBucket.js";
+import { isCreditCardAccountId } from "./ccAccountKind.js";
+
+export { isCreditCardAccountId };
 
 import { patchCreditCardBillingConfig } from "./ccBillingBalances.js";
 import { db } from "./db.js";
@@ -41,11 +43,6 @@ export type CreditCardConfigPatch = {
   billing_cycle_end_day?: number | null;
   cupo?: CcCupoEntry[];
 };
-
-export function isCreditCardAccountId(accountId: number): boolean {
-  if (!Number.isFinite(accountId) || accountId <= 0) return false;
-  return accountKindSlugForAccountId(accountId) === "credit_card";
-}
 
 export function getCreditCardAccountConfig(accountId: number): CreditCardAccountConfigDto {
   if (!isCreditCardAccountId(accountId)) {
