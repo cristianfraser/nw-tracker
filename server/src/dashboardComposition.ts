@@ -1,10 +1,9 @@
 import { buildProportionalFromValueArrays, type ProportionalSeriesBlock } from "./proportionalSeries.js";
 import { getNetWorthNavGroupNode, type NavTreeNodeDto } from "./navTree.js";
-import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
-import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { slugMarkTotalsAtDatesClp, type ChartMarkTotalAccountRow } from "./dashboardChartMarkTotals.js";
 import { isCashSavingsNavNode } from "./dashboardNavCardMetrics.js";
-import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
+import { HOME_CURRENCY } from "./displayUnits.js";
+import { nodeValueSeriesOnGrid, type NodeValuePolicy } from "./nodeValue.js";
 
 /**
  * Home composition chart: 100%-stacked shares one level below the "big" buckets of the
@@ -167,6 +166,19 @@ export function compositionValuesAtDatesClp(
 }
 
 /**
+ * A composition line on each day of a daily grid, in pesos: its counted members' cached daily
+ * marks, a day with no mark absent (the netted line always reads), rounded to the peso after
+ * the netting.
+ */
+const COMPOSITION_LINE_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
+  members: "counted",
+  empty: "null_unless_netted",
+  // Pesos need no rate.
+  missingCardRate: "throw",
+  rounding: "unit_coin",
+};
+
+/**
  * Daily values (CLP) on a contiguous Chile-day grid from the per-account mark cache. Same rules
  * as the monthly totals: a day with no finite mark is null (except the netted line, which
  * always reads), per-day rounding after the netting.
@@ -177,30 +189,11 @@ export function compositionValuesOnGridClp(
 ): Map<string, (number | null)[]> {
   const out = new Map<string, (number | null)[]>();
   for (const spec of specs) {
-    const marks = spec.rows
-      .filter((r) => r.exclude_from_group_totals !== 1)
-      .map((a) =>
-        accountMarkClpSeriesOnGrid(
-          { account_id: a.account_id, bucket_slug: a.bucket_slug, import_key: a.import_key ?? null, name: a.name ?? null },
-          grid
-        )
-      );
     out.set(
       spec.dataKey,
-      grid.map((ymd, gi) => {
-        let raw = 0;
-        let any = false;
-        for (const m of marks) {
-          const v = m[gi];
-          if (v != null && Number.isFinite(v)) {
-            raw += v;
-            any = true;
-          }
-        }
-        if (spec.netLinkedCreditCard) {
-          return Math.round(cashNetOfLinkedCreditCards(raw, linkedCreditCardClpForCashCardAsOf(ymd)));
-        }
-        return any ? Math.round(raw) : null;
+      nodeValueSeriesOnGrid(spec.rows, grid, HOME_CURRENCY, {
+        ...COMPOSITION_LINE_DAILY,
+        netsLinkedCards: spec.netLinkedCreditCard,
       })
     );
   }
