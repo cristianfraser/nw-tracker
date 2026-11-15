@@ -16,9 +16,11 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {
   MOVEMENT_CLP_LEG_SQL,
-  movementClpLegOrZero,
+  requireMovementClp,
   type MovementAmountFields,
 } from "./movementAmounts.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
+import { convertFlowOrNull } from "./rates.js";
 
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
@@ -59,8 +61,11 @@ export type DepositReconciliationRow = {
   /** Legs the unit payload picks from (`flowLegsInUnit`): the pesos (the matching reads them) and the dollars. */
   amount_clp: number;
   amount_usd: number | null;
-  /** A dollar deposit: its dollars are the event's own leg (another unit converts them, not their pesos). */
-  native?: "usd";
+  /**
+   * A deposit made in another currency than pesos: its own leg. The unit of that currency reads it
+   * as is and any other unit converts it (never its pesos).
+   */
+  native?: { currency: string; amount: number };
   status: DepositReconciliationStatus;
 };
 
@@ -161,17 +166,17 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
 // net-worth buckets, not flows inside it. listMovementBalanceCashAccountIds() is exactly
 // {cuenta_corriente, cuenta_vista}; listForeignCheckingAccountIds() the foreign ones (any currency).
 //
-// A dollar deposit — a single-leg dollar row buying units of a non-cash account, the deposit event
-// `accountDeposits.ts` counts — reconciles like a peso one, at its dollars priced at the day's rate,
-// and its "checking present" reads the dollar checking accounts' listed months: a dollar deposit is
-// funded from a dollar account. Dollar transfers (US checking → a Roth IRA's shares) are transfer
-// rows and need no link, like peso transfers; a foreign cash account is never a target (`foreignCashIds`).
+// A deposit in another currency — a single-leg row in dollars, euros, … buying units of a non-cash
+// account, the deposit event `accountDeposits.ts` counts — reconciles like a peso one, at its own
+// amount priced at the day's rate, and its "checking present" reads the listed months of the
+// checking accounts held in that currency: a dollar deposit is funded from a dollar account, a euro
+// one from a euro account. Foreign transfers (US checking → a Roth IRA's shares) are transfer rows
+// and need no link, like peso transfers; a foreign cash account is never a target (`foreignCashIds`).
 
-/** The months a dollar checking account lists a movement in (either direction). */
-function loadDollarCheckingMonthsWithData(): Set<string> {
+/** The months a checking account held in `currency` lists a movement in (either direction). */
+function loadForeignCheckingMonthsWithData(currency: string): Set<string> {
   const months = new Set<string>();
-  // Dollar deposits only (the reconciliation prices deposits in pesos and dollars): a dollar account's months.
-  for (const accountId of listForeignCheckingAccountIds().filter((id) => isForeignCashAccountIn(id, "usd"))) {
+  for (const accountId of listForeignCheckingAccountIds().filter((id) => isForeignCashAccountIn(id, currency))) {
     for (const direction of ["in", "out"] as const) {
       for (const m of listForeignCheckingMovements(accountId, direction)) {
         const month = monthKeyFromYmd(m.occurred_on);
@@ -217,22 +222,35 @@ function loadPositiveInflowMovements(
   // selling coins (internal to the crypto bucket) and must not count as deposits needing an outflow.
   const budaFilter =
     budaBufferId != null ? ` AND NOT (m.account_id = ${budaBufferId} AND m.note IS NOT 'import:buda|abono')` : "";
-  // A peso inflow, or a dollar single-leg row buying units (the dollar deposit event).
+  // A peso inflow, or a single-leg row in another currency buying units (the foreign deposit event).
   return db
     .prepare(
       `SELECT m.id, m.account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.units_delta, m.flow_kind, m.note
        FROM movements m
        WHERE m.account_id IN (${ph})
-         AND (${MOVEMENT_CLP_LEG_SQL} > 0 OR (m.currency = 'usd' AND m.amount > 0 AND m.units_delta IS NOT NULL))
+         AND (${MOVEMENT_CLP_LEG_SQL} > 0
+              OR (m.currency <> '${HOME_CURRENCY}' AND m.counter_currency IS NULL AND m.amount > 0 AND m.units_delta IS NOT NULL))
          ${budaFilter}
        ORDER BY m.occurred_on, m.id`
     )
     .all(...accountIds) as RawMovementRow[];
 }
 
-/** A dollar deposit row's dollars (positive), else null (see `loadPositiveInflowMovements`). */
-function dollarDepositUsd(m: RawMovementRow): number | null {
-  return m.currency === "usd" && m.units_delta != null && m.amount > 0 ? m.amount : null; // convention-ok: the dollar deposit reconciliation is dollar-only (plan C4 leftover)
+/**
+ * A deposit row made in another currency than pesos: its own amount (positive) and currency, else
+ * null (see `loadPositiveInflowMovements`). A foreign row that buys no units is no deposit here.
+ */
+function foreignDepositLeg(m: RawMovementRow): { currency: string; amount: number } | null {
+  if (isHomeCurrency(m.currency) || m.counter_currency != null) return null;
+  return m.units_delta != null && m.amount > 0 ? { currency: m.currency, amount: m.amount } : null;
+}
+
+/**
+ * A foreign deposit's dollar leg: its own amount when it is in dollars, else that amount at the
+ * day's rate between its currency and the dollar (never through its pesos); null with no rate on file.
+ */
+function foreignDepositUsd(leg: { currency: string; amount: number }, ymd: string): number | null {
+  return convertFlowOrNull(leg.amount, leg.currency, "usd", ymd);
 }
 
 /**
@@ -342,7 +360,15 @@ export function classifyDepositsReconciliation(): DepositReconciliationLedger {
   const linkSourceByMovementId = loadBestLinkSourceByMovementId();
   const taxRefundMovementIds = new Set(loadF22RefundMovements().map((r) => r.movement_id));
   const checkingMonths = loadCuentaCorrienteMonthsWithData();
-  const dollarCheckingMonths = loadDollarCheckingMonthsWithData();
+  const foreignCheckingMonths = new Map<string, Set<string>>();
+  const foreignCheckingMonthsIn = (currency: string): Set<string> => {
+    let months = foreignCheckingMonths.get(currency);
+    if (!months) {
+      months = loadForeignCheckingMonthsWithData(currency);
+      foreignCheckingMonths.set(currency, months);
+    }
+    return months;
+  };
 
   const movements = loadPositiveInflowMovements(nonUsdIds, budaBufferId);
 
@@ -360,15 +386,18 @@ export function classifyDepositsReconciliation(): DepositReconciliationLedger {
     const category = depositFlowCategoryFromGroupSlug(acc.group_slug);
     if (!category) continue;
 
-    const usd = dollarDepositUsd(m);
-    // A dollar deposit: its dollars, in pesos at the day's rate (as the deposit event prices it).
-    const amount_clp = usd != null ? foreignCashToClpAt(usd, "usd", m.occurred_on, `depositReconciliation:${m.id}`) : Math.round(movementClpLegOrZero(m));
-    const amount_usd_raw = usd ?? clpToUsdAtDate(amount_clp, m.occurred_on);
+    const foreign = foreignDepositLeg(m);
+    // A foreign deposit: its own amount, in pesos at the day's rate (as the deposit event prices it).
+    const amount_clp =
+      foreign != null
+        ? foreignCashToClpAt(foreign.amount, foreign.currency, m.occurred_on, `depositReconciliation:${m.id}`)
+        : Math.round(requireMovementClp(m, `depositReconciliation:${m.id}`));
+    const amount_usd_raw = foreign != null ? foreignDepositUsd(foreign, m.occurred_on) : clpToUsdAtDate(amount_clp, m.occurred_on);
     if (amount_usd_raw == null || !Number.isFinite(amount_usd_raw)) {
       if (amount_clp !== 0) fxError = true;
     }
     const amount_usd = amount_usd_raw != null && Number.isFinite(amount_usd_raw) ? amount_usd_raw : null;
-    const fundingMonths = usd != null ? dollarCheckingMonths : checkingMonths;
+    const fundingMonths = foreign != null ? foreignCheckingMonthsIn(foreign.currency) : checkingMonths;
 
     const linkSource = linkSourceByMovementId.get(m.id);
     let status: DepositReconciliationStatus;
@@ -396,7 +425,7 @@ export function classifyDepositsReconciliation(): DepositReconciliationLedger {
       category,
       amount_clp,
       amount_usd,
-      ...(usd != null ? { native: "usd" as const } : {}),
+      ...(foreign != null ? { native: foreign } : {}),
       status,
     });
   }
@@ -535,7 +564,7 @@ export function classifyDepositsReconciliation(): DepositReconciliationLedger {
 
 // --- one display unit (`GET /api/flows/deposits/reconciliation?unit=`) ------------------------
 
-type Unitless<R> = Omit<R, "amount_clp" | "amount_usd"> & { amount: number | null };
+type Unitless<R> = Omit<R, "amount_clp" | "amount_usd" | "native"> & { amount: number | null };
 
 export type DepositReconciliationUnitTotals = { count: number; total: number | null };
 
@@ -566,14 +595,18 @@ function addOrNull(total: number | null, v: number | null): number | null {
   return total == null || v == null ? null : total + v;
 }
 
-function inUnit<R extends { amount_clp: number; amount_usd: number | null; occurred_on: string; native?: "usd" }>(
-  r: R,
-  unit: string
-): Unitless<R> {
+function inUnit<
+  R extends { amount_clp: number; amount_usd: number | null; occurred_on: string; native?: { currency: string; amount: number } }
+>(r: R, unit: string): Unitless<R> {
   const { amount_clp, amount_usd, native, ...rest } = r;
+  const legs = { clp: amount_clp, usd: amount_usd };
   return {
     ...rest,
-    amount: flowLegsInUnit({ clp: amount_clp, usd: amount_usd, native: native ?? "clp" }, r.occurred_on, unit),
+    amount: flowLegsInUnit(
+      native != null ? { ...legs, native: native.currency, native_amount: native.amount } : legs,
+      r.occurred_on,
+      unit
+    ),
   } as Unitless<R>;
 }
 

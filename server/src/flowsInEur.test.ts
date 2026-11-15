@@ -154,9 +154,9 @@ describe("the deposits reconciliation in EUR", () => {
     const clp = depositsReconciliationInUnit(base, "clp");
     const eur = buildDepositsReconciliationPayload("eur");
     expect(eur.unit).toBe("eur");
-    // A dollar deposit converts its own dollars (EUR/USD), every other row its pesos.
+    // A deposit in another currency converts its own leg (EUR/USD for dollars), every other row its pesos.
     eur.rows.forEach((r, i) => {
-      if (base.rows[i]!.native === "usd") return;
+      if (base.rows[i]!.native != null) return;
       expect(r.amount).toBeCloseTo(clp.rows[i]!.amount! / CLP_PER_EUR, 9);
     });
     for (const [status, t] of Object.entries(eur.by_status)) {
