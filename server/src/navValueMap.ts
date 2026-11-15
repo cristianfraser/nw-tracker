@@ -43,8 +43,7 @@
  * the rule itself).
  */
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
-import { linkedCardsClpInUnit } from "./cashEqsBucketNet.js";
-import { nodeNetsLinkedCards, nodeValueFromSum, type NodeValueRules } from "./nodeValue.js";
+import { linkedCardsClpInUnit, nodeNetsLinkedCards, nodeValueFromSum, type NodeValueRules } from "./nodeValue.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";

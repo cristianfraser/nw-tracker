@@ -42,7 +42,8 @@ import {
   type TsUnit,
 } from "./valuationTimeseries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { cashSavingsLinkedBalances, groupNetsLinkedCards } from "./cashEqsBucketNet.js";
+import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
+import { nodeNetsLinkedCards } from "./nodeValue.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import { buildNavValueMapPayload } from "./navValueMap.js";
@@ -557,7 +558,7 @@ async function buildDashboardNavSnapshotUncached(unit: TsUnit) {
   const asOfToday = chileCalendarTodayYmd();
   // A netting bucket's card explains its netting with the linked balances footer.
   const dashboard_layout = getDashboardLayoutCards().map((card) =>
-    groupNetsLinkedCards(card.slug)
+    nodeNetsLinkedCards(card.slug)
       ? {
           ...card,
           linked_balances: cashSavingsLinkedBalances(asOfToday, unit),

@@ -6,7 +6,7 @@
  * historical mark reads — `markInputChanges.ts`) and applied here as a waterfall: each affected
  * series keeps the days before the change and drops the rest, which the next read rebuilds.
  *
- * Entries are keyed `<accountId>|<bucketSlug>` (the bucket selects the valuation branch).
+ * Entries are keyed by account id: one series per account.
  * Every cached day is strictly before the Chile day it was computed on; today is never stored.
  */
 
@@ -32,8 +32,8 @@ export type CachedMarkSeries<Cell = unknown> = {
 
 const store = new Map<string, CachedMarkSeries>();
 
-export function markSeriesKey(accountId: number, bucketSlug: string): string {
-  return `${accountId}|${bucketSlug}`;
+export function markSeriesKey(accountId: number): string {
+  return String(accountId);
 }
 
 export function getMarkSeries<Cell>(key: string): CachedMarkSeries<Cell> | undefined {
@@ -64,10 +64,9 @@ function trimKey(key: string, fromYmd: string): void {
   store.set(key, { ...s, end_ymd: dayBefore(fromYmd), values: s.values.slice(0, keep) });
 }
 
-/** One account's series (every bucket it is cached under) from `fromYmd` on. */
+/** One account's series from `fromYmd` on. */
 export function trimAccountMarkSeries(accountId: number, fromYmd: string): void {
-  const prefix = `${accountId}|`;
-  for (const key of [...store.keys()]) if (key.startsWith(prefix)) trimKey(key, fromYmd);
+  trimKey(markSeriesKey(accountId), fromYmd);
 }
 
 /** Every account's series from `fromYmd` on (a change every mark can read, e.g. fx). */

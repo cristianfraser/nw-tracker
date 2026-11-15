@@ -25,7 +25,7 @@ import { accountProfileOptional } from "./accountProfile.js";
 import { netDepositFlowWindows } from "./flowsDeposits.js";
 import { accountValueAt } from "./accountValue.js";
 import { accountTodayValue } from "./accountTodayValue.js";
-import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
+import { nodeNetsLinkedCards } from "./nodeValue.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
@@ -515,7 +515,7 @@ function buildGroupConsolidatedMonthlyPerfUncached(
   unit: TsUnit
 ): ConsolidatedMonthlyPerfRow[] {
   const consolidated = groupConsolidatedMonthlyRaw(rows, groupSlug, unit);
-  if (groupNetsLinkedCards(groupSlug)) {
+  if (nodeNetsLinkedCards(groupSlug)) {
     return netLinkedCreditCardFromCashConsolidated(consolidated, unit);
   }
   return consolidated;

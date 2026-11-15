@@ -141,20 +141,12 @@ function apportionedBucketClpAt(asOfYmd: string): {
 } {
   const raw: Record<string, number> = {};
   let rawSum = 0;
-  let allFinite = true;
   for (const slug of nwBucketSlugs()) {
-    raw[slug]! = portfolioGroupValueClpAtRaw(slug, asOfYmd);
-    if (!Number.isFinite(raw[slug]!)) allFinite = false;
-    rawSum += raw[slug]!;
-  }
-  if (!allFinite) {
-    const buckets: Record<string, number> = {};
-    let total = 0;
-    for (const slug of nwBucketSlugs()) {
-      buckets[slug] = Math.round(Number.isFinite(raw[slug]!) ? raw[slug]! : 0);
-      total += buckets[slug];
-    }
-    return { buckets, total };
+    // A consolidated closing or a sum of finite member values less a finite owed total.
+    const v = portfolioGroupValueClpAtRaw(slug, asOfYmd);
+    if (!Number.isFinite(v)) throw new Error(`dashboard buckets: ${slug} has a non-finite value on ${asOfYmd}`);
+    raw[slug] = v;
+    rawSum += v;
   }
   const total = Math.round(rawSum);
   const buckets: Record<string, number> = {};

@@ -12,6 +12,7 @@ import { flowEventInUnit } from "./rates.js";
 import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay } from "./marketHolidays.js";
 import { accountMarkClpSeriesOnGrid, accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
+import { nodeMembersSum, nodeValueFromSum, type NodeValueRules } from "./nodeValue.js";
 import {
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
@@ -392,6 +393,12 @@ function buildDailySeriesPast(
   };
 }
 
+/**
+ * The bucket's value on a day of its daily series: absent when no member has a value, unrounded
+ * (the day's P/L is taken from it).
+ */
+const DAILY_SERIES_VALUE: NodeValueRules = { empty: "null", rounding: "none" };
+
 /** Build the daily series for one bucket of accounts. Throws on an out-of-bounds window. */
 export function getBucketDailySeries(
   accounts: readonly ShortHorizonAccountRef[],
@@ -425,15 +432,7 @@ export function getBucketDailySeries(
   // Marks per account for the whole grid up front: historical days come from the cached
   // series, today is computed live (see `accountMarkDailyCache.ts`).
   const marksByAccount = included.map((a) =>
-    accountMarkClpSeriesOnGrid(
-      {
-        account_id: a.account_id,
-        bucket_slug: a.bucket_slug,
-        import_key: a.import_key ?? null,
-        name: a.name ?? null,
-      },
-      grid
-    )
+    accountMarkClpSeriesOnGrid({ account_id: a.account_id }, grid)
   );
   // Per-account wealth (sign-flipped for debt) across the WHOLE grid incl. the baseline, kept
   // separate from `perAccount[].values` because those get their leading edge nulled below —
@@ -448,12 +447,7 @@ export function getBucketDailySeries(
   // pesos ÷ one rate.
   const lastGi = grid.length - 1;
   const realToday = chileCalendarTodayYmd();
-  const refOf = (a: (typeof included)[number]) => ({
-    account_id: a.account_id,
-    bucket_slug: a.bucket_slug,
-    import_key: a.import_key ?? null,
-    name: a.name ?? null,
-  });
+  const refOf = (a: (typeof included)[number]) => ({ account_id: a.account_id });
   // Built lazily: after a live tick the past part is a history-tier hit and only the last day
   // is read, which is computed on its own.
   // The days before the last one (the history-tier past part) and the last day apart: the
@@ -494,7 +488,7 @@ export function getBucketDailySeries(
   /** Each account's value in the unit per grid day (null: no mark, or no rate on file). */
   const unitByAccount = included.map(() => new Array<number | null>(grid.length).fill(null));
   const values: (number | null)[] = grid.map((_ymd, gi) => {
-    let sum = 0;
+    const memberValues: (number | null)[] = [];
     let wealthSum = 0;
     let any = false;
     included.forEach((a, ai) => {
@@ -506,7 +500,7 @@ export function getBucketDailySeries(
       if (uOk) {
         unitByAccount[ai]![gi] = u;
         wealthSum += isLiability[ai] ? -u : u;
-        sum += u;
+        memberValues.push(u);
         any = true;
       }
       if (wealthByAccount && uOk) {
@@ -518,7 +512,8 @@ export function getBucketDailySeries(
       }
     });
     wealth.push(any ? wealthSum : null);
-    return any ? sum : null;
+    // The bucket's value is its members' sum by the node-value rules (nothing is netted here).
+    return nodeValueFromSum(nodeMembersSum(memberValues), undefined, unit, DAILY_SERIES_VALUE);
   });
   // Copies: the card flows below are added into them.
   const flows = past.flows.flows.slice();

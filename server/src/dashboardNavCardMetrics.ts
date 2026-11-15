@@ -23,7 +23,7 @@ import {
 } from "./groupChartBuckets.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import { netsLinkedGroup, nwBucketSlugs } from "./navTreeModel.js";
-import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
+import { nodeNetsLinkedCards } from "./nodeValue.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import type { TsUnit } from "./rates.js";
 
@@ -338,7 +338,7 @@ function usesFullDashboardBucketTotals(node: NavTreeNodeDto): DashboardNwBucketS
   const bucket = resolveDashboardBucketFromNavNode(node);
   if (!bucket) return null;
   // A netting bucket's card is its netted total, which no row sum gives: every node in it shows it.
-  if (groupNetsLinkedCards(bucket)) return bucket;
+  if (nodeNetsLinkedCards(bucket)) return bucket;
   if (node.slug === bucket) return bucket;
   return null;
 }

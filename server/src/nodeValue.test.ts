@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { linkedCardsOwedInUnit } from "./cashEqsBucketNet.js";
 import { db } from "./db.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
 import {
+  linkedCardsOwedInUnit,
   nodeNetsLinkedCards,
   nodeValue,
   nodeValueFromSum,
@@ -62,10 +62,10 @@ describe("nodeValueFromSum — the rule kernel", () => {
 
 describe("nodeValueMembers", () => {
   const members: NodeValueMember[] = [
-    { account_id: 5, bucket_slug: "x" },
-    { account_id: -7, bucket_slug: "x" },
-    { account_id: 6, bucket_slug: "x", exclude_from_group_totals: 1 },
-    { account_id: -8, bucket_slug: "x", exclude_from_group_totals: 1 },
+    { account_id: 5 },
+    { account_id: -7 },
+    { account_id: 6, exclude_from_group_totals: 1 },
+    { account_id: -8, exclude_from_group_totals: 1 },
   ];
   it("drops the excluded and the synthetic ids", () => {
     expect(nodeValueMembers(members).map((m) => m.account_id)).toEqual([5]);
@@ -99,7 +99,6 @@ describe("nodeValue on accounts", () => {
   const OWED = 654_321;
   const OLD_OWED = 1_000;
 
-  let leafSlug = "";
   const ids: number[] = [];
   let cardId: number | null = null;
   const setAsideFlags = new Map<number, number>();
@@ -128,7 +127,6 @@ describe("nodeValue on accounts", () => {
       | { id: number }
       | undefined;
     if (!leaf || !ccGroup || !ccLeaf) throw new Error("test DB lacks the brokerage leaf or the credit-card group");
-    leafSlug = leaf.slug;
 
     const account = (key: string, excluded: 0 | 1): number => {
       const id = Number(
@@ -151,9 +149,9 @@ describe("nodeValue on accounts", () => {
     insVal.run(b, GRID[2], B_LATER);
     insVal.run(x, D1, 9_999_999);
     members = [
-      { account_id: a, bucket_slug: leafSlug },
-      { account_id: b, bucket_slug: leafSlug },
-      { account_id: x, bucket_slug: leafSlug, exclude_from_group_totals: 1 },
+      { account_id: a },
+      { account_id: b },
+      { account_id: x, exclude_from_group_totals: 1 },
     ];
 
     const linkedMasters = db
@@ -250,15 +248,21 @@ describe("nodeValue on accounts", () => {
     expect(nodeValue([], D1, "clp", point({ empty: "zero", netsLinkedCards: true }))).toBe(-OWED);
   });
 
-  it("linked cards that owe with no rate into the unit throw, in every form and under every empty rule", () => {
+  it("linked cards that owe with no rate into the unit throw, in every form, wherever the node reads a value", () => {
     const message = new RegExp(`linked credit cards: no usd rate on ${OLD_DAY}`);
-    for (const empty of ["zero", "null", "null_unless_netted"] as const) {
+    // No member has a value on the old day: a netting node still reads (0 less the cards) under these.
+    for (const empty of ["zero", "null_unless_netted"] as const) {
       const policy = point({ netsLinkedCards: true, empty });
       expect(() => nodeValue(members, OLD_DAY, "usd", policy)).toThrow(message);
       expect(() => nodeValuesAtDates(members, [OLD_DAY], "usd", policy)).toThrow(message);
       expect(() => nodeValueSeriesFromSums([null], [OLD_DAY], "usd", policy)).toThrow(message);
       expect(() => nodeValueSeriesOnGrid(members, [OLD_DAY], "usd", policy)).toThrow(message);
     }
+    // Under `null` the node is absent that day and asks for no rate; with a members' sum it throws.
+    const absent = point({ netsLinkedCards: true, empty: "null" });
+    expect(nodeValue(members, OLD_DAY, "usd", absent)).toBeNull();
+    expect(nodeValueSeriesFromSums([null], [OLD_DAY], "usd", absent)).toEqual([null]);
+    expect(() => nodeValueSeriesFromSums([12.5], [OLD_DAY], "usd", absent)).toThrow(message);
     expect(() => linkedCardsOwedInUnit(OLD_DAY, "usd")).toThrow(message);
     // Pesos need no rate, and a node that does not net asks for none.
     expect(nodeValue(members, OLD_DAY, "clp", point({ netsLinkedCards: true, empty: "zero" }))).toBe(-OLD_OWED);

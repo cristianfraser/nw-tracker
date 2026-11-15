@@ -1,4 +1,3 @@
-import { isHomeCurrency } from "./displayUnits.js";
 import {
   accountHistoricalQtyMarkUncached,
   accountMarkClpAtYmd,
@@ -59,9 +58,13 @@ function rateIndependent(accountId: number): boolean {
   return h.kind === "currency" && h.code !== "clp" && h.code !== "uf";
 }
 
+/**
+ * The account a series is of. The optional fields are read by nothing: they stay only until the
+ * one caller outside the valuation files that still passes them (`flowsOverviewCash.ts`) stops.
+ */
 export type MarkSeriesAccountRef = {
   account_id: number;
-  bucket_slug: string;
+  bucket_slug?: string;
   import_key?: string | null;
   name?: string | null;
 };
@@ -95,7 +98,6 @@ function markClpAt(account: MarkSeriesAccountRef, ymd: string): number | null {
 
 /** A day on or after Chile today: computed on every call (live quotes, the live rate). */
 function liveValueAt(account: MarkSeriesAccountRef, ymd: string, unit: CurrencyCode): number | null {
-  if (isHomeCurrency(unit)) return markClpAt(account, ymd);
   const v = accountValueAt(account.account_id, ymd, unit)?.value;
   return v != null && Number.isFinite(v) ? v : null;
 }
@@ -233,10 +235,8 @@ function assertSeriesAligned(series: CachedMarkSeries, account: MarkSeriesAccoun
 }
 
 function cacheKey(account: MarkSeriesAccountRef): string {
-  // Bucket slug is part of the identity: it selects the valuation branch inside
-  // `accountMarkClpAtYmd`, and the same account can reach this module from group tabs that
-  // label it differently.
-  return markSeriesKey(account.account_id, account.bucket_slug);
+  // The account is the whole identity: what it holds is its profile's, whatever page asks.
+  return markSeriesKey(account.account_id);
 }
 
 /**

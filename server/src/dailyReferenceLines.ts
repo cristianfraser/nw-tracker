@@ -118,12 +118,7 @@ export function deptoPropertyChartOverlayDailyLines(
   // Each account's own value in the unit per day (converted once at its side: the mortgage
   // as a debt), the same figures its line plots.
   const markValues = (accountId: number): (number | null)[] => {
-    const p = accountProfile(accountId);
-    return accountValueSeriesOnGrid(
-      { account_id: accountId, bucket_slug: p.leafSlug, import_key: p.importKey, name: p.name },
-      datesAsc,
-      unit
-    );
+    return accountValueSeriesOnGrid({ account_id: accountId }, datesAsc, unit);
   };
   const out: DailySeriesAccountLine[] = [];
   deptoOverlayPropertyIds(propertyAccountIds).forEach((propertyId, i) => {

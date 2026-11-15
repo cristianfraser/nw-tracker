@@ -29,7 +29,7 @@ import { orderGroupTabRowsBucketMajor } from "./groupTabOrdering.js";
 import { getNavChartGroupNodeBySlug } from "./navTree.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { db } from "./db.js";
-import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
+import { nodeNetsLinkedCards } from "./nodeValue.js";
 import { groupHasPropertyOverlay, investmentRootSlugs, navGroup } from "./navTreeModel.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc } from "./fxRates.js";
@@ -628,7 +628,7 @@ function buildDashboardPortfolioGroupTotalsClp(): {
           ? listAccountsForGroupTab("liabilities").filter((r) => r.account_id > 0)
           : accountsBySlug.get(slug);
       if (!rows) continue;
-      const netLinkedCreditCard = groupNetsLinkedCards(slug);
+      const netLinkedCreditCard = nodeNetsLinkedCards(slug);
       totalsBySlug.set(slug, slugMarkTotalsAtDatesClp(rows, datesAsc, { netLinkedCreditCard }));
       rowsBySlug.set(slug, rows);
       continue;
@@ -673,7 +673,7 @@ function convertDashboardPortfolioGroupTotals(
       const rows = clp.rowsBySlug.get(slug);
       if (!rows) throw new Error(`dashboard totals: no account rows for ${slug}`);
       const u = slugValueInUnitAt(rows, d, unit, {
-        netLinkedCreditCard: groupNetsLinkedCards(slug),
+        netLinkedCreditCard: nodeNetsLinkedCards(slug),
         now,
       });
       if (u != null && Number.isFinite(u)) converted.set(d, u);

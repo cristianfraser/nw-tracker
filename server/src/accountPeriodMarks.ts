@@ -62,7 +62,7 @@ export function monthEndCloseClpForAccount(
   opts?: MonthEndCloseForAccountOpts
 ): number | null {
   return (
-    monthEndMarkClpForAccount(accountId, bucketSlug, monthKey, opts) ??
+    monthEndMarkClpForAccount(accountId, monthKey) ??
     monthEndCloseFromPerfRows(monthlyRows, monthKey)
   );
 }
@@ -72,12 +72,7 @@ export function monthEndCloseClpForAccount(
  * none. Apart from {@link monthEndCloseClpForAccount} so a reader in another unit converts the
  * mark only: the perf-row fallback is already in the rows' unit.
  */
-export function monthEndMarkClpForAccount(
-  accountId: number,
-  bucketSlug: string,
-  monthKey: string,
-  opts?: MonthEndCloseForAccountOpts
-): number | null {
+export function monthEndMarkClpForAccount(accountId: number, monthKey: string): number | null {
   const monthEnd = monthEndUtcYmd(monthKey);
   const today = chileCalendarTodayYmd();
   const ymd = monthEnd > today ? today : monthEnd;
