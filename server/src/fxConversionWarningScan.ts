@@ -17,13 +17,8 @@ function listDepositFlowAccountIds(): number[] {
     )
     .all(NOTE_STOCKS_LEGACY) as { account_id: number; bucket_slug: string }[];
   return rows
-    .filter((r) => {
-      const group_slug = dashboardBucketForAssetGroupSlug(r.bucket_slug);
-      return (
-        group_slug != null &&
-        ["real_estate", "cash_eqs", "brokerage", "retirement"].includes(group_slug)
-      );
-    })
+    // Accounts of the net-worth buckets (null: liabilities, unplaced groups).
+    .filter((r) => dashboardBucketForAssetGroupSlug(r.bucket_slug) != null)
     .map((r) => r.account_id);
 }
 
