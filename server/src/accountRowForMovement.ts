@@ -1,7 +1,7 @@
 import { bucketSlugForAccountId } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
-import type { AccountRow } from "./movementUnitsPolicy.js";
+import type { AccountRow } from "./movementAccountRow.js";
 
 /** Account identity for movement create schema / POST validation. */
 export function accountRowForId(accountId: number): AccountRow | null {

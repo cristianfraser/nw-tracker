@@ -18,21 +18,14 @@ import { OPTION_TRANSFER_FLOW_KINDS, isOptionFlowKind, optionUnitsLeaveFromLeg }
 import { optionContractsThroughDate } from "./optionPosition.js";
 import { resolveTransferEndpoints, validateTransferCreate, type TransferCreateInput } from "./movementTransfer.js";
 import { accountRowForId } from "./accountRowForMovement.js";
+import type { AccountRow } from "./movementAccountRow.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
 import { isClpCashAccount } from "./clpCashAccounts.js";
 import { assertManualUnitsClpReconcile } from "./manualUnitsFlow.js";
 import { isMovementCurrency, type MovementCurrency } from "./movementAmounts.js";
-export type AccountRow = {
-  /** The account's id, when the row came from the database (`accountRowForId`); an option contract is told by it. */
-  account_id?: number;
-  bucket_slug: string;
-  group_slug: string;
-  notes?: string | null;
-  import_key?: string | null;
-  equity_ticker?: string | null;
-};
+export type { AccountRow } from "./movementAccountRow.js";
 
 /** An option contract account (`option_contracts`): its own kinds, its contracts always required. */
 export function isOptionContractRow(account: AccountRow): boolean {
