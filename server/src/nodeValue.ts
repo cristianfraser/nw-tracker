@@ -4,8 +4,7 @@
  * the node nets them (signed: cards in credit add), rounded once.
  *
  * Every reader of that sum goes through here. What the readers disagree on is not hidden in
- * branches: each passes a {@link NodeValuePolicy} naming its value source, member filter,
- * netting, what an all-missing node reads and its rounding. Linked cards that owe with no rate
+ * branches: each passes a {@link NodeValuePolicy} naming its member filter, netting, what an all-missing node reads and its rounding. Linked cards that owe with no rate
  * into the unit that day throw, for every reader.
  *
  * Forms:
@@ -20,9 +19,8 @@
  * the linked-card totals and the netting roles only — below the nav tree builders and the group
  * consolidation.
  */
-import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
-import { accountValueAt, accountValueInUnitFromClp } from "./accountValue.js";
+import { accountValueAt } from "./accountValue.js";
 import {
   cashNetOfLinkedCreditCards,
   groupNetsLinkedCards,
@@ -41,16 +39,6 @@ export type NodeValueMember = {
   name?: string | null;
   exclude_from_group_totals?: number;
 };
-
-/**
- * Where a member's value at a date comes from (point forms; the grid form always reads the
- * daily cache, which holds the same figures as `value_in_unit`).
- * - `value_in_unit`: what the account held that day, converted once into the unit at its side
- *   (`accountValueAt`). In pesos this is the account's peso mark.
- * - `peso_mark_reframed`: the account's peso mark, then that figure taken into the unit
- *   (`accountValueInUnitFromClp`: a peso-native value converted, any other re-read natively).
- */
-export type NodeValueSource = "value_in_unit" | "peso_mark_reframed";
 
 /**
  * Which members count.
@@ -92,10 +80,11 @@ export type NodeValuePolicy = NodeNettingPolicy & {
   members: NodeMemberFilter;
 };
 
-/** A node valued by point reads. */
-export type NodePointValuePolicy = NodeValuePolicy & {
-  source: NodeValueSource;
-};
+/**
+ * A node valued by point reads: each member's value is what the account held that day,
+ * converted once into the unit at its side (`accountValueAt`) — the figure the daily cache holds.
+ */
+export type NodePointValuePolicy = NodeValuePolicy;
 
 /**
  * Whether the group nets the linked credit cards: the tree's declared netting
@@ -119,19 +108,8 @@ function finite(v: number | null | undefined): number | null {
   return v != null && Number.isFinite(v) ? v : null;
 }
 
-function memberValueAt(
-  m: NodeValueMember,
-  ymd: string,
-  unit: CurrencyCode,
-  source: NodeValueSource,
-  now: Date | undefined
-): number | null {
-  if (source === "value_in_unit") {
-    return finite(accountValueAt(m.account_id, ymd, unit, { now })?.value);
-  }
-  const clp = finite(accountMarkClpAtYmd(m.account_id, ymd)?.value_clp);
-  if (clp == null) return null;
-  return finite(accountValueInUnitFromClp(m.account_id, clp, ymd, unit, now ? { now } : undefined));
+function memberValueAt(m: NodeValueMember, ymd: string, unit: CurrencyCode, now: Date | undefined): number | null {
+  return finite(accountValueAt(m.account_id, ymd, unit, { now })?.value);
 }
 
 /** Σ of the values that exist, in order from 0; null when none does. */
@@ -183,7 +161,7 @@ export function nodeValue(
   policy: NodePointValuePolicy
 ): number | null {
   const sum = sumOrNull(
-    nodeValueMembers(members, policy.members).map((m) => memberValueAt(m, ymd, unit, policy.source, policy.now))
+    nodeValueMembers(members, policy.members).map((m) => memberValueAt(m, ymd, unit, policy.now))
   );
   const owed = policy.netsLinkedCards
     ? linkedCardsOwedInUnit(ymd, unit, policy.now ? { now: policy.now } : {})

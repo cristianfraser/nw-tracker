@@ -55,7 +55,6 @@ export function accountValueInUnitAt(
  * when none has one, unrounded. Nothing is netted (returns read the members themselves).
  */
 const BUCKET_VALUE_LEG: Omit<NodePointValuePolicy, "now"> = {
-  source: "value_in_unit",
   members: "real_counted",
   netsLinkedCards: false,
   empty: "null",

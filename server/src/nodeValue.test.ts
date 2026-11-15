@@ -107,7 +107,6 @@ describe("nodeValue on accounts", () => {
   let members: NodeValueMember[] = [];
 
   const point = (over: Partial<NodePointValuePolicy> = {}): NodePointValuePolicy => ({
-    source: "value_in_unit",
     members: "counted",
     netsLinkedCards: false,
     empty: "null",
@@ -219,13 +218,7 @@ describe("nodeValue on accounts", () => {
     expect(nodeValue(members, D1, "clp", point({ rounding: "unit_coin" }))).toBe(3_001);
   });
 
-  it("both sources agree in pesos and on a peso-native account in dollars", () => {
-    for (const unit of ["clp", "usd"]) {
-      const a = nodeValue(members, D1, unit, point({ source: "value_in_unit" }));
-      const b = nodeValue(members, D1, unit, point({ source: "peso_mark_reframed" }));
-      expect(a).not.toBeNull();
-      expect(b).toBeCloseTo(a!, 9);
-    }
+  it("another unit is each member's own value in it", () => {
     const usd = nodeValue(members, D1, "usd", point())!;
     expect(usd).toBeCloseTo(clpToUnitAt(A, D1, "usd")! + clpToUnitAt(B, D1, "usd")!, 9);
   });
