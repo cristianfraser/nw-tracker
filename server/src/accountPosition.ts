@@ -255,8 +255,8 @@ export function getAccountPositionMeta(
   const profile = accountProfileOptional(accountId);
   if (!profile) return null;
   const now = opts?.now ?? new Date();
-  const asOf =
-    opts?.asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.asOfYmd.trim()) ? opts.asOfYmd.trim() : chileCalendarTodayYmd();
+  // No day asked: today. A malformed day throws (it is never read as today).
+  const asOf = opts?.asOfYmd != null ? requireIsoDay(opts.asOfYmd, "getAccountPositionMeta") : chileCalendarTodayYmd();
   const q = profile.quantity;
   switch (q.kind) {
     case "fintual_goal":
@@ -372,15 +372,20 @@ function cuotaLedgerPositionMeta(accountId: number, kind: string, series: string
   return out;
 }
 
+/** The day a live mark is asked for; a malformed day throws (it is never read as today). */
+function requireIsoDay(ymd: string, ctx: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) throw new Error(`${ctx}: as-of day must be YYYY-MM-DD, got ${JSON.stringify(ymd)}`);
+  return ymd;
+}
+
 /** A Fintual goal's live mark: Σ cuotas × valor cuota (the dashboard / account summary figure). */
 export function liveFintualCertDisplayValueClp(
   accountId: number,
-  asOfYmd?: string,
+  asOfYmd: string,
   now?: Date
 ): { value_clp: number; as_of_date: string } | null {
   const profile = accountProfile(accountId);
-  const asOf =
-    asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd.trim()) ? asOfYmd.trim() : chileCalendarTodayYmd();
+  const asOf = requireIsoDay(asOfYmd, "liveFintualCertDisplayValueClp");
   const meta = fintualCertPositionMeta(accountId, profile.importKey ?? "", profile.name.trim() || "Fintual", asOf, now ?? new Date());
   const clp = meta?.afp_override_value_clp;
   const date = meta?.afp_override_value_as_of;
@@ -405,10 +410,9 @@ export function hasCuotaLedgerUnitsEvents(accountId: number): boolean {
 
 export function liveCuotaLedgerDisplayValueClp(
   accountId: number,
-  asOfYmd?: string
+  asOfYmd: string
 ): { value_clp: number; as_of_date: string } | null {
-  const asOf =
-    asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd.trim()) ? asOfYmd.trim() : chileCalendarTodayYmd();
+  const asOf = requireIsoDay(asOfYmd, "liveCuotaLedgerDisplayValueClp");
   const meta = getAccountPositionMeta(accountId, { asOfYmd: asOf });
   const clp = meta?.afp_override_value_clp;
   const date = meta?.afp_override_value_as_of;
