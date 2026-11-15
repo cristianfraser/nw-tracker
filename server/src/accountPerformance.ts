@@ -4,7 +4,7 @@ import { cacheKeyAccountMonthlyPerf } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
-import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
+import { getAccountValuationTimeseries } from "./accountValuationTimeseries.js";
 import type { TsUnit } from "./rates.js";
 import { pickMonthlyPerfRowsByMonth } from "./accountPeriodMetrics.js";
 import { withRunningPlTotals } from "./monthlyPerfRollup.js";
