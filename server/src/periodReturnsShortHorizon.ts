@@ -1,6 +1,7 @@
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import { accountValueAt } from "./accountValue.js";
+import { nodeValue, type NodePointValuePolicy } from "./nodeValue.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow, periodPl } from "./perfKernel.js";
 import type { PeriodReturnCell, PeriodReturnsPayload } from "./periodReturns.js";
 import type { TsUnit } from "./rates.js";
@@ -50,6 +51,19 @@ export function accountValueInUnitAt(
 }
 
 /**
+ * A value leg of a return window: the real counted members' own values in the unit, absent
+ * when none has one, unrounded. Nothing is netted (returns read the members themselves).
+ */
+const BUCKET_VALUE_LEG: Omit<NodePointValuePolicy, "now"> = {
+  source: "value_in_unit",
+  members: "real_counted",
+  netsLinkedCards: false,
+  empty: "null",
+  missingCardRate: "throw",
+  rounding: "none",
+};
+
+/**
  * The bucket's value at `ymd` in `unit`: Σ of each member's own value in the unit
  * ({@link accountValueInUnitAt} — never Σ pesos ÷ one rate, which would frame every member on
  * today's rate and a USD cash account at the mid). Null when no account has a value.
@@ -60,17 +74,7 @@ export function bucketValueInUnitAt(
   unit: TsUnit,
   now: Date
 ): number | null {
-  let sum = 0;
-  let any = false;
-  for (const a of accounts) {
-    if (!includeShortHorizonAccount(a)) continue;
-    const v = accountValueInUnitAt(a, ymd, unit, now);
-    if (v != null && Number.isFinite(v)) {
-      sum += v;
-      any = true;
-    }
-  }
-  return any ? sum : null;
+  return nodeValue(accounts, ymd, unit, { ...BUCKET_VALUE_LEG, now });
 }
 
 function emptyCell(
