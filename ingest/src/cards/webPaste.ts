@@ -6,7 +6,7 @@
  * normalization.
  */
 import { CARD_PASTED_LISTING, type CardPastedListing, type FeederParseResult } from "nw-tracker-contracts";
-import { parseDdMmYyToIso } from "../formats/ddMmYy.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /** USD indicators the bank web-UI uses in the amount column (`USD`, `US$`, `U$`, `U$S`). */
 const USD_TOKEN_RE = /US\$|USD|U\$S?/i;

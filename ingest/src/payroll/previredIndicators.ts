@@ -5,6 +5,7 @@
  * employer's share into the worker's account, and the unemployment-insurance rates of an indefinite
  * contract. Read from `pdftotext -layout`; a field the document does not yield fails the read.
  */
+import { parseChileanNumber } from "nw-tracker-contracts";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -54,11 +55,11 @@ export type PreviredIndicators = {
 };
 
 function pct(raw: string): number {
-  return Number(raw.replace(",", "."));
+  return parseChileanNumber(raw);
 }
 
 function chileanAmount(raw: string): number {
-  return Number(raw.replace(/\./g, "").replace(",", "."));
+  return parseChileanNumber(raw);
 }
 
 const ym = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`;

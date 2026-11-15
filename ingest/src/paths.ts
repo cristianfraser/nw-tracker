@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { BankName } from "./config.js";
+import type { BankName } from "./bankName.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

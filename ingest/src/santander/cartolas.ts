@@ -1,14 +1,13 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import type { BankAccountStatement } from "nw-tracker-contracts";
+import type { BankAccountStatement, ParsedCartolaPdfEntry } from "nw-tracker-contracts";
 import { resolveCfraserDir, resolveRepoRoot } from "../paths.js";
 import {
   listCheckingCartolaXlsxFiles,
   parseCheckingCartolaFile,
   type CartolaSkippedRow,
   type ParsedCheckingCartola,
-  type ParsedCheckingMovement,
 } from "./checkingCartolaXlsx.js";
 
 /**
@@ -25,21 +24,12 @@ export type StatementsRead = {
   unreadable: { document: string; error: string }[];
 };
 
-/** One PDF cartola as the Python parsers write it. */
-type CartolaPdfEntry = {
-  source_file: string;
-  period_month: string;
-  period_from: string | null;
-  period_to: string | null;
-  saldo_inicial_clp: number | null;
-  saldo_final_clp: number | null;
-  month_saldo_final_clp?: Record<string, number> | null;
-  movements: ParsedCheckingMovement[];
-  skipped?: CartolaSkippedRow[];
-  /** `skipped`: the parser left the PDF out on purpose (a cartola of another account). */
-  parse_status: "ok" | "unreadable" | "error" | "skipped";
-  parse_error?: string | null;
-};
+/**
+ * One PDF cartola as the Python parsers write it. `parse_status` `skipped`: the parser left the PDF
+ * out on purpose (a cartola of another account). The contract leaves a skipped row's keys open;
+ * the parsers write the xlsx reader's `CartolaSkippedRow`.
+ */
+type CartolaPdfEntry = ParsedCartolaPdfEntry & { skipped?: CartolaSkippedRow[] };
 
 export function statementFromParsedCartola(c: ParsedCheckingCartola): BankAccountStatement {
   return {

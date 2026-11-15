@@ -1,4 +1,4 @@
-import type { BrokerNotification } from "nw-tracker-contracts";
+import { parseChileanNumber, parseUsNumber, type BrokerNotification } from "nw-tracker-contracts";
 
 /**
  * Broker notification e-mails → typed events, and those events → the server's
@@ -143,34 +143,9 @@ export function brokerFromSender(sender: string): BrokerName | null {
   return null;
 }
 
-/**
- * Chilean number → JS number: dots group thousands, comma is the decimal.
- * "1.346,17" → 1346.17; "3.xxx.xxx" → 3000000.
- *
- * Used for SUBJECT amounts only. Racional's message BODY prints US format in the same
- * e-mail ("Precio promedio US$54.41"), where a dot is the decimal — running that through here
- * would read 54,41 as 5.441, a 100× error. Hence two functions rather than one clever one.
- */
-export function parseChileanNumber(raw: string): number {
-  const text = String(raw ?? "").trim().replace(/\s/g, "");
-  if (!/^-?[\d.]*\d(?:,\d+)?$/.test(text)) {
-    throw new Error(`Unparseable Chilean-format amount "${raw}"`);
-  }
-  const n = Number(text.replace(/\./g, "").replace(",", "."));
-  if (!Number.isFinite(n)) throw new Error(`Unparseable Chilean-format amount "${raw}"`);
-  return n;
-}
-
-/** US number → JS number: commas group thousands, dot is the decimal ("1,346.17" → 1346.17). */
-export function parseUsNumber(raw: string): number {
-  const text = String(raw ?? "").trim().replace(/\s/g, "");
-  if (!/^-?[\d,]*\d(?:\.\d+)?$/.test(text)) {
-    throw new Error(`Unparseable US-format amount "${raw}"`);
-  }
-  const n = Number(text.replace(/,/g, ""));
-  if (!Number.isFinite(n)) throw new Error(`Unparseable US-format amount "${raw}"`);
-  return n;
-}
+// Subject amounts are Chilean numbers (`parseChileanNumber`); Racional's message BODY prints US
+// format in the same e-mail ("Precio promedio US$54.41"), where a dot is the decimal — reading it
+// as Chilean would turn 54,41 into 5.441. Hence `parseUsNumber` there, never one clever parser.
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

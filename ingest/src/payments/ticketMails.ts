@@ -24,9 +24,10 @@
  *
  * Any other mail from these senders decodes to null; a purchase this decoder cannot read throws.
  */
+import { parseChileanNumber, parseUsNumber } from "nw-tracker-contracts";
 import type { ProcessorReceipt, ReceiptEvent } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
-import type { PaymentProcessor } from "./paymentReceiptMails.js";
+import type { PaymentProcessor } from "./paymentProcessor.js";
 
 function fail(mail: ArchivedMail, why: string): never {
   throw new Error(`${mail.sent_at_chile} «${mail.subject}» (${mail.message_id}): ${why}`);
@@ -50,14 +51,13 @@ function need(text: string, re: RegExp, what: string, mail: ArchivedMail): RegEx
 function pesos(s: string, mail: ArchivedMail): number {
   const t = s.replace(/[$\s]/g, "");
   if (!/^\d{1,3}(\.\d{3})*$/.test(t)) fail(mail, `not a peso amount: ${s}`);
-  return Number(t.replace(/\./g, ""));
+  return parseChileanNumber(t);
 }
 
 /** An amount to the cent with a decimal point («213.59», «1,213.59»). */
 function cents(s: string, mail: ArchivedMail): number {
-  const t = s.replace(/,/g, "");
-  if (!/^\d+\.\d{2}$/.test(t)) fail(mail, `not an amount to the cent: ${s}`);
-  return Number(t);
+  if (!/^\d+\.\d{2}$/.test(s.replace(/,/g, ""))) fail(mail, `not an amount to the cent: ${s}`);
+  return parseUsNumber(s);
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

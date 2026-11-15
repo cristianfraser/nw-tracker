@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { BankName } from "./bankName.js";
 import { resolveCfraserDir } from "./paths.js";
 
 /**
@@ -31,7 +32,7 @@ export type BankConfig = {
   paid_with_card_last4: string | null;
 };
 
-export type BankName = "santander" | "racional" | "afp-uno" | "buk" | "afc" | "metlife";
+export type { BankName } from "./bankName.js";
 
 /**
  * Which identifier each bank signs in with. Santander uses the RUT; Racional is a

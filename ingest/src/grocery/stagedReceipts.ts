@@ -17,7 +17,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { StoreReceiptApplyDetails, StoreReceiptDocumentKind, StoreReceiptPayload } from "nw-tracker-contracts";
+import type {
+  ParsedGroceryReceiptContract,
+  StoreReceiptApplyDetails,
+  StoreReceiptDocumentKind,
+  StoreReceiptPayload,
+} from "nw-tracker-contracts";
 import { resolveCfraserDir } from "../paths.js";
 
 export const GROCERY_CHAIN_LIDER = "lider";
@@ -55,35 +60,11 @@ export type GenericStagedMeta = {
   photo_taken_on?: string;
 };
 
-/** parsed.json as `parse-grocery-receipts.py` writes it (`grocery_receipt_model.py`). */
-export type ParsedReceipt = {
-  /** The parser's chain slug — required in the generic root (the e-mail root is Lider by construction). */
-  chain?: string;
-  boleta_number: string | null;
-  caja: string;
-  sucursal: string;
-  city: string | null;
-  purchased_at: string | null;
-  purchase_date_source?: "printed" | "declared" | null;
-  template: string;
-  items: {
-    position: number;
-    barcode: string | null;
-    description: string;
-    qty: string;
-    qty_unit: "un" | "kg";
-    unit_price_clp: number;
-    total_clp: number;
-    discount_clp: number;
-    discount_labels: string[];
-  }[];
-  receipt_discounts?: { label: string; amount_clp: number }[];
-  payments: { method: string; amount_clp: number }[];
-  total_printed_clp: number | null;
-  articles_declared: number | null;
-  mi_club_points: number | null;
-  parser_version: number;
-};
+/**
+ * parsed.json as `parse-grocery-receipts.py` writes it (`grocery_receipt_model.py`). `chain` is the
+ * parser's chain slug — required in the generic root (the e-mail root is Lider by construction).
+ */
+export type ParsedReceipt = ParsedGroceryReceiptContract;
 
 /** Bump to send every staged receipt again (a change to what is sent). */
 export const IMPORT_STAMP_VERSION = 1;

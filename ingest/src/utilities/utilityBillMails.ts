@@ -17,7 +17,7 @@
  */
 import type { UtilityBill } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
-import { parseChileanNumber } from "../formats/chileanNumber.js";
+import { parseChileanNumber } from "nw-tracker-contracts";
 
 /** What a provider's decoder reads from one mail. */
 export type DecodedUtilityBill = Omit<UtilityBill, "period_from" | "period_to"> & {

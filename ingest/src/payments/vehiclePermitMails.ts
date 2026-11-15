@@ -21,9 +21,10 @@
  * The output carries no RUT, name or address. A mail from another sender, another subject or with no
  * PDF decodes to null; a permit mail whose PDF does not read as described throws.
  */
+import { parseChileanNumber } from "nw-tracker-contracts";
 import type { ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
-import type { PaymentProcessor } from "./paymentReceiptMails.js";
+import type { PaymentProcessor } from "./paymentProcessor.js";
 
 export const MAIPU_PERMIT_SENDER = "permisocirculacion@maipu.cl";
 
@@ -70,7 +71,7 @@ function senderAddress(from: string): string | null {
 /** Whole pesos from a Chilean-grouped amount («10.400»). */
 function pesos(s: string, mail: ArchivedMail): number {
   if (!/^\d{1,3}(\.\d{3})*$/.test(s)) fail(mail, `not a peso amount: ${s}`);
-  return Number(s.replace(/\./g, ""));
+  return parseChileanNumber(s);
 }
 
 /** ISO date from day, month and year digits; a date that does not exist throws. */

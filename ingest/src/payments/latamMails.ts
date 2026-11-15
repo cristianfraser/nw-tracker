@@ -24,9 +24,10 @@
  * dated by the mail. A mail of these senders that is not a purchase (a pending reservation,
  * check-in, boarding pass, marketing) decodes to null; a purchase mail this cannot read throws.
  */
+import { parseChileanNumber, parseUsNumber } from "nw-tracker-contracts";
 import type { ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/mailFetcher.js";
-import type { PaymentProcessor } from "./paymentReceiptMails.js";
+import type { PaymentProcessor } from "./paymentProcessor.js";
 
 /** Every LATAM sender that has mailed a purchase or a change. */
 const LATAM_PURCHASE_SENDERS = "from:(compras@bo.lan.com OR compras@bo.latam.com OR sales@bo.lan.com OR info@mail.latam.com OR info@info.latam.com)";
@@ -47,13 +48,13 @@ function latamPesos(s: string, mail: ArchivedMail): number {
   const m = /^(\d{1,3}(?:\.\d{3})+|\d+)(?:[.,](\d{2}))?$/.exec(s);
   if (!m) fail(mail, `not a peso amount: ${s}`);
   if (m[2] != null && m[2] !== "00") fail(mail, `peso amount with cents: ${s}`);
-  return Number(m[1]!.replace(/\./g, ""));
+  return parseChileanNumber(m[1]!);
 }
 
 function latamDollars(s: string, mail: ArchivedMail): number {
   const m = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$/.exec(s);
   if (!m) fail(mail, `not a dollar amount: ${s}`);
-  return Number(`${m[1]!.replace(/,/g, "")}.${m[2] ?? "0"}`);
+  return parseUsNumber(s);
 }
 
 const MONTHS: Record<string, string> = {

@@ -7,7 +7,7 @@ import type {
   BankAccountMovementsPayload,
 } from "nw-tracker-contracts";
 import { resolveInboxDir } from "../paths.js";
-import { isChileanNumber, parseChileanNumber } from "../formats/chileanNumber.js";
+import { isChileanNumber, parseChileanNumber } from "nw-tracker-contracts";
 
 /**
  * Santander's «ultimos movimientos-Cuenta Corriente.xlsx» (the checking account's recent

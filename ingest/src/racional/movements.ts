@@ -1,3 +1,4 @@
+import { isChileanNumber, parseChileanNumber } from "nw-tracker-contracts";
 import type { BrokerDividend, BrokerMovement } from "nw-tracker-contracts";
 
 /**
@@ -208,8 +209,8 @@ export function parseRacionalAmount(raw: string): { amount: number; currency: "c
   const m = /^(US\$|\$)\s*(-?[\d.]+(?:,\d+)?)$/i.exec(text);
   if (!m) throw new Error(`Unexpected Racional amount "${raw}" (want "$1.234" or "US$1.234,56")`);
   const currency = /^US\$/i.test(m[1]!) ? "usd" : "clp";
-  const numeric = Number(m[2]!.replace(/\./g, "").replace(",", "."));
-  if (!Number.isFinite(numeric)) throw new Error(`Unparseable Racional amount "${raw}"`);
+  if (!isChileanNumber(m[2]!)) throw new Error(`Unparseable Racional amount "${raw}"`);
+  const numeric = parseChileanNumber(m[2]!);
   return { amount: numeric, currency };
 }
 

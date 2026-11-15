@@ -38,7 +38,7 @@ import {
 } from "nw-tracker-contracts";
 import { firstPage, launchBrowser } from "../browser.js";
 import { loadBankConfig } from "../config.js";
-import { parseChileanNumber } from "../formats/chileanNumber.js";
+import { parseChileanNumber } from "nw-tracker-contracts";
 import { readKeychainSecret } from "../keychain.js";
 import { log } from "../log.js";
 import { ensureDir, resolveCfraserDir } from "../paths.js";

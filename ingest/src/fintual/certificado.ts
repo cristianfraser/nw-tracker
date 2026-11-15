@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { FundAccountTransactionsPayload, FundTransaction } from "nw-tracker-contracts";
 import { readCommaCsvRecords } from "../formats/commaCsv.js";
-import { parseDdMmYyToIso } from "../formats/ddMmYy.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 import { resolveCfraserDir } from "../paths.js";
 import { FINTUAL_CERTIFICADO_CANONICAL_NAME } from "./certificadoInbox.js";
 
