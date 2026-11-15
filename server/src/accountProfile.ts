@@ -341,18 +341,23 @@ function leafKind(leafSlug: string, portfolioKind: string | null): string {
   return sep >= 0 ? leafSlug.slice(sep + 2) : leafSlug;
 }
 
-/** Coin kinds whose price series is implied by the leaf when the account names no ticker. */
-const COIN_TICKER_BY_KIND: Readonly<Record<string, string>> = { bitcoin: "BTC-USD", eth: "ETH-USD" };
+/** The coin leaves: an account on one names its coin's price series itself (`equity_ticker`). */
+const COIN_LEAF_KINDS: ReadonlySet<string> = new Set(["bitcoin", "eth"]);
 
 /**
- * The coin's price ticker when the account is valued from coin units: a ticker on a 24h crypto
- * market (`equityMarketKind`, `market_symbols`), else the leaf's coin; null without coin units.
+ * The coin's price ticker when the account is valued from coin units: its ticker on a 24h crypto
+ * market (`equityMarketKind`, `market_symbols`); null without coin units. An account on a coin leaf
+ * that names no ticker throws (the leaf implies none).
  */
 function coinPriceTicker(accountId: number, kind: string, equityTicker: string | null): string | null {
-  const ticker =
-    equityTicker != null ? (equityMarketKind(equityTicker) === "crypto24" ? equityTicker : null) : COIN_TICKER_BY_KIND[kind] ?? null;
-  if (!ticker) return null;
-  return stmtHasOwnUnits.get(accountId) != null ? ticker : null;
+  if (equityTicker == null) {
+    if (COIN_LEAF_KINDS.has(kind)) {
+      throw new Error(`account profile: coin account ${accountId} (${kind}) has no equity_ticker`);
+    }
+    return null;
+  }
+  if (equityMarketKind(equityTicker) !== "crypto24") return null;
+  return stmtHasOwnUnits.get(accountId) != null ? equityTicker : null;
 }
 
 /** The account's profile; throws for an id with no account (or no asset group) behind it. */
