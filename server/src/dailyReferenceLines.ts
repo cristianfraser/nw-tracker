@@ -34,12 +34,8 @@ import {
   type TsUnit,
 } from "./valuationTimeseries.js";
 
-/**
- * A reference source's total on each day of its own daily series: a day the series has no value
- * for is absent, unrounded.
- */
+/** A reference source's total on each day of its own daily series, unrounded. */
 const REFERENCE_SOURCE_DAILY: Omit<NodeNettingPolicy, "netsLinkedCards"> = {
-  empty: "null",
   rounding: "none",
 };
 

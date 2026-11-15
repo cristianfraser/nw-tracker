@@ -160,7 +160,9 @@ export function buildWealthPercentilePayload(unit: DisplayUnitCode = "clp"): Wea
     const asOfYmd = year === currentYear ? todayYmd : `${year}-12-31`;
     const totals = buildDashboardBucketValueTotals(asOfYmd);
     const netWorthClp = totals.net_worth_clp;
-    const finNetWorthClp = totals.net_worth_clp - totals.real_estate_clp;
+    if (netWorthClp == null) throw new Error(`wealthPercentile: no account has a value on ${asOfYmd}`);
+    // A year-end with no real-estate value has nothing to take out of the total.
+    const finNetWorthClp = totals.real_estate_clp == null ? netWorthClp : netWorthClp - totals.real_estate_clp;
 
     const fxRow = fxBcentralRowOnOrBefore(asOfYmd);
     if (!fxRow) {

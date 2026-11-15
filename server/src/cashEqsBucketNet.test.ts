@@ -191,9 +191,10 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
   it("daily series: a linked total in credit adds to cash, owed subtracts", () => {
     for (const d of GRID) {
       const b = base.daily.get(d)!;
-      expect(credit.daily.get(d)!.cash_eqs - b.cash_eqs).toBe(CREDIT);
-      expect(credit.daily.get(d)!.net_worth - b.net_worth).toBe(CREDIT);
-      expect(owed.daily.get(d)!.cash_eqs - b.cash_eqs).toBe(-OWED);
+      // The netting bucket reads on every day, so neither it nor net worth is ever absent.
+      expect(credit.daily.get(d)!.cash_eqs! - b.cash_eqs!).toBe(CREDIT);
+      expect(credit.daily.get(d)!.net_worth! - b.net_worth!).toBe(CREDIT);
+      expect(owed.daily.get(d)!.cash_eqs! - b.cash_eqs!).toBe(-OWED);
     }
   });
 
@@ -252,8 +253,8 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
     const creditUsd = clpToUnitAt(CREDIT, yesterday, "usd", { side: "debt" });
     expect(creditUsd).not.toBeNull();
     // Each bucket is rounded to the cent, so the two differ by the credit up to a cent.
-    expect(Math.abs(credit.priorDay.usd.cash_eqs - base.priorDay.usd.cash_eqs - creditUsd!)).toBeLessThanOrEqual(0.01 + 1e-9);
-    expect(credit.priorDay.clp.cash_eqs - base.priorDay.clp.cash_eqs).toBe(CREDIT);
+    expect(Math.abs(credit.priorDay.usd.cash_eqs! - base.priorDay.usd.cash_eqs! - creditUsd!)).toBeLessThanOrEqual(0.01 + 1e-9);
+    expect(credit.priorDay.clp.cash_eqs! - base.priorDay.clp.cash_eqs!).toBe(CREDIT);
   });
 
   it("the linked-balance footer shows a total in credit, hides only a zero total", () => {

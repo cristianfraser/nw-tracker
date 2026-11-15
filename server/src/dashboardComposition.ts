@@ -170,7 +170,6 @@ export function compositionValuesAtDatesClp(
  * the netting.
  */
 const COMPOSITION_LINE_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
-  empty: "null_unless_netted",
   rounding: "unit_coin",
 };
 

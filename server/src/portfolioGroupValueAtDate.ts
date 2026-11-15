@@ -1,5 +1,6 @@
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
+  nodeMembersSum,
   nodeNetsLinkedCards,
   nodeValue,
   nodeValueSeriesOnGrid,
@@ -11,19 +12,19 @@ import type { TsUnit } from "./valuationTimeseries.js";
 import { db } from "./db.js";
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 
-/** A value per net-worth bucket (`nwBucketSlugs()`, in their order), plus net worth = Σ of them. */
-export type BucketValues = Record<string, number> & { net_worth: number };
+/**
+ * A value per net-worth bucket (`nwBucketSlugs()`, in their order), plus net worth = Σ of the
+ * buckets that have one. Null: no member of the bucket had a value that day (the bucket that
+ * nets the linked cards always reads); net worth is null when no bucket has one.
+ */
+export type BucketValues = Record<string, number | null> & { net_worth: number | null };
 
-function emptyBucketValues(): BucketValues {
-  const out = { net_worth: 0 } as BucketValues;
-  for (const slug of nwBucketSlugs()) out[slug] = 0;
+/** The buckets' values (`nwBucketSlugs()` order) with net worth = Σ of those present. */
+function bucketValuesOf(valueOf: (slug: string) => number | null): BucketValues {
+  const out = { net_worth: null } as BucketValues;
+  for (const slug of nwBucketSlugs()) out[slug] = valueOf(slug);
+  out.net_worth = nodeMembersSum(nwBucketSlugs().map((slug) => out[slug]));
   return out;
-}
-
-function sumBuckets(row: BucketValues): number {
-  let total = 0;
-  for (const slug of nwBucketSlugs()) total += row[slug]!;
-  return total;
 }
 
 type BucketAccountMeta = {
@@ -50,29 +51,26 @@ function listAccountsForDashboardBucket(bucket: string): BucketAccountMeta[] {
 }
 
 /**
- * A bucket of the headline at a date: its counted members' own values in the unit, 0 when none
- * has one, unrounded (the apportionment rounds once).
+ * A bucket of the headline at a date: its counted members' own values in the unit, unrounded
+ * (the apportionment rounds once).
  */
 const BUCKET_HEADLINE: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
-  empty: "zero",
   rounding: "none",
 };
 
 /**
- * A bucket on each day of a daily grid: its counted members' cached daily values, 0 when none
- * has one, rounded to the unit's coin.
+ * A bucket on each day of a daily grid: its counted members' cached daily values, rounded to
+ * the unit's coin.
  */
 const BUCKET_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
-  empty: "zero",
   rounding: "unit_coin",
 };
 
 /**
- * A bucket at the prior day's close: each counted member's own value in the unit, 0 when
- * none has one, rounded to the unit's coin.
+ * A bucket at the prior day's close: each counted member's own value in the unit, rounded to
+ * the unit's coin.
  */
 const BUCKET_PRIOR_DAY_CLOSE: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
-  empty: "zero",
   rounding: "unit_coin",
 };
 
@@ -100,50 +98,56 @@ function bucketValueInUnitAtRaw(bucket: string, asOfYmd: string, unit: TsUnit): 
  * largest fractional parts (deterministic tie-break: bucket order).
  */
 function apportionedBucketClpAt(asOfYmd: string): {
-  buckets: Record<string, number>;
-  total: number;
+  buckets: Record<string, number | null>;
+  total: number | null;
 } {
-  const raw: Record<string, number> = {};
-  let rawSum = 0;
-  for (const slug of nwBucketSlugs()) {
-    // A sum of finite member values less a finite owed total.
-    const v = bucketValueInUnitAtRaw(slug, asOfYmd, HOME_CURRENCY);
-    if (v == null || !Number.isFinite(v)) throw new Error(`dashboard buckets: ${slug} has a non-finite value on ${asOfYmd}`);
-    raw[slug] = v;
-    rawSum += v;
+  // A bucket no member of which has a value that day is absent: it stays null and takes no share.
+  const raw: Record<string, number | null> = {};
+  for (const slug of nwBucketSlugs()) raw[slug] = bucketValueInUnitAtRaw(slug, asOfYmd, HOME_CURRENCY);
+  const rawSum = nodeMembersSum(nwBucketSlugs().map((slug) => raw[slug]));
+  const buckets: Record<string, number | null> = {};
+  if (rawSum == null) {
+    for (const slug of nwBucketSlugs()) buckets[slug] = null;
+    return { buckets, total: null };
   }
   const total = Math.round(rawSum);
-  const buckets: Record<string, number> = {};
   let floorSum = 0;
   const remainders: { slug: string; frac: number }[] = [];
   for (const slug of nwBucketSlugs()) {
-    const fl = Math.floor(raw[slug]!);
+    const v = raw[slug];
+    if (v == null) {
+      buckets[slug] = null;
+      continue;
+    }
+    const fl = Math.floor(v);
     buckets[slug] = fl;
     floorSum += fl;
-    remainders.push({ slug, frac: raw[slug]! - fl });
+    remainders.push({ slug, frac: v - fl });
   }
   remainders.sort((a, b) => b.frac - a.frac);
   let residual = total - floorSum;
   for (const r of remainders) {
     if (residual <= 0) break;
-    buckets[r.slug]! += 1;
+    buckets[r.slug] = buckets[r.slug]! + 1;
     residual -= 1;
   }
   return { buckets, total };
 }
 
+/** The bucket's apportioned pesos at a date; null when no member of it has a value that day. */
 export function portfolioGroupValueClpAt(
   bucket: string,
   asOfYmd: string
-): number {
-  const v = apportionedBucketClpAt(asOfYmd).buckets[bucket];
-  if (v == null) throw new Error(`portfolioGroupValueClpAt: ${bucket} is not a net-worth bucket`);
-  return v;
+): number | null {
+  if (!nwBucketSlugs().includes(bucket)) {
+    throw new Error(`portfolioGroupValueClpAt: ${bucket} is not a net-worth bucket`);
+  }
+  return apportionedBucketClpAt(asOfYmd).buckets[bucket]!;
 }
 
 /**
- * Net worth and each net-worth bucket ({@link nwBucketSlugs}, in their order) in one display unit
- * (null: the unit has no rate for it; pesos are always present).
+ * Net worth and each net-worth bucket ({@link nwBucketSlugs}, in their order) in one display unit.
+ * Null: no member of the bucket had a value that day; net worth is Σ of the buckets that have one.
  */
 export type DashboardBucketValueTotals = {
   net_worth: number | null;
@@ -186,10 +190,7 @@ export function buildDashboardBucketDailySeriesInUnit(
   );
   const out = new Map<string, BucketValues>();
   sessionsAsc.forEach((ymd, gi) => {
-    const row = emptyBucketValues();
-    for (const slug of nwBucketSlugs()) row[slug] = valuesByBucket.get(slug)![gi]!;
-    row.net_worth = sumBuckets(row);
-    out.set(ymd, row);
+    out.set(ymd, bucketValuesOf((slug) => valuesByBucket.get(slug)![gi] ?? null));
   });
   return out;
 }
@@ -203,59 +204,40 @@ export function buildDashboardBucketDailySeriesInUnit(
  * (`BUCKET_PRIOR_DAY_CLOSE`).
  */
 export function dashboardBucketDayPriorClosesInUnit(priorDayYmd: string, unit: TsUnit): BucketValues {
-  const out = emptyBucketValues();
-  for (const slug of nwBucketSlugs()) {
-    // Same netting as the live card (the consolidation) — a linked total in credit counts
-    // on both sides of the day delta, so it can't show up as a day change.
-    out[slug] = nodeValue(listAccountsForDashboardBucket(slug), priorDayYmd, unit, {
+  // Same netting as the live card — a linked total in credit counts on both sides of the day
+  // delta, so it can't show up as a day change.
+  return bucketValuesOf((slug) =>
+    nodeValue(listAccountsForDashboardBucket(slug), priorDayYmd, unit, {
       ...BUCKET_PRIOR_DAY_CLOSE,
       netsLinkedCards: nodeNetsLinkedCards(slug),
-    })!;
-  }
-  out.net_worth = sumBuckets(out);
-  return out;
+    })
+  );
 }
 
 /**
  * The net-worth buckets TODAY in `unit`, as the headline and the cards show them (each bucket Σ
  * of its accounts' own values in the unit, `bucketValueInUnitAtRaw`; net worth Σ of the
  * buckets). The daily overview and the all-time-high walk read their today point here, so it
- * equals the cards. Throws when a bucket has no rate.
+ * equals the cards.
  */
 export function dashboardBucketsTodayInUnit(unit: TsUnit): BucketValues {
   const totals = buildDashboardBucketValueTotalsInUnit(chileCalendarTodayYmd(), unit);
-  const pick = (v: number | null | undefined, slug: string): number => {
-    if (v == null || !Number.isFinite(v)) throw new Error(`dashboard buckets: no ${unit} value for ${slug} today`);
-    return v;
-  };
-  const out = emptyBucketValues();
-  for (const slug of nwBucketSlugs()) out[slug] = pick(totals.buckets[slug], slug);
-  out.net_worth = pick(totals.net_worth, "net_worth");
-  return out;
+  return { ...totals.buckets, net_worth: totals.net_worth } as BucketValues;
 }
 
 /**
  * The buckets and net worth at a date in `unit`. Pesos: integer per bucket by largest-remainder
  * apportionment, so the cards add up to the headline exactly. Another unit: each bucket from its
- * own members' values in it, the headline their sum (null when any bucket has no rate), so the
- * cards add up to it there too.
+ * own members' values in it, the headline the sum of those that have one, so the cards add up to
+ * it there too.
  */
 export function buildDashboardBucketValueTotalsInUnit(asOfYmd: string, unit: TsUnit): DashboardBucketValueTotals {
   if (isHomeCurrency(unit)) {
     const { buckets, total } = apportionedBucketClpAt(asOfYmd);
-    const out: Record<string, number | null> = {};
-    for (const slug of nwBucketSlugs()) out[slug] = buckets[slug]!;
-    return { net_worth: total, buckets: out };
+    return { net_worth: total, buckets };
   }
-  let netWorth: number | null = 0;
-  const buckets: Record<string, number | null> = {};
-  for (const slug of nwBucketSlugs()) {
-    const u = bucketValueInUnitAtRaw(slug, asOfYmd, unit);
-    const v = u != null && Number.isFinite(u) ? u : null;
-    buckets[slug] = v;
-    netWorth = netWorth != null && v != null ? netWorth + v : null;
-  }
-  return { net_worth: netWorth, buckets };
+  const { net_worth, ...buckets } = bucketValuesOf((slug) => bucketValueInUnitAtRaw(slug, asOfYmd, unit));
+  return { net_worth, buckets };
 }
 
 /**
@@ -264,9 +246,9 @@ export function buildDashboardBucketValueTotalsInUnit(asOfYmd: string, unit: TsU
  */
 export function buildDashboardBucketValueTotals(
   asOfYmd: string
-): { net_worth_clp: number; [bucketClp: `${string}_clp`]: number } {
+): { net_worth_clp: number | null; [bucketClp: `${string}_clp`]: number | null } {
   const { buckets, total } = apportionedBucketClpAt(asOfYmd);
-  const out: { net_worth_clp: number; [bucketClp: `${string}_clp`]: number } = { net_worth_clp: total };
+  const out: { net_worth_clp: number | null; [bucketClp: `${string}_clp`]: number | null } = { net_worth_clp: total };
   for (const slug of nwBucketSlugs()) out[`${slug}_clp`] = buckets[slug]!;
   return out;
 }

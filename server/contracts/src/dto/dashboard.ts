@@ -78,7 +78,10 @@ export interface DashboardLayoutCardRow {
   linked_balances?: DashboardLinkedBalanceRow[];
 }
 
-/** Net worth and each net-worth bucket (keyed by bucket slug) in the payload's unit (null: no rate). */
+/**
+ * Net worth and each net-worth bucket (keyed by bucket slug) in the payload's unit. Null: no
+ * account of the bucket had a value that day; net worth is the sum of the buckets that have one.
+ */
 export interface DashboardBucketCloseTotals {
   net_worth: number | null;
   buckets: Record<string, number | null>;

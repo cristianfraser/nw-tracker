@@ -8,7 +8,7 @@ import {
 } from "./dashboardComposition.js";
 import { cacheKeyDailyOverview } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
-import { nodeValueSeriesOnGrid, type NodeValuePolicy } from "./nodeValue.js";
+import { nodeMembersSum, nodeValueSeriesOnGrid, type NodeValuePolicy } from "./nodeValue.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   chileCalendarDaysListEndingAt,
@@ -69,21 +69,23 @@ export type OverviewDailyPayload = {
 };
 
 /**
- * Pasivos on each day of a daily grid: its counted members' cached daily values, 0 when
- * none has one, rounded to the unit's coin. Nothing is netted from it.
+ * Pasivos on each day of a daily grid: its counted members' cached daily values, rounded to the
+ * unit's coin. Nothing is netted from it.
  */
 const LIABILITIES_DAILY: NodeValuePolicy = {
   netsLinkedCards: false,
-  empty: "zero",
   rounding: "unit_coin",
 };
 
-/** Σ liability-account values per grid day in `unit` (same accounts as the Pasivos group daily view). */
-function liabilitiesByDate(grid: readonly string[], unit: TsUnit): Map<string, number> {
+/**
+ * Σ liability-account values per grid day in `unit` (same accounts as the Pasivos group daily
+ * view); null on a day no liability account has a value.
+ */
+function liabilitiesByDate(grid: readonly string[], unit: TsUnit): Map<string, number | null> {
   const rows = listAccountsForGroupTab("liabilities");
   const values = nodeValueSeriesOnGrid(rows, grid, unit, LIABILITIES_DAILY);
-  const out = new Map<string, number>();
-  grid.forEach((ymd, gi) => out.set(ymd, values[gi]!));
+  const out = new Map<string, number | null>();
+  grid.forEach((ymd, gi) => out.set(ymd, values[gi] ?? null));
   return out;
 }
 
@@ -99,7 +101,7 @@ function buildOverviewDaily(unit: TsUnit, days: number): OverviewDailyPayload {
 
   // Same leading-null convention as the monthly overview: real_estate and liabilities stay
   // null (line not drawn) until their first non-zero value — a flat 0 pre-ownership reads
-  // as data, not absence.
+  // as data, not absence. Any bucket is null (a gap) on a day none of its accounts has a value.
   let reStarted = false;
   let liabStarted = false;
   // Today in another unit is the headline's figure (Σ of each account's own value in it), never
@@ -109,14 +111,17 @@ function buildOverviewDaily(unit: TsUnit, days: number): OverviewDailyPayload {
     const row = byDate.get(ymd)!;
     const isToday = ymd === endYmd && unitToday != null;
     const rowUnit = byDateUnit.get(ymd)!;
-    const bucket = (slug: string): number => {
+    const bucket = (slug: string): number | null => {
       const v = isToday ? unitToday![slug] : rowUnit[slug];
-      if (v == null) throw new Error(`overview-daily: no value for ${slug} on ${ymd}`);
+      if (v === undefined) throw new Error(`overview-daily: ${slug} is not a net-worth bucket`);
       return v;
     };
-    if (!reStarted && Math.abs(row.real_estate) >= 0.5) reStarted = true;
-    const liabClp = liabByDate.get(ymd)!;
-    if (!liabStarted && Math.abs(liabClp) >= 0.5) liabStarted = true;
+    const reClp = row.real_estate;
+    if (reClp === undefined) throw new Error("overview-daily: no real_estate bucket");
+    if (!reStarted && reClp != null && Math.abs(reClp) >= 0.5) reStarted = true;
+    const liabClp = liabByDate.get(ymd);
+    if (liabClp === undefined) throw new Error(`overview-daily: no liabilities for ${ymd}`);
+    if (!liabStarted && liabClp != null && Math.abs(liabClp) >= 0.5) liabStarted = true;
     return {
       as_of_date: ymd,
       net_worth: bucket("net_worth"),
@@ -124,8 +129,8 @@ function buildOverviewDaily(unit: TsUnit, days: number): OverviewDailyPayload {
       retirement: bucket("retirement"),
       brokerage: bucket("brokerage"),
       cash_eqs: bucket("cash_eqs"),
-      invested: investmentRootSlugs().reduce((sum, slug) => sum + bucket(slug), 0),
-      liabilities: liabStarted ? liabByDateUnit.get(ymd)! : null,
+      invested: nodeMembersSum(investmentRootSlugs().map(bucket)),
+      liabilities: liabStarted ? (liabByDateUnit.get(ymd) ?? null) : null,
       ...milestoneFieldsForDate(ymd, unit),
     };
   });

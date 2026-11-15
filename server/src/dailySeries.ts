@@ -397,7 +397,7 @@ function buildDailySeriesPast(
  * The bucket's value on a day of its daily series: absent when no member has a value, unrounded
  * (the day's P/L is taken from it).
  */
-const DAILY_SERIES_VALUE: NodeValueRules = { empty: "null", rounding: "none" };
+const DAILY_SERIES_VALUE: NodeValueRules = { rounding: "none" };
 
 /** Build the daily series for one bucket of accounts. Throws on an out-of-bounds window. */
 export function getBucketDailySeries(

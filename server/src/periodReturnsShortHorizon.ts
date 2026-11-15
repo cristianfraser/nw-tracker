@@ -56,7 +56,6 @@ export function accountValueInUnitAt(
  */
 const BUCKET_VALUE_LEG: NodePointValuePolicy = {
   netsLinkedCards: false,
-  empty: "null",
   rounding: "none",
 };
 

@@ -34,7 +34,6 @@ export type ChartMarkTotalAccountRow = {
  * out (a netting bucket always reads), rounded to the peso after the netting.
  */
 const MONTH_END_MARK_TOTALS: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
-  empty: "null_unless_netted",
   rounding: "unit_coin",
 };
 
@@ -43,7 +42,6 @@ const MONTH_END_MARK_TOTALS: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
  * unrounded.
  */
 const CHART_VALUE_IN_UNIT: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
-  empty: "null_unless_netted",
   rounding: "none",
 };
 

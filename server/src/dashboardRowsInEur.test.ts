@@ -85,9 +85,14 @@ describe("dashboard rows and nav strip in EUR", () => {
     const lc = clp.liabilities_breakdown;
     expect(eur.liabilities_breakdown.mortgage).toBeCloseTo((lc.mortgage ?? 0) / CLP_PER_EUR, 6);
     expect(eur.liabilities_breakdown.credit_card).toBeCloseTo((lc.credit_card ?? 0) / CLP_PER_EUR, 6);
-    // The net-worth root's balance is Σ of the bucket totals in EUR.
-    const buckets = Object.values(eur.nw_bucket_totals.buckets);
-    expect(buckets.every((v) => v != null)).toBe(true);
-    expect(eur.nw_bucket_totals.net_worth).toBeCloseTo(buckets.reduce((s: number, v) => s + v!, 0), 6);
+    // The net-worth root's balance is Σ of the bucket totals in EUR that have a value: a bucket
+    // none of whose accounts has one is absent (null), in EUR as in pesos.
+    const buckets = eur.nw_bucket_totals.buckets;
+    for (const [slug, v] of Object.entries(buckets)) {
+      expect(v == null, slug).toBe(clp.nw_bucket_totals.buckets[slug] == null);
+    }
+    const present = Object.values(buckets).filter((v): v is number => v != null);
+    expect(present.length).toBeGreaterThan(0);
+    expect(eur.nw_bucket_totals.net_worth).toBeCloseTo(present.reduce((s, v) => s + v, 0), 6);
   }, 300_000);
 });

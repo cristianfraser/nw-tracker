@@ -95,7 +95,7 @@ function netWorthInUnitByDay(
       const clp = byDate.get(ymd)!.net_worth;
       const published = exact.get(ymd);
       if (published != null) carry = published;
-      return { as_of_date: ymd, value: carry != null && carry > 0 ? clp / carry : null };
+      return { as_of_date: ymd, value: clp != null && carry != null && carry > 0 ? clp / carry : null };
     });
   }
   // Today in another unit is the headline's net worth (Σ of each account's own value in it).

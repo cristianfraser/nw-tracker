@@ -13,7 +13,9 @@
  *   - Liability and reference groups are not in the map (the property account already stores
  *     equity, and the linked credit card is netted into cash below).
  *   - Every node's value is its true net value, negatives included: a frame is the Σ of ALL its
- *     children. A node worth <= 0 is then left out of the payload (hidden) while still counting
+ *     children that exist (a node none of whose accounts has a value is absent, except the
+ *     tile that nets the linked cards; a child with no conversion into the unit leaves its frame
+ *     without a value there). A node absent or worth <= 0 is then left out of the payload (hidden) while still counting
  *     in its parent — so a bucket that nets negative (cash net of its card) is hidden whole,
  *     even when one of its groups is positive. The client sizes a frame's area by its visible
  *     children; the frame's value is the true one.
@@ -42,8 +44,14 @@
  * bucket without a breakdown fall through to the shape above (each child group then applies
  * the rule itself).
  */
-import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
-import { linkedCardsClpInUnit, nodeNetsLinkedCards, nodeValueFromSum, type NodeValueRules } from "./nodeValue.js";
+import { HOME_CURRENCY } from "./displayUnits.js";
+import {
+  linkedCardsClpInUnit,
+  nodeMembersSum,
+  nodeNetsLinkedCards,
+  nodeValueFromSum,
+  type NodeValueRules,
+} from "./nodeValue.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
@@ -118,7 +126,8 @@ export type NavValueMapNodeDto = {
  * unit. Stripped before the payload goes out.
  */
 type MapNode = Omit<NavValueMapNodeDto, "children" | "leaf_accounts"> & {
-  basis_clp: number;
+  /** Null: no account under the node has a value (the node is hidden, like one worth <= 0). */
+  basis_clp: number | null;
   children?: MapNode[];
   leaf_accounts?: MapNode[];
 };
@@ -162,35 +171,33 @@ function isMapGroup(n: NavTreeNodeDto): boolean {
 }
 
 /**
- * A leaf tile in pesos (its basis, and its value when the unit is pesos): 0 when no row has a
- * value, unrounded.
+ * A leaf tile, in pesos (its basis) and in the unit (its value): absent when no row has a value
+ * (the tile that nets the linked cards always reads), unrounded.
  */
-const LEAF_TILE_BASIS: NodeValueRules = { empty: "zero", rounding: "none" };
+const LEAF_TILE: NodeValueRules = { rounding: "none" };
+
+type VisibleMapNode = MapNode & { basis_clp: number };
+
+/** The node is shown: it has a value and is worth more than 0 (in pesos, whatever the unit). */
+function isVisible(n: MapNode): n is VisibleMapNode {
+  return n.basis_clp != null && n.basis_clp > 0;
+}
+
+/** Largest first. */
+function byBasisDesc(a: VisibleMapNode, b: VisibleMapNode): number {
+  return b.basis_clp - a.basis_clp;
+}
 
 /**
- * A leaf tile's value in another unit: absent when no row has a value in it, unrounded.
+ * Σ of the parts in the unit when every one of them has a value there; null when one has none
+ * (a missing conversion: the whole has none either) or there is no part.
  */
-const LEAF_TILE_VALUE_IN_UNIT: NodeValueRules = { empty: "null", rounding: "none" };
-
-function sumFinite(values: readonly (number | null | undefined)[]): number | null {
-  let sum = 0;
-  let any = false;
-  for (const v of values) {
-    if (v != null && Number.isFinite(v)) {
-      sum += v;
-      any = true;
-    }
-  }
-  return any ? sum : null;
+function sumAll(values: readonly (number | null)[]): number | null {
+  return values.every((v) => v != null) ? nodeMembersSum(values) : null;
 }
 
 function finiteOrNull(v: number | null | undefined): number | null {
   return v != null && Number.isFinite(v) ? v : null;
-}
-
-/** Σ when every part has a value, else null (a frame missing a conversion has none). */
-function sumAll(values: readonly (number | null)[]): number | null {
-  return values.every((v) => v != null) ? (sumFinite(values) ?? 0) : null;
 }
 
 function pctAndPl(
@@ -342,7 +349,8 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       const breakdown = bucket != null ? proxy.breakdowns.get(bucket) : undefined;
       if (candidates.length > 0 && bucket != null && breakdown) {
         for (const r of candidates) claimed.add(r.account_id);
-        const basis = sumFinite(candidates.map((r) => r.clp_basis.current_value)) ?? 0;
+        // Every candidate has a positive pesos value, so the sum exists.
+        const basis = candidates.reduce((s, r) => s + r.clp_basis.current_value!, 0);
         const value = sumAll(candidates.map((r) => finiteOrNull(r.current_value)));
         const children = breakdown.holdings.map((h) => holdingTile(base, bucket, h, basis, value));
         if (breakdown.other_weight > 0) {
@@ -376,8 +384,9 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       }
       return {
         ...base,
-        basis_clp: children.reduce((s, c) => s + c.basis_clp, 0),
-        value: sumAll(children.map((c) => c.value)),
+        basis_clp: nodeMembersSum(children.map((c) => c.basis_clp)),
+        // Σ of the children that exist; an absent child (no account of it has a value) takes no part.
+        value: sumAll(children.filter((c) => c.basis_clp != null).map((c) => c.value)),
         ...pctAndPl(metricsRows, { kind: "group", slug: node.slug }, unit, chainedPct),
         frame: true,
         children,
@@ -394,16 +403,16 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
     // The tile's value from its rows' today values, net of the linked cards when the node nets them.
     const nets = nodeNetsLinkedCards(node.slug);
     const basis = nodeValueFromSum(
-      sumFinite(leafRows.map((r) => r.clp_basis.current_value)),
+      nodeMembersSum(leafRows.map((r) => r.clp_basis.current_value)),
       nets ? linkedCreditCards.clp : undefined,
       HOME_CURRENCY,
-      LEAF_TILE_BASIS
-    )!;
+      LEAF_TILE
+    );
     const value = nodeValueFromSum(
-      sumFinite(leafRows.map((r) => r.current_value)),
+      nodeMembersSum(leafRows.map((r) => r.current_value)),
       nets ? linkedCreditCards.value : undefined,
       unit,
-      isHomeCurrency(unit) ? LEAF_TILE_BASIS : LEAF_TILE_VALUE_IN_UNIT
+      LEAF_TILE
     );
     // The leaf's own accounts, for the page to open it into (Crypto shows Bitcoin and Ether);
     // none when the sidebar shows it as a leaf (IPSA, SOXX among Acciones' stocks).
@@ -411,8 +420,9 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       ? []
       : accountKids
           .map((a) => accountTile(a, false))
-          .filter((t): t is MapNode => t != null && t.basis_clp > 0)
-          .sort((x, y) => y.basis_clp - x.basis_clp);
+          .filter((t): t is MapNode => t != null)
+          .filter(isVisible)
+          .sort(byBasisDesc);
     return {
       ...base,
       basis_clp: basis,
@@ -427,14 +437,14 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
   const prune = (n: MapNode): MapNode => {
     if (!n.children) return n;
     const children = n.children
-      .filter((c) => c.basis_clp > 0)
-      .map(prune)
-      .sort((a, b) => b.basis_clp - a.basis_clp);
+      .filter(isVisible)
+      .sort(byBasisDesc)
+      .map(prune);
     return { ...n, children };
   };
 
   const root = build(navRoot);
-  if (!root || root.basis_clp <= 0) throw new Error("nav value map: net worth is not positive");
+  if (!root || !isVisible(root)) throw new Error("nav value map: net worth is not positive");
   return toDto(prune(root));
 }
 
