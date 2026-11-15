@@ -12,8 +12,8 @@
  * The receipt path builds its line byte-identical to the feed's row, so the feed's one-shot key
  * already dedupes it. A payment made at a branch has no such template: the bank may list it as
  * «PAGO», «ABONO …» or anything else. So when a card import (feed, paste — never a planting
- * import) brings a credit payment line with the same currency and amount (USD to the cent, CLP to
- * the peso) dated from the planted day to `MATCH_WINDOWS.planted_payment` days later, and the
+ * import) brings a credit payment line with the same currency and amount (to the currency's
+ * smallest coin) dated from the planted day to `MATCH_WINDOWS.planted_payment` days later, and the
  * pairing is one-to-one within the import, the bank's line replaces the planted one: expense
  * assignments carried, the planted line deleted (its row cascades), the caller re-syncs the
  * valuations from the planted date. When the bank's line IS the planted line (same key) or was
@@ -26,9 +26,11 @@ import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { EMPTY_CARD_LINE_PLAN, type CardLinePlan } from "./cards/lineWriteSession.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import type { CardCanonicalLine, CardCanonicalStatement } from "nw-tracker-contracts";
-import { storedCardLineAmounts } from "./cards/statementStorage.js";
+import { legacyAmountColumn, storedCardLineAmounts } from "./cards/statementStorage.js";
 import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
+import { pairOneToOne } from "./matching/pairing.js";
+import { sameCoin } from "./matching/money.js";
 
 /** Import batch kinds that plant a payment line (never matched against themselves). */
 export const PLANTING_BATCH_KINDS = ["cc_santander_receipt", "cc_manual_payment", "cc_financing_payment"] as const;
@@ -93,8 +95,33 @@ const EMPTY_MATCH: PlantedPaymentMatchResult = {
   removed_from_date: null,
 };
 
-function sameMoney(currency: "clp" | "usd", a: number, b: number): boolean { // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
-  return currency === "usd" ? Math.round(a * 100) === Math.round(b * 100) : Math.round(a) === Math.round(b); // convention-ok: pesos have no minor unit; dollars compare to the cent
+/** A payment as a document states it: its currency, its amount in it (positive) and its ISO day. */
+export type PaymentFacts = { currency: string; amount: number; date: string };
+
+/**
+ * The one rule that says a bank's payment is a planted payment: same currency, the same amount to
+ * the currency's coin, dated inside `MATCH_WINDOWS.planted_payment` of the planted day. The import
+ * pairing and the statement reconcile both ask it (the wording is the caller's candidate filter).
+ */
+export function plantedPaymentFits(planted: Pick<PlantedPaymentRow, "currency" | "amount" | "paid_on">, payment: PaymentFacts): boolean {
+  if (payment.currency !== planted.currency || !sameCoin(payment.amount, planted.amount, planted.currency)) return false;
+  return dayWithinWindow(planted.paid_on, payment.date, MATCH_WINDOWS.planted_payment);
+}
+
+/**
+ * The import's payments against the account's planted lines, one-to-one both ways
+ * (`mutual_unique`): a payment pairs with the one planted line it fits when no other payment of
+ * the import fits that line; any other payment that fits a planted line is ambiguous. Pure.
+ */
+export function pairPaymentsWithPlanted<P extends PaymentFacts, R extends Pick<PlantedPaymentRow, "currency" | "amount" | "paid_on">>(
+  payments: readonly P[],
+  planted: readonly R[]
+): { pairs: { payment: P; planted: R }[]; ambiguous: { payment: P; planted: R[] }[] } {
+  const out = pairOneToOne(payments, planted, { strategy: "mutual_unique", accepts: (p, row) => plantedPaymentFits(row, p) });
+  return {
+    pairs: out.pairs.map((p) => ({ payment: p.left, planted: p.right })),
+    ambiguous: out.ambiguous.map((a) => ({ payment: a.left, planted: a.rights })),
+  };
 }
 
 /**
@@ -230,31 +257,28 @@ export function replacePlantedPaymentLinesFromImport(
   const payments = statements.flatMap((st) => st.lines).map(importedPayment).filter((p): p is ImportedPayment => p != null);
   if (payments.length === 0) return none;
 
-  const fits = (p: ImportedPayment, row: PlantedPaymentRow): boolean => {
-    if (p.currency !== row.currency || !sameMoney(p.currency, p.amount, row.amount)) return false;
-    return dayWithinWindow(row.paid_on, p.date, MATCH_WINDOWS.planted_payment);
-  };
-  const plantedFor = payments.map((p) => planted.filter((row) => fits(p, row)));
-  const paymentsFor = new Map<number, number>();
-  for (const rows of plantedFor) for (const row of rows) paymentsFor.set(row.line_id, (paymentsFor.get(row.line_id) ?? 0) + 1);
+  const paired = pairPaymentsWithPlanted(payments, planted);
+  const plantedOf = new Map(paired.pairs.map((x) => [x.payment, x.planted]));
+  const ambiguousOf = new Map(paired.ambiguous.map((x) => [x.payment, x.planted]));
 
   const result: PlantedPaymentMatchResult = { replaced: [], confirmed_in_place: [], ambiguous: [], removed_from_date: null };
   const toReplace: { planted: PlantedPaymentRow; bankLineId: number; payment: ImportedPayment }[] = [];
   const toConfirm: { planted: PlantedPaymentRow; payment: ImportedPayment }[] = [];
-  payments.forEach((p, i) => {
-    const rows = plantedFor[i]!;
-    if (rows.length === 0) return;
-    if (rows.length > 1 || paymentsFor.get(rows[0]!.line_id) !== 1) {
+  // In the import's order, so the report reads as the listing does.
+  payments.forEach((p) => {
+    const several = ambiguousOf.get(p);
+    if (several) {
       result.ambiguous.push({
         bank_line_merchant: p.merchant,
         bank_line_date: p.date,
         amount: p.amount,
         currency: p.currency,
-        planted_line_ids: rows.map((r) => r.line_id),
+        planted_line_ids: several.map((r) => r.line_id),
       });
       return;
     }
-    const row = rows[0]!;
+    const row = plantedOf.get(p);
+    if (!row) return;
     const stored = webPasteLineIdsForDedupeKey(accountId, p.line.document.dedupe_key ?? "");
     const bankLines = stored.filter((id) => id !== row.line_id);
     if (stored.includes(row.line_id) || bankLines.length === 0) {
@@ -333,10 +357,11 @@ export function plantedPaymentMatchesStatementLine(
   stmt: { merchant: string | null; transaction_date: string | null; posting_date: string | null; amount_clp: number | null; amount_usd: number | null },
   stmtCurrency: "clp" | "usd" // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
 ): boolean {
-  if (stmtCurrency !== planted.currency || !isPaymentLikeCreditMerchant(stmt.merchant)) return false;
-  const raw = planted.currency === "usd" ? stmt.amount_usd : stmt.amount_clp; // convention-ok: planted payment lines come from Santander's peso and dollar listings (plan C3 leftover)
-  if (raw == null || raw >= 0 || !sameMoney(planted.currency, -raw, planted.amount)) return false;
+  if (!isPaymentLikeCreditMerchant(stmt.merchant)) return false;
+  const column = legacyAmountColumn(stmtCurrency);
+  const raw = column ? stmt[column] : null;
+  if (raw == null || raw >= 0) return false;
   const iso = parseDdMmYyToIso(String(stmt.transaction_date ?? "")) ?? parseDdMmYyToIso(String(stmt.posting_date ?? ""));
   if (!iso) return false;
-  return dayWithinWindow(planted.paid_on, iso, MATCH_WINDOWS.planted_payment);
+  return plantedPaymentFits(planted, { currency: stmtCurrency, amount: -raw, date: iso });
 }

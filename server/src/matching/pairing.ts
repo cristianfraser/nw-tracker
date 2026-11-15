@@ -2,13 +2,18 @@
  * The one-to-one pairing helper: every matcher that pairs two lists of records, each record used
  * at most once, runs on this. A rule says which pairs are acceptable (`accepts`, which carries the
  * window and the money test), how far apart they are (`distance`, in days unless the caller says
- * otherwise) and which of the three declared strategies picks among the acceptable ones:
+ * otherwise) and which of the declared strategies picks among the acceptable ones:
  *
  *  - `first`: walk the lefts in order; the first unclaimed acceptable right (in input order) pairs.
  *    The greedy order of matchers that never compared candidates — kept, declared, where the
  *    outcome of nearest-first was not proven identical.
  *  - `unique`: walk the lefts in order; a left with exactly one unclaimed acceptable right pairs
  *    with it, several are REPORTED as ambiguous and stay unpaired, none stay unpaired.
+ *  - `mutual_unique`: no claiming order at all. A left pairs with its one acceptable right only when
+ *    no other left accepts that right; every other left that has an acceptable right is REPORTED as
+ *    ambiguous (with all its acceptable rights) and stays unpaired, whichever side the crowd is on.
+ *    The rule of the replacements that delete a line (a planted payment, a pending listing): two
+ *    candidates either way change nothing.
  *  - `nearest`: walk the lefts in order; the nearest unclaimed acceptable right pairs. Two rights
  *    equally near are REPORTED as ambiguous and the left stays unpaired — unless `twins` says the
  *    two cannot be told apart (identical records), in which case the earlier one in input order
@@ -23,7 +28,7 @@
  * hold equal-looking records.
  */
 
-export type PairStrategy = "first" | "unique" | "nearest" | "nearest_global";
+export type PairStrategy = "first" | "unique" | "mutual_unique" | "nearest" | "nearest_global";
 
 export type PairRule<L, R> = {
   strategy: PairStrategy;
@@ -82,6 +87,21 @@ export function pairOneToOne<L, R>(lefts: readonly L[], rights: readonly R[], ru
       claimed.add(c.right);
       pairs.push({ left: c.left, right: c.right, distance: c.d });
     }
+  } else if (rule.strategy === "mutual_unique") {
+    const fitsOf = lefts.map((left) => rights.filter((r) => rule.accepts(left, r)));
+    const wantedBy = new Map<R, number>();
+    for (const fits of fitsOf) for (const r of fits) wantedBy.set(r, (wantedBy.get(r) ?? 0) + 1);
+    lefts.forEach((left, i) => {
+      const fits = fitsOf[i]!;
+      if (fits.length === 0) return;
+      if (fits.length > 1 || wantedBy.get(fits[0]!) !== 1) {
+        ambiguous.push({ left, rights: fits });
+        return;
+      }
+      claimed.add(fits[0]!);
+      paired.add(left);
+      pairs.push({ left, right: fits[0]!, distance: distance(left, fits[0]!) });
+    });
   } else {
     for (const left of lefts) {
       const fits = rights.filter((r) => !claimed.has(r) && rule.accepts(left, r));

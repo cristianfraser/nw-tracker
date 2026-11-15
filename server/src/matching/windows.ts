@@ -250,14 +250,6 @@ export const MATCH_WINDOWS = {
   },
 
   // ── mortgage ───────────────────────────────────────────────────────────────────────────────────
-  mortgage_cuota_card_line: {
-    anchor: "ledger cuota's payment day",
-    candidate: "card line",
-    daysBefore: 0,
-    daysAfter: 3,
-    unit: "days",
-    amount: "exact",
-  },
   mortgage_cuota_overdue: {
     anchor: "ledger cuota's payment day (or a card line's day)",
     candidate: "no counterpart yet",
@@ -376,6 +368,7 @@ export const MATCH_WINDOWS = {
     ...sym(7),
     unit: "days",
     amount: "none",
+    note: "sources date one split differently (a broker's notice the day it was mailed, the price provider's event the session)",
   },
 } as const satisfies Record<string, MatchWindow>;
 

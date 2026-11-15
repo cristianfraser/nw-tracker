@@ -29,6 +29,7 @@ import { InputError } from "./inputError.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { equityCloseEod, equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
 import { sumUnitsThroughDate } from "./movementTransfer.js";
+import { MATCH_WINDOWS } from "./matching/windows.js";
 
 export const STOCK_SPLIT_FLOW_KIND = "stock_split" as const;
 
@@ -171,7 +172,7 @@ export type RecordEquitySplitResult = {
  * Sources date one split differently (a broker's notice is dated the day it was mailed, Yahoo's
  * event the session): a split of the ticker within this many days is the same split.
  */
-const SAME_SPLIT_WINDOW_DAYS = 7;
+const SAME_SPLIT_WINDOW_DAYS = MATCH_WINDOWS.same_split.daysAfter;
 
 const stmtNearSplits = db.prepare(
   `SELECT ticker, ex_date, numerator, denominator, source FROM equity_splits
