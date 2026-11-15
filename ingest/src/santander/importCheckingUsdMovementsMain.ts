@@ -12,7 +12,7 @@
  * card payment, a conversion), and the next capture confirms it.
  */
 import path from "node:path";
-import { bankAccountMovementsKind, type UsdAccountMovementsApplyDetails } from "nw-tracker-contracts";
+import { bankAccountMovementsKind, type ForeignAccountMovementsApplyDetails } from "nw-tracker-contracts";
 import { loadBankConfig } from "../config.js";
 import { log } from "../log.js";
 import { resolveCaptureDir } from "../paths.js";
@@ -26,7 +26,7 @@ const capturesDir = resolveCaptureDir("santander");
 const usd = (n: number) => n.toFixed(2);
 
 /** One line per capture with every non-zero outcome. */
-export function formatUsdCaptureSummary(name: string, d: UsdAccountMovementsApplyDetails, archivedTo: string | null): string {
+export function formatUsdCaptureSummary(name: string, d: ForeignAccountMovementsApplyDetails, archivedTo: string | null): string {
   const parts = [`${d.confirmed} confirmed`];
   if (d.awaiting_wire_booking > 0) parts.push(`${d.awaiting_wire_booking} awaiting wire booking`);
   if (d.unexplained > 0) parts.push(`${d.unexplained} UNEXPLAINED`);
@@ -77,7 +77,7 @@ async function main(): Promise<number> {
       }),
     archive: (d) => ({ dir: archiveDir, name: d.name }),
     report(d, result, archivedTo) {
-      const details = result.details as UsdAccountMovementsApplyDetails;
+      const details = result.details as ForeignAccountMovementsApplyDetails;
       console.log(`  ${formatUsdCaptureSummary(d.name, details, archivedTo)}`);
       for (const f of details.awaiting_flows) console.log(`    awaiting wire booking: ${f.occurred_on} ${usd(f.amount)} ${f.description}`);
       for (const f of details.unexplained_flows) unexplained.push(`${d.name}: ${f.occurred_on} ${usd(f.amount)} ${f.description}`);

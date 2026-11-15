@@ -96,15 +96,16 @@ export type BankAccountMovementsApplyDetails = {
 };
 
 /**
- * `details` of an applied `bank_account.movements` result for a DOLLAR account, whose rows the
- * ledger already holds from their documents (a wire's notices, a card payment entered by hand, a
- * conversion): the listing confirms them and never inserts. `confirmed`: rows a ledger transfer
+ * `details` of an applied `bank_account.movements` result for an account held in any other
+ * currency than pesos (amounts in the account's currency), whose rows the ledger already holds
+ * from their documents (a wire's notices, a card payment entered by hand, a conversion): the
+ * listing confirms them and never inserts. `confirmed`: rows a ledger transfer
  * leg explains (its bank posting day recorded); `awaiting_wire_booking`: incoming wires whose
  * notices have not booked yet (sent again next run); `unexplained`: rows no ledger row explains —
- * the feeder fails its step on them, since a dollar row the app does not know about is a row to
+ * the feeder fails its step on them, since a row the app does not know about is a row to
  * enter, not to guess at.
  */
-export type UsdAccountMovementsApplyDetails = {
+export type ForeignAccountMovementsApplyDetails = {
   account_id: number;
   batch_id: number;
   confirmed: number;

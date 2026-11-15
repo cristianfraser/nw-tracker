@@ -1,8 +1,8 @@
 import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
-import type { BankAccountMovement, UsdAccountMovementsApplyDetails } from "nw-tracker-contracts";
+import type { BankAccountMovement, ForeignAccountMovementsApplyDetails } from "nw-tracker-contracts";
 
 
-import { claimTransferLegForBankRow, findMatchingForeignTransferLegId } from "./checkingTransferLegReconcile.js";
+import { claimTransferLegForBankRow, findMatchingTransferLegId } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
 import { createImportBatch } from "./importBatches.js";
 
@@ -15,7 +15,7 @@ import { createImportBatch } from "./importBatches.js";
  * from the wire's notices (`incomingWires.ts`), a card payment from the dollar account is
  * entered by hand (`ccManualPayments.ts`), a conversion to pesos is a transfer the user writes.
  * So the listing is read as evidence, like the peso xlsx against a transfer leg: a row a
- * transfer leg on the account explains to the coin (`findMatchingForeignTransferLegId`, the same
+ * transfer leg on the account explains to the coin (`findMatchingTransferLegId`, the same
  * posting window) is `confirmed` and the bank's posting day recorded; a credit the bank files as
  * an incoming wire (`wire_reference`) whose booking has not landed yet is `awaiting_wire_booking`
  * (the next run brings it again; the wire step itself raises the alarm when the notices never
@@ -23,28 +23,28 @@ import { createImportBatch } from "./importBatches.js";
  * on it, since a dollar row the app does not know about is a row to enter, not to guess at.
  *
  * Re-sending a listing is idempotent: a leg whose posting day is recorded matches that day again.
- * The import batch keeps its kind `usd_account_feed` whatever the currency (a stored batch kind).
+ * The import batch (`foreign_account_feed`) names the account and the currency it is held in.
  */
 export function confirmForeignAccountMovements(
   accountId: number,
   currency: string,
   movements: BankAccountMovement[],
   sourceRef: string
-): UsdAccountMovementsApplyDetails {
+): ForeignAccountMovementsApplyDetails {
   if (!isForeignCashAccountIn(accountId, currency)) {
     throw new Error(`account ${accountId} is not a ${currency.toUpperCase()} cash account`);
   }
   const consumed = new Set<number>();
-  const confirmed_flows: UsdAccountMovementsApplyDetails["confirmed_flows"] = [];
-  const awaiting_flows: UsdAccountMovementsApplyDetails["awaiting_flows"] = [];
-  const unexplained_flows: UsdAccountMovementsApplyDetails["unexplained_flows"] = [];
+  const confirmed_flows: ForeignAccountMovementsApplyDetails["confirmed_flows"] = [];
+  const awaiting_flows: ForeignAccountMovementsApplyDetails["awaiting_flows"] = [];
+  const unexplained_flows: ForeignAccountMovementsApplyDetails["unexplained_flows"] = [];
   let earliestConfirmed: string | null = null;
   db.transaction(() => {
     for (const mv of movements) {
       if (mv.currency !== currency) {
         throw new Error(`a ${mv.currency} row in a ${currency.toUpperCase()} account's listing (${mv.date} ${mv.description})`);
       }
-      const legId = findMatchingForeignTransferLegId(accountId, currency, mv.date, mv.amount, consumed);
+      const legId = findMatchingTransferLegId(accountId, currency, mv.date, mv.amount, consumed);
       if (legId != null) {
         consumed.add(legId);
         claimTransferLegForBankRow(legId, accountId, mv.date);
@@ -59,8 +59,10 @@ export function confirmForeignAccountMovements(
       unexplained_flows.push({ occurred_on: mv.date, description: mv.description, amount: mv.amount });
     }
   })();
-  const batch_id = createImportBatch("usd_account_feed", sourceRef, {
+  const batch_id = createImportBatch("foreign_account_feed", sourceRef, {
     format: "current_account_transactions",
+    account_id: accountId,
+    currency,
     confirmed: confirmed_flows.length,
     awaiting_wire_booking: awaiting_flows.length,
     unexplained: unexplained_flows.length,

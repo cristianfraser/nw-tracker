@@ -358,9 +358,9 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
   const insMerge = db.prepare(
     `INSERT INTO movement_mirror_merges (
        transfer_movement_id,
-       out_movement_id, out_occurred_on, out_amount_clp, out_units_delta, out_note,
-       in_movement_id, in_statement_line_id, in_statement_id, in_occurred_on, in_amount_clp, in_note
-     ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`
+       out_movement_id, out_occurred_on, out_amount, out_currency, out_units_delta, out_note,
+       in_movement_id, in_statement_line_id, in_statement_id, in_occurred_on, in_amount, in_currency, in_note
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`
   );
   const delIncomeOverride = db.prepare(
     `DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`
@@ -404,12 +404,14 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
         cand.out.movement_id,
         cand.out.occurred_on,
         cand.out.amount_clp,
+        HOME_CURRENCY,
         null,
         cand.out.note,
         cand.evidence.statement_line_id,
         cand.evidence.statement_id,
         cand.evidence.pago_iso,
         -transferClp,
+        HOME_CURRENCY,
         cand.evidence.label
       );
       // The deleted checking row was the bank's listing: its date is the transfer's posting

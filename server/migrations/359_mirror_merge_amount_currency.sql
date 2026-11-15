@@ -1,0 +1,4 @@
+-- A mirror merge keeps each deleted leg as an amount in its own currency (untangle wave 9):
+-- out_amount_clp / in_amount_clp -> out_amount + out_currency / in_amount + in_currency. Every row
+-- on file takes its transfer's currency (the legs of a merge were always stored in it). The rebuild
+-- lives in the paired POST_MIGRATION_HOOKS entry (server/src/migrationHooks/mirrorMergeAmountCurrency359.ts).

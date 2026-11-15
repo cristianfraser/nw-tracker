@@ -22,6 +22,8 @@ import {
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import { OPTION_UNITS_FLOW_KINDS } from "./optionFlowKinds.js";
+import { isHomeCurrency } from "./displayUnits.js";
+import { nativeFlowLeg } from "./rates.js";
 
 /**
  * External capital: the signed CLP leg on `movements`. Charts (“aportes acum.”), the dashboard
@@ -46,6 +48,9 @@ type SortFlow = {
   counter_account_id?: number;
   /** A dollar row's own dollars (signed like `amt`). */
   amt_usd?: number | null;
+  /** A row in another foreign currency: its own amount (signed like `amt`) and that currency. */
+  amt_native?: number | null;
+  native_currency?: string | null;
 };
 
 /** "Today" for bank-dated timelines: no stored date ever exceeds it, so nothing is re-dated. */
@@ -116,15 +121,16 @@ function loadMovementSignedFlowEvents(
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
     if (r.flow_kind === SAVINGS_EARNINGS_FLOW_KIND || r.flow_kind === CASH_FEE_FLOW_KIND) continue;
     if (personalOnly && !movementCountsAsPersonalDeposit(r.flow_kind)) continue;
-    // A dollar purchase of fund units on an account that is not dollar cash (a payroll
-    // contribution to a 401(k) or an HSA): its dollars, signed by the row, in pesos at the day's
-    // rate. Any other single-leg dollar row keeps reading no peso leg (it moves no capital here).
-    if (r.currency === "usd" && r.units_delta != null) { // convention-ok: a 401(k)/HSA payroll contribution is a dollar purchase of fund units
+    // A purchase of fund units in another currency than pesos on an account that is not cash in
+    // it (a payroll contribution to a 401(k) or an HSA in dollars, a fund bought in euros): its
+    // own amount, signed by the row, in pesos at the day's rate, with its native leg. Any other
+    // single-leg foreign row keeps reading no peso leg (it moves no capital here).
+    if (!isHomeCurrency(r.currency) && r.units_delta != null) {
       if (!Number.isFinite(r.amount) || r.amount === 0) continue;
-      const usd = r.amount;
-      const amt = Math.sign(usd) * foreignCashToClpAt(Math.abs(usd), "usd", r.occurred_on, `usdFundDeposit:${r.id}`);
+      const native = r.amount;
+      const amt = Math.sign(native) * foreignCashToClpAt(Math.abs(native), r.currency, r.occurred_on, `foreignFundDeposit:${r.id}`);
       if (!map.has(r.account_id)) map.set(r.account_id, []);
-      map.get(r.account_id)!.push({ occurred_on: r.occurred_on, amt, amt_usd: usd, tie: `m:${r.id}` });
+      map.get(r.account_id)!.push({ occurred_on: r.occurred_on, amt, ...nativeFlowLeg(native, r.currency), tie: `m:${r.id}` });
       continue;
     }
     const amt = movementClpLegOrZero(r);

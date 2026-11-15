@@ -87,12 +87,12 @@ type MergeRow = {
   transfer_movement_id: number;
   out_movement_id: number;
   out_occurred_on: string;
-  out_amount_clp: number;
+  out_amount: number;
   out_units_delta: number | null;
   out_note: string | null;
   in_movement_id: number | null;
   in_occurred_on: string;
-  in_amount_clp: number;
+  in_amount: number;
   in_units_delta: number | null;
   in_note: string | null;
 };
@@ -167,7 +167,7 @@ function mergeLeg(m: MergeRow, side: "out" | "in"): Leg {
   return {
     id,
     occurred_on: side === "out" ? m.out_occurred_on : m.in_occurred_on,
-    amount_clp: side === "out" ? m.out_amount_clp : m.in_amount_clp,
+    amount_clp: side === "out" ? m.out_amount : m.in_amount,
     units_delta: side === "out" ? m.out_units_delta : m.in_units_delta,
     note: side === "out" ? m.out_note : m.in_note,
   };
@@ -267,7 +267,7 @@ function runSwap(item: Extract<PlanItem, { action: "swap" }>): Outcome {
   const p = item.side;
   db.prepare(
     `UPDATE movement_mirror_merges
-     SET ${p}_movement_id = ?, ${p}_occurred_on = ?, ${p}_amount_clp = ?, ${p}_units_delta = ?, ${p}_note = ?
+     SET ${p}_movement_id = ?, ${p}_occurred_on = ?, ${p}_amount = ?, ${p}_units_delta = ?, ${p}_note = ?
      WHERE transfer_movement_id = ?`
   ).run(sibling.id, sibling.occurred_on, sibling.amount, sibling.units_delta, sibling.note, item.transfer);
   db.prepare(`UPDATE movements SET occurred_on = ?, note = ?, units_delta = ? WHERE id = ?`).run(

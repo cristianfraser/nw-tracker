@@ -230,9 +230,9 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
   function pair(transferId: number, lineId: number, date: string, clp: number): void {
     db.prepare(
       `INSERT INTO movement_mirror_merges (
-         transfer_movement_id, out_movement_id, out_occurred_on, out_amount_clp,
-         in_statement_line_id, in_occurred_on, in_amount_clp
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+         transfer_movement_id, out_movement_id, out_occurred_on, out_amount, out_currency,
+         in_statement_line_id, in_occurred_on, in_amount, in_currency
+       ) VALUES (?, ?, ?, ?, 'clp', ?, ?, ?, 'clp')`
     ).run(transferId, transferId, date, -clp, lineId, date, -clp);
   }
 

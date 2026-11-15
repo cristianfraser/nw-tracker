@@ -5,15 +5,15 @@
  * transit recorded by hand before the bank statement was imported. Re-inserting the bank row would
  * double-count the account, so the importer skips it and lets the single transfer row stand.
  *
- * Matching is by (account, signed CLP amount, date window): the transfer's signed impact on the
- * checking account equals the bank movement's `amount_clp` (abono +, cargo −). The date is a window,
+ * Matching is by (account, signed amount in the account's currency, date window): the transfer's
+ * signed impact on the account equals the bank movement's amount (abono +, cargo −) to the coin. The date is a window,
  * not an exact match: Chilean bank cutoff is ~14:00, so a transfer made after cutoff — or on a
  * weekend/holiday — posts on the **next business day**. So a bank row dated `D` can match a transfer
  * logged anywhere in `[priorChileBusinessDay(D), D]` (the prior business day, any weekend/holiday
  * days between, and `D` itself). A `consumed` set enforces one-to-one matching, and candidates
  * closest to the bank date win first.
  */
-import { currencyMinorDigits } from "./displayUnits.js";
+import { HOME_CURRENCY, currencyMinorDigits } from "./displayUnits.js";
 import { movementSourceKindInSql } from "./flows/flowEvidence.js";
 import { deleteMovements } from "./movementWrites.js";
 import { adoptMovementFlow } from "./flows/flowIdentity.js";
@@ -24,8 +24,6 @@ import { priorChileBusinessDayYmd } from "./marketHolidays.js";
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   MOVEMENT_CLP_LEG_SQL,
-  movementClpLegOrZero,
-  type MovementAmountFields,
 } from "./movementAmounts.js";
 import { bucketSlugForAccountId } from "./accountBucket.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
@@ -34,71 +32,24 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 
-type TransferLegRow = {
-  id: number;
-  from_account_id: number | null;
-  to_account_id: number | null;
-} & MovementAmountFields;
-
-/** Signed CLP impact of an internal transfer leg on `accountId` (to = +, from = −). */
-function signedTransferLegDelta(row: TransferLegRow, accountId: number): number {
-  const mag = Math.abs(movementClpLegOrZero(row));
-  if (row.to_account_id === accountId) return mag;
-  if (row.from_account_id === accountId) return -mag;
-  return 0;
-}
+type TransferLegRow = MovementTransferRow & { id: number };
 
 /**
- * Id of an existing internal transfer leg touching `accountId` whose signed CLP delta equals
- * `amountClpSigned` and that the bank row dated `bankDateYmd` describes, not yet claimed — else
- * null. A leg whose bank posting on this account is already known (`movement_bank_postings`)
- * matches only that exact day, so the monthly cartola finds the leg the daily xlsx confirmed
- * however far its real date sits; a leg with no known posting matches inside the business-day
- * window ending at the bank date (`[priorChileBusinessDay(bankDate), bankDate]`), across a month
- * boundary too. Candidates closest to the bank date are preferred (same-day before an earlier day).
+ * Id of an existing internal transfer leg touching `accountId` (a cash account held in `currency`)
+ * whose signed delta in that currency on it (`signedNativeDeltaForAccountMovement` — a transfer's
+ * own leg, the counter leg of a conversion, the dollar leg of a wire booking, a `pago_tarjeta`
+ * from the account) equals `amountSigned` to the currency's coin and that the bank row dated
+ * `bankDateYmd` describes, not yet claimed — else null. A leg with no leg in `currency` moves
+ * nothing on the account and never matches. A leg whose bank posting on this account is already
+ * known (`movement_bank_postings`) matches only that exact day, so the monthly cartola finds the
+ * leg the daily xlsx confirmed however far its real date sits; a leg with no known posting matches
+ * inside the business-day window ending at the bank date (`[priorChileBusinessDay(bankDate),
+ * bankDate]`), across a month boundary too. Candidates closest to the bank date are preferred
+ * (same-day before an earlier day).
  *
  * The caller that consumes the match records the bank date with {@link claimTransferLegForBankRow}.
  */
-export function findMatchingInternalTransferLegId(
-  accountId: number,
-  bankDateYmd: string,
-  amountClpSigned: number,
-  consumed: Set<number>,
-  dbHandle: Database = db
-): number | null {
-  if (!Number.isFinite(amountClpSigned) || amountClpSigned === 0) return null;
-  const target = Math.round(amountClpSigned);
-  const windowStart = priorChileBusinessDayYmd(bankDateYmd) ?? bankDateYmd;
-  const rows = dbHandle
-    .prepare(
-      `SELECT m.id, m.from_account_id, m.to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}
-       FROM movements m ${BANK_POSTING_JOIN_SQL}
-       WHERE m.account_id IS NULL
-         AND (m.from_account_id = ? OR m.to_account_id = ?)
-         AND (
-           bp.posted_on = ?
-           OR (bp.posted_on IS NULL AND m.occurred_on >= ? AND m.occurred_on <= ?)
-         )
-       ORDER BY (bp.posted_on IS NOT NULL) DESC, m.occurred_on DESC, m.id DESC`
-    )
-    .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as TransferLegRow[];
-  for (const r of rows) {
-    if (consumed.has(r.id)) continue;
-    if (Math.round(signedTransferLegDelta(r, accountId)) === target) return r.id;
-  }
-  return null;
-}
-
-type ForeignTransferLegRow = MovementTransferRow & { id: number };
-
-/**
- * The foreign-currency twin of {@link findMatchingInternalTransferLegId}: the id of an existing
- * transfer leg touching `accountId` (a cash account held in `currency`) whose signed delta in that
- * currency on it (`signedNativeDeltaForAccountMovement` — the dollar leg of a wire booking, a
- * `pago_tarjeta` from the dollar account, the counter leg of a conversion) equals `amountSigned`
- * to the currency's coin, inside the same posting window, not yet claimed — else null.
- */
-export function findMatchingForeignTransferLegId(
+export function findMatchingTransferLegId(
   accountId: number,
   currency: string,
   bankDateYmd: string,
@@ -123,12 +74,26 @@ export function findMatchingForeignTransferLegId(
          )
        ORDER BY (bp.posted_on IS NOT NULL) DESC, m.occurred_on DESC, m.id DESC`
     )
-    .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as ForeignTransferLegRow[];
+    .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as TransferLegRow[];
   for (const r of rows) {
     if (consumed.has(r.id)) continue;
     if (Math.round(signedNativeDeltaForAccountMovement(r, accountId, currency) * coins) === target) return r.id;
   }
   return null;
+}
+
+/**
+ * {@link findMatchingTransferLegId} for a row of a peso listing (the cuenta corriente xlsx and
+ * cartola, the cuenta vista paste: documents the bank issues in pesos).
+ */
+export function findMatchingInternalTransferLegId(
+  accountId: number,
+  bankDateYmd: string,
+  amountClpSigned: number,
+  consumed: Set<number>,
+  dbHandle: Database = db
+): number | null {
+  return findMatchingTransferLegId(accountId, HOME_CURRENCY, bankDateYmd, amountClpSigned, consumed, dbHandle);
 }
 
 /** Claim a matched transfer leg for the bank row that lists it: records the bank's posting day. */
