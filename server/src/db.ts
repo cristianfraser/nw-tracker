@@ -31,6 +31,7 @@ import { runNavTreeRoles272 } from "./migrationHooks/navTreeRoles272.js";
 import { runExpenseKeyLegacyRewrite273 } from "./migrationHooks/expenseKeyLegacyRewrite273.js";
 import { runManualExpenseMerchant275 } from "./migrationHooks/manualExpenseMerchant275.js";
 import { registerCardLineKindFunction } from "./cardLineKindFunction.js";
+import { assertMovementFlowTriggerCurrent } from "./flows/flowTriggerCheck.js";
 import { runCardLineKind276 } from "./migrationHooks/cardLineKind276.js";
 import { runFlowTables279 } from "./migrationHooks/flowTables279.js";
 import {
@@ -601,6 +602,8 @@ export function dbInTransaction(): boolean {
 /** Run before any other module prepares SQL against tables created in migrations (e.g. `equity_daily`). */
 initSchema();
 runMigrations();
+// A migrated database must carry the movements flow trigger the code specifies (fail fast, no repair).
+assertMovementFlowTriggerCurrent(dbInternal);
 // account_sync_sources backfill runs from index.ts / scripts via
 // ensureAccountSyncSourcesSeeded() (accountSyncSources.ts): the createRequire cycle from
 // inside this module never worked under tsx for the "accounts exist, links empty" case.
