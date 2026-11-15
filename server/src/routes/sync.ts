@@ -8,7 +8,6 @@ import {
 import {
   forceSyncSourceStale,
   isGlobalSyncSource,
-  isLegacyEquityEodSyncSource,
   syncStatusPayload,
 } from "../globalSyncStale.js";
 import { buildImportSyncDocumentCoveragePayload } from "../importSyncDocumentCoverage.js";
@@ -21,6 +20,7 @@ import {
 import { normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import { backfillGenericTransferUniquePurchases } from "../ccExpenseGenericTransferBackfill.js";
 import { writeHandler } from "../inputError.js";
+import { queryChoice } from "./shared.js";
 import { lastSyncRunCreatedAt } from "../syncRunLog.js";
 import { getGlobalSyncSchedulerSnapshot, notifyGlobalSyncScheduler } from "../globalSyncScheduler.js";
 import { INGEST_RUN_KINDS, type IngestRunKind } from "nw-tracker-contracts";
@@ -68,17 +68,11 @@ app.get("/api/sync/status", (_req, res) => {
 
 app.post("/api/sync/force-stale", (req, res) => {
   const source = typeof req.body?.source === "string" ? req.body.source.trim() : "";
-  if (isLegacyEquityEodSyncSource(source)) {
-    forceSyncSourceStale("stocks_nyse");
-    forceSyncSourceStale("stocks_santiago");
-    forceSyncSourceStale("stocks_london");
-    forceSyncSourceStale("crypto_eod");
-  } else if (!isGlobalSyncSource(source)) {
+  if (!isGlobalSyncSource(source)) {
     res.status(400).json({ error: "invalid_source" });
     return;
-  } else {
-    forceSyncSourceStale(source);
   }
+  forceSyncSourceStale(source);
   notifyGlobalSyncScheduler();
   res.json({
     ...syncStatusPayload(),
@@ -186,7 +180,8 @@ app.get("/api/messages/unread-count", (_req, res) => {
 });
 
 app.get("/api/messages", (req, res) => {
-  const kind = req.query.kind === "log" ? "log" : "notification";
+  const kind = queryChoice(req, res, "kind", ["notification", "log"] as const, "notification");
+  if (kind == null) return;
   res.json({ messages: listAppMessages(kind) });
 });
 

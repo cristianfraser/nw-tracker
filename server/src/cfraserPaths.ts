@@ -36,10 +36,6 @@ export function resolveCfraserCsvDir(): string {
   return fromBundle;
 }
 
-export function resolveDeptoDividendosCsvPath(): string {
-  return path.join(resolveCfraserCsvDir(), DEPTO_CSV);
-}
-
 /** Credit-card statement PDF root (`cfraser/credit-card-statements/`). */
 export function resolveCfraserPdfsDir(): string {
   const env = liveEnvText("CFRASER_PDFS_DIR");
@@ -82,18 +78,6 @@ export function ccStatementPdfSearchDirs(cardLast4: string, usd: boolean): strin
 /** Quarantine for statements whose parse disagrees with the printed header (see PARSERS.md). */
 export function resolveCcStatementPendingReviewDir(): string {
   return path.join(resolveCfraserPdfsDir(), "pending-review");
-}
-
-/** Drop zone for new PDFs, cartola xlsx, etc. (`cfraser/inbox/`; legacy `cfraser/pdfs/`). */
-export function resolveCfraserInboxDir(): string {
-  const env = liveEnvText("CFRASER_INBOX_DIR");
-  if (env) return path.resolve(env);
-  const cfraser = resolveCfraserCsvDir();
-  const inbox = path.join(cfraser, "inbox");
-  const legacy = path.join(cfraser, "pdfs");
-  if (fs.existsSync(inbox)) return inbox;
-  if (fs.existsSync(legacy)) return legacy;
-  return inbox;
 }
 
 /** Santander checking-account cartola `.xlsx` files (`cfraser/excels/cuenta corriente/`). */

@@ -22,7 +22,7 @@ import { getCheckingCartolaMonths } from "../checkingCartolaMonthSummary.js";
 import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
 import { isPositiveInteger } from "../requestValidation.js";
-import { asyncHandler, accountIdFromReq } from "./shared.js";
+import { asyncHandler, accountIdFromReq, queryChoice } from "./shared.js";
 import { requestDisplayUnit } from "../displayUnits.js";
 
 export function registerAccountsRoutes(app: express.Express): void {
@@ -247,7 +247,8 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
     return;
   }
   const unit = requestDisplayUnit(req.query, { surface: "/api/accounts/:id/detail-bundle" });
-  const granularity = req.query.granularity === "daily" ? "daily" : "monthly";
+  const granularity = queryChoice(req, res, "granularity", ["monthly", "daily"] as const, "monthly");
+  if (granularity == null) return;
   const payload = await timeHeavyAsync(`${HeavyWork.accountDetailBundle} ${id} ${unit} ${granularity}`, () =>
     cachedAccountDetailBundle(id, unit, granularity)
   );

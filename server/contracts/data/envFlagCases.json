@@ -1,0 +1,17 @@
+[
+  { "raw": "1", "expect": true },
+  { "raw": "true", "expect": true },
+  { "raw": "YES", "expect": true },
+  { "raw": " True ", "expect": true },
+  { "raw": "0", "expect": false },
+  { "raw": "false", "expect": false },
+  { "raw": " NO ", "expect": false },
+  { "raw": "False", "expect": false },
+  { "raw": null, "expect": null, "note": "unset: the caller's default" },
+  { "raw": "", "expect": null },
+  { "raw": "  ", "expect": null },
+  { "raw": "on", "expect": "throws" },
+  { "raw": "2", "expect": "throws" },
+  { "raw": "ture", "expect": "throws", "note": "a typo stops the process, it is not read as off" },
+  { "raw": "1 # apply", "expect": "throws" }
+]

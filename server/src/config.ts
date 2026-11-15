@@ -1,4 +1,5 @@
 import { LIVE_QUOTES_DEFAULT_INTERVAL_MS } from "nw-tracker-contracts/dto/apiConstants";
+import { parseEnvFlag } from "nw-tracker-contracts";
 import { DEMO_SYNC_DISABLED_SOURCES, type GlobalSyncSource } from "./syncSourceIds.js";
 
 /**
@@ -108,14 +109,8 @@ const DEFAULT_DEV_ORIGINS = [
   "http://127.0.0.1:4173",
 ];
 
-/** `1/true/yes` → true, `0/false/no` → false, unset or empty → null; anything else throws. */
-export function parseEnvFlag(name: string, raw: string | undefined): boolean | null {
-  const v = raw?.trim().toLowerCase();
-  if (v === undefined || v === "") return null;
-  if (v === "1" || v === "true" || v === "yes") return true;
-  if (v === "0" || v === "false" || v === "no") return false;
-  throw new Error(`${name}=${JSON.stringify(raw)}: expected 1/true/yes or 0/false/no`);
-}
+/** The flag rule, shared with the ingest service (`nw-tracker-contracts`, `formats/flags.ts`). */
+export { parseEnvFlag };
 
 /** A positive number, or the fallback when unset or empty; anything else throws. */
 function positiveNumber(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -250,7 +245,6 @@ export const LIVE_ENV_VARS = [
   "DEMO_ANALYTICS_DB",
   "CFRASER_CSV_DIR",
   "CFRASER_PDFS_DIR",
-  "CFRASER_INBOX_DIR",
   "CFRASER_CHECKING_CARTOLAS_DIR",
   "CFRASER_CHECKING_CARTOLA_PDFS_DIR",
   "CFRASER_CUENTA_VISTA_PDFS_DIR",
@@ -261,7 +255,6 @@ export const LIVE_ENV_VARS = [
   "PORTFOLIO_START_YMD",
   "SERVE_CLIENT_DIST",
   "INGEST_ALLOW_REMOTE",
-  "DEMO_MODE",
   "DEMO_V2_TRACE",
   "VITEST",
 ] as const;

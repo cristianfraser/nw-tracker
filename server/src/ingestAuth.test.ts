@@ -60,8 +60,17 @@ describe("ingestAuthConfigFromEnv", () => {
     ).toEqual({ token: "t", allowRemote: true, demoMode: false });
   });
 
-  it("reads the demo flag", () => {
-    expect(ingestAuthConfigFromEnv({ DEMO_MODE: "1" }).demoMode).toBe(true);
+  it("reads the demo from the deployment profile, not from the env it is handed", () => {
+    const before = process.env.DEMO_MODE;
+    try {
+      delete process.env.DEMO_MODE;
+      expect(ingestAuthConfigFromEnv({ DEMO_MODE: "1" }).demoMode).toBe(false);
+      process.env.DEMO_MODE = "1";
+      expect(ingestAuthConfigFromEnv({}).demoMode).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.DEMO_MODE;
+      else process.env.DEMO_MODE = before;
+    }
   });
 });
 
