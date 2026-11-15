@@ -20,7 +20,7 @@
  */
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { parseChileanNumber, parseUsNumber } from "../formats/chileanNumber.js";
+import { parseChileanNumber, parseUsNumber } from "nw-tracker-contracts";
 
 export function pdfLayoutText(filePath: string): string {
   const abs = String(filePath ?? "").trim();

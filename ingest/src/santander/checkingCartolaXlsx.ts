@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import XLSX from "xlsx";
-import { cartolaMovementDateIso } from "../formats/cartolaMovementDate.js";
-import { isChileanNumber, parseChileanNumber } from "../formats/chileanNumber.js";
-import { parseDdMmYyToIso } from "../formats/ddMmYy.js";
+import { cartolaMovementDateIso } from "nw-tracker-contracts";
+import { isChileanNumber, parseChileanNumber } from "nw-tracker-contracts";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /**
  * Santander's monthly checking cartola workbook (`… Cartola de cuenta Corriente - <Mes> <año>.xlsx`)

@@ -27,7 +27,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ArchivedMail } from "../email/mailFetcher.js";
-import { parseChileanNumber } from "../formats/chileanNumber.js";
+import { parseChileanNumber } from "nw-tracker-contracts";
 import { resolveCfraserDir } from "../paths.js";
 import type { DecodedUtilityBill } from "./utilityBillMails.js";
 

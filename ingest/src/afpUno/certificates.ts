@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type { PensionContribution, PensionMovement } from "nw-tracker-contracts";
-import { parseChileanNumber } from "../formats/chileanNumber.js";
+import { parseChileanNumber } from "nw-tracker-contracts";
 
 /**
  * AFP UNO's two certificates, read from `pdftotext -layout` text.

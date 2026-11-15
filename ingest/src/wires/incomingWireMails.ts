@@ -1,5 +1,5 @@
 import type { IncomingWireNotice } from "nw-tracker-contracts";
-import { parseChileanNumber } from "../formats/chileanNumber.js";
+import { parseChileanNumber } from "nw-tracker-contracts";
 
 /**
  * Banks' mails about a wire INTO the client's account → `bank_account.incoming_wires` notices.
