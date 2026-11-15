@@ -28,7 +28,9 @@
  * write.
  */
 import type { UnemploymentFundDocumentsApplyDetails, UnemploymentFundDocumentsPayload } from "nw-tracker-contracts";
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { db } from "./db.js";
+import { deleteMovements, insertMovement, restateMovementUnits, setMovementUnits } from "./movementWrites.js";
 import { recordContributionPeriods } from "./pensionContributionPeriods.js";
 import { AFC_CIC_SERIES_KEY } from "./afcCicSeries.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
@@ -195,13 +197,6 @@ function requireAfcSeriesKey(accountId: number): string {
   return AFC_CIC_SERIES_KEY;
 }
 
-const stmtInsertContribution = db.prepare(
-  `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-   VALUES (?, ?, 'clp', ?, ?, ?)`
-);
-const stmtUpdateUnits = db.prepare(`UPDATE movements SET units_delta = ? WHERE id = ?`);
-const stmtDeleteMovement = db.prepare(`DELETE FROM movements WHERE id = ?`);
-
 export type AfcCertApplyResult = { inserted: number; units_updated: number; mismatches: number };
 
 /**
@@ -213,11 +208,18 @@ export function applyAfcCertImport(plan: AfcCertPlan): AfcCertApplyResult {
   db.transaction(() => {
     for (const it of plan.items) {
       if (it.status === "insert") {
-        const res = stmtInsertContribution.run(plan.account_id, it.contribution.amount_clp, it.contribution.pay_ymd, afcContributionNote(it.contribution), it.units);
-        recordContributionPeriods(Number(res.lastInsertRowid), [it.contribution.period_ym]);
+        const movementId = insertMovement({
+          accountId: plan.account_id,
+          amount: it.contribution.amount_clp,
+          currency: HOME_CURRENCY,
+          occurredOn: it.contribution.pay_ymd,
+          note: afcContributionNote(it.contribution),
+          unitsDelta: it.units,
+        });
+        recordContributionPeriods(movementId, [it.contribution.period_ym]);
         out.inserted += 1;
       } else if (it.status === "update_units") {
-        stmtUpdateUnits.run(it.units, it.existing_id);
+        setMovementUnits(it.existing_id!, it.units);
         out.units_updated += 1;
       } else if (it.status === "mismatch") {
         out.mismatches += 1;
@@ -294,7 +296,7 @@ export function applyAfcWithdrawalUnits(items: readonly AfcWithdrawalPlanItem[])
     for (const it of items) {
       if (it.status !== "set") continue;
       const isTransfer = it.movement.account_id == null;
-      stmtUpdateUnits.run(isTransfer ? it.units_abs : -it.units_abs, it.movement.id);
+      setMovementUnits(it.movement.id, isTransfer ? it.units_abs : -it.units_abs);
       n += 1;
     }
   })();
@@ -424,14 +426,6 @@ export function planAfcCartolaTrueUps(accountId: number, cartola: AfcCartola): A
   return { account_id: accountId, cartola, ledger_cotizaciones_clp, trueups };
 }
 
-const stmtInsertTrueUp = db.prepare(
-  `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-   VALUES (?, ?, 'clp', ?, ?, ?, ?)`
-);
-const stmtUpdateTrueUp = db.prepare(
-  `UPDATE movements SET amount = ?, units_delta = ?, flow_kind = ?, note = ? WHERE id = ?`
-);
-
 function trueUpNote(t: AfcCartolaTrueUp, c: AfcCartola): string {
   return (
     `${afcCartolaTrueUpNoteKey(t.day_ymd)} · ${t.which} de la cartola ${c.period_from_ymd}..${c.period_to_ymd}` +
@@ -446,13 +440,21 @@ export function applyAfcCartolaTrueUps(plan: AfcCartolaPlan): { inserted: number
     for (const t of plan.trueups) {
       const note = trueUpNote(t, plan.cartola);
       if (t.status === "insert") {
-        stmtInsertTrueUp.run(plan.account_id, t.amount_clp, t.day_ymd, note, t.units, t.flow_kind);
+        insertMovement({
+          accountId: plan.account_id,
+          amount: t.amount_clp,
+          currency: HOME_CURRENCY,
+          occurredOn: t.day_ymd,
+          note,
+          unitsDelta: t.units,
+          flowKind: t.flow_kind,
+        });
         out.inserted += 1;
       } else if (t.status === "update") {
-        stmtUpdateTrueUp.run(t.amount_clp, t.units, t.flow_kind, note, t.existing_id);
+        restateMovementUnits(t.existing_id!, { amount: t.amount_clp, unitsDelta: t.units, flowKind: t.flow_kind, note });
         out.updated += 1;
       } else if (t.status === "delete") {
-        stmtDeleteMovement.run(t.existing_id);
+        deleteMovements([t.existing_id!]);
         out.deleted += 1;
       }
     }
