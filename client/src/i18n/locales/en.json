@@ -507,8 +507,8 @@
       "movementDate": "Date",
       "movementType": "Type",
       "amountClp": "CLP amount",
-      "amountUsd": "USD amount",
       "amountInCurrency": "{{currency}} amount",
+      "amountInCashAccountCurrency": "Amount (the cash account's currency)",
       "unitsDelta": "Shares (units_delta)",
       "addMovement": "Add movement",
       "removeMovement": "Remove",
@@ -728,7 +728,8 @@
       "hint": "Optional: destination/source account for single-row transfers.",
       "emptyDraft": "No drafts. Use the buttons to add rows, then save.",
       "saveBtn": "Save movements",
-      "saveSuccess": "{{count}} movement(s) saved."
+      "saveSuccess": "{{count}} movement(s) saved.",
+      "rowIncomplete": "Every row needs a date, and a trade, dividend or premium needs its cash account."
     },
     "cashMovements": {
       "title": "Add movements",
@@ -746,7 +747,8 @@
     "movements": {
       "counterpartAccount": "Counterpart account",
       "dividendOriginAccount": "Stock paying the dividend",
-      "dividendCashAccount": "USD cash account receiving the dividend",
+      "dividendCashAccount": "Cash account receiving the dividend",
+      "settlementCashAccount": "Cash account it settles against",
       "compraSourceAccount": "Source CLP account (optional)"
     },
     "flowDirection": {

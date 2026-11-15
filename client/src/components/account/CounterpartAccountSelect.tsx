@@ -3,9 +3,6 @@ import { useAccountsAll } from "../../queries/hooks";
 /** Cash / checking accounts that money typically flows to/from (bucket cash + checking hubs). */
 const CASH_COUNTERPART_KINDS = new Set(["cuenta_corriente", "cuenta_vista", "usd", "clp"]);
 
-const USD_CASH_KIND = "usd";
-const CLP_CASH_KIND = "clp";
-
 /**
  * Behaviour kind = last `__` segment of the leaf `asset_groups.slug` (mirrors the server's
  * `accountBucketKindSlug`), e.g. `cash_eqs__cash_savings__racional_usd__usd` → `usd`,
@@ -26,10 +23,11 @@ type Props = {
   cashAndCheckingOnly?: boolean;
   /** Limit options to equity stock accounts (e.g. the paying stock on a dividend payout). */
   equityBrokerageOnly?: boolean;
-  /** Limit options to the USD cash account (stock buy/sell settlement account). */
-  usdCashOnly?: boolean;
-  /** Limit options to CLP cash accounts (settlement for CLP-quoted `.SN` trades). */
-  clpCashOnly?: boolean;
+  /**
+   * Limit options to cash ledger accounts in any currency (what a trade, a dividend or an option
+   * premium settles against); each option names the currency the account holds.
+   */
+  cashLedgerOnly?: boolean;
 };
 
 export function CounterpartAccountSelect({
@@ -39,8 +37,7 @@ export function CounterpartAccountSelect({
   label,
   cashAndCheckingOnly,
   equityBrokerageOnly,
-  usdCashOnly,
-  clpCashOnly,
+  cashLedgerOnly,
 }: Props) {
   const { data } = useAccountsAll();
   const accounts = (data?.accounts ?? []).filter((a) => {
@@ -50,8 +47,7 @@ export function CounterpartAccountSelect({
       if (!kind || !CASH_COUNTERPART_KINDS.has(kind)) return false;
     }
     if (equityBrokerageOnly && !a.bucket_slug?.startsWith("brokerage_acciones")) return false;
-    if (usdCashOnly && kindFromBucketSlug(a.bucket_slug) !== USD_CASH_KIND) return false;
-    if (clpCashOnly && kindFromBucketSlug(a.bucket_slug) !== CLP_CASH_KIND) return false;
+    if (cashLedgerOnly && a.cash_currency == null) return false;
     return true;
   });
 
@@ -68,7 +64,7 @@ export function CounterpartAccountSelect({
         <option value="">—</option>
         {accounts.map((a) => (
           <option key={a.id} value={a.id}>
-            {a.name} (#{a.id})
+            {cashLedgerOnly && a.cash_currency != null ? `${a.name} · ${a.cash_currency.toUpperCase()}` : a.name} (#{a.id})
           </option>
         ))}
       </select>

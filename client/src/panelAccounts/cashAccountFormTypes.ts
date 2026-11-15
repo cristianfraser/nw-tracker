@@ -26,7 +26,7 @@ export function cashFlowKindsFor(currency: string): readonly BrokerageFlowKind[]
 
 /**
  * Which amount fields a cash form row shows: `pesos` (the draft's `amountClp`) and `own`, the
- * account's own foreign currency (the draft's `amountUsd`, whatever the currency).
+ * account's own foreign currency (the draft's `amountCash`, whatever the currency).
  */
 export function cashFormRowFields(kind: BrokerageFlowKind, currency: string): { pesos: boolean; own: boolean } {
   if (isHomeCurrency(currency)) return { pesos: true, own: false };
@@ -74,7 +74,7 @@ export function buildCashMovementPostBody(
     };
   }
   const pesos = fields.pesos ? parseNumberInputOrThrow(row.amountClp) : null;
-  const own = fields.own ? parseNumberInputOrThrow(row.amountUsd) : null;
+  const own = fields.own ? parseNumberInputOrThrow(row.amountCash) : null;
   return {
     occurred_on,
     flow_kind: row.flowKind,
