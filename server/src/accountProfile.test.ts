@@ -15,7 +15,6 @@ const base: AccountProfileFacts = {
   quoteCurrencyOf: (t) => (t.endsWith(".SN") ? "clp" : "usd"),
   fundQuoteCurrencyOf: () => "clp",
   roles: [],
-  demoOrTest: true,
   cashCurrency: null,
 };
 const p = (f: Partial<AccountProfileFacts>) => profileFromFacts({ ...base, ...f });
@@ -35,7 +34,7 @@ describe("profileFromFacts", () => {
     expect(p({ kind: "spy", equityTicker: "SPY", usesEquityMtm: true }).quantity).toEqual({ kind: "stock", ticker: "SPY" });
     expect(p({ kind: "afc", fundSeriesKey: "afc_cic" }).quantity).toEqual({ kind: "cuota_ledger", seriesKey: "afc_cic" });
     expect(p({ kind: "afc" }).quantity).toEqual({ kind: "book_mark" });
-    expect(p({ kind: "afp" }).quantity).toEqual({ kind: "cuota_ledger", seriesKey: "afp_uno_cuota_a" });
+    expect(p({ kind: "afp", fundSeriesKey: "afp_uno_cuota_a" }).quantity).toEqual({ kind: "cuota_ledger", seriesKey: "afp_uno_cuota_a" });
     expect(
       p({ kind: "apv", importKey: "import:fintual|cert|key=apv_a", fundSeriesKey: "s", roles: [{ role: "fintual_goal", param: "9" }] })
         .quantity
@@ -66,7 +65,7 @@ describe("profileFromFacts", () => {
       priceTicker: "BTC-USD",
       quote: "usd",
     });
-    expect(p({ kind: "afp" }).holding).toEqual({ kind: "fund", seriesKey: "afp_uno_cuota_a", quote: "clp" });
+    expect(p({ kind: "afp", fundSeriesKey: "afp_uno_cuota_a" }).holding).toEqual({ kind: "fund", seriesKey: "afp_uno_cuota_a", quote: "clp" });
     expect(p({ kind: "afc" }).holding).toEqual({ kind: "currency", code: "clp" });
   });
 
@@ -101,11 +100,13 @@ describe("profileFromFacts", () => {
   });
 
   it("refuses an account it cannot value", () => {
-    expect(() => p({ kind: "mutual_fund", importKey: "import:fintual|cert|key=x" })).toThrow(/fund_series_key/);
-    expect(() => p({ kind: "afp", demoOrTest: false })).toThrow(/fund_series_key/);
+    expect(() => p({ kind: "mutual_fund", roles: [{ role: "fintual_goal", param: "9" }] })).toThrow(/fund_series_key/);
+    // The role names a Fintual goal account; the key prefix alone does not.
+    expect(() => p({ kind: "mutual_fund", importKey: "import:fintual|cert|key=x" })).toThrow(/fintual_goal role/);
+    expect(() => p({ kind: "afp" })).toThrow(/fund_series_key/);
     expect(() => p({ kind: "spy", usesEquityMtm: true })).toThrow(/equity_ticker/);
     expect(() => p({ kind: "btc", coinPriceTicker: "BTC-USD", usesEquityMtm: true })).toThrow(/coin units/);
-    // A US fund account has no UNO fallback, demo or not.
+    // No fund account has a default series.
     expect(() => p({ kind: "us_401k" })).toThrow(/fund_series_key/);
     expect(() => p({ kind: "hsa" })).toThrow(/fund_series_key/);
   });

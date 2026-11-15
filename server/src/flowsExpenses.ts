@@ -99,7 +99,7 @@ import {
 import { buildInstallmentPaymentGastosLines } from "./ccInstallmentPaymentGastosLines.js";
 import { buildInstallmentPlanGastosLines } from "./ccInstallmentPlanGastosLines.js";
 import { mergeInstallmentPurchaseTotalsIntoLines } from "./ccInstallmentPurchaseTotalLines.js";
-import { applyCcFacturadoFinancingProjection, statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProjectionLines.js";
+import { applyCcFacturadoFinancingProjection } from "./ccFacturadoFinancingProjectionLines.js";
 import {
   type CcExpenseLineRole,
   purchaseMonthFromLine,
@@ -784,8 +784,10 @@ export function expandLineSplitsInDrafts(
     // rates: the shares of a fully split line sum back to the parent's.
     const share = (parent: number | null | undefined, part: number): number | null =>
       parent == null ? null : parent * (part / native.value);
-    const dollarLine = draft.amount_usd != null && draft.amount_usd !== 0;
-    const pesosOf = (part: number): number => (dollarLine ? Math.round(share(draft.amount_clp, part)!) : part);
+    // A peso line's pieces are their own pesos; a piece of a line in any other currency takes its
+    // share of the line's pesos.
+    const pesoLine = isHomeCurrency(native.currency);
+    const pesosOf = (part: number): number => (pesoLine ? part : Math.round(share(draft.amount_clp, part)!));
     const { category_from_bank_name: _fromBankName, ...parent } = draft;
     let piecesClp = 0;
     for (const split of splits) {
@@ -802,7 +804,7 @@ export function expandLineSplitsInDrafts(
         amount_usd: share(draft.amount_usd, split.amount),
         // A peso line's dollars are read on the day the piece was spent; a dollar line's are fixed.
         amount_usd_at_expense:
-          day && !dollarLine
+          day && pesoLine
             ? expenseGastosAmountUsdAtDate(pieceClp, null, day)
             : share(draft.amount_usd_at_expense, split.amount),
         category_slug: split.category_slug,
@@ -896,7 +898,7 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "display names", run: asRows(withExpenseDisplayNames) },
   {
     name: "payment names",
-    run: asRows((lines: FlowCcExpenseLineRow[]) => withExpensePaymentNames(lines, statementFacturadoClpForBillingMonth)),
+    run: asRows((lines: FlowCcExpenseLineRow[]) => withExpensePaymentNames(lines)),
   },
   { name: "specific category rules", run: asRows(withSpecificCategoryRules) },
   { name: "plan prepayment refunds", run: refundPlanPrepaymentCredits },

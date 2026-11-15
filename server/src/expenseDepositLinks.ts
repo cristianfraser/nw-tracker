@@ -24,6 +24,7 @@ import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   MOVEMENT_CLP_LEG_SQL,
   movementClpLegOrZero,
+  requireMovementClp,
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import {
@@ -212,6 +213,9 @@ function depositAccountDashboardGroup(accountId: number): string | null {
   return dashboardBucketForAssetGroupSlug(row.bucket_slug);
 }
 
+/** Several deposit movements fit one segment (same account, day and pesos): none of them can be named. */
+class AmbiguousDepositMovementError extends Error {}
+
 type DepositMovementRow = MovementAmountFields & {
   id: number;
   note: string | null;
@@ -233,18 +237,19 @@ function findDepositMovement(
     )
     .all(accountId, occurredOn) as DepositMovementRow[];
 
-  const exact = rows.filter((r) => Math.round(movementClpLegOrZero(r)) === want);
+  // The query kept single-leg rows with a positive peso leg: each is a peso movement.
+  const exact = rows.filter((r) => Math.round(requireMovementClp(r, "deposit movement of an expense link")) === want);
   if (exact.length === 0) return null;
   if (exact.length === 1) return exact[0]!;
 
   const deptoRows = exact.filter((r) => loanPaymentRowForMovementId(r.id) != null);
   if (deptoRows.length === 1) return deptoRows[0]!;
   if (deptoRows.length > 1) {
-    throw new Error(
+    throw new AmbiguousDepositMovementError(
       `ambiguous depto deposit movements for account ${accountId} ${occurredOn} ${want}`
     );
   }
-  throw new Error(
+  throw new AmbiguousDepositMovementError(
     `ambiguous deposit movements for expense deposit link: account ${accountId} ${occurredOn} ${want}`
   );
 }
@@ -639,8 +644,10 @@ export function tryAutoLinkExpenseDepositLine(line: {
     let movement: ReturnType<typeof findDepositMovement>;
     try {
       movement = findDepositMovementForSegment(seg);
-    } catch {
-      continue;
+    } catch (e) {
+      // Only the ambiguity is skipped; any other failure is a data or code problem and surfaces.
+      if (e instanceof AmbiguousDepositMovementError) continue;
+      throw e;
     }
     if (movement == null) continue;
     const segAmt = Math.round(seg.amount_clp);
@@ -718,7 +725,7 @@ function listDepositMovementIdsAt(
        ORDER BY id`
     )
     .all(accountId, occurredOn) as ({ id: number } & MovementAmountFields)[];
-  return rows.filter((r) => Math.round(movementClpLegOrZero(r)) === want).map((r) => r.id);
+  return rows.filter((r) => Math.round(requireMovementClp(r, "deposit movement of an expense link")) === want).map((r) => r.id);
 }
 
 /**

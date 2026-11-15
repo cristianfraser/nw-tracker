@@ -94,7 +94,6 @@ import {
   applyFintualGoalsSnapshotToDb,
   cleanupUnreconciledFintualCertFundUnitsForPoll,
   collectFintualGoalValuationChanges,
-  cleanupMistakenPollDayFintualValuations,
   fintualEveningCatchUpComplete,
   fintualMappedGoalsApiSignature,
   fintualNavUnchangedSinceLastApply,
@@ -463,10 +462,6 @@ async function runFintual(
       }
     }
     if (fintualSnapshotMatchesDb(snap, resolutions)) {
-      const cleaned = cleanupMistakenPollDayFintualValuations(snap, syncDryRun);
-      if (cleaned > 0) {
-        console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
-      }
       markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun, resolutions);
     }
     console.log(
@@ -499,10 +494,6 @@ async function runFintual(
 
   if (fintualSnapshotMatchesDb(snap, resolutions)) {
     changes.push(...fintualLogChanges);
-    const cleaned = cleanupMistakenPollDayFintualValuations(snap, syncDryRun);
-    if (cleaned > 0) {
-      console.log(`sync: Fintual — removed ${cleaned} mistaken post–as_of valuation row(s).`);
-    }
     markFintualAppliedFromPoll(state, cl, publishYmd, sig, syncDryRun);
     markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun, resolutions);
     if (

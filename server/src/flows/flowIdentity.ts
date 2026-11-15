@@ -49,9 +49,15 @@ export function movementIdOnFlowOfKey(key: string, accountId: number, dbHandle: 
   return row.id;
 }
 
-function rowFlowId(row: FlowSourceRow, dbHandle: Database): number | null {
+/**
+ * The flow of a row an expense key names. Every such row has one: the insert triggers (migrations
+ * 279, 317) write it for movements, card lines, plans and manual expenses, and a key never names a
+ * place bill (`expense_entries` with a place), the one row kind that carries none.
+ */
+function rowFlowId(row: FlowSourceRow, dbHandle: Database): number {
   const r = dbHandle.prepare(`SELECT flow_id FROM ${row.table} WHERE id = ?`).get(row.id) as { flow_id: number | null } | undefined;
-  return r?.flow_id ?? null;
+  if (r?.flow_id == null) throw new Error(`${row.table} ${row.id} has no flow`);
+  return r.flow_id;
 }
 
 /**
@@ -67,7 +73,6 @@ export function ensureFlowForKey(key: string, dbHandle: Database = db): number {
   const keyless = new Map<number, FlowSourceRow[]>();
   for (const row of resolved.rows) {
     const f = rowFlowId(row, dbHandle);
-    if (f == null) continue;
     const isKeyless = (dbHandle.prepare(`SELECT legacy_key FROM flows WHERE id = ?`).get(f) as { legacy_key: string | null })
       .legacy_key == null;
     if (isKeyless) keyless.set(f, [...(keyless.get(f) ?? []), row]);
@@ -78,7 +83,6 @@ export function ensureFlowForKey(key: string, dbHandle: Database = db): number {
     // the key gets a flow of its own, copied from the first row's.
     const first = resolved.rows[0]!;
     const src = rowFlowId(first, dbHandle);
-    if (src == null) throw new Error(`no flow for ${first.table} ${first.id}`);
     return Number(
       dbHandle
         .prepare(

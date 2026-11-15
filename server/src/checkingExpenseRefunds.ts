@@ -17,7 +17,7 @@ import { db } from "./db.js";
 import { foreignCashCurrencyOf } from "./cashCurrency.js";
 import { foreignCheckingAmountIn } from "./checkingCartolaLoaders.js";
 import { HOME_CURRENCY } from "./displayUnits.js";
-import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
+import { movementClpLegOrZero, requireMovementClp, type MovementAmountFields } from "./movementAmounts.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 import { movementFlowId } from "./flows/flowIdentity.js";
 
@@ -82,7 +82,7 @@ export function loadCheckingExpenseRefunds(): CheckingExpenseRefund[] {
         category_slug: r.category_slug,
       };
     }
-    const clp = movementClpLegOrZero(r);
+    const clp = requireMovementClp({ ...r, id: r.movement_id }, "expense refund on a peso checking account");
     if (r.account_id == null || !(clp > 0)) {
       throw new Error(`refund movement ${r.movement_id} is not a single-leg checking credit (${clp})`);
     }

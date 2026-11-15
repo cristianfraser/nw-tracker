@@ -1,4 +1,3 @@
-import { dbStateMemo } from "./dbStateMemo.js";
 import { CARD_CHART_INACTIVE, cardLifecycle } from "./cards/lifecycle.js";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
@@ -7,7 +6,7 @@ import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { accountUsesEquityMtm, equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
 import { accountUsesCryptoMtm, cryptoCoinCumulativeThroughDate } from "./cryptoValuation.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
-import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
+import { accountProfileOptional } from "./accountProfile.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 import { accountHolding } from "./holdings.js";
 import { accountHoldingQtyAt, accountValueCurrency } from "./accountValue.js";
@@ -47,7 +46,6 @@ function monthEndClosingAscForInactiveCheck(accountId: number): number[] {
   return mark ? [mark.value_clp] : [];
 }
 
-const stmtImportKey = db.prepare(`SELECT import_key FROM accounts WHERE id = ?`);
 const stmtHasUnits = db.prepare(
   `SELECT 1 FROM movements
    WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?) AND COALESCE(units_delta, 0) != 0
@@ -72,10 +70,9 @@ function holdingTodayWithoutPrice(accountId: number): number | null {
   if (isOptionContractAccount(accountId)) return optionContractsThroughDate(accountId, today);
   const slug = bucketSlugForAccountId(accountId);
   const kindSlug = slug != null ? accountBucketKindSlug(slug) : "";
-  const importKey = (stmtImportKey.get(accountId) as { import_key: string | null } | undefined)?.import_key ?? null;
   const cuotaLedger =
     isCuotaLedgerKindSlug(kindSlug) && cuotaLedgerSeriesKeyForAccount(accountId) != null;
-  if ((cuotaLedger || isFintualCertV2AccountNotes(importKey)) && stmtHasUnits.get(accountId, accountId, accountId)) {
+  if ((cuotaLedger || accountProfileOptional(accountId)?.quantity.kind === "fintual_goal") && stmtHasUnits.get(accountId, accountId, accountId)) {
     return fintualGoalUnitsFromMovementsThroughDate(accountId, today) ?? 0;
   }
   // A ledger held in another currency (dollar cash): its own quantity, no price.
@@ -96,18 +93,9 @@ function holdingTodayWithoutPrice(accountId: number): number | null {
   return null;
 }
 
-/** Credit-card masters: never tail-inactive (installment projections + retired cards). */
+/** Credit-card masters (the profile's `card` quantity): never tail-inactive (installment projections + retired cards). */
 function isCreditCardChartAccount(accountId: number): boolean {
-  return dbStateMemo("account_is_credit_card_chart", accountId, () => isCreditCardChartAccountUncached(accountId));
-}
-
-function isCreditCardChartAccountUncached(accountId: number): boolean {
-  const slug = bucketSlugForAccountId(accountId);
-  if (slug != null && accountBucketKindSlug(slug) === "credit_card") return true;
-  const row = db
-    .prepare(`SELECT import_key FROM accounts WHERE id = ?`)
-    .get(accountId) as { import_key: string | null } | undefined;
-  return String(row?.import_key ?? "").startsWith("credit_card_master|");
+  return accountProfileOptional(accountId)?.quantity.kind === "card";
 }
 
 /**

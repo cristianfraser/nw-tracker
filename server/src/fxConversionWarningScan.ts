@@ -1,5 +1,5 @@
 import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
-import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
+
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
 import { loadEquityBrokerageCapitalSortFlows } from "./equityBrokerageCapitalFlows.js";
@@ -11,11 +11,10 @@ function listDepositFlowAccountIds(): number[] {
       `SELECT a.id AS account_id, g.slug AS bucket_slug
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (a.import_key IS NULL OR a.import_key != ?)
-         AND COALESCE(a.exclude_from_group_totals, 0) = 0
-         AND g.slug != 'individual_stocks'`
+       WHERE COALESCE(a.exclude_from_group_totals, 0) = 0`
     )
-    .all(NOTE_STOCKS_LEGACY) as { account_id: number; bucket_slug: string }[];
+    .all() as
+ { account_id: number; bucket_slug: string }[];
   return rows
     // Accounts of the net-worth buckets (null: liabilities, unplaced groups).
     .filter((r) => dashboardBucketForAssetGroupSlug(r.bucket_slug) != null)

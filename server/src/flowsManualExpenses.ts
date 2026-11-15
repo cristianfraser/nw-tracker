@@ -40,7 +40,7 @@ const MANUAL_NOTE_PREFIX = "manual:";
 export function normalizeManualExpenseNote(note: string | null | undefined): string | null {
   const t = String(note ?? "").trim();
   if (!t) return MANUAL_NOTE_PREFIX;
-  if (t.startsWith(MANUAL_NOTE_PREFIX) || t.startsWith("synthetic:")) return t;
+  if (t.startsWith(MANUAL_NOTE_PREFIX)) return t;
   return `${MANUAL_NOTE_PREFIX}${t}`;
 }
 

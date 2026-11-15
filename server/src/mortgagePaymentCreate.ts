@@ -72,6 +72,12 @@ function deptoPaymentExists(loanAccountId: number, cuota: string, occurredOn: st
   return row != null;
 }
 
+/** A peso figure `computeMortgagePaymentRow` always computes (the row type allows null for stored rows of other kinds). */
+function requireComputed(value: number | null, field: string): number {
+  if (value == null) throw new Error(`mortgage payment: the computed row has no ${field}`);
+  return value;
+}
+
 export function previewMortgagePayment(
   accountId: number,
   rawInput: MortgagePaymentInput
@@ -81,8 +87,8 @@ export function previewMortgagePayment(
   const computed = computeMortgagePaymentRow(ledger, rawInput);
   return {
     ...computed,
-    property_net_clp: computed.sheet.valor_neto_clp ?? 0,
-    mortgage_balance_clp: computed.sheet.restante_clp ?? 0,
+    property_net_clp: requireComputed(computed.sheet.valor_neto_clp, "valor_neto_clp"),
+    mortgage_balance_clp: requireComputed(computed.sheet.restante_clp, "restante_clp"),
   };
 }
 

@@ -4,9 +4,9 @@
  * {@link withExpenseLinkSyncDeferred} scope (a feed of several cards, a statement corpus, an ingest
  * document) the asks fold into one, run when the outermost scope ends.
  *
- * A leaf on purpose: the movement and card importers ask from inside the card ledger's import
- * cycle, so the sync itself (it builds the expense lines) is registered here by
- * `expenseAssignmentWrites.ts` instead of imported. Asking with none registered throws.
+ * A leaf on purpose: the movement and card importers ask for a sync, and the sync itself builds
+ * the expense lines from what they import, so importing it here would close an import cycle;
+ * `expenseAssignmentWrites.ts` registers it instead. Asking with none registered throws.
  */
 
 let sync: (() => void) | null = null;

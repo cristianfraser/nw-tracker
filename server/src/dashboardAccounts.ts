@@ -4,7 +4,7 @@ import { noteSyncDimmingRead } from "./cacheDependencies.js";
 import { cacheKeyDashboardAccountRows, cacheKeyDashboardNav } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { chainedGroupPctResolver, withDailyChainedAccountRowPcts } from "./periodPctDailyChain.js";
-import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
+import type { DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountIsDebt } from "./accountProfile.js";
@@ -102,12 +102,11 @@ export function listDashboardSourceAccounts(): {
              g.slug AS bucket_slug, g.label AS bucket_label
       FROM accounts a
       INNER JOIN asset_groups g ON g.id = a.asset_group_id
-      WHERE (a.import_key IS NULL OR a.import_key != ?)
-        AND g.slug != 'individual_stocks'
       ORDER BY g.sort_order, a.id, a.name
     `
     )
-    .all(NOTE_STOCKS_LEGACY) as {
+    .all() as {
+
     id: number;
     name: string;
     notes: string | null;

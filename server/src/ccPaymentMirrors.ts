@@ -41,7 +41,7 @@ import {
 } from "./ccPaymentMirrorEvidence.js";
 import { db } from "./db.js";
 import { deleteMovements, insertMovement } from "./movementWrites.js";
-import { MOVEMENT_CLP_LEG_SQL, movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
+import { MOVEMENT_CLP_LEG_SQL, requireMovementClp, type MovementAmountFields } from "./movementAmounts.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { rankByDistance } from "./matching/pairing.js";
@@ -286,7 +286,8 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   const picked: { out: (typeof outs)[number]; ev: CcPaymentEvidence; skew: number }[] = [];
   const ambiguous = new Set<number>();
   for (const out of outs) {
-    const amount = Math.round(Math.abs(movementClpLegOrZero(out)));
+    // A single-leg checking debit with a negative peso leg (the query's filter): a peso movement.
+    const amount = Math.round(Math.abs(requireMovementClp(out, "card payment debit")));
     const isDivisas = DIVISAS_DESC_RE.test(out.note ?? "");
     // A divisas debit bought some foreign currency: it pairs with the card's abono in THAT
     // currency, at an implied rate inside the band around the currency's own rate that day.
@@ -324,7 +325,7 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
         account_id: p.out.account_id,
         account_name: p.out.account_name,
         occurred_on: p.out.occurred_on,
-        amount_clp: movementClpLegOrZero(p.out),
+        amount_clp: requireMovementClp(p.out, "card payment debit"),
         note: p.out.note,
       },
       evidence: p.ev,

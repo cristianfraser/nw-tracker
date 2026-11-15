@@ -94,9 +94,18 @@ export type ResolveFintualGoalNavsResult = {
 /** Per-goal accrued balances for one poll (cleared by clearFintualRealAssetNavCaches). */
 const accruedBalanceCache = new Map<string, FintualGoalAccruedBalance>();
 
-function accountIdForNotes(notes: string): number | null {
-  const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(notes) as { id: number } | undefined;
-  return row?.id ?? null;
+/**
+ * The account of the certificado key a live goal is tracked on. A goal the app does not track
+ * (`fintualGoals.ts`) or whose account row is missing throws: nothing is priced by guess.
+ */
+function certAccountIdForGoal(row: FintualGoalRowWithMatch): number {
+  const key = matchFintualCertGoalV2(row.id, row.name);
+  if (!key) {
+    throw new Error(`Fintual goal ${row.id} has no certificado account: it is not a tracked goal (fintualGoals.ts)`);
+  }
+  const acc = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(key) as { id: number } | undefined;
+  if (!acc) throw new Error(`Fintual goal ${row.id}: no account carries ${key}`);
+  return acc.id;
 }
 
 export function fintualGoalKind(row: FintualGoalRowWithMatch): FintualGoalKind {
@@ -312,21 +321,10 @@ async function fetchGoalAccruedBalance(row: FintualGoalRowWithMatch): Promise<Fi
   return balance;
 }
 
-/**
- * Ledger cuotas for the goal. The goals-API `matchedNotes` may point at an empty legacy
- * predecessor account; the cuotas live on the v2 cert account (the same account the fund_unit
- * writer uses), so prefer whichever candidate holds a positive position.
- */
+/** Ledger cuotas of the goal's certificado account (the account the fund_unit writer uses); null when it holds none. */
 function ledgerUnitsForGoal(row: FintualGoalRowWithMatch): number | null {
-  const v2Notes = matchFintualCertGoalV2(row.id, row.name);
-  for (const notes of [v2Notes, row.matchedNotes]) {
-    if (!notes) continue;
-    const accountId = accountIdForNotes(notes);
-    if (accountId == null) continue;
-    const u = fintualGoalUnitsFromMovements(accountId);
-    if (u != null && Number.isFinite(u) && u > 0) return u;
-  }
-  return null;
+  const u = fintualGoalUnitsFromMovements(certAccountIdForGoal(row));
+  return u != null && Number.isFinite(u) && u > 0 ? u : null;
 }
 
 /**
@@ -345,9 +343,12 @@ export async function resolveFintualGoalNavs(
   let hasTodayInSeries = false;
   let latestClosureYmd: string | null = null;
 
+  // Every live goal is tracked on a certificado account: one that is not stops the poll here,
+  // before anything is fetched or written.
+  for (const row of rows) certAccountIdForGoal(row);
+
   if (useAccrued) {
     for (const row of rows) {
-      if (!row.matchedNotes) continue;
       const balance = await fetchGoalAccruedBalance(row);
       balances.set(row.id, balance);
       if (balance.closureYmd === cl.ymd) hasTodayInSeries = true;

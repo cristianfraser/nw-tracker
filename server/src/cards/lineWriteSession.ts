@@ -6,9 +6,10 @@
  * date (`cards/lineWrites.ts` owns the sequence). A write nested inside another on the same account
  * joins it: it adds its steps and its evidence, and finishes nothing.
  *
- * A leaf with no imports on purpose: the merge and the dedupe steps live in the card ledger's import
- * cycle and open sessions too, so the frame (guard, finish) is registered here by
- * `cards/lineWrites.ts` instead of imported. A session that ends with no frame registered throws.
+ * A leaf with no imports on purpose: the merge and the dedupe steps open sessions too and
+ * `cards/lineWrites.ts` imports them, so importing the frame (guard, finish) from it here would
+ * close an import cycle; it registers the frame instead. A session that ends with no frame
+ * registered throws.
  */
 
 /** What the funnel runs around a session: the guard inside its transaction, the finish after it. */

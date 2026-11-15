@@ -27,6 +27,8 @@ import type { CardLinePlan } from "./cards/lineWriteSession.js";
 import {
   bucketLineMatchesFeedLine,
   bucketLinePurchaseIso,
+  listingLineAmount,
+  listingLineCurrency,
   listOpenBucketLines,
   merchantsSame,
   type CcOpenBucketLine,
@@ -34,6 +36,8 @@ import {
 import { daysBetweenIso } from "nw-tracker-contracts";
 import { isCardPaymentLine } from "./ccPaymentLines.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
+import { roundToCurrency } from "./displayUnits.js";
+import { sameCoin } from "./matching/money.js";
 import { pairOneToOne } from "./matching/pairing.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
@@ -68,14 +72,6 @@ export type CcFeedMirrorResult = {
   annulled: CcFeedMirrorAnnulled[];
 };
 
-function lineCurrency(line: CcOpenBucketLine): "clp" | "usd" { // convention-ok: Santander's card feed has a peso and a dollar slide only
-  return line.amount_usd != null && line.amount_usd !== 0 ? "usd" : "clp";
-}
-
-function roundedUnits(amount: number, currency: "clp" | "usd"): number { // convention-ok: Santander's card feed has a peso and a dollar slide only
-  return currency === "usd" ? Math.round(amount * 100) : Math.round(amount); // convention-ok: pesos have no minor unit; dollars round to the cent
-}
-
 /**
  * The currencies whose listing is complete, and why (pure). A currency is complete when its slide
  * stated the close's SALDO INICIAL, or when the bank's own cupo utilizado for it, read in the same
@@ -104,10 +100,11 @@ export function feedMirrorCurrencies(opts: {
     const saldoInicial = currency === "clp" ? opts.closeOnRecord?.saldo_inicial_clp : opts.closeOnRecord?.saldo_inicial_usd; // convention-ok: Santander's card feed has a peso and a dollar slide only
     const used = opts.bankUsed[currency];
     if (saldoInicial == null || used == null) continue;
+    // Each figure to the currency's coin, then their sum against the bank's, to the coin.
     const listed = opts.lines
       .filter((l) => l.currency === currency)
-      .reduce((sum, l) => sum + roundedUnits(l.amount, currency), 0);
-    if (roundedUnits(saldoInicial, currency) + listed === roundedUnits(used, currency)) {
+      .reduce((sum, l) => sum + roundToCurrency(l.amount, currency), 0);
+    if (sameCoin(roundToCurrency(saldoInicial, currency) + listed, used, currency)) {
       proof[currency] = "cupo_identity";
     }
   }
@@ -121,7 +118,7 @@ export function planFeedMirror(
 ): CcOpenBucketLine[] {
   const candidates = listOpenBucketLines(accountId).filter((line) => {
     if (line.installment_flag) return false;
-    if (!opts.currencies.has(lineCurrency(line))) return false;
+    if (!opts.currencies.has(listingLineCurrency(line))) return false;
     if (isCardPaymentLine(line)) return false;
     const iso = bucketLinePurchaseIso(line);
     return iso != null && iso >= opts.windowStartIso;
@@ -167,14 +164,13 @@ export function classifyUnlistedLines(
   const taken = new Set<number>();
   return unlisted.map((line) => {
     const iso = bucketLinePurchaseIso(line);
-    const usd = line.amount_usd != null && line.amount_usd !== 0;
-    if (!((usd ? line.amount_usd : line.amount_clp) ?? 0) || ((usd ? line.amount_usd! : line.amount_clp!) < 0)) {
+    const currency = listingLineCurrency(line);
+    const own = listingLineAmount(line) ?? 0;
+    if (!own || own < 0) {
       return { line, kind: "credit" as const };
     }
-    const currency = usd ? "usd" : "clp"; // convention-ok: Santander's card feed has a peso and a dollar slide only
-    const amount = Math.abs(usd ? line.amount_usd! : (line.amount_clp ?? 0));
-    const sameAmount = (f: CcListingLine): boolean =>
-      usd ? Math.abs(Math.abs(f.amount) - amount) <= 0.005 : Math.round(Math.abs(f.amount)) === Math.round(amount);
+    const amount = Math.abs(own);
+    const sameAmount = (f: CcListingLine): boolean => sameCoin(Math.abs(f.amount), amount, currency);
     const nearIdx: number[] = [];
     feedLines.forEach((f, i) => {
       if (f.currency === currency && iso != null && Math.abs(daysBetweenIso(iso, f.transaction_date)) <= window) nearIdx.push(i);

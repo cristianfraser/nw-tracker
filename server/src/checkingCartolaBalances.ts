@@ -115,7 +115,7 @@ export function clearCheckingAccountValuations(accountId: number, dbHandle: Data
 }
 
 const ANCHOR_NOTE_PREFIX = "import:cartola|anchor|";
-const OPENING_NOTE_PREFIX = "import:cartola|opening|";
+
 
 export type CheckingLedgerAnchorDto = {
   movement_id: number;
@@ -236,9 +236,7 @@ function defaultAnchorPlacementDate(
   return defaultCheckingLedgerAnchorDate(startMonth);
 }
 
-function deleteLegacyOpeningMovements(accountId: number, dbHandle: Database = db): number {
-  return deleteAccountMovementsByNote(accountId, `${OPENING_NOTE_PREFIX}%`, dbHandle);
-}
+
 
 function getLatestCartolaSaldoFinal(
   accountId: number,
@@ -428,7 +426,7 @@ export function ensureCheckingLedgerAnchor(
   accountId: number,
   dbHandle: Database = db
 ): EnsureCheckingLedgerAnchorResult {
-  deleteLegacyOpeningMovements(accountId, dbHandle);
+
 
   const latest = getLatestCartolaSaldoFinal(accountId, dbHandle);
   if (!latest) {

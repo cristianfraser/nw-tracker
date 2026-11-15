@@ -64,13 +64,13 @@ describe("afpDisplaySeriesKey", () => {
 });
 
 describe("cuotaLedgerSeriesKeyForAccount (afp)", () => {
-  it("prices with the series the account declares, UNO Fondo A when the column is empty", () => {
+  it("prices with the series the account declares; an AFP account that declares none throws", () => {
     const planvital = insertAfpAccount("planvital", "afp_planvital_cuota_a");
     const bare = insertAfpAccount("bare", null);
     expect(cuotaLedgerSeriesKeyForAccount(planvital)).toBe("afp_planvital_cuota_a");
     // The date no longer picks the series: the same account, any day.
     expect(cuotaLedgerSeriesKeyForAccount(planvital)).toBe("afp_planvital_cuota_a");
-    expect(cuotaLedgerSeriesKeyForAccount(bare)).toBe(AFP_UNO_CUOTA_SERIES_KEY);
+    expect(() => cuotaLedgerSeriesKeyForAccount(bare)).toThrow(/fund_series_key/);
   });
 
   it("names the position ticker after the series", () => {

@@ -25,6 +25,7 @@ import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccIssuerBySlug } from "./ccIssuers.js";
 import { isStatementSourceKind } from "./ccStatementSourceKind.js";
 import { ccPaymentEvidenceKey, type CcPaymentIdentity } from "./ccPaymentMirrorEvidence.js";
+import { statementFacturadoClpForBillingMonth } from "./ccFacturadoFinancingProjectionLines.js";
 import { findLines } from "./cards/purchases.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
@@ -242,14 +243,8 @@ export function currentPlasticLast4(accountId: number): string | null {
   return (selCardLast4.get(accountId) as { card_last4: string | null } | undefined)?.card_last4 ?? null;
 }
 
-/**
- * A facturado's closed statement total (`statementFacturadoClpForBillingMonth`, passed in by the
- * pipeline: that module reads the expense-line types, so importing it here would close a cycle).
- */
-export type FacturadoClpResolver = (accountId: number, billingMonth: string) => number | null;
-
 /** The stored records the names read, loaded once per build. */
-export function loadPaymentNameFacts(facturadoFor: FacturadoClpResolver): PaymentNameFacts {
+export function loadPaymentNameFacts(): PaymentNameFacts {
   const masters = listCreditCardMasterAccountIds();
   const masterSet = new Set(masters);
   const cards = new Map<number, PaymentNameCard>();
@@ -260,7 +255,7 @@ export function loadPaymentNameFacts(facturadoFor: FacturadoClpResolver): Paymen
   }
   const payments: FacturadoPaymentFact[] = listCcFacturadoFinancingLinks().map((link) => ({
     paid_account_id: link.financed_account_id,
-    facturado_clp: facturadoFor(link.financed_account_id, link.financed_billing_month),
+    facturado_clp: statementFacturadoClpForBillingMonth(link.financed_account_id, link.financed_billing_month),
     plans: link.financing,
     charges: (link.charges ?? []).map((c) => ({
       account_id: c.account_id,
@@ -311,7 +306,7 @@ export function pagoTarjetaCardLegKey(r: {
 }
 
 /** The pipeline step: card payment lines named by what they paid. */
-export function withExpensePaymentNames<L extends PaymentNameLine>(lines: L[], facturadoFor: FacturadoClpResolver): L[] {
+export function withExpensePaymentNames<L extends PaymentNameLine>(lines: L[]): L[] {
   if (!lines.some((l) => l.source === "cc")) return lines;
-  return nameExpensePaymentLines(lines, loadPaymentNameFacts(facturadoFor));
+  return nameExpensePaymentLines(lines, loadPaymentNameFacts());
 }

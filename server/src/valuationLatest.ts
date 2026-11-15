@@ -40,6 +40,11 @@ function storedValueClp(
   const cat = stmtCategorySlug.get(accountId) as { bucket_slug: string } | undefined;
   const kind = cat ? accountBucketKindSlug(cat.bucket_slug) : "";
   if (valuationsAreAppraisals(kind)) return undefined;
+  if (kind === "mortgage") {
+    throw new Error(
+      `${ctx}: mortgage account ${accountId} has a stored valuation on ${row.as_of_date}; a loan is valued by its depto ledger only (migration 261 removed its valuations)`
+    );
+  }
   const value_clp = storedValuationInUnit(
     { value: row.value_clp, currency: row.currency, as_of_date: row.as_of_date },
     "clp",
@@ -124,7 +129,8 @@ export function latestCreditCardValuationRowAsOf(
 
 /**
  * Mortgage balance for display: **crédito restante** from the movement ledger (UF × UF día),
- * same as account detail and {@link liabilitiesBreakdownClpAsOf}; stored valuations when no ledger.
+ * same as account detail and {@link liabilitiesBreakdownClpAsOf}. The ledger is a loan's only
+ * value source: `undefined` before its property's first ledger row.
  */
 export function latestMortgageDisplayedBalance(
   accountId: number,
@@ -133,7 +139,7 @@ export function latestMortgageDisplayedBalance(
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
   const cat = stmtCategorySlug.get(accountId) as { bucket_slug: string } | undefined;
   if (!cat || accountBucketKindSlug(cat.bucket_slug) !== "mortgage") {
-    return latestValuationRowOnOrBefore(accountId, asOfYmd);
+    throw new Error(`latestMortgageDisplayedBalance: account ${accountId} is not a mortgage`);
   }
   const ledger = deptoLedgerForAccount(accountId);
   if (ledger.length > 0) {
@@ -146,8 +152,9 @@ export function latestMortgageDisplayedBalance(
       }
     }
   }
-  return latestValuationRowOnOrBefore(accountId, asOfYmd);
+  return undefined;
 }
+
 
 /** Pasivos snapshot for dashboard / breakdown (credit card uses live ledger when current). */
 export function latestLiabilityValuationRowForSnapshot(

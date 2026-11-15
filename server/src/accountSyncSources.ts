@@ -1,9 +1,6 @@
 import { db } from "./db.js";
 import { equityMarketKind, unknownEquityMarketKind } from "./equityQuote.js";
-import {
-  fintualCertV2SeriesKeyFromImportNotes,
-  isFintualCertV2AccountNotes,
-} from "./fintualCertV2.js";
+import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 import type { GlobalSyncSource } from "./globalSyncStale.js";
 import { AFC_CIC_SERIES_KEY } from "./afcCicSeries.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
@@ -15,32 +12,10 @@ export type AccountSyncSourceRow = {
   fund_series_key: string | null;
 };
 
-function fundSeriesKeyFromImportNotes(importNotes: string): string | null {
-  const v2 = fintualCertV2SeriesKeyFromImportNotes(importNotes);
-  if (v2) return v2;
-  const key = importNotes.match(/import:excel\|key=([\w_]+)/)?.[1];
-  if (!key) return null;
-  switch (key) {
-    case "fintual_rn":
-      return "fintual_risky_norris";
-    case "apv_a":
-      return "fintual_risky_norris_apv";
-    default:
-      return null;
-  }
-}
-
-function resolvedFundSeriesKey(importKey: string | null, fundSeriesKey: string | null): string | null {
-  const col = fundSeriesKey?.trim();
-  if (col) return col;
-  if (importKey) return fundSeriesKeyFromImportNotes(importKey);
-  return null;
-}
-
+/** A Fintual fund account: a certificado account, or any account declared on a Fintual series. */
 function isFintualFundAccount(importKey: string | null, fundSeriesKey: string | null): boolean {
   if (isFintualCertV2AccountNotes(importKey)) return true;
-  const key = resolvedFundSeriesKey(importKey, fundSeriesKey);
-  return key != null && key.startsWith("fintual");
+  return fundSeriesKey?.trim().startsWith("fintual") ?? false;
 }
 
 /** Deterministic inference used only when (re)seeding `account_sync_sources`. */
@@ -87,14 +62,9 @@ export function reseedAccountSyncSources(accountId: number): GlobalSyncSource[] 
 /**
  * Backfill `account_sync_sources` when the table is empty but accounts exist (fresh
  * demo/imported DBs, or migration 109 having run before its hook existed). Called at
- * server boot and from the demo generator — NOT from db.ts module scope (a require
- * cycle there resolves to an incomplete module under tsx).
+ * server boot and from the demo generator (db.ts cannot call it: this module imports db.ts).
  */
 export function ensureAccountSyncSourcesSeeded(): void {
-  const table = db
-    .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'account_sync_sources'`)
-    .get() as { 1: number } | undefined;
-  if (!table) return;
   const linkCount = db.prepare(`SELECT COUNT(*) AS c FROM account_sync_sources`).get() as { c: number };
   if (linkCount.c > 0) return;
   const accountCount = db.prepare(`SELECT COUNT(*) AS c FROM accounts`).get() as { c: number };

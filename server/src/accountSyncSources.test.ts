@@ -20,7 +20,15 @@ describe("accountSyncSources", () => {
     ).toEqual(["fintual"]);
   });
 
-  it("infers fintual for legacy fund series from excel notes", () => {
+  it("infers fintual from the declared series, never from a legacy excel identity string", () => {
+    expect(
+      inferSyncSourcesForAccount({
+        id: 1,
+        import_key: null,
+        equity_ticker: null,
+        fund_series_key: "fintual_risky_norris",
+      })
+    ).toEqual(["fintual"]);
     expect(
       inferSyncSourcesForAccount({
         id: 1,
@@ -28,7 +36,7 @@ describe("accountSyncSources", () => {
         equity_ticker: null,
         fund_series_key: null,
       })
-    ).toEqual(["fintual"]);
+    ).toEqual([]);
   });
 
   it("infers afp_uno for the account declared on the UNO Fondo A series, whatever its import key", () => {

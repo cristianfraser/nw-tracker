@@ -1,69 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyFintualGoalsSnapshotToDb,
   collectFintualGoalValuationChanges,
   fintualMappedGoalsApiSignature,
-  shouldRecordFintualCertFundUnit,
   syncFintualFundUnitsFromResolutions,
 } from "./fintualApplyShared.js";
 import type { FintualGoalSnapshot } from "./fintualApiLib.js";
 import type { FintualGoalNavResolution } from "./fintualRealAssetNav.js";
 import { db } from "./db.js";
-import { upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
-
-describe("shouldRecordFintualCertFundUnit", () => {
-  it("allows real_assets publish price", () => {
-    expect(
-      shouldRecordFintualCertFundUnit({
-        accountId: 1,
-        importNotes: "import:fintual|cert|key=risky_norris",
-        asOfYmd: "2026-06-24",
-        goalsNavClp: 10_000_000,
-        fundPriceClp: 4136.9,
-      })
-    ).toBe(true);
-  });
-
-  it("skips inferred write when goals API NAV unchanged", () => {
-    const bucket = db
-      .prepare(
-        `SELECT id FROM asset_groups WHERE slug = 'fintual_risky_norris' OR slug LIKE '%__fintual_risky_norris' LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    expect(bucket).toBeTruthy();
-    const notes = "import:fintual|cert|key=risky_norris";
-    const ins = db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'reconcile test', ?, ?)`
-    );
-    const r = ins.run(bucket!.id, notes, notes);
-    const accountId = Number(r.lastInsertRowid);
-    db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-       VALUES (?, 1000, 'clp', '2025-01-10', 'vitest', 10)`
-    ).run(accountId);
-    upsertFundUnitSpotPreservingHistory({
-      seriesKey: "fintual_cert_risky_norris",
-      observationDay: "2025-01-09",
-      unitValueClp: 100,
-      note: "vitest",
-      carryNote: "vitest-carry",
-      dryRun: false,
-    });
-    expect(
-      shouldRecordFintualCertFundUnit({
-        accountId,
-        importNotes: notes,
-        asOfYmd: "2025-01-10",
-        goalsNavClp: 1000,
-        fundPriceClp: null,
-      })
-    ).toBe(false);
-    db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
-    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
-    db.prepare(
-      `DELETE FROM fund_unit_daily WHERE series_key = 'fintual_cert_risky_norris' AND note = 'vitest'`
-    ).run();
-  });
-});
 
 describe("fintualMappedGoalsApiSignature", () => {
   it("uses the goals API NAV, not the applied shares valuation", () => {
@@ -187,5 +131,56 @@ describe("syncFintualFundUnitsFromResolutions", () => {
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
       db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = 'fintual_cert_risky_norris' AND day >= '2099-03-01'`).run();
     }
+  });
+
+  it("records the publish price of a goal's certificado account", () => {
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
+    const notes = "import:fintual|cert|key=risky_norris";
+    const existing = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(notes) as { id: number } | undefined;
+    const accountId =
+      existing?.id ??
+      Number(
+        db
+          .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'publish vitest', ?, ?)`)
+          .run(group.id, notes, notes).lastInsertRowid
+      );
+    db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = 'fintual_cert_risky_norris' AND day >= '2099-03-01'`).run();
+    try {
+      const resolutions: FintualGoalNavResolution[] = [
+        {
+          row: { id: "2859", name: "caca daca", navClp: 12_000, matchedNotes: notes },
+          goalsApiNavClp: 12_000,
+          sharesValuationClp: 12_000,
+          appliedNavClp: 12_000,
+          units: 10,
+          fintualShares: 10,
+          fundPriceClp: 1200,
+          pending: null,
+          mismatch: false,
+          closureLagsPublish: false,
+        },
+      ];
+      expect(syncFintualFundUnitsFromResolutions(resolutions, "2099-03-02", false)).toBe(1);
+      const bar = db
+        .prepare(`SELECT unit_value FROM fund_unit_daily WHERE series_key = 'fintual_cert_risky_norris' AND day = '2099-03-02'`)
+        .get() as { unit_value: number } | undefined;
+      expect(bar?.unit_value).toBe(1200);
+    } finally {
+      if (!existing) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+      db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = 'fintual_cert_risky_norris' AND day >= '2099-03-01'`).run();
+    }
+  });
+});
+
+describe("a live goal with no certificado account", () => {
+  const snapOf = (id: string): FintualGoalSnapshot => ({
+    fetchedAt: "2099-03-02T00:00:00.000Z",
+    asOfDate: "2099-03-02",
+    goals: [{ id, name: "vitest untracked goal", navClp: 1000, matchedNotes: null }],
+  });
+
+  it("throws for a goal the app does not track, instead of skipping it", () => {
+    expect(() => collectFintualGoalValuationChanges(snapOf("999000111"))).toThrow(/not a tracked goal/);
+    expect(() => applyFintualGoalsSnapshotToDb(snapOf("999000111"), true)).toThrow(/not a tracked goal/);
   });
 });

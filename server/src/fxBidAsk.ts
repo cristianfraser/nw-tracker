@@ -1,5 +1,4 @@
 import { db } from "./db.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 
 export type FxBidAskRow = {
   date: string;
@@ -124,16 +123,4 @@ export function materializeInferredBidAskForDate(date: string): FxBidAskRow | nu
   };
   upsertFxBidAskRow(row);
   return row;
-}
-
-/**
- * Ensure a buy rate exists on or before `paymentDate` (materialize on payment date when
- * missing). Future dates are never materialized: persisting today's mid under a future
- * date would freeze later conversions at a stale rate once that date passes (the lookup
- * infers transiently for such dates instead).
- */
-export function ensureBidAskForPaymentDate(paymentDate: string): void {
-  if (paymentDate > chileCalendarTodayYmd()) return;
-  if (fxBuyClpPerUsdOnOrBefore(paymentDate) != null) return;
-  materializeInferredBidAskForDate(paymentDate);
 }

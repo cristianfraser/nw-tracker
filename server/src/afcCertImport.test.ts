@@ -248,23 +248,33 @@ describe("AFC ledger rebuild (test DB)", () => {
     expect(finalRow).toEqual({ amount: -500, flow_kind: "cash_fee" });
   });
 
-  it("keys a true-up on the saldo day: the next cartola's saldo inicial is the same row, a legacy key is rekeyed", () => {
-    // Runs after the true-ups above were applied: both boundaries plan «unchanged».
-    const cartola = CARTOLA;
-    const finalDay = cartola.saldo_final_ymd;
-    // A row written under the old key for the same day is found and rekeyed on the next plan.
+  it("keys a true-up on the saldo day alone, so the next cartola's saldo inicial is the same row", () => {
+    // Runs after the true-ups above were applied: one row per boundary day, keyed by the day.
+    for (const day of [CARTOLA.saldo_inicial_ymd, CARTOLA.saldo_final_ymd]) {
+      const rows = db
+        .prepare(`SELECT note FROM movements WHERE account_id = ? AND note LIKE 'AFC ajuste cartola%' AND occurred_on = ?`)
+        .all(accountId, day) as { note: string }[];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.note.startsWith(`${afcCartolaTrueUpNoteKey(day)} `)).toBe(true);
+    }
+    // A row keyed any other way is not this boundary's row: the plan adds the true-up beside it.
     db.prepare(`UPDATE movements SET note = ? WHERE account_id = ? AND note LIKE ?`).run(
-      `AFC ajuste cartola — saldo final ${finalDay} · legacy`,
+      "vitest other note",
       accountId,
-      `${afcCartolaTrueUpNoteKey(finalDay)} %`
+      `${afcCartolaTrueUpNoteKey(CARTOLA.saldo_final_ymd)} %`
     );
-    const again = planAfcCartolaTrueUps(accountId, cartola);
-    expect(again.trueups.map((t) => t.status)).toEqual(["unchanged", "update"]);
-    applyAfcCartolaTrueUps(again);
-    const rows = db.prepare(`SELECT note FROM movements WHERE account_id = ? AND note LIKE 'AFC ajuste cartola%' AND occurred_on = ?`).all(accountId, finalDay) as { note: string }[];
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.note.startsWith(`${afcCartolaTrueUpNoteKey(finalDay)} `)).toBe(true);
+    const again = planAfcCartolaTrueUps(accountId, CARTOLA);
+    expect(again.trueups.map((t) => [t.which, t.existing_id == null])).toEqual([
+      ["inicial", false],
+      ["final", true],
+    ]);
+    db.prepare(`UPDATE movements SET note = ? WHERE account_id = ? AND note = ?`).run(
+      `${afcCartolaTrueUpNoteKey(CARTOLA.saldo_final_ymd)} restored`,
+      accountId,
+      "vitest other note"
+    );
   });
+
 
   it("refuses a cartola whose cotizaciones are not all in the ledger", () => {
     // One more peso-thousand of cotizaciones than the ledger holds (the detalle's second row).

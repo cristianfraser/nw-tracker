@@ -30,10 +30,11 @@ beforeAll(() => {
     .prepare(`SELECT id FROM asset_groups WHERE slug LIKE '%cuenta_corriente' LIMIT 1`)
     .get() as { id: number } | undefined;
   if (!afpGroup || !checkingGroup) return;
-  const ins = db.prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, ?)`);
-  afpFrom = Number(ins.run(afpGroup.id, "vitest-counter-units PlanVital A").lastInsertRowid);
-  afpTo = Number(ins.run(afpGroup.id, "vitest-counter-units Modelo A").lastInsertRowid);
-  checking = Number(ins.run(checkingGroup.id, "vitest-counter-units checking").lastInsertRowid);
+  // An AFP account declares its series (no default).
+  const ins = db.prepare(`INSERT INTO accounts (asset_group_id, name, fund_series_key) VALUES (?, ?, ?)`);
+  afpFrom = Number(ins.run(afpGroup.id, "vitest-counter-units PlanVital A", "afp_planvital_cuota_a").lastInsertRowid);
+  afpTo = Number(ins.run(afpGroup.id, "vitest-counter-units Modelo A", "afp_modelo_cuota_a").lastInsertRowid);
+  checking = Number(ins.run(checkingGroup.id, "vitest-counter-units checking", null).lastInsertRowid);
 });
 
 afterAll(() => {

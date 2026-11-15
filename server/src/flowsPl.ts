@@ -282,8 +282,11 @@ export function flowsPlAccountPerfSummary(monthly: readonly AccountMonthlyPerfor
   let pl_cumulative = 0;
   for (const [mk, rows] of byMonth) {
     const picked = pickRepresentativeMonthlyPerfRow([...rows], mk);
-    const nominal =
-      picked.nominal_pl != null && Number.isFinite(picked.nominal_pl) ? picked.nominal_pl : 0;
+    // Null: the month has no P/L (nothing held). Anything else is a number, as the chart builder demands.
+    const nominal = picked.nominal_pl ?? 0;
+    if (!Number.isFinite(nominal)) {
+      throw new Error(`flows PL: non-finite nominal_pl for ${mk}`);
+    }
     pl_cumulative += nominal;
     if (mk.slice(0, 4) === currentYear) pl_ytd += nominal;
     if (mk === currentMk) pl_month += nominal;
