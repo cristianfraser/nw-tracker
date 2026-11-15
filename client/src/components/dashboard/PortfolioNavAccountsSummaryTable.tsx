@@ -25,12 +25,7 @@ import type {
 import { cardDeltaFractionDigits, DepositedMetricFlow } from "./DashboardCardGroupMetrics";
 import { DashboardCardValue } from "./DashboardCardValue";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
-import { Table } from "../ui/Table";
-import {
-  TableMobileCard,
-  TableMobileCardRow,
-  TableMobileCardSection,
-} from "../ui/TableMobileCard";
+import { ColumnTable, type TableColumn } from "../ui/ColumnTable";
 import styles from "./PortfolioNavAccountsSummaryTable.module.css";
 
 export type PortfolioNavAccountsSummaryTableProps = {
@@ -96,7 +91,7 @@ function serverPctOnDeposits(pct: PctBySlice) {
  * when the table stands in for the page's summary card), and two or more liquidated rows
  * folded into one «Liquidadas (n)» row with the server's `liquidated` figures, opened with
  * «Ver más». No figure here is a client Σ of rows.
- * Parallel desktop `<td>` / mobile `<TableMobileCard>` renderings (keep in sync).
+ * One column list (`ColumnTable`) draws the desktop row and the mobile card.
  */
 export function PortfolioNavAccountsSummaryTable({
   dash,
@@ -221,19 +216,6 @@ export function PortfolioNavAccountsSummaryTable({
     } as Record<PeriodSlice, string>,
   };
 
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{labels.account}</th>
-        <th className="desktop-only">{labels.balance}</th>
-        <th className="desktop-only">{labels.month}</th>
-        <th className="desktop-only">{labels.year}</th>
-        <th className="desktop-only">{labels.total}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
-
   const liquidatedToggle = (
     <Button
       variant="link"
@@ -249,134 +231,132 @@ export function PortfolioNavAccountsSummaryTable({
     </Button>
   );
 
-  return (
-    <Table header={header} tableClassName="table--parallel-mobile table--accounts-summary">
-      {rows.map((row) => {
-        const { metricsByPeriod } = row;
-        const lifetime = metricsByPeriod.month;
-        const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, unit);
-        const nameCell =
-          row.kind === "liquidated" ? (
-            <div className={styles.nameStack}>
-              <span>{row.name}</span>
-              {liquidatedToggle}
-            </div>
-          ) : (
-            row.name
-          );
-        // The hidden parallel rendering renders its flows static (animated=false): a
-        // display:none number-flow measures digit widths as 0, and coupling it to the
-        // visible cell's animation collapses zero targets to empty digits.
-        const isAnimated = (variant: CellVariant) => variant === "desktop" && animated;
-        /** Balance with the day P/L underneath — the card's balance-row framing. */
-        const balanceCell = (variant: CellVariant) => (
-          <div className={styles.cellStack}>
-            {balanceValue(variant)}
-            {plLine("day", variant)}
-          </div>
-        );
-        const balanceValue = (variant: CellVariant) => (
-          <DashboardCardValue
-            value={row.value}
-            unit={unit}
+  const nameCell = (row: AccountTableRow) =>
+    row.kind === "liquidated" ? (
+      <div className={styles.nameStack}>
+        <span>{row.name}</span>
+        {liquidatedToggle}
+      </div>
+    ) : (
+      row.name
+    );
+  // The hidden parallel rendering renders its flows static (animated=false): a
+  // display:none number-flow measures digit widths as 0, and coupling it to the
+  // visible cell's animation collapses zero targets to empty digits.
+  const isAnimated = (variant: CellVariant) => variant === "desktop" && animated;
+  const balanceValue = (row: AccountTableRow, variant: CellVariant) => (
+    <DashboardCardValue
+      value={row.value}
+      unit={unit}
+      animated={isAnimated(variant)}
+      // Desktop cell aligns left like every other column ("breakdown" is a
+      // block-level right-align meant for card sub-balance lists; the mobile
+      // card row keeps it — values are right-aligned there).
+      variant={variant === "desktop" ? "main" : "breakdown"}
+      fxMissing={row.fxMissing}
+      syncStale={row.syncStale}
+    />
+  );
+  /** Aportes with an inflow/outflow arrow (→ net in, 0 included; ← net out). */
+  const depositsLine = (row: AccountTableRow, slice: Exclude<PeriodSlice, "day">, variant: CellVariant) => {
+    const { metricsByPeriod } = row;
+    const value = roundedMetricDeposits(
+      slice === "total" ? metricsByPeriod.month : metricsByPeriod[slice],
+      slice === "total" ? "total" : "period"
+    );
+    return (
+      <span title={labels.deposits[slice]} className={styles.depositsLine}>
+        {value != null ? <span aria-hidden>{value >= 0 ? "\u2192" : "\u2190"}</span> : null}
+        <DepositedMetricFlow value={value} unit={unit} animated={isAnimated(variant)} />
+      </span>
+    );
+  };
+  /** `▲1xx.xxx (2,68%)` — P/L with the flow-adjusted period % as a parenthetical. */
+  const plLine = (row: AccountTableRow, slice: PeriodSlice, variant: CellVariant) => {
+    const { metricsByPeriod } = row;
+    const pct = row.pct(slice);
+    // The total %: the compounded return; its hover gives the return on net deposits.
+    const onDeposits = slice === "total" ? row.pctOnDeposits() : null;
+    return (
+      <span className={styles.plLine}>
+        <span title={labels.pl[slice]}>
+          <DeltaMetricFlow
+            delta={roundedMetricDelta(
+              slice === "total" ? metricsByPeriod.month : metricsByPeriod[slice],
+              unit,
+              slice === "total" ? "total" : "period"
+            )}
             animated={isAnimated(variant)}
-            // Desktop cell aligns left like every other column ("breakdown" is a
-            // block-level right-align meant for card sub-balance lists; the mobile
-            // card row keeps it — values are right-aligned there).
-            variant={variant === "desktop" ? "main" : "breakdown"}
-            fxMissing={row.fxMissing}
-            syncStale={row.syncStale}
+            fractionDigits={cardDeltaFractionDigits(metricsByPeriod, unit)}
+            className="accounts-summary-delta"
           />
-        );
-        /** Aportes with an inflow/outflow arrow (→ net in, 0 included; ← net out). */
-        const depositsLine = (slice: Exclude<PeriodSlice, "day">, variant: CellVariant) => {
-          const value = roundedMetricDeposits(
-            slice === "total" ? lifetime : metricsByPeriod[slice],
-            slice === "total" ? "total" : "period"
-          );
-          return (
-            <span title={labels.deposits[slice]} className={styles.depositsLine}>
-              {value != null ? (
-                <span aria-hidden>{value >= 0 ? "\u2192" : "\u2190"}</span>
-              ) : null}
-              <DepositedMetricFlow
-                value={value}
-                unit={unit}
-                animated={isAnimated(variant)}
-              />
-            </span>
-          );
-        };
-        /** `▲1xx.xxx (2,68%)` — P/L with the flow-adjusted period % as a parenthetical. */
-        const plLine = (slice: PeriodSlice, variant: CellVariant) => {
-          const pct = row.pct(slice);
-          // The total %: the compounded return; its hover gives the return on net deposits.
-          const onDeposits = slice === "total" ? row.pctOnDeposits() : null;
-          return (
-            <span className={styles.plLine}>
-              <span title={labels.pl[slice]}>
-                <DeltaMetricFlow
-                  delta={roundedMetricDelta(
-                    slice === "total" ? lifetime : metricsByPeriod[slice],
-                    unit,
-                    slice === "total" ? "total" : "period"
-                  )}
-                  animated={isAnimated(variant)}
-                  fractionDigits={deltaFractionDigits}
-                  className="accounts-summary-delta"
-                />
-              </span>
-              {pct != null ? (
-                <span
-                  className={cn("mono muted", styles.pct)}
-                  title={
-                    onDeposits != null
-                      ? t("groupPage.accountsTable.pctOnDeposits", { pct: formatPct(onDeposits * 100) })
-                      : labels.pct
-                  }
-                >
-                  ({formatPct(pct * 100)})
-                </span>
-              ) : null}
-            </span>
-          );
-        };
-        const periodCell = (slice: PeriodSlice, variant: CellVariant) => (
-          <div className={styles.cellStack}>
-            {slice !== "day" ? depositsLine(slice, variant) : null}
-            {plLine(slice, variant)}
-          </div>
-        );
-        const rowClass =
-          row.kind === "total"
-            ? "accounts-summary-row--total"
-            : row.kind === "liquidated_detail"
-              ? "accounts-summary-row--liquidated-detail"
-              : undefined;
-        return (
-          <tr key={row.key} className={cn(rowClass, row.inactive && styles.rowInactive)}>
-            <td className="desktop-only">{nameCell}</td>
-            <td className="mono desktop-only">{balanceCell("desktop")}</td>
-            <td className="mono desktop-only">{periodCell("month", "desktop")}</td>
-            <td className="mono desktop-only">{periodCell("year", "desktop")}</td>
-            <td className="mono desktop-only">{periodCell("total", "desktop")}</td>
-            <td className="mobile-only">
-              <TableMobileCard title={nameCell}>
-                <TableMobileCardSection>
-                  <TableMobileCardRow label={labels.balance} value={balanceCell("mobile")} />
-                </TableMobileCardSection>
-                <TableMobileCardSection>
-                  <TableMobileCardRow label={labels.month} value={periodCell("month", "mobile")} />
-                  <TableMobileCardRow label={labels.year} value={periodCell("year", "mobile")} />
-                </TableMobileCardSection>
-                <TableMobileCardSection>
-                  <TableMobileCardRow label={labels.total} value={periodCell("total", "mobile")} />
-                </TableMobileCardSection>
-              </TableMobileCard>
-            </td>
-          </tr>
-        );
-      })}
-    </Table>
+        </span>
+        {pct != null ? (
+          <span
+            className={cn("mono muted", styles.pct)}
+            title={
+              onDeposits != null
+                ? t("groupPage.accountsTable.pctOnDeposits", { pct: formatPct(onDeposits * 100) })
+                : labels.pct
+            }
+          >
+            ({formatPct(pct * 100)})
+          </span>
+        ) : null}
+      </span>
+    );
+  };
+  /** Balance with the day P/L underneath — the card's balance-row framing. */
+  const balanceCell = (row: AccountTableRow, variant: CellVariant) => (
+    <div className={styles.cellStack}>
+      {balanceValue(row, variant)}
+      {plLine(row, "day", variant)}
+    </div>
+  );
+  const periodCell = (row: AccountTableRow, slice: Exclude<PeriodSlice, "day">, variant: CellVariant) => (
+    <div className={styles.cellStack}>
+      {depositsLine(row, slice, variant)}
+      {plLine(row, slice, variant)}
+    </div>
+  );
+  const periodColumn = (
+    slice: Exclude<PeriodSlice, "day">,
+    section: number
+  ): TableColumn<AccountTableRow> => ({
+    key: slice,
+    header: labels[slice],
+    className: "mono",
+    section,
+    cell: (row) => periodCell(row, slice, "desktop"),
+    card: (row) => periodCell(row, slice, "mobile"),
+  });
+  const columns: TableColumn<AccountTableRow>[] = [
+    { key: "account", header: labels.account, cell: nameCell, title: true },
+    {
+      key: "balance",
+      header: labels.balance,
+      className: "mono",
+      cell: (row) => balanceCell(row, "desktop"),
+      card: (row) => balanceCell(row, "mobile"),
+    },
+    periodColumn("month", 1),
+    periodColumn("year", 1),
+    periodColumn("total", 2),
+  ];
+  const rowClass = (row: AccountTableRow) =>
+    row.kind === "total"
+      ? "accounts-summary-row--total"
+      : row.kind === "liquidated_detail"
+        ? "accounts-summary-row--liquidated-detail"
+        : undefined;
+
+  return (
+    <ColumnTable
+      rows={rows}
+      columns={columns}
+      rowKey={(row) => row.key}
+      rowProps={(row) => ({ className: cn(rowClass(row), row.inactive && styles.rowInactive) })}
+      tableClassName="table--accounts-summary"
+    />
   );
 }
