@@ -35,7 +35,7 @@ import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";
 import { linesOfStatement, openCycleCuotaPurchaseLines } from "./cards/purchases.js";
-import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
+import { isCardPaymentLine } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { derivedPayByIso, resolveInstallmentPayByIso, statementLineDateIso } from "./ccInstallmentPayBy.js";
@@ -390,7 +390,7 @@ export function paymentAbonosClpForBillingMonth(
     const fxDateIso = balanceUsdFxDateIso(accountId, st.statement_date);
     const rows = linesOfStatement(st.id);
     for (const r of rows) {
-      if (!isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
+      if (!isCardPaymentLine(r)) continue;
       const paymentIso = (r.amount_usd ?? 0) < 0 ? statementLineDateIso(r) : null;
       const paidDate = paymentIso ? paidStatementDate(paymentIso) : null;
       const lineFxDateIso = paidDate ? balanceUsdFxDateIso(accountId, paidDate) : fxDateIso;

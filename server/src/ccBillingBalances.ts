@@ -40,9 +40,9 @@ import { billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
 import { statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
-import { isCcPaymentOrUsdDebtAbonoMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
+import { isCardDebtTransferLine, isCardPaymentLine, isDivisasAbonoPaymentLine, requireHeaderPagoIso } from "./ccPaymentLines.js";
 import { primaryStatementOfSlot, statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
-import { ddMmYyyyFromIso, parseDdMmYyToIso, isCcPaymentMerchant, isCcTraspasoDeudaMerchant, isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
+import { ddMmYyyyFromIso, parseDdMmYyToIso, isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
 
 /**
  * One billing month of a card's stored snapshot (`cc_billing_month_metrics`, migration 320: one
@@ -94,6 +94,7 @@ function writeBalance(b: BalanceWrite): void {
 
 type RevolvingLineRow = {
   id: number;
+  kind: string | null;
   merchant: string | null;
   amount_clp: number | null;
   amount_usd: number | null;
@@ -153,12 +154,10 @@ function sumRevolvingLinesForAccountStatementDateClp(
   const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
   let sum = 0;
   for (const r of billedOneShotLines(accountId, statementDate)) {
-    if (opts?.excludePayments && isCcPaymentMerchant(r.merchant)) continue;
-    if (
-      opts?.excludeUsdDebtPaymentAbonos &&
-      isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)
-    ) {
-      continue;
+    if (isCardPaymentLine(r)) {
+      // A named payment (PAGO, MONTO CANCELADO, ABONO) is never a charge; a divisas abono is left
+      // out only for the open cycle.
+      if (opts?.excludeUsdDebtPaymentAbonos || (opts?.excludePayments && !isDivisasAbonoPaymentLine(r))) continue;
     }
     const clp = debtCcExpenseLineAmountClp(
       { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
@@ -362,7 +361,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
       const linkedTraspasoClp =
         r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined; // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
-      const usdPayment = (r.amount_usd ?? 0) < 0 && isCcPaymentOrUsdDebtAbonoMerchant(r.merchant);
+      const usdPayment = (r.amount_usd ?? 0) < 0 && isCardPaymentLine(r);
       const paidStatementDate = usdPayment ? paidFacturacionStatementDate(iso) : null;
       const clp =
         linkedTraspasoClp != null
@@ -735,7 +734,7 @@ export function openMonthForeignFacturado(
   const addStatement = (statementDate: string) => {
     const fxDateIso = balanceUsdFxDateIso(accountId, statementDate);
     for (const r of billedOneShotLines(accountId, statementDate)) {
-      if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
+      if (isCardPaymentLine(r)) continue;
       if (isHomeCurrency(r.currency)) continue; // a peso line — not part of the foreign split
       const oneShot = { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null, cuota_amount: null };
       const native = cardLineNativeAmount(oneShot);
@@ -766,7 +765,7 @@ export function openFacturacionCredits(accountId: number, billingMonth: string):
   withCcOneShotScanCache(() => {
     for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {
       for (const r of billedOneShotLines(accountId, stmtDate)) {
-        if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant) || isCcTraspasoDeudaMerchant(r.merchant)) continue;
+        if (isCardPaymentLine(r) || isCardDebtTransferLine(r)) continue;
         const native = cardLineNativeAmount({ ...r, installment_flag: 0 });
         if (!native) continue;
         const amount = isHomeCurrency(native.currency) ? Math.round(native.amount) : native.amount;

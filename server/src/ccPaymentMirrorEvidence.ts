@@ -101,7 +101,7 @@ const stmtHeaderLegs = db.prepare(
 
 /**
  * Every row carrying a card payment, on one card or all of them: CLP payment lines, dated header
- * payments and the dated legs of undated ones (`cc_header_payment_legs`) — the same `isCcPaymentMerchant` test and date readers as the cuota retirement's
+ * payments and the dated legs of undated ones (`cc_header_payment_legs`) — the same payment lines (`clpPaymentLines`, by stored kind) and date readers as the cuota retirement's
  * `listClpCcPaymentEventsForAccount` — then the USD side's ABONO DE DIVISAS lines. Lines come before
  * headers, so a reader keeping the first row per key prefers the line.
  */
