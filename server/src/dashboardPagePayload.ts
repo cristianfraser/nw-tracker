@@ -58,14 +58,16 @@ export async function buildDashboardPagePayload(unit: TsUnit) {
           ? { ...card, linked_balances: cashSavingsLinkedBalances(asOfToday, unit) }
           : card
       );
+      // One allocation row per net-worth bucket card: the bucket's own value (Σ of its members'
+      // values in the unit, not its pesos ÷ one rate); null when no member has a value today.
       const byGroup = new Map<string, { label: string; value: number | null }>();
       for (const card of layoutCards) {
         const bucketSlug = card.bucket_slug;
-        // The bucket card's own value (Σ of its members' values in the unit), not its pesos ÷ one rate.
-        const value = isNwBucketSlug(bucketSlug) ? bucketTotals.buckets[bucketSlug] : 0;
-        if (value == null) throw new Error(`dashboard payload: no ${unit} value for ${bucketSlug} on ${asOfToday}`);
-        byGroup.set(card.bucket_slug, {
-          label: bucketLabelBySlug.get(card.bucket_slug) ?? card.label,
+        if (!isNwBucketSlug(bucketSlug)) continue;
+        const value = bucketTotals.buckets[bucketSlug];
+        if (value === undefined) throw new Error(`dashboard payload: no totals entry for bucket ${bucketSlug}`);
+        byGroup.set(bucketSlug, {
+          label: bucketLabelBySlug.get(bucketSlug) ?? card.label,
           value,
         });
       }
@@ -102,10 +104,8 @@ export async function buildDashboardPagePayload(unit: TsUnit) {
         totals,
         dashboard_layout: layoutCards,
         card_metrics_by_slug,
-        ...buildNavValueMapPayload(rowsBuilt, unit, chainedGroupPct),
-        allocation: [...byGroup.entries()]
-          .filter(([slug]) => isNwBucketSlug(slug))
-          .map(([slug, v]) => ({
+        ...buildNavValueMapPayload(rowsBuilt, unit, bucketTotals, chainedGroupPct),
+        allocation: [...byGroup.entries()].map(([slug, v]) => ({
             group_slug: slug,
             group_label: v.label,
             value: v.value,

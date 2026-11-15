@@ -104,13 +104,23 @@ describe("accountTodayValue — one figure per account today (USD)", () => {
     const mismatches: string[] = [];
     for (const slug of nwBucketSlugs()) {
       const card = cardUsd[slug];
-      expect(card, `${slug} card USD`).not.toBeNull();
-      sumCards += card!;
+      expect(card, `${slug} card USD`).not.toBeUndefined();
       let sumRows = 0;
+      let rowsWithValue = 0;
       for (const r of rows) {
         if (r.dashboard_bucket_slug !== slug || r.exclude_from_group_totals === 1) continue;
-        sumRows += r.current_value ?? 0;
+        if (r.current_value == null) continue;
+        sumRows += r.current_value;
+        rowsWithValue += 1;
       }
+      if (card == null) {
+        // The one empty rule: a bucket none of whose accounts has a value is absent (the Vitest
+        // person holds no property); the bucket that nets the linked cards always reads.
+        expect(rowsWithValue, `${slug} has no card and no row with a value`).toBe(0);
+        expect(slug).not.toBe("cash_eqs");
+        continue;
+      }
+      sumCards += card;
       if (slug === "cash_eqs") {
         const cc = linkedCreditCardClpForCashCardAsOf(today);
         sumRows -= cc === 0 ? 0 : clpToUnitAt(cc, today, "usd", { side: "debt" })!;

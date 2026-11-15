@@ -2,7 +2,7 @@ import { buildProportionalFromValueArrays, type ProportionalSeriesBlock } from "
 import { getNetWorthNavGroupNode, type NavTreeNodeDto } from "./navTree.js";
 import { slugMarkTotalsAtDatesClp, type ChartMarkTotalAccountRow } from "./dashboardChartMarkTotals.js";
 import { HOME_CURRENCY } from "./displayUnits.js";
-import { nodeNetsLinkedCards, nodeValueSeriesOnGrid, type NodeValuePolicy } from "./nodeValue.js";
+import { nodeNetsLinkedCards, nodeValueSeriesOnGrid } from "./nodeValue.js";
 
 /**
  * Home composition chart: 100%-stacked shares one level below the "big" buckets of the
@@ -165,19 +165,9 @@ export function compositionValuesAtDatesClp(
 }
 
 /**
- * A composition line on each day of a daily grid, in pesos: its counted members' cached daily
- * marks, a day with no mark absent (the netted line always reads), rounded to the peso after
- * the netting.
- */
-const COMPOSITION_LINE_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
-  empty: "null_unless_netted",
-  rounding: "unit_coin",
-};
-
-/**
  * Daily values (CLP) on a contiguous Chile-day grid from the per-account mark cache. Same rules
  * as the monthly totals: a day with no finite mark is null (except the netted line, which
- * always reads), per-day rounding after the netting.
+ * always reads); exact, never rounded.
  */
 export function compositionValuesOnGridClp(
   specs: readonly CompositionLineSpec[],
@@ -187,10 +177,7 @@ export function compositionValuesOnGridClp(
   for (const spec of specs) {
     out.set(
       spec.dataKey,
-      nodeValueSeriesOnGrid(spec.rows, grid, HOME_CURRENCY, {
-        ...COMPOSITION_LINE_DAILY,
-        netsLinkedCards: spec.netLinkedCreditCard,
-      })
+      nodeValueSeriesOnGrid(spec.rows, grid, HOME_CURRENCY, { netsLinkedCards: spec.netLinkedCreditCard })
     );
   }
   return out;

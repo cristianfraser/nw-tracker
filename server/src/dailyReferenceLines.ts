@@ -20,7 +20,7 @@ import { getAggregationCached } from "./cacheRegistry.js";
 import { accountProfile } from "./accountProfile.js";
 import { loanAccountIdOfProperty } from "./accountRoles.js";
 import { getBucketDailySeriesCached, type DailySeriesAccountLine } from "./dailySeries.js";
-import { nodeNetsLinkedCards, nodeValueSeriesFromSums, type NodeNettingPolicy } from "./nodeValue.js";
+import { nodeNetsLinkedCards, nodeValueSeriesFromSums } from "./nodeValue.js";
 import {
   composeReferenceValuesByDate,
   listReferenceGroupsForChartHost,
@@ -33,15 +33,6 @@ import {
   listAccountsForGroupTab,
   type TsUnit,
 } from "./valuationTimeseries.js";
-
-/**
- * A reference source's total on each day of its own daily series: a day the series has no value
- * for is absent, unrounded.
- */
-const REFERENCE_SOURCE_DAILY: Omit<NodeNettingPolicy, "netsLinkedCards"> = {
-  empty: "null",
-  rounding: "none",
-};
 
 /** One overlay line, aligned index-for-index with the daily series' `points`. */
 export type DailyReferenceLine = {
@@ -79,10 +70,7 @@ function sourceGroupDailyValues(
     // one. Per-date, on the daily owed convention, through the one cash netting rule.
     const dates = series.points.map((p) => p.as_of_date);
     const totals = series.points.map((p) => (p.value != null && Number.isFinite(p.value) ? p.value : null));
-    const values = nodeValueSeriesFromSums(totals, dates, unit, {
-      ...REFERENCE_SOURCE_DAILY,
-      netsLinkedCards: nodeNetsLinkedCards(sourceSlug),
-    });
+    const values = nodeValueSeriesFromSums(totals, dates, unit, { netsLinkedCards: nodeNetsLinkedCards(sourceSlug) });
     dates.forEach((ymd, i) => {
       const v = values[i];
       if (v != null) out.set(ymd, v);

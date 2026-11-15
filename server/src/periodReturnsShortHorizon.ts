@@ -1,7 +1,7 @@
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import { accountValueAt } from "./accountValue.js";
-import { nodeValue, type NodePointValuePolicy } from "./nodeValue.js";
+import { nodeValue, type NodeValuePolicy } from "./nodeValue.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow, periodPl } from "./perfKernel.js";
 import type { PeriodReturnCell, PeriodReturnsPayload } from "./periodReturns.js";
 import type { TsUnit } from "./rates.js";
@@ -52,13 +52,9 @@ export function accountValueInUnitAt(
 
 /**
  * A value leg of a return window: the counted members' own values in the unit, absent
- * when none has one, unrounded. Nothing is netted (returns read the members themselves).
+ * when none has one. Nothing is netted (returns read the members themselves).
  */
-const BUCKET_VALUE_LEG: NodePointValuePolicy = {
-  netsLinkedCards: false,
-  empty: "null",
-  rounding: "none",
-};
+const BUCKET_VALUE_LEG: NodeValuePolicy = { netsLinkedCards: false };
 
 /**
  * The bucket's value at `ymd` in `unit`: Σ of each member's own value in the unit

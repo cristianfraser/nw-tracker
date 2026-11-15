@@ -11,7 +11,7 @@ import { clpToUnitAt } from "./valueConvert.js";
 import { getGroupConsolidatedMonthlyPerfForRows, type ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { listReferenceGroupsForChartHost } from "./portfolioGroupReference.js";
-import { buildDashboardBucketDailySeriesClp, dashboardBucketDayPriorClosesInUnit } from "./portfolioGroupValueAtDate.js";
+import { buildDashboardBucketDailySeriesClp, buildDashboardBucketValueTotalsInUnit } from "./portfolioGroupValueAtDate.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 
 describe("cashNetOfLinkedCreditCards", () => {
@@ -84,7 +84,7 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
     chartNoCash: Map<string, number>;
     consolidated: ConsolidatedMonthlyPerfRow[];
     totals: ReturnType<typeof buildDashboardNwBucketTotals>;
-    priorDay: { clp: ReturnType<typeof dashboardBucketDayPriorClosesInUnit>; usd: ReturnType<typeof dashboardBucketDayPriorClosesInUnit> };
+    priorDay: { clp: Record<string, number | null>; usd: Record<string, number | null> };
     footer: ReturnType<typeof cashSavingsLinkedBalances>;
     reference: ReturnType<typeof dailyReferenceLinesForChartHost>;
   };
@@ -107,8 +107,8 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
       consolidated: getGroupConsolidatedMonthlyPerfForRows(cashRows, "cash_eqs", "clp"),
       totals: buildDashboardNwBucketTotals("clp"),
       priorDay: {
-        clp: dashboardBucketDayPriorClosesInUnit(yesterday, "clp"),
-        usd: dashboardBucketDayPriorClosesInUnit(yesterday, "usd"),
+        clp: buildDashboardBucketValueTotalsInUnit(yesterday, "clp").buckets,
+        usd: buildDashboardBucketValueTotalsInUnit(yesterday, "usd").buckets,
       },
       footer: cashSavingsLinkedBalances(today, "clp"),
       reference: dailyReferenceLinesForChartHost("liabilities", "clp", REFERENCE_DAYS, [
@@ -191,9 +191,10 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
   it("daily series: a linked total in credit adds to cash, owed subtracts", () => {
     for (const d of GRID) {
       const b = base.daily.get(d)!;
-      expect(credit.daily.get(d)!.cash_eqs - b.cash_eqs).toBe(CREDIT);
-      expect(credit.daily.get(d)!.net_worth - b.net_worth).toBe(CREDIT);
-      expect(owed.daily.get(d)!.cash_eqs - b.cash_eqs).toBe(-OWED);
+      // The netting bucket reads on every day, so neither it nor net worth is ever absent.
+      expect(credit.daily.get(d)!.cash_eqs! - b.cash_eqs!).toBe(CREDIT);
+      expect(credit.daily.get(d)!.net_worth! - b.net_worth!).toBe(CREDIT);
+      expect(owed.daily.get(d)!.cash_eqs! - b.cash_eqs!).toBe(-OWED);
     }
   });
 
@@ -251,9 +252,10 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
     // The linked total is a debt: netted in dollars at the debt side of the spread.
     const creditUsd = clpToUnitAt(CREDIT, yesterday, "usd", { side: "debt" });
     expect(creditUsd).not.toBeNull();
-    // Each bucket is rounded to the cent, so the two differ by the credit up to a cent.
-    expect(Math.abs(credit.priorDay.usd.cash_eqs - base.priorDay.usd.cash_eqs - creditUsd!)).toBeLessThanOrEqual(0.01 + 1e-9);
-    expect(credit.priorDay.clp.cash_eqs - base.priorDay.clp.cash_eqs).toBe(CREDIT);
+    // Each bucket is apportioned to the cent (its exact value rounded down or up), so the two
+    // differ by the credit to within two cents.
+    expect(Math.abs(credit.priorDay.usd.cash_eqs! - base.priorDay.usd.cash_eqs! - creditUsd!)).toBeLessThan(0.02);
+    expect(credit.priorDay.clp.cash_eqs! - base.priorDay.clp.cash_eqs!).toBe(CREDIT);
   });
 
   it("the linked-balance footer shows a total in credit, hides only a zero total", () => {

@@ -12,7 +12,7 @@ import { flowEventInUnit } from "./rates.js";
 import { isChileBusinessDay, isLondonTradingDay, isNyseTradingDay } from "./marketHolidays.js";
 import { accountMarkClpSeriesOnGrid, accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
-import { nodeMembersSum, nodeValueFromSum, type NodeValueRules } from "./nodeValue.js";
+import { nodeMembersSum } from "./nodeValue.js";
 import {
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
@@ -393,12 +393,6 @@ function buildDailySeriesPast(
   };
 }
 
-/**
- * The bucket's value on a day of its daily series: absent when no member has a value, unrounded
- * (the day's P/L is taken from it).
- */
-const DAILY_SERIES_VALUE: NodeValueRules = { empty: "null", rounding: "none" };
-
 /** Build the daily series for one bucket of accounts. Throws on an out-of-bounds window. */
 export function getBucketDailySeries(
   accounts: readonly ShortHorizonAccountRef[],
@@ -512,8 +506,9 @@ export function getBucketDailySeries(
       }
     });
     wealth.push(any ? wealthSum : null);
-    // The bucket's value is its members' sum by the node-value rules (nothing is netted here).
-    return nodeValueFromSum(nodeMembersSum(memberValues), undefined, unit, DAILY_SERIES_VALUE);
+    // The bucket's value that day by the node-value rules: its members' sum, absent when no
+    // member has a value (nothing is netted here).
+    return nodeMembersSum(memberValues);
   });
   // Copies: the card flows below are added into them.
   const flows = past.flows.flows.slice();

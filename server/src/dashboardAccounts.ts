@@ -588,7 +588,7 @@ async function buildDashboardNavSnapshotUncached(unit: TsUnit) {
     dashboard_layout,
     nw_bucket_totals,
     card_metrics_by_slug,
-    ...buildNavValueMapPayload(rowsBuilt, unit, chainedGroupPct),
+    ...buildNavValueMapPayload(rowsBuilt, unit, nw_bucket_totals, chainedGroupPct),
     chart_shape: getDashboardChartShape(),
   };
 }

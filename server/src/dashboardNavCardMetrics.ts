@@ -14,7 +14,7 @@
  * client keeps no copy of them — it picks these numbers, and only single-account rows
  * (account table rows, account detail) are projected client-side from their own row.
  */
-import { isHomeCurrency } from "./displayUnits.js";
+import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import type { DashboardAccountStats } from "./brokerageAcciones.js";
 import {
   chartBucketGroupChildren as portfolioStripGroupChildren,
@@ -533,6 +533,16 @@ function sumAmounts(parts: readonly (number | null)[], unit: TsUnit): number | n
   return sumLeg(parts, emptySumIn(unit));
 }
 
+/**
+ * Σ of headline buckets, each already a whole number of coins (apportioned to the headline): the
+ * sum is one too, so a hub's card adds up to its bucket cards and the net-worth card is the
+ * headline itself. Rounded only to drop the float noise of adding cents.
+ */
+function coinSum(parts: readonly (number | null)[], unit: TsUnit): number | null {
+  const sum = sumAmounts(parts, unit);
+  return sum == null ? null : roundToCurrency(sum, unit);
+}
+
 function nodeValue(node: NavTreeNodeDto, input: NavCardMetricsBuildInput): NavCardValueDto {
   const { rows, bucketTotals, unit } = input;
   const subtreeIds = navMetricsAccountIdSet(node);
@@ -545,7 +555,7 @@ function nodeValue(node: NavTreeNodeDto, input: NavCardMetricsBuildInput): NavCa
     mode.kind === "dashboard_group"
       ? bucketAmount(bucketTotals, mode.group)
       : mode.kind === "sum_dashboard_groups"
-        ? sumAmounts(
+        ? coinSum(
             mode.groups.map((g) => bucketAmount(bucketTotals, g)),
             unit
           )

@@ -2,7 +2,7 @@ import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import type { ConsolidatedMonthlyPerfRow } from "./groupPerfTypes.js";
 import { nettedGroup } from "./navTreeModel.js";
-import { linkedCardsClpInUnit, nodeValueSeriesFromSums, type NodeNettingPolicy } from "./nodeValue.js";
+import { linkedCardsClpInUnit, nodeValueSeriesFromSums, type NodeValuePolicy } from "./nodeValue.js";
 import { priorCalendarMonthKey } from "./periodAnchorDates.js";
 import type { TsUnit } from "./rates.js";
 
@@ -47,13 +47,10 @@ export function cashSavingsLinkedBalances(asOfYmd: string, unit: TsUnit): Dashbo
 
 /**
  * A consolidated month closing of a netting group: the members' closing less the cards' owed
- * that day, unrounded like the rows it adjusts; a month with no prior closing keeps none.
+ * that day. A row with no prior closing reads the node's
+ * empty rule at the prior month-end: 0 less what the cards owed then.
  */
-const CONSOLIDATED_CLOSING_NET: NodeNettingPolicy = {
-  netsLinkedCards: true,
-  empty: "null",
-  rounding: "none",
-};
+const CONSOLIDATED_CLOSING_NET: NodeValuePolicy = { netsLinkedCards: true };
 
 /**
  * Net linked tarjeta balance from consolidated cash_savings month cierres (chart NAV / bucket
@@ -84,7 +81,11 @@ export function netLinkedCreditCardFromCashConsolidated(
       if (closing_value == null) {
         throw new Error(`consolidated cash rows: ${row.as_of_date} has no closing value to net`);
       }
-      return { ...row, closing_value, prior_closing: priors[i] ?? row.prior_closing };
+      const prior_closing = priors[i];
+      if (prior_closing == null) {
+        throw new Error(`consolidated cash rows: ${row.as_of_date} has no prior closing to net`);
+      }
+      return { ...row, closing_value, prior_closing };
     })
     .reverse();
 }
