@@ -18,7 +18,7 @@ import {
 import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
 import { convertCurrency, pairRateOnOrBefore, type DisplayUnitCode } from "./rates.js";
 import { londonSessionsBack, nyseSessionsBack } from "./marketHolidays.js";
-import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
+import type { MarketDisplaySeriesRow } from "./marketDisplaySeriesTypes.js";
 import {
   WATCHLIST_ANCHOR_KEYS,
   watchlistAnchorYmds,
