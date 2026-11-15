@@ -40,7 +40,7 @@ const MONTH_END_MARK_TOTALS: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
 
 /**
  * The chart totals in another unit at a date: each counted member's own value in the unit,
- * unrounded: the overview adds the buckets up into net worth, and its today point is the headline.
+ * unrounded.
  */
 const CHART_VALUE_IN_UNIT: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
   empty: "null_unless_netted",

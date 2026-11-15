@@ -78,14 +78,7 @@ export function linkedCardsOwedInUnit(ymd: string, unit: CurrencyCode): number {
  */
 export type NodeEmptyRule = "null" | "null_unless_netted" | "zero";
 
-/**
- * - `unit_coin`: a level shown on its own (a chart line, a bucket of a daily grid): rounded once,
- *   after netting, to the unit's smallest coin.
- * - `none`: a value other arithmetic is done on, which must hold to the last digit: a P/L leg
- *   (close − prior − flow; rounding it moves the returns of small balances), an apportionment
- *   input, or a part whose total is shown beside it as the sum of the parts (rounding each part
- *   makes that total drift from the headline by up to half a coin per part).
- */
+/** `unit_coin`: rounded once, after netting, to the unit's smallest coin. */
 export type NodeRounding = "none" | "unit_coin";
 
 /** The rules applied to a members' sum. */
