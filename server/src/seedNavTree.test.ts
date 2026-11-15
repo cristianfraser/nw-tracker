@@ -128,7 +128,7 @@ describe("seedNavTree on a seeded database", () => {
       { slug: "real_estate", nw_bucket: 1, investment_root: 0, property_overlay: 1, nets: null },
       { slug: "retirement", nw_bucket: 1, investment_root: 1, property_overlay: 0, nets: null },
       { slug: "brokerage", nw_bucket: 1, investment_root: 1, property_overlay: 0, nets: null },
-      { slug: "cash_eqs", nw_bucket: 1, investment_root: 0, property_overlay: 0, nets: "liabilities_credit_card" },
+      { slug: "cash_eqs", nw_bucket: 1, investment_root: 0, property_overlay: 0, nets: null },
     ]);
   });
 });

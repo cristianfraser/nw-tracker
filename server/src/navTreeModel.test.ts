@@ -10,7 +10,9 @@ import {
   leafGroupOfAccount,
   liabilityGroups,
   navGroup,
+  isInvestmentDepositTargetGroup,
   netsLinkedGroup,
+  nettingGroupOf,
   nettedGroup,
   nwBucketSlugs,
 } from "./navTreeModel.js";
@@ -57,10 +59,25 @@ describe("navTreeModel on the seeded tree", () => {
     seedNavTree();
     expect(nwBucketSlugs()).toEqual(["real_estate", "retirement", "brokerage", "cash_eqs"]);
     expect(investmentRootSlugs()).toEqual(["retirement", "brokerage"]);
-    expect(netsLinkedGroup("cash_eqs")?.slug).toBe("liabilities_credit_card");
+    // One node declares the netting; the bucket above it nets through it.
     expect(netsLinkedGroup("cash_savings")?.slug).toBe("liabilities_credit_card");
+    expect(netsLinkedGroup("cash_eqs")).toBeNull();
     expect(netsLinkedGroup("checking_accounts")).toBeNull();
+    expect(nettingGroupOf("cash_eqs")?.slug).toBe("cash_savings");
+    expect(nettingGroupOf("cash_savings")?.slug).toBe("cash_savings");
+    expect(nettingGroupOf("checking_accounts")).toBeNull();
+    expect(nettingGroupOf("brokerage")).toBeNull();
+    // Above the buckets nothing nets on its own: net worth is the sum of its buckets.
+    expect(nettingGroupOf("net_worth")).toBeNull();
     expect(nettedGroup().slug).toBe("liabilities_credit_card");
+    // A deposit into these buckets is an investment contribution; into cash it is not.
+    expect(["real_estate", "retirement", "brokerage", "cash_eqs", "cash_savings"].map(isInvestmentDepositTargetGroup)).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+    ]);
     expect(isInvestmentRootsHub("inversiones")).toBe(true);
     expect(isInvestmentRootsHub("net_worth")).toBe(false);
   });
@@ -105,6 +122,18 @@ describe("navTreeModel on a synthetic subtree", () => {
     expect(bucketOfAccount(c)).toBe("brokerage");
     expect(isInvestmentGroup(`${PREFIX}_kept`)).toBe(true);
     expect(navGroup(`${PREFIX}_kept`)?.nwBucket).toBe(false);
+  });
+
+  it("the deposit-target role is data: a change of it is a logged write the model follows", () => {
+    seedNavTree();
+    insertGroup(`${PREFIX}_target`, null);
+    expect(isInvestmentDepositTargetGroup(`${PREFIX}_target`)).toBe(false);
+    const logged = () =>
+      (db.prepare(`SELECT COUNT(*) AS n FROM mark_input_changes WHERE source = 'portfolio_groups'`).get() as { n: number }).n;
+    const before = logged();
+    db.prepare(`UPDATE portfolio_groups SET investment_deposit_target = 1 WHERE slug = ?`).run(`${PREFIX}_target`);
+    expect(logged()).toBe(before + 1);
+    expect(isInvestmentDepositTargetGroup(`${PREFIX}_target`)).toBe(true);
   });
 
   it("throws on an account that is an item of two groups", () => {

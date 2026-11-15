@@ -1,15 +1,14 @@
 import { buildProportionalFromValueArrays, type ProportionalSeriesBlock } from "./proportionalSeries.js";
 import { getNetWorthNavGroupNode, type NavTreeNodeDto } from "./navTree.js";
 import { slugMarkTotalsAtDatesClp, type ChartMarkTotalAccountRow } from "./dashboardChartMarkTotals.js";
-import { isCashSavingsNavNode } from "./dashboardNavCardMetrics.js";
 import { HOME_CURRENCY } from "./displayUnits.js";
-import { nodeValueSeriesOnGrid, type NodeValuePolicy } from "./nodeValue.js";
+import { nodeNetsLinkedCards, nodeValueSeriesOnGrid, type NodeValuePolicy } from "./nodeValue.js";
 
 /**
  * Home composition chart: 100%-stacked shares one level below the "big" buckets of the
  * net_worth nav tree. Everything — which buckets, which lines, labels, colours, stack order —
- * comes from the tree; nothing here names a slug except through `isCashSavingsNavNode`, the
- * rule that already attaches the linked credit-card netting to the savings node.
+ * comes from the tree, the linked credit-card netting included (`nodeNetsLinkedCards`: the line
+ * whose subtree holds the node that declares it).
  */
 
 function isGroupNode(n: NavTreeNodeDto): boolean {
@@ -89,7 +88,7 @@ export function buildCompositionLineSpecs(
         name_i18n_key: big.label_i18n_key,
         color_rgb: big.color_rgb,
         rows: bucketRows,
-        netLinkedCreditCard: isCashSavingsNavNode(big),
+        netLinkedCreditCard: nodeNetsLinkedCards(big.slug),
       });
       continue;
     }
@@ -112,7 +111,7 @@ export function buildCompositionLineSpecs(
         name_i18n_key: kid.label_i18n_key,
         color_rgb: kid.color_rgb,
         rows,
-        netLinkedCreditCard: kid.account_id == null && isCashSavingsNavNode(kid),
+        netLinkedCreditCard: kid.account_id == null && nodeNetsLinkedCards(kid.slug),
       });
     }
   }
@@ -171,10 +170,7 @@ export function compositionValuesAtDatesClp(
  * the netting.
  */
 const COMPOSITION_LINE_DAILY: Omit<NodeValuePolicy, "netsLinkedCards"> = {
-  members: "counted",
   empty: "null_unless_netted",
-  // Pesos need no rate.
-  missingCardRate: "throw",
   rounding: "unit_coin",
 };
 

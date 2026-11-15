@@ -155,13 +155,13 @@ describe("waterfall: cached marks after a write equal a fresh walk", () => {
     ensureCacheFresh();
     expect(cached(a1)).toEqual([10000, 10000, 10000, 11000, 11000]);
     cached(a2);
-    const b2 = getMarkSeries(markSeriesKey(a2.account_id, a2.bucket_slug));
+    const b2 = getMarkSeries(markSeriesKey(a2.account_id));
 
     db.prepare(`INSERT OR REPLACE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, '2026-02-11', 1050, 'clp')`).run(T1);
     expect(cached(a1)).toEqual(fresh(a1));
     expect(cached(a1)).toEqual([10000, 10000, 10500, 11000, 11000]);
     // B holds another ticker: the very same series object is still cached.
-    expect(getMarkSeries(markSeriesKey(a2.account_id, a2.bucket_slug))).toBe(b2);
+    expect(getMarkSeries(markSeriesKey(a2.account_id))).toBe(b2);
     expect(cached(a2)).toEqual(fresh(a2));
     db.prepare(`DELETE FROM equity_daily WHERE ticker = ? AND trade_date = '2026-02-11'`).run(T1);
     expect(cached(a1)).toEqual(fresh(a1));
@@ -173,7 +173,7 @@ describe("waterfall: cached marks after a write equal a fresh walk", () => {
     ensureCacheFresh();
     cached(a1);
     cached(a2);
-    const b2 = getMarkSeries(markSeriesKey(a2.account_id, a2.bucket_slug));
+    const b2 = getMarkSeries(markSeriesKey(a2.account_id));
 
     db.prepare(
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
@@ -182,7 +182,7 @@ describe("waterfall: cached marks after a write equal a fresh walk", () => {
     expect(cached(a1)).toEqual(fresh(a1));
     expect(cached(a1)).toEqual([10000, 10000, 10000, 16500, 16500]);
     // B was not touched: the very same series object is still cached.
-    expect(getMarkSeries(markSeriesKey(a2.account_id, a2.bucket_slug))).toBe(b2);
+    expect(getMarkSeries(markSeriesKey(a2.account_id))).toBe(b2);
     db.prepare(`DELETE FROM movements WHERE note = 'vitest-waterfall-more'`).run();
     expect(cached(a1)).toEqual(fresh(a1));
   });
@@ -195,12 +195,12 @@ describe("waterfall: cached marks after a write equal a fresh walk", () => {
     ensureCacheFresh();
     const grid = GRID.slice(0, 4); // through 02-12: 02-12 is today, never cached
     accountMarkClpSeriesOnGrid(a1, grid);
-    const before = getMarkSeries(markSeriesKey(a1.account_id, a1.bucket_slug))!;
+    const before = getMarkSeries(markSeriesKey(a1.account_id))!;
     expect(before.end_ymd).toBe("2026-02-11");
 
     vi.setSystemTime(new Date("2026-02-14T15:00:00Z")); // two days later
     expect(accountMarkClpSeriesOnGrid(a1, GRID)).toEqual(accountMarkClpSeriesOnGridUncached(a1, GRID));
-    const after = getMarkSeries(markSeriesKey(a1.account_id, a1.bucket_slug))!;
+    const after = getMarkSeries(markSeriesKey(a1.account_id))!;
     expect(after.start_ymd).toBe(before.start_ymd);
     expect(after.end_ymd).toBe("2026-02-13");
     expect(after.values.slice(0, before.values.length)).toEqual(before.values);

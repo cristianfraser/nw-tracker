@@ -22,8 +22,8 @@ import {
   resolveDashboardBucketFromNavNode as resolveDashboardBucketSlugFromNavNode,
 } from "./groupChartBuckets.js";
 import type { NavTreeNodeDto } from "./navTree.js";
-import { isNwBucketSlug, nwBucketSlugs } from "./navTreeModel.js";
-import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
+import { netsLinkedGroup, nwBucketSlugs } from "./navTreeModel.js";
+import { nodeNetsLinkedCards } from "./nodeValue.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import type { TsUnit } from "./rates.js";
 
@@ -338,14 +338,9 @@ function usesFullDashboardBucketTotals(node: NavTreeNodeDto): DashboardNwBucketS
   const bucket = resolveDashboardBucketFromNavNode(node);
   if (!bucket) return null;
   // A netting bucket's card is its netted total, which no row sum gives: every node in it shows it.
-  if (groupNetsLinkedCards(bucket)) return bucket;
+  if (nodeNetsLinkedCards(bucket)) return bucket;
   if (node.slug === bucket) return bucket;
   return null;
-}
-
-/** A cash child: its card nets the linked credit cards, its metrics read its raw leaves. */
-export function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
-  return node.account_id == null && groupNetsLinkedCards(node.slug) && !isNwBucketSlug(node.slug);
 }
 
 /** The dashboard buckets a nav hub spreads into (inversiones → retirement + brokerage). */
@@ -625,12 +620,15 @@ export function withChainedGroupPct(
   return out;
 }
 
-/** The rows a node's detail card covers: counted members (a cash child: its raw leaves). */
+/**
+ * The rows a node's detail card covers: counted members (the node that declares the linked-card
+ * netting: its raw leaves).
+ */
 export function stripMetricsRows(
   node: NavTreeNodeDto,
   rows: readonly CardMetricsAccountRow[]
 ): CardMetricsAccountRow[] {
-  const source = isCashSavingsNavNode(node)
+  const source = node.account_id == null && netsLinkedGroup(node.slug) != null
     ? (() => {
         const leafIds = navLeafAccountIdSet(node);
         return rows.filter((a) => leafIds.has(a.account_id));

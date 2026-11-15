@@ -116,7 +116,7 @@ export function monthEndCloseForAccountInUnit(
   unit: TsUnit,
   opts?: MonthEndCloseForAccountOpts
 ): number | null {
-  const markClp = monthEndMarkClpForAccount(accountId, bucketSlug, monthKey, opts);
+  const markClp = monthEndMarkClpForAccount(accountId, monthKey);
   if (markClp == null) return monthEndCloseFromPerfRows(monthlyRows, monthKey);
   if (isHomeCurrency(unit)) return markClp;
   return accountValueClpToUnitAt(accountId, markClp, monthEndUtcYmd(monthKey), unit);

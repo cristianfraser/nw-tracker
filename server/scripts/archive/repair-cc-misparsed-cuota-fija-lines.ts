@@ -6,7 +6,7 @@
  *   npx tsx server/scripts/repair-cc-misparsed-cuota-fija-lines.ts --account-id=35
  */
 import { db } from "../../src/db.js";
-import { recomputeCcBillingMonthBalances } from "../../src/ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../../src/ccBillingMonthBalancesRecompute.js";
 import { mergeCcAccountFromParsedRows } from "../../src/ccInstallmentLedgerMerge.js";
 import { readCommaCsvRecords } from "../lib/ccParsedCommaCsv.js";
 import { resolveCfraserCsvDir } from "../../src/cfraserPaths.js";

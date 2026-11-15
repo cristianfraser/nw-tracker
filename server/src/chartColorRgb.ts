@@ -188,34 +188,6 @@ export function resolvePortfolioGroupColorRgbBySlug(slug: string): string | null
   return resolvePortfolioGroupColorRgb(row.id);
 }
 
-/**
- * Colors for client-side synthetic account lines (negative ids) used when aggregating charts.
- * Keys are stringified account ids (e.g. `"-203"`). Prefer these over averaging member account colors.
- */
-export function syntheticGroupColorRgbMapForValuationGroup(groupSlug: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const add = (accountId: number, portfolioGroupSlug: string) => {
-    const c = resolvePortfolioGroupColorRgbBySlug(portfolioGroupSlug);
-    if (c) out[String(accountId)] = c;
-  };
-
-  for (const [idStr, portfolioSlug] of Object.entries(SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG)) {
-    const accountId = Number(idStr);
-    if (!Number.isFinite(accountId)) continue;
-    const belongs =
-      groupSlug === "brokerage"
-        ? accountId >= -203 && accountId <= -201
-        : groupSlug === "inversiones"
-          ? accountId >= -615 && accountId <= -601
-          : groupSlug === "retirement"
-            ? accountId >= -709 && accountId <= -701
-            : false;
-    if (belongs) add(accountId, portfolioSlug);
-  }
-
-  return out;
-}
-
 /** Attach `color_rgb` to valuation / timeseries account lines (positive account ids only). */
 export function colorRgbForTimeseriesAccountLine(accountId: number): string | undefined {
   if (accountId <= 0) return undefined;
@@ -282,7 +254,6 @@ type TimeseriesAccountsBlock = {
   accounts?: { account_id: number; color_rgb?: string }[];
   points?: unknown;
   lines?: unknown;
-  synthetic_group_color_rgb?: Record<string, string>;
 };
 
 export function attachColorsToTimeseriesBlock<T extends TimeseriesAccountsBlock | undefined>(

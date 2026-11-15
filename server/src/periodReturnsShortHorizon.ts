@@ -51,15 +51,12 @@ export function accountValueInUnitAt(
 }
 
 /**
- * A value leg of a return window: the real counted members' own values in the unit, absent
+ * A value leg of a return window: the counted members' own values in the unit, absent
  * when none has one, unrounded. Nothing is netted (returns read the members themselves).
  */
-const BUCKET_VALUE_LEG: Omit<NodePointValuePolicy, "now"> = {
-  source: "value_in_unit",
-  members: "real_counted",
+const BUCKET_VALUE_LEG: NodePointValuePolicy = {
   netsLinkedCards: false,
   empty: "null",
-  missingCardRate: "throw",
   rounding: "none",
 };
 
@@ -71,10 +68,9 @@ const BUCKET_VALUE_LEG: Omit<NodePointValuePolicy, "now"> = {
 export function bucketValueInUnitAt(
   accounts: readonly ShortHorizonAccountRef[],
   ymd: string,
-  unit: TsUnit,
-  now: Date
+  unit: TsUnit
 ): number | null {
-  return nodeValue(accounts, ymd, unit, { ...BUCKET_VALUE_LEG, now });
+  return nodeValue(accounts, ymd, unit, BUCKET_VALUE_LEG);
 }
 
 function emptyCell(
@@ -132,8 +128,8 @@ function shortHorizonCell(
   endYmd: string,
   now: Date
 ): PeriodReturnCell {
-  const vEnd = bucketValueInUnitAt(accounts, endYmd, unit, now);
-  const vStart = bucketValueInUnitAt(accounts, startYmd, unit, now);
+  const vEnd = bucketValueInUnitAt(accounts, endYmd, unit);
+  const vStart = bucketValueInUnitAt(accounts, startYmd, unit);
   if (vEnd == null || vStart == null) return emptyCell(period, startYmd);
 
   let flow = 0;

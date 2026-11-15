@@ -333,8 +333,6 @@ export interface TimeseriesBlock {
     level_currency?: DisplayUnitCode;
   }[];
   points: Record<string, string | number | null>[];
-  /** Server: portfolio group color (or resolver fallback) for synthetic aggregated lines; keys like `"-203"`. */
-  synthetic_group_color_rgb?: Record<string, string>;
   /** USD milestone levels (in the block's unit) for chart anchor dates (month/year prior period ends). */
   referenceMilestoneByDate?: Record<string, Record<string, number | null>>;
   /** Server tail-clip: last visible date when every data series ends early (x-axis stops here). */

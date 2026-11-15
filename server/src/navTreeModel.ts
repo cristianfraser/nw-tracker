@@ -7,7 +7,8 @@
  *
  * The roles are columns (migration 272): `nw_bucket` (the buckets net worth sums), `investment_root`
  * (the roots of «Inversiones» and the Rentabilidad pages), `nets_linked_group_id` (the group whose
- * owed total this group's value nets), `property_overlay` and the reference groups'
+ * owed total this group's value nets; one node declares it, migration 336),
+ * `investment_deposit_target` (migration 337), `property_overlay` and the reference groups'
  * `chart_host_slug`. Nothing here parses a slug or names one: every answer is a walk over the data.
  *
  * Reads no valuation and no clock — a leaf the payload builders and the chart plan depend on.
@@ -29,6 +30,8 @@ export type NavGroup = Readonly<{
   excludeFromParentTotal: boolean;
   nwBucket: boolean;
   investmentRoot: boolean;
+  /** A deposit into this bucket is money put to work outside cash (migration 337). */
+  investmentDepositTarget: boolean;
   netsLinkedGroupId: number | null;
   propertyOverlay: boolean;
   /** A reference group's host page (the page whose chart draws it). */
@@ -66,6 +69,7 @@ type GroupRow = {
   exclude_from_parent_total: number;
   nw_bucket: number;
   investment_root: number;
+  investment_deposit_target: number;
   nets_linked_group_id: number | null;
   property_overlay: number;
   chart_host_slug: string | null;
@@ -84,7 +88,7 @@ function loadNavTreeModel(): NavTreeModel {
     .prepare(
       `SELECT id, slug, label, parent_id, group_kind, kind_slug, asset_group_slug, dashboard_bucket_slug,
               dashboard_sort_order, route_path, exclude_from_parent_total, nw_bucket, investment_root,
-              nets_linked_group_id, property_overlay, chart_host_slug
+              investment_deposit_target, nets_linked_group_id, property_overlay, chart_host_slug
        FROM portfolio_groups ORDER BY sort_order, id`
     )
     .all() as GroupRow[];
@@ -160,6 +164,7 @@ function loadNavTreeModel(): NavTreeModel {
       excludeFromParentTotal: g.exclude_from_parent_total === 1,
       nwBucket: g.nw_bucket === 1,
       investmentRoot: g.investment_root === 1,
+      investmentDepositTarget: g.investment_deposit_target === 1,
       netsLinkedGroupId: g.nets_linked_group_id,
       propertyOverlay: g.property_overlay === 1,
       chartHostSlug: g.chart_host_slug,
@@ -235,6 +240,15 @@ export function investmentRootSlugs(): readonly string[] {
   return investmentRoots().map((g) => g.slug);
 }
 
+/**
+ * True when a deposit into the group is money put to work outside cash — an investment
+ * contribution, where a deposit into a cash bucket is a move between cash accounts
+ * (`investment_deposit_target`, migration 337).
+ */
+export function isInvestmentDepositTargetGroup(slug: string): boolean {
+  return navGroup(slug)?.investmentDepositTarget === true;
+}
+
 /** The net-worth bucket a group sits in (itself included), or null outside them. */
 export function nwBucketOfGroup(groupId: number): string | null {
   return navGroupAncestry(groupId).find((g) => g.nwBucket)?.slug ?? null;
@@ -294,10 +308,44 @@ export function isInvestmentAccount(accountId: number): boolean {
   return leaf != null && navGroupAncestry(leaf.id).some((g) => g.investmentRoot);
 }
 
-/** The group whose owed total this group's value nets (the cash bucket nets the linked cards), or null. */
+/**
+ * The group whose owed total this group's own value nets (the cash savings node nets the linked
+ * cards), or null. Declared on ONE node: the net-worth bucket above it nets through it
+ * ({@link nettingGroupOf}), never by a declaration of its own.
+ */
 export function netsLinkedGroup(slug: string): NavGroup | null {
   const g = navGroup(slug);
   return g?.netsLinkedGroupId != null ? navGroupById(g.netsLinkedGroupId) : null;
+}
+
+/**
+ * The node whose netting a group's value carries, or null: the group itself when it declares one,
+ * and for a net-worth bucket the node that declares one inside it (the bucket is one figure, net
+ * of what that node nets). A group above the buckets (the net-worth root, a hub) is asked for no
+ * netting of its own: its total is the sum of its buckets wherever one is shown. Throws when a
+ * bucket holds several netting nodes — one total cannot net twice.
+ */
+export function nettingGroupOf(slug: string): NavGroup | null {
+  const root = navGroup(slug);
+  if (!root) return null;
+  if (root.netsLinkedGroupId != null) return root;
+  if (!root.nwBucket) return null;
+  const found: NavGroup[] = [];
+  const seen = new Set<number>([root.id]);
+  const walk = (g: NavGroup): void => {
+    for (const id of g.childGroupIds) {
+      const child = navGroupById(id);
+      if (!child || seen.has(child.id)) continue;
+      seen.add(child.id);
+      if (child.netsLinkedGroupId != null) found.push(child);
+      walk(child);
+    }
+  };
+  walk(root);
+  if (found.length > 1) {
+    throw new Error(`nav tree: ${slug} holds several netting nodes (${found.map((g) => g.slug).join(", ")})`);
+  }
+  return found[0] ?? null;
 }
 
 /** The reference groups a host page draws (`chart_host_slug`), in their order. */
@@ -307,8 +355,8 @@ export function referenceGroupsOfHost(hostSlug: string): NavGroup[] {
 
 /**
  * The host whose reference overlays a group's valuation chart draws: the group itself when it
- * hosts any, else the nearest hosting ancestor whose netting it shares (the cash savings page
- * draws the cash bucket's credit-card line: both net the same cards). Null otherwise.
+ * hosts any, else — for the node that declares a netting — the nearest hosting ancestor (the cash
+ * savings page draws the cash bucket's credit-card line: the bucket nets through it). Null otherwise.
  */
 export function chartHostOfGroup(slug: string): string | null {
   const g = navGroup(slug);
@@ -316,7 +364,7 @@ export function chartHostOfGroup(slug: string): string | null {
   if (referenceGroupsOfHost(g.slug).length > 0) return g.slug;
   if (g.netsLinkedGroupId == null) return null;
   for (const a of navGroupAncestry(g.id).slice(1)) {
-    if (a.netsLinkedGroupId === g.netsLinkedGroupId && referenceGroupsOfHost(a.slug).length > 0) return a.slug;
+    if (referenceGroupsOfHost(a.slug).length > 0) return a.slug;
   }
   return null;
 }

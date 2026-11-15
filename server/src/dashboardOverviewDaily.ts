@@ -69,14 +69,12 @@ export type OverviewDailyPayload = {
 };
 
 /**
- * Pasivos on each day of a daily grid: its real counted members' cached daily values, 0 when
+ * Pasivos on each day of a daily grid: its counted members' cached daily values, 0 when
  * none has one, rounded to the unit's coin. Nothing is netted from it.
  */
 const LIABILITIES_DAILY: NodeValuePolicy = {
-  members: "real_counted",
   netsLinkedCards: false,
   empty: "zero",
-  missingCardRate: "throw",
   rounding: "unit_coin",
 };
 

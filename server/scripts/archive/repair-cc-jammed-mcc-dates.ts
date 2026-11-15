@@ -9,7 +9,7 @@
 import path from "node:path";
 
 import { readCommaCsvRecords } from "../lib/ccParsedCommaCsv.js";
-import { recomputeCcBillingMonthBalances } from "../../src/ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../../src/ccBillingMonthBalancesRecompute.js";
 import { mergeCcAccountFromParsedRows } from "../../src/ccInstallmentLedgerMerge.js";
 import { resolveCfraserCsvDir } from "../../src/cfraserPaths.js";
 import { db } from "../../src/db.js";

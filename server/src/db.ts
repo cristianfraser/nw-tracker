@@ -28,6 +28,7 @@ import { runDropMarketSymbolsMic306, runInstrumentRegistry305 } from "./migratio
 import { runAccountRoles271 } from "./migrationHooks/accountRoles271.js";
 import { runAccountRoles299 } from "./migrationHooks/accountRoles299.js";
 import { runNavTreeRoles272 } from "./migrationHooks/navTreeRoles272.js";
+import { runInvestmentDepositTarget337 } from "./migrationHooks/investmentDepositTarget337.js";
 import { runExpenseKeyLegacyRewrite273 } from "./migrationHooks/expenseKeyLegacyRewrite273.js";
 import { runManualExpenseMerchant275 } from "./migrationHooks/manualExpenseMerchant275.js";
 import { registerCardLineKindFunction } from "./cardLineKindFunction.js";
@@ -412,6 +413,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "320_cc_billing_month_metrics.sql": runBillingMetrics320,
   "321_cc_card_amounts_by_currency.sql": runCardAmountsByCurrency321,
   "322_cc_traspaso_legs_by_direction.sql": runTraspasoLegs322,
+  "337_investment_deposit_target_role.sql": runInvestmentDepositTarget337,
   "325_vendor_catalog_more_names.sql": runVendorCatalog325,
   "326_cc_bank_cupo_issuer_planted_sources.sql": runCcListingIssuer326,
   "328_cc_planted_charge_lines.sql": runPlantedChargeLines328,

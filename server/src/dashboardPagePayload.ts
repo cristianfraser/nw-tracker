@@ -16,7 +16,8 @@ import { buildFlowsDepositsResponse, inversionesBrokerageDepositsSeries } from "
 import type { TsUnit } from "./rates.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
-import { cashSavingsLinkedBalances, groupNetsLinkedCards } from "./cashEqsBucketNet.js";
+import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
+import { nodeNetsLinkedCards } from "./nodeValue.js";
 import { isNwBucketSlug } from "./navTreeModel.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { liabilitiesBreakdownClpAsOf } from "./valuationTimeseries.js";
@@ -53,7 +54,7 @@ export async function buildDashboardPagePayload(unit: TsUnit) {
       const bucketLabelBySlug = new Map(baseLayoutCards.map((c) => [c.bucket_slug, c.label]));
       // A netting bucket's card explains its netting with the linked balances footer.
       const layoutCards = baseLayoutCards.map((card) =>
-        groupNetsLinkedCards(card.slug)
+        nodeNetsLinkedCards(card.slug)
           ? { ...card, linked_balances: cashSavingsLinkedBalances(asOfToday, unit) }
           : card
       );
@@ -61,7 +62,8 @@ export async function buildDashboardPagePayload(unit: TsUnit) {
       for (const card of layoutCards) {
         const bucketSlug = card.bucket_slug;
         // The bucket card's own value (Σ of its members' values in the unit), not its pesos ÷ one rate.
-        const value = isNwBucketSlug(bucketSlug) ? bucketTotals.buckets[bucketSlug] ?? 0 : 0;
+        const value = isNwBucketSlug(bucketSlug) ? bucketTotals.buckets[bucketSlug] : 0;
+        if (value == null) throw new Error(`dashboard payload: no ${unit} value for ${bucketSlug} on ${asOfToday}`);
         byGroup.set(card.bucket_slug, {
           label: bucketLabelBySlug.get(card.bucket_slug) ?? card.label,
           value,

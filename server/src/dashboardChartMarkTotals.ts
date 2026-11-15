@@ -1,4 +1,3 @@
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import { HOME_CURRENCY } from "./displayUnits.js";
 import { nodeValue, nodeValuesAtDates, type NodePointValuePolicy } from "./nodeValue.js";
 import type { TsUnit } from "./rates.js";
@@ -35,23 +34,16 @@ export type ChartMarkTotalAccountRow = {
  * out (a netting bucket always reads), rounded to the peso after the netting.
  */
 const MONTH_END_MARK_TOTALS: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
-  source: "value_in_unit",
-  members: "counted",
   empty: "null_unless_netted",
-  // Pesos need no rate.
-  missingCardRate: "throw",
   rounding: "unit_coin",
 };
 
 /**
- * The chart totals in another unit at a date: each real counted member's own value in the unit,
- * unrounded; the linked cards must have a rate.
+ * The chart totals in another unit at a date: each counted member's own value in the unit,
+ * unrounded.
  */
-const CHART_VALUE_IN_UNIT: Omit<NodePointValuePolicy, "netsLinkedCards" | "now"> = {
-  source: "value_in_unit",
-  members: "real_counted",
+const CHART_VALUE_IN_UNIT: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
   empty: "null_unless_netted",
-  missingCardRate: "throw",
   rounding: "none",
 };
 
@@ -97,22 +89,6 @@ export function slugMarkTotalsAtDatesClp(
 }
 
 /**
- * A bucket's value TODAY in a non-peso unit: Σ of each account's own value in the unit
- * (`bucketValueInUnitAt` — each framed on the day its pesos were priced, a USD cash account
- * in its ledger dollars) with the cash netting at today's rate — the headline's rule, so the
- * charts' today point equals the cards. Never the bucket's pesos ÷ one rate, which framed every
- * market mark priced on an earlier day (cuotas, a pre-open stock) on today's live rate.
- * Absent (null) under the same rule as {@link slugMarkTotalsAtDatesClp}.
- */
-export function slugValueInUnitToday(
-  accounts: readonly ChartMarkTotalAccountRow[],
-  unit: Exclude<TsUnit, "clp">,
-  opts?: SlugMarkTotalsOpts & { now?: Date }
-): number | null {
-  return slugValueInUnitAt(accounts, chileCalendarTodayYmd(), unit, opts);
-}
-
-/**
  * A bucket's value on `ymd` in a non-peso unit: Σ of each account's own value in the unit
  * (`bucketValueInUnitAt`: what it held, converted once at its side), the linked cards netted
  * from cash at the debt side. Never the bucket's pesos ÷ one rate, which would convert a
@@ -122,11 +98,10 @@ export function slugValueInUnitAt(
   accounts: readonly ChartMarkTotalAccountRow[],
   ymd: string,
   unit: Exclude<TsUnit, "clp">,
-  opts?: SlugMarkTotalsOpts & { now?: Date }
+  opts?: SlugMarkTotalsOpts
 ): number | null {
   return nodeValue(accounts, ymd, unit, {
     ...CHART_VALUE_IN_UNIT,
     netsLinkedCards: opts?.netLinkedCreditCard === true,
-    now: opts?.now ?? new Date(),
   });
 }

@@ -36,11 +36,10 @@ import {
 
 /**
  * A reference source's total on each day of its own daily series: a day the series has no value
- * for is absent, unrounded; linked cards with no rate that day are not netted.
+ * for is absent, unrounded.
  */
-const REFERENCE_SOURCE_DAILY: Omit<NodeNettingPolicy, "netsLinkedCards" | "now"> = {
+const REFERENCE_SOURCE_DAILY: Omit<NodeNettingPolicy, "netsLinkedCards"> = {
   empty: "null",
-  missingCardRate: "skip",
   rounding: "none",
 };
 
@@ -83,7 +82,6 @@ function sourceGroupDailyValues(
     const values = nodeValueSeriesFromSums(totals, dates, unit, {
       ...REFERENCE_SOURCE_DAILY,
       netsLinkedCards: nodeNetsLinkedCards(sourceSlug),
-      now: new Date(),
     });
     dates.forEach((ymd, i) => {
       const v = values[i];
@@ -119,12 +117,7 @@ export function deptoPropertyChartOverlayDailyLines(
   // Each account's own value in the unit per day (converted once at its side: the mortgage
   // as a debt), the same figures its line plots.
   const markValues = (accountId: number): (number | null)[] => {
-    const p = accountProfile(accountId);
-    return accountValueSeriesOnGrid(
-      { account_id: accountId, bucket_slug: p.leafSlug, import_key: p.importKey, name: p.name },
-      datesAsc,
-      unit
-    );
+    return accountValueSeriesOnGrid({ account_id: accountId }, datesAsc, unit);
   };
   const out: DailySeriesAccountLine[] = [];
   deptoOverlayPropertyIds(propertyAccountIds).forEach((propertyId, i) => {
