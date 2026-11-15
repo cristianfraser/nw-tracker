@@ -1895,6 +1895,52 @@ and their interactive parts (sort headers, month modals, the receipt detail row,
 | `ut-cycle-valuation` | break the 25-file cycle; delete the `clpToUnitAt.ts` shim; the liability blocks into the kernel | ≤ 15 files in cycles overall |
 | then `ut-node-value` | one `nodeValue(node, date, unit)` and its series form for the 7 netting loops; buckets from the tree; placement without `seedNavTree()` | identical payloads in every unit, or each difference listed |
 
+**Wave 8 status (2026-11-15): merged into `untangle-2`, not into `main`.** No merge conflicts. Every
+stream left the 1531 live-copy payload files identical (CLP, USD, EUR) and the server suite green.
+- `ut-cycle-expenses`: the 37-file cycle is gone. Leaves `expenseLineTypes.ts`, `gastosMesCounting.ts`,
+  `ccAdditionalCardNoteText.ts`, `ccAccountKind.ts`, `cards/openWebPasteSource.ts`,
+  `depositInflowEvent.ts`, `budaAccounts.ts`; `recomputeCcBillingMonthBalances` moved above the billing
+  views into `ccBillingMonthBalancesRecompute.ts` (its importers follow; five archived scripts still
+  name the old file).
+- `ut-cycle-valuation`: the 25-file cycle is gone. Leaves `periodAnchorDates.ts`,
+  `accountPerformanceTypes.ts`, `groupPerfTypes.ts`, `navTreeTypes.ts`, `linkedCreditCards.ts`; the
+  per-account half of `valuationTimeseries.ts` (2342 → 1290 lines) is `accountValuationTimeseries.ts`;
+  `clpToUnitAt.ts` deleted; `liabilityPctMonth` in `perfKernel.ts`.
+- `ut-node-value`: `server/src/nodeValue.ts` (`nodeValue`, `nodeValuesAtDates`,
+  `nodeValueSeriesOnGrid`, `nodeValueSeriesFromSums`, the kernel `nodeValueFromSum`,
+  `nodeNetsLinkedCards`) with the differences between the old loops as a named policy
+  (`source`, `members`, `empty`, `missingCardRate`, `rounding`, `now`); nine call sites moved onto it,
+  each with the policy that reproduces its output; no endpoint got slower. The four-bucket literal is
+  gone from `flowsDeposits`, `fxConversionWarningScan`, `fxBidAskGaps`, `checkingCartolaLoaders`.
+Merged tip: typecheck and conventions ok; **check-deps 1372 files, 0 files in cycles** (the baseline
+is 0, so a new cycle fails the check); client 479, ingest 481, contracts 133, server 3757 passing.
+
+Decisions the node-value policy exposes (each measured on the live copy by flipping the policy; none applied):
+1. A missing linked-card rate: three sites skip the netting silently, others throw or return null.
+   One rule `throw` moves no payload today.
+2. The prior-day closes re-read a peso mark into the unit; `value_in_unit` like the rest moves no payload.
+3. Three sites pass their own `now`; dropping it moves 10 files in the last float digits.
+4. Rounding: the daily overview rounds to the unit's coin, the monthly overview, value map and
+   reference lines do not; `unit_coin` everywhere moves 35 files by sub-coin digits.
+5. An empty node reads 0, null, or null unless it nets; `null_unless_netted` everywhere needs nullable
+   bucket types and moves the leading days of buckets that start after the portfolio.
+6. Both `cash_eqs` and `cash_savings` carry the netting role, so line builders need
+   `isCashSavingsNavNode` to net once: declare it on one node.
+7. The member filters `counted` and `real_counted` give the same output: keep one.
+8. The headline reads the consolidated monthly closing first and Σ members as fallback; charts read
+   Σ marks. One quantity would be Σ member values always.
+
+Left by wave 8: `netLinkedCreditCardFromCashConsolidated` (a tenth netting loop; converting it needs
+the netting primitives moved from `cashEqsBucketNet.ts` into `nodeValue.ts`); the inline Σ in
+`dailySeries.ts`; `synthetic_group_color_rgb` (served in 9 payloads, read by no client file, its ids
+match no served line — removing it changes those payloads); the three-slug set in
+`checkingDescriptionPredicates.ts` («deposit targets that are not cash», no role says it);
+`inversionesPerfSeries.ts` (retirement and brokerage are in the wire shape); the mortgage and card
+blocks of `accountPerformance.ts` that encode more than the kernel's side rule (the mortgage's first
+month, the depto ledger as flow source, `liabilityPctMonth`'s fixed threshold); account placement
+without `seedNavTree()` (needs a `placeAccount` in the creating transaction and a boot seed that
+stops regenerating membership).
+
 ### Wave 9 — currency agnostic (one first, three in parallel, one last)
 
 The codebase is ours to change: a dollar figure may move by a peso where the legacy dollar path and
@@ -2028,6 +2074,33 @@ Found by wave 7:
 - Rehearsal: `server/data/.global-sync-state.json` has no env override, so a worktree or a fresh
   checkout cannot serve the daily surfaces without a hand-made file.
 
+Found by wave 8:
+
+- Hubs to split by concern: `ccExpenseCategories.ts` (slug constants, merchant-key normalisation,
+  category resolution, purchase-key resolution, assignment writes); `flowsExpenses.ts` (the 500-line
+  card-line builder, the step pipeline, the split expansion, the payload); `ccBillingBalances.ts`
+  (the owed-line stream, the fx-date helpers, the snapshot reader, and `patchCreditCardBillingConfig`,
+  a config write `ccAccountConfig.ts` imports the whole file for); `flowsCheckingGastos.ts` (deposit
+  and capital-return matching beside line building; `checkingGastosMovementPurchaseKey` belongs with
+  the keys); `checkingCartolaLoaders.ts` (foreign-checking readers, the deposit-match pool, the
+  cartola loaders); `ccWebPasteParse.ts` hosts a card lookup and imports the importer;
+  `ccAdditionalCardExpenseMatch.ts` carries the «user declined auto category» note helpers.
+- Re-export seams left so outside files did not change, each retired by pointing its importers at
+  the leaf: `flowsExpenses`, `ccExpenseOriginLabel`, `expenseDisplayNames`, `ccNotaDeCreditoPairing`,
+  `expenseDepositLinks`, `flowsExpensesGastos`, `ccAccountConfig`, `accountDeposits`, `budaWallet`,
+  `liabilityTree`, `navTree`, `groupChartBuckets`, `groupMonthlyPerfConsolidation`,
+  `accountPeriodMarks`, `valuationTimeseries`.
+- `accountChartInactive.ts` reads `monthlyPerfForAccountId` for its tail test, so the nav tree sits on
+  the whole monthly performance stack; `accountPerformance.ts` builds first-month and later-month rows
+  in two near-parallel functions; `GROUP_TAB_VAL_TOTAL` is declared twice;
+  `accountValuationTimeseries.ts` carries per-kind date augmenters and the depto overlay constants.
+- `dailySeries.ts` imports `isCreditCardAccountId` through `ccAccountConfig.ts` (the billing stack);
+  `expenseLineTypes.ts` imports `PaymentReceiptDto` from `paymentProcessorReceipts.ts` (could come
+  from contracts); `budaAccounts.ts` finds coin accounts by an asset-group slug `LIKE`.
+- Three member listings feed one node-value function (`listAccountsForDashboardBucket`,
+  `listAccountsForGroupTab`, the composition rows): one `node.members()` from `navTreeModel`.
+  `slugMarkTotalsAtDatesClp` / `slugValueInUnitAt` are wrappers that differ only in policy.
+
 ### Backlog: what is still not currency agnostic after wave 9
 
 Source and legal facts stay as they are (the F22 in pesos, the 1040 in dollars, a cartola in pesos, the
@@ -2092,3 +2165,20 @@ Found by wave 7:
 - Client tables still on `_clp` columns: the facturaciones, detalle por mes, card plans and cuotas
   tables, the mortgage tables (UF + pesos), groceries, the mirror-pairs card payments,
   `CheckingCartolaMonthTable`.
+
+Found by wave 8:
+
+- Node values: the linked-card total is always pesos (`linkedCreditCards.ts`), so a card's dollar
+  sub-balance goes dollars → pesos → unit; composition values are built in pesos only; the value map
+  keeps a peso basis for visibility and order in every unit; the headline's largest-remainder
+  apportionment exists only for the home currency; `dashboardOverviewDaily` builds the peso series
+  for another unit to drive a peso-threshold leading-null test; `buildDashboardBucketValueTotals`
+  returns `<bucket>_clp` for the wealth percentile.
+- Valuation series: `chartValueInUnit` and the depto lines start from pesos; data keys
+  `depto_hipoteca_saldo_clp` / `depto_valor_total_clp`; the mortgage rows' `uf_clp_day`.
+- Expense types: `FlowCcExpenseLineRow` keeps `amount_clp`, `amount_usd`, `amount_usd_at_expense`,
+  `installment_total_clp` beside `amount`; `ExpenseDepositLinkDto` is pesos; `DepositInflowEvent`
+  has `amt` in pesos, a dollar `amt_usd` beside the generic native leg, and
+  `capital_kind: "clp_wire" | "usd_reference"`; the month rows and chart points carry bare numbers.
+- `ccBillingMonthBalancesRecompute.ts` writes cupo and saldo total for pesos only and reads the
+  foreign saldo from the dollar slot.
