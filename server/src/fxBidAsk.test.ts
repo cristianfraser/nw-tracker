@@ -1,7 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
-  ensureBidAskForPaymentDate,
   fxBuyClpPerUsdOnOrBefore,
   inferBidAskFromMid,
   materializeInferredBidAskForDate,
@@ -67,7 +66,7 @@ describe("fxBidAsk infer", () => {
     db.prepare(`DELETE FROM fx_daily_bid_ask WHERE date = ?`).run(date);
   });
 
-  it("ensureBidAskForPaymentDate is idempotent when buy exists", () => {
+  it("a conversion reads the stored buy rate and writes no bid/ask row", () => {
     const date = "2099-08-03";
     upsertFxBidAskRow({
       date,
@@ -75,8 +74,17 @@ describe("fxBidAsk infer", () => {
       sell_clp_per_usd: 940,
       source: "test",
     });
-    ensureBidAskForPaymentDate(date);
+    const rows = () => (db.prepare(`SELECT COUNT(*) AS n FROM fx_daily_bid_ask`).get() as { n: number }).n;
+    const before = rows();
+    expect(clpToUsdAtPaymentRounded(95_000, "2099-08-05")).toBeCloseTo(100, 5);
     expect(fxBuyClpPerUsdOnOrBefore(date)).toBe(950);
+    expect(rows()).toBe(before);
     db.prepare(`DELETE FROM fx_daily_bid_ask WHERE date = ?`).run(date);
+  });
+
+  it("no rate on or before the date: null, with no warning recorded", () => {
+    clearFxConversionWarnings();
+    expect(clpToUsdAtPaymentRounded(100_000, "1900-01-01")).toBeNull();
+    expect(takeFxConversionWarnings()).toHaveLength(0);
   });
 });
