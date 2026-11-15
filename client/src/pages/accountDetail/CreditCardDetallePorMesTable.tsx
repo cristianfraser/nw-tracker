@@ -8,12 +8,7 @@ import styles from "../AccountDetailPage.module.css";
 import type { CcBillingDetailMonthDto } from "../../types";
 import { rollupCcBillingDetailYearly } from "../../ccYearlyRollup";
 import { PaginatedTable, pageForFirstMatch, useClientPagination } from "../../components/ui/PaginatedTable";
-import { Table } from "../../components/ui/Table";
-import {
-  TableMobileCard,
-  TableMobileCardRow,
-  TableMobileCardSection,
-} from "../../components/ui/TableMobileCard";
+import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 
 const PAGE_SIZE = 12;
 
@@ -46,48 +41,6 @@ function periodLabel(row: CcBillingDetailMonthDto, isYearly: boolean): string {
   return isYearly ? row.billing_month.slice(0, 4) : formatYearMonthLabel(row.billing_month);
 }
 
-function CreditCardDetallePorMesMobileCard({
-  row,
-  isYearly,
-  labels,
-}: {
-  row: CcBillingDetailMonthDto;
-  isYearly: boolean;
-  labels: {
-    totalFacturado: string;
-    cupoEnCuotas: string;
-    balanceTotal: string;
-    projectedHint: string;
-  };
-}) {
-  const title = (
-    <>
-      {periodLabel(row, isYearly)}
-      {row.as_of_kind === "manual" ? <span className="muted">*</span> : null}
-      <ProvisionalMark row={row} />
-    </>
-  );
-
-  return (
-    <TableMobileCard title={title}>
-      <TableMobileCardSection>
-        <TableMobileCardRow
-          label={labels.totalFacturado}
-          value={renderFacturado(row, labels.projectedHint)}
-        />
-        <TableMobileCardRow
-          label={labels.cupoEnCuotas}
-          value={formatOrDash(row.cupo_en_cuotas_clp, formatCardBillingPesos)}
-        />
-        <TableMobileCardRow
-          label={labels.balanceTotal}
-          value={formatOrDash(row.balance_total_clp, formatCardBillingPesos)}
-        />
-      </TableMobileCardSection>
-    </TableMobileCard>
-  );
-}
-
 export function CreditCardDetallePorMesTable({
   rows,
   period,
@@ -102,12 +55,39 @@ export function CreditCardDetallePorMesTable({
   const projectedHint = isYearly
     ? t("accountDetail.creditCard.colTotalFacturadoProjectedHintYearly")
     : t("accountDetail.creditCard.colTotalFacturadoProjectedHint");
-  const mobileLabels = {
-    totalFacturado: t("accountDetail.creditCard.colTotalFacturado"),
-    cupoEnCuotas: t("accountDetail.creditCard.colCupoEnCuotas"),
-    balanceTotal: t("accountDetail.creditCard.colBalanceTotal"),
-    projectedHint,
-  };
+  const columns: TableColumn<CcBillingDetailMonthDto>[] = [
+    {
+      key: "period",
+      header: isYearly ? t("accountDetail.yearColumn") : t("account.creditCard.colBillingMonth"),
+      className: cn("mono", styles.nowrap),
+      cell: (row) => (
+        <>
+          {periodLabel(row, isYearly)}
+          {row.as_of_kind === "manual" ? <span className="muted">*</span> : null}
+          <ProvisionalMark row={row} />
+        </>
+      ),
+      title: true,
+    },
+    {
+      key: "facturado",
+      header: t("accountDetail.creditCard.colTotalFacturado"),
+      className: "mono",
+      cell: (row) => renderFacturado(row, projectedHint),
+    },
+    {
+      key: "cupo",
+      header: t("accountDetail.creditCard.colCupoEnCuotas"),
+      className: "mono",
+      cell: (row) => formatOrDash(row.cupo_en_cuotas_clp, formatCardBillingPesos),
+    },
+    {
+      key: "balance",
+      header: t("accountDetail.creditCard.colBalanceTotal"),
+      className: "mono",
+      cell: (row) => formatOrDash(row.balance_total_clp, formatCardBillingPesos),
+    },
+  ];
 
   const displayRows = useMemo(
     () => (isYearly ? rollupCcBillingDetailYearly(rows) : rows),
@@ -131,38 +111,11 @@ export function CreditCardDetallePorMesTable({
 
   return (
     <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
-      <Table
-        tableClassName="table--parallel-mobile"
-        header={
-          <thead>
-            <tr>
-              <th className="desktop-only">
-                {isYearly ? t("accountDetail.yearColumn") : t("account.creditCard.colBillingMonth")}
-              </th>
-              <th className="desktop-only">{t("accountDetail.creditCard.colTotalFacturado")}</th>
-              <th className="desktop-only">{t("accountDetail.creditCard.colCupoEnCuotas")}</th>
-              <th className="desktop-only">{t("accountDetail.creditCard.colBalanceTotal")}</th>
-              <th className="mobile-only" aria-hidden="true" />
-            </tr>
-          </thead>
-        }
-      >
-        {pageRows.map((row) => (
-          <tr key={`${row.billing_month}-${row.as_of_date}`}>
-            <td className={cn("mono", "desktop-only", styles.nowrap)}>
-              {periodLabel(row, isYearly)}
-              {row.as_of_kind === "manual" ? <span className="muted">*</span> : null}
-              <ProvisionalMark row={row} />
-            </td>
-            <td className="mono desktop-only">{renderFacturado(row, projectedHint)}</td>
-            <td className="mono desktop-only">{formatOrDash(row.cupo_en_cuotas_clp, formatCardBillingPesos)}</td>
-            <td className="mono desktop-only">{formatOrDash(row.balance_total_clp, formatCardBillingPesos)}</td>
-            <td className="mobile-only">
-              <CreditCardDetallePorMesMobileCard row={row} isYearly={isYearly} labels={mobileLabels} />
-            </td>
-          </tr>
-        ))}
-      </Table>
+      <ColumnTable
+        rows={pageRows}
+        columns={columns}
+        rowKey={(row) => `${row.billing_month}-${row.as_of_date}`}
+      />
     </PaginatedTable>
   );
 }

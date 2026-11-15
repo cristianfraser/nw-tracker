@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { PaginatedTable, useClientPagination } from "../../components/ui/PaginatedTable";
 import { Table } from "../../components/ui/Table";
+import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 import {
   TableMobileCard,
   TableMobileCardRow,
@@ -339,39 +340,61 @@ function formatScenarioPayment(uf: number | null, clp: number | null) {
   );
 }
 
-function DeptoPaymentScenarioMobileCard({ row }: { row: DeptoPaymentScenarioRow }) {
-  const byTerm = new Map(row.scenarios.map((s) => [s.term, s]));
-  const title = (
+/** «próx.» / «cotizada» under the cuota number; the card's title leads each with a space. */
+function scenarioCuotaMarks(row: DeptoPaymentScenarioRow, lead: string) {
+  return (
     <>
-      {row.cuota}
       {row.is_next_payment ? (
-        <span className={cn("muted", styles.cellSub)}> {i18n.t("accountDetail.mortgageSheet.proxAbbrev")}</span>
+        <span className={cn("muted", styles.cellSub)}>
+          {lead}
+          {i18n.t("accountDetail.mortgageSheet.proxAbbrev")}
+        </span>
       ) : null}
       {row.quoted ? (
-        <span className={cn("muted", styles.cellSub)}> {i18n.t("accountDetail.mortgageSheet.quotedAbbrev")}</span>
+        <span className={cn("muted", styles.cellSub)}>
+          {lead}
+          {i18n.t("accountDetail.mortgageSheet.quotedAbbrev")}
+        </span>
       ) : null}
-      {" · "}
-      {row.occurred_on}
     </>
   );
-
-  return (
-    <TableMobileCard title={title}>
-      <TableMobileCardSection>
-        {SCENARIO_TERMS.map((term) => {
-          const cell = scenarioPaymentForTerm(row, term, byTerm);
-          return (
-            <TableMobileCardRow
-              key={String(term)}
-              label={scenarioTermLabel(term)}
-              value={formatScenarioPayment(cell.uf, cell.clp)}
-            />
-          );
-        })}
-      </TableMobileCardSection>
-    </TableMobileCard>
-  );
 }
+
+const scenarioColumns = (): TableColumn<DeptoPaymentScenarioRow>[] => [
+  {
+    key: "cuota",
+    header: colLabel("cuota"),
+    className: "mono",
+    cell: (row) => (
+      <>
+        {row.cuota}
+        {scenarioCuotaMarks(row, "")}
+      </>
+    ),
+    // The card's title carries the date too (the desktop row's second column).
+    title: (row) => (
+      <>
+        {row.cuota}
+        {scenarioCuotaMarks(row, " ")}
+        {" · "}
+        {row.occurred_on}
+      </>
+    ),
+  },
+  { key: "fecha", header: colLabel("fecha"), className: "mono", cell: (row) => row.occurred_on, desktopOnly: true },
+  ...SCENARIO_TERMS.map(
+    (term): TableColumn<DeptoPaymentScenarioRow> => ({
+      key: String(term),
+      header: scenarioTermLabel(term),
+      headerClassName: styles.nowrap,
+      className: cn("mono", styles.nowrap),
+      cell: (row) => {
+        const cell = scenarioPaymentForTerm(row, term, new Map(row.scenarios.map((s) => [s.term, s])));
+        return formatScenarioPayment(cell.uf, cell.clp);
+      },
+    })
+  ),
+];
 
 export function DeptoPaymentScenarioTable({
   rows,
@@ -392,59 +415,12 @@ export function DeptoPaymentScenarioTable({
     <PageGridTile id="mortgage-scenarios">
       <h3>{i18n.t("accountDetail.mortgageSheet.referenceMinMax")}</h3>
       <PaginatedTable page={scenarioPage} pageSize={12} total={scenarioTotal} onPageChange={setScenarioPage}>
-        <Table
-          tableClassName={cn("table--parallel-mobile", styles.tableScenario)}
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only">{colLabel("cuota")}</th>
-                <th className="desktop-only">{colLabel("fecha")}</th>
-                {SCENARIO_TERMS.map((term) => (
-                  <th key={String(term)} className={cn("desktop-only", styles.nowrap)}>
-                    {scenarioTermLabel(term)}
-                  </th>
-                ))}
-                <th className="mobile-only" aria-hidden="true" />
-              </tr>
-            </thead>
-          }
-        >
-          {scenarioPageRows.map((row) => {
-            const byTerm = new Map(row.scenarios.map((s) => [s.term, s]));
-            return (
-              <tr key={`${row.cuota}-${row.occurred_on}`}>
-                <td className="mono desktop-only">
-                  {row.cuota}
-                  {row.is_next_payment ? (
-                    <span className={cn("muted", styles.cellSub)}>
-                      {i18n.t("accountDetail.mortgageSheet.proxAbbrev")}
-                    </span>
-                  ) : null}
-                  {row.quoted ? (
-                    <span className={cn("muted", styles.cellSub)}>
-                      {i18n.t("accountDetail.mortgageSheet.quotedAbbrev")}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="mono desktop-only">{row.occurred_on}</td>
-                {SCENARIO_TERMS.map((term) => {
-                  const cell = scenarioPaymentForTerm(row, term, byTerm);
-                  return (
-                    <td key={String(term)} className={cn("mono", "desktop-only", styles.nowrap)}>
-                      {cell.uf != null ? formatUfUnitsFine(cell.uf) : "—"}
-                      {cell.clp != null ? (
-                        <span className={cn("muted", styles.cellSub)}>{formatMortgagePesos(cell.clp)}</span>
-                      ) : null}
-                    </td>
-                  );
-                })}
-                <td className="mobile-only">
-                  <DeptoPaymentScenarioMobileCard row={row} />
-                </td>
-              </tr>
-            );
-          })}
-        </Table>
+        <ColumnTable
+          rows={scenarioPageRows}
+          columns={scenarioColumns()}
+          rowKey={(row) => `${row.cuota}-${row.occurred_on}`}
+          tableClassName={styles.tableScenario}
+        />
       </PaginatedTable>
     </PageGridTile>
   );
