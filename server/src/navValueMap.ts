@@ -46,7 +46,7 @@ import { isHomeCurrency } from "./displayUnits.js";
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { clpToUnitAt } from "./clpToUnitAt.js";
+import { clpToUnitAt } from "./valueConvert.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { getNetWorthNavGroupNode } from "./navTree.js";
 import { loadProxyBasketBreakdown } from "./proxyBasketBreakdown.js";
