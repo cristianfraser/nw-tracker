@@ -37,12 +37,18 @@ export type ApplyParsedCcStatementsOptions = {
   issuer?: CcIssuerSlug;
 };
 
+/** A card master's report label: its plastic's last four (the config row every master has) and its name. */
 function accountLabelForId(accountId: number): string {
-  const row = db.prepare(`SELECT name, import_key FROM accounts WHERE id = ?`).get(accountId) as
-    | { name: string; import_key: string | null }
-    | undefined;
-  const m = /credit_card_master\|[^|]+\|(\d{4})/.exec(String(row?.import_key ?? ""));
-  return `${m?.[1] ?? "?"} ${row?.name ?? ""}`.trim();
+  const row = db
+    .prepare(
+      `SELECT a.name, c.card_last4 FROM accounts a
+       LEFT JOIN credit_card_account_config c ON c.account_id = a.id WHERE a.id = ?`
+    )
+    .get(accountId) as { name: string; card_last4: string | null } | undefined;
+  if (!row) throw new Error(`card statements: account ${accountId} not found`);
+  const last4 = row.card_last4?.trim();
+  if (!last4) throw new Error(`card statements: account ${accountId} has no card_last4 (credit_card_account_config)`);
+  return `${last4} ${row.name}`.trim();
 }
 
 export function applyCanonicalCardStatements(
