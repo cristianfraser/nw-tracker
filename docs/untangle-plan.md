@@ -2223,6 +2223,62 @@ dollar balances); a chart point is never apportioned; the rehearsal asserts, for
 payload, Σ parts = total to the coin and |Δ| under one coin per path. Also here, since it is the
 same code: decide whether the net-worth group page's own total nets the cards like the overview.
 
+#### Wave 8c status (2026-11-15, merged on `untangle-2`)
+
+`ut-node-value-3`, five commits, no migration, no client file. Merged tip: typecheck and
+conventions ok; 0 files in cycles; server 3788, client 481, ingest 491, contracts 148 passing.
+Live-copy rehearsal against the wave 8b dump: 65 of 1531 files differ, all intended. The wave 9
+baseline is `/private/tmp/ut-wave7/baseline-w9` (the merged tip, 2026-11-15).
+
+- Step 1: the headline reads Σ member values (`bucketValueInUnitAtRaw`); the consolidated-closing
+  path left `portfolioGroupValueAtDate.ts`. 44 files, last float digit, under `prior_closes`.
+- Step 2: one empty rule; `empty` left the policy; `BucketValues`, the apportionment, the wide peso
+  shape, the daily liabilities map and the value map's basis are nullable (the DTO fields already
+  were). 0 files on the live copy. **A person with an empty bucket does change:** on the Vitest
+  person (no property) the real-estate bucket, its card and its allocation row read null where they
+  read 0 (the card prints the existing «—»), and the value map in usd/eur has values where the
+  empty leaf used to null the whole map.
+- Step 3: node values are exact; `rounding` left the policy (`NodeValuePolicy` is
+  `{ netsLinkedCards }`). The daily overview was not the only rounding site: the monthly peso chart
+  totals and the composition lines rounded too. 12 files; everything under a coin except the daily
+  overview's `net_worth`, which was Σ of four rounded buckets and is now the exact sum (up to about
+  1.3 pesos), and projection outputs that flip by exactly one peso from a sub-peso seed.
+- Step 4: `server/src/coinApportionment.ts` `apportionToCoin(parts, unit, { total? })` (largest
+  remainder, coin from `currencies`, null parts take no share, throws on a total the parts do not
+  round to). Done for the headline in every unit — today and the day, month and year closes through
+  one function — its cards, the allocation rows, and the value map (`settleMapToCoins`: bucket
+  frames take the headline's cards, each frame is apportioned over its children, each leaf over its
+  listed accounts; a frame a coin or more from its headline bucket throws). 55 files, all under a
+  coin except `prior_closes.day` in eur (one cent on three figures: they were rounded half-up apart).
+  Checked on the dump: Σ buckets = net worth, card = bucket, map root = headline, Σ children = frame.
+
+Behaviour changes: a node with no member value is null where it was 0; a netting node asks for the
+cards' rate on every date, also where its members have no value (a new possible throw, not seen on
+the three datasets); a consolidated cash row with no prior closing gets 0 less the cards' owed; the
+wealth percentile throws on a year-end with no net worth.
+
+Left by wave 8c:
+
+- Parts beside a total, not done: card metrics below bucket level and the `accounts[].current_value`
+  rows under a table total (needs a display value apart from `current_value`, a P/L input;
+  `sumRowValues` still has its own empty rule); the cash card's `linked_balances` footer; the
+  `liabilities_breakdown` beside the Pasivos root (total and parts come from different valuation
+  paths: one source first).
+- Printed precision: usd/eur cards print at adaptive precision, each on its own, so the payload
+  adds up at the cent while printed whole-dollar figures can still miss by one. Client formatting.
+- The net-worth root's own series is un-netted and adds the liabilities' owed as positive: the
+  monthly `valuation-timeseries?portfolio_group=net_worth` (no client caller) and the daily
+  `/api/daily-series?portfolio_group=net_worth`, which feeds the home page's day-mode detail table.
+  The month and year tables there are netted. Fix: `buildNetWorthConsolidatedMonthly` for the root,
+  per-bucket sums in the daily resolver. A decision (a visible number changes).
+- The Vitest person answers 500 on `/api/benchmark-comparison?…portfolio_group=net_worth`.
+- Test isolation: a test file that deletes a placed account with raw SQL leaves `sort_order` gaps
+  for the files after it (one test settled; the shared «insert and place» fixture helper of wave 8b
+  would end it).
+- Docs pass: `.claude/rules/valuation-series.md` («same rounding», `apportionedBucketClpAt` /
+  `consolidatedBucketValueClpAt`, «Unrounded; callers round once at the end»,
+  `dashboardBucketDayPriorCloses`, the «Month-grain trap» sentence).
+
 ### Wave 9 — currency agnostic (one first, three in parallel, one last)
 
 The codebase is ours to change: a dollar figure may move by a peso where the legacy dollar path and
