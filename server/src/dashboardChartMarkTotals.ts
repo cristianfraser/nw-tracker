@@ -1,9 +1,6 @@
-import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { clpToUnitAt } from "./valueConvert.js";
-import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
-import { bucketValueInUnitAt } from "./periodReturnsShortHorizon.js";
+import { HOME_CURRENCY } from "./displayUnits.js";
+import { nodeValue, nodeValuesAtDates, type NodePointValuePolicy } from "./nodeValue.js";
 import type { TsUnit } from "./rates.js";
 
 /**
@@ -31,6 +28,31 @@ export type ChartMarkTotalAccountRow = {
   import_key?: string | null;
   name?: string | null;
   exclude_from_group_totals?: number;
+};
+
+/**
+ * The chart totals' pesos at a date: each counted member's peso mark, a date with no mark left
+ * out (a netting bucket always reads), rounded to the peso after the netting.
+ */
+const MONTH_END_MARK_TOTALS: Omit<NodePointValuePolicy, "netsLinkedCards"> = {
+  source: "value_in_unit",
+  members: "counted",
+  empty: "null_unless_netted",
+  // Pesos need no rate.
+  missingCardRate: "throw",
+  rounding: "unit_coin",
+};
+
+/**
+ * The chart totals in another unit at a date: each real counted member's own value in the unit,
+ * unrounded; the linked cards must have a rate.
+ */
+const CHART_VALUE_IN_UNIT: Omit<NodePointValuePolicy, "netsLinkedCards" | "now"> = {
+  source: "value_in_unit",
+  members: "real_counted",
+  empty: "null_unless_netted",
+  missingCardRate: "throw",
+  rounding: "none",
 };
 
 export type SlugMarkTotalsOpts = {
@@ -62,26 +84,15 @@ export function slugMarkTotalsAtDatesClp(
   datesAsc: readonly string[],
   opts?: SlugMarkTotalsOpts
 ): Map<string, number> {
-  const rows = accounts.filter((a) => a.exclude_from_group_totals !== 1);
+  const values = nodeValuesAtDates(accounts, datesAsc, HOME_CURRENCY, {
+    ...MONTH_END_MARK_TOTALS,
+    netsLinkedCards: opts?.netLinkedCreditCard === true,
+  });
   const out = new Map<string, number>();
-  for (const ymd of datesAsc) {
-    let raw = 0;
-    let any = false;
-    for (const a of rows) {
-      const mark = accountMarkClpAtYmd(a.account_id, ymd);
-      const clp = mark?.value_clp;
-      if (clp != null && Number.isFinite(clp)) {
-        raw += clp;
-        any = true;
-      }
-    }
-    if (opts?.netLinkedCreditCard) {
-      raw = cashNetOfLinkedCreditCards(raw, linkedCreditCardClpForCashCardAsOf(ymd));
-    } else if (!any) {
-      continue;
-    }
-    out.set(ymd, Math.round(raw));
-  }
+  datesAsc.forEach((ymd, i) => {
+    const v = values[i];
+    if (v != null) out.set(ymd, v);
+  });
   return out;
 }
 
@@ -113,14 +124,9 @@ export function slugValueInUnitAt(
   unit: Exclude<TsUnit, "clp">,
   opts?: SlugMarkTotalsOpts & { now?: Date }
 ): number | null {
-  const now = opts?.now ?? new Date();
-  const rows = accounts.filter((a) => a.account_id > 0);
-  const sum = bucketValueInUnitAt(rows, ymd, unit, now);
-  if (!opts?.netLinkedCreditCard) return sum;
-  const cc = linkedCreditCardClpForCashCardAsOf(ymd);
-  const ccInUnit = cc === 0 ? 0 : clpToUnitAt(cc, ymd, unit, { now, side: "debt" });
-  if (ccInUnit == null) {
-    throw new Error(`slugValueInUnitAt: no ${unit} rate for the linked credit cards on ${ymd}`);
-  }
-  return cashNetOfLinkedCreditCards(sum ?? 0, ccInUnit);
+  return nodeValue(accounts, ymd, unit, {
+    ...CHART_VALUE_IN_UNIT,
+    netsLinkedCards: opts?.netLinkedCreditCard === true,
+    now: opts?.now ?? new Date(),
+  });
 }
