@@ -1,4 +1,4 @@
-import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
+import { cardLineAmountClpAtStoredRate } from "./ccExpenseAmountClp.js";
 
 /**
  * Santander wide-layout statements often list each installment twice: * a contract summary row (N/CUOTAS PRECIO, TRES CUOTAS PREC, NN CUOTAS COMERC)
@@ -12,14 +12,13 @@ export type CcStatementLineForInstallmentTotals = {
   statement_date: string;
   merchant: string | null;
   installment_flag: number;
-  amount_clp: number | null;
-  amount_usd?: number | null;
-  valor_cuota_mensual_clp: number | null;
-  valor_cuota_mensual_usd?: number | null;
+  /** The line's amount and cuota as stored, in its own `currency` (migration 319). */
+  amount: number | null;
+  currency: string;
+  cuota_amount: number | null;
   nro_cuota_current?: number | null;
   nro_cuota_total?: number | null;
-  statement_currency?: string | null;
-  /** Statement close (ISO) for USD→CLP on dedupe comparisons. */
+  /** Statement close (ISO): a foreign line's pesos on dedupe comparisons. */
   fx_date_iso?: string | null;
 };
 
@@ -84,17 +83,7 @@ export function isUnindexedInstallmentResumenLine(
 export function installmentCuotaAmountClp(
   row: CcStatementLineForInstallmentTotals
 ): number | null {
-  const amount = effectiveCcExpenseLineAmountClp(
-    {
-      installment_flag: row.installment_flag,
-      amount_clp: row.amount_clp,
-      amount_usd: row.amount_usd ?? null,
-      valor_cuota_mensual_clp: row.valor_cuota_mensual_clp,
-      valor_cuota_mensual_usd: row.valor_cuota_mensual_usd ?? null,
-      statement_currency: row.statement_currency ?? null,
-    },
-    row.fx_date_iso ?? null
-  );
+  const amount = cardLineAmountClpAtStoredRate(row, row.fx_date_iso ?? null);
   if (amount == null || amount <= 0) return null;
   if (row.installment_flag === 1) return amount;
   if (isInstallmentContractSummaryMerchant(row.merchant)) return amount;

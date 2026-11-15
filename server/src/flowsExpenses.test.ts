@@ -17,7 +17,6 @@ import {
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { installmentHKeyWithoutTotal } from "./expenseKeys.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
-import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { db } from "./db.js";
 import { flowCcExpenseLineFingerprint } from "./ccExpenseLineDedupe.js";
 import { buildFlowsExpenseLines, buildFlowsExpensesPayload, resolveExpenseMonth } from "./flowsExpenses.js";
@@ -33,38 +32,6 @@ function splitView(payload: ReturnType<typeof buildFlowsExpensesPayload>) {
     gastosViewKey("split", "subcategory")
   ]!;
 }
-
-describe("effectiveCcExpenseLineAmountClp", () => {
-  it("uses valor_cuota_mensual_clp for installment lines", () => {
-    expect(
-      effectiveCcExpenseLineAmountClp(
-        {
-          installment_flag: 1,
-          amount_clp: 881_134,
-          amount_usd: null,
-          valor_cuota_mensual_clp: 73_428,
-          valor_cuota_mensual_usd: null,
-        },
-        "2025-04-22"
-      )
-    ).toBe(73_428);
-  });
-
-  it("uses amount_clp for revolving lines", () => {
-    expect(
-      effectiveCcExpenseLineAmountClp(
-        {
-          installment_flag: 0,
-          amount_clp: -394_140,
-          amount_usd: null,
-          valor_cuota_mensual_clp: null,
-          valor_cuota_mensual_usd: null,
-        },
-        "2025-04-22"
-      )
-    ).toBe(-394_140);
-  });
-});
 
 describe("resolveExpenseMonth", () => {
   it("prefers purchase date over statement close for one-shot charges", () => {

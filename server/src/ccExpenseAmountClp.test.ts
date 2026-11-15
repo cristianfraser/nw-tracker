@@ -1,141 +1,96 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { storedPairRate } from "./rates.js";
 import {
-  effectiveCcExpenseLineAmountClp,
-  effectiveCcExpenseLineAmountUsd,
+  cardLineAmountClpAtStoredRate,
+  cardLineNativeAmount,
+  debtCardLineAmountClp,
+  debtFrameClp,
+  debtFrameClpPerUnit,
+  debtFrameRates,
 } from "./ccExpenseAmountClp.js";
 
-describe("effectiveCcExpenseLineAmountClp", () => {
-  it("uses valor_cuota_mensual_clp for installment lines", () => {
-    expect(
-      effectiveCcExpenseLineAmountClp(
-        {
-          installment_flag: 1,
-          amount_clp: 881_134,
-          amount_usd: 100,
-          valor_cuota_mensual_clp: 73_428,
-          valor_cuota_mensual_usd: 80,
-        },
-        "2025-04-22"
-      )
-    ).toBe(73_428);
+/** Rate days this file owns (far before any generated history), removed afterwards. */
+const FX_DAY = "1998-03-10";
+const NO_RATE_DAY = "1990-01-01";
+
+beforeAll(() => {
+  db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, 920)`).run(FX_DAY);
+  db.prepare(`INSERT INTO eur_daily (date, clp_per_eur) VALUES (?, 1010)`).run(FX_DAY);
+});
+
+afterAll(() => {
+  db.prepare(`DELETE FROM fx_daily WHERE date = ?`).run(FX_DAY);
+  db.prepare(`DELETE FROM eur_daily WHERE date = ?`).run(FX_DAY);
+});
+
+describe("cardLineNativeAmount", () => {
+  it("reads a cuota line's cuota and any other line's amount, in the line's currency", () => {
+    expect(cardLineNativeAmount({ installment_flag: 1, amount: 881_134, currency: "clp", cuota_amount: 73_428 })).toEqual({
+      amount: 73_428,
+      currency: "clp",
+    });
+    expect(cardLineNativeAmount({ installment_flag: 0, amount: 4.53, currency: "usd", cuota_amount: null })).toEqual({
+      amount: 4.53,
+      currency: "usd",
+    });
+    expect(cardLineNativeAmount({ installment_flag: 0, amount: 12.5, currency: "eur", cuota_amount: null })).toEqual({
+      amount: 12.5,
+      currency: "eur",
+    });
   });
 
-  it("uses amount_clp for revolving lines", () => {
-    expect(
-      effectiveCcExpenseLineAmountClp(
-        {
-          installment_flag: 0,
-          amount_clp: -394_140,
-          amount_usd: null,
-          valor_cuota_mensual_clp: null,
-          valor_cuota_mensual_usd: null,
-        },
-        "2025-04-22"
-      )
-    ).toBe(-394_140);
-  });
-
-  it("prefers amount_usd on USD statements over reference amount_clp", () => {
-    const amount = effectiveCcExpenseLineAmountClp(
-      {
-        installment_flag: 0,
-        amount_clp: 5555,
-        amount_usd: 4.53,
-        valor_cuota_mensual_clp: null,
-        valor_cuota_mensual_usd: null,
-        statement_currency: "usd",
-      },
-      "2025-08-25"
-    );
-    expect(amount).toBeGreaterThan(3_000);
-    expect(amount).toBeLessThan(6_000);
-  });
-
-  it("converts USD when amount_clp is zero placeholder", () => {
-    const amount = effectiveCcExpenseLineAmountClp(
-      {
-        installment_flag: 0,
-        amount_clp: 0,
-        amount_usd: 68.29,
-        valor_cuota_mensual_clp: null,
-        valor_cuota_mensual_usd: null,
-      },
-      "2025-05-22"
-    );
-    // Rate from fx_daily (revisable by backfills) — a hardcoded rate rots when Yahoo
-    // history is re-synced.
-    const fx = storedPairRate("usd", "clp", "2025-05-22");
-    expect(fx).not.toBeNull();
-    expect(amount).toBe(Math.round(68.29 * fx!.mid));
-  });
-
-  it("converts USD cuota when CLP cuota is missing", () => {
-    // Own fx fixture — the date may predate whatever fx_daily history the test DB has.
-    const fxDate = "2024-08-31";
-    const hadRow =
-      db.prepare(`SELECT 1 FROM fx_daily WHERE date = ?`).get(fxDate) != null;
-    db.prepare(
-      `INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, 920)
-       ON CONFLICT(date) DO NOTHING`
-    ).run(fxDate);
-    try {
-      const amount = effectiveCcExpenseLineAmountClp(
-        {
-          installment_flag: 1,
-          amount_clp: null,
-          amount_usd: 50,
-          valor_cuota_mensual_clp: null,
-          valor_cuota_mensual_usd: 25,
-        },
-        fxDate
-      );
-      expect(amount).not.toBeNull();
-      expect(amount!).toBeGreaterThan(20_000);
-    } finally {
-      if (!hadRow) db.prepare(`DELETE FROM fx_daily WHERE date = ?`).run(fxDate);
-    }
+  it("is null for a line that bills nothing", () => {
+    expect(cardLineNativeAmount({ installment_flag: 0, amount: 0, currency: "usd", cuota_amount: null })).toBeNull();
+    expect(cardLineNativeAmount({ installment_flag: 1, amount: 500, currency: "clp", cuota_amount: null })).toBeNull();
   });
 });
 
-describe("effectiveCcExpenseLineAmountUsd", () => {
-  it("returns amount_usd on USD statements", () => {
-    expect(
-      effectiveCcExpenseLineAmountUsd({
-        installment_flag: 0,
-        amount_clp: 5555,
-        amount_usd: 4.53,
-        valor_cuota_mensual_clp: null,
-        valor_cuota_mensual_usd: null,
-        statement_currency: "usd",
-      })
-    ).toBe(4.53);
+describe("cardLineAmountClpAtStoredRate", () => {
+  it("keeps a peso line's pesos", () => {
+    expect(cardLineAmountClpAtStoredRate({ installment_flag: 0, amount: -394_140, currency: "clp", cuota_amount: null }, FX_DAY)).toBe(
+      -394_140
+    );
   });
 
-  it("returns null for CLP-only revolving lines", () => {
-    expect(
-      effectiveCcExpenseLineAmountUsd({
-        installment_flag: 0,
-        amount_clp: 50_000,
-        amount_usd: null,
-        valor_cuota_mensual_clp: null,
-        valor_cuota_mensual_usd: null,
-        statement_currency: "clp",
-      })
-    ).toBeNull();
+  it("converts a dollar and a euro line at the stored close of the day", () => {
+    expect(cardLineAmountClpAtStoredRate({ installment_flag: 0, amount: 68.29, currency: "usd", cuota_amount: null }, FX_DAY)).toBe(
+      Math.round(68.29 * storedPairRate("usd", "clp", FX_DAY)!.mid)
+    );
+    expect(cardLineAmountClpAtStoredRate({ installment_flag: 1, amount: 50, currency: "eur", cuota_amount: 25 }, FX_DAY)).toBe(25_250);
   });
 
-  it("uses valor_cuota_mensual_usd for installment lines", () => {
-    expect(
-      effectiveCcExpenseLineAmountUsd({
-        installment_flag: 1,
-        amount_clp: 881_134,
-        amount_usd: 100,
-        valor_cuota_mensual_clp: 73_428,
-        valor_cuota_mensual_usd: 80,
-        statement_currency: "usd",
-      })
-    ).toBe(80);
+  it("is null when no rate is on file: a line that cannot be priced matches nothing", () => {
+    expect(cardLineAmountClpAtStoredRate({ installment_flag: 0, amount: 10, currency: "usd", cuota_amount: null }, NO_RATE_DAY)).toBeNull();
+  });
+});
+
+describe("the statement debt frame", () => {
+  it("is one path for every currency: the stored close, or the stand-in rate of a split pass", () => {
+    expect(debtFrameClpPerUnit("clp", null)).toBe(1);
+    expect(debtFrameClpPerUnit("usd", FX_DAY)).toBe(920);
+    expect(debtFrameClpPerUnit("eur", FX_DAY)).toBe(1010);
+    const split = debtFrameRates([
+      ["usd", 1000],
+      ["eur", 1100],
+    ]);
+    expect(debtFrameClpPerUnit("usd", FX_DAY, split)).toBe(1000);
+    expect(debtFrameClpPerUnit("eur", NO_RATE_DAY, split)).toBe(1100);
+    expect(debtFrameClpPerUnit("usd", NO_RATE_DAY)).toBeNull();
+  });
+
+  it("values zero as zero and throws on an amount with no rate", () => {
+    expect(debtFrameClp(0, "eur", NO_RATE_DAY, undefined, "test amount")).toBe(0);
+    expect(debtFrameClp(10, "eur", FX_DAY, undefined, "test amount")).toBe(10_100);
+    expect(() => debtFrameClp(10, "eur", NO_RATE_DAY, undefined, "test amount")).toThrow(/test amount: no EUR\/CLP rate/);
+    expect(() => debtFrameClp(10, "usd", null, undefined, "test amount")).toThrow(/no USD\/CLP rate/);
+  });
+
+  it("a debt sum's line is null only when it bills nothing; a foreign line with no rate throws", () => {
+    const line = (amount: number, currency: string) => ({ installment_flag: 0, amount, currency, cuota_amount: null });
+    expect(debtCardLineAmountClp(line(0, "usd"), NO_RATE_DAY, undefined, "test line")).toBeNull();
+    expect(debtCardLineAmountClp(line(1500, "clp"), NO_RATE_DAY, undefined, "test line")).toBe(1500);
+    expect(debtCardLineAmountClp(line(-2, "usd"), FX_DAY, undefined, "test line")).toBe(-1840);
+    expect(() => debtCardLineAmountClp(line(3, "eur"), NO_RATE_DAY, undefined, "test line")).toThrow(/test line/);
   });
 });

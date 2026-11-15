@@ -2,11 +2,11 @@ import { cacheKeyCcBillingPart } from "./cacheFamilies.js";
 import { isListingSourceKind } from "./ccStatementSourceKind.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import {
+  cardLineAmountClpAtStoredRate,
   cardLineNativeAmount,
-  debtCcExpenseLineAmountClp,
-  debtFrameClpPerUsd,
-  effectiveCcExpenseLineAmountClp,
-  effectiveCcExpenseLineAmountUsd,
+  debtCardLineAmountClp,
+  debtFrameClp,
+  debtFrameClpPerUnit,
   type DebtFrameRates,
 } from "./ccExpenseAmountClp.js";
 import {
@@ -30,16 +30,16 @@ import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { loadCreditCardBillingConfig } from "./cards/config.js";
 import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
 import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
-import { convertCurrency, storedPairRate } from "./rates.js";
-import { legacyAmountColumn } from "./cards/statementStorage.js";
+import { convertCurrency } from "./rates.js";
 import { statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { isCardDebtTransferLine, isCardPaymentLine, isDivisasAbonoPaymentLine, requireHeaderPagoIso } from "./ccPaymentLines.js";
-import { ddMmYyyyFromIso, parseDdMmYyToIso, isClpSection3FinancingChargeMerchant, isUsdSection3FinancingChargeMerchant } from "nw-tracker-contracts";
+import { ddMmYyyyFromIso, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { requireStoredCardLineKind } from "./cards/lineKinds.js";
 
 /**
  * One billing month of a card's stored snapshot (`cc_billing_month_metrics`, migration 320: one
  * row per metric and currency), pivoted: `facturado` and `saldo_total` per currency, the cupo in
- * pesos. The `_clp` / `_usd` fields are those maps' peso and dollar entries.
+ * pesos. The `_clp` fields are those maps' peso entries.
  */
 export type CcBillingMonthBalanceRow = {
   id: number;
@@ -48,28 +48,11 @@ export type CcBillingMonthBalanceRow = {
   as_of_date: string;
   as_of_kind: string;
   facturado_clp: number | null;
-  facturado_usd: number | null;
   cupo_utilizado_clp: number;
   saldo_total_clp: number;
-  saldo_total_usd: number | null;
   facturado_by_currency: Record<string, number>;
   saldo_total_by_currency: Record<string, number>;
   cupo_utilizado_by_currency: Record<string, number>;
-};
-
-type RevolvingLineRow = {
-  id: number;
-  kind: string | null;
-  merchant: string | null;
-  amount_clp: number | null;
-  amount_usd: number | null;
-  statement_currency: string;
-  installment_flag: number;
-  valor_cuota_mensual_clp: number | null;
-  valor_cuota_mensual_usd: number | null;
-  amount: number | null;
-  currency: string;
-  cuota_amount?: number | null;
 };
 
 const stmtPayByMetaByDate = db.prepare(
@@ -125,12 +108,14 @@ function sumRevolvingLinesForAccountStatementDateClp(
       // out only for the open cycle.
       if (opts.excludeUsdDebtPaymentAbonos || (opts.excludePayments && !isDivisasAbonoPaymentLine(r))) continue;
     }
-    const clp = debtCcExpenseLineAmountClp(
-      { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
+    // Null = the line bills nothing (a zero amount); a foreign line with no rate throws.
+    const clp = debtCardLineAmountClp(
+      { installment_flag: 0, amount: r.amount, currency: r.currency, cuota_amount: null },
       fxDateIso,
-      rates
+      rates,
+      `Account ${accountId} statement ${statementDate} line ${r.id}`
     );
-    if (clp != null && Number.isFinite(clp)) sum += clp;
+    if (clp != null) sum += clp;
   }
   return sum;
 }
@@ -166,13 +151,6 @@ function sumOpenCycleChargesClpForStatementDate(
   );
 }
 
-type PostCloseLineRow = RevolvingLineRow & {
-  transaction_date: string | null;
-  posting_date: string | null;
-  statement_date: string;
-  dedupe_key: string | null;
-};
-
 /**
  * Section-3 bank charge (interés, comisión, impuesto) rather than consumption or a payment —
  * the same test `ccSection3FinancingClpByDate` sums for the financing
@@ -180,12 +158,8 @@ type PostCloseLineRow = RevolvingLineRow & {
  * CREDITO, negative amounts) match the section-3 merchant patterns but are negative
  * consumption, not cost, hence the positive-amount guard on both currencies.
  */
-function isFinancingChargeLine(r: PostCloseLineRow): boolean {
-  if (r.statement_currency === "usd") { // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
-    const usd = r.amount_usd ?? 0;
-    return usd > 0 && isUsdSection3FinancingChargeMerchant(r.merchant, usd);
-  }
-  return (r.amount_clp ?? 0) > 0 && isClpSection3FinancingChargeMerchant(r.merchant);
+function isFinancingChargeLine(r: { id: number; kind: string | null }): boolean {
+  return requireStoredCardLineKind(r.kind, r.id) === "financing_charge";
 }
 
 /**
@@ -250,28 +224,39 @@ export type PostCloseStreamEntry = {
 };
 
 /**
- * A dollar payment pays the facturación that closed before it, whose debt the month-end anchor
+ * A foreign payment pays the facturación that closed before it, whose debt the month-end anchor
  * values at that facturación's debt fx: valued at its own statement's fx instead, the payment of a
- * large dollar debt read the month's fx move as owed (·0161 2021-11: 3.xxx,xx USD at 839 vs the debt
+ * large foreign debt read the month's fx move as owed (·0161 2021-11: 3.xxx,xx USD at 839 vs the debt
  * at 803, −1xx.xxx between the anchor and the walk). Same pairing as `facturacionPaidOn`: the latest
- * dollar statement closed strictly before the payment. Returns the statement_date (dd/mm/yyyy) of the
- * facturación a dollar payment dated `paymentIso` paid, or null when none closed before it.
+ * statement in that currency closed strictly before the payment. Returns the statement_date
+ * (dd/mm/yyyy) of the facturación a payment in `currency` dated `paymentIso` paid, or null when none
+ * closed before it.
  */
-export function usdPaymentPaidStatementDateResolver(accountId: number): (paymentIso: string) => string | null {
-  const usdCloses = (
-    db
-      .prepare(
-        `SELECT DISTINCT statement_date FROM cc_statements
-         WHERE account_id = ? AND currency = 'usd' AND source_kind NOT IN ('listing_open', 'listing_other')`
+export function foreignPaymentPaidStatementDateResolver(
+  accountId: number
+): (currency: string, paymentIso: string) => string | null {
+  const closesByCurrency = new Map<string, { date: string; iso: string }[]>();
+  const closesIn = (currency: string): { date: string; iso: string }[] => {
+    let closes = closesByCurrency.get(currency);
+    if (!closes) {
+      closes = (
+        db
+          .prepare(
+            `SELECT DISTINCT statement_date FROM cc_statements
+             WHERE account_id = ? AND currency = ? AND source_kind NOT IN ('listing_open', 'listing_other')`
+          )
+          .all(accountId, currency) as { statement_date: string }[]
       )
-      .all(accountId) as { statement_date: string }[]
-  )
-    .map((r) => ({ date: r.statement_date, iso: parseDdMmYyToIso(r.statement_date) }))
-    .filter((r): r is { date: string; iso: string } => r.iso != null)
-    .sort((a, b) => a.iso.localeCompare(b.iso));
-  return (paymentIso: string): string | null => {
+        .map((r) => ({ date: r.statement_date, iso: parseDdMmYyToIso(r.statement_date) }))
+        .filter((r): r is { date: string; iso: string } => r.iso != null)
+        .sort((a, b) => a.iso.localeCompare(b.iso));
+      closesByCurrency.set(currency, closes);
+    }
+    return closes;
+  };
+  return (currency: string, paymentIso: string): string | null => {
     let hit: string | null = null;
-    for (const c of usdCloses) {
+    for (const c of closesIn(currency)) {
       if (c.iso < paymentIso) hit = c.date;
       else break;
     }
@@ -290,70 +275,58 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       }
       return fxDateByStatementDate.get(statementDate) ?? null;
     };
-    // A dollar payment is valued at the debt fx of the facturación it paid
-    // (`usdPaymentPaidStatementDateResolver`).
-    const paidFacturacionStatementDate = usdPaymentPaidStatementDateResolver(accountId);
+    // A foreign payment is valued at the debt fx of the facturación it paid
+    // (`foreignPaymentPaidStatementDateResolver`).
+    const paidFacturacionStatementDate = foreignPaymentPaidStatementDateResolver(accountId);
 
-    // A linked traspaso-de-deuda USD abono carries minus its CLP twin's booked pesos — the
+    // A linked traspaso-de-deuda foreign abono carries minus its peso twin's booked pesos — the
     // pair is one debt reclassification and must net to exactly zero, never an fx estimate.
     // Unlinked traspaso legs (web-paste pastes, twin statement not imported) keep the fx
     // conversion below until the PDF import links the real pair.
-    const traspasoClpByUsdLineId = ccTraspasoLinkedClpByForeignLineId(accountId, "usd");
+    const traspasoClpByLineIdByCurrency = new Map<string, Map<number, number>>();
+    const linkedTraspasoClp = (lineId: number, currency: string): number | undefined => {
+      let byLine = traspasoClpByLineIdByCurrency.get(currency);
+      if (!byLine) {
+        byLine = ccTraspasoLinkedClpByForeignLineId(accountId, currency);
+        traspasoClpByLineIdByCurrency.set(currency, byLine);
+      }
+      return byLine.get(lineId);
+    };
 
     // clp stays null when FX/amount is unresolvable — the line still consumes its dedupe key
     // inside a window (same as the single-window loop did).
     const lines: PostCloseStreamEntry[] = [];
     // The lines come with their debt day (`debtEventLines`: superseded lines and contract summaries
-    // out, a backdated posting at its statement's close).
+    // out, a backdated posting at its statement's close). Each is read in its own currency.
     for (const r of rows) {
       const iso = r.iso;
-      if (legacyAmountColumn(r.currency) == null) {
-        // A line in another currency: its own amount, and its pesos at the debt side of its
-        // facturación's debt-frame date (what the financing P/L reads).
-        const amount = r.amount != null && Number.isFinite(r.amount) && r.amount !== 0 ? r.amount : null;
-        const fxIso = fxDateFor(r.statement_date);
-        const clp =
-          amount != null && fxIso != null
-            ? convertCurrency(amount, r.currency, "clp", fxIso, { side: amount < 0 ? "asset" : "debt" })
-            : null;
-        lines.push({
-          iso,
-          key: r.dedupe_key ?? `${iso}|${r.merchant}|${r.currency}|${r.amount}`,
-          clp: clp != null ? Math.round(clp) : null,
-          currency: r.currency,
-          amount,
-          ...(isFinancingChargeLine(r) ? { financing: true } : {}),
-          statement_date: r.statement_date,
-        });
+      const native = cardLineNativeAmount({ installment_flag: 0, amount: r.amount, currency: r.currency, cuota_amount: null });
+      const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.currency}|${r.amount}`;
+      const financing = isFinancingChargeLine(r) ? { financing: true } : {};
+      if (isHomeCurrency(r.currency)) {
+        const clp = native != null ? Math.round(native.amount) : null;
+        lines.push({ iso, key, clp, currency: r.currency, amount: clp, ...financing, statement_date: r.statement_date });
         continue;
       }
-      const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
-      const linkedTraspasoClp =
-        r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined; // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
-      const usdPayment = (r.amount_usd ?? 0) < 0 && isCardPaymentLine(r);
-      const paidStatementDate = usdPayment ? paidFacturacionStatementDate(iso) : null;
+      // A foreign line: its pesos in the debt frame of its facturación — of the facturación it paid
+      // when it is a payment —, or its traspaso's booked pesos.
+      const linkedClp = linkedTraspasoClp(r.id, r.currency);
+      const payment = native != null && native.amount < 0 && isCardPaymentLine(r);
+      const paidStatementDate = payment ? paidFacturacionStatementDate(r.currency, iso) : null;
       const clp =
-        linkedTraspasoClp != null
-          ? -linkedTraspasoClp
-          : effectiveCcExpenseLineAmountClp(
-              { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
+        linkedClp != null
+          ? -linkedClp
+          : cardLineAmountClpAtStoredRate(
+              { installment_flag: 0, amount: r.amount, currency: r.currency, cuota_amount: null },
               fxDateFor(paidStatementDate ?? r.statement_date)
             );
-      const usdNative = effectiveCcExpenseLineAmountUsd({
-        ...r,
-        installment_flag: 0,
-        valor_cuota_mensual_clp: null,
-        valor_cuota_mensual_usd: null,
-      });
-      const finiteClp = clp != null && Number.isFinite(clp) ? clp : null;
       lines.push({
         iso,
         key,
-        clp: finiteClp,
-        ...(usdNative != null
-          ? { currency: "usd" as const, amount: usdNative }
-          : { currency: "clp" as const, amount: finiteClp }),
-        ...(isFinancingChargeLine(r) ? { financing: true } : {}),
+        clp,
+        currency: r.currency,
+        amount: native?.amount ?? null,
+        ...financing,
         statement_date: r.statement_date,
       });
     }
@@ -395,22 +368,22 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
     // The dated legs of header payments a statement printed without a date (migration 213):
     // payments like the dated ones above, which the walk and the month-end anchors otherwise
     // never subtracted. A leg is the bank-debit remainder of its header, never a printed line.
-    // A dollar leg (migration 218: an old international statement's header abono) is a dollar
-    // payment like the lines above, valued at the debt fx of the facturación it paid.
+    // A foreign leg (migration 218: an old international statement's header abono) is a payment in
+    // its currency like the lines above, valued at the debt fx of the facturación it paid.
     const legs = db
       .prepare(`SELECT statement_close_iso, currency, paid_on, amount FROM cc_header_payment_legs WHERE account_id = ?`)
-      .all(accountId) as { statement_close_iso: string; currency: "clp" | "usd"; paid_on: string; amount: number }[]; // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
+      .all(accountId) as { statement_close_iso: string; currency: string; paid_on: string; amount: number }[];
     for (const g of legs) {
       const statementDate = ddMmYyyyFromIso(g.statement_close_iso);
+      const home = isHomeCurrency(g.currency);
       let clp: number | null = g.amount;
-      if (g.currency === "usd") { // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
-        const fxIso = fxDateFor(paidFacturacionStatementDate(g.paid_on) ?? statementDate);
-        const fx = fxIso ? storedPairRate("usd", "clp", fxIso)?.mid : null;
-        clp = fx != null && fx > 0 ? g.amount * fx : null;
+      if (!home) {
+        const rate = debtFrameClpPerUnit(g.currency, fxDateFor(paidFacturacionStatementDate(g.currency, g.paid_on) ?? statementDate));
+        clp = rate != null ? g.amount * rate : null;
       }
       lines.push({
         iso: g.paid_on,
-        key: `hdr-leg|${g.statement_close_iso}|${g.currency === "usd" ? "usd|" : ""}${g.paid_on}|${g.amount}`, // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
+        key: `hdr-leg|${g.statement_close_iso}|${home ? "" : `${g.currency}|`}${g.paid_on}|${g.amount}`,
         clp: clp != null ? -clp : null,
         currency: g.currency,
         amount: -g.amount,
@@ -708,13 +681,17 @@ export function openMonthForeignFacturado(
     for (const r of billedOneShotLines(accountId, statementDate)) {
       if (isCardPaymentLine(r)) continue;
       if (isHomeCurrency(r.currency)) continue; // a peso line — not part of the foreign split
-      const oneShot = { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null, cuota_amount: null };
-      const native = cardLineNativeAmount(oneShot);
+      const native = cardLineNativeAmount({ installment_flag: 0, amount: r.amount, currency: r.currency, cuota_amount: null });
       if (!native) continue;
       const entry = out.get(native.currency) ?? { amount: 0, clp: 0 };
       entry.amount += native.amount;
-      const c = debtCcExpenseLineAmountClp(oneShot, fxDateIso, rates);
-      if (c != null && Number.isFinite(c)) entry.clp += c;
+      entry.clp += debtFrameClp(
+        native.amount,
+        native.currency,
+        fxDateIso,
+        rates,
+        `Account ${accountId} statement ${statementDate} line ${r.id}`
+      );
       out.set(native.currency, entry);
     }
   };
@@ -762,10 +739,9 @@ function installmentCuotaDueForAccountStatementDateClp(
     statement_date: statementDate,
     merchant: r.merchant,
     installment_flag: r.installment_flag,
-    amount_clp: r.amount_clp,
-    amount_usd: r.amount_usd,
-    valor_cuota_mensual_clp: r.valor_cuota_mensual_clp,
-    valor_cuota_mensual_usd: r.valor_cuota_mensual_usd,
+    amount: r.amount,
+    currency: r.currency,
+    cuota_amount: r.cuota_amount,
     fx_date_iso: fxDateIso,
   }));
   const redundant = redundantInstallmentSummaryLineIds(forDedupe);
@@ -774,10 +750,11 @@ function installmentCuotaDueForAccountStatementDateClp(
   for (const r of rows) {
     if (redundant.has(r.id)) continue;
     if (r.installment_flag !== 1) continue;
-    const cuota = debtCcExpenseLineAmountClp(
-      { ...r, installment_flag: 1 },
+    const cuota = debtCardLineAmountClp(
+      { installment_flag: 1, amount: r.amount, currency: r.currency, cuota_amount: r.cuota_amount },
       fxDateIso,
-      rates
+      rates,
+      `Account ${accountId} statement ${statementDate} cuota line ${r.id}`
     );
     if (cuota != null && cuota > 0) sum += cuota;
   }
@@ -796,27 +773,36 @@ export function statementHeaderFacturado(stmt: { monto_facturado: number | null 
   return stmt.monto_facturado != null && Number.isFinite(stmt.monto_facturado) ? stmt.monto_facturado : null;
 }
 
+/** What one statement billed: the amount in the statement's own currency and its debt-frame pesos. */
+export type StatementFacturado = {
+  currency: string;
+  /** In `currency`; null when a peso statement prints no total and its lines and plans bill nothing. */
+  amount: number | null;
+  /** Whole pesos; null with `amount`, or for a foreign amount whose debt-frame rate is not on file. */
+  clp: number | null;
+};
+
+/**
+ * What a statement billed. A statement in another currency than pesos bills its printed total,
+ * else what its own lines bill (the Santander international JSON prints none), valued in the debt
+ * frame of its own pay-by. A peso statement bills its printed total, else its one-shot lines plus
+ * the cuotas of its close, else the plan ledger's month.
+ */
 export function facturadoFromStatement(
   accountId: number,
   statementDate: string,
   stmt: { id: number; currency: string; monto_facturado: number | null; source_kind: string; billing_month: string | null },
-  fxDate: string,
   rates?: DebtFrameRates
-): { facturado_clp: number | null; facturado_usd: number | null } {
+): StatementFacturado {
   const headerMonto = statementHeaderFacturado(stmt);
-  if (stmt.currency === "usd") { // convention-ok: Santander's traspaso and header-payment legs are pesos or dollars (plan C3 leftover)
-    // A dollar statement that prints no total (the Santander international JSON) bills what its
-    // own lines bill: summing peso lines for it had left a facturación's dollars out of its total.
-    const usd = headerMonto ?? foreignBilledFromStatementLines(stmt.id, "usd");
-    const fx = debtFrameClpPerUsd(balanceUsdFxDateIso(accountId, statementDate), rates);
-    const clp = fx != null ? Math.round(usd * fx) : null;
-    return { facturado_clp: clp, facturado_usd: usd };
+  if (!isHomeCurrency(stmt.currency)) {
+    const amount = headerMonto ?? foreignBilledFromStatementLines(stmt.id, stmt.currency);
+    const rate = debtFrameClpPerUnit(stmt.currency, balanceUsdFxDateIso(accountId, statementDate), rates);
+    return { currency: stmt.currency, amount, clp: rate != null ? Math.round(amount * rate) : null };
   }
   if (headerMonto != null) {
-    return {
-      facturado_clp: Math.round(headerMonto),
-      facturado_usd: null,
-    };
+    const clp = Math.round(headerMonto);
+    return { currency: stmt.currency, amount: clp, clp };
   }
   const revolving = sumRevolvingChargesClpForStatementDate(accountId, statementDate, rates);
   const cuota = installmentCuotaDueForAccountStatementDateClp(accountId, statementDate, rates);
@@ -830,7 +816,8 @@ export function facturadoFromStatement(
       }
     }
   }
-  return { facturado_clp: clp > 0 ? clp : null, facturado_usd: null };
+  const billed = clp > 0 ? clp : null;
+  return { currency: stmt.currency, amount: billed, clp: billed };
 }
 
 export function listCcBillingMonthBalances(accountId: number): CcBillingMonthBalanceRow[] {
@@ -860,10 +847,8 @@ export function listCcBillingMonthBalances(accountId: number): CcBillingMonthBal
         as_of_date: r.as_of_date,
         as_of_kind: r.as_of_kind,
         facturado_clp: null,
-        facturado_usd: null,
         cupo_utilizado_clp: 0,
         saldo_total_clp: 0,
-        saldo_total_usd: null,
         facturado_by_currency: {},
         saldo_total_by_currency: {},
         cupo_utilizado_by_currency: {},
@@ -878,10 +863,8 @@ export function listCcBillingMonthBalances(accountId: number): CcBillingMonthBal
   const out = [...byKey.values()];
   for (const row of out) {
     row.facturado_clp = row.facturado_by_currency.clp ?? null;
-    row.facturado_usd = row.facturado_by_currency.usd ?? null;
     row.saldo_total_clp = row.saldo_total_by_currency.clp ?? 0;
     row.cupo_utilizado_clp = row.cupo_utilizado_by_currency.clp ?? 0;
-    row.saldo_total_usd = row.saldo_total_by_currency.usd ?? null;
   }
   // The old table's order: month and as-of descending, ties by insertion.
   return out.sort(

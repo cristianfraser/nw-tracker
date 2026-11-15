@@ -195,7 +195,7 @@ export function listingStatements(
         card_last4: cardLast4,
         card_product: null,
         // USD charges land on the CLP open bucket as foreign lines: MONTO US$ is authoritative and
-        // the CLP value is derived at read time via FX (effectiveCcExpenseLineAmountClp).
+        // the CLP value is derived at read time via FX (`ccExpenseAmountClp.ts`).
         currency: "clp",
         layout: "compact",
         header: EMPTY_CARD_STATEMENT_HEADER,
