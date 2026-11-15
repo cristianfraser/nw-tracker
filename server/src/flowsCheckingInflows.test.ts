@@ -357,19 +357,19 @@ describe("flowsCheckingInflows", () => {
     deleteManualIncome([manualId]);
   });
 
-  it("does not return Excel-imported income_entries in manual list", () => {
+  it("lists every income entry: the note is provenance, never a filter", () => {
     const ins = db
       .prepare(
         `INSERT INTO income_entries (amount, received_on, source, note)
          VALUES (?, ?, ?, ?)`
       )
-      .run(1, "2099-04-01", "Excel", "import:excel|flujos|Gasto mensual|Ingreso");
-    const excelId = Number(ins.lastInsertRowid);
+      .run(1, "2099-04-01", "Vitest", "import:excel|vitest provenance text");
+    const entryId = Number(ins.lastInsertRowid);
 
     const payload = buildFlowsCheckingIncomePayload();
-    expect(payload.manual.some((m) => m.id === excelId)).toBe(false);
+    expect(payload.manual.some((m) => m.id === entryId)).toBe(true);
 
-    deleteManualIncome([excelId]);
+    deleteManualIncome([entryId]);
   });
 
   it("returns work_earnings and income_kind_by_movement_id in payload", () => {
