@@ -24,7 +24,9 @@
  */
 import { setExpenseCategoryRule } from "../expenseCategoryRules.js";
 import { readFileSync } from "node:fs";
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { db } from "../db.js";
+import { insertMovement } from "../movementWrites.js";
 import { createPanelAccount } from "../createPanelAccount.js";
 import { assignOptionContract } from "../optionAssignment.js";
 import { declareTaxResidency } from "../taxResidency.js";
@@ -360,11 +362,6 @@ function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
     if (v == null) throw new Error(`demo: no account for ${a}`);
     return v;
   };
-  const insSingle = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind) VALUES (?, ?, ?, ?, ?, ?, ?)`);
-  const insTransfer = db.prepare(
-    `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, units_delta, counter_units_delta, flow_kind)
-     VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
   const insKind = db.prepare(`INSERT INTO crypto_movement_kinds (movement_id, kind) VALUES (?, ?)`);
   // The exchange's record of each trade: the tax module prices a coin's lots from it (cryptoTaxLotEvents.ts).
   const insTrade = db.prepare(
@@ -386,8 +383,15 @@ function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
           note: m.note,
         });
       } else if (m.type === "single") {
-        const r = insSingle.run(id(m.account), m.amount, m.currency, m.date, m.note, m.units ?? null, m.flowKind ?? null);
-        const mid = Number(r.lastInsertRowid);
+        const mid = insertMovement({
+          accountId: id(m.account),
+          amount: m.amount,
+          currency: m.currency,
+          occurredOn: m.date,
+          note: m.note,
+          unitsDelta: m.units ?? null,
+          flowKind: m.flowKind ?? null,
+        });
         if (m.cryptoKind) insKind.run(mid, m.cryptoKind);
         if (m.exchangeTrade) {
           if (m.units == null) throw new Error(`demo: exchange trade without units on ${m.date}`);
@@ -395,19 +399,19 @@ function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
         }
         for (const p of m.contributionPeriods ?? []) insPeriod.run(mid, p);
       } else {
-        insTransfer.run(
-          id(m.from),
-          id(m.to),
-          m.amount,
-          m.currency,
-          m.counterUsd ?? m.counterClp ?? null,
-          m.counterUsd != null ? "usd" : m.counterClp != null ? "clp" : null,
-          m.date,
-          m.note,
-          m.units ?? null,
-          m.counterUnits ?? null,
-          m.flowKind
-        );
+        insertMovement({
+          fromAccountId: id(m.from),
+          toAccountId: id(m.to),
+          amount: m.amount,
+          currency: m.currency,
+          counterAmount: m.counterUsd ?? m.counterClp ?? null,
+          counterCurrency: m.counterUsd != null ? "usd" : m.counterClp != null ? "clp" : null,
+          occurredOn: m.date,
+          note: m.note,
+          unitsDelta: m.units ?? null,
+          counterUnitsDelta: m.counterUnits ?? null,
+          flowKind: m.flowKind,
+        });
       }
     }
   })();
@@ -425,9 +429,17 @@ function writeUsStatementRows(ledger: Ledger, ids: Map<Acct, number>): void {
   const id = ids.get("usChecking");
   if (id == null) throw new Error("demo: US statement rows without a US checking account");
   // A single-leg dollar row is positive, its direction in the flow kind (`signedNativeDeltaForAccountMovement`).
-  const ins = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'usd', ?, ?, ?)`);
   db.transaction(() => {
-    for (const r of rows) ins.run(id, Math.abs(r.amount), r.date, r.note, r.amount > 0 ? "fx_purchase" : "withdrawal");
+    for (const r of rows) {
+      insertMovement({
+        accountId: id,
+        amount: Math.abs(r.amount),
+        currency: "usd",
+        occurredOn: r.date,
+        note: r.note,
+        flowKind: r.amount > 0 ? "fx_purchase" : "withdrawal",
+      });
+    }
   })();
 }
 
@@ -497,10 +509,14 @@ function writeMortgage(m: Ledger["mortgages"][number], ids: Map<Acct, number>): 
       incendio_clp: null,
       desgravamen_clp: null,
     };
-    const pm = db
-      .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`)
-      .run(propertyId, pie.amount_clp, pie.occurred_on, deptoPaymentHumanNote("property", "pie", false));
-    insertLoanPaymentRow({ movement_id: Number(pm.lastInsertRowid), loan_account_id: loanId, leg: "property", origin: "import", ...loanPaymentColumnsFromPaymentRow(pie) });
+    const pieMovementId = insertMovement({
+      accountId: propertyId,
+      amount: pie.amount_clp,
+      currency: HOME_CURRENCY,
+      occurredOn: pie.occurred_on,
+      note: deptoPaymentHumanNote("property", "pie", false),
+    });
+    insertLoanPaymentRow({ movement_id: pieMovementId, loan_account_id: loanId, leg: "property", origin: "import", ...loanPaymentColumnsFromPaymentRow(pie) });
     upsertPropertyAppraisalUf(propertyId, m.pieDate, r4(h.valueUf));
     for (const c of [...m.cuotas].sort((a, b) => a.date.localeCompare(b.date))) {
       // A prepago is all extra amortization, with no interest or insurance.
@@ -661,7 +677,6 @@ function writeSplits(person: Person, today: Ymd): void {
 /** The AFC book account: contributions grow at ~3,5 %/yr, marked on every Chile business day. */
 function writeAfc(ledger: Ledger, afcId: number, today: Ymd): void {
   if (ledger.afcContributions.length === 0) return;
-  const insMov = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`);
   const insVal = db.prepare(`INSERT OR REPLACE INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`);
   const insPeriod = db.prepare(`INSERT INTO pension_contribution_periods (movement_id, period_month) VALUES (?, ?)`);
   const byDay = new Map(ledger.afcContributions.map((c) => [c.date, c]));
@@ -677,8 +692,14 @@ function writeAfc(ledger: Ledger, afcId: number, today: Ymd): void {
       }
       const c = byDay.get(d);
       if (c) {
-        const r = insMov.run(afcId, c.clp, d, `Cotización AFC ${c.month}`);
-        insPeriod.run(Number(r.lastInsertRowid), c.month);
+        const movementId = insertMovement({
+          accountId: afcId,
+          amount: c.clp,
+          currency: HOME_CURRENCY,
+          occurredOn: d,
+          note: `Cotización AFC ${c.month}`,
+        });
+        insPeriod.run(movementId, c.month);
         value += c.clp;
       }
       if (business && value > 0) insVal.run(afcId, d, Math.round(value));
