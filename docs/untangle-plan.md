@@ -1771,6 +1771,52 @@ Waves 1–5 are in `main` (2026-11-09). This section re-checks the leftover note
 | `ut-hooks-freeze` | the migration hooks in one folder, frozen from live domain code where the logic is small; the two misnamed exports; a boot check that the installed `flow_movements_ai` trigger equals the current spec | `db.ts`, the hook files | a fresh test database has the same schema; server suite passes |
 | `ut-client-resources` | `invalidateQueries` through `queries/resources.ts`; `RatesPage` strings through i18n | `client/src/**` | none left outside `queries/` |
 
+**Wave 6 status (2026-11-15): merged into `untangle-2`, not into `main`.** No merge conflicts.
+`ut-ingest-leafs` (cycles cut with leaves `bankName.ts`, `email/emailConfig.ts`,
+`payments/paymentProcessor.ts`; the three copied format files deleted; about a dozen decoders on the
+contracts parsers; parsed-output types from contracts), `ut-client-resources` (every invalidation
+through `queries/resources.ts`; `RatesPage` strings in i18n, pair titles built from codes),
+`ut-small-cycles` (seven cycles cut with leaves `globalSyncSchedulerSignal.ts`,
+`marketDisplaySeriesTypes.ts`, `movementAccountRow.ts`, `importSyncDocumentTypes.ts`,
+`brokerageFlowSignedAmount.ts`, `fxStoredRates.ts`, `partialBankMovement.ts`; `group=`/`subgroup=`
+gone from `/api/accounts` and `/api/benchmark-comparison`), `ut-hooks-freeze` (48 hook files in
+`server/src/migrationHooks/`; `cardLineKindFunction.ts` and `flows/flowTriggerSpecs.ts` split out as
+runtime modules; hooks 292, 293, 305 frozen; `flows/flowTriggerCheck.ts` at boot), `ut-routes-failfast`
+(typed `InputError` in the route and domain validation throws; swallows removed; `LIVE_ENV_VARS`
+accessors in `config.ts`). Merged tip: typecheck and conventions ok; check-deps 1356 files, largest
+cycle 37, **62 files in cycles** (was 101); client 477, ingest 481, contracts 133 passing; server 3705 of 3707
+passing (the two failures are the pre-existing `ccBillingViews.test.ts` ones under «Open from wave 6»). A fresh database has a byte-identical `sqlite_master` before and after the hook move.
+
+Behaviour changes in wave 6 (the user has not reviewed them yet):
+- A sync-state or Banco Central gate file that exists but cannot be read throws; a corrupt one is
+  moved aside to `.corrupt-<ts>` and logged. Both read as empty before.
+- `SERVE_CLIENT_DIST`, `INGEST_ALLOW_REMOTE` and the ingest reader's `DEMO_MODE` follow `parseEnvFlag`:
+  `true` / `yes` also turn them on, any other value stops the boot (they were `=== "1"`).
+- The mortgage form answers 500, not 400, on a missing UF rate or a prior row without its appraisal;
+  card config answers 400 on an unknown currency or one the card does not bill in (was 500).
+- The Racional amount reader and the Previred indicator reader throw on a malformed token
+  (a lone «$.», «1.,5») where they read a number.
+- `/api/accounts` ignores a stray `?group=`; `/api/benchmark-comparison` ignores `subgroup`.
+- Boot throws when the installed `flow_movements_ai` trigger differs from the current spec.
+- A new flow part kind needs its own migration (hook 293 holds a frozen kind list).
+
+Deploy notes (wave 6): before `main` reaches the home server, compare the live database's
+`flow_movements_ai` trigger with `currentFlowInsertTriggerSql("movements")` on a copy (a difference
+fails the health check and rolls the deploy back; the fix is a migration calling
+`reinstallMovementFlowInsertTrigger`); check the installed plists and the Render environment hold `1`
+or `0` in the three flags above. The ingest service and the server deploy together.
+
+Open from wave 6:
+- `ccBillingViews.test.ts` fails two tests on the synthetic person at the wave's base commit too
+  (the open card month's balance is 8 pesos off `accountTodayValue`, 345516 vs 345524). Not caused by
+  the wave; the card area should look at it.
+- `POST /api/watchlist` still answers every throw 400 (409 on «already»): `watchlist.ts` needs typed errors.
+- Docs to repoint in the one docs pass after the AGENTS split: the hook file paths
+  (`cardLineKind276.ts`, `rentalPlaces300.ts`, `expenseAmountCurrency316.ts`, `tableTriggerReinstall.ts`,
+  `flows/movementFlowTrigger317.ts`, `flowTables279.ts`, `legacyNoteBackfills.ts`), the deleted ingest
+  format copies (`.claude/rules/ingest-sources.md`), the legacy `?group=&subgroup=` line, and the
+  renamed hook exports.
+
 ### Wave 7 — write funnels and stored kinds (three in parallel, then one)
 
 | Stream | Does | Done when |
@@ -1849,6 +1895,45 @@ Kept here so each wave adds what it finds. Not scheduled.
 - Internals-bound tests (`liveTickIncrementalRebuild`, `visitedPagesWarm`, `syncDimmingWatch`,
   `dashboardAccountRowCache`, `markInputChanges`) and the behaviours with no synthetic coverage listed in «Notes from wave 5».
 
+Found by wave 6:
+
+- `db.ts` (fan-out 53) is three things: the connection and wrappers, the baseline and seeds, the
+  migration runner with its hook table (which could be `migrationHooks/index.ts`).
+- About 14 `run…NNN` hooks live inside `markInputTriggers.ts` beside the living
+  `CURRENT_MARK_INPUT_SPECS`; nearly every hook imports `writeLogTriggerSql` from it.
+- `flows/flowTriggerSpecs.ts` is true only for the movement, card-line and plan triggers
+  (`manualFlowValues` / `incomeFlowValues` are stale against what migration 316 installed); the boot
+  check should cover every flow trigger once each has one current definition. A unit test pinning
+  the SQL generated from `LEGACY_FLOW_KIND_MAP` would catch a new kind in CI.
+- Hooks 252, 279, 280 and the vendor-catalog hooks still run live key and vendor code. A baseline
+  squash to about 335 would retire most of `migrationHooks/`.
+- `fxRates.ts` is three unrelated things (re-exports of stored and live dollar rates, peso↔dollar
+  payment conversion, UF readers); `fxStoredRates.ts` is the leaf. Wave 9 `ut-fx-rates`.
+- `portfolioGroupTree.ts` is mostly thin wrappers over `navTreeModel`. `group=`/`subgroup=` is still
+  sent by the client to the valuation-timeseries, consolidated-tables and performance-monthly
+  endpoints; `portfolio_groups.api_group` / `api_subgroup` exist only for that.
+- The watchlist ticker-list readers that `globalSyncAll` and `equityEodSync` import sit in
+  `watchlist.ts` beside CRUD and the Yahoo backfill; `globalSyncStale.ts` mixes the source table, the
+  stale rules and the forced state; `importSyncDocumentFilePath.ts` (592 lines) mixes paths, cartola
+  readers and coverage months; `brokerageFlowMovement.ts` has a mid-file import.
+- `routes/accounts.ts` `GET /api/accounts` has inline SQL with a legacy stocks filter.
+- `checkingExpenseRefunds.ts` marks input errors with `Object.assign(new Error, {status})`; redundant
+  `try { … } catch { res.status(500) }` wrappers in `routes/market.ts` and `routes/flows.ts`.
+- The «read a JSON state file, move a corrupt one aside» code is written three times
+  (`globalSyncState`, `sbifApiGate`, `demoMarketPublishJob`); the saves write in place, not temp + rename.
+- `cfraserPaths.resolveCfraserCsvDir` probes for a retired CSV; `fintualApiLib.loadRootDotenv`
+  duplicates `rootDotenv.ts`; the legacy `SBIF_*` gate names.
+- Client: `panelAccounts()` invalidates `dashboard("clp")` and `dashboard("usd")` by name; the account
+  forms invalidate only the current unit's bundles and never the daily series or group pages (one
+  `accountChanged(id)` resource); `MortgagePaymentForm` and `CheckingLedgerAnchorForm` skip
+  `accountFlowsAll`; inline `useMutation` in the account and panel forms; mutation hooks in
+  `queries/hooks.ts`; `RatesPage` passes pre-translated labels down two levels.
+- Ingest: one strict `parseChileanPesos` in contracts for the seven private «whole pesos, dot-grouped»
+  helpers and one «either grouping mark» reader for the three copies (`cardFeed`, `webPaste`,
+  `appStoreMail`), each acceptance difference decided; the `fail` / `need` helpers re-declared per
+  decoder; dd/mm/yyyy built by hand in four decoders; `email/fetch.ts` mixes the fetch with staging
+  paths; `parsedCartolaPdfEntrySchema.skipped` should carry the `CartolaSkippedRow` shape.
+
 ### Backlog: what is still not currency agnostic after wave 9
 
 Source and legal facts stay as they are (the F22 in pesos, the 1040 in dollars, a cartola in pesos, the
@@ -1868,3 +1953,28 @@ UF as an index). These are code limits to come back to, most needing a real case
 - Projections: EUR uses the USD inflation default. USD milestones are fixed in dollars by design.
 - The demo story's money is pesos and dollars.
 - Client: `formatNative.ts` wrappers and the ~360 `_clp` / `_usd` field reads that remain after `ut-dto-money` (tax pages, groceries).
+
+Found by wave 6 (fold into the wave 9 streams where they fit):
+
+- Server ledger: `signedClpDeltaForAccountMovement`, `sumClpThroughDate`, `sumClpThroughDisplayDate`
+  beside the native readers; `signedAmountClpForBrokerageFlow` takes a peso and an unused dollar leg;
+  `stockTradeQuoteCurrency` returns `"usd" | "clp"`; `transferInputLeg(input, "clp" | "usd")`;
+  `PartialBankMovement.amount_clp` and the checking note key that embeds pesos;
+  `checking_cartola_imports.saldo_*_clp` and the peso-only anchors; `accountClpCashFlows`.
+- Rates: `fxStoredRates.ts` (`FxRow.clp_per_usd`), `clpToUsdAtPayment`, the dollar-only twins in
+  `fxLive.ts` (`fxForLiveMtm`, `shouldUseLiveFxQuote`, `fetchYahooLiveUsdClpPerUsd`), `/api/fx`,
+  `/api/fx/latest`, `/api/fx/bid-ask`.
+- Flow triggers and card SQL: `movementOutgoingSql` branches on `currency <> 'clp'`; the plan, manual
+  and income flow values hardcode `'clp'`; `cc_line_kind` takes a peso and a dollar slot;
+  `cashCurrency318` declares a cash currency for the `clp` and `usd` leaf kinds only; loan payment
+  parts and `flow_parts` for loans are pesos.
+- Mortgage: every input and output of `mortgagePaymentCompute` / `mortgagePaymentCreate` is `*_clp` /
+  `*_uf`, with a peso tolerance.
+- Client: one cash form per currency (`AccountClpCashMovementsForm`, `AccountUsdCashMovementsForm`);
+  `CheckingLedgerAnchorForm` posts `amount_clp`; the rates page is a fixed list of charts and
+  footnotes, not driven by `/api/currencies` or the stored pairs; `FxBidAskGapsTable` is USD/CLP.
+- Ingest decoders with a peso and a dollar slot or a `"clp" | "usd"` union: `racional/movements.ts`,
+  `racional/steps.ts`, `santander/cardFeed.ts`, `santander/paymentReceipts.ts`, `cards/webPaste.ts`,
+  `apple/appStoreMail.ts`, `brokers/brokerEmail.ts`, the peso-only payment and transfer decoders
+  (`stayMails.ts` is the one with a currency table); the Python output shapes are `*_clp`
+  (payslip, grocery receipt, cartola entry).
