@@ -24,6 +24,7 @@ import {
 import { buildFlowsPlPayload } from "../flowsPl.js";
 import { buildFlowsIncomeAggregates, buildFlowsOverviewPayload } from "../flowsOverview.js";
 import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
+import { listPropertyAccounts } from "../accountRoles.js";
 import { assignFlowExpenseLineCategory } from "../expenseAssignmentWrites.js";
 import {
   getExpenseLinePieces,
@@ -570,18 +571,9 @@ app.patch("/api/flows/expenses/real-estate/places/:slug/dfl2", writeHandler((req
   );
 }));
 
-/** Net-worth property masters (candidates for a place's property_account_id link). */
+/** The property accounts (the `property` role): candidates for a place's property_account_id link. */
 app.get("/api/flows/expenses/real-estate/property-accounts", (_req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT a.id, a.name FROM accounts a
-       JOIN portfolio_group_items i ON i.account_id = a.id
-       JOIN portfolio_groups g ON g.id = i.portfolio_group_id
-       WHERE g.slug = 'real_estate'
-       ORDER BY a.name`
-    )
-    .all();
-  res.json({ accounts: rows });
+  res.json({ accounts: listPropertyAccounts() });
 });
 
 app.post("/api/flows/expenses/real-estate/assign", writeHandler((req, res) => {

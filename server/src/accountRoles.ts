@@ -75,6 +75,15 @@ export function propertyAccountIds(): number[] {
   return accountsWithRole("property");
 }
 
+/** Every property account with its name, by name: what a tracked place can be linked to. */
+export function listPropertyAccounts(): { id: number; name: string }[] {
+  const ids = propertyAccountIds();
+  if (ids.length === 0) return [];
+  return db
+    .prepare(`SELECT id, name FROM accounts WHERE id IN (${ids.map(() => "?").join(",")}) ORDER BY name, id`)
+    .all(...ids) as { id: number; name: string }[];
+}
+
 /** One property and its loan (null when the property is owned outright). */
 export type PropertyLoanPair = { propertyAccountId: number; loanAccountId: number | null };
 
