@@ -342,7 +342,9 @@ function execMigrationSql(sql: string): void {
 /**
  * Data transforms too complex for the naive SQL splitter, keyed by migration filename and
  * run inside that migration's transaction. Hook modules live in `migrationHooks/` and must be pure
- * (no imports from modules that import `db` — the module graph here is still initializing).
+ * (no imports from modules that import `db` — the module graph here is still initializing). A hook
+ * keeps producing what it produced when its migration was written: logic it needs from a module
+ * that keeps changing is copied into the hook or `migrationHooks/frozen/`, not imported.
  */
 const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "157_depto_payments_and_mirror_merges.sql": runLegacyNoteBackfill157,

@@ -1,11 +1,12 @@
 /**
  * Migration 292: every stored card statement's `import_fingerprint` re-derived from its stored
- * columns and lines (`cards/statementStorage.ts`, the import's own definition). A statement whose
+ * columns and lines (the import's own definition, `cards/statementStorage.ts`, as it stood then:
+ * the frozen copy in `frozen/statementFingerprint292.ts`). A statement whose
  * import skipped a line (a duplicate of a line already on file) hashes differently from what its
  * next send states and re-imports once; every other statement's next send reads unchanged.
  */
 import type { Database } from "better-sqlite3";
-import { storedStatementFingerprint } from "../cards/statementStorage.js";
+import { storedStatementFingerprint292 } from "./frozen/statementFingerprint292.js";
 
 export function runCardStatementFingerprint292(dbi: Database): void {
   const statements = dbi
@@ -25,7 +26,7 @@ export function runCardStatementFingerprint292(dbi: Database): void {
   const update = dbi.prepare(`UPDATE cc_statements SET import_fingerprint = ? WHERE id = ?`);
   for (const st of statements) {
     const rows = lines.all(st.id) as Record<string, unknown>[];
-    update.run(storedStatementFingerprint(st as never, rows as never), st.id);
+    update.run(storedStatementFingerprint292(st as never, rows as never), st.id);
   }
   console.log(`migration 292: ${statements.length} card statement fingerprint(s) re-derived from their stored lines`);
 }
