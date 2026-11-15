@@ -4,40 +4,11 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { ClPayslip, EmploymentPayslipsPayload, PayslipLine } from "nw-tracker-contracts";
+import type { ClPayslip, EmploymentPayslipsPayload, ParsedPayrollRowContract } from "nw-tracker-contracts";
 import { resolveCfraserDir } from "../paths.js";
 
-/** One payslip as the parser writes it. */
-export type ParsedPayrollRow = {
-  source_pdf: string;
-  period_month: string;
-  employer_name: string;
-  employer_rut: string | null;
-  pay_period_label: string | null;
-  earning_type?: "salary" | "severance";
-  base_salary_clp: number | null;
-  colacion_clp: number | null;
-  movilizacion_clp: number | null;
-  gratificacion_clp: number | null;
-  total_imponible_clp: number | null;
-  total_no_imponible_clp: number | null;
-  total_haberes_clp: number | null;
-  desc_afp_clp: number | null;
-  desc_health_clp: number | null;
-  desc_tax_clp: number | null;
-  desc_cesantia_clp: number | null;
-  desc_apv_clp: number | null;
-  desc_other_clp: number | null;
-  total_descuentos_clp: number | null;
-  liquido_clp: number;
-  uf_mes: number | null;
-  utm_mes: number | null;
-  tope_previsional_uf: number | null;
-  tope_cesantia_uf: number | null;
-  format?: string;
-  lines?: PayslipLine[];
-  pension_fund?: string | null;
-};
+/** One payslip as the parser writes it (the shape the Python parser's output is validated against). */
+export type ParsedPayrollRow = ParsedPayrollRowContract;
 
 export type PayrollParseIndex = { parser_version?: string; rows?: ParsedPayrollRow[]; failures?: unknown[] | number };
 
