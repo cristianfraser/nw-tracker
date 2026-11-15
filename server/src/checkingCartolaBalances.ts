@@ -177,33 +177,29 @@ export function checkingTimelineMonthKeys(
 ): string[] {
   const keys = new Set<string>();
 
-  try {
-    const imports = dbHandle
-      .prepare(
-        `SELECT period_month, period_from, period_to, movement_count
-         FROM checking_cartola_imports WHERE account_id = ?`
-      )
-      .all(accountId) as {
-      period_month: string;
-      period_from: string | null;
-      period_to: string | null;
-      movement_count: number;
-    }[];
-    for (const r of imports) {
-      if (
-        isCartolaDesdeBoundaryPhantomMonth({
-          period_month: r.period_month,
-          period_from: r.period_from,
-          period_to: r.period_to,
-          movement_count: Number(r.movement_count) || 0,
-        })
-      ) {
-        continue;
-      }
-      keys.add(r.period_month);
+  const imports = dbHandle
+    .prepare(
+      `SELECT period_month, period_from, period_to, movement_count
+       FROM checking_cartola_imports WHERE account_id = ?`
+    )
+    .all(accountId) as {
+    period_month: string;
+    period_from: string | null;
+    period_to: string | null;
+    movement_count: number;
+  }[];
+  for (const r of imports) {
+    if (
+      isCartolaDesdeBoundaryPhantomMonth({
+        period_month: r.period_month,
+        period_from: r.period_from,
+        period_to: r.period_to,
+        movement_count: Number(r.movement_count) || 0,
+      })
+    ) {
+      continue;
     }
-  } catch {
-    /* migration not applied */
+    keys.add(r.period_month);
   }
 
   for (const r of dbHandle

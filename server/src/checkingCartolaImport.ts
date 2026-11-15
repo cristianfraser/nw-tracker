@@ -137,16 +137,9 @@ export function deleteCheckingCartolaMonthImport(
        WHERE account_id = ? AND note LIKE ?`
     )
     .run(accountId, `import:cartola|${periodMonth}|%`);
-  let delImp = { changes: 0 };
-  try {
-    delImp = dbHandle
-      .prepare(
-        `DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`
-      )
-      .run(accountId, periodMonth);
-  } catch {
-    /* migration 052 not applied yet */
-  }
+  const delImp = dbHandle
+    .prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
+    .run(accountId, periodMonth);
   return { movements: delMov.changes, imports: delImp.changes };
 }
 
@@ -242,14 +235,9 @@ export function wipeCheckingAccountData(accountId: number, dbHandle: Database = 
   const delVal = dbHandle
     .prepare(`DELETE FROM valuations WHERE account_id = ?`)
     .run(accountId);
-  let delImp = { changes: 0 };
-  try {
-    delImp = dbHandle
-      .prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ?`)
-      .run(accountId);
-  } catch {
-    /* migration 052 not applied yet */
-  }
+  const delImp = dbHandle
+    .prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ?`)
+    .run(accountId);
   return {
     movements: delMov.changes,
     valuations: delVal.changes,
