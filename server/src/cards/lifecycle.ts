@@ -4,8 +4,7 @@
  * turn). One field, four states, in precedence order:
  *
  * - `superseded` — the card's statements and plans are tracked on its successor (config
- *   `superseded_target_last4`, or a registry-listed superseded master excluded from totals whose
- *   import redirect resolves); it is not an operational master.
+ *   `superseded_target_last4`, the only source); it is not an operational master.
  * - `retired` — hidden from the Pasivos nav (config `nav_retired`); it stays a member of its group
  *   and keeps its charts. A retired card that still bills (cuotas outstanding) is still retired.
  * - `billing_stopped` — no facturación after its last statement ({@link cardStoppedBilling}).
@@ -17,13 +16,13 @@
  * no state hides a card's chart).
  */
 import { accountInactiveByValuationTail } from "../accountValuationTailInactive.js";
-import { ccCardRegistry } from "../ccCardRegistry.js";
+
 import { liveCreditCardOutstandingClp } from "../ccInstallmentLedgerDb.js";
 import { listCcStatementsForAccount } from "../ccStatementsDb.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { db } from "../db.js";
 import { dbStateMemo } from "../dbStateMemo.js";
-import { resolveMasterAccountIdForCardLast4 } from "./config.js";
+
 import { planCount } from "./purchases.js";
 import { ccIssuerSlugForMasterAccount } from "../ccIssuerForAccount.js";
 import { ccIssuerBySlug } from "../ccIssuers.js";
@@ -35,7 +34,7 @@ export type CardLifecycle = "active" | "billing_stopped" | "retired" | "supersed
 const stmtConfigStatus = db.prepare(
   `SELECT nav_retired, superseded_target_last4 FROM credit_card_account_config WHERE account_id = ?`
 );
-const stmtAccountIdentity = db.prepare(`SELECT import_key, exclude_from_group_totals FROM accounts WHERE id = ?`);
+
 
 function configStatus(accountId: number): { nav_retired: number; superseded_target_last4: string | null } | undefined {
   return stmtConfigStatus.get(accountId) as { nav_retired: number; superseded_target_last4: string | null } | undefined;
@@ -49,21 +48,9 @@ export function supersededTargetLast4(accountId: number): string | null {
 
 /** The card is tracked on its successor: not an operational master. */
 export function cardSuperseded(accountId: number): boolean {
-  return dbStateMemo("card_lifecycle_superseded", accountId, () => {
-    if (supersededTargetLast4(accountId) != null) return true;
-    const row = stmtAccountIdentity.get(accountId) as
-      | { import_key: string | null; exclude_from_group_totals: number }
-      | undefined;
-    if (!row) return false;
-    const importKey = String(row.import_key ?? "").trim();
-    const registry = ccCardRegistry();
-    if (!registry.superseded_master_notes.includes(importKey)) return false;
-    if (row.exclude_from_group_totals !== 1) return false;
-    const last4 = importKey.slice(importKey.lastIndexOf("|") + 1);
-    const targetLast4 = registry.import_redirect_last4[last4];
-    return targetLast4 != null && resolveMasterAccountIdForCardLast4(targetLast4) != null;
-  });
+  return supersededTargetLast4(accountId) != null;
 }
+
 
 /** The card is hidden from the Pasivos nav (historial and group charts remain). */
 export function cardNavRetired(accountId: number): boolean {
