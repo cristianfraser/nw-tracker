@@ -1941,6 +1941,168 @@ month, the depto ledger as flow source, `liabilityPctMonth`'s fixed threshold); 
 without `seedNavTree()` (needs a `placeAccount` in the creating transaction and a boot seed that
 stops regenerating membership).
 
+### Wave 8b — one node-value rule, dead guards (three in parallel; before wave 9)
+
+Before wave 9 so that its rounding and clock differences are reviewed alone (wave 9 may move dollar
+figures; the payload baseline is retaken after 8b), and so `ut-card-currency` finds one netting call
+site. Not started.
+
+| Stream | Does | Done when |
+|---|---|---|
+| `ut-node-value-2` | the policy decisions below; the netting primitives of `cashEqsBucketNet.ts` into `nodeValue.ts`, with `netLinkedCreditCardFromCashConsolidated` and the inline Σ of `dailySeries.ts` on it; `synthetic_group_color_rgb` deleted (9 payloads lose an unread field); the three-slug set of `checkingDescriptionPredicates.ts` as a role (one migration); the five archived scripts' import path | every reader passes the same policy, or the difference is a decision listed here; each payload difference listed |
+| `ut-placement` | `placeAccount` in the creating transaction (`createPanelAccount.ts`, `fintualCertImport.ts`); the boot seed stops regenerating membership | no `seedNavTree()` call outside boot; identical nav payloads |
+| `ut-dead-guards` | the guards under «Removable now» below, the row fixes under «Needs the rows fixed first» as migrations, the route and state-file items | each removal listed with its count check; identical payloads except where a row fix says otherwise |
+
+Node-value decisions for `ut-node-value-2` (numbers as in the wave 8 list):
+
+| # | One rule | Payloads that move |
+|---|---|---|
+| 1 | a missing linked-card rate throws; also `linkedCcOffsetAt` (`cashEqsBucketNet.ts`, returns 0), `dashboardPagePayload.ts:64` (`?? 0`) | none |
+| 2 | prior-day closes read `value_in_unit` | none |
+| 6 | the netting role on one node; `isCashSavingsNavNode` goes | none (one migration) |
+| 7 | one member filter | none |
+| 3 | no caller `now` | 10 files, last float digits |
+| 4 | `unit_coin` rounding everywhere | 35 files, sub-coin digits |
+| 5 | `null_unless_netted` everywhere | measured report first, then a yes |
+| 8 | the headline reads Σ member values, like the charts | measured report first, then a yes |
+
+Where the `skip` came from (git history): the peso code subtracted the cards unconditionally; the
+guard arrived with the dollar twin (before `3eec0eaa`, generalised by `2e277a21`, `87a933ff`) and
+always meant «the conversion returned nothing, carry on un-netted». «No linked card» was always a
+separate test. It is a silent fallback, unreachable in pesos.
+
+Open with decision 1, not a deletion: a member whose value is null because a rate or a price is
+missing drops out of a node's sum exactly like an account that did not exist yet (`nodeValue.ts`,
+`accountValue.ts`, `accountMarkClpAtYmd.ts`, `accountMarkDailyCache.ts`, `accountTodayValue.ts`,
+`accountValuationTimeseries.ts`, `groupMonthlyPerfConsolidation.ts`, `valuationTimeseries.ts`,
+`dailySeries.ts`). `convertValue` and `holdingPriceAt` would have to report «no rate» apart from
+«nothing held». Needs each rate table and each ticker's first price day checked against the first
+holding day, on the live, demo and test databases.
+
+#### Guards audit (2026-11-15, read-only, `main` at `ea0d4bed`)
+
+Three audits (value side; cards, flows, movements; imports, routes, ingest, client). File and line
+for every item are in the session notes (`obsolete-guards-{valuation,cards-flows,imports-client}.md`);
+the counts below were read on the live copy of 2026-11-15. Items not marked «count» are the audits'
+reading of the code, to be re-proved by the stream that removes them.
+
+**Removable now — the stored state is gone (count 0 on the live copy):**
+
+- The retired aggregate stocks account (`import:excel|key=stocks`, leaf `individual_stocks`): the
+  filter in about 12 files (`dashboardAccounts`, `fxBidAskGaps`, `fxConversionWarningScan`,
+  `valuationTimeseries`, `accountDetailBundle`, `flowsDeposits`, `checkingCartolaLoaders`,
+  `routes/accounts.ts`, …) and `LEGACY_EQUITY_LEAF_KINDS`.
+- Mortgage stored-valuation fallbacks (`accountMarkClpAtYmd`, `accountTodayValue`, `valuationLatest`,
+  `liabilitiesValuation`); add the mortgage refusal to `POST /api/accounts/:id/valuations`.
+- `deleteLegacyOpeningMovements` on every anchor sync (`checkingCartolaBalances.ts`).
+- The AFC true-up legacy note keys (`afcCertImport.ts`).
+- `note NOT LIKE 'import:excel%'` on `income_entries` (`flowsCheckingInflows.ts`).
+- A superseded card resolved from `import_key` and the registry file (`cards/lifecycle.ts`).
+- The legacy-account arms of the Fintual goals poll (`matchGoalToImportNotes`, the
+  `!isFintualCertV2AccountNotes` arms and `cleanupMistakenPollDayFintualValuations` in
+  `fintualApplyShared.ts`, `fintualRealAssetNav.ts`, `accountSyncSources.ts`,
+  `accountFundSeriesKey.ts`): no such account exists. Still to check: every goal id of the last
+  snapshot is in `FINTUAL_GOALS`, and the goal-map file names no `import:excel` key.
+- `fintual_goal` decided by key prefix where the role is read on the next line (`accountProfile.ts`,
+  `accountChartInactive.ts`).
+- AFP / AFC «no series» defaults (`accountProfile.ts`); check the demo and test databases too.
+- The cash ledgers' non-finite fallback to a stored mark (`accountMarkClpAtYmd.ts`).
+- The `flow_id` null skip (`flows/flowIdentity.ts`) for movements, card lines and plans.
+- Card line currency guessed from the dollar twin (`ccAnnulmentWriters`, `ccFeedMirror`,
+  `ccFeedCuotaPurchases`, `ccOpenWebPastePdfReconcile`, `flowsExpenses.ts:787`): the line stores its
+  currency and none is a third one.
+
+**Removable now — provable from the code:**
+
+- Value core: the `allFinite` branch of `portfolioGroupValueAtDate.ts`; the `storedTodayTail`
+  fallbacks for a property and a card and the duplicated coin block (`accountTodayValue.ts`); the
+  card `bookMark` after the same read returned nothing; `isHomeCurrency(unit) ? markClpAt :
+  accountValueAt` (`accountMarkDailyCache.ts`); the bucket slug in the mark-series key and the unused
+  fields and parameters that carry it; `ensureBidAskForPaymentDate`, the mid fallback beside it and
+  the `buy_rate_missing` code; the `sqlite_master` probe of `accountSyncSources.ts`; `> 0` re-checks
+  on stored rates (CHECK constraints); a malformed `asOfYmd` read as today (`accountPosition.ts`).
+- `FacturadoClpResolver` and its twice-declared type: a direct import closes no cycle now (confirm
+  with `check-deps`). The other injection hooks stay: `registerCardLineWriteFrame`,
+  `registerExpenseLinkSync`, the sync scheduler signal and the cache listener each close a cycle if
+  imported directly. Stale «cycle» comments: `cards/lineWriteSession.ts`, `expenseLinkSync.ts`,
+  `cards/purchases.ts`, `monthPrecisionAccountKinds.ts`, `accountSyncSources.ts`, `db.ts`.
+- Hand-rolled coin comparisons beside `sameCoin` (`ccFeedMirror`, `ccAnnulmentWriters`,
+  `ccFeedCuotaPurchases`); movement shape checks the table's constraints forbid
+  (`movementTransfer.ts` `absAmount` on stored rows, `isMovementTransferRow`); `movementClpLegOrZero`
+  where the SQL already selected a peso leg (`expenseDepositLinks`, `ccPaymentMirrors`,
+  `checkingExpenseRefunds`) → `requireMovementClp`; `flowsPl.ts` a non-finite `nominal_pl` read as 0
+  where the chart builder throws; `ccParsedStatementsApply.ts` last4 parsed from `import_key`.
+- `db.ts` `execMigrationSql` swallowing «duplicate column name»: no migration adds a baseline column.
+- Routes: 500s answered by hand, which skip the terminal log (`routes/flows.ts`, `routes/market.ts`
+  twice, `routes/accounts.ts`); catch-all 4xx in `routes/sync.ts` (three, status chosen by message
+  text), `routes/movementMirrors.ts`, `routes/jobs.ts`, `POST /api/watchlist`; the dead `equity_eod`
+  sync source; enum query params that default on garbage; `ingestAuth.ts` reading `DEMO_MODE` live.
+- State files wave 6 did not reach: `fintualApiLib.ts` `loadGoalIdOverrides`, `globalSyncStale.ts`
+  `readFintualLastCheckedAt`; ingest `runGuard.ts` (a corrupt file disables the bank-traffic guard),
+  `documentLedger.ts`, `email/fetch.ts`.
+- Ingest `runner/runRequest.ts` reads its seven gates with `=== "1"`: one strict flag parser in
+  contracts, shared with the server's.
+- `cfraserPaths.ts`: two exports with no importer; the `CFRASER_CSV_DIR` probe (check the env on the
+  home server first).
+- Client: the dead `group` / `subgroup` parameters (`api.ts`, `queries/keys.ts`,
+  `portfolioNavFromApi.ts`); the `usd-fine` unit; `?? []` / `?? 0` on fields the contract requires
+  (`NavTreeNodeDto.children` at 10 sites, `stock_units_inflow`, `purchases_completed`); the coverage
+  fallback of `LiabilitiesGroupPage.tsx`; `VITE_DEMO_MODE` read six ways.
+
+**Needs the rows fixed first (count on the live copy):**
+
+| Guard | Rows | Fix |
+|---|---|---|
+| `Total mensual (Gasto)` / `synthetic:` expense rows hidden by text (`flowsManualExpenses.ts`) | 78 / 79 | delete or mark them in a migration |
+| `flow_id` null on `expense_entries` | 299 | check they are the rows above, then backfill |
+| the legacy `usd` key of stored cupo-check details (`ccBankCupoCheck.ts`) | 820 | rewrite once |
+| a timestamp stripped from message titles at render (`MessagesTable.tsx`) | 106 | rewrite once |
+| materialized `mid_spread_inferred` bid/ask rows (`rates.ts`, `fxBidAsk.ts`) | 1456 | delete, with the request-time writer in `fxBidAskGaps.ts` |
+| the card pre-anchor path (`linkedCreditCards`, `accountMarkClpAtYmd`, `cardValueInUnit`, `ccOwedWalk`) | 1 card with valuations and no anchors | look at that card |
+
+Not counted yet: `cc_proxy_tickers` (no row on the live copy, so the default is the only path);
+accounts whose leaf has no `kind_slug` (the `parent__kind` parsing in three files);
+`credit_card_master|` tests against the profile kind; coin-leaf accounts without a ticker;
+`SBIF_*` env fallbacks; the demo analytics hand migration; `expenseDepositLinks.ts` catch-and-continue
+(narrow it and count the throws on a copy); the client's three-payload fallback chains
+(`deptoAccountSummary.ts`, `CreditCardSummaryCards.tsx`); the legacy localStorage key of
+`projectionsOverrides.ts`.
+
+**Goes with a later stream (add to its description):**
+
+- Wave 9 `ut-card-currency`: the skip-on-null billing sums (`ccBillingBalances.ts:133, 718, 782,
+  316-350, 812`; `ccBillingViews.ts:192, 364, 371, 416, 950, 1142`) — null means a zero amount (10
+  lines, legitimate) and also a missing rate; `?? 0` on the peso/dollar view in about 12 files, where
+  a third-currency line reads null; the two-slot cascade of `ccExpenseAmountClp.ts`;
+  `isFinancingChargeLine` and `isCcTraspasoDeudaMerchant` on stored lines (the kind says it).
+- Wave 9 `ut-bank-currency`: `flowsDepositsReconciliation.ts:363` (a third-currency deposit reads 0
+  pesos), `checkingTransferLegReconcile.ts:44`; `racionalEmailImport.ts` and `brokerAdapter.ts`
+  `catch { return null }`.
+- Wave 9 `ut-dto-money`: the `amount_usd` twins of the expense piece split; `AccountImportPanel.tsx`,
+  `MortgagePaymentForm.tsx`.
+- Wave 10 `ut-flow-id`: `legacy_key` / `flowIdForKey` fallbacks, `line_fallback_missing`, the
+  `synthetic:%` parser-row tests.
+- Wave 10 `ut-movement-provenance`: card-payment debits recognised by regexes on `movements.note`
+  (`ccPaymentMirrors.ts`); the trigger's nine `note LIKE` arms for `source_kind`
+  (`flows/flowTriggerSpecs.ts`); `auto:user-declined-auto-category` kept as a note line (needs a
+  column).
+- Wave 10 `ut-client-slugs`: 51 slug literals; the mortgage loans found by slug substring in
+  `LiabilitiesGroupPage.tsx`; the marquee labels chosen by slug.
+- Typed input errors: `createPanelAccount.ts` and `optionAssignment` mark errors with a `status`
+  property, which keeps four route catches alive.
+- Client re-summing, beyond the three files of the backlog: `flowsDisplay.ts`
+  (`rollupChartPointsByYear`), `flowsOverviewRows.ts`, `ExpensesPage.tsx`, `expenseDepositLinks.ts`,
+  `ccExpenseCategories.ts`, `ValueTreemap.tsx`, `UsTaxReturnSections.tsx`,
+  `dashboardTimeseriesYearly.ts`.
+
+**Keep (looked like guards, are rules):** `requireStoredCardLineKind`; `isDivisasAbonoPaymentLine`;
+merchant classifiers on rows not stored yet; `valuationValue.ts` `isCurrencyCode`;
+`flows/flowTriggerCheck.ts`; the scheduler, telemetry and network catches; per-document report rows
+of the importers; `dashboardNavSnapshotCache.ts` shape check; the optional card-ledger fields.
+
+Docs pass: AGENTS.md still names `setRateIndependentAccountsResolver` (gone; the series carries
+`rate_independent`).
+
 ### Wave 9 — currency agnostic (one first, three in parallel, one last)
 
 The codebase is ours to change: a dollar figure may move by a peso where the legacy dollar path and
@@ -2016,9 +2178,10 @@ Found by wave 6:
   squash to about 335 would retire most of `migrationHooks/`.
 - `fxRates.ts` is three unrelated things (re-exports of stored and live dollar rates, peso↔dollar
   payment conversion, UF readers); `fxStoredRates.ts` is the leaf. Wave 9 `ut-fx-rates`.
-- `portfolioGroupTree.ts` is mostly thin wrappers over `navTreeModel`. `group=`/`subgroup=` is still
-  sent by the client to the valuation-timeseries, consolidated-tables and performance-monthly
-  endpoints; `portfolio_groups.api_group` / `api_subgroup` exist only for that.
+- `portfolioGroupTree.ts` is mostly thin wrappers over `navTreeModel`. No route reads `group=`/`subgroup=`
+  and no client caller passes them (the parameters in `api.ts` are dead, wave 8b); `api_subgroup`
+  is read as a page-kind fact on both sides (`liabilitiesPageKind.ts`, `groupPageChartViews.ts`,
+  `valuationTimeseries.ts`, `groupChartBuckets.ts`), so it stays until `ut-client-slugs`.
 - The watchlist ticker-list readers that `globalSyncAll` and `equityEodSync` import sit in
   `watchlist.ts` beside CRUD and the Yahoo backfill; `globalSyncStale.ts` mixes the source table, the
   stale rules and the forced state; `importSyncDocumentFilePath.ts` (592 lines) mixes paths, cartola
