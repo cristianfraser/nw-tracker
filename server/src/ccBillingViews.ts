@@ -33,7 +33,7 @@ import { billingMonthForManualLedgerPurchase, closeDateForBillingMonth, pdfClose
 import { feedBillingCloseForMonth, type CcCloseSource } from "./cards/facturacion.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
-import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";
+import { parseOpenWebPasteBillingMonth } from "./cards/openWebPasteSource.js";
 import { linesOfStatement, openCycleCuotaPurchaseLines } from "./cards/purchases.js";
 import { isCardPaymentLine } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";

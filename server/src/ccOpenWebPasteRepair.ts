@@ -5,17 +5,13 @@ import { db } from "./db.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
+import {
+  OPEN_WEB_PASTE_SOURCE_PREFIX,
+  openWebPasteSourcePdf,
+  parseOpenWebPasteBillingMonth,
+} from "./cards/openWebPasteSource.js";
 
-export const OPEN_WEB_PASTE_SOURCE_PREFIX = "import:web-paste|open|";
-
-export function openWebPasteSourcePdf(billingMonth: string): string {
-  return `${OPEN_WEB_PASTE_SOURCE_PREFIX}${billingMonth}`;
-}
-
-export function parseOpenWebPasteBillingMonth(sourcePdf: string): string | null {
-  const m = /^import:web-paste\|open\|(\d{4}-\d{2})$/.exec(String(sourcePdf ?? "").trim());
-  return m?.[1] ?? null;
-}
+export { OPEN_WEB_PASTE_SOURCE_PREFIX, openWebPasteSourcePdf, parseOpenWebPasteBillingMonth };
 
 function linePurchaseIso(transaction_date: string | null, posting_date: string | null): string | null {
   return (
