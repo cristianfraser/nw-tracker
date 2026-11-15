@@ -3,7 +3,6 @@ import { accountIsDebt, accountProfile } from "./accountProfile.js";
 import { convertCurrency, type CurrencyCode } from "./rates.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { loanAccountIdOfProperty } from "./accountRoles.js";
-import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountIdsInPortfolioGroup, withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { deptoMortgageBalanceClpBySnapshotDates } from "./deptoDividendosLedger.js";
@@ -989,9 +988,7 @@ function listAccountsForGroupTabInner(groupSlug: string, tabSubgroup?: string): 
     const childSlug = resolveGroupTabChildSlug(groupSlug, tabSubgroup);
     if (childSlug) return listAccountsForPortfolioGroupSlug(childSlug);
   }
-  return toGroupTabAccountRows(
-    listAccountsForBucketSlug(groupSlug, tabSubgroup, NOTE_STOCKS_LEGACY)
-  );
+  return toGroupTabAccountRows(listAccountsForBucketSlug(groupSlug));
 }
 
 export { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";

@@ -9,7 +9,6 @@ import {
   leafAssetGroupSlugForKindSlug,
   listAccountsForBucketSlug,
 } from "./assetGroupTree.js";
-import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 
 describe("assetGroupTree", () => {
@@ -34,7 +33,7 @@ describe("assetGroupTree", () => {
   });
 
   it("lists acciones tab accounts from portfolio brokerage_acciones group", () => {
-    const rows = listAccountsForBucketSlug("brokerage_acciones", undefined, NOTE_STOCKS_LEGACY);
+    const rows = listAccountsForBucketSlug("brokerage_acciones");
     const slugs = new Set(rows.map((r) => r.bucket_slug));
     for (const s of slugs) {
       expect(s === "brokerage_acciones" || s.startsWith("brokerage_acciones__")).toBe(true);
@@ -55,7 +54,7 @@ describe("assetGroupTree", () => {
   });
 
   it("lists AFP + AFC from retirement_afp_afc portfolio group", () => {
-    const rows = listAccountsForBucketSlug("retirement_afp_afc", undefined, NOTE_STOCKS_LEGACY);
+    const rows = listAccountsForBucketSlug("retirement_afp_afc");
     const kinds = rows.map((r) => accountKindSlugForAccountId(r.account_id));
     expect(kinds).toContain("afp");
     expect(kinds).toContain("afc");
