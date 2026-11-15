@@ -34,7 +34,8 @@ export const OPTION_CONTRACT_FLOW_KINDS = [
   "option_expire",
 ] as const;
 
-export const USD_CASH_FLOW_KINDS = [
+/** A foreign cash ledger's form (dollars, euros, any currency but pesos). */
+export const FOREIGN_CASH_FLOW_KINDS = [
 
   "deposit",
 
@@ -70,7 +71,7 @@ export type BrokerageFlowKind =
 
   | (typeof BROKERAGE_FLOW_KINDS)[number]
 
-  | (typeof USD_CASH_FLOW_KINDS)[number]
+  | (typeof FOREIGN_CASH_FLOW_KINDS)[number]
 
   | (typeof CLP_CASH_FLOW_KINDS)[number]
 

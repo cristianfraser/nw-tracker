@@ -2,7 +2,9 @@
  * Which accounts require `units_delta` (shares, coin, Fintual/AFP cuotas) on manual API creates.
  */
 
-import { foreignCashCurrencyOf, isForeignCashAccount, isForeignCashAccountIn } from "./foreignCashAccounts.js";
+import { foreignCashCurrencyOf, isForeignCashAccount } from "./foreignCashAccounts.js";
+import { accountCashCurrency, cashCurrencyForKind } from "./cashCurrency.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import { accountUsesForeignCashFlowKinds } from "./accountForeignCashFlows.js";
 import { accountUsesClpCashFlowKinds } from "./accountClpCashFlows.js";
@@ -19,12 +21,10 @@ import { optionContractsThroughDate } from "./optionPosition.js";
 import { resolveTransferEndpoints, validateTransferCreate, type TransferCreateInput } from "./movementTransfer.js";
 import { accountRowForId } from "./accountRowForMovement.js";
 import type { AccountRow } from "./movementAccountRow.js";
-import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
-import { isClpCashAccount } from "./clpCashAccounts.js";
 import { assertManualUnitsClpReconcile } from "./manualUnitsFlow.js";
-import { isMovementCurrency, type MovementCurrency } from "./movementAmounts.js";
+import { isMovementCurrency, movementCurrencyChoices, type MovementCurrency } from "./movementAmounts.js";
 export type { AccountRow } from "./movementAccountRow.js";
 
 /** An option contract account (`option_contracts`): its own kinds, its contracts always required. */
@@ -43,7 +43,22 @@ export type MovementCreateSchema = {
   brokerage_flow_kinds?: readonly string[];
   /** Flow kinds that must include `units_delta` (share-changing). */
   units_required_for_flow_kinds?: readonly string[];
+  /** A cash ledger's currency (`accounts.cash_currency`): what its own amounts are typed in. */
+  cash_currency?: string;
 };
+
+/**
+ * The currency a cash ledger account's row holds: the stored account's (`accountCashCurrency`),
+ * or, for a row with no id, what its leaf names (a generic foreign cash leaf names none and throws).
+ */
+function requireCashCurrency(account: AccountRow): string {
+  const currency =
+    account.account_id != null
+      ? accountCashCurrency(account.account_id)
+      : cashCurrencyForKind(0, accountBucketKindSlug(account.bucket_slug), null);
+  if (currency == null) throw new Error(`account ${account.account_id ?? "(none)"} is on a cash leaf but holds no cash currency`);
+  return currency;
+}
 
 const MOVEMENTS_UNITS_BY_CATEGORY: Record<string, { unit_label: string }> = {
   afp: { unit_label: "cuotas" },
@@ -75,11 +90,11 @@ export function movementCreateSchemaForAccount(account: AccountRow): MovementCre
     };
   }
   if (accountUsesForeignCashFlowKinds(account)) {
-    const currency = account.account_id != null ? foreignCashCurrencyOf(account.account_id) : null;
     return {
       ledger: "movements",
       units_delta: "optional",
-      unit_label: (currency ?? "usd").toUpperCase(),
+      unit_label: requireCashCurrency(account).toUpperCase(),
+      cash_currency: requireCashCurrency(account),
       brokerage_flow_kinds: ["deposit", "fx_exchange", "savings_earnings", "cash_fee", "withdrawal", "other"],
       units_required_for_flow_kinds: [],
     };
@@ -88,7 +103,8 @@ export function movementCreateSchemaForAccount(account: AccountRow): MovementCre
     return {
       ledger: "movements",
       units_delta: "optional",
-      unit_label: "CLP",
+      unit_label: requireCashCurrency(account).toUpperCase(),
+      cash_currency: requireCashCurrency(account),
       brokerage_flow_kinds: ["deposit", "savings_earnings", "cash_fee", "withdrawal", "other"],
       units_required_for_flow_kinds: [],
     };
@@ -209,10 +225,10 @@ function parseAmountFields(body: Record<string, unknown>): ParsedAmountFields | 
   const currencyRaw = body.currency ?? null;
   const counterCurrencyRaw = body.counter_currency ?? null;
   if (currencyRaw != null && !isMovementCurrency(currencyRaw)) {
-    return { error: `currency must be one of clp/usd/eur.` };
+    return { error: `currency must be one of ${movementCurrencyChoices()}.` };
   }
   if (counterCurrencyRaw != null && !isMovementCurrency(counterCurrencyRaw)) {
-    return { error: `counter_currency must be one of clp/usd/eur.` };
+    return { error: `counter_currency must be one of ${movementCurrencyChoices()}.` };
   }
   if (amount != null && currencyRaw == null) {
     return { error: "currency is required when amount is set." };
@@ -235,29 +251,14 @@ function parsedLeg(fields: ParsedAmountFields, currency: string): number | null 
   return null;
 }
 
-/** Quote currency of the stock leg on a trade transfer (buy: to_account, sell/dividend: from_account). */
-function stockTradeQuoteCurrency(input: TransferCreateInput): "usd" | "clp" { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
-  const stockAccountId =
-    input.flow_kind === "stock_buy" ? input.to_account_id : input.from_account_id;
-  const ticker = equityTickerForAccount(stockAccountId);
-  if (!ticker) return "usd";
-  const quote = equityQuoteCurrency(ticker);
-  // Trades settle against a broker's peso or dollar cash (any-currency plan, Phase C1 opens the rest).
-  if (quote !== "usd" && quote !== "clp") {
-    throw new Error(`${ticker} is quoted in ${quote}: a stock trade settles against peso or dollar cash only for now`);
-  }
-  return quote;
-}
-
-function transferInputLeg(input: TransferCreateInput, currency: MovementCurrency): number | null {
-  if (input.currency === currency) return input.amount;
-  if (input.counter_currency === currency) return input.counter_amount;
-  return null;
+/** The currency an option contract trades in: its underlying's quote currency (the strike's and the premium's). */
+function optionContractCurrency(contractAccountId: number): string {
+  return equityQuoteCurrency(requireOptionContract(contractAccountId).underlying_ticker);
 }
 
 /**
- * An option premium transfer (`optionFlowKinds.ts`): the contract account on one side, USD cash
- * on the other, the premium in dollars, whole contracts, and a direction that fits the position
+ * An option premium transfer (`optionFlowKinds.ts`): the contract account on one side, cash in
+ * the contract's currency on the other, the premium in that currency, whole contracts, and a direction that fits the position
  * held on the day — an «open» adds to a flat or same-side position, a «close» reduces the
  * opposite one and never past zero.
  */
@@ -271,13 +272,16 @@ function validateOptionTransferEndpoints(input: TransferCreateInput): MovementCr
   if (!isOptionContractAccount(contractId)) {
     return bad(
       leaves
-        ? `${fk} must transfer the premium from the option contract account (from_account) to USD cash (to_account).`
-        : `${fk} must transfer the premium from USD cash (from_account) to the option contract account (to_account).`
+        ? `${fk} must transfer the premium from the option contract account (from_account) to cash (to_account).`
+        : `${fk} must transfer the premium from cash (from_account) to the option contract account (to_account).`
     );
   }
-  if (!isForeignCashAccountIn(cashId, "usd")) return bad(`${fk} settles in USD cash: the ${leaves ? "to" : "from"}_account must be a USD cash account.`);
-  if (input.currency !== "usd" || !(Math.abs(input.amount) > 0)) return bad(`${fk} requires the premium as a USD amount.`); // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
-  if (transferInputLeg(input, "clp") != null) return bad(`a CLP amount is not allowed on ${fk} (the premium settles in USD).`);
+  // The premium is in the contract's currency and settles against cash held in it.
+  const premiumCurrency = optionContractCurrency(contractId);
+  const code = premiumCurrency.toUpperCase();
+  if (accountCashCurrency(cashId) !== premiumCurrency) return bad(`${fk} settles in ${code} cash: the ${leaves ? "to" : "from"}_account must be a ${code} cash account.`);
+  if (input.currency !== premiumCurrency || !(Math.abs(input.amount) > 0)) return bad(`${fk} requires the premium as a ${code} amount.`);
+  if (input.counter_amount != null) return bad(`a counter amount is not allowed on ${fk} (the premium settles in ${code}).`);
   const n = Math.abs(input.units_delta ?? 0);
   if (!(n > 0) || !Number.isInteger(n)) return bad(`${fk} requires units_delta: a whole number of contracts.`);
   const terms = requireOptionContract(contractId);
@@ -312,36 +316,8 @@ function validateBrokerageTransferEndpoints(
     }
     return validateOptionTransferEndpoints(input);
   }
-  const inputClpLeg = transferInputLeg(input, "clp");
-  const inputUsdLeg = transferInputLeg(input, "usd");
-  const tradeQuoteCurrency =
-    fk === "stock_buy" || fk === "stock_sell" || fk === "dividend_payout"
-      ? stockTradeQuoteCurrency(input)
-      : null;
-  // Fail fast on a leg that doesn't belong to the flow kind (e.g. a stale value left in a
-  // hidden input on the client): the amount must be in the stock's quote currency, never both.
   if (fk === "stock_buy" || fk === "stock_sell" || fk === "dividend_payout") {
-    if (tradeQuoteCurrency === "usd" && inputClpLeg != null && inputClpLeg !== 0) { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
-      return {
-        ok: false,
-        status: 400,
-        error: `a CLP amount is not allowed on ${fk} for a USD-quoted stock (a CLP wire is a separate fx_exchange movement).`,
-      };
-    }
-    if (tradeQuoteCurrency === "clp" && inputUsdLeg != null && inputUsdLeg !== 0) { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
-      return {
-        ok: false,
-        status: 400,
-        error: `a USD amount is not allowed on ${fk} for a CLP-quoted stock (trade settles in CLP).`,
-      };
-    }
-  }
-  if (fk === "dividend_payout" && input.units_delta != null && input.units_delta !== 0) {
-    return {
-      ok: false,
-      status: 400,
-      error: "units_delta is not allowed on dividend_payout (a cash dividend does not change share units).",
-    };
+    return validateTradeSettlement(input, fk);
   }
   if (fk === "fx_exchange") {
     // With a counterpart, this is a conversion from pesos moving money between two cash accounts:
@@ -362,7 +338,7 @@ function validateBrokerageTransferEndpoints(
         error: "fx_exchange from_account must be the CLP source account, not foreign cash.",
       };
     }
-    if (input.currency !== "clp" || input.amount === 0) { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
+    if (!isHomeCurrency(input.currency) || input.amount === 0) {
       return {
         ok: false,
         status: 400,
@@ -378,98 +354,51 @@ function validateBrokerageTransferEndpoints(
     }
     return null;
   }
-  if (fk === "stock_buy") {
-    if (tradeQuoteCurrency === "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
-      if (!isClpCashAccount(input.from_account_id)) {
-        return {
-          ok: false,
-          status: 400,
-          error:
-            "stock_buy for a CLP-quoted stock must transfer from CLP cash (from_account) to the stock account (to_account).",
-        };
-      }
-      if (inputClpLeg == null || inputClpLeg === 0) {
-        return {
-          ok: false,
-          status: 400,
-          error: "a CLP amount (CLP spent) is required for a CLP-quoted stock_buy.",
-        };
-      }
-    } else if (!isForeignCashAccountIn(input.from_account_id, "usd")) {
-      return {
-        ok: false,
-        status: 400,
-        error: "stock_buy must transfer from USD cash (from_account) to the stock account (to_account).",
-      };
-    }
-    const toRow = accountRowForId(input.to_account_id);
-    if (!toRow || !accountUsesBrokerageFlowKinds(toRow)) {
-      return {
-        ok: false,
-        status: 400,
-        error: "stock_buy to_account must be an equity brokerage account.",
-      };
-    }
+  return null;
+}
+
+/**
+ * A share trade or a cash dividend: the stock account on one side, a cash ledger on the other,
+ * and the amount in that cash account's own currency (`accountCashCurrency`) — whatever currency
+ * the stock is quoted in. A conversion is its own `fx_exchange` movement, never a second leg here.
+ */
+function validateTradeSettlement(
+  input: TransferCreateInput,
+  fk: "stock_buy" | "stock_sell" | "dividend_payout"
+): MovementCreateValidation | null {
+  const bad = (error: string): MovementCreateValidation => ({ ok: false, status: 400, error });
+  const cashIsFrom = fk === "stock_buy";
+  const cashId = cashIsFrom ? input.from_account_id : input.to_account_id;
+  const stockId = cashIsFrom ? input.to_account_id : input.from_account_id;
+  const cashRole = cashIsFrom ? "from" : "to";
+  const stockRole = cashIsFrom ? "to" : "from";
+  const settles = accountCashCurrency(cashId);
+  if (settles == null) {
+    return bad(`${fk} settles against a cash account: the ${cashRole}_account must be one (its currency is the trade's).`);
   }
-  if (fk === "stock_sell") {
-    if (tradeQuoteCurrency === "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
-      if (!isClpCashAccount(input.to_account_id)) {
-        return {
-          ok: false,
-          status: 400,
-          error: "stock_sell for a CLP-quoted stock must transfer proceeds to CLP cash (to_account).",
-        };
-      }
-      if (inputClpLeg == null || inputClpLeg === 0) {
-        return {
-          ok: false,
-          status: 400,
-          error: "a CLP amount (CLP proceeds) is required for a CLP-quoted stock_sell.",
-        };
-      }
-    } else if (!isForeignCashAccountIn(input.to_account_id, "usd")) {
-      return {
-        ok: false,
-        status: 400,
-        error: "stock_sell must transfer proceeds to USD cash (to_account).",
-      };
-    }
-    const fromRow = accountRowForId(input.from_account_id);
-    if (!fromRow || !accountUsesBrokerageFlowKinds(fromRow)) {
-      return {
-        ok: false,
-        status: 400,
-        error: "stock_sell from_account must be an equity brokerage account.",
-      };
-    }
+  const stockRow = accountRowForId(stockId);
+  if (!stockRow || !accountUsesBrokerageFlowKinds(stockRow)) {
+    return bad(
+      `${fk} ${stockRole}_account must be an equity brokerage account${fk === "dividend_payout" ? " (the paying stock)" : ""}.`
+    );
   }
-  if (fk === "dividend_payout") {
-    if (tradeQuoteCurrency === "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
-      return {
-        ok: false,
-        status: 400,
-        error:
-          "dividend_payout is not supported for CLP-quoted stocks yet (USD dividends only).",
-      };
-    }
-    if (!isForeignCashAccountIn(input.to_account_id, "usd")) {
-      return {
-        ok: false,
-        status: 400,
-        error: "dividend_payout must credit the cash dividend to USD cash (to_account).",
-      };
-    }
-    const fromRow = accountRowForId(input.from_account_id);
-    if (!fromRow || !accountUsesBrokerageFlowKinds(fromRow)) {
-      return {
-        ok: false,
-        status: 400,
-        error: "dividend_payout from_account must be an equity brokerage account (the paying stock).",
-      };
-    }
-    if (inputUsdLeg == null || inputUsdLeg === 0) {
-      return { ok: false, status: 400, error: "a USD amount is required for dividend_payout." };
-    }
+  const code = settles.toUpperCase();
+  if (input.counter_amount != null && input.counter_amount !== 0) {
+    return bad(
+      `a ${(input.counter_currency ?? "").toUpperCase()} amount is not allowed on ${fk}: it settles in ${code}, the cash account's currency (a conversion is a separate fx_exchange movement).`
+    );
+  }
+  if (!(Math.abs(input.amount) > 0)) return bad(`a ${code} amount is required for ${fk}.`);
+  if (input.currency !== settles) {
+    return bad(`${fk} settles in ${code}, the cash account's currency: a ${input.currency.toUpperCase()} amount is not allowed.`);
+  }
+  if (fk === "dividend_payout" && input.units_delta != null && input.units_delta !== 0) {
+    return bad("units_delta is not allowed on dividend_payout (a cash dividend does not change share units).");
+  }
+  // The peso cash side of the deposit timeline has no rule for a dividend arriving (it would read
+  // as the cash account's own return on top of the stock's): refused until it has one.
+  if (fk === "dividend_payout" && isHomeCurrency(settles)) {
+    return bad("dividend_payout into peso cash is not supported yet (dividends credit a foreign cash account).");
   }
   return null;
 }
@@ -502,14 +431,14 @@ function validateBrokerageMovementCreate(
     return {
       ok: false,
       status: 400,
-      error: `${flow_kind} requires counterpart_account_id (USD cash transfer).`,
+      error: `${flow_kind} requires counterpart_account_id (the cash account it settles against).`,
     };
   }
   if ((OPTION_TRANSFER_FLOW_KINDS as readonly string[]).includes(flow_kind)) {
     return {
       ok: false,
       status: 400,
-      error: `${flow_kind} requires counterpart_account_id (the premium moves between the contract and USD cash).`,
+      error: `${flow_kind} requires counterpart_account_id (the premium moves between the contract and cash).`,
     };
   }
   if (flow_kind === "option_assign") {
@@ -524,7 +453,7 @@ function validateBrokerageMovementCreate(
     return {
       ok: false,
       status: 400,
-      error: "dividend_payout requires counterpart_account_id (stock → USD cash transfer).",
+      error: "dividend_payout requires counterpart_account_id (stock → cash transfer).",
     };
   }
   if (flow_kind === "fx_exchange") {
@@ -533,7 +462,7 @@ function validateBrokerageMovementCreate(
     return {
       ok: false,
       status: 400,
-      error: "fx_exchange requires counterpart_account_id (CLP cash → USD cash transfer).",
+      error: "fx_exchange requires counterpart_account_id (CLP cash → foreign cash transfer).",
     };
   }
 
@@ -542,8 +471,6 @@ function validateBrokerageMovementCreate(
   if (parsed.counter_amount != null) {
     return { ok: false, status: 400, error: "counter_amount is only supported on cross-currency transfers." };
   }
-  const amount_clp = parsedLeg(parsed, "clp");
-  const amount_usd = parsedLeg(parsed, "usd");
 
   const unitsRawEarly = parseUnitsDeltaField(body);
   const unitsProvidedEarly = unitsRawEarly !== undefined && unitsRawEarly !== null;
@@ -586,7 +513,7 @@ function validateBrokerageMovementCreate(
       mode: "brokerage",
       occurred_on,
       flow_kind,
-      ...brokerageNativeAmount(flow_kind, parsed, amount_clp, amount_usd),
+      ...brokerageNativeAmount(flow_kind, parsed),
       counter_amount: null,
       counter_currency: null,
       note,
@@ -607,7 +534,7 @@ function validateBrokerageMovementCreate(
     mode: "brokerage",
     occurred_on,
     flow_kind,
-    ...brokerageNativeAmount(flow_kind, parsed, amount_clp, amount_usd),
+    ...brokerageNativeAmount(flow_kind, parsed),
     counter_amount: null,
     counter_currency: null,
     note,
@@ -644,7 +571,7 @@ function validateOptionExpireCreate(
     occurred_on,
     flow_kind: "option_expire",
     amount: 0,
-    currency: "usd",
+    currency: optionContractCurrency(account.account_id!),
     counter_amount: null,
     counter_currency: null,
     note,
@@ -653,21 +580,18 @@ function validateOptionExpireCreate(
 }
 
 /**
- * Native single-leg amount for a brokerage/cash flow row. USD rows store the request
- * amount as passed; CLP rows keep the legacy sign convention baked at create
- * (deposit +, withdrawal −, conversion −). A row with no amount (share-only purchase)
- * stores a 0-CLP amount, matching the legacy amount_clp NOT NULL DEFAULT 0.
+ * Native single-leg amount for a brokerage flow row. A foreign-currency row stores the request
+ * amount as passed; a peso row keeps the sign convention baked at create (deposit +,
+ * withdrawal −, conversion −). A row with no amount (share-only purchase) stores a 0-peso amount.
  */
 function brokerageNativeAmount(
   flow_kind: string,
-  parsed: ParsedAmountFields,
-  clpLeg: number | null,
-  usdLeg: number | null
+  parsed: ParsedAmountFields
 ): { amount: number; currency: MovementCurrency } {
-  if (parsed.currency === "usd" && parsed.amount != null) { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
-    return { amount: parsed.amount, currency: "usd" };
+  if (parsed.currency != null && !isHomeCurrency(parsed.currency) && parsed.amount != null) {
+    return { amount: parsed.amount, currency: parsed.currency };
   }
-  return { amount: signedAmountClpForBrokerageFlow(flow_kind, clpLeg, usdLeg), currency: "clp" };
+  return { amount: signedAmountClpForBrokerageFlow(flow_kind, parsed.amount), currency: HOME_CURRENCY };
 }
 
 function validateForeignCashMovementCreate(
@@ -757,10 +681,10 @@ function validateClpCashMovementCreate(
   if (parsed.counter_amount != null) {
     return { ok: false, status: 400, error: "counter_amount is only supported on cross-currency transfers." };
   }
-  if (parsed.currency != null && parsed.currency !== "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
+  if (parsed.currency != null && !isHomeCurrency(parsed.currency)) {
     return { ok: false, status: 400, error: "CLP cash movements must be denominated in CLP." };
   }
-  const amount_clp = parsedLeg(parsed, "clp");
+  const amount_clp = parsed.amount;
   const unitsRaw = parseUnitsDeltaField(body);
   if (unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw)) {
     return { ok: false, status: 400, error: "units_delta is not supported on CLP cash accounts." };
@@ -774,8 +698,8 @@ function validateClpCashMovementCreate(
     mode: "brokerage",
     occurred_on,
     flow_kind,
-    amount: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, null),
-    currency: "clp",
+    amount: signedAmountClpForBrokerageFlow(flow_kind, amount_clp),
+    currency: HOME_CURRENCY,
     counter_amount: null,
     counter_currency: null,
     note,
@@ -811,7 +735,7 @@ function validateTransferMovementCreate(
   const occurred_on = typeof body.occurred_on === "string" ? body.occurred_on.trim() : "";
   const parsed = parseAmountFields(body);
   if ("error" in parsed) return { ok: false, status: 400, error: parsed.error };
-  const clpLegRaw = parsedLeg(parsed, "clp");
+  const clpLegRaw = parsedLeg(parsed, HOME_CURRENCY);
   const unitsRaw = parseUnitsDeltaField(body);
   const flow_kind_raw = typeof body.flow_kind === "string" && body.flow_kind.trim() ? body.flow_kind.trim() : null;
   const unitsProvided = unitsRaw !== undefined && unitsRaw !== null && !unitsValueInvalid(unitsRaw);
@@ -890,7 +814,7 @@ function validateTransferMovementCreate(
     occurred_on,
     note,
     amount: parsed.amount != null && Number.isFinite(parsed.amount) ? Math.abs(parsed.amount) : 0,
-    currency: parsed.currency ?? "clp",
+    currency: parsed.currency ?? HOME_CURRENCY,
     counter_amount:
       parsed.counter_amount != null && Number.isFinite(parsed.counter_amount)
         ? Math.abs(parsed.counter_amount)
@@ -964,7 +888,7 @@ export function validateMovementCreate(
   if (parsed.counter_amount != null) {
     return { ok: false, status: 400, error: "counter_amount is only supported on cross-currency transfers." };
   }
-  if (parsed.currency != null && parsed.currency !== "clp") { // convention-ok: a trade settles in its quote currency: pesos for Santiago, dollars otherwise (plan C1 leftover)
+  if (parsed.currency != null && !isHomeCurrency(parsed.currency)) {
     return { ok: false, status: 400, error: "This account's movements must be denominated in CLP." };
   }
   const amount_clp = parsed.amount;
@@ -1005,7 +929,7 @@ export function validateMovementCreate(
       ok: true,
       mode: "standard",
       amount: amount_clp,
-      currency: "clp",
+      currency: HOME_CURRENCY,
       occurred_on,
       note,
       units_delta: unitsRaw,
@@ -1027,7 +951,7 @@ export function validateMovementCreate(
     ok: true,
     mode: "standard",
     amount: amount_clp,
-    currency: "clp",
+    currency: HOME_CURRENCY,
     occurred_on,
     note,
     units_delta: unitsProvided && unitsRaw !== null ? unitsRaw : null,

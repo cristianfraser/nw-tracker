@@ -1,8 +1,7 @@
 /** Signed CLP for charts / deposit merge (`deposit` +, `withdrawal` −, trades often 0). */
 export function signedAmountClpForBrokerageFlow(
   flow_kind: string,
-  amount_clp: number | null,
-  amount_usd: number | null
+  amount_clp: number | null
 ): number {
   switch (flow_kind) {
     case "deposit":

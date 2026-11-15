@@ -2,10 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { USD_CASH_FLOW_KINDS } from "../../panelAccounts/brokerageFlowKinds";
-import {
-  buildUsdCashMovementPostBody,
-} from "../../panelAccounts/usdCashAccountFormTypes";
+import { buildCashMovementPostBody, cashFlowKindsFor } from "../../panelAccounts/cashAccountFormTypes";
 import { type InitialMovementDraft } from "../../panelAccounts/stockAccountFormTypes";
 import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
@@ -15,9 +12,12 @@ import { Button } from "@crfrsr/ui";
 type Props = {
   accountId: number;
   displayUnit: DisplayUnit;
+  /** The currency the cash ledger holds (the server's `movement_create.cash_currency`). */
+  currency: string;
 };
 
-export function AccountUsdCashMovementsForm({ accountId, displayUnit }: Props) {
+/** The movement form of a cash ledger account, in whatever currency the account holds. */
+export function AccountCashMovementsForm({ accountId, displayUnit, currency }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [movements, setMovements] = useState<InitialMovementDraft[]>([]);
@@ -27,7 +27,7 @@ export function AccountUsdCashMovementsForm({ accountId, displayUnit }: Props) {
   const saveMutation = useMutation({
     mutationFn: async (rows: InitialMovementDraft[]) => {
       const bodies = rows
-        .map((row) => buildUsdCashMovementPostBody(row))
+        .map((row) => buildCashMovementPostBody(row, currency))
         .filter((b): b is Record<string, unknown> => b != null);
       if (bodies.length === 0 || bodies.length !== rows.length) {
         throw new Error(t("panelAccounts.addAccount.previewInvalid"));
@@ -59,12 +59,12 @@ export function AccountUsdCashMovementsForm({ accountId, displayUnit }: Props) {
           setLastSavedCount(null);
         }}
         legend="add"
-        titleKey="accountDetail.usdCashMovements.title"
-        hintKey={null}
-        emptyTextKey="accountDetail.usdCashMovements.emptyDraft"
+        titleKey="accountDetail.cashMovements.title"
+        hintKey="accountDetail.cashMovements.hint"
+        emptyTextKey="accountDetail.cashMovements.emptyDraft"
         currentAccountId={accountId}
-        flowKinds={USD_CASH_FLOW_KINDS}
-        cashCurrency="usd"
+        flowKinds={cashFlowKindsFor(currency)}
+        cashCurrency={currency}
       />
 
       {movements.length > 0 ? (
@@ -75,14 +75,14 @@ export function AccountUsdCashMovementsForm({ accountId, displayUnit }: Props) {
           >
             {saveMutation.isPending
               ? t("common.loading")
-              : t("accountDetail.usdCashMovements.saveBtn")}
+              : t("accountDetail.cashMovements.saveBtn")}
           </Button>
         </div>
       ) : null}
 
       {formError ? <p className="error">{formError}</p> : null}
       {lastSavedCount != null ? (
-        <p className="muted">{t("accountDetail.usdCashMovements.saved", { count: lastSavedCount })}</p>
+        <p className="muted">{t("accountDetail.cashMovements.saved", { count: lastSavedCount })}</p>
       ) : null}
     </section>
   );

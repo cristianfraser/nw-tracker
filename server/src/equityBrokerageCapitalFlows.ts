@@ -1,14 +1,15 @@
 /**
- * Equity MTM stock accounts: capital flows from cash→stock `stock_buy` transfers
- * (post USD-cash migration). CLP equivalents at payment date feed chart aportes + P/L.
- * CLP-quoted stocks (Santiago `.SN`) fund from CLP cash: the transfer carries a CLP
- * amount (no USD leg) and counts as a `clp_wire` capital flow at face value.
+ * Equity MTM stock accounts: capital flows from cash→stock `stock_buy` transfers. A trade, a
+ * dividend and an option premium settle in the currency of the cash account they move against
+ * (the row's own `currency`): pesos count at face (`clp_wire`); any other currency carries the
+ * amount that moved (`nativeFlowLeg`) and its reference pesos at the day's mid (`usd_reference`,
+ * the kind's stored name whatever the currency), which feed the chart aportes and P/L.
  *
- * A same-day CLP wire that funds one buy larger than it, or several buys together (wire +
- * USD already sitting in the cash account, e.g. a received dividend swept into the next
- * purchase), is shared pro rata: each buy's share of the wire pesos counts at face
- * (`clp_wire`) and only the dollars the wire did not cover use the reference rate
- * (`usd_reference`). Guarded to one wire on the cash account that day.
+ * A same-day peso wire into the cash account (a conversion into its currency) that funds one buy
+ * larger than it, or several buys together (wire + money already sitting in the cash account,
+ * e.g. a received dividend swept into the next purchase), is shared pro rata: each buy's share
+ * of the wire pesos counts at face (`clp_wire`) and only the amount the wire did not cover uses
+ * the reference rate (`usd_reference`). Guarded to one wire on the cash account that day.
  *
  * Dividends reduce cost basis: `dividend_payout` is a negative capital flow on the stock;
  * a reinvestment is a separate `stock_buy` (+X) that nets it out. The retired single-leg
@@ -21,6 +22,7 @@ import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 import { nativeFlowLeg, referenceAmountAtMid } from "./rates.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { isOptionContractAccount } from "./optionContracts.js";
 import {
   OPTION_PREMIUM_PAID_FLOW_KINDS,
@@ -30,13 +32,28 @@ import {
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   MOVEMENT_CLP_LEG_SQL,
-  MOVEMENT_USD_LEG_SQL,
   movementClpLegOrZero,
-  movementUsdLeg,
+  movementLeg,
   type MovementAmountFields,
 } from "./movementAmounts.js";
 
-const FX_WIRE_USD_TOLERANCE = 0.02;
+/** A buy and the conversion that funded it agree within this much of the settlement currency. */
+const FX_WIRE_TOLERANCE = 0.02;
+
+/** A row that moved money: its own amount or a conversion's counter leg. */
+const ROW_MOVES_MONEY_SQL = "(m.amount != 0 OR COALESCE(m.counter_amount, 0) != 0)";
+
+/**
+ * The foreign-currency leg a row settled in — its own amount, or a conversion's counter leg —
+ * or null when the row moved pesos only.
+ */
+function foreignSettlementLeg(row: MovementAmountFields): { currency: string; amount: number } | null {
+  if (!isHomeCurrency(row.currency)) return row.amount !== 0 ? { currency: row.currency, amount: row.amount } : null;
+  if (row.counter_currency != null && !isHomeCurrency(row.counter_currency) && row.counter_amount != null && row.counter_amount !== 0) {
+    return { currency: row.counter_currency, amount: row.counter_amount };
+  }
+  return null;
+}
 
 export type EquityCapitalKind = "clp_wire" | "usd_reference";
 
@@ -59,7 +76,8 @@ type TransferCapitalRow = MovementAmountFields & {
   flow_kind: string;
 };
 
-type ClpWireLeg = { clp: number; usd: number };
+/** A conversion from pesos: the pesos spent and the amount bought in the cash account's currency. */
+type ClpWireLeg = { clp: number; bought: number };
 
 function equityMtmAccountIds(accountIds: number[]): number[] {
   return [...new Set(accountIds.filter((id) => id > 0 && accountUsesEquityMtm(id)))];
@@ -75,13 +93,13 @@ function loadStockBuyCapitalRows(accountIds: number[]): TransferCapitalRow[] {
        WHERE m.account_id IS NULL
          AND m.to_account_id IN (${ph})
          AND m.flow_kind = 'stock_buy'
-         AND ((${MOVEMENT_USD_LEG_SQL} IS NOT NULL AND ${MOVEMENT_USD_LEG_SQL} != 0) OR COALESCE(${MOVEMENT_CLP_LEG_SQL}, 0) != 0)
+         AND ${ROW_MOVES_MONEY_SQL}
        UNION ALL
        SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_buy'
-         AND ((${MOVEMENT_USD_LEG_SQL} IS NOT NULL AND ${MOVEMENT_USD_LEG_SQL} != 0) OR COALESCE(${MOVEMENT_CLP_LEG_SQL}, 0) != 0)
+         AND ${ROW_MOVES_MONEY_SQL}
        ORDER BY occurred_on, id`
     )
     .all(...accountIds, ...accountIds) as TransferCapitalRow[];
@@ -97,20 +115,20 @@ function loadStockSellCapitalRows(accountIds: number[]): TransferCapitalRow[] {
        WHERE m.account_id IS NULL
          AND m.from_account_id IN (${ph})
          AND m.flow_kind = 'stock_sell'
-         AND ((${MOVEMENT_USD_LEG_SQL} IS NOT NULL AND ${MOVEMENT_USD_LEG_SQL} != 0) OR COALESCE(${MOVEMENT_CLP_LEG_SQL}, 0) != 0)
+         AND ${ROW_MOVES_MONEY_SQL}
        UNION ALL
        SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_sell'
-         AND ((${MOVEMENT_USD_LEG_SQL} IS NOT NULL AND ${MOVEMENT_USD_LEG_SQL} != 0) OR COALESCE(${MOVEMENT_CLP_LEG_SQL}, 0) != 0)
+         AND ${ROW_MOVES_MONEY_SQL}
        ORDER BY occurred_on, id`
     )
     .all(...accountIds, ...accountIds) as TransferCapitalRow[];
 }
 
 /**
- * Cash dividends paid out to USD cash (`dividend_payout` transfer, stock = `from_account_id`).
+ * Cash dividends paid out to a cash account (`dividend_payout` transfer, stock = `from_account_id`).
  * A negative deposit: steps the stock's aportes / cost-basis line down (units unchanged).
  * If the cash is later re-invested, the `stock_buy` counts +X → −dividend +buy = net zero.
  */
@@ -124,8 +142,7 @@ function loadDividendPayoutRows(accountIds: number[]): TransferCapitalRow[] {
        WHERE m.account_id IS NULL
          AND m.from_account_id IN (${ph})
          AND m.flow_kind = 'dividend_payout'
-         AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
-         AND ${MOVEMENT_USD_LEG_SQL} != 0
+         AND ${ROW_MOVES_MONEY_SQL}
        ORDER BY m.occurred_on, m.id`
     )
     .all(...accountIds) as TransferCapitalRow[];
@@ -149,17 +166,17 @@ function assertNoDividendUsdRows(accountIds: number[]): void {
     .get(...accountIds, ...accountIds, ...accountIds) as { id: number } | undefined;
   if (bad) {
     throw new Error(
-      `movement ${bad.id} uses the retired dividend_usd kind — record the dividend as a dividend_payout transfer (stock → USD cash) plus a stock_buy for any reinvestment`
+      `movement ${bad.id} uses the retired dividend_usd kind — record the dividend as a dividend_payout transfer (stock → cash) plus a stock_buy for any reinvestment`
     );
   }
 }
 
 /**
- * CLP→USD conversion wires on `accountId` dated `occurredOn`: single-leg `fx_purchase*`
- * rows plus compra transfer legs ARRIVING at the account (the post-mirror-conversion
- * shape — e.g. checking → USD cash or CLP wallet → USD cash conversions).
+ * Conversions from pesos into `currency` on `accountId` dated `occurredOn`: single-leg
+ * `fx_purchase*` rows plus conversion transfer legs ARRIVING at the account (the
+ * post-mirror-conversion shape — e.g. checking → foreign cash or CLP wallet → foreign cash).
  */
-function sameDayWireLegs(accountId: number, occurredOn: string): ClpWireLeg[] {
+function sameDayWireLegs(accountId: number, occurredOn: string, currency: string): ClpWireLeg[] {
   const rows = db
     .prepare(
       `SELECT ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
@@ -167,13 +184,13 @@ function sameDayWireLegs(accountId: number, occurredOn: string): ClpWireLeg[] {
          AND occurred_on = ?
          AND flow_kind IN ('fx_exchange', 'fx_purchase')
          AND ${MOVEMENT_CLP_LEG_SQL} > 0
-         AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
+         AND (currency = ? OR counter_currency = ?)
          AND ABS(COALESCE(units_delta, 0)) < 1e-12`
     )
-    .all(accountId, accountId, occurredOn) as MovementAmountFields[];
+    .all(accountId, accountId, occurredOn, currency, currency) as MovementAmountFields[];
   return rows.map((r) => ({
     clp: Math.abs(movementClpLegOrZero(r)),
-    usd: Math.abs(movementUsdLeg(r) ?? 0),
+    bought: Math.abs(movementLeg(r, currency) ?? 0),
   }));
 }
 
@@ -181,25 +198,25 @@ function findClpWireForStockBuy(
   stockAccountId: number,
   fromAccountId: number | null,
   occurredOn: string,
-  buyUsd: number
+  buy: { currency: string; amount: number }
 ): ClpWireLeg | null {
-  const usdMag = Math.abs(buyUsd);
+  const mag = Math.abs(buy.amount);
   const searchAccounts = new Set<number>();
   if (fromAccountId != null && fromAccountId > 0) searchAccounts.add(fromAccountId);
   searchAccounts.add(stockAccountId);
 
   for (const accId of searchAccounts) {
-    for (const wire of sameDayWireLegs(accId, occurredOn)) {
-      if (Math.abs(wire.usd - usdMag) <= FX_WIRE_USD_TOLERANCE) return wire;
+    for (const wire of sameDayWireLegs(accId, occurredOn, buy.currency)) {
+      if (Math.abs(wire.bought - mag) <= FX_WIRE_TOLERANCE) return wire;
     }
   }
   return null;
 }
 
-type SameDayBuyLeg = { id: number; usd: number };
+type SameDayBuyLeg = { id: number; amount: number };
 
-/** Same-day USD-leg `stock_buy` transfers out of cash account `fromId`, in id order. */
-function sameDayUsdBuysFromCash(fromId: number, occurredOn: string): SameDayBuyLeg[] {
+/** Same-day `stock_buy` transfers out of cash account `fromId` settled in `currency`, in id order. */
+function sameDayBuysFromCash(fromId: number, occurredOn: string, currency: string): SameDayBuyLeg[] {
   const rows = db
     .prepare(
       `SELECT id, ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
@@ -207,12 +224,13 @@ function sameDayUsdBuysFromCash(fromId: number, occurredOn: string): SameDayBuyL
          AND from_account_id = ?
          AND occurred_on = ?
          AND flow_kind = 'stock_buy'
-         AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
-         AND ${MOVEMENT_USD_LEG_SQL} != 0
+         AND (currency = ? OR counter_currency = ?)
        ORDER BY id`
     )
-    .all(fromId, occurredOn) as (MovementAmountFields & { id: number })[];
-  return rows.map((r) => ({ id: r.id, usd: Math.abs(movementUsdLeg(r) ?? 0) }));
+    .all(fromId, occurredOn, currency, currency) as (MovementAmountFields & { id: number })[];
+  return rows
+    .map((r) => ({ id: r.id, amount: Math.abs(movementLeg(r, currency) ?? 0) }))
+    .filter((b) => b.amount !== 0);
 }
 
 /**
@@ -236,47 +254,49 @@ function sameDayUsdBuysFromCash(fromId: number, occurredOn: string): SameDayBuyL
 function wireProRataFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] | null {
   const fromId = row.from_account_id;
   if (fromId == null || fromId <= 0) return null;
-  const usdLeg = movementUsdLeg(row);
-  if (usdLeg == null || usdLeg === 0) return null;
+  const leg = foreignSettlementLeg(row);
+  if (leg == null) return null;
+  const currency = leg.currency;
 
-  const wires = sameDayWireLegs(fromId, row.occurred_on);
+  const wires = sameDayWireLegs(fromId, row.occurred_on, currency);
   if (wires.length !== 1) return null;
   const wire = wires[0]!;
 
-  const buys = sameDayUsdBuysFromCash(fromId, row.occurred_on);
+  const buys = sameDayBuysFromCash(fromId, row.occurred_on, currency);
   const idx = buys.findIndex((b) => b.id === row.id);
   if (idx < 0) return null;
-  if (buys.some((b) => Math.abs(b.usd - wire.usd) <= FX_WIRE_USD_TOLERANCE)) return null;
-  const totalUsd = buys.reduce((s, b) => s + b.usd, 0);
+  if (buys.some((b) => Math.abs(b.amount - wire.bought) <= FX_WIRE_TOLERANCE)) return null;
+  const total = buys.reduce((s, b) => s + b.amount, 0);
   if (buys.length === 1) {
-    if (!(wire.usd < totalUsd - FX_WIRE_USD_TOLERANCE)) return null;
-  } else if (totalUsd < wire.usd - FX_WIRE_USD_TOLERANCE) {
+    if (!(wire.bought < total - FX_WIRE_TOLERANCE)) return null;
+  } else if (total < wire.bought - FX_WIRE_TOLERANCE) {
     return null;
   }
-  const fullyCovered = Math.abs(totalUsd - wire.usd) <= FX_WIRE_USD_TOLERANCE;
+  const fullyCovered = Math.abs(total - wire.bought) <= FX_WIRE_TOLERANCE;
 
   let clpBefore = 0;
-  let usdBefore = 0;
+  let boughtBefore = 0;
   for (let i = 0; i < idx; i += 1) {
-    clpBefore += Math.round((wire.clp * buys[i]!.usd) / totalUsd);
-    usdBefore += (wire.usd * buys[i]!.usd) / totalUsd;
+    clpBefore += Math.round((wire.clp * buys[i]!.amount) / total);
+    boughtBefore += (wire.bought * buys[i]!.amount) / total;
   }
   const last = idx === buys.length - 1;
-  const buyUsd = buys[idx]!.usd;
-  const wireClp = last ? wire.clp - clpBefore : Math.round((wire.clp * buyUsd) / totalUsd);
-  const wireUsd = last ? wire.usd - usdBefore : (wire.usd * buyUsd) / totalUsd;
+  const buyAmount = buys[idx]!.amount;
+  const wireClp = last ? wire.clp - clpBefore : Math.round((wire.clp * buyAmount) / total);
+  const wireBought = last ? wire.bought - boughtBefore : (wire.bought * buyAmount) / total;
 
   const wireFlow: EquityCapitalSortFlow = {
     occurred_on: row.occurred_on,
     amt: wireClp,
-    amt_usd: wireUsd,
+    amt_usd: null,
+    ...nativeFlowLeg(wireBought, currency),
     capital_kind: "clp_wire",
     tie: `t:${row.id}:wire`,
   };
   if (fullyCovered) return [wireFlow];
 
-  const residUsd = buyUsd - wireUsd;
-  const residClp = referenceAmountAtMid(residUsd, "usd", "clp", row.occurred_on);
+  const resid = buyAmount - wireBought;
+  const residClp = referenceAmountAtMid(resid, currency, HOME_CURRENCY, row.occurred_on);
   if (residClp == null || !Number.isFinite(residClp) || residClp === 0) return null;
 
   return [
@@ -284,14 +304,15 @@ function wireProRataFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] | nu
     {
       occurred_on: row.occurred_on,
       amt: residClp,
-      amt_usd: residUsd,
+      amt_usd: null,
+      ...nativeFlowLeg(resid, currency),
       capital_kind: "usd_reference",
       tie: `t:${row.id}:resid`,
     },
   ];
 }
 
-/** CLP-quoted trade: capital = the CLP that actually moved (no fx reference). */
+/** A trade settled in pesos: capital = the pesos that actually moved (no fx reference). */
 function clpDirectFlow(row: TransferCapitalRow, sign: 1 | -1): EquityCapitalSortFlow | null {
   const clpMag = Math.abs(movementClpLegOrZero(row));
   if (clpMag === 0 || !Number.isFinite(clpMag)) return null;
@@ -304,42 +325,48 @@ function clpDirectFlow(row: TransferCapitalRow, sign: 1 | -1): EquityCapitalSort
   };
 }
 
-function usdReferenceFlow(
+/**
+ * A trade settled in a foreign currency: the amount that moved, in its own currency, and its
+ * reference pesos at the day's mid (the money never crossed into pesos).
+ */
+function foreignReferenceFlow(
   row: TransferCapitalRow,
   sign: 1 | -1
 ): EquityCapitalSortFlow | null {
-  const usdLeg = movementUsdLeg(row);
-  if (usdLeg == null || usdLeg === 0) return null;
-  const usdMag = Math.abs(usdLeg);
-  const refClp = referenceAmountAtMid(usdMag, "usd", "clp", row.occurred_on);
+  const leg = foreignSettlementLeg(row);
+  if (leg == null) return null;
+  const mag = Math.abs(leg.amount);
+  const refClp = referenceAmountAtMid(mag, leg.currency, HOME_CURRENCY, row.occurred_on);
   if (refClp == null || !Number.isFinite(refClp) || refClp === 0) return null;
   return {
     occurred_on: row.occurred_on,
     amt: sign * refClp,
-    amt_usd: sign * usdMag,
+    amt_usd: null,
+    ...nativeFlowLeg(sign * mag, leg.currency),
     capital_kind: "usd_reference",
     tie: `t:${row.id}`,
   };
 }
 
+/** A sale's, a dividend's or a premium's capital flow in the currency it settled in. */
+function settledFlow(row: TransferCapitalRow, sign: 1 | -1): EquityCapitalSortFlow | null {
+  return foreignSettlementLeg(row) != null ? foreignReferenceFlow(row, sign) : clpDirectFlow(row, sign);
+}
+
 function stockBuyCapitalFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] {
-  const usdLeg = movementUsdLeg(row);
-  if (usdLeg == null || usdLeg === 0) {
+  const leg = foreignSettlementLeg(row);
+  if (leg == null) {
     const flow = clpDirectFlow(row, 1);
     return flow ? [flow] : [];
   }
-  const wire = findClpWireForStockBuy(
-    row.account_id,
-    row.from_account_id,
-    row.occurred_on,
-    usdLeg
-  );
+  const wire = findClpWireForStockBuy(row.account_id, row.from_account_id, row.occurred_on, leg);
   if (wire) {
     return [
       {
         occurred_on: row.occurred_on,
         amt: wire.clp,
-        amt_usd: wire.usd,
+        amt_usd: null,
+        ...nativeFlowLeg(wire.bought, leg.currency),
         capital_kind: "clp_wire",
         tie: `t:${row.id}`,
       },
@@ -347,13 +374,13 @@ function stockBuyCapitalFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] 
   }
   const proRata = wireProRataFlows(row);
   if (proRata) return proRata;
-  const flow = usdReferenceFlow(row, 1);
+  const flow = foreignReferenceFlow(row, 1);
   return flow ? [flow] : [];
 }
 
 /**
  * Capital in/out from stock_buy / stock_sell transfers plus dividend_payout returns of capital.
- * CLP wire buys use actual `fx_purchase*` CLP; USD-only rotation uses reference CLP at mid.
+ * Peso wire buys use the conversion's actual pesos; a rotation inside a foreign currency uses reference pesos at mid.
  */
 export function loadEquityBrokerageCapitalSortFlows(
   accountIds: number[]
@@ -375,19 +402,15 @@ export function loadEquityBrokerageCapitalSortFlows(
   }
 
   for (const row of sells) {
-    const usdLeg = movementUsdLeg(row);
-    const flow =
-      usdLeg != null && usdLeg !== 0
-        ? usdReferenceFlow(row, -1)
-        : clpDirectFlow(row, -1);
+    const flow = settledFlow(row, -1);
     if (!flow) continue;
     if (!out.has(row.account_id)) out.set(row.account_id, []);
     out.get(row.account_id)!.push(flow);
   }
 
-  // Cash dividends: negative deposit → reduce deposited / cost basis at the USD reference rate.
+  // Cash dividends: negative deposit → reduce deposited / cost basis (reference rate for a foreign currency).
   for (const row of loadDividendPayoutRows(mtmIds)) {
-    const flow = usdReferenceFlow(row, -1);
+    const flow = settledFlow(row, -1);
     if (!flow) continue;
     if (!out.has(row.account_id)) out.set(row.account_id, []);
     out.get(row.account_id)!.push(flow);
@@ -432,9 +455,9 @@ function optionPremiumSign(flowKind: string): 1 | -1 {
 }
 
 /**
- * Capital flows of option contract accounts (`option_contracts`): each premium at the USD
- * reference rate of its day, signed by {@link optionPremiumSign}. An expiry or an assignment
- * moves contracts, never money, so it is no flow. The USD-cash loader mirrors every premium
+ * Capital flows of option contract accounts (`option_contracts`): each premium in the currency
+ * it settled in (reference pesos of its day for a foreign one), signed by {@link optionPremiumSign}. An expiry or an assignment
+ * moves contracts, never money, so it is no flow. The cash loader mirrors every premium
  * on the cash side, negated, so the two legs cancel inside the brokerage bucket.
  */
 export function loadOptionContractCapitalSortFlows(accountIds: number[]): Map<number, EquityCapitalSortFlow[]> {
@@ -442,11 +465,10 @@ export function loadOptionContractCapitalSortFlows(accountIds: number[]): Map<nu
   const out = new Map<number, EquityCapitalSortFlow[]>();
   if (ids.length === 0) return out;
   for (const row of loadOptionPremiumRows(ids)) {
-    const usdLeg = movementUsdLeg(row);
-    if (usdLeg == null || usdLeg === 0) {
-      throw new Error(`movement ${row.id} (${row.flow_kind}): an option premium is in dollars — this row carries none`);
+    if (row.amount === 0) {
+      throw new Error(`movement ${row.id} (${row.flow_kind}): an option premium transfer that carries no premium`);
     }
-    const flow = usdReferenceFlow(row, optionPremiumSign(row.flow_kind));
+    const flow = settledFlow(row, optionPremiumSign(row.flow_kind));
     if (!flow) continue;
     if (!out.has(row.account_id)) out.set(row.account_id, []);
     out.get(row.account_id)!.push(flow);
@@ -473,7 +495,7 @@ const FOREIGN_CASH_GENERIC_CAPITAL_FLOW_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Deposit-inflow flows for USD-cash accounts (event-based, native-frame — 2026-08-04).
+ * Deposit-inflow flows for foreign cash accounts (event-based, native-frame — 2026-08-04).
  *
  * Every balance-affecting non-interest movement is a capital event (the USD sign comes from
  * `signedNativeDeltaForAccountMovement`, the same walk the balance uses, so the native-frame event
@@ -524,17 +546,6 @@ export function loadForeignCashCapitalSortFlows(
       const nativeSigned = signedNativeDeltaForAccountMovement(r, id, currency);
       if (nativeSigned === 0 || !Number.isFinite(nativeSigned)) continue;
       const sign = nativeSigned > 0 ? 1 : -1;
-      // Trades, dividends and option premiums settle in dollars (their stock side's attribution).
-      const dollarSettled =
-        r.flow_kind === "stock_buy" ||
-        r.flow_kind === "stock_sell" ||
-        r.flow_kind === "dividend_payout" ||
-        (OPTION_TRANSFER_FLOW_KINDS as readonly string[]).includes(r.flow_kind ?? "");
-      if (dollarSettled && movementUsdLeg(r) == null && movementClpLegOrZero(r) === 0) {
-        throw new Error(
-          `movement ${r.id}: ${r.flow_kind} on ${currency} cash account ${id} — a trade settles in dollars or pesos (equityBrokerageCapitalFlows.ts)`
-        );
-      }
       const capitalRow: TransferCapitalRow = {
         id: r.id!,
         account_id: r.to_account_id ?? id,
@@ -552,24 +563,21 @@ export function loadForeignCashCapitalSortFlows(
             ...f,
             amt: -f.amt,
             amt_usd: f.amt_usd != null ? -f.amt_usd : null,
+            ...(f.amt_native != null ? { amt_native: -f.amt_native } : {}),
             tie: `${f.tie}:cash:${id}`,
           });
         }
         continue;
       }
       if (r.flow_kind === "stock_sell" || r.flow_kind === "dividend_payout") {
-        const usdLeg = movementUsdLeg(r);
-        const f =
-          usdLeg != null && usdLeg !== 0
-            ? usdReferenceFlow(capitalRow, 1)
-            : clpDirectFlow(capitalRow, 1);
+        const f = settledFlow(capitalRow, 1);
         if (f) push(id, { ...f, tie: `${f.tie}:cash:${id}` });
         continue;
       }
       if ((OPTION_TRANSFER_FLOW_KINDS as readonly string[]).includes(r.flow_kind ?? "")) {
         // The contract side's attribution, negated: a premium received is +capital on cash
         // (−capital on the contract), a premium paid −capital on cash (+ on the contract).
-        const f = usdReferenceFlow(capitalRow, optionPremiumSign(r.flow_kind!) === -1 ? 1 : -1);
+        const f = settledFlow(capitalRow, optionPremiumSign(r.flow_kind!) === -1 ? 1 : -1);
         if (f) push(id, { ...f, tie: `${f.tie}:cash:${id}` });
         continue;
       }
@@ -610,10 +618,11 @@ export function loadEquityBrokerageCapitalInflowEvents(
       id,
       sorted
         .filter((f) => f.amt !== 0 && Number.isFinite(f.amt))
-        .map(({ occurred_on, amt, amt_usd, capital_kind }) => ({
+        .map(({ occurred_on, amt, amt_usd, amt_native, native_currency, capital_kind }) => ({
           occurred_on,
           amt,
           amt_usd,
+          ...(native_currency != null ? { amt_native, native_currency } : {}),
           capital_kind,
         }))
     );

@@ -508,6 +508,7 @@
       "movementType": "Type",
       "amountClp": "CLP amount",
       "amountUsd": "USD amount",
+      "amountInCurrency": "{{currency}} amount",
       "unitsDelta": "Shares (units_delta)",
       "addMovement": "Add movement",
       "removeMovement": "Remove",
@@ -729,16 +730,10 @@
       "saveBtn": "Save movements",
       "saveSuccess": "{{count}} movement(s) saved."
     },
-    "usdCashMovements": {
+    "cashMovements": {
       "title": "Add movements",
-      "emptyDraft": "No drafts. Add deposits, USD purchases, or transfers to another account.",
-      "saveBtn": "Save movements",
-      "saved": "{{count}} movement(s) saved."
-    },
-    "clpCashMovements": {
-      "title": "Add movements",
-      "hint": "Interest raises the balance but does not count as your own contribution (it is a return). Optional: counterpart account on deposits/withdrawals to record the transfer between accounts in a single row.",
-      "emptyDraft": "No drafts. Add deposits, interest, or withdrawals.",
+      "hint": "Interest raises the balance but does not count as your own contribution (it is a return). On a peso account, a deposit or withdrawal may name the other account to record the transfer in a single row.",
+      "emptyDraft": "No drafts. Add deposits, withdrawals, interest or conversions.",
       "saveBtn": "Save movements",
       "saved": "{{count}} movement(s) saved."
     },

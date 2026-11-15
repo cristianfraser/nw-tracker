@@ -2,24 +2,23 @@
  * Equity MTM returns: dividends are investment return, not capital.
  *
  * Cost basis = deposited capital. A cash payout (`dividend_payout` transfer, stock →
- * USD cash) reduces the deposited line as a negative capital flow; a reinvestment is a
+ * cash) reduces the deposited line as a negative capital flow; a reinvestment is a
  * separate `stock_buy` that nets it out (see `equityBrokerageCapitalFlows.ts`).
  * Total return = value − deposited.
  */
 
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
-import {
-  MOVEMENT_AMOUNT_COLUMNS_SQL,
-  MOVEMENT_USD_LEG_SQL,
-  movementUsdLeg,
-  type MovementAmountFields,
-} from "./movementAmounts.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
+import { MOVEMENT_AMOUNT_COLUMNS_SQL, type MovementAmountFields } from "./movementAmounts.js";
 import { flowAdjustedPct } from "./periodReturns.js";
-import { flowEventInUnit, type DisplayUnitCode, referenceAmountAtMid } from "./rates.js";
+import { flowEventInUnit, nativeFlowLeg, type DisplayUnitCode, type FlowEvent, referenceAmountAtMid } from "./rates.js";
 
-/** Every dividend received (`dividend_payout` transfers): its dollars and their reference pesos. */
-function dividendEventsForAccount(accountId: number): { occurred_on: string; amt: number; amt_usd: number }[] {
+/**
+ * Every dividend received (`dividend_payout` transfers), in the currency it was paid in (the
+ * cash account's): pesos at face, any other currency with its own amount and its reference pesos.
+ */
+function dividendEventsForAccount(accountId: number): FlowEvent[] {
   if (!Number.isFinite(accountId) || accountId <= 0 || !accountUsesEquityMtm(accountId)) return [];
   const rows = db
     .prepare(
@@ -28,16 +27,19 @@ function dividendEventsForAccount(accountId: number): { occurred_on: string; amt
        WHERE account_id IS NULL
          AND from_account_id = ?
          AND flow_kind = 'dividend_payout'
-         AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
-         AND ${MOVEMENT_USD_LEG_SQL} != 0
+         AND amount != 0
        ORDER BY occurred_on, id`
     )
     .all(accountId) as ({ occurred_on: string } & MovementAmountFields)[];
-  const out: { occurred_on: string; amt: number; amt_usd: number }[] = [];
+  const out: FlowEvent[] = [];
   for (const r of rows) {
-    const usd = Math.abs(movementUsdLeg(r) ?? 0);
-    const clp = referenceAmountAtMid(usd, "usd", "clp", r.occurred_on);
-    if (clp != null && Number.isFinite(clp)) out.push({ occurred_on: r.occurred_on, amt: clp, amt_usd: usd });
+    const paid = Math.abs(r.amount);
+    if (isHomeCurrency(r.currency)) {
+      out.push({ occurred_on: r.occurred_on, amt: paid });
+      continue;
+    }
+    const clp = referenceAmountAtMid(paid, r.currency, HOME_CURRENCY, r.occurred_on);
+    if (clp != null && Number.isFinite(clp)) out.push({ occurred_on: r.occurred_on, amt: clp, ...nativeFlowLeg(paid, r.currency) });
   }
   return out;
 }
@@ -49,7 +51,7 @@ export function totalDividendsClpForAccount(accountId: number): number {
   return sum;
 }
 
-/** Σ of the dividends received in `unit`, each at its own day's rate (its dollars in USD). */
+/** Σ of the dividends received in `unit`, each at its own day's rate (its own amount in the currency it was paid in). */
 export function totalDividendsInUnitForAccount(accountId: number, unit: DisplayUnitCode): number {
   let sum = 0;
   for (const e of dividendEventsForAccount(accountId)) sum += flowEventInUnit(e, unit);

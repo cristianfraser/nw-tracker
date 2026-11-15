@@ -11,4 +11,6 @@ export type MovementCreateSchema = {
   unit_label: string;
   brokerage_flow_kinds?: readonly string[];
   units_required_for_flow_kinds?: readonly string[];
+  /** A cash ledger's currency (`accounts.cash_currency`): what its own amounts are typed in. */
+  cash_currency?: string;
 };
