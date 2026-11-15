@@ -16,6 +16,7 @@ import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
 import { db } from "./db.js";
+import { insertMovement } from "./movementWrites.js";
 
 import { requireOptionContract, type OptionContractTerms } from "./optionContracts.js";
 import { optionContractsThroughDate } from "./optionPosition.js";
@@ -93,24 +94,29 @@ export function assignOptionContract(input: OptionAssignmentInput): OptionAssign
   const note = input.note?.trim() ? input.note.trim() : null;
 
   const tx = db.transaction((): OptionAssignmentResult => {
-    const optionRow = db
-      .prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-         VALUES (?, 0, 'usd', ?, ?, ?, 'option_assign')`
-      )
-      .run(input.contract_account_id, input.occurred_on, note, contractsUnits);
-    const optionMovementId = Number(optionRow.lastInsertRowid);
+    const optionMovementId = insertMovement({
+      accountId: input.contract_account_id,
+      amount: 0,
+      currency: "usd",
+      occurredOn: input.occurred_on,
+      note,
+      unitsDelta: contractsUnits,
+      flowKind: "option_assign",
+    });
     const [from, to] =
       shareLeg === "stock_sell"
         ? [input.stock_account_id, input.cash_account_id]
         : [input.cash_account_id, input.stock_account_id];
-    const stockRowIns = db
-      .prepare(
-        `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-         VALUES (NULL, ?, ?, ?, 'usd', ?, ?, ?, ?)`
-      )
-      .run(from, to, amountUsd, input.occurred_on, note, shares, shareLeg);
-    const stockMovementId = Number(stockRowIns.lastInsertRowid);
+    const stockMovementId = insertMovement({
+      fromAccountId: from,
+      toAccountId: to,
+      amount: amountUsd,
+      currency: "usd",
+      occurredOn: input.occurred_on,
+      note,
+      unitsDelta: shares,
+      flowKind: shareLeg,
+    });
     const link = db
       .prepare(`INSERT INTO option_assignments (option_movement_id, stock_movement_id) VALUES (?, ?)`)
       .run(optionMovementId, stockMovementId);
