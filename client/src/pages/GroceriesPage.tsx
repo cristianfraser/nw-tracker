@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input } from "@crfrsr/ui";
 import { CartesianGrid, Line, XAxis, YAxis } from "recharts";
@@ -8,7 +8,7 @@ import { AppLineChart } from "../components/charts/AppLineChart";
 import { buildNiceYAxis, minMaxForKeys } from "../components/charts/chartLayout";
 import { ProductConfigPanel } from "../components/groceries/ProductConfigPanel";
 import { Pill } from "../components/ui/Pill";
-import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
+import { ColumnTable, type TableColumn } from "../components/ui/ColumnTable";
 import { formatReceiptPesos } from "../formatNative";
 import type {
   GroceriesSummary,
@@ -245,6 +245,245 @@ export function GroceriesPage() {
     );
   }
 
+  const suggestionButtons = (g: UnclassifiedGroup) =>
+    g.suggestions.map((s) => (
+      <Button
+        key={s.product_id}
+        variant="link"
+        onClick={() => runClassify({ targets: [g], product_id: s.product_id })}
+        disabled={assignBusy}
+        title={s.via}
+      >
+        {s.product_name}
+      </Button>
+    ));
+  const groupCheckbox = (g: UnclassifiedGroup) => (
+    <input type="checkbox" checked={selected.has(groupKey(g))} onChange={() => toggleSelected(groupKey(g))} />
+  );
+  const cleaningColumns: TableColumn<UnclassifiedGroup>[] = [
+    // On the card the checkbox sits in the title, beside the name.
+    { key: "select", header: "", cell: groupCheckbox, desktopOnly: true },
+    {
+      key: "name",
+      header: t("groceries.cleaning.colName"),
+      cell: (g) => g.description,
+      title: (g) => (
+        <span style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          {groupCheckbox(g)}
+          {g.description}
+        </span>
+      ),
+    },
+    {
+      key: "barcode",
+      header: t("groceries.cleaning.colBarcode"),
+      className: "muted",
+      cell: (g) => g.barcode ?? "—",
+      desktopOnly: true,
+    },
+    {
+      key: "occurrences",
+      header: t("groceries.cleaning.colOccurrences"),
+      headerClassName: "num",
+      className: "num",
+      cell: (g) => g.occurrences,
+    },
+    { key: "lastSeen", header: t("groceries.cleaning.colLastSeen"), cell: (g) => isoDay(g.last_seen) },
+    {
+      key: "lastPrice",
+      header: t("groceries.cleaning.colLastPrice"),
+      headerClassName: "num",
+      className: "num",
+      cell: (g) => formatReceiptPesos(g.last_unit_price_clp),
+    },
+    {
+      key: "suggestions",
+      header: t("groceries.cleaning.colSuggestions"),
+      cell: suggestionButtons,
+      card: (g) => (g.suggestions.length > 0 ? suggestionButtons(g) : null),
+    },
+  ];
+
+  type ProductRow = GroceriesSummary["products"][number];
+  const productColumns: TableColumn<ProductRow>[] = [
+    {
+      key: "product",
+      header: t("groceries.products.colProduct"),
+      cell: (p) => (
+        <Button variant="link" onClick={() => openHistory(p.id)}>
+          {p.name}
+        </Button>
+      ),
+      title: true,
+    },
+    {
+      key: "aliases",
+      header: t("groceries.products.colAliases"),
+      headerClassName: "num",
+      className: "num",
+      cell: (p) => p.alias_count,
+      desktopOnly: true,
+    },
+    {
+      key: "purchases",
+      header: t("groceries.products.colPurchases"),
+      headerClassName: "num",
+      className: "num",
+      cell: (p) => p.purchase_count,
+    },
+    {
+      key: "lastPurchased",
+      header: t("groceries.products.colLastPurchased"),
+      cell: (p) => isoDay(p.last_purchased_at),
+    },
+    {
+      key: "lastPrice",
+      header: t("groceries.products.colLastPrice"),
+      headerClassName: "num",
+      className: "num",
+      cell: (p) =>
+        p.last_effective_unit_price_clp != null ? formatReceiptPesos(p.last_effective_unit_price_clp) : "—",
+    },
+  ];
+
+  const num = { headerClassName: "num", className: "num" };
+  const historyColumns: TableColumn<ProductHistoryRow>[] = [
+    { key: "date", header: t("groceries.history.colDate"), cell: (r) => isoMinute(r.purchased_at), title: true },
+    { key: "branch", header: t("groceries.history.colBranch"), cell: (r) => r.branch },
+    {
+      key: "qty",
+      header: t("groceries.history.colQty"),
+      ...num,
+      cell: (r) => `${r.qty}${r.qty_unit === "kg" ? " kg" : ""}`,
+    },
+    {
+      key: "unitPrice",
+      header: t("groceries.history.colUnitPrice"),
+      ...num,
+      cell: (r) => formatReceiptPesos(r.unit_price_clp),
+    },
+    {
+      key: "discount",
+      header: t("groceries.history.colDiscount"),
+      ...num,
+      cell: (r) => (r.discount_clp > 0 ? formatReceiptPesos(-r.discount_clp) : "—"),
+      // The card leaves the row out when there was no discount.
+      card: (r) => (r.discount_clp > 0 ? formatReceiptPesos(-r.discount_clp) : null),
+    },
+    {
+      key: "effective",
+      header: t("groceries.history.colEffective"),
+      ...num,
+      cell: (r) => formatReceiptPesos(r.effective_unit_price_clp),
+    },
+    ...(normalizedAvailable
+      ? [
+          {
+            key: "normalized",
+            header: t("groceries.history.colNormalized", { unit: baseUnitLabel }),
+            ...num,
+            cell: (r) =>
+              r.normalized_unit_price_clp != null ? (
+                formatReceiptPesos(r.normalized_unit_price_clp)
+              ) : (
+                <span className="muted">{t("groceries.history.noContent")}</span>
+              ),
+            card: (r) =>
+              r.normalized_unit_price_clp != null
+                ? formatReceiptPesos(r.normalized_unit_price_clp)
+                : t("groceries.history.noContent"),
+          } satisfies TableColumn<ProductHistoryRow>,
+        ]
+      : []),
+    {
+      key: "total",
+      header: t("groceries.history.colTotal"),
+      ...num,
+      cell: (r) => formatReceiptPesos(r.total_clp - r.discount_clp),
+    },
+  ];
+
+  type ReceiptRow = GroceriesSummary["receipts"][number];
+  /** An open receipt's items (once fetched); null while closed. */
+  const receiptItemsList = (r: ReceiptRow) =>
+    openReceiptId === r.id && receiptItems[r.id] ? (
+      <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+        {receiptItems[r.id]!.map((item) => (
+          <li key={item.id}>
+            {item.product_name ?? item.description}
+            {item.product_name ? <span className="muted"> · {item.description}</span> : null} — {item.qty}
+            {item.qty_unit === "kg" ? " kg" : ""} × {formatReceiptPesos(item.unit_price_clp)}
+            {item.discount_clp > 0 ? ` (${formatReceiptPesos(-item.discount_clp)})` : ""} ={" "}
+            {formatReceiptPesos(item.total_clp - item.discount_clp)}
+          </li>
+        ))}
+      </ul>
+    ) : null;
+  const receiptColumns: TableColumn<ReceiptRow>[] = [
+    {
+      key: "date",
+      header: t("groceries.receipts.colDate"),
+      cell: (r) => isoMinute(r.purchased_at),
+      // The card's title carries the branch too.
+      title: (r) => `${isoMinute(r.purchased_at)} · ${r.branch}`,
+    },
+    { key: "branch", header: t("groceries.receipts.colBranch"), cell: (r) => r.branch, desktopOnly: true },
+    {
+      key: "city",
+      header: t("groceries.receipts.colCity"),
+      className: "muted",
+      cell: (r) => r.city ?? "—",
+      desktopOnly: true,
+    },
+    {
+      key: "source",
+      header: t("groceries.receipts.colSource"),
+      // Provenance of the document that owns the row (e-mail PDF, hand-saved PDF, photo).
+      cell: (r) => <Pill size="small" label={t(`groceries.receipts.source.${r.source}`)} />,
+    },
+    { key: "total", header: t("groceries.receipts.colTotal"), ...num, cell: (r) => formatReceiptPesos(r.total_clp) },
+    {
+      key: "cardPaid",
+      header: t("groceries.receipts.colCardPaid"),
+      ...num,
+      // A card-paid receipt at a store no map names yet: flagged, no card line of its own until
+      // the bank's line for the same day and amount pairs it.
+      cell: (r) =>
+        r.card_paid_clp > 0 ? (
+          <>
+            {formatReceiptPesos(r.card_paid_clp)}
+            {r.card_line_status === "pending_branch" ? (
+              <>
+                {" "}
+                <Pill
+                  size="small"
+                  label={t("groceries.receipts.cardLine.pendingBranch")}
+                  title={t("groceries.receipts.cardLine.pendingBranchHint")}
+                />
+              </>
+            ) : null}
+          </>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      key: "items",
+      header: t("groceries.receipts.colItems"),
+      ...num,
+      cell: (r) => `${r.classified_count}/${r.item_count}`,
+    },
+    {
+      key: "toggle",
+      header: "",
+      cell: (r) => (
+        <Button variant="link" onClick={() => toggleReceipt(r.id)}>
+          {openReceiptId === r.id ? t("groceries.receipts.hideItems") : t("groceries.receipts.showItems")}
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <div className="page-grid">
       <h2 className="flow-section-title">{t("groceries.title")}</h2>
@@ -296,82 +535,13 @@ export function GroceriesPage() {
               </Button>
               {assignNote ? <span className="muted">{assignNote}</span> : null}
             </div>
-            <table className="data-table">
-              <thead className="desktop-only">
-                <tr>
-                  <th />
-                  <th>{t("groceries.cleaning.colName")}</th>
-                  <th>{t("groceries.cleaning.colBarcode")}</th>
-                  <th className="num">{t("groceries.cleaning.colOccurrences")}</th>
-                  <th>{t("groceries.cleaning.colLastSeen")}</th>
-                  <th className="num">{t("groceries.cleaning.colLastPrice")}</th>
-                  <th>{t("groceries.cleaning.colSuggestions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(summary?.unclassified ?? []).map((g) => {
-                  const key = groupKey(g);
-                  const suggestionButtons = g.suggestions.map((s) => (
-                    <Button
-                      key={s.product_id}
-                      variant="link"
-                      onClick={() => runClassify({ targets: [g], product_id: s.product_id })}
-                      disabled={assignBusy}
-                      title={s.via}
-                    >
-                      {s.product_name}
-                    </Button>
-                  ));
-                  const checkbox = (
-                    <input
-                      type="checkbox"
-                      checked={selected.has(key)}
-                      onChange={() => toggleSelected(key)}
-                    />
-                  );
-                  return (
-                    <tr key={key}>
-                      <td className="desktop-only">{checkbox}</td>
-                      <td className="desktop-only">{g.description}</td>
-                      <td className="desktop-only muted">{g.barcode ?? "—"}</td>
-                      <td className="desktop-only num">{g.occurrences}</td>
-                      <td className="desktop-only">{isoDay(g.last_seen)}</td>
-                      <td className="desktop-only num">{formatReceiptPesos(g.last_unit_price_clp)}</td>
-                      <td className="desktop-only">{suggestionButtons}</td>
-                      <td className="mobile-only">
-                        <TableMobileCard
-                          title={
-                            <span style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                              {checkbox}
-                              {g.description}
-                            </span>
-                          }
-                        >
-                          <TableMobileCardRow
-                            label={t("groceries.cleaning.colOccurrences")}
-                            value={g.occurrences}
-                          />
-                          <TableMobileCardRow
-                            label={t("groceries.cleaning.colLastSeen")}
-                            value={isoDay(g.last_seen)}
-                          />
-                          <TableMobileCardRow
-                            label={t("groceries.cleaning.colLastPrice")}
-                            value={formatReceiptPesos(g.last_unit_price_clp)}
-                          />
-                          {g.suggestions.length > 0 ? (
-                            <TableMobileCardRow
-                              label={t("groceries.cleaning.colSuggestions")}
-                              value={suggestionButtons}
-                            />
-                          ) : null}
-                        </TableMobileCard>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <ColumnTable
+              rows={summary?.unclassified ?? []}
+              columns={cleaningColumns}
+              rowKey={groupKey}
+              cardLayout="flat"
+              tableClassName="data-table"
+            />
           </>
         )}
       </PageGridTile>
@@ -382,59 +552,14 @@ export function GroceriesPage() {
         {summary && summary.products.length === 0 ? (
           <p className="muted">{t("groceries.products.none")}</p>
         ) : (
-          <table className="data-table">
-            <thead className="desktop-only">
-              <tr>
-                <th>{t("groceries.products.colProduct")}</th>
-                <th className="num">{t("groceries.products.colAliases")}</th>
-                <th className="num">{t("groceries.products.colPurchases")}</th>
-                <th>{t("groceries.products.colLastPurchased")}</th>
-                <th className="num">{t("groceries.products.colLastPrice")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(summary?.products ?? []).map((p) => {
-                const nameButton = (
-                  <Button variant="link" onClick={() => openHistory(p.id)}>
-                    {p.name}
-                  </Button>
-                );
-                return (
-                  <tr key={p.id} className={p.id === historyProductId ? "row--selected" : undefined}>
-                    <td className="desktop-only">{nameButton}</td>
-                    <td className="desktop-only num">{p.alias_count}</td>
-                    <td className="desktop-only num">{p.purchase_count}</td>
-                    <td className="desktop-only">{isoDay(p.last_purchased_at)}</td>
-                    <td className="desktop-only num">
-                      {p.last_effective_unit_price_clp != null
-                        ? formatReceiptPesos(p.last_effective_unit_price_clp)
-                        : "—"}
-                    </td>
-                    <td className="mobile-only">
-                      <TableMobileCard title={nameButton}>
-                        <TableMobileCardRow
-                          label={t("groceries.products.colPurchases")}
-                          value={p.purchase_count}
-                        />
-                        <TableMobileCardRow
-                          label={t("groceries.products.colLastPurchased")}
-                          value={isoDay(p.last_purchased_at)}
-                        />
-                        <TableMobileCardRow
-                          label={t("groceries.products.colLastPrice")}
-                          value={
-                            p.last_effective_unit_price_clp != null
-                              ? formatReceiptPesos(p.last_effective_unit_price_clp)
-                              : "—"
-                          }
-                        />
-                      </TableMobileCard>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <ColumnTable
+            rows={summary?.products ?? []}
+            columns={productColumns}
+            rowKey={(p) => p.id}
+            rowProps={(p) => ({ className: p.id === historyProductId ? "row--selected" : undefined })}
+            cardLayout="flat"
+            tableClassName="data-table"
+          />
         )}
 
         <h4>
@@ -534,86 +659,13 @@ export function GroceriesPage() {
                 </AppLineChart>
               </div>
             ) : null}
-            <table className="data-table">
-              <thead className="desktop-only">
-                <tr>
-                  <th>{t("groceries.history.colDate")}</th>
-                  <th>{t("groceries.history.colBranch")}</th>
-                  <th className="num">{t("groceries.history.colQty")}</th>
-                  <th className="num">{t("groceries.history.colUnitPrice")}</th>
-                  <th className="num">{t("groceries.history.colDiscount")}</th>
-                  <th className="num">{t("groceries.history.colEffective")}</th>
-                  {normalizedAvailable ? (
-                    <th className="num">{t("groceries.history.colNormalized", { unit: baseUnitLabel })}</th>
-                  ) : null}
-                  <th className="num">{t("groceries.history.colTotal")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredHistory.map((r, i) => (
-                  <tr key={`${r.purchased_at}-${i}`}>
-                    <td className="desktop-only">{isoMinute(r.purchased_at)}</td>
-                    <td className="desktop-only">{r.branch}</td>
-                    <td className="desktop-only num">
-                      {r.qty}
-                      {r.qty_unit === "kg" ? " kg" : ""}
-                    </td>
-                    <td className="desktop-only num">{formatReceiptPesos(r.unit_price_clp)}</td>
-                    <td className="desktop-only num">
-                      {r.discount_clp > 0 ? formatReceiptPesos(-r.discount_clp) : "—"}
-                    </td>
-                    <td className="desktop-only num">{formatReceiptPesos(r.effective_unit_price_clp)}</td>
-                    {normalizedAvailable ? (
-                      <td className="desktop-only num">
-                        {r.normalized_unit_price_clp != null ? (
-                          formatReceiptPesos(r.normalized_unit_price_clp)
-                        ) : (
-                          <span className="muted">{t("groceries.history.noContent")}</span>
-                        )}
-                      </td>
-                    ) : null}
-                    <td className="desktop-only num">{formatReceiptPesos(r.total_clp - r.discount_clp)}</td>
-                    <td className="mobile-only">
-                      <TableMobileCard title={isoMinute(r.purchased_at)}>
-                        <TableMobileCardRow label={t("groceries.history.colBranch")} value={r.branch} />
-                        <TableMobileCardRow
-                          label={t("groceries.history.colQty")}
-                          value={`${r.qty}${r.qty_unit === "kg" ? " kg" : ""}`}
-                        />
-                        <TableMobileCardRow
-                          label={t("groceries.history.colUnitPrice")}
-                          value={formatReceiptPesos(r.unit_price_clp)}
-                        />
-                        {r.discount_clp > 0 ? (
-                          <TableMobileCardRow
-                            label={t("groceries.history.colDiscount")}
-                            value={formatReceiptPesos(-r.discount_clp)}
-                          />
-                        ) : null}
-                        <TableMobileCardRow
-                          label={t("groceries.history.colEffective")}
-                          value={formatReceiptPesos(r.effective_unit_price_clp)}
-                        />
-                        {normalizedAvailable ? (
-                          <TableMobileCardRow
-                            label={t("groceries.history.colNormalized", { unit: baseUnitLabel })}
-                            value={
-                              r.normalized_unit_price_clp != null
-                                ? formatReceiptPesos(r.normalized_unit_price_clp)
-                                : t("groceries.history.noContent")
-                            }
-                          />
-                        ) : null}
-                        <TableMobileCardRow
-                          label={t("groceries.history.colTotal")}
-                          value={formatReceiptPesos(r.total_clp - r.discount_clp)}
-                        />
-                      </TableMobileCard>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ColumnTable
+              rows={filteredHistory}
+              columns={historyColumns}
+              rowKey={(r, i) => `${r.purchased_at}-${i}`}
+              cardLayout="flat"
+              tableClassName="data-table"
+            />
           </>
         )}
       </PageGridTile>
@@ -624,115 +676,14 @@ export function GroceriesPage() {
         {summary && summary.receipts.length === 0 ? (
           <p className="muted">{t("groceries.receipts.none")}</p>
         ) : (
-          <table className="data-table">
-            <thead className="desktop-only">
-              <tr>
-                <th>{t("groceries.receipts.colDate")}</th>
-                <th>{t("groceries.receipts.colBranch")}</th>
-                <th>{t("groceries.receipts.colCity")}</th>
-                <th>{t("groceries.receipts.colSource")}</th>
-                <th className="num">{t("groceries.receipts.colTotal")}</th>
-                <th className="num">{t("groceries.receipts.colCardPaid")}</th>
-                <th className="num">{t("groceries.receipts.colItems")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {(summary?.receipts ?? []).map((r) => {
-                const toggle = (
-                  <Button variant="link" onClick={() => toggleReceipt(r.id)}>
-                    {openReceiptId === r.id
-                      ? t("groceries.receipts.hideItems")
-                      : t("groceries.receipts.showItems")}
-                  </Button>
-                );
-                const itemsRow =
-                  openReceiptId === r.id && receiptItems[r.id] ? (
-                    <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-                      {receiptItems[r.id]!.map((item) => (
-                        <li key={item.id}>
-                          {item.product_name ?? item.description}
-                          {item.product_name ? (
-                            <span className="muted"> · {item.description}</span>
-                          ) : null}{" "}
-                          — {item.qty}
-                          {item.qty_unit === "kg" ? " kg" : ""} ×{" "}
-                          {formatReceiptPesos(item.unit_price_clp)}
-                          {item.discount_clp > 0 ? ` (${formatReceiptPesos(-item.discount_clp)})` : ""} ={" "}
-                          {formatReceiptPesos(item.total_clp - item.discount_clp)}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null;
-                // Provenance of the document that owns the row (e-mail PDF, hand-saved PDF, photo).
-                const sourcePill = (
-                  <Pill size="small" label={t(`groceries.receipts.source.${r.source}`)} />
-                );
-                // A card-paid receipt at a store no map names yet: flagged, no card line of its
-                // own until the bank's line for the same day and amount pairs it.
-                const pendingBranchPill =
-                  r.card_line_status === "pending_branch" ? (
-                    <Pill
-                      size="small"
-                      label={t("groceries.receipts.cardLine.pendingBranch")}
-                      title={t("groceries.receipts.cardLine.pendingBranchHint")}
-                    />
-                  ) : null;
-                const cardPaidCell =
-                  r.card_paid_clp > 0 ? (
-                    <>
-                      {formatReceiptPesos(r.card_paid_clp)}
-                      {pendingBranchPill ? <> {pendingBranchPill}</> : null}
-                    </>
-                  ) : (
-                    "—"
-                  );
-                return (
-                  <Fragment key={r.id}>
-                    <tr>
-                      <td className="desktop-only">{isoMinute(r.purchased_at)}</td>
-                      <td className="desktop-only">{r.branch}</td>
-                      <td className="desktop-only muted">{r.city ?? "—"}</td>
-                      <td className="desktop-only">{sourcePill}</td>
-                      <td className="desktop-only num">{formatReceiptPesos(r.total_clp)}</td>
-                      <td className="desktop-only num">{cardPaidCell}</td>
-                      <td className="desktop-only num">
-                        {r.classified_count}/{r.item_count}
-                      </td>
-                      <td className="desktop-only">{toggle}</td>
-                      <td className="mobile-only">
-                        <TableMobileCard title={`${isoMinute(r.purchased_at)} · ${r.branch}`}>
-                          <TableMobileCardRow
-                            label={t("groceries.receipts.colSource")}
-                            value={sourcePill}
-                          />
-                          <TableMobileCardRow
-                            label={t("groceries.receipts.colTotal")}
-                            value={formatReceiptPesos(r.total_clp)}
-                          />
-                          <TableMobileCardRow
-                            label={t("groceries.receipts.colCardPaid")}
-                            value={cardPaidCell}
-                          />
-                          <TableMobileCardRow
-                            label={t("groceries.receipts.colItems")}
-                            value={`${r.classified_count}/${r.item_count}`}
-                          />
-                          <TableMobileCardRow label="" value={toggle} />
-                          {itemsRow ? <div>{itemsRow}</div> : null}
-                        </TableMobileCard>
-                      </td>
-                    </tr>
-                    {openReceiptId === r.id && itemsRow ? (
-                      <tr className="desktop-only">
-                        <td colSpan={8}>{itemsRow}</td>
-                      </tr>
-                    ) : null}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+          <ColumnTable
+            rows={summary?.receipts ?? []}
+            columns={receiptColumns}
+            rowKey={(r) => r.id}
+            rowExpansion={receiptItemsList}
+            cardLayout="flat"
+            tableClassName="data-table"
+          />
         )}
       </PageGridTile>
     </div>
