@@ -10,7 +10,6 @@ import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   isCcExpenseTotalsExcludedSlug,
-  isInstallmentCuotaZeroLine,
   listCcExpenseCategories,
   type CcExpenseCategoryRow,
 } from "./ccExpenseCategories.js";
@@ -23,19 +22,28 @@ import {
   BILLS_CC_EXPENSE_SLUG,
   chartCategorySlugsForFlowsExpenses,
   expenseDepositAmortizationChartAmount,
-  hasSplittableMortgageExpenseDepositLink,
-  type ExpenseDepositLinkDto,
+  splittableMortgageLinkOf,
   REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
 } from "./expenseDepositLinks.js";
 import { listCcExpenseBigGroups, type CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
+import { buildFlowsExpenseLines, isPreTaxExpenseLine } from "./flowsExpenses.js";
+import type {
+  FlowCcExpenseCategoryChartPoint,
+  FlowCcExpenseChartPoint,
+  FlowCcExpenseLineRow,
+  FlowCcExpenseMonthRow,
+} from "./expenseLineTypes.js";
 import {
-  buildFlowsExpenseLines,
-  isPreTaxExpenseLine,
-  type FlowCcExpenseCategoryChartPoint,
-  type FlowCcExpenseChartPoint,
-  type FlowCcExpenseLineRow,
-  type FlowCcExpenseMonthRow,
-} from "./flowsExpenses.js";
+  countsTowardGastosMes,
+  expenseLineSignedValue,
+  isGastosRefundLine,
+  type GastosMesLine,
+  type SignedExpenseLine,
+} from "./gastosMesCounting.js";
+
+export { splittableMortgageLinkOf };
+export { countsTowardGastosMes, expenseLineSignedValue, isGastosRefundLine };
+export type { GastosMesLine, SignedExpenseLine };
 import { addCalendarMonths } from "nw-tracker-contracts";
 import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import type { FlowCcExpenseLineRow as WireExpenseLine, LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
@@ -110,31 +118,6 @@ export function expenseLineGastosAmount(
 }
 
 /**
- * What a line's sign is read from: its money (`amount`, set by the «line money» step) on a
- * finished line, the builder's pesos on a builder line (the checking lines read before the
- * pipeline, `loadFinalizedCheckingGastosLinesReadOnly`). The sign is the same in every unit.
- */
-export type SignedExpenseLine = { amount?: Money; amount_clp?: number };
-
-export function expenseLineSignedValue(line: SignedExpenseLine): number {
-  if (line.amount) return line.amount.value;
-  if (line.amount_clp != null) return line.amount_clp;
-  throw new Error("expense line without an amount");
-}
-
-/**
- * The mortgage dividendo a line paid, when its deposit link splits it into carrying and
- * amortización (`hasSplittableMortgageExpenseDepositLink`): the one probe the gastos aggregation,
- * the flows overview, the carrying events and the financing projection read.
- */
-export function splittableMortgageLinkOf(
-  line: Pick<FlowCcExpenseLineRow, "expense_deposit_links">
-): ExpenseDepositLinkDto | null {
-  const link = line.expense_deposit_links?.find((l) => l.depto_cuota != null);
-  return hasSplittableMortgageExpenseDepositLink(link) ? link : null;
-}
-
-/**
  * Whether a mortgage-linked line counts in the installment mode: an installment purchase total
  * only in «Total», a cuota only in «Por cuota», anything else in both.
  */
@@ -171,46 +154,6 @@ function mortgageLinkAmortizationChartAmount(
     return -(expenseLineGastosAmount(line, unit) * (link.amortization_clp / link.payment_clp));
   }
   return expenseDepositAmortizationChartAmount(link.amortization_clp);
-}
-
-/** The fields {@link countsTowardGastosMes} reads (the checking read-only lines carry them too). */
-export type GastosMesLine = SignedExpenseLine &
-  Pick<
-    FlowCcExpenseLineRow,
-    | "nota_credito_role"
-    | "checking_refund"
-    | "card_refund"
-    | "category_slug"
-    | "installment_flag"
-    | "nro_cuota_current"
-    | "gastos_scope"
-    | "line_role"
-  >;
-
-/**
- * A negative line that is spending coming back — a checking credit marked as a refund
- * (`checking_refund`) or a card credit no purchase annuls (`card_refund`: a merchant refund, a nota
- * de crédito without its purchase): it counts, negatively, in its category.
- */
-export function isGastosRefundLine(line: Pick<GastosMesLine, "checking_refund" | "card_refund">): boolean {
-  return line.checking_refund === true || line.card_refund === true;
-}
-
-/** Positive lines, and refunds, that count toward gasto del mes in the mode. */
-export function countsTowardGastosMes(line: GastosMesLine, mode: CcInstallmentGastosMode): boolean {
-  if (line.nota_credito_role === "annulled_purchase" || line.nota_credito_role === "matched_nota") {
-    return false;
-  }
-  if (expenseLineSignedValue(line) <= 0 && !isGastosRefundLine(line)) return false;
-  if (isCcExpenseTotalsExcludedSlug(line.category_slug)) return false;
-  if (isInstallmentCuotaZeroLine(line)) return false;
-  const scope = line.gastos_scope ?? "both";
-  if (scope === "excluded") return false;
-  if (scope === "total_only") return mode === "total";
-  if (scope === "split_only") return mode === "split";
-  if (line.line_role === "installment_purchase_total") return mode === "total";
-  if (line.line_role === "installment_cuota") return mode === "split";
-  return true;
 }
 
 export type GastosAggregate = {

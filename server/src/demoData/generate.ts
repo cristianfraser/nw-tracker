@@ -35,7 +35,7 @@ import { ensureRetirementCountrySplit, seedNavTree } from "../seedNavTree.js";
 import { writeFundUnitSeriesRows } from "../fundUnitDaily.js";
 import { employmentPayslipsKind } from "nw-tracker-contracts";
 import { ensureAccountSyncSourcesSeeded } from "../accountSyncSources.js";
-import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../ccBillingMonthBalancesRecompute.js";
 import { afpDisplaySeriesKey, AFP_UNO_CUOTA_SERIES_KEY } from "../afpUnoSeries.js";
 import { afpDisplayThroughDay, buildAfpDisplayRowsForFund, upsertAfpDisplayRows } from "../afpUnoOfficialSync.js";
 import { officialPensionFundUnits } from "../spAfpFundUnits.js";

@@ -1,10 +1,8 @@
 import { isNotaDeCreditoMerchant, NOTA_DE_CREDITO_MATCH_MIN_CLP } from "./cards/notaDeCredito.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRowDraft, NotaDeCreditoRole } from "./expenseLineTypes.js";
 
-export type NotaDeCreditoRole =
-  | "annulled_purchase"
-  | "matched_nota"
-  | "unmatched_nota";
+export type { NotaDeCreditoRole };
+
 
 export type NotaDeCreditoPairingResult = {
   annulledPurchaseIds: Set<number>;

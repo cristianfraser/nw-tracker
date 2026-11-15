@@ -46,7 +46,7 @@ import { recordBankPosting } from "../src/movementBankPostings.js";
 import { convertMirrorPairs } from "../src/movementMirrorConvert.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../src/ccPaymentMirrors.js";
 import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../src/ccBillingMonthBalancesRecompute.js";
 import { checkingMovementBalanceClpAt } from "../src/checkingCartolaBalances.js";
 import { clearAggregationCache } from "../src/cacheRegistry.js";
 

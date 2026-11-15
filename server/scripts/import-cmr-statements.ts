@@ -37,7 +37,7 @@ import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { parseChileanNumber } from "../src/chileanNumber.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../src/ccPaymentMirrors.js";
 import { accountMarkClpAtYmd } from "../src/accountMarkClpAtYmd.js";
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../src/ccBillingMonthBalancesRecompute.js";
 import { checkingGastosMovementPurchaseKey } from "../src/flowsCheckingGastos.js";
 import { assignFlowExpenseLineCategory } from "../src/expenseAssignmentWrites.js";
 import { getCcExpenseCategoryBySlug } from "../src/ccExpenseCategories.js";

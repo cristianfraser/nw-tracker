@@ -10,7 +10,7 @@
 import { isHomeCurrency } from "./displayUnits.js";
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import { ADDITIONAL_CARD_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
-import { countsTowardGastosMes, type GastosMesLine } from "./flowsExpensesGastos.js";
+import { countsTowardGastosMes, type GastosMesLine } from "./gastosMesCounting.js";
 import type { LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
 import { lineAmount, lineValueIn } from "./lineMoney.js";
 

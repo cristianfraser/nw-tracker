@@ -20,7 +20,7 @@ import { canonicalStatementsFromParsedRecords, type CardCanonicalStatement } fro
 import { cardAccountForStatement } from "../src/cards/documentAccount.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
 import { importCcStatementsMerge } from "../src/ccStatementsImport.js";
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../src/ccBillingMonthBalancesRecompute.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

@@ -33,7 +33,9 @@ import {
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { loadAllDeptoLedgers } from "./deptoLedgerFromMovements.js";
-import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import type { ExpenseDepositLinkDto, ExpenseDepositLinkSource, FlowCcExpenseLineRow } from "./expenseLineTypes.js";
+
+export type { ExpenseDepositLinkDto, ExpenseDepositLinkSource };
 import { movementFlowId } from "./flows/flowIdentity.js";
 import { keyTarget, TARGET_WHERE, targetParams } from "./flows/flowKeyedAssignments.js";
 import { EXPENSE_DEPOSIT_LINKS_SQL } from "./flows/flowLinks.js";
@@ -43,10 +45,6 @@ export { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG };
 /** Max days between CC purchase_on and depto sheet occurred_on for mortgage cuota match. */
 export const MORTGAGE_CC_PURCHASE_DAY_GAP = MATCH_WINDOWS.mortgage_cuota_stored_link.daysAfter;
 
-/** Priority for conflict resolution when the same (purchase_key, deposit_movement_id) pair is
- *  written by more than one path: manual (user-curated) > auto (real checking/CC match) >
- *  synthetic (the retired fabricated mirrors, migration 294: nothing writes it any more). */
-export type ExpenseDepositLinkSource = "auto" | "manual" | "synthetic";
 
 export type ExpenseDepositLinkRow = {
   account_id: number;
@@ -62,15 +60,6 @@ export type ExpenseDepositLinkRow = {
   parts_carrying_clp?: number | null;
 };
 
-export type ExpenseDepositLinkDto = {
-  deposit_movement_id: number;
-  payment_clp: number;
-  amortization_clp: number;
-  carrying_clp: number;
-  depto_cuota: string | null;
-  depto_occurred_on: string | null;
-  link_source: ExpenseDepositLinkSource;
-};
 
 export type GastosLineForExpenseDepositLink = Pick<
   FlowCcExpenseLineRow,
@@ -130,6 +119,18 @@ export function hasSplittableMortgageExpenseDepositLink(
     link.carrying_clp > 0 &&
     link.carrying_clp < link.payment_clp
   );
+}
+
+/**
+ * The mortgage dividendo a line paid, when its deposit link splits it into carrying and
+ * amortización (`hasSplittableMortgageExpenseDepositLink`): the one probe the gastos aggregation,
+ * the flows overview, the carrying events and the financing projection read.
+ */
+export function splittableMortgageLinkOf(
+  line: Pick<FlowCcExpenseLineRow, "expense_deposit_links">
+): ExpenseDepositLinkDto | null {
+  const link = line.expense_deposit_links?.find((l) => l.depto_cuota != null);
+  return hasSplittableMortgageExpenseDepositLink(link) ? link : null;
 }
 
 /**

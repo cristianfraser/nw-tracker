@@ -10,7 +10,7 @@ import { buildExpenseKey } from "./expenseKeys.js";
 import { coreCurrencyCodes, currencyMinorDigits, roundToCurrency } from "./displayUnits.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import { convertFlow } from "./rates.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./expenseLineTypes.js";
 
 const EXCEL_TOTAL_CATEGORY = "Total mensual (Gasto)";
 

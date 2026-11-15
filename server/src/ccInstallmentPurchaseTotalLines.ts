@@ -19,7 +19,7 @@ import {
 import { dedupeInstallmentPurchaseLedgerRows, planRows } from "./cards/purchases.js";
 import type { FlowCcExpenseLineBeforeNotes } from "./ccExpensePurchaseNotes.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./expenseLineTypes.js";
 
 export type InstallmentPurchaseRow = {
   id: number;

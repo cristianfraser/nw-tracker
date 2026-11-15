@@ -15,8 +15,19 @@ import {
   getCcExpensePurchaseNote,
   setCcExpensePurchaseNote,
 } from "./ccExpensePurchaseNotes.js";
+import {
+  AUTO_ADDITIONAL_CARD_NOTE_PREFIX,
+  formatAutoAdditionalCardNote,
+  isAutoAdditionalCardPurchaseNote,
+  mergeAutoAdditionalCardNote,
+} from "./ccAdditionalCardNoteText.js";
 
-export const AUTO_ADDITIONAL_CARD_NOTE_PREFIX = "auto:additional-card";
+export {
+  AUTO_ADDITIONAL_CARD_NOTE_PREFIX,
+  formatAutoAdditionalCardNote,
+  isAutoAdditionalCardPurchaseNote,
+  mergeAutoAdditionalCardNote,
+};
 
 /** User chose Sin clasificar — do not re-apply the adicional-card auto category on reload. */
 export const USER_DECLINED_AUTO_CATEGORY_PREFIX = "auto:user-declined-auto-category";
@@ -104,42 +115,6 @@ export function activeAdditionalCardLast4ForAccount(
     );
   }
   return origins[0]!;
-}
-
-export function formatAutoAdditionalCardNote(opts: {
-  originLast4: string;
-  primaryLast4: string;
-}): string {
-  return `${AUTO_ADDITIONAL_CARD_NOTE_PREFIX}|origin:${opts.originLast4}|stmt:${opts.primaryLast4}`;
-}
-
-export function isAutoAdditionalCardPurchaseNote(note: string): boolean {
-  return String(note ?? "").trimStart().startsWith(AUTO_ADDITIONAL_CARD_NOTE_PREFIX);
-}
-
-function extractUserNoteSuffix(note: string): string {
-  const lines = note.split("\n");
-  const first = lines[0]?.trim() ?? "";
-  if (!isAutoAdditionalCardPurchaseNote(first)) return note.trim();
-  const rest = lines.slice(1).join("\n").trim();
-  return rest.replace(/^\n+/, "").trim();
-}
-
-/** Replace stale auto line; preserve user suffix after blank line. */
-export function mergeAutoAdditionalCardNote(
-  existingDbNote: string,
-  autoNote: string
-): string {
-  const auto = String(autoNote ?? "").trim();
-  if (!auto) return String(existingDbNote ?? "").trim();
-
-  const existing = String(existingDbNote ?? "").trim();
-  if (!existing) return auto;
-  if (isAutoAdditionalCardPurchaseNote(existing)) {
-    const suffix = extractUserNoteSuffix(existing);
-    return suffix ? `${auto}\n\n${suffix}` : auto;
-  }
-  return `${auto}\n\n${existing}`;
 }
 
 export type ApplyAdditionalCardNoCuentaResult = {

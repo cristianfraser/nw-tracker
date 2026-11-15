@@ -11,34 +11,11 @@ import {
 import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
-import { accountWithRoleOptional } from "./accountRoles.js";
+import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaAccounts.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { EXPENSE_DEPOSIT_LINKS_SQL } from "./flows/flowLinks.js";
 
-/** Human provenance on the mirror row (never read back). */
-/** The Buda CLP buffer account (crypto bucket cash hub), or null if the Buda ledger isn't imported. */
-export function loadBudaBufferAccountId(): number | null {
-  return accountWithRoleOptional("buda_wallet");
-}
-
-/**
- * Crypto coin accounts (Bitcoin, ETH, …) — everything under the crypto bucket except the Buda CLP
- * buffer. When the buffer exists, coin buys are funded *from it* (an internal crypto-bucket flow),
- * not directly from checking, so these accounts are excluded from the deposits reconciliation; the
- * buffer's `abono` deposits (money arriving from checking) are the reconcilable targets instead.
- */
-export function loadCryptoCoinAccountIdsFundedByBuda(): Set<number> {
-  if (loadBudaBufferAccountId() == null) return new Set();
-  const rows = db
-    .prepare(
-      `SELECT a.id FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE g.slug LIKE 'brokerage_crypto__%'
-         AND g.slug != 'brokerage_crypto__buda_clp'`
-    )
-    .all() as { id: number }[];
-  return new Set(rows.map((r) => r.id));
-}
+export { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda };
 
 /**
  * Buda abono deposits with no real checking outflow linked to them. The sync runs after the auto and

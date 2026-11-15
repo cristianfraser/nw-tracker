@@ -15,7 +15,7 @@ import {
 } from "./accountDeposits.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
-import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
+import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaAccounts.js";
 import {
   isCheckingPartialWithdrawalNote,
   parsePartialMovementNote,

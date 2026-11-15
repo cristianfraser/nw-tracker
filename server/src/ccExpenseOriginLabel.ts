@@ -2,7 +2,9 @@ import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import { cardLast4ForCreditCardAccount } from "./cards/facturacion.js";
 import { db } from "./db.js";
-import type { FlowCcExpenseLineSource } from "./flowsExpenses.js";
+import type { ExpenseLineOrigin, FlowCcExpenseLineSource } from "./expenseLineTypes.js";
+
+export type { ExpenseLineOrigin };
 
 export function loadAccountNameById(accountIds: readonly number[]): Map<number, string> {
   const unique = [...new Set(accountIds.filter((id) => id > 0))];
@@ -36,20 +38,6 @@ export function expenseLineOriginLabel(
   return names.get(accountId) ?? "Cuenta corriente";
 }
 
-/**
- * Where an expense line came from, as data the client words and draws (an icon per kind, a tooltip
- * with the account): `card` = a card statement / feed line, `checking` = a bank account movement,
- * `manual` = a hand-entered expense, `payslip` = a payroll deduction.
- */
-export type ExpenseLineOrigin = {
-  kind: "card" | "checking" | "manual" | "payslip";
-  /** The account's name (card master or bank account); null for manual / payslip lines. */
-  account_name: string | null;
-  /** The plastic that made the charge (card lines): the line's origin card, else the master's. */
-  card_last4: string | null;
-  /** The plastic is the additional cardholder's (`additional_card_last4s`). */
-  additional: boolean;
-};
 
 const ORIGIN_KIND: Record<FlowCcExpenseLineSource, ExpenseLineOrigin["kind"]> = {
   cc: "card",

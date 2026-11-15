@@ -5,8 +5,8 @@ import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts
 import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { mergeAutoDepositMatchNote } from "./ccExpenseDepositMatchNotes.js";
-import { mergeAutoAdditionalCardNote } from "./ccAdditionalCardExpenseMatch.js";
-import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { mergeAutoAdditionalCardNote } from "./ccAdditionalCardNoteText.js";
+import type { FlowCcExpenseLineRow } from "./expenseLineTypes.js";
 
 export function purchaseNotesMapKey(accountId: number, purchaseKey: string): string {
   return `${accountId}|${purchaseKey}`;

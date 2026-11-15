@@ -4,7 +4,7 @@
  * writes annulled purchases and so reaches the expense categories).
  */
 import { billingMonthForManualLedgerPurchase, pdfClosedBillingMonthsForAccount } from "./facturacion.js";
-import { parseOpenWebPasteBillingMonth } from "../ccOpenWebPasteRepair.js";
+import { parseOpenWebPasteBillingMonth } from "./openWebPasteSource.js";
 import { listCcStatementsForAccount } from "../ccStatementsDb.js";
 
 /**

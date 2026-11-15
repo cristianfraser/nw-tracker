@@ -8,11 +8,11 @@ import {
   type ExpenseCategoryRules,
 } from "./expenseCategoryRules.js";
 import { cancelledInstallmentPurchaseIdsForAccount } from "./ccInstallmentLedgerDb.js";
-import { isAdditionalCardExpenseLine, isInstallmentContractPurchaseKey } from "./ccAdditionalCardExpenseMatch.js";
+import { isAdditionalCardExpenseLine } from "./ccAdditionalCardLine.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { parseDdMmYyToIso, normalizeMerchantText, isCcTraspasoDeudaMerchant } from "nw-tracker-contracts";
-import { buildExpenseKey, parseExpenseKey } from "./expenseKeys.js";
+import { buildExpenseKey, expenseKeyKind, isInstallmentContractKind, parseExpenseKey } from "./expenseKeys.js";
 import { lineCuotaClpSql } from "./cards/lineAmountSql.js";
 
 export const UNCLASSIFIED_CC_EXPENSE_SLUG = "unclassified";
@@ -998,7 +998,7 @@ export function ccPlanCategoryTarget(purchaseId: number): ExpenseCategoryTargetF
     purchaseKey,
     siblingPurchaseKeys: [],
     lineCategoryRowIds: statementLineIdsForManualInstallmentHPurchaseKey(purchaseKey),
-    marksDeclinedAuto: !isInstallmentContractPurchaseKey(purchaseKey),
+    marksDeclinedAuto: !isInstallmentContractKind(expenseKeyKind(purchaseKey)),
     clearsDeclinedAuto: true,
   };
 }
@@ -1022,7 +1022,7 @@ export function ccExpenseLineCategoryTarget(statementLineId: number): ExpenseCat
     purchaseKey,
     siblingPurchaseKeys: [],
     lineCategoryRowIds: listStatementLineIdsForPurchaseKey(statementLineId, purchaseKey),
-    marksDeclinedAuto: !isInstallmentContractPurchaseKey(purchaseKey),
+    marksDeclinedAuto: !isInstallmentContractKind(expenseKeyKind(purchaseKey)),
     clearsDeclinedAuto: true,
     ownCategoryOnly: isAdditionalCardExpenseLine(plastic?.origin ?? null, plastic?.card ?? null),
   };

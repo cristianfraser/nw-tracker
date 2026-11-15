@@ -17,7 +17,7 @@
  */
 import { db } from "./db.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./expenseLineTypes.js";
 import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
 import { splitPensionLine, type PayrollJurisdiction, type PayslipLineKind, type PayslipLineSide } from "./payslipLineKinds.js";
 import { usPayslipClpPerUsd } from "./payrollUsdRate.js";
