@@ -25,6 +25,8 @@ import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { daysBetweenIso, dayWithinWindow } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
+import { pairOneToOne } from "./matching/pairing.js";
+import { sameCoin } from "./matching/money.js";
 
 /** Import batch kinds that plant a charge line (never absorbed against themselves). */
 export const PLANTED_CHARGE_SOURCES = ["cc_lider_boleta", "cc_lender_receipt"] as const;
@@ -45,7 +47,7 @@ export function recordPlantedChargeLine(lineId: number, accountId: number, sourc
 /** A charge as the import compares it: its currency, amount in it, merchant and ISO day. */
 export type ChargeFacts = { currency: string; amount: number; merchant: string | null; date: string | null };
 
-type Planted = { line_id: number; currency: string; amount: number; merchant: string | null; date: string };
+export type Planted = { line_id: number; currency: string; amount: number; merchant: string | null; date: string };
 
 export type PlantedSamePurchase = {
   planted_line_id: number;
@@ -56,12 +58,8 @@ export type PlantedSamePurchase = {
   amount: number;
 };
 
-function sameMoney(a: number, b: number): boolean {
-  return Math.round(a * 100) === Math.round(b * 100);
-}
-
 function samePurchase(p: Planted, c: ChargeFacts): boolean {
-  return p.currency === c.currency && sameMoney(p.amount, c.amount) && merchantsMatchForCrossDedupe(p.merchant, c.merchant);
+  return p.currency === c.currency && sameCoin(p.amount, c.amount, p.currency) && merchantsMatchForCrossDedupe(p.merchant, c.merchant);
 }
 
 export type PlantedChargeAbsorber = {
@@ -91,27 +89,45 @@ export function plantedChargeAbsorber(accountId: number, listing: readonly Charg
     const date = normalizeTransactionDateIso(r.transaction_date);
     if (date) planted.push({ line_id: r.line_id, currency: r.currency, amount: r.amount, merchant: r.merchant, date });
   }
-  const used = new Set<number>();
+  return absorberForPlanted(planted, listing);
+}
+
+/**
+ * The absorber over planted lines already loaded (in line-id order). Pure: the pairing rule alone.
+ *
+ * Two pairings on the shared helper. First the listing's own-day lines, in listing order, each
+ * taking the first free planted line of its day (`first`): those planted lines are spoken for.
+ * Then each line the import would write, as the import reaches it, takes the nearest free planted
+ * line inside the window (`nearest`; planted lines equally near cannot be told apart by the
+ * listing, so the lowest line id pairs).
+ */
+export function absorberForPlanted(planted: readonly Planted[], listing: readonly ChargeFacts[]): PlantedChargeAbsorber {
+  type Dated = ChargeFacts & { date: string };
+  const isCharge = (c: ChargeFacts): c is Dated => c.date != null && c.date !== "" && c.amount > 0;
   // Lines of this listing dated the planted day are that line's own listing (key or fuzzy duplicate).
-  for (const c of listing) {
-    if (!c.date || c.amount <= 0) continue;
-    const p = planted.find((x) => !used.has(x.line_id) && x.date === c.date && samePurchase(x, c));
-    if (p) used.add(p.line_id);
-  }
+  const ownDay = pairOneToOne(listing.filter(isCharge), planted, {
+    strategy: "first",
+    accepts: (c, p) => p.date === c.date && samePurchase(p, c),
+  });
+  const used = new Set<Planted>(ownDay.pairs.map((x) => x.right));
   const absorbed: PlantedSamePurchase[] = [];
   return {
     absorbed,
     absorb(c) {
-      if (!c.date || c.amount <= 0) return null;
-      let best: Planted | null = null;
-      for (const p of planted) {
-        if (used.has(p.line_id) || !samePurchase(p, c)) continue;
-        if (!dayWithinWindow(p.date, c.date, MATCH_WINDOWS.planted_charge)) continue;
-        // The nearest earlier day wins, then the lowest line id.
-        if (!best || daysBetweenIso(p.date, c.date) < daysBetweenIso(best.date, c.date)) best = p;
-      }
+      if (!isCharge(c)) return null;
+      const { pairs } = pairOneToOne(
+        [c],
+        planted.filter((p) => !used.has(p)),
+        {
+          strategy: "nearest",
+          accepts: (line, p) => samePurchase(p, line) && dayWithinWindow(p.date, line.date, MATCH_WINDOWS.planted_charge),
+          distance: (line, p) => daysBetweenIso(p.date, line.date),
+          twins: () => true,
+        }
+      );
+      const best = pairs[0]?.right;
       if (!best) return null;
-      used.add(best.line_id);
+      used.add(best);
       absorbed.push({
         planted_line_id: best.line_id,
         merchant: c.merchant,
