@@ -21,7 +21,7 @@ import { insertLiveMarketQuote } from "./liveMarketQuotesDb.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
 import { snapshotTables } from "./test/snapshotTables.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { placeAccount, removeAccountPlacement } from "./accountPlacement.js";
 import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
@@ -39,6 +39,7 @@ afterAll(() => {
   const coin = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(COIN_IMPORT_KEY) as { id: number } | undefined;
   if (coin) {
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(coin.id);
+    removeAccountPlacement(coin.id);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(coin.id);
   }
   restoreTables();
@@ -236,7 +237,7 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
         )
         .run(groupId, COIN_IMPORT_KEY).lastInsertRowid
     );
-    seedNavTree();
+    placeAccount(btcId);
     expect(
       db.prepare(`SELECT 1 FROM portfolio_group_items WHERE account_id = ?`).get(btcId)
     ).toBeDefined();

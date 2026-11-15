@@ -74,7 +74,7 @@ const { fundChain, fundHeldWindows, locateCertificateRows, pairFundSwitches, vis
 );
 const { FLOW_KIND_AFP_FUND_SWITCH } = await import("../src/movementFlowType.js");
 const { validateTransferCreate } = await import("../src/movementTransfer.js");
-const { seedNavTree } = await import("../src/seedNavTree.js");
+const { placeAccount } = await import("../src/accountPlacement.js");
 const { reseedAccountSyncSources } = await import("../src/accountSyncSources.js");
 const { clearAggregationCache } = await import("../src/cacheRegistry.js");
 const { prettyRgbTripletForAccountId } = await import("../src/chartColorRgb.js");
@@ -351,7 +351,7 @@ function write(): void {
   }
 
   // Nav tree, sync sources, caches.
-  seedNavTree();
+  for (const id of [unoAccount.id, ...created.map((a) => a.id)]) placeAccount(id);
   for (const id of [unoAccount.id, ...created.map((a) => a.id)]) reseedAccountSyncSources(id);
   clearAggregationCache();
 }

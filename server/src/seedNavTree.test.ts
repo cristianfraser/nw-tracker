@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { removeAccountPlacement } from "./accountPlacement.js";
 import { createPanelAccount, updatePanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { seedNavTree } from "./seedNavTree.js";
@@ -170,7 +171,7 @@ describe("seedNavTree retirement AFP+AFC", () => {
   });
 });
 
-describe("seedNavTree brokerage sub-bucket move-out", () => {
+describe("brokerage sub-bucket move-out", () => {
   it("drops the stale sub-bucket membership when an account moves out of brokerage", () => {
     const cleanup: (() => void)[] = [];
     try {
@@ -186,11 +187,10 @@ describe("seedNavTree brokerage sub-bucket move-out", () => {
       });
       const accountId = created.account_id;
       cleanup.push(() => {
-        db.prepare(`DELETE FROM portfolio_group_items WHERE account_id = ?`).run(accountId);
+        removeAccountPlacement(accountId);
         db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
         // The leaf asset groups the create and the move made (one per bucket the account sat in).
         db.prepare(`DELETE FROM asset_groups WHERE slug GLOB ?`).run(`*__${categorySlug}__clp`);
-        seedNavTree();
       });
 
       const groupsFor = (id: number) =>

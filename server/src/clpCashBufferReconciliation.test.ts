@@ -7,7 +7,7 @@ import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { buildDepositsReconciliationPayload } from "./flowsDepositsReconciliation.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
-import { seedNavTree } from "./seedNavTree.js";
+import { removeAccountPlacement } from "./accountPlacement.js";
 import { deleteDepositLinks } from "./test/flowFixtures.js";
 
 /**
@@ -134,13 +134,10 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
   });
 
   afterAll(() => {
-    db.prepare(`DELETE FROM portfolio_group_items WHERE account_id = ? AND item_kind = 'account'`).run(
-      bufferId
-    );
+    removeAccountPlacement(bufferId);
     db.prepare(`DELETE FROM account_sync_sources WHERE account_id = ?`).run(bufferId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(bufferId);
     db.prepare(`DELETE FROM asset_groups WHERE slug = 'cash_eqs__cash_savings__vitest_fintual_clp__clp'`).run();
-    seedNavTree();
   });
 
   it("resolves fund → buffer (movement pair) as an internal transfer on both sides", () => {

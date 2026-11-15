@@ -130,8 +130,9 @@ const HOMOGENEITY_CHECKS = [
 ] as const;
 
 /**
- * Invariants on the nav seeds' output — they are the only writers of these tables, so this
- * runs at the end of every seed (boot included) and throws on the first structural regression.
+ * Invariants on the nav tables, whoever wrote them (the seeds their groups and links, account
+ * placement the memberships): runs at the end of every seed (boot included) and throws on the
+ * first structural regression.
  *
  * - Portfolio tree: a group may hold sub-buckets and accounts side by side (Acciones holds its
  *   stocks and the Portafolio IPSA bucket), but each account sits in at most one group — a

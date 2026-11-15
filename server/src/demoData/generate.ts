@@ -31,6 +31,7 @@ import { createPanelAccount } from "../createPanelAccount.js";
 import { assignOptionContract } from "../optionAssignment.js";
 import { declareTaxResidency } from "../taxResidency.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
+import { placeAllAccounts } from "../accountPlacement.js";
 import { ensureRetirementCountrySplit, seedNavTree } from "../seedNavTree.js";
 import { writeFundUnitSeriesRows } from "../fundUnitDaily.js";
 import { employmentPayslipsKind } from "nw-tracker-contracts";
@@ -816,6 +817,8 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   seedNavTree();
   // With US retirement accounts the Retirement tree reads Chile / US (the personal instance never splits).
   if (ids.has("k401")) ensureRetirementCountrySplit();
+  // The accounts were written before the tree existed: each takes its place now.
+  placeAllAccounts();
   renameTreesCategoryToHobbies();
 
   if (opts.market === "synthetic") {
