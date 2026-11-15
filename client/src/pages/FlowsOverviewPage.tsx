@@ -2,8 +2,7 @@ import { useMemo } from "react";
 import { FlowsOverviewChart } from "../components/charts/FlowsOverviewChart";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
-import { Table } from "../components/ui/Table";
-import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
+import { ColumnTable, type TableColumn } from "../components/ui/ColumnTable";
 import { loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
@@ -166,6 +165,26 @@ export function FlowsOverviewPage() {
   }, [monthRows, tableGranularity]);
   const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
 
+  type TableRow = (typeof pageRows)[number];
+  const tableColumns: TableColumn<TableRow>[] = [
+    {
+      key: "period",
+      header: t("flows.overview.colMonth"),
+      className: "mono",
+      cell: (row) => flowPeriodLabel(row.period_month, tableGranularity),
+      title: true,
+    },
+    ...COLUMNS.map(
+      (c): TableColumn<TableRow> => ({
+        key: c.id,
+        header: t(c.labelKey),
+        className: c.muted ? "mono muted" : "mono",
+        cardClassName: "mono",
+        cell: (row) => formatFlowMoney(c.value(row), displayUnit),
+      })
+    ),
+  ];
+
   if (err) {
     return <p className="error">{err}</p>;
   }
@@ -223,48 +242,13 @@ export function FlowsOverviewPage() {
         ) : null}
 
         <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-          <Table
-            header={
-              <thead>
-                <tr>
-                  <th className="desktop-only">{t("flows.overview.colMonth")}</th>
-                  {COLUMNS.map((c) => (
-                    <th key={c.id} className="desktop-only">
-                      {t(c.labelKey)}
-                    </th>
-                  ))}
-                  <th className="mobile-only" aria-hidden="true" />
-                </tr>
-              </thead>
-            }
-            tableClassName="table--parallel-mobile"
+          <ColumnTable
+            rows={pageRows}
+            columns={tableColumns}
+            rowKey={(row) => row.period_month}
+            cardLayout="flat"
             tableStyle={{ fontSize: "var(--font-size-prose)" }}
-          >
-            {pageRows.map((row) => {
-              const period = flowPeriodLabel(row.period_month, tableGranularity);
-              return (
-                <tr key={row.period_month}>
-                  <td className="mono desktop-only">{period}</td>
-                  {COLUMNS.map((c) => (
-                    <td key={c.id} className={c.muted ? "mono muted desktop-only" : "mono desktop-only"}>
-                      {formatFlowMoney(c.value(row), displayUnit)}
-                    </td>
-                  ))}
-                  <td className="mobile-only">
-                    <TableMobileCard title={period}>
-                      {COLUMNS.map((c) => (
-                        <TableMobileCardRow
-                          key={c.id}
-                          label={t(c.labelKey)}
-                          value={<span className="mono">{formatFlowMoney(c.value(row), displayUnit)}</span>}
-                        />
-                      ))}
-                    </TableMobileCard>
-                  </td>
-                </tr>
-              );
-            })}
-          </Table>
+          />
         </PaginatedTable>
       </PageGridTile>
     </>
