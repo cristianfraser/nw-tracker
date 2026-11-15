@@ -60,6 +60,44 @@ nothing much else.
 The globs overlap on purpose where an area spans layers (`client-ui.md` loads on any client file);
 a session touching cards and the client gets both, ~110 KB, still well under today's load.
 
+### Step 2 result (2026-11-14): globs to add
+
+Checked by resolving every file a topic's sections name in backticks against `git ls-files`
+and testing it against the topic's globs. The draft globs covered 16 to 38 of the ~50 files each
+topic names; with the additions below they cover 25 to 72, and what is left belongs to another
+topic (a card rule naming `rates.ts`) or is a one-off script.
+
+| File | Add to `paths:` |
+|---|---|
+| `cards.md` | `server/src/card*`, `server/src/recurring*`, `server/src/upcomingPayments*`, `server/src/additionalCard*`, `server/src/foreignCashCost*`, `server/src/flows/cardLine*`, `client/src/components/dashboard/UpcomingPaymentsPanel.tsx` |
+| `ingest-sources.md` | `server/src/payslip*`, `server/src/payroll*`, `server/src/pension*`, `server/src/incomingWires*`, `server/src/lider*`, `server/src/merchant*`, `server/src/receipt*`, `server/src/transfer*`, `server/src/afc*`, `server/src/mortgageLender*`, `server/src/mortgagePayment*`, `server/src/utilityBills*`, `server/src/unemployment*`, `server/src/store*`, `server/src/paymentProcessor*` |
+| `market-data.md` | `server/src/afp*`, `server/src/afc*`, `server/src/cmf*`, `server/src/fintual*`, `server/src/bcentral*`, `server/src/forexDay*`, `server/src/fundUnit*`, `server/src/ipc*`, `server/src/sii*`, `server/src/sp*`, `server/src/sync*`, `server/src/riskyNorris*`, `server/src/watchlist*`, `server/src/publisherSchedule*`, `server/src/outboundFetch*`, `server/src/cuotaLedger*`, `server/src/cache*`, `server/src/mark*`, `server/src/pensionLedger*`, `server/src/pensionCertificate*` |
+| `instruments.md` | `server/src/market*` (replaces `marketSymbols.ts`), `server/src/instrument*`, `server/src/ticker*`, `server/src/taxLots*`, `server/src/*TaxLotEvents*`, `server/src/test/instrument*`, `server/src/test/london*`, `client/src/panelAccounts/**` |
+| `valuation-series.md` | `server/src/inversiones*`, `server/src/mark*`, `server/src/monthly*`, `server/src/period*` (replaces `periodReturns*`), `server/src/stored*`, `server/src/timeseries*`, `server/src/irr*`, `server/src/detalle*`, `server/src/reference*`, `server/src/rentabilidad*`, `server/src/cash*`, `server/src/netWorth*`, `server/src/perf*`, `server/src/proportional*`, `client/src/portfolio*`, `client/src/group*`, `client/src/nav*`, `client/src/dailySeries*`, `client/src/components/charts/**` |
+| `expenses.md` | `server/src/latest*`, `server/src/place*`, `server/src/rental*`, `server/src/store*`, `server/src/monthPrecision*`, `server/src/vendor*`, `server/src/cc*Expense*`, `ingest/python/*grocery*`, `ingest/src/grocery/**`, `client/src/components/flows/**`, `client/src/components/groceries/**`, `client/src/components/real-estate/**`, `client/src/components/income/**`, `client/src/components/export/**` |
+| `demo-ops.md` | `server/src/jsonResponse*`, `server/src/requestContext*`, `server/src/visitedPagesWarm*`, `server/scripts/publish-demo-market.ts`, `server/scripts/generate-demo-data.ts`, `client/src/demo*`, `client/src/components/layout/DemoTour.tsx`, `client/src/dashboardFold*`, `client/vite.config.ts` |
+| `tax.md` (done) | as committed: the draft plus `usLegalParameters.ts` and the client tax, projections and wealth pages |
+
+Findings that change the plan:
+
+- **«UI tables — desktop/mobile sync» holds server rules.** Its bullets on the names an expense
+  row shows and the vendor catalog, display units, an expense line's money, card-to-card
+  payments, payment names and category rules name 30 server files and no client file. Under
+  `client/src/**` they would load on a CSS edit and not on `vendorCatalog.ts`. They move by
+  bullet: vendor catalog, display names, category rules, line money and payment names to
+  `expenses.md`; card-to-card payments to `cards.md`; display units to `AGENTS.md` beside
+  «An account's value» (it applies everywhere).
+- **The cache rules sit in «Live market quotes» and «Daily series».** `server/src/cache*` and
+  `server/src/mark*` are in both `market-data.md` and `valuation-series.md`, so either file
+  loads on a cache edit; the text itself stays where it is.
+- **`afc*` and `fintual*` are in two topics** (the ingest of their documents, the sync of their
+  prices). Both load; ~140 KB together.
+- **`client-ui.md` on `client/src/**` is 53 KB on any client file** (less once the server
+  bullets leave). Acceptable; narrowing it to `components/**` + `styles/**` would miss the
+  `queries/` and root-level hooks its loading rules name.
+- **A session that reads only a test or a script** under `server/scripts/` loads no topic; the
+  index rule covers it.
+
 `PARSERS.md` (untracked, personal) gets the same treatment as `.claude/rules/parsers.local.md`
 scoped to `ingest/python/**`, `ingest/src/**` and `cfraser/**`, with that file added to
 `.gitignore`; until then it stays imported by `CLAUDE.md`.
