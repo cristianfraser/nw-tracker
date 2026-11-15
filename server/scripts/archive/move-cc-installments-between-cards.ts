@@ -5,7 +5,7 @@
  *   npx tsx server/scripts/move-cc-installments-between-cards.ts --from=<last4> --to=<last4> --apply
  */
 import { db } from "../../src/db.js";
-import { recomputeCcBillingMonthBalances } from "../../src/ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../../src/ccBillingMonthBalancesRecompute.js";
 import { planCount } from "../../src/cards/purchases.js";
 import { upsertCreditCardValuationsFromLedger } from "../../src/ccCreditCardValuations.js";
 import { ccStatementRowCount } from "../../src/ccStatementsDb.js";

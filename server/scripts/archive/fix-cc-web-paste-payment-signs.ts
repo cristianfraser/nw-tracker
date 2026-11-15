@@ -4,7 +4,7 @@
  */
 import { isCcPaymentMerchant } from "nw-tracker-contracts";
 import { db } from "../../src/db.js";
-import { recomputeCcBillingMonthBalances } from "../../src/ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../../src/ccBillingMonthBalancesRecompute.js";
 
 const rows = db
   .prepare(

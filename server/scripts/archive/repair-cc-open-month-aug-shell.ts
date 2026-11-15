@@ -8,7 +8,7 @@
 // the legitimate open bucket, not the bug state this repaired.
 // Usage: npx tsx scripts/repair-cc-open-month-aug-shell.ts [--apply]
 import { db } from "../../src/db.js";
-import { recomputeCcBillingMonthBalances } from "../../src/ccBillingBalances.js";
+import { recomputeCcBillingMonthBalances } from "../../src/ccBillingMonthBalancesRecompute.js";
 import { billingMonthForManualLedgerPurchase, lastPdfBillingMonthForAccount } from "../../src/cards/facturacion.js";
 
 const APPLY = process.argv.includes("--apply");
