@@ -30,7 +30,9 @@
  */
 import { addDaysIso, normalizeRut, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH, daysBetweenIso } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import type { CategoryRuleLinkDto, ExpenseLinkLabel, FlowCcExpenseLineRow } from "./expenseLineTypes.js";
+
+export type { CategoryRuleLinkDto, ExpenseLinkLabel };
 import type { TransferCounterpartyDto } from "./bankTransferNotices.js";
 import type { PaymentReceiptDto } from "./paymentProcessorReceipts.js";
 import { MERCADOPAGO_PREFIX_CHARGE, STORE_STATEMENT_NAME_FOR_PREFIX_CHARGE } from "./receiptStatementNames.js";
@@ -46,22 +48,11 @@ import {
 } from "./expenseNameText.js";
 import { repairMojibake } from "./textRepair.js";
 import { cleanBankMerchant, splitProcessorPrefix } from "./bankMerchantName.js";
-import { linkKeyForName, type CategoryRuleLink } from "./expenseCategoryRules.js";
+import { linkKeyForName } from "./expenseCategoryRules.js";
 
 export { cleanBankMerchant, splitProcessorPrefix };
 import { foldVendorName, loadVendorCatalog, type VendorCatalog } from "./vendorCatalog.js";
 
-export type ExpenseLinkLabel = {
-  /** «→» paid to, «≈» an inferred link, «←» received from, «⇄» between own products. */
-  arrow: "→" | "≈" | "←" | "⇄";
-  text: string;
-  /** A stay's nights (lodging receipts); the client words it. */
-  nights: number | null;
-  /** A ticket's event day (ISO), when the label is the event. */
-  event_on?: string;
-  /** Show it on the row beside the merchant (false when the merchant already says it). */
-  inline: boolean;
-};
 
 export type ExpenseDisplayNames = {
   display_merchant?: string;
@@ -73,13 +64,6 @@ export type ExpenseDisplayNames = {
   category_link?: CategoryRuleLinkDto;
 };
 
-/**
- * The line's link as a category rule sees it: a receipt's store (by brand), an App Store app, or a
- * transfer's recipient (by RUT, else by name). `specific_default`: whether a category change writes
- * the specific rule unless the user says otherwise — off for food delivery (the restaurant does not
- * change what the platform is), on for everything else.
- */
-export type CategoryRuleLinkDto = CategoryRuleLink & { label: string; specific_default: boolean };
 
 const FOOD_DELIVERY_RECEIPTS = new Set(["uber_eats", "uber_eats_summary", "rappi"]);
 

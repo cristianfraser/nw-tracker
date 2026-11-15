@@ -29,7 +29,7 @@ import {
   formatAutoDepositMatchNote,
   type DepositMatchAllocation,
 } from "./ccExpenseDepositMatchNotes.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./expenseLineTypes.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { ExpenseCategoryRules } from "./expenseCategoryRules.js";
 import {

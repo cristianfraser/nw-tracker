@@ -5,10 +5,10 @@ import {
   listCcFacturadoFinancingLinks,
   type CcFacturadoFinancingLink,
 } from "./ccFacturadoFinancingLinksDb.js";
-import type { ExpenseDepositLinkDto } from "./expenseDepositLinks.js";
-import { splittableMortgageLinkOf } from "./flowsExpensesGastos.js";
+import type { ExpenseDepositLinkDto } from "./expenseLineTypes.js";
+import { splittableMortgageLinkOf } from "./expenseDepositLinks.js";
 import { db } from "./db.js";
-import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRow } from "./expenseLineTypes.js";
 
 /**
  * Facturado-financing projection.

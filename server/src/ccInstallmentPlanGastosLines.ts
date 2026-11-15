@@ -12,7 +12,7 @@ import {
   installmentCuotaCoverageKeys,
   installmentCuotaSlotCovered,
 } from "./ccInstallmentPaymentGastosLines.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./expenseLineTypes.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import { purchaseMonthFromLine } from "./ccExpensePeriodMonth.js";
 import { planRows } from "./cards/purchases.js";

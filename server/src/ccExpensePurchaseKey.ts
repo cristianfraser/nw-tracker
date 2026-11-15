@@ -5,7 +5,7 @@ import {
 import { checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
 import { annulledPurchaseKeyFor } from "./ccAnnulledPurchasesRead.js";
 import { buildExpenseKey } from "./expenseKeys.js";
-import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRow } from "./expenseLineTypes.js";
 
 /** Stable purchase identity (installment-h / line-pr / line-fallback), shared with categories and notes. */
 export function resolvePurchaseKeyForGastosLine(
