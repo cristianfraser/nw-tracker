@@ -4,43 +4,36 @@ import { isHomeCurrency } from "./displayUnits.js";
 import { lineHasPesoDollarView } from "./cards/lineAmountSql.js";
 
 /**
- * One uniform CLP rate per foreign currency in place of every debt-frame rate of that currency,
- * while set: the anchor writer builds the statement frame with them to split a balance into its
- * peso part and one part per foreign currency (the balance is affine in each rate —
- * `ccStatementOwedByCurrencyByMonth` in `ccBillingViews.ts`). Synchronous scope only; never set
- * outside {@link withUniformDebtRates}.
+ * CLP per unit of a foreign currency, by currency code, standing in for every debt-frame rate of
+ * that currency: the anchor writer builds the statement frame with them to split a balance into
+ * its peso part and one part per foreign currency (the balance is affine in each rate —
+ * `ccStatementOwedByCurrencyByMonth` in `ccBillingViews.ts`). Passed down the call chain to the
+ * functions that convert; absent, they read the real debt-frame rates. A currency with no entry
+ * keeps its real rate.
  */
-let uniformDebtRates: ReadonlyMap<string, number> | null = null;
+export type DebtFrameRates = ReadonlyMap<string, number>;
 
-export function withUniformDebtRates<T>(rates: ReadonlyMap<string, number>, fn: () => T): T {
-  if (uniformDebtRates != null) throw new Error("withUniformDebtRates: already inside a uniform-rate pass");
-  for (const [c, r] of rates) if (!(r > 0)) throw new Error(`withUniformDebtRates: bad ${c} rate ${r}`);
-  uniformDebtRates = rates;
-  try {
-    return fn();
-  } finally {
-    uniformDebtRates = null;
+/** No stand-in rates: every conversion reads the real debt-frame rate. What a reader outside a split pass hands down. */
+export const REAL_DEBT_FRAME_RATES: DebtFrameRates | undefined = undefined;
+
+/** {@link DebtFrameRates} from its entries; every rate must be positive. */
+export function debtFrameRates(entries: Iterable<readonly [string, number]>): DebtFrameRates {
+  const rates = new Map<string, number>();
+  for (const [currency, rate] of entries) {
+    if (!(rate > 0)) throw new Error(`debtFrameRates: bad ${currency} rate ${rate}`);
+    rates.set(currency, rate);
   }
-}
-
-/** {@link withUniformDebtRates} for dollars alone. */
-export function withUniformDebtUsdRate<T>(rate: number, fn: () => T): T {
-  return withUniformDebtRates(new Map([["usd", rate]]), fn);
-}
-
-/** The uniform dollar rate of the pass in progress, else null. */
-export function uniformDebtUsdRateInEffect(): number | null {
-  return uniformDebtRates?.get("usd") ?? null;
+  return rates;
 }
 
 /**
  * CLP per USD for valuing dollars as card debt in the statement frame: the `fx_daily` row on or
- * before `fxDateIso` (the facturación's pay-by − 1, `balanceUsdFxDateIso`), or the uniform rate of
- * a split pass. Null when no row is on file.
+ * before `fxDateIso` (the facturación's pay-by − 1, `balanceUsdFxDateIso`), or the dollar rate of
+ * `rates` when given. Null when no row is on file.
  */
-export function debtFrameClpPerUsd(fxDateIso: string | null): number | null {
-  const uniform = uniformDebtRates?.get("usd");
-  if (uniform != null) return uniform;
+export function debtFrameClpPerUsd(fxDateIso: string | null, rates?: DebtFrameRates): number | null {
+  const given = rates?.get("usd");
+  if (given != null) return given;
   const fx = fxMonthEndForBalanceUsd(fxDateIso)?.clp_per_usd;
   return fx != null && fx > 0 ? fx : null;
 }
@@ -48,13 +41,13 @@ export function debtFrameClpPerUsd(fxDateIso: string | null): number | null {
 /**
  * CLP per unit of `currency` for valuing it as card debt in the statement frame: dollars as
  * {@link debtFrameClpPerUsd}, any other currency at its debt-side rate on or before `fxDateIso`
- * (`rates.ts`), or the uniform rate of a split pass. Null when no rate is on file.
+ * (`rates.ts`), or the currency's rate in `rates` when given. Null when no rate is on file.
  */
-export function debtFrameClpPerUnit(currency: string, fxDateIso: string | null): number | null {
+export function debtFrameClpPerUnit(currency: string, fxDateIso: string | null, rates?: DebtFrameRates): number | null {
   if (isHomeCurrency(currency)) return 1;
-  if (currency === "usd") return debtFrameClpPerUsd(fxDateIso); // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
-  const uniform = uniformDebtRates?.get(currency);
-  if (uniform != null) return uniform;
+  if (currency === "usd") return debtFrameClpPerUsd(fxDateIso, rates); // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
+  const given = rates?.get(currency);
+  if (given != null) return given;
   if (!fxDateIso) return null;
   const r = convertCurrency(1, currency, "clp", fxDateIso, { side: "debt" });
   return r != null && r > 0 ? r : null;
@@ -131,26 +124,27 @@ export function effectiveCcExpenseLineAmountClp(
 
 /**
  * {@link effectiveCcExpenseLineAmountClp} for a statement-frame DEBT sum: dollars at
- * {@link debtFrameClpPerUsd} (the facturación's pay-by − 1, or a split pass's uniform rate). Import
+ * {@link debtFrameClpPerUsd} (the facturación's pay-by − 1, or the rates of a split pass). Import
  * dedupe and line matching keep {@link effectiveCcExpenseLineAmountClp}: a split pass must not
  * change which lines match.
  */
 export function debtCcExpenseLineAmountClp(
   row: CcExpenseLineAmountInput,
-  fxDateIso: string | null
+  fxDateIso: string | null,
+  rates?: DebtFrameRates
 ): number | null {
   if (row.currency != null && !lineHasPesoDollarView(row.currency)) {
     // A line in a third currency: what it bills in that currency, at its debt-frame rate.
     return cardLineAmountClpWith(
       { installment_flag: row.installment_flag, amount: row.amount ?? null, currency: row.currency, cuota_amount: row.cuota_amount ?? null },
       (amount, currency) => {
-        const rate = debtFrameClpPerUnit(currency, fxDateIso);
+        const rate = debtFrameClpPerUnit(currency, fxDateIso, rates);
         return rate == null ? null : Math.round(amount * rate);
       }
     );
   }
   return effectiveCcExpenseLineAmountClpWith(row, (usd) => {
-    const fx = debtFrameClpPerUsd(fxDateIso);
+    const fx = debtFrameClpPerUsd(fxDateIso, rates);
     return fx == null ? null : Math.round(usd * fx);
   });
 }

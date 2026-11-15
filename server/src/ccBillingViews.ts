@@ -12,7 +12,7 @@ import {
   type CcBillingMonthBalanceRow,
   type CcOwedNative,
 } from "./ccBillingBalances.js";
-import { debtCcExpenseLineAmountClp, debtFrameClpPerUnit, debtFrameClpPerUsd, withUniformDebtRates } from "./ccExpenseAmountClp.js";
+import { debtCcExpenseLineAmountClp, debtFrameClpPerUnit, debtFrameClpPerUsd, debtFrameRates, REAL_DEBT_FRAME_RATES, type DebtFrameRates } from "./ccExpenseAmountClp.js";
 import {
   accountHasStatementsIn,
   cardForeignCurrencies,
@@ -174,22 +174,23 @@ export function facturadoForeignIn(row: Pick<CcFacturacionRow, "facturado_foreig
 function slotThirdCurrencyFacturado(
   accountId: number,
   slot: CcStatementSlotByCurrency,
-  payByIso: string | null
+  payByIso: string | null,
+  rates: DebtFrameRates | undefined
 ): Map<string, { amount: number; clp: number | null }> {
   const out = new Map<string, { amount: number; clp: number | null }>();
   for (const [currency, st] of slot) {
     if (isHomeCurrency(currency) || currency === "usd") continue; // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
     const amount = statementHeaderFacturado(st) ?? foreignBilledFromStatementLines(st.id, currency);
-    out.set(currency, { amount, clp: foreignToClpAsDebt(amount, currency, payByIso) });
+    out.set(currency, { amount, clp: foreignToClpAsDebt(amount, currency, payByIso, rates) });
   }
   return out;
 }
 
 /** A foreign amount valued as debt for a facturación paid by `payByIso` (pay-by − 1), dollars as {@link usdToClpAsDebt}. */
-function foreignToClpAsDebt(amount: number, currency: string, payByIso: string | null): number | null {
-  if (currency === "usd") return usdToClpAsDebt(amount, payByIso); // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
+function foreignToClpAsDebt(amount: number, currency: string, payByIso: string | null, rates: DebtFrameRates | undefined): number | null {
+  if (currency === "usd") return usdToClpAsDebt(amount, payByIso, rates); // convention-ok: dollars keep their legacy path (fx_daily rates, US$ labels) for byte parity, docs/any-currency-plan.md C3
   if (!Number.isFinite(amount) || !payByIso) return null;
-  const rate = debtFrameClpPerUnit(currency, payByFxDateIso(payByIso));
+  const rate = debtFrameClpPerUnit(currency, payByFxDateIso(payByIso), rates);
   return rate == null ? null : Math.round(amount * rate);
 }
 
@@ -325,10 +326,11 @@ type DerivedFacturado = { facturado_clp: number | null; facturado_usd: number | 
 /** Each currency statement of a slot through `facturadoFromStatement` (none: both null). */
 function slotFacturado(
   accountId: number,
-  slot: CcStatementSlotByCurrency
+  slot: CcStatementSlotByCurrency,
+  rates: DebtFrameRates | undefined
 ): { clpDerived: DerivedFacturado; usdDerived: DerivedFacturado } {
   const derive = (st: CcStatementRow | undefined): DerivedFacturado =>
-    st ? facturadoFromStatement(accountId, st.statement_date, st, st.statement_date_iso) : { facturado_clp: null, facturado_usd: null };
+    st ? facturadoFromStatement(accountId, st.statement_date, st, st.statement_date_iso, rates) : { facturado_clp: null, facturado_usd: null };
   return { clpDerived: derive(slot.get("clp")), usdDerived: derive(slot.get("usd")) };
 }
 
@@ -337,7 +339,7 @@ export function facturadoClpUsdForStatementSlot(
   accountId: number,
   slot: CcStatementSlotByCurrency
 ): { facturado_clp: number; facturado_usd: number } {
-  const { clpDerived, usdDerived } = slotFacturado(accountId, slot);
+  const { clpDerived, usdDerived } = slotFacturado(accountId, slot, REAL_DEBT_FRAME_RATES);
 
   return { facturado_clp: clpDerived.facturado_clp ?? 0, facturado_usd: usdDerived.facturado_usd ?? 0 };
 }
@@ -345,12 +347,13 @@ export function facturadoClpUsdForStatementSlot(
 /** CLP+USD facturado for a billing month from imported statements (header or line-derived). */
 function facturadoTotalClpForStatementSlot(
   accountId: number,
-  slot: CcStatementSlotByCurrency
+  slot: CcStatementSlotByCurrency,
+  rates: DebtFrameRates | undefined
 ): number | null {
   const primary = primaryStatementOfSlot(accountId, slot);
   if (!primary) return null;
 
-  const { clpDerived, usdDerived } = slotFacturado(accountId, slot);
+  const { clpDerived, usdDerived } = slotFacturado(accountId, slot, rates);
 
   const facturadoClp = clpDerived.facturado_clp;
   const facturadoUsd = usdDerived.facturado_usd;
@@ -358,9 +361,9 @@ function facturadoTotalClpForStatementSlot(
   const { pay_by_iso: payByIso } = resolveFacturacionPayBy(accountId, slot, primary);
   const facturadoUsdClp =
     facturadoUsd != null
-      ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
+      ? usdToClpAsDebt(facturadoUsd, payByIso, rates) ?? usdDerived.facturado_clp
       : null;
-  const third = [...slotThirdCurrencyFacturado(accountId, slot, payByIso).values()];
+  const third = [...slotThirdCurrencyFacturado(accountId, slot, payByIso, rates).values()];
   // A statement in credit bills a negative amount (`statementHeaderFacturado`): the total may be
   // 0 or below, and is still what the statements billed.
   if (facturadoClp == null && facturadoUsdClp == null && third.every((t) => t.clp == null)) return null;
@@ -377,7 +380,8 @@ function facturadoTotalClpForStatementSlot(
  */
 export function paymentAbonosClpForBillingMonth(
   accountId: number,
-  billingMonth: string
+  billingMonth: string,
+  rates?: DebtFrameRates
 ): number {
   let sum = 0;
   const dates = new Set(statementDatesForFacturacion(accountId, billingMonth));
@@ -405,7 +409,8 @@ export function paymentAbonosClpForBillingMonth(
           currency: r.currency,
           amount: r.amount,
         },
-        lineFxDateIso
+        lineFxDateIso,
+        rates
       );
       if (clp == null || !Number.isFinite(clp)) continue;
       sum += Math.abs(clp);
@@ -426,12 +431,13 @@ export function paymentAbonosClpForBillingMonth(
  */
 export function facturadoClpFromOpenMonthStatementLines(
   accountId: number,
-  billingMonth: string
+  billingMonth: string,
+  rates?: DebtFrameRates
 ): number {
   // A cuota purchase the feed typed but whose plan is not known yet is not billed in its cycle
   // (cuota comercio: nothing; precio contado: one cuota of an unknown count) — `ccFeedCuotaPurchases.ts`.
   const pendingCuotaPurchases = cuotaPurchaseLinesClpByBucketMonth(accountId).get(billingMonth) ?? 0;
-  const charges = incrementalChargesClpForBillingMonth(accountId, billingMonth) - pendingCuotaPurchases;
+  const charges = incrementalChargesClpForBillingMonth(accountId, billingMonth, rates) - pendingCuotaPurchases;
   return charges > 0 ? Math.round(charges) : 0;
 }
 
@@ -493,9 +499,10 @@ function cuotaPurchaseLinesClpByBucketMonth(accountId: number): Map<string, numb
 function openMonthFacturadoTotalClp(
   accountId: number,
   billingMonth: string,
-  cuotaAPagarClp: number
+  cuotaAPagarClp: number,
+  rates: DebtFrameRates | undefined
 ): number {
-  const uniquo = facturadoClpFromOpenMonthStatementLines(accountId, billingMonth);
+  const uniquo = facturadoClpFromOpenMonthStatementLines(accountId, billingMonth, rates);
   return uniquo + cuotaAPagarClp;
 }
 
@@ -518,9 +525,9 @@ type ProvisionalFacturado = {
   estimate_total_clp: number;
 };
 
-function signedUsdToClpAsDebt(usd: number, payByIso: string | null): number | null {
+function signedUsdToClpAsDebt(usd: number, payByIso: string | null, rates: DebtFrameRates | undefined): number | null {
   if (usd === 0) return 0;
-  const abs = usdToClpAsDebt(Math.abs(usd), payByIso);
+  const abs = usdToClpAsDebt(Math.abs(usd), payByIso, rates);
   return abs == null ? null : usd < 0 ? -abs : abs;
 }
 
@@ -528,9 +535,13 @@ function signedUsdToClpAsDebt(usd: number, payByIso: string | null): number | nu
  * The open cycle's foreign lines of a month as facturado entries: each currency a line bills in,
  * its amount and its pesos (whole), left out when both are 0.
  */
-function openCycleForeignFacturado(accountId: number, billingMonth: string): Map<string, { amount: number; clp: number }> {
+function openCycleForeignFacturado(
+  accountId: number,
+  billingMonth: string,
+  rates: DebtFrameRates | undefined
+): Map<string, { amount: number; clp: number }> {
   const out = new Map<string, { amount: number; clp: number }>();
-  for (const [currency, v] of openMonthForeignFacturado(accountId, billingMonth)) {
+  for (const [currency, v] of openMonthForeignFacturado(accountId, billingMonth, rates)) {
     if (v.amount !== 0 || v.clp !== 0) out.set(currency, { amount: v.amount, clp: Math.round(v.clp) });
   }
   return out;
@@ -546,11 +557,12 @@ function openCycleForeignFacturado(accountId: number, billingMonth: string): Map
 function provisionalFacturado(
   accountId: number,
   billingMonth: string,
-  cuotaAPagarClp: number
+  cuotaAPagarClp: number,
+  rates: DebtFrameRates | undefined
 ): ProvisionalFacturado {
   const close = closeDateForBillingMonth(accountId, billingMonth);
   const pay_by_iso = derivedPayByIso(close.close_iso, ccDerivedPayByRuleForAccount(accountId));
-  const estimate_total_clp = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaAPagarClp);
+  const estimate_total_clp = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaAPagarClp, rates);
   const base = {
     close_iso: close.close_iso,
     close_ddmmyyyy: close.close_ddmmyyyy,
@@ -560,7 +572,7 @@ function provisionalFacturado(
   };
   const feed = feedBillingCloseForMonth(accountId, billingMonth);
   if (!feed) {
-    const foreign = openCycleForeignFacturado(accountId, billingMonth);
+    const foreign = openCycleForeignFacturado(accountId, billingMonth, rates);
     let foreignClp = 0;
     for (const v of foreign.values()) foreignClp += v.clp;
     return {
@@ -574,7 +586,7 @@ function provisionalFacturado(
   const facturado_clp = Math.round(feed.saldo_inicial_clp ?? 0);
   const facturado_usd = feed.saldo_inicial_usd;
   const facturado_usd_clp =
-    facturado_usd != null ? signedUsdToClpAsDebt(facturado_usd, pay_by_iso) : null;
+    facturado_usd != null ? signedUsdToClpAsDebt(facturado_usd, pay_by_iso, rates) : null;
   if (facturado_usd != null && facturado_usd !== 0 && facturado_usd_clp == null) {
     throw new Error(
       `Account ${accountId} ${billingMonth}: no USD/CLP rate for the pay-by ${pay_by_iso} of the ` +
@@ -626,10 +638,11 @@ function cuotaAPagarNextMesClp(
 
 export function buildBillingDetailByMonth(
   accountId: number,
-  ledgerMonths: CcInstallmentMonthRow[] = []
+  ledgerMonths: CcInstallmentMonthRow[] = [],
+  rates?: DebtFrameRates
 ): CcBillingDetailStatementRow[] {
   // Memoize the account-level one-shot scans for this synchronous build (read-only).
-  return withCcOneShotScanCache(() => buildBillingDetailByMonthInner(accountId, ledgerMonths));
+  return withCcOneShotScanCache(() => buildBillingDetailByMonthInner(accountId, ledgerMonths, rates));
 }
 
 /** The uniform rates of the split passes: multiples of 100, so a currency counted to the cent converts to whole pesos. */
@@ -650,8 +663,8 @@ export function ccStatementOwedByCurrencyByMonth(
 ): Map<string, CcOwedNative> {
   const currencies = cardForeignCurrencies(accountId);
   const build = (rates: Map<string, number>) =>
-    withUniformDebtRates(rates, () =>
-      new Map(buildBillingDetailByMonth(accountId, ledgerMonths).map((row) => [row.billing_month, row.balance_statement_clp]))
+    new Map(
+      buildBillingDetailByMonth(accountId, ledgerMonths, debtFrameRates(rates)).map((row) => [row.billing_month, row.balance_statement_clp])
     );
   const base = (over?: [string, number]) => {
     const rates = new Map(currencies.map((c) => [c, SPLIT_RATES[1] as number]));
@@ -693,7 +706,8 @@ export function ccStatementOwedByCurrencyByMonth(
 
 function buildBillingDetailByMonthInner(
   accountId: number,
-  ledgerMonths: CcInstallmentMonthRow[]
+  ledgerMonths: CcInstallmentMonthRow[],
+  rates: DebtFrameRates | undefined
 ): CcBillingDetailStatementRow[] {
   const balances = listCcBillingMonthBalances(accountId).filter(
     (r) => r.as_of_kind !== "month_end"
@@ -744,7 +758,7 @@ function buildBillingDetailByMonthInner(
     const isOpenMonth = billingMonth === openBillingMonth;
     if (!snap && !primary && !provisionalMonths.has(billingMonth) && !isOpenMonth) continue;
 
-    const fromStatement = slot ? facturadoTotalClpForStatementSlot(accountId, slot) : null;
+    const fromStatement = slot ? facturadoTotalClpForStatementSlot(accountId, slot, rates) : null;
     const fromBalance =
       snap?.as_of_kind === "statement" &&
       snap.facturado_clp != null &&
@@ -757,7 +771,7 @@ function buildBillingDetailByMonthInner(
     const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     const provisional =
       !hasPdfClose && provisionalMonths.has(billingMonth)
-        ? provisionalFacturado(accountId, billingMonth, cuotaNext)
+        ? provisionalFacturado(accountId, billingMonth, cuotaNext, rates)
         : null;
     if (provisional) {
       // Closed at the bank: the billed total (the feed's, else the estimate) at the real close.
@@ -765,7 +779,7 @@ function buildBillingDetailByMonthInner(
     } else if (!hasPdfClose && !inactive) {
       // Open month: facturado is what is billed this cycle (matches Facturaciones), not the
       // prior balance rolled forward.
-      totalFacturado = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaNext);
+      totalFacturado = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaNext, rates);
     }
 
     // The open month is `manual` with or without its bucket or snapshot row; without either it is
@@ -812,9 +826,9 @@ function buildBillingDetailByMonthInner(
         .sort((a, b) => b.billing_month.localeCompare(a.billing_month))[0];
       if (priorClosed) {
         const netCharges =
-          incrementalChargesClpForBillingMonth(accountId, openBmRoll) +
+          incrementalChargesClpForBillingMonth(accountId, openBmRoll, rates) +
           installmentPurchasesClpAfter(accountId, ccLedgerMonthEndIso(priorClosed.billing_month)) -
-          paymentAbonosClpForBillingMonth(accountId, openBmRoll);
+          paymentAbonosClpForBillingMonth(accountId, openBmRoll, rates);
         out[openIdx]!.balance_statement_clp = Math.round(priorClosed.balance_statement_clp + netCharges);
       }
     }
@@ -841,7 +855,8 @@ function buildBillingDetailByMonthInner(
     statementRows.map((row) => ({
       billingMonth: row.billing_month,
       monthEndIso: ccLedgerMonthEndIso(row.billing_month),
-    }))
+    })),
+    rates
   );
   statementRows.forEach((row, i) => {
     const adj = adjustments[i]!;
@@ -931,9 +946,9 @@ function appendProjectedBillingDetailRows(
 }
 
 /** USD valued as debt for a facturación paid by `payByIso`: the pay-by − 1 rate (`balanceUsdFxDateIso`). */
-function usdToClpAsDebt(usd: number, payByIso: string | null): number | null {
+function usdToClpAsDebt(usd: number, payByIso: string | null, rates: DebtFrameRates | undefined): number | null {
   if (!Number.isFinite(usd) || !payByIso) return null;
-  const fx = debtFrameClpPerUsd(payByFxDateIso(payByIso));
+  const fx = debtFrameClpPerUsd(payByFxDateIso(payByIso), rates);
   return fx == null ? null : Math.round(usd * fx);
 }
 
@@ -1116,7 +1131,7 @@ function buildFacturacionesInner(
     const primary = primaryStatementOfSlot(accountId, slot);
     if (!primary) continue;
 
-    const { clpDerived, usdDerived } = slotFacturado(accountId, slot);
+    const { clpDerived, usdDerived } = slotFacturado(accountId, slot, REAL_DEBT_FRAME_RATES);
 
     const facturadoClp = clpDerived.facturado_clp;
     const facturadoUsd = usdDerived.facturado_usd;
@@ -1124,15 +1139,15 @@ function buildFacturacionesInner(
     const { pay_by, pay_by_iso: payByIso, pay_by_source } = resolveFacturacionPayBy(accountId, slot, primary);
     const facturadoUsdClp =
       facturadoUsd != null
-        ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
+        ? usdToClpAsDebt(facturadoUsd, payByIso, REAL_DEBT_FRAME_RATES) ?? usdDerived.facturado_clp
         : null;
     const billedForeign = new Map<string, { amount: number | null; clp: number | null }>([
-      ...slotThirdCurrencyFacturado(accountId, slot, payByIso),
+      ...slotThirdCurrencyFacturado(accountId, slot, payByIso, REAL_DEBT_FRAME_RATES),
       ["usd", { amount: facturadoUsd, clp: facturadoUsdClp }],
     ]);
     const cuotaAPagarClp = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
-    const facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
+    const facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot, REAL_DEBT_FRAME_RATES);
     const hasPdfClose = pdfClosed.has(billingMonth);
     if (!hasPdfClose && provisionalMonths.has(billingMonth)) {
       out.push(
@@ -1222,12 +1237,12 @@ function openFacturacionRow(
   slotUsd: { facturado_usd: number | null; facturado_usd_clp: number | null }
 ): CcFacturacionRow {
   const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
-  const facturadoTotal = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaAPagar ?? 0);
+  const facturadoTotal = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaAPagar ?? 0, REAL_DEBT_FRAME_RATES);
   // What the open cycle bills per foreign currency: its lines in that currency (manually-entered
   // purchases too), split out of the total so each shows as its own stacked bar instead of being
   // lumped into facturado_clp; a currency no line has landed in yet bills 0 (dollars: the bucket's
   // own header derivation, kept when the cycle has no dollar line — the slot path's rule).
-  const lines = openCycleForeignFacturado(accountId, billingMonth);
+  const lines = openCycleForeignFacturado(accountId, billingMonth, REAL_DEBT_FRAME_RATES);
   // Every currency counts in the split, the card's or not (dollars always: a bucket's dollar header).
   const billed = new Map(
     [...new Set(["usd", ...cardForeignCurrencies(accountId), ...lines.keys()])].map((c): [string, { amount: number; clp: number }] => [
@@ -1267,7 +1282,7 @@ function provisionalFacturacionRow(
   cuotaAPagarClp: number,
   deudaEnCuotasClp: number | null
 ): CcFacturacionRow {
-  const pv = provisionalFacturado(accountId, billingMonth, cuotaAPagarClp);
+  const pv = provisionalFacturado(accountId, billingMonth, cuotaAPagarClp, REAL_DEBT_FRAME_RATES);
   return {
     billing_month: billingMonth,
     close_date: pv.close_ddmmyyyy,
