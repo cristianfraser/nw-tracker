@@ -2103,6 +2103,109 @@ of the importers; `dashboardNavSnapshotCache.ts` shape check; the optional card-
 Docs pass: AGENTS.md still names `setRateIndependentAccountsResolver` (gone; the series carries
 `rate_independent`).
 
+#### Wave 8b status (2026-11-15, merged on `untangle-2`)
+
+Run as four streams: `ut-node-value-2`, `ut-dead-guards-server`, `ut-dead-guards-edges` in parallel
+(the dead-guards stream was split so no file had two owners), then `ut-placement` (it shares
+`seedNavTree.ts` with the first). Merged tip: typecheck and conventions ok; check-deps 1378 files,
+0 files in cycles; server 3776, client 481, ingest 491, contracts 148 passing. Live-copy rehearsal
+of the merged tip against a same-hour dump of the base: 19 of 1531 files differ, all intended (9
+lose `synthetic_group_color_rgb`, 9 move in the last float digit from decision 3, the index's byte
+counts); `ut-placement` on top: 0 differ. Migrations 336, 337, 341, 346.
+
+Node-value decisions, as they ended:
+
+| # | Result |
+|---|---|
+| 1 | Applied. A missing linked-card rate throws everywhere (`missingCardRate` is gone), also `linkedCcOffsetAt`, `convertLinkedCc`, the footer, the value map's card input, `dashboardPagePayload.ts`. Cards owing nothing need no rate. |
+| 2 | Applied. One value source (`accountValueAt`); `peso_mark_reframed` deleted. |
+| 7 | Applied. One member filter. |
+| 6 | Applied. The netting is declared on `cash_savings` only (migration 336); a net-worth bucket nets through the declaring node inside it (`nettingGroupOf`); `isCashSavingsNavNode` deleted. |
+| 3 | Applied. No caller `now`. 9 files move in the last float digit. |
+| 4 | **Not applied.** Flipping the policy moves 232 files, not 35, and breaks equalities: a total that is Σ rounded parts stops matching the headline beside it (up to about a coin). Rounding belongs where a figure and its total are assembled, not in the node policy. Open decision. |
+| 5 | Measured: 0 payloads move with `null_unless_netted` everywhere — ledger accounts read 0 before their first movement, so the empty rule almost never fires. Collapsing it is free on this data (check the demo and test persons); it needs `BucketValues`, three `DashboardOverviewDailyPoint` fields and the value map's basis nullable. |
+| 8 | Measured: Σ members always moves 44 files (usd, eur) in the last float digit, only under `prior_closes`; consolidated closing vs Σ members is identical or sub-coin on every close of every bucket. Safe to apply. |
+
+Member-null question: 0 reads over 40 accounts × 3912 days × 3 units return null while a quantity
+is held (no missing rate, no missing price; today's live reads not counted). Nothing to fix on this
+data; the split of «no rate» from «nothing held» stays a design note.
+
+Also done by `ut-node-value-2`: the netting primitives and the last two loops are on `nodeValue.ts`
+(`cashEqsBucketNet.ts` keeps the footer and the consolidated helper); the mark-series cache is keyed
+by account id; `synthetic_group_color_rgb` deleted; `portfolio_groups.investment_deposit_target`
+(migration 337) replaces the three-slug set.
+
+`ut-placement`: `server/src/accountPlacement.ts` (`placeAccount`, `removeAccountPlacement`,
+`placeAllAccounts`, `assertAccountsPlaced`); panel create/update, the Fintual certificado import,
+`POST` / `DELETE /api/accounts` place in their own transaction; the seed creates groups, links,
+overlays and the Pasivos subtree only; boot asserts every account is placed. Stored membership
+equalled the seed's derivation on the live copy, the Vitest person and the demo, so no migration.
+
+Audit claims the streams corrected:
+
+- The 79 `synthetic:` expense rows are real, shown gastos lines: they stay (only the note branch
+  went). The 78 `Total mensual (Gasto)` rows are retired excel totals; deleting them moves
+  `GET /api/expenses` (no client caller) and three fx bid/ask gaps — not shipped, a decision.
+- The 299 `expense_entries` without a flow are the place bills, flow-less by design.
+- The 1456 `mid_spread_inferred` rows cannot be deleted: 57 no longer equal today's mid ± spread,
+  101 sit on days with no `fx_daily` row. Kept, with the request-time writer.
+- The legacy Fintual goal map on the laptop names `import:excel` keys for all four goals; they are
+  inert now (accounts resolve by the certificado key).
+- The message titles: the 106 rows are old log rows outside what the endpoint returns, so the
+  payload did not move.
+- All 40 accounts sit on a leaf with no `portfolio_groups.kind_slug`: the `parent__kind` parsing is
+  the live path. The kind belongs on the leaf (`asset_groups.kind_slug`), with 47 call sites.
+
+Behaviour changes (deploy notes):
+
+- The ingest service refuses to start when a gate holds anything but `1/true/yes/0/false/no`/unset
+  (`INGEST_RUN_DRY`, `NW_TRACKER_{FINTUAL,RACIONAL,STATEMENT_JSON,AFP_UNO,AFC}_APPLY`,
+  `NW_TRACKER_FULL_REIMPORT`); `true`/`yes` now mean on. `INGEST_SERVICE_PORT` must be a port.
+  The flag rule lives in contracts (`formats/flags.ts`).
+- A corrupt state file throws where it read as empty: ingest `.scraper-run-state.json`,
+  `.scraper-documents.json`, `.broker-email-state.json`; the server's Fintual goals snapshot (a 500
+  on `/api/sync/status`) and goal map. Check they parse on the home server before deploying.
+- The Fintual poll fails its step on a live goal that is not tracked or has no certificado account
+  (was skipped with a warning): a new goal must be added to `fintualGoals.ts`.
+- Boot fails on an account a bucket holds but that has no membership row. Anything that moves an
+  account or adds a bucket outside the app (a migration, a script) writes the membership itself.
+- A migration re-adding an existing column fails (was skipped and recorded).
+- Routes: a watchlist symbol Yahoo cannot describe answers 502 (was 400); non-input failures in
+  generic merchants, card-payment mirror convert and job complete answer a logged 500 (were
+  400/409); `perf_levels`, `exclude_spending`, `personal_only`, `granularity`, messages `kind`
+  answer 400 on an unknown value; `POST …/valuations` refuses a mortgage; the `equity_eod` source
+  answers 400.
+- New throws where a fallback was: a stored mortgage valuation, a non-finite card owed or cash
+  balance, a certificado key without the `fintual_goal` role, an AFP account without a series, a
+  coin leaf without a ticker, a third-currency line in the listing bucket, a malformed as-of day, a
+  non-finite `nominal_pl`, a card master without `card_last4`, any non-ambiguity error in the
+  deposit-link sync, a non-finite peso bucket.
+
+Left by wave 8b:
+
+- Decision 4 (where rounding lives); apply decisions 5 and 8; the net-worth group page's own total
+  is un-netted, unlike the overview (found by decision 6).
+- The read-time placement check in `loadNavTreeModel`: 72 test files insert accounts straight onto
+  leaves; needs a shared «insert and place» fixture helper first. `seedLiabilitiesTree` and
+  `linkExpenseAccounts` still re-derive on every boot. The account-bucket list is a hand list
+  (`takes_accounts` / `linked_while_holding` columns would make it data).
+- The AFC «no series» default (the Vitest person's AFC account has none; fix the generator).
+- Typed input errors in `createPanelAccount.ts`, `optionAssignment`, `checkingExpenseRefunds.ts`;
+  `buy_rate_missing` is recorded nowhere but still typed (contracts, `FxCoverageBanner.tsx`);
+  `ccCardRegistry().superseded_master_notes` has no runtime reader; `coin()` in
+  `ccAnnulmentWriters.ts`; `ingest/src/{afc,metlife}/fetchMain.ts` default `--min-interval` on
+  garbage; `globalSyncState.ts` still rewrites `equity_eod`; unused `bucketSlug` / `opts` on
+  `monthEndCloseClpForAccount` and optional slug fields on `MarkSeriesAccountRef`.
+- The one retired card with valuations and no owed anchors keeps the pre-anchor path alive.
+- The demo person's generator fails in `writeIngestHistory` (an installment plan whose billed cuotas
+  cover its principal with one left to bill); present before this wave.
+- Docs pass: `.claude/rules/valuation-series.md` (netting rule's home, `bucketValueInUnitAt` without
+  `now`, month-end mark arguments, `primary_portfolio_group_id` set by `placeAccount`,
+  `linkBucketSubtree`, the legacy `?group=` line); AGENTS.md (flag rule in contracts);
+  `.claude/rules/ingest-protocol.md` and `ingest/README.md` (gates read at service start);
+  `docs/afp-fund-accounts-plan.md`, `docs/demo-us-chapter-plan.md`, `docs/holdings-currency-plan.md`
+  (names of deleted seed functions, «UNO Fondo A when undeclared»).
+
 ### Wave 9 — currency agnostic (one first, three in parallel, one last)
 
 The codebase is ours to change: a dollar figure may move by a peso where the legacy dollar path and
