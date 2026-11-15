@@ -11,7 +11,6 @@ import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   movementClpLegOrZero,
   movementLeg,
-  movementUsdLeg,
   type MovementCurrency,
 } from "./movementAmounts.js";
 import {
@@ -120,7 +119,7 @@ export function signedClpDeltaForAccountMovement(
   }
   if (row.account_id !== accountId) return 0;
   if (row.flow_kind != null) {
-    return signedAmountClpForBrokerageFlow(row.flow_kind, clpLeg, movementUsdLeg(row));
+    return signedAmountClpForBrokerageFlow(row.flow_kind, clpLeg);
   }
   return clpLeg;
 }

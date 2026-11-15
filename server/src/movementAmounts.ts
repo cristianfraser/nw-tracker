@@ -12,12 +12,23 @@
  *     row there is bad data; throw, don't coerce (equity_daily precedent).
  *   - In-query sums: interpolate `MOVEMENT_CLP_LEG_SQL` / `MOVEMENT_USD_LEG_SQL`.
  */
+import { coreCurrencyCodes, isHomeCurrency } from "./displayUnits.js";
 
-export const MOVEMENT_CURRENCIES = ["clp", "usd", "eur"] as const; // convention-ok: a CLP-only surface reads the peso leg; the create API prices pesos, dollars and euros
-export type MovementCurrency = (typeof MOVEMENT_CURRENCIES)[number];
+/**
+ * A movement's currency: a core currency of the `currencies` table (pesos, dollars, euros today;
+ * a new one is a row there). Data, not a closed union: validate with `isMovementCurrency`.
+ */
+export type MovementCurrency = string;
 
 export function isMovementCurrency(value: unknown): value is MovementCurrency {
-  return (MOVEMENT_CURRENCIES as readonly unknown[]).includes(value);
+  return typeof value === "string" && coreCurrencyCodes().includes(value);
+}
+
+/** The codes a movement may be written in, upper case, for an error message. */
+export function movementCurrencyChoices(): string {
+  return coreCurrencyCodes()
+    .map((c) => c.toUpperCase())
+    .join("/");
 }
 
 /** The amount columns as stored on `movements` (currency widened for raw SQLite rows). */
@@ -56,7 +67,7 @@ export function requireMovementClp(
   row: MovementAmountFields & { id?: number | null },
   context?: string
 ): number {
-  if (row.currency === "clp") return row.amount; // convention-ok: a CLP-only surface reads the peso leg; the create API prices pesos, dollars and euros
+  if (isHomeCurrency(row.currency)) return row.amount;
   throw new Error(
     `Movement${row.id != null ? ` ${row.id}` : ""} is ${row.currency}-denominated on a CLP-only surface${
       context ? ` (${context})` : ""

@@ -80,7 +80,8 @@ export type IncomingWireBookingReport = {
   booked: {
     request_message_id: string;
     value_date: string;
-    currency: "usd";
+    /** The currency the request stated (a code of `currencies`). */
+    currency: string;
     net_amount: number;
     fee_amount: number;
     from_account_id: number;

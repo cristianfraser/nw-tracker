@@ -161,7 +161,7 @@ describe("stock_buy transfer field validation + ticker default", () => {
     if (!v.ok) expect(v.error).toMatch(/USD amount is not allowed/);
   });
 
-  it("rejects a CLP-quoted stock_buy funded from USD cash", () => {
+  it("rejects a peso amount on a stock_buy funded from USD cash (a trade settles in the cash account's currency)", () => {
     if (!usdId || !stockSnId) return;
     const v = validateMovementCreate(
       stockSnRow,
@@ -177,10 +177,10 @@ describe("stock_buy transfer field validation + ticker default", () => {
       stockSnId
     );
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.error).toMatch(/CLP cash/);
+    if (!v.ok) expect(v.error).toMatch(/settles in USD, the cash account's currency: a CLP amount is not allowed/);
   });
 
-  it("still rejects a USD-quoted stock_buy funded from CLP cash", () => {
+  it("rejects a dollar amount on a stock_buy funded from CLP cash", () => {
     if (!clpId || !stockId) return;
     const v = validateMovementCreate(
       stockRow,
@@ -196,7 +196,7 @@ describe("stock_buy transfer field validation + ticker default", () => {
       stockId
     );
     expect(v.ok).toBe(false);
-    if (!v.ok) expect(v.error).toMatch(/USD cash/);
+    if (!v.ok) expect(v.error).toMatch(/settles in CLP, the cash account's currency: a USD amount is not allowed/);
   });
 
   it("accepts a CLP-quoted stock_sell with proceeds to CLP cash", () => {

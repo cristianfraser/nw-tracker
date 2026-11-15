@@ -1,7 +1,9 @@
 /**
- * Dollar withdrawals a broker wires to one of the client's own accounts, booked from mail alone.
+ * Withdrawals a broker wires to one of the client's own accounts, booked from mail alone, in the
+ * currency the request states: from the broker's cash account in that currency (`broker_cash`
+ * `<broker>|<currency>`) to the destination account declared in it (`bank_account_numbers`).
  *
- * The receiving account (Santander USD) has no movement feed, so mails are the only evidence. Three
+ * The receiving account (a foreign-currency bank account) has no movement feed, so mails are the only evidence. Three
  * mails describe one withdrawal:
  *
  * - The broker's confirmation (Fintual «Retiro en dólares confirmado», `broker.notifications`
@@ -32,8 +34,8 @@ import { db } from "./db.js";
 import { insertMovement } from "./movementWrites.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
-import { fintualUsdAccountId } from "./brokerAdapter.js";
-import { dollarsOnly } from "./ingestCurrencies.js";
+import { brokerCashAccountIdIn } from "./brokerAdapter.js";
+import { requireLoadedCurrency } from "./ingestCurrencies.js";
 
 /** How long after its pay day a request waits for its wire before it is reported overdue. */
 const OVERDUE_AFTER_DUE_DAYS = MATCH_WINDOWS.incoming_wire_overdue.daysAfter;
@@ -49,7 +51,7 @@ export type WithdrawalRequest = {
   broker: "fintual";
   requested_at: string;
   subject: string;
-  currency: "usd";
+  currency: string;
   gross_amount: number;
   net_amount: number;
   destination_account: string;
@@ -62,7 +64,7 @@ const cents = (n: number) => Math.round(n * 100);
 export function withdrawalRequestFromNotification(n: BrokerNotification, broker: "fintual"): WithdrawalRequest {
   if (n.kind !== "withdrawal_requested") throw new Error(`notification ${n.message_id} is not a withdrawal request`);
   if (n.currency == null) throw new Error(`withdrawal request ${n.message_id}: the notification states no currency`);
-  dollarsOnly(n.currency, "broker.notifications withdrawal request");
+  const currency = requireLoadedCurrency(n.currency, "broker.notifications withdrawal request");
   if (n.amount == null || n.gross_amount == null || !n.destination_account || !n.due_on) {
     throw new Error(`withdrawal request ${n.message_id} does not state net, gross, destination account and pay day`);
   }
@@ -74,7 +76,7 @@ export function withdrawalRequestFromNotification(n: BrokerNotification, broker:
     broker,
     requested_at: n.occurred_at,
     subject: n.subject,
-    currency: "usd",
+    currency,
     gross_amount: n.gross_amount,
     net_amount: n.amount,
     destination_account: n.destination_account,
@@ -143,7 +145,7 @@ function rowNotice(r: Record<string, unknown>): IncomingWireNotice {
     sent_at_chile: String(r.sent_at_chile),
     subject: String(r.subject),
     value_date: String(r.value_date),
-    currency: "usd",
+    currency: String(r.currency),
     amount: Number(r.amount),
     beneficiary: { bank: s(r.beneficiary_bank), account: s(r.beneficiary_account), name: s(r.beneficiary_name) },
     ordering: { name: s(r.ordering_name), account: s(r.ordering_account), bank: s(r.ordering_bank) },
@@ -222,6 +224,7 @@ export function groupWireNotices(notices: readonly IncomingWireNotice[], account
     const wire = wires.find(
       (w) =>
         w.account_id === account_id &&
+        w.notices.every((x) => x.currency === n.currency) &&
         w.amount_cents === cents(n.amount) &&
         !w.notices.some((x) => x.reported_by === n.reported_by) &&
         w.notices.every((x) => Math.abs(daysBetweenIso(x.value_date, n.value_date)) <= NOTICES_OF_ONE_WIRE_DAYS)
@@ -245,13 +248,13 @@ type Booking = IncomingWireBookingReport["booked"][number];
 
 const findExistingFee = db.prepare(
   `SELECT id FROM movements
-   WHERE account_id = ? AND flow_kind = 'cash_fee' AND currency = 'usd' AND ABS(amount - ?) < 0.005
+   WHERE account_id = ? AND flow_kind = 'cash_fee' AND currency = ? AND ABS(amount - ?) < 0.005
      AND occurred_on BETWEEN ? AND ?`
 );
 
 const findExistingTransfer = db.prepare(
   `SELECT id FROM movements
-   WHERE from_account_id = ? AND to_account_id = ? AND currency = 'usd' AND ABS(amount - ?) < 0.005
+   WHERE from_account_id = ? AND to_account_id = ? AND currency = ? AND ABS(amount - ?) < 0.005
      AND occurred_on BETWEEN ? AND ?`
 );
 
@@ -294,6 +297,7 @@ export function bookIncomingWires(): IncomingWireBookingReport {
       (w) =>
         !used.has(w) &&
         w.account_id === toAccount &&
+        w.notices.every((n) => n.currency === r.currency) &&
         w.amount_cents === cents(r.net_amount) &&
         w.value_date >= requestedDay &&
         w.value_date <= addDaysIso(r.due_on, WIRE_AFTER_DUE_DAYS) &&
@@ -310,16 +314,17 @@ export function bookIncomingWires(): IncomingWireBookingReport {
     }
     if (candidates.length > 1) {
       report.ambiguous.push(
-        `request ${r.message_id} (US$${r.net_amount}): ${candidates.length} wires fit — ${candidates.map((w) => w.value_date).join(", ")}`
+        `request ${r.message_id} (${r.currency.toUpperCase()} ${r.net_amount}): ${candidates.length} wires fit — ${candidates.map((w) => w.value_date).join(", ")}`
       );
       continue;
     }
     const wire = candidates[0]!;
     used.add(wire);
-    const from = fintualUsdAccountId();
+    const from = brokerCashAccountIdIn(r.broker, r.currency);
     const existing = findExistingTransfer.get(
       from,
       toAccount,
+      r.currency,
       r.net_amount,
       addDaysIso(wire.value_date, -EXISTING_TRANSFER_WINDOW_DAYS),
       addDaysIso(wire.value_date, EXISTING_TRANSFER_WINDOW_DAYS)
@@ -328,6 +333,7 @@ export function bookIncomingWires(): IncomingWireBookingReport {
     const existingFee = existing
       ? (findExistingFee.get(
           from,
+          r.currency,
           (cents(r.gross_amount) - cents(r.net_amount)) / 100,
           addDaysIso(wire.value_date, -EXISTING_TRANSFER_WINDOW_DAYS),
           addDaysIso(wire.value_date, EXISTING_TRANSFER_WINDOW_DAYS)
@@ -336,7 +342,7 @@ export function bookIncomingWires(): IncomingWireBookingReport {
     report.booked.push({
       request_message_id: r.message_id,
       value_date: wire.value_date,
-      currency: "usd",
+      currency: r.currency,
       net_amount: r.net_amount,
       fee_amount: (cents(r.gross_amount) - cents(r.net_amount)) / 100,
       from_account_id: from,
@@ -373,18 +379,18 @@ function writeBooking(b: Booking, r: WithdrawalRequest): void {
       fromAccountId: b.from_account_id,
       toAccountId: b.to_account_id,
       amount: b.net_amount,
-      currency: "usd",
+      currency: b.currency,
       occurredOn: b.value_date,
-      note: `${broker} · retiro en dólares a la cuenta ${r.destination_account} (${r.subject})`.slice(0, 300),
+      note: `${broker} · retiro en ${b.currency.toUpperCase()} a la cuenta ${r.destination_account} (${r.subject})`.slice(0, 300),
     });
   }
   if (b.fee_amount > 0 && b.fee_movement_id == null) {
     b.fee_movement_id = insertMovement({
       accountId: b.from_account_id,
       amount: b.fee_amount,
-      currency: "usd",
+      currency: b.currency,
       occurredOn: b.value_date,
-      note: `${broker} · comisión del retiro en dólares`,
+      note: `${broker} · comisión del retiro en ${b.currency.toUpperCase()}`,
       flowKind: "cash_fee",
     });
   }
@@ -398,8 +404,7 @@ function writeBooking(b: Booking, r: WithdrawalRequest): void {
 
 /** `bank_account.incoming_wires`: stores the notices and books what they pay. */
 export function applyIncomingWires(payload: BankAccountIncomingWiresPayload): BankAccountIncomingWiresApplyDetails {
-  // Wires are booked into the dollar account from a dollar broker withdrawal.
-  for (const n of payload.notices) dollarsOnly(n.currency, "bank_account.incoming_wires");
+  for (const n of payload.notices) requireLoadedCurrency(n.currency, "bank_account.incoming_wires");
   const new_notices = storeIncomingWireNotices(payload.notices);
   return { received: payload.notices.length, new_notices, bookings: bookIncomingWires() };
 }

@@ -1,16 +1,19 @@
 /**
  * An option assignment (or exercise) as two linked rows (`option_assignments`, migration 304):
  * the `option_assign` units row that takes the contract account's position to zero, and the
- * share leg at the strike on the underlying's account — a `stock_sell` to USD cash when a short
- * call is assigned (or a long put exercised), a `stock_buy` from USD cash when a short put is
- * assigned (or a long call exercised). One service writes both in one transaction; neither row
+ * share leg at the strike on the underlying's account — a `stock_sell` to cash when a short
+ * call is assigned (or a long put exercised), a `stock_buy` from cash when a short put is
+ * assigned (or a long call exercised) — in the contract's currency (its underlying's quote
+ * currency, the strike's), against a cash account that holds it. One service writes both in one transaction; neither row
  * is typed by hand (`movementUnitsPolicy.ts` refuses a bare `option_assign`).
  *
  * The share leg is an ordinary trade to every reader (units, capital, tax lots); the link is
  * what lets the tax lots (wave O2) carry the contract's premium into the sale's proceeds or the
  * purchase's basis.
  */
-import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
+import { accountCashCurrency } from "./cashCurrency.js";
+import { currencyMinorDigits } from "./displayUnits.js";
+import { equityQuoteCurrency } from "./equityQuote.js";
 import { accountRowForId } from "./accountRowForMovement.js";
 import { accountUsesBrokerageFlowKinds } from "./accountBrokerageFlows.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
@@ -25,7 +28,7 @@ export type OptionAssignmentInput = {
   contract_account_id: number;
   /** The account holding the underlying's shares (its `equity_ticker` is the contract's underlying). */
   stock_account_id: number;
-  /** The USD cash account the strike settles against. */
+  /** The cash account the strike settles against: it holds the contract's currency. */
   cash_account_id: number;
   occurred_on: string;
   /** Contracts assigned or exercised: a positive whole number, at most the position held. */
@@ -39,6 +42,7 @@ export type OptionAssignmentResult = {
   stock_movement_id: number;
   stock_flow_kind: "stock_sell" | "stock_buy";
   shares: number;
+  /** Strike × shares in the contract's currency (dollars for every contract today; the key is the wire's). */
   amount_usd: number;
   /** The contracts' sign on the contract row: + closes a short, − closes a long. */
   contracts_units_delta: number;
@@ -73,7 +77,11 @@ export function assignOptionContract(input: OptionAssignmentInput): OptionAssign
   if (stockTicker !== terms.underlying_ticker.toUpperCase()) {
     fail(400, `stock_account_id holds ${stockTicker ?? "no ticker"}, not the contract's underlying ${terms.underlying_ticker}.`);
   }
-  if (!isForeignCashAccountIn(input.cash_account_id, "usd")) fail(400, "cash_account_id must be a USD cash account.");
+  // The strike is in the underlying's quote currency: the share leg settles against cash held in it.
+  const currency = equityQuoteCurrency(terms.underlying_ticker);
+  if (accountCashCurrency(input.cash_account_id) !== currency) {
+    fail(400, `cash_account_id must be a ${currency.toUpperCase()} cash account.`);
+  }
 
   const held = optionContractsThroughDate(input.contract_account_id, input.occurred_on);
   if (held === 0) fail(400, `no contracts of ${terms.occ_symbol} are held on ${input.occurred_on}.`);
@@ -82,7 +90,8 @@ export function assignOptionContract(input: OptionAssignmentInput): OptionAssign
   }
   const shareLeg = assignmentShareLeg(terms, held);
   const shares = input.contracts * terms.multiplier;
-  const amountUsd = Math.round(terms.strike * shares * 100) / 100;
+  const coin = 10 ** currencyMinorDigits(currency);
+  const amount = Math.round(terms.strike * shares * coin) / coin;
   if (shareLeg === "stock_sell") {
     const sharesHeld = brokerageShareUnitsThroughDate(input.stock_account_id, input.occurred_on);
     if (sharesHeld + 1e-9 < shares) {
@@ -97,7 +106,7 @@ export function assignOptionContract(input: OptionAssignmentInput): OptionAssign
     const optionMovementId = insertMovement({
       accountId: input.contract_account_id,
       amount: 0,
-      currency: "usd",
+      currency,
       occurredOn: input.occurred_on,
       note,
       unitsDelta: contractsUnits,
@@ -110,8 +119,8 @@ export function assignOptionContract(input: OptionAssignmentInput): OptionAssign
     const stockMovementId = insertMovement({
       fromAccountId: from,
       toAccountId: to,
-      amount: amountUsd,
-      currency: "usd",
+      amount,
+      currency,
       occurredOn: input.occurred_on,
       note,
       unitsDelta: shares,
@@ -126,7 +135,7 @@ export function assignOptionContract(input: OptionAssignmentInput): OptionAssign
       stock_movement_id: stockMovementId,
       stock_flow_kind: shareLeg,
       shares,
-      amount_usd: amountUsd,
+      amount_usd: amount,
       contracts_units_delta: contractsUnits,
     };
   });

@@ -34,6 +34,14 @@ function brokerCashAccountId(broker: BrokerSlug, currency: BrokerCurrency): numb
   return accountWithRole("broker_cash", `${broker}|${currency}`);
 }
 
+/**
+ * A broker's cash account in any currency, by its declared role (`broker_cash`
+ * `<broker>|<currency>`); throws when the broker holds no cash account in it.
+ */
+export function brokerCashAccountIdIn(broker: BrokerSlug, currency: string): number {
+  return accountWithRole("broker_cash", `${broker}|${currency}`);
+}
+
 /* ------------------------------------- Fintual ------------------------------------- */
 
 export function fintualUsdAccountId(): number {

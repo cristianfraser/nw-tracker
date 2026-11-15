@@ -7,7 +7,8 @@
  */
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { cryptoEquityTickerForAccount } from "./cryptoValuation.js";
-import { equityCloseEod } from "./equityQuote.js";
+import { HOME_CURRENCY } from "./displayUnits.js";
+import { equityCloseEod, equityQuoteCurrency } from "./equityQuote.js";
 import { cuotaLedgerSeriesKeyForAccount } from "./cuotaLedgerAccounts.js";
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { fundUnitClpOnOrBefore } from "./fundUnitDaily.js";
@@ -20,11 +21,12 @@ const RECONCILE_TOLERANCE_FRACTION = 0.01;
 export function valorCuotaClpOnDate(accountId: number, ymd: string): number | null {
   const cryptoTicker = cryptoEquityTickerForAccount(accountId);
   if (cryptoTicker) {
-    const closeUsd = equityCloseEod(cryptoTicker, ymd);
-    if (closeUsd == null || !Number.isFinite(closeUsd) || closeUsd <= 0) return null;
-    const fx = storedPairRate("usd", "clp", ymd);
+    // The coin's close in its quote currency, in pesos at that pair's stored mid.
+    const close = equityCloseEod(cryptoTicker, ymd);
+    if (close == null || !Number.isFinite(close) || close <= 0) return null;
+    const fx = storedPairRate(equityQuoteCurrency(cryptoTicker), HOME_CURRENCY, ymd);
     if (!fx || fx.mid <= 0) return null;
-    return closeUsd * fx.mid;
+    return close * fx.mid;
   }
   const kind = accountKindSlugForAccountId(accountId);
   const seriesKey = kind === "afp" ? cuotaLedgerSeriesKeyForAccount(accountId) : fundSeriesKeyForAccount(accountId);
