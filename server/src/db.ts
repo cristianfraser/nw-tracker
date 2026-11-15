@@ -26,7 +26,7 @@ import {
 import { runLoanPayments258 } from "./migrationHooks/loanPayments258.js";
 import { runDropMarketSymbolsMic306, runInstrumentRegistry305 } from "./migrationHooks/instrumentRegistry305.js";
 import { runAccountRoles271 } from "./migrationHooks/accountRoles271.js";
-import { runAccountRoles298 } from "./migrationHooks/accountRoles299.js";
+import { runAccountRoles299 } from "./migrationHooks/accountRoles299.js";
 import { runNavTreeRoles272 } from "./migrationHooks/navTreeRoles272.js";
 import { runExpenseKeyLegacyRewrite273 } from "./migrationHooks/expenseKeyLegacyRewrite273.js";
 import { runManualExpenseMerchant275 } from "./migrationHooks/manualExpenseMerchant275.js";
@@ -53,8 +53,8 @@ import { runMovementEvidenceKind291 } from "./migrationHooks/flowEvidenceKind291
 import { runOwnerIdentity277 } from "./migrationHooks/ownerIdentity277.js";
 import { runSiiIssuedFeeReceipts296 } from "./migrationHooks/siiIssuedFeeReceipts296.js";
 import { runFacturadoPaymentCharges297 } from "./migrationHooks/ccFacturadoPaymentCharges297.js";
-import { runRentalPlaces299 } from "./migrationHooks/rentalPlaces300.js";
-import { runF1040Filed300 } from "./migrationHooks/filed301.js";
+import { runRentalPlaces300 } from "./migrationHooks/rentalPlaces300.js";
+import { runF1040Filed301 } from "./migrationHooks/filed301.js";
 import { runTaxResidency302 } from "./migrationHooks/taxResidency302.js";
 import { runOptionContracts304 } from "./migrationHooks/optionContracts304.js";
 import { runMortgagePaymentReceipts307 } from "./migrationHooks/mortgagePaymentReceipts307.js";
@@ -76,7 +76,7 @@ import { runCardAmountsByCurrency321 } from "./migrationHooks/cardAmountsByCurre
 import { runTraspasoLegs322 } from "./migrationHooks/traspasoLegs322.js";
 import { runMovementFlowTrigger317 } from "./migrationHooks/movementFlowTrigger317.js";
 import { runCashCurrency318 } from "./migrationHooks/cashCurrency318.js";
-import { runPayrollJurisdiction297 } from "./migrationHooks/payrollJurisdiction298.js";
+import { runPayrollJurisdiction298 } from "./migrationHooks/payrollJurisdiction298.js";
 import { runValuationsAnyCurrency260 } from "./migrationHooks/valuationsAnyCurrency260.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
@@ -365,7 +365,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "305_instrument_registry.sql": runInstrumentRegistry305,
   "306_drop_market_symbols_mic.sql": runDropMarketSymbolsMic306,
   "271_account_roles.sql": runAccountRoles271,
-  "299_property_loan_identity_roles.sql": runAccountRoles298,
+  "299_property_loan_identity_roles.sql": runAccountRoles299,
   "272_nav_tree_roles.sql": runNavTreeRoles272,
   "273_expense_key_legacy_rewrite.sql": (dbi) => {
     runExpenseKeyLegacyRewrite273(dbi);
@@ -394,9 +394,9 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "295_flow_evidence_estimate_kind.sql": runFlowEvidenceEstimateKind295,
   "296_sii_issued_fee_receipts.sql": runSiiIssuedFeeReceipts296,
   "297_cc_facturado_payment_charges.sql": runFacturadoPaymentCharges297,
-  "298_payroll_jurisdiction.sql": runPayrollJurisdiction297,
-  "300_rental_places_dfl2_and_rent_income.sql": runRentalPlaces299,
-  "301_us_f1040_filed.sql": runF1040Filed300,
+  "298_payroll_jurisdiction.sql": runPayrollJurisdiction298,
+  "300_rental_places_dfl2_and_rent_income.sql": runRentalPlaces300,
+  "301_us_f1040_filed.sql": runF1040Filed301,
   "302_tax_residency_periods.sql": runTaxResidency302,
   "304_option_contracts.sql": runOptionContracts304,
   "307_mortgage_payment_receipts.sql": runMortgagePaymentReceipts307,

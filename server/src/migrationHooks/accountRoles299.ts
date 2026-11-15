@@ -51,7 +51,7 @@ function revokeSql(): string {
   ].join("\n  ");
 }
 
-export function runAccountRoles298(dbi: DatabaseType): void {
+export function runAccountRoles299(dbi: DatabaseType): void {
   dbi.exec(`DROP TRIGGER IF EXISTS account_roles_property_identity_ai`);
   dbi.exec(`DROP TRIGGER IF EXISTS account_roles_property_identity_au`);
   dbi.exec(`CREATE TRIGGER account_roles_property_identity_ai AFTER INSERT ON accounts WHEN NEW.import_key IS NOT NULL BEGIN
