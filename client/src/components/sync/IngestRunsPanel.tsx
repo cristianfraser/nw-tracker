@@ -5,6 +5,7 @@ import { invalidateResources, resources } from "../../queries/resources";
 import { Button } from "@crfrsr/ui";
 import type { IngestRunSummary, IngestRunsStatusResponse } from "../../types";
 import { cn } from "../../cn";
+import { DEMO_BUILD } from "../../dashboardPath";
 import { formatDateTimeLabel } from "../../formatDateLabel";
 import { useStartIngestRunMutation } from "../../queries/hooks";
 import { loadableClass } from "../ui/Loadable";
@@ -28,7 +29,7 @@ function statusClass(run: IngestRunSummary): string {
  * The hosted demo runs no ingest service: its run history is generated from its documents, so
  * there is nothing to start and no next run to wait for.
  */
-const LIVE_SCHEDULE = import.meta.env.VITE_DEMO_MODE !== "1";
+const LIVE_SCHEDULE = !DEMO_BUILD;
 
 /**
  * The ingest service's two runs (the hourly e-mail poll and the nightly) with a button to start

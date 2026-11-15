@@ -1,3 +1,5 @@
+import { DEMO_BUILD } from "./dashboardPath";
+
 /**
  * Global chart-style preference (rehearsal of hand-drawn chart renderings, 2026-11-03):
  *
@@ -35,7 +37,7 @@ export function persistChartStyle(style: ChartStyle): void {
 }
 
 /** The style a browser with nothing stored gets: `pen` on the hosted demo, else `plain`. */
-const DEFAULT_CHART_STYLE: ChartStyle = import.meta.env.VITE_DEMO_MODE === "1" ? "pen" : "plain";
+const DEFAULT_CHART_STYLE: ChartStyle = DEMO_BUILD ? "pen" : "plain";
 
 /** Stored value if valid; otherwise the default. */
 export function readInitialChartStyle(): ChartStyle {

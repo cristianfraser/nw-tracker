@@ -1,3 +1,5 @@
+import { DEMO_BUILD } from "../../dashboardPath";
+
 /**
  * Master list of control-panel subroutes. The /panel router (App.tsx), the panel
  * subnav tabs (ControlPanelLayout), and the sidebar's Control panel children
@@ -17,5 +19,5 @@ export type PanelSubrouteSlug = (typeof PANEL_SUBROUTES)[number]["slug"];
 
 /** The subroutes this build shows: a hosted-demo build leaves out the ones the demo refuses. */
 export const VISIBLE_PANEL_SUBROUTES = PANEL_SUBROUTES.filter(
-  (route) => !(import.meta.env.VITE_DEMO_MODE === "1" && "hiddenOnDemo" in route && route.hiddenOnDemo)
+  (route) => !(DEMO_BUILD && "hiddenOnDemo" in route && route.hiddenOnDemo)
 );
