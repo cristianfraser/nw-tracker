@@ -150,9 +150,8 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
       : [];
   // Pasivos root / credit-card group / issuer pages: the day-period CC historial lines
   // (owed, plan debt, plan tail) summed over the masters the merged monthly ledger sums, plus
-  // each card's facturación bars on its close dates — CLP-native like the chart, so CLP
-  // requests only (the client asks for clp explicitly).
-  // TODO(any-currency, Stream 4): pass `unit` once `ccDailyHistorialBlock` takes one (CLP-only today).
+  // each card's facturación bars on its close dates, in the series' unit
+  // (`ccDailyHistorialBlock.ts`).
   const ccDaily = ccDailyHistorialBlockForGroup(portfolioGroup, series);
   return {
     ...withRefs,
