@@ -11,6 +11,10 @@ import { listPlantedPaymentLines } from "./ccPlantedPayments.js";
 import { cardIssuerStatementSchema, type CardIssuerStatementPayload } from "nw-tracker-contracts";
 import { applyCardStatementToAccount } from "./cardStatementApply.js";
 import { IngestRefusal } from "./ingestReceiver.js";
+import { insertLines } from "./cards/lineWrites.js";
+import { webPasteLineMatchesStatementLine } from "./ccOpenWebPastePdfReconcile.js";
+import { dbLineToReconcileRow } from "./ccStatementImportReconcile.js";
+import { listCcStatementLinesForStatement } from "./ccStatementsDb.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { deleteTempCardMaster } from "./test/tempCardMaster.js";
@@ -27,7 +31,9 @@ import { cardPaymentMoney, loadCardPaymentTransfers } from "./latestCardPayments
  * Wave 9 `ut-card-import-currency`: a traspaso de deuda pairs a cargo on the card's main statement
  * with an abono in another currency, checked against the pair's stored rate of the close; a
  * facturación as the issuer states it (`card.statement`) is written and cross-checked in the
- * card's own currency, its main statement stating the header.
+ * card's own currency, its main statement stating the header; a listing's open bucket is a
+ * statement in the card's main currency, and its lines are matched and reconciled at their own
+ * amount and currency.
  */
 type Fixture = {
   label: string;
@@ -397,6 +403,42 @@ for (const fx of FIXTURES) {
         db.prepare(`DELETE FROM cc_statements WHERE account_id = ? AND statement_date = ?`).run(cardId, ddmm(close));
         db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(cardId);
         db.prepare(`DELETE FROM cc_billing_month_metrics WHERE account_id = ?`).run(cardId);
+        clearAggregationCache();
+      }
+    });
+
+    it("files a listing in an open bucket of the card's main currency and reads its lines at their own amount", () => {
+      const listed = `${y}-04-20`;
+      try {
+        const result = insertLines(cardId, {
+          lines: [{ transaction_date: listed, merchant: "FERRETERIA VITEST", currency: fx.currency, amount: 23.45, raw_line: "vitest" }],
+          errors: [],
+        });
+        expect(result.inserted).toBe(1);
+        const bucket = db
+          .prepare(`SELECT id, currency, source_pdf FROM cc_statements WHERE account_id = ? AND source_kind = 'listing_open'`)
+          .all(cardId) as { id: number; currency: string; source_pdf: string }[];
+        // One bucket (the hand payment's planted line sits in it too), in the card's main currency.
+        expect(bucket.map((b) => b.currency)).toEqual([fx.currency]);
+        const bucketLine = listCcStatementLinesForStatement(bucket[0]!.id).find((l) => l.merchant === "FERRETERIA VITEST");
+        expect(bucketLine).toMatchObject({ amount: 23.45, currency: fx.currency });
+        // The reconcile row carries the line in the statement's own foreign slot, never as 0.
+        const row = dbLineToReconcileRow(bucketLine!, { currency: fx.currency, layout: "compact", source_pdf: bucket[0]!.source_pdf, source_kind: "listing_open" });
+        expect([row.amount_clp, row.amount_usd]).toEqual([0, 23.45]);
+        // The statement that bills the purchase a day later is that purchase; another amount or currency is not.
+        const billed = { ...bucketLine!, id: -1, transaction_date: ddmm(`${y}-04-21`), merchant: "FERRETERIA VITEST (T)" };
+        expect(webPasteLineMatchesStatementLine(bucketLine!, { line: billed, currency: fx.currency })).toBe(true);
+        expect(webPasteLineMatchesStatementLine(bucketLine!, { line: { ...billed, amount: 23.46 }, currency: fx.currency })).toBe(false);
+        expect(webPasteLineMatchesStatementLine(bucketLine!, { line: { ...billed, currency: "clp" }, currency: "clp" })).toBe(false);
+        // A line in a currency that is neither the statement's nor one of the two slots has no place in its reconcile.
+        if (fx.currency !== "eur") {
+          expect(() =>
+            dbLineToReconcileRow({ ...bucketLine!, currency: "eur" }, { currency: fx.currency, layout: "compact", source_pdf: "vitest", source_kind: "listing_open" })
+          ).toThrow(/has no slot/);
+        }
+      } finally {
+        db.prepare(`DELETE FROM cc_statement_lines WHERE merchant = 'FERRETERIA VITEST' AND statement_id IN (SELECT id FROM cc_statements WHERE account_id = ?)`).run(cardId);
+        db.prepare(`DELETE FROM import_batches WHERE id > ? AND kind = 'cc_web_paste'`).run(batchFloor);
         clearAggregationCache();
       }
     });
