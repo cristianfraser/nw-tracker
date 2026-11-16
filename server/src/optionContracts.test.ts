@@ -313,7 +313,7 @@ describe("the capital identity: Δvalue = flow + P/L", () => {
       note: NOTE,
     });
     clearAggregationCache();
-    expect(r).toMatchObject({ stock_flow_kind: "stock_sell", shares: 200, amount_usd: 20_000, contracts_units_delta: 2 });
+    expect(r).toMatchObject({ stock_flow_kind: "stock_sell", shares: 200, amount: 20_000, currency: "usd", contracts_units_delta: 2 });
     expect(optionAssignmentForStockMovement(r.stock_movement_id)?.option_movement_id).toBe(r.option_movement_id);
     expect(optionContractsThroughDate(callB, "2026-06-15")).toBe(0);
     expect(valueUsd(callB, "2026-06-15")).toBe(0);
@@ -433,7 +433,7 @@ describe("the assignment service", () => {
     ).toThrow(/called away/);
     // The put assigned: shares bought at the strike from cash, linked to the contract row.
     const r = assignOptionContract(base);
-    expect(r).toMatchObject({ stock_flow_kind: "stock_buy", shares: 100, amount_usd: 9_500, contracts_units_delta: 1 });
+    expect(r).toMatchObject({ stock_flow_kind: "stock_buy", shares: 100, amount: 9_500, currency: "usd", contracts_units_delta: 1 });
     const stockRow = db.prepare(`SELECT from_account_id, to_account_id, units_delta, flow_kind FROM movements WHERE id = ?`).get(r.stock_movement_id);
     expect(stockRow).toEqual({ from_account_id: cash, to_account_id: stock, units_delta: 100, flow_kind: "stock_buy" });
     expect(optionContractsThroughDate(put, "2026-06-16")).toBe(0);
