@@ -3,12 +3,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { formatNumberInput, formatUfUnitsFine, parseNumberInputOrThrow } from "../../format";
-import { formatMortgagePesos, formatUfDayPesos } from "../../formatNative";
+import { formatNumberInput, parseNumberInputOrThrow } from "../../format";
+import { formatLoanFigure } from "../../formatLoan";
+import { formatUfDayPesos } from "../../formatNative";
 import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import type {
   AccountSummaryResponse,
+  MortgagePaymentInputDto,
   MortgagePaymentPreviewResponse,
 } from "../../types";
 import {
@@ -30,68 +32,72 @@ type Props = {
  * Field parsers: null when empty or out of range; each throws the localized message when the
  * field isn't a number (`parseNumberInput` — the decimal-separator setting reads «1.500»).
  */
-function parseClpInput(raw: string): number | null {
+function parsePayInput(raw: string): number | null {
   const n = parseNumberInputOrThrow(raw);
   return n != null && n >= 0 ? n : null;
 }
 
-/** UF minimum installment — positive. */
-function parseUfInput(raw: string): number | null {
+/** The lender's minimum installment, in the loan's currency — positive. */
+function parseMinLoanInput(raw: string): number | null {
   const n = parseNumberInputOrThrow(raw);
   return n != null && n > 0 ? n : null;
 }
 
-/** Bank-stated remaining balance UF — non-negative (a final payment can land on 0). */
-function parseUfBalanceInput(raw: string): number | null {
+/** Bank-stated remaining balance, in the loan's currency — non-negative (a final payment can land on 0). */
+function parseLoanBalanceInput(raw: string): number | null {
   const n = parseNumberInputOrThrow(raw);
   return n != null && n >= 0 ? n : null;
 }
 
+/**
+ * The request body from the typed fields: the payment and its parts in the loan's payment
+ * currency (`_pay`), the lender's minimum and stated balance in the loan's own (`_loan`).
+ */
 function buildBody(
   occurredOn: string,
-  pagoClp: string,
-  interesClp: string,
-  incendioClp: string,
-  desgravamenClp: string,
-  minUf: string,
-  amortExtClp: string,
-  creditoRestanteUf: string,
+  pago: string,
+  interes: string,
+  incendio: string,
+  desgravamen: string,
+  minLoan: string,
+  amortExt: string,
+  creditoRestante: string,
   cuota: string,
   useDesgravamenOverride: boolean,
   useAmortExtOverride: boolean
-): Record<string, unknown> | null {
-  const pago_clp = parseClpInput(pagoClp);
-  const interes_clp = parseClpInput(interesClp);
-  const incendio_clp = parseClpInput(incendioClp);
-  if (pago_clp == null || interes_clp == null || incendio_clp == null) return null;
+): MortgagePaymentInputDto | null {
+  const pago_pay = parsePayInput(pago);
+  const interes_pay = parsePayInput(interes);
+  const incendio_pay = parsePayInput(incendio);
+  if (pago_pay == null || interes_pay == null || incendio_pay == null) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredOn.trim())) return null;
-  const body: Record<string, unknown> = {
+  const body: MortgagePaymentInputDto = {
     occurred_on: occurredOn.trim(),
-    pago_clp,
-    interes_clp,
-    incendio_clp,
+    pago_pay,
+    interes_pay,
+    incendio_pay,
   };
   if (cuota.trim()) body.cuota = cuota.trim();
   if (useDesgravamenOverride) {
-    const des = parseClpInput(desgravamenClp);
+    const des = parsePayInput(desgravamen);
     if (des == null) return null;
-    body.desgravamen_clp = des;
+    body.desgravamen_pay = des;
   }
-  // The split needs EITHER the bank's minimum installment (min_uf) OR an explicit prepago.
+  // The split needs EITHER the bank's minimum installment (min_loan) OR an explicit prepago.
   if (useAmortExtOverride) {
-    const ext = parseClpInput(amortExtClp);
+    const ext = parsePayInput(amortExt);
     if (ext == null) return null;
-    body.amortizacion_ext_clp = ext;
+    body.amortizacion_ext_pay = ext;
   } else {
-    const min_uf = parseUfInput(minUf);
-    if (min_uf == null) return null;
-    body.min_uf = min_uf;
+    const min_loan = parseMinLoanInput(minLoan);
+    if (min_loan == null) return null;
+    body.min_loan = min_loan;
   }
   // Optional bank-stated balance: empty = derive; a non-empty unparsable value blocks.
-  if (creditoRestanteUf.trim()) {
-    const credito_restante_uf = parseUfBalanceInput(creditoRestanteUf);
-    if (credito_restante_uf == null) return null;
-    body.credito_restante_uf = credito_restante_uf;
+  if (creditoRestante.trim()) {
+    const credito_restante_loan = parseLoanBalanceInput(creditoRestante);
+    if (credito_restante_loan == null) return null;
+    body.credito_restante_loan = credito_restante_loan;
   }
   return body;
 }
@@ -108,7 +114,7 @@ export function MortgagePaymentForm({
   const [pagoClp, setPagoClp] = useState("");
   const [interesClp, setInteresClp] = useState("");
   const [incendioClp, setIncendioClp] = useState(
-    schema.default_incendio_clp != null ? formatNumberInput(schema.default_incendio_clp) : ""
+    schema.default_incendio_pay != null ? formatNumberInput(schema.default_incendio_pay) : ""
   );
   const [desgravamenClp, setDesgravamenClp] = useState("");
   const [useDesgravamenOverride, setUseDesgravamenOverride] = useState(false);
@@ -177,7 +183,7 @@ export function MortgagePaymentForm({
             setPreview(res);
             setPreviewError(null);
             if (!useDesgravamenOverride) {
-              setDesgravamenClp(formatNumberInput(res.desgravamen_default_clp));
+              setDesgravamenClp(formatNumberInput(res.desgravamen_default_pay));
             }
           }
         })
@@ -319,50 +325,52 @@ export function MortgagePaymentForm({
         <div className={cn("cards", styles.cardsBelow)}>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewAmort")}</div>
-            <div className="value mono">{formatMortgagePesos(preview.sheet.amortizacion_clp ?? 0)}</div>
+            <div className="value mono">
+              {formatLoanFigure(preview.sheet.amortizacion_pay ?? 0, preview.payment_currency)}
+            </div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewAmortExt")}</div>
             <div className="value mono">
-              {preview.sheet.amortizacion_ext_clp != null
-                ? formatMortgagePesos(preview.sheet.amortizacion_ext_clp)
+              {preview.sheet.amortizacion_ext_pay != null
+                ? formatLoanFigure(preview.sheet.amortizacion_ext_pay, preview.payment_currency)
                 : "—"}
             </div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewUfDay")}</div>
             <div className="value mono">
-              {preview.sheet.uf_clp_day != null ? formatUfDayPesos(preview.sheet.uf_clp_day) : "—"}
+              {preview.sheet.loan_rate_day != null ? formatUfDayPesos(preview.sheet.loan_rate_day) : "—"}
             </div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewCreditoUf")}</div>
             <div className="value mono">
-              {preview.sheet.credito_restante_uf != null
-                ? formatUfUnitsFine(preview.sheet.credito_restante_uf)
+              {preview.sheet.credito_restante_loan != null
+                ? formatLoanFigure(preview.sheet.credito_restante_loan, preview.loan_currency)
                 : "—"}
             </div>
             {preview.credito_restante_used_override &&
-            preview.credito_restante_derived_uf !== preview.sheet.credito_restante_uf ? (
+            preview.credito_restante_derived_loan !== preview.sheet.credito_restante_loan ? (
               <div className="muted" style={{ fontSize: "var(--font-size-card-label)" }}>
                 {t("accountDetail.mortgagePayment.previewCreditoDerived", {
-                  value: formatUfUnitsFine(preview.credito_restante_derived_uf),
+                  value: formatLoanFigure(preview.credito_restante_derived_loan, preview.loan_currency),
                 })}
               </div>
             ) : null}
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewMortgageClp")}</div>
-            <div className="value mono">{formatMortgagePesos(preview.mortgage_balance_clp)}</div>
+            <div className="value mono">{formatLoanFigure(preview.mortgage_balance_pay, preview.payment_currency)}</div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewNetClp")}</div>
-            <div className="value mono">{formatMortgagePesos(preview.property_net_clp)}</div>
+            <div className="value mono">{formatLoanFigure(preview.property_net_pay, preview.payment_currency)}</div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewPagoUf")}</div>
             <div className="value mono">
-              {preview.sheet.pago_uf != null ? formatUfUnitsFine(preview.sheet.pago_uf) : "—"}
+              {preview.sheet.pago_loan != null ? formatLoanFigure(preview.sheet.pago_loan, preview.loan_currency) : "—"}
             </div>
           </div>
         </div>

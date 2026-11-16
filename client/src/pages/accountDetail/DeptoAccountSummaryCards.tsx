@@ -1,13 +1,14 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { formatCurrency } from "../../format";
-import { formatMortgagePesos } from "../../formatNative";
+import { formatLoanFigure } from "../../formatLoan";
 import { loadableClass } from "../../components/ui/Loadable";
 import type {
   AccountMortgageLedgerResponse,
   AccountMonthlyPerformanceRow,
   AccountSummaryResponse,
   DashboardAccountRow,
+  Money,
 } from "../../types";
 import { ClpUfSuperscriptAmount } from "./ClpUfSuperscriptAmount";
 import {
@@ -31,18 +32,18 @@ function formatPl(value: number | null, unit: string): string {
 }
 
 function PaymentCardValue({
-  amountClp,
+  amount,
   date,
 }: {
-  amountClp: number | null;
+  amount: Money | null;
   date: string | null;
 }) {
-  if (amountClp == null || !Number.isFinite(amountClp)) {
+  if (amount == null || !Number.isFinite(amount.value)) {
     return <span className="mono">—</span>;
   }
   return (
     <>
-      <div className="value mono">{formatMortgagePesos(amountClp)}</div>
+      <div className="value mono">{formatLoanFigure(amount.value, amount.currency)}</div>
       {date ? <div className="muted mono">{date}</div> : null}
     </>
   );
@@ -95,22 +96,22 @@ export function DeptoAccountSummaryCards({
           <div className="label">{t("accountDetail.deptoSummary.mortgage.currentBalance")}</div>
           <div className="value">
             <ClpUfSuperscriptAmount
-              clpClp={mortgageData.balanceClp}
-              ufAmount={mortgageData.balanceUf}
+              pay={mortgageData.balancePay}
+              loan={mortgageData.balanceLoan}
             />
           </div>
         </div>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.mortgage.lastPayment")}</div>
           <PaymentCardValue
-            amountClp={mortgageData.lastPaymentClp}
+            amount={mortgageData.lastPayment}
             date={mortgageData.lastPaymentDate}
           />
         </div>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.mortgage.nextPayment")}</div>
           <PaymentCardValue
-            amountClp={mortgageData.nextPaymentClp}
+            amount={mortgageData.nextPayment}
             date={mortgageData.nextPaymentDate}
           />
         </div>
@@ -125,8 +126,8 @@ export function DeptoAccountSummaryCards({
           <div className="label">{t("accountDetail.deptoSummary.property.value")}</div>
           <div className="value">
             <ClpUfSuperscriptAmount
-              clpClp={propertyData.valueClp}
-              ufAmount={propertyData.valueUf}
+              pay={propertyData.valuePay}
+              loan={propertyData.valueLoan}
             />
           </div>
         </div>

@@ -1,4 +1,5 @@
 import type { DisplayUnitCode } from "./core.js";
+import type { Money } from "./flows.js";
 
 /** One deposit event in the response's `unit` (at its own day's rate) and the running total. */
 export interface DepositInflowEventInUnit {
@@ -23,65 +24,79 @@ export interface AccountDepositInflowsResponse {
   state_contribution_events: DepositInflowEventInUnit[];
 }
 
-/** `GET /api/accounts/:id/mortgage-ledger` — property: full sheet from CSV; other accounts: empty. */
+/**
+ * One payment row of a loan's ledger (`GET /api/portfolio-groups/:slug/mortgage-ledger`, the account
+ * detail bundle's `mortgageLedger`, the payment form's preview). A loan is stated in one currency
+ * and paid in another (`loan_payments`: a UF mortgage paid in pesos), so every figure names its
+ * ROLE, not a currency: a key ending `_loan` is in `loan_currency`, one ending `_pay` in
+ * `payment_currency`.
+ */
 export interface DeptoMortgageSheetRow {
   cuota: string;
   occurred_on: string;
-  pago_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  pago_uf: number | null;
+  /** The currency the lender states the balance and the minimum / maximum payment in. */
+  loan_currency: string;
+  /** The currency the payment and its parts are charged in. */
+  payment_currency: string;
+  pago_pay: number;
+  pago_loan: number | null;
   pct_dividendo: string | null;
-  uf_clp_day: number | null;
+  /** `payment_currency` per unit of `loan_currency` on the row's day. */
+  loan_rate_day: number | null;
   mm_pct: string | null;
   yy_pct: string | null;
   tasa_plus: number | null;
-  credito_restante_uf: number | null;
-  pct_credito_uf: string | null;
-  restante_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  credito_restante_loan: number | null;
+  pct_credito_loan: string | null;
+  restante_pay: number | null;
   pct_de_total: string | null;
-  delta_credito_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  valor_neto_uf: number | null;
-  valor_neto_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  pagado_neto_uf: number | null;
-  delta_valor_neto_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  valor_vivienda_uf: number | null;
-  valor_vivienda_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  min_uf: number | null;
-  max_uf: number | null;
-  incendio_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  incendio_uf: number | null;
-  desgravamen_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  desgravamen_uf: number | null;
-  total_seguros_uf: number | null;
-  total_seguros_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  seguros_interes_uf: number | null;
-  seguros_interes_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  amortizacion_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  amortizacion_uf: number | null;
-  amortizacion_ext_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  amortizacion_ext_uf: number | null;
-  amortizacion_total_uf: number | null;
-  amortizacion_total_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  interes_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  interes_uf: number | null;
+  delta_credito_pay: number | null;
+  valor_neto_loan: number | null;
+  valor_neto_pay: number | null;
+  pagado_neto_loan: number | null;
+  delta_valor_neto_pay: number | null;
+  valor_vivienda_loan: number | null;
+  valor_vivienda_pay: number | null;
+  min_loan: number | null;
+  max_loan: number | null;
+  incendio_pay: number | null;
+  incendio_loan: number | null;
+  desgravamen_pay: number | null;
+  desgravamen_loan: number | null;
+  total_seguros_loan: number | null;
+  total_seguros_pay: number | null;
+  seguros_interes_loan: number | null;
+  seguros_interes_pay: number | null;
+  amortizacion_pay: number | null;
+  amortizacion_loan: number | null;
+  amortizacion_ext_pay: number | null;
+  amortizacion_ext_loan: number | null;
+  amortizacion_total_loan: number | null;
+  amortizacion_total_pay: number | null;
+  interes_pay: number | null;
+  interes_loan: number | null;
   /** A prepago's prepayment charge (the lender's comisión, a cost beside its accrued interest); null on a cuota. */
-  prepayment_charge_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  prepayment_charge_uf: number | null;
-  delta_credito_amort_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  interes_oculto_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  interes_oculto_b_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  interes_real_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  interes_calculado_uf: number | null;
+  prepayment_charge_pay: number | null;
+  prepayment_charge_loan: number | null;
+  delta_credito_amort_pay: number | null;
+  interes_oculto_pay: number | null;
+  interes_oculto_b_pay: number | null;
+  interes_real_pay: number | null;
+  interes_calculado_loan: number | null;
   amort_interes_text: string | null;
-  pago_acumulado_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  amort_acum_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  interes_acum_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  pago_acumulado_pay: number | null;
+  amort_acum_pay: number | null;
+  interes_acum_pay: number | null;
 }
 
+/** The ledger's header figures; `_loan` / `_pay` keys as on {@link DeptoMortgageSheetRow}. */
 export interface AccountMortgageLedgerMeta {
-  valor_vivienda_uf: number | null;
-  hipoteca_tras_pie_uf: number | null;
-  pie_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  pie_uf: number | null;
+  loan_currency: string;
+  payment_currency: string;
+  valor_vivienda_loan: number | null;
+  hipoteca_tras_pie_loan: number | null;
+  pie_pay: number | null;
+  pie_loan: number | null;
   row_count: number;
   /** Import provenance label (not a runtime file path). */
   csv_path: string;
@@ -89,19 +104,22 @@ export interface AccountMortgageLedgerMeta {
 
 export type DeptoPaymentScenarioTerm = 30 | 25 | 20 | 15 | 12 | 10 | 5 | "max";
 
+/** One term's payment, in its row's `loan_currency` and `payment_currency`. */
 export interface DeptoPaymentScenarioCell {
   term: DeptoPaymentScenarioTerm;
-  payment_uf: number | null;
-  payment_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  payment_loan: number | null;
+  payment_pay: number | null;
 }
 
-/** Reference only — min/max UF payment scenarios from the depto sheet (not movements). */
+/** Reference only — min/max payment scenarios from the loan ledger (not movements). */
 export interface DeptoPaymentScenarioRow {
   /** Schedule date (11th of month), not bank payment date. */
   occurred_on: string;
   cuota: string;
-  min_payment_uf: number | null;
-  min_payment_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  loan_currency: string;
+  payment_currency: string;
+  min_payment_loan: number | null;
+  min_payment_pay: number | null;
   scenarios: DeptoPaymentScenarioCell[];
   /** Projected upcoming installment (shown as first row). */
   is_next_payment?: boolean;
@@ -116,7 +134,8 @@ export interface MortgageCardLine {
   account_name: string;
   date: string;
   merchant: string;
-  amount_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  /** What the card was charged, in the loan's payment currency. */
+  amount: Money;
 }
 
 export type MortgageCardMatchStatus = "matched" | "awaiting_card_line" | "ambiguous";
@@ -124,7 +143,8 @@ export type MortgageCardMatchStatus = "matched" | "awaiting_card_line" | "ambigu
 export interface MortgagePaymentCardMatch {
   cuota: string;
   paid_on: string;
-  pago_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  /** The cuota's payment as the ledger holds it. */
+  pago: Money;
   status: MortgageCardMatchStatus;
   line: MortgageCardLine | null;
 }

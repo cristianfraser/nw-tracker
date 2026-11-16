@@ -13,46 +13,49 @@ import type {
   DeptoPaymentScenarioRow,
   DeptoPaymentScenarioTerm,
 } from "../../types";
-import { formatUfUnits, formatUfUnitsFine } from "../../format";
-import { formatMortgagePesos } from "../../formatNative";
+import { formatMoney } from "../../format";
+import { formatLoanFigure } from "../../formatLoan";
 import { cn } from "../../cn";
 import i18n from "../../i18n";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import styles from "../AccountDetailPage.module.css";
 
-/** UF amount with the CLP amount as a muted sub-line (shared desktop/mobile pair cell). */
-function cellUfClpPair(uf: number | null, clp: number | null) {
-  if (uf == null && clp == null) return "—";
+/** The two currencies of a ledger row, a scenario row or the ledger's meta. */
+type LoanCurrencies = { loan_currency: string; payment_currency: string };
+
+/** A figure in the loan's currency with its payment-currency amount as a muted sub-line (shared desktop/mobile pair cell). */
+function cellLoanPayPair(c: LoanCurrencies, loan: number | null, pay: number | null) {
+  if (loan == null && pay == null) return "—";
   return (
     <>
-      {uf != null ? formatUfUnitsFine(uf) : "—"}
-      {clp != null ? (
-        <span className={cn("muted", styles.cellSub)}>{formatMortgagePesos(clp)}</span>
+      {loan != null ? formatLoanFigure(loan, c.loan_currency) : "—"}
+      {pay != null ? (
+        <span className={cn("muted", styles.cellSub)}>{formatLoanFigure(pay, c.payment_currency)}</span>
       ) : null}
     </>
   );
 }
 
-/** Min payment CLP is not stored on the sheet row; convert at the row's UF rate. */
-function minUfClp(row: DeptoMortgageSheetRow): number | null {
-  if (row.min_uf == null || row.uf_clp_day == null) return null;
-  return row.min_uf * row.uf_clp_day;
+/** The minimum payment's payment-currency amount is not on the row; convert at the row's rate. */
+function minPay(row: DeptoMortgageSheetRow): number | null {
+  if (row.min_loan == null || row.loan_rate_day == null) return null;
+  return row.min_loan * row.loan_rate_day;
 }
 
-/** Max payment CLP is not stored on the sheet row; convert at the row's UF rate. */
-function maxUfClp(row: DeptoMortgageSheetRow): number | null {
-  if (row.max_uf == null || row.uf_clp_day == null) return null;
-  return row.max_uf * row.uf_clp_day;
+/** The maximum payment's payment-currency amount is not on the row; convert at the row's rate. */
+function maxPay(row: DeptoMortgageSheetRow): number | null {
+  if (row.max_loan == null || row.loan_rate_day == null) return null;
+  return row.max_loan * row.loan_rate_day;
 }
 
-/** Remaining credit: UF (coarse units) with the CLP amount as a muted sub-line. */
+/** Remaining credit: the loan's currency (coarse) with the payment-currency amount as a muted sub-line. */
 function cellCreditoPair(row: DeptoMortgageSheetRow) {
-  if (row.credito_restante_uf == null && row.restante_clp == null) return "—";
+  if (row.credito_restante_loan == null && row.restante_pay == null) return "—";
   return (
     <>
-      {row.credito_restante_uf != null ? formatUfUnits(row.credito_restante_uf) : "—"}
-      {row.restante_clp != null ? (
-        <span className={cn("muted", styles.cellSub)}>{formatMortgagePesos(row.restante_clp)}</span>
+      {row.credito_restante_loan != null ? formatLoanFigure(row.credito_restante_loan, row.loan_currency, "coarse") : "—"}
+      {row.restante_pay != null ? (
+        <span className={cn("muted", styles.cellSub)}>{formatLoanFigure(row.restante_pay, row.payment_currency)}</span>
       ) : null}
     </>
   );
@@ -67,22 +70,22 @@ type MergedCellLine = {
   key: string;
   /** A total of the lines above it: no label, drawn under a separator line. */
   total?: boolean;
-  /** Leading figure: a UF amount, or any ready-made text (the cuota number). */
+  /** Leading figure: an amount in the loan's currency, or any ready-made text (the cuota number). */
   main: string;
-  /** Trailing muted figure: the CLP amount; null when `main` is the whole line, spanning both figure columns. */
+  /** Trailing muted figure: the payment-currency amount; null when `main` is the whole line, spanning both figure columns. */
   sub: string | null;
 };
 
-function ufClpLine(key: string, uf: number | null, clp: number | null): MergedCellLine {
+function loanPayLine(c: LoanCurrencies, key: string, loan: number | null, pay: number | null): MergedCellLine {
   return {
     key,
-    main: uf != null ? formatUfUnitsFine(uf) : "—",
-    sub: clp != null ? formatMortgagePesos(clp) : null,
+    main: loan != null ? formatLoanFigure(loan, c.loan_currency) : "—",
+    sub: pay != null ? formatLoanFigure(pay, c.payment_currency) : null,
   };
 }
 
-function ufClpTotalLine(uf: number | null, clp: number | null): MergedCellLine {
-  return { ...ufClpLine("total", uf, clp), total: true };
+function loanPayTotalLine(c: LoanCurrencies, loan: number | null, pay: number | null): MergedCellLine {
+  return { ...loanPayLine(c, "total", loan, pay), total: true };
 }
 
 /**
@@ -118,43 +121,43 @@ function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
   return (
     <TableMobileCard title={`${row.cuota} · ${row.occurred_on}`}>
       <TableMobileCardSection>
-        <TableMobileCardRow label={colLabel("pago")} value={cellUfClpPair(row.pago_uf, row.pago_clp)} />
+        <TableMobileCardRow label={colLabel("pago")} value={cellLoanPayPair(row, row.pago_loan, row.pago_pay)} />
       </TableMobileCardSection>
       <TableMobileCardSection>
         <TableMobileCardRow label={colLabel("credito")} value={cellCreditoPair(row)} />
       </TableMobileCardSection>
       <TableMobileCardSection>
-        <TableMobileCardRow label={colLabel("minUf")} value={cellUfClpPair(row.min_uf, minUfClp(row))} />
-        <TableMobileCardRow label={colLabel("maxUf")} value={cellUfClpPair(row.max_uf, maxUfClp(row))} />
+        <TableMobileCardRow label={colLabel("minUf")} value={cellLoanPayPair(row, row.min_loan, minPay(row))} />
+        <TableMobileCardRow label={colLabel("maxUf")} value={cellLoanPayPair(row, row.max_loan, maxPay(row))} />
       </TableMobileCardSection>
       <TableMobileCardSection>
         <TableMobileCardRow
           label={colLabel("incendio")}
-          value={cellUfClpPair(row.incendio_uf, row.incendio_clp)}
+          value={cellLoanPayPair(row, row.incendio_loan, row.incendio_pay)}
         />
         <TableMobileCardRow
           label={colLabel("desgravamen")}
-          value={cellUfClpPair(row.desgravamen_uf, row.desgravamen_clp)}
+          value={cellLoanPayPair(row, row.desgravamen_loan, row.desgravamen_pay)}
         />
         <TableMobileCardRow
           label={colLabel("interes")}
-          value={cellUfClpPair(row.interes_uf, row.interes_clp)}
+          value={cellLoanPayPair(row, row.interes_loan, row.interes_pay)}
         />
-        {row.prepayment_charge_clp != null ? (
+        {row.prepayment_charge_pay != null ? (
           <TableMobileCardRow
             label={colLabel("prepaymentCharge")}
-            value={cellUfClpPair(row.prepayment_charge_uf, row.prepayment_charge_clp)}
+            value={cellLoanPayPair(row, row.prepayment_charge_loan, row.prepayment_charge_pay)}
           />
         ) : null}
       </TableMobileCardSection>
       <TableMobileCardSection>
         <TableMobileCardRow
           label={colLabel("amortizacion")}
-          value={cellUfClpPair(row.amortizacion_uf, row.amortizacion_clp)}
+          value={cellLoanPayPair(row, row.amortizacion_loan, row.amortizacion_pay)}
         />
         <TableMobileCardRow
           label={colLabel("amortExt")}
-          value={cellUfClpPair(row.amortizacion_ext_uf, row.amortizacion_ext_clp)}
+          value={cellLoanPayPair(row, row.amortizacion_ext_loan, row.amortizacion_ext_pay)}
         />
       </TableMobileCardSection>
     </TableMobileCard>
@@ -168,7 +171,7 @@ function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
         {cellMergedLines(
           [
             { key: "cuota", main: `${row.cuota} · ${row.occurred_on}`, sub: null },
-            ufClpLine("pago", row.pago_uf, row.pago_clp),
+            loanPayLine(row, "pago", row.pago_loan, row.pago_pay),
           ],
           { labels: false }
         )}
@@ -176,26 +179,26 @@ function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
       <td className="mono desktop-only">{cellCreditoPair(row)}</td>
       <td className={cn("mono", "desktop-only", styles.nowrap)}>
         {cellMergedLines([
-          ufClpLine("min", row.min_uf, minUfClp(row)),
-          ufClpLine("max", row.max_uf, maxUfClp(row)),
+          loanPayLine(row, "min", row.min_loan, minPay(row)),
+          loanPayLine(row, "max", row.max_loan, maxPay(row)),
         ])}
       </td>
       <td className={cn("mono", "desktop-only", styles.nowrap)}>
         {cellMergedLines([
-          ufClpLine("incendio", row.incendio_uf, row.incendio_clp),
-          ufClpLine("desgravamen", row.desgravamen_uf, row.desgravamen_clp),
-          ufClpLine("interes", row.interes_uf, row.interes_clp),
-          ...(row.prepayment_charge_clp != null
-            ? [ufClpLine("prepaymentCharge", row.prepayment_charge_uf, row.prepayment_charge_clp)]
+          loanPayLine(row, "incendio", row.incendio_loan, row.incendio_pay),
+          loanPayLine(row, "desgravamen", row.desgravamen_loan, row.desgravamen_pay),
+          loanPayLine(row, "interes", row.interes_loan, row.interes_pay),
+          ...(row.prepayment_charge_pay != null
+            ? [loanPayLine(row, "prepaymentCharge", row.prepayment_charge_loan, row.prepayment_charge_pay)]
             : []),
-          ufClpTotalLine(row.seguros_interes_uf, row.seguros_interes_clp),
+          loanPayTotalLine(row, row.seguros_interes_loan, row.seguros_interes_pay),
         ])}
       </td>
       <td className={cn("mono", "desktop-only", styles.nowrap)}>
         {cellMergedLines([
-          ufClpLine("amortizacion", row.amortizacion_uf, row.amortizacion_clp),
-          ufClpLine("amortExt", row.amortizacion_ext_uf, row.amortizacion_ext_clp),
-          ufClpTotalLine(row.amortizacion_total_uf, row.amortizacion_total_clp),
+          loanPayLine(row, "amortizacion", row.amortizacion_loan, row.amortizacion_pay),
+          loanPayLine(row, "amortExt", row.amortizacion_ext_loan, row.amortizacion_ext_pay),
+          loanPayTotalLine(row, row.amortizacion_total_loan, row.amortizacion_total_pay),
         ])}
       </td>
     </>
@@ -245,19 +248,20 @@ export function MortgageDividendosTable({
             <div className="card">
               <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.viviendaHoja")}</div>
               <div className="value mono">
-                {m?.valor_vivienda_uf != null ? formatUfUnits(m.valor_vivienda_uf) : "—"}
+                {m?.valor_vivienda_loan != null ? formatLoanFigure(m.valor_vivienda_loan, m.loan_currency, "coarse") : "—"}
               </div>
             </div>
             <div className="card">
               <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.hipotecaTrasPie")}</div>
               <div className="value mono">
-                {m?.hipoteca_tras_pie_uf != null ? formatUfUnits(m.hipoteca_tras_pie_uf) : "—"}
+                {m?.hipoteca_tras_pie_loan != null ? formatLoanFigure(m.hipoteca_tras_pie_loan, m.loan_currency, "coarse") : "—"}
               </div>
             </div>
             <div className="card">
               <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.pieClpUf")}</div>
               <div className={cn("value", "mono", styles.cardValueSecondary)}>
-                {m?.pie_clp != null ? formatMortgagePesos(m.pie_clp) : "—"} · {m ? formatUfUnitsFine(m.pie_uf) : "—"}
+                {m?.pie_pay != null ? formatLoanFigure(m.pie_pay, m.payment_currency) : "—"} ·{" "}
+                {m?.pie_loan != null ? formatLoanFigure(m.pie_loan, m.loan_currency) : "—"}
               </div>
             </div>
             <div className="card">
@@ -273,7 +277,7 @@ export function MortgageDividendosTable({
           <p className="muted">
             {i18n.t("accountDetail.mortgageSheet.cardLinesWithoutPayment")}{" "}
             {ledger.card_lines_without_payment
-              .map((l) => `${l.date} · ${l.merchant} · ${formatMortgagePesos(l.amount_clp)} · ${l.account_name}`)
+              .map((l) => `${l.date} · ${l.merchant} · ${formatMoney(l.amount)} · ${l.account_name}`)
               .join(" | ")}
           </p>
         )}
@@ -319,25 +323,13 @@ function scenarioTermLabel(term: DeptoPaymentScenarioTerm): string {
 function scenarioPaymentForTerm(
   row: DeptoPaymentScenarioRow,
   term: DeptoPaymentScenarioTerm,
-  byTerm: Map<DeptoPaymentScenarioTerm, { payment_uf: number | null; payment_clp: number | null }>
-): { uf: number | null; clp: number | null } {
+  byTerm: Map<DeptoPaymentScenarioTerm, { payment_loan: number | null; payment_pay: number | null }>
+): { loan: number | null; pay: number | null } {
   if (term === 30) {
-    return { uf: row.min_payment_uf, clp: row.min_payment_clp };
+    return { loan: row.min_payment_loan, pay: row.min_payment_pay };
   }
   const cell = byTerm.get(term);
-  return { uf: cell?.payment_uf ?? null, clp: cell?.payment_clp ?? null };
-}
-
-function formatScenarioPayment(uf: number | null, clp: number | null) {
-  if (uf == null && clp == null) return "—";
-  return (
-    <>
-      {uf != null ? formatUfUnitsFine(uf) : "—"}
-      {clp != null ? (
-        <span className={cn("muted", styles.cellSub)}>{formatMortgagePesos(clp)}</span>
-      ) : null}
-    </>
-  );
+  return { loan: cell?.payment_loan ?? null, pay: cell?.payment_pay ?? null };
 }
 
 /** «próx.» / «cotizada» under the cuota number; the card's title leads each with a space. */
@@ -390,7 +382,7 @@ const scenarioColumns = (): TableColumn<DeptoPaymentScenarioRow>[] => [
       className: cn("mono", styles.nowrap),
       cell: (row) => {
         const cell = scenarioPaymentForTerm(row, term, new Map(row.scenarios.map((s) => [s.term, s])));
-        return formatScenarioPayment(cell.uf, cell.clp);
+        return cellLoanPayPair(row, cell.loan, cell.pay);
       },
     })
   ),
