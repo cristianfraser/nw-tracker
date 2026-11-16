@@ -399,8 +399,7 @@ describe("credit-card close evidence", () => {
       close_iso: "2026-09-24",
       billing_month: "2026-09",
       status: "new",
-      saldo_inicial_clp: 1_892_666,
-      saldo_inicial_usd: 577.34,
+      saldo_inicial: { clp: 1_892_666, usd: 577.34 },
       rows_billing_month: "2026-10",
       lines_moved_forward: 2,
     });
