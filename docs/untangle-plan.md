@@ -2296,6 +2296,97 @@ The codebase is ours to change: a dollar figure may move by a peso where the leg
 | `ut-bank-currency` | the mirror-merge `_clp` columns renamed; the deposits reconciliation per currency; the `usd_account_feed` batch kind | identical reconciliation and mirror payloads |
 | then `ut-dto-money` | `_clp` / `_usd` DTO keys that are not a legal or source-format fact become `{value, currency}` (card billing frame, upcoming payments, real estate, payroll, mortgage); `afp_override_*` renamed; upcoming items rounded by currency; the client reads follow | `convention-ok` marks only on legal and source-format facts |
 
+#### Wave 9 status (2026-11-15, merged on `untangle-2`)
+
+Six streams: `ut-fx-rates` first, `ut-card-currency` ∥ `ut-trade-currency` ∥ `ut-bank-currency`, then
+`ut-dto-money` ∥ `ut-currency-seams` (three seams the middle streams each left in another's file).
+Checks on the merged tip: typecheck and conventions ok, 0 files in import cycles (7015 edges; the
+check-deps baseline is not rewritten), server 574 files / 3834 tests, client 495, ingest 491,
+contracts 148. The first full server run on the merged tip failed while a dev server and Vite ran
+in the same worktree; the rerun alone passed; the failing test was not captured.
+
+Rehearsal on the live copy, each step against the dump before it: fx-rates 0 files differ; card,
+trade, bank together 29 (28 `accounts_N_detail-bundle`: `summary.movement_create.cash_currency`
+added; the index); dto-money 208, every renamed value equal after mapping old keys to new (43,950
+compared, 0 unequal) except the declared rounding (below); currency-seams 2 (`accounts.json`:
+`accounts[].cash_currency` added; the index). Migrations 359 (mirror-merge table rebuilt as
+`out_amount` + `out_currency`, `in_amount` + `in_currency`; 702 rows before and after) and 360
+(batch kind `usd_account_feed` → `foreign_account_feed`, 38 rows).
+
+Done:
+
+- Rates: `fxRates.ts` and `fxStoredRates.ts` deleted; `rates.ts` reads every pair from one registry
+  (`storedPairRate`, `pairRateOnOrBefore`, `convertFlow`, `referenceAmountAtMid`, `pairKeepsBidAsk`,
+  `pairBidAskOnOrBefore`); `foreignCashToClpAt` takes any cash currency; `fxLive.ts` knows live rows only.
+- Cards: one frame path (`debtFrameClpPerUnit`; `usdToClpAsDebt`, `debtFrameClpPerUsd` and the
+  two-slot cascade deleted); billing sums throw on a foreign amount with no rate; facturado, saldo,
+  post-close evidence, provisional close, manual and planted payments, listing lines per currency;
+  a financing charge is the stored kind. Fixtures: a euro card and a dollar-primary card.
+- Trades: `stock_buy` / `stock_sell` / `dividend_payout` and option premiums settle in the cash
+  account's currency (`validateTradeSettlement`), whatever the stock quotes in; a dividend into
+  peso cash is accepted; the create API takes any core currency; one cash form
+  (`AccountCashMovementsForm`) and the stock form post the chosen cash account's currency;
+  broker withdrawal requests carry their currency. Fixture: a euro-settled trade.
+- Bank: mirror merges store amount + currency per leg; the deposits reconciliation prices a
+  foreign deposit at its own amount; one transfer-leg finder by currency.
+- DTOs: upcoming payments are `Money` (schema 7), the card frame's keys lost `_clp` beside one
+  `billing_currency`, place bills carry `currency`, the work-earning row lost its peso/dollar
+  twins, `afp_override_*` → `mark_*`, `OptionAssignmentResult.amount` + `currency`, the fx
+  warning code `reference_rate`. `convention-ok` marks in the dto folder: 278 → 218 (119 in `taxReturn.ts`).
+
+Behaviour changes:
+
+- A `stock_buy` / `stock_sell` without an amount is a 400 (it was accepted for a dollar stock).
+- The stock form refuses the whole batch with a message when a row lacks a date or a trade its
+  cash account (such rows used to be dropped silently).
+- A card's statement-frame sum throws on a foreign amount with no rate (it used to skip it).
+- Upcoming-payment `*_in_unit` figures are rounded to the unit's coin (usd/eur move < 0,01).
+- `cc_manual_payment` over HTTP takes any currency the issuer declares; refusals are 422 from `requireCardCurrency`.
+- A reconciliation inflow that is neither pesos nor a foreign deposit throws (it read 0 pesos).
+- An older client on a new server finds no `_clp` card or real-estate keys: server and client deploy together.
+
+Decisions left open:
+
+- The card frame converts at the stored mid, not the debt side the plan named: the debt side of
+  USD/CLP is the ask and would move peso figures by half the spread.
+- Two rules value dollars: cash at the latest stored sell rate of any age; everything else at the
+  bid observed that day or later, else mid less half the spread.
+- `convertFlow`'s buy rate applies to a direct pair only (uf → clp → usd stays at the mid on both hops).
+- The card frame DTO is flat keys beside `billing_currency`, not a `Money` per field.
+
+Not done (still pesos and dollars):
+
+- Cards: the statement JSON apply, the receipt paths, the traspaso pairing writer, the feed mirror,
+  the feed close payload and the cupo check; 12 `?? 0` on the peso/dollar line view; the open
+  bucket is created as a peso statement; the client formats the frame through `formatCardBillingPesos`.
+- Trades: the leaf slug still names a cash account's currency (the declaration must agree; ~24
+  fixtures insert undeclared leaves — needs the shared fixture helper); option tax lots, split
+  notifications and the broker dividend statement are dollars.
+- Bank: a foreign single-leg redemption is not in the reconciliation; internal transfers pair by
+  rounded pesos; the cartola balance columns, `insertBankPesoMovement` and the anchor writers.
+- DTOs: the mortgage family (~40 keys, several also DB columns or ingest fields), the expense
+  piece's `amount_usd` twins, the card-payment mirror `amount_clp`.
+- Rates: the dollar write path of `liveMarketQuotesSync.ts`; direct SQL on `fx_daily` / `uf_daily`
+  in `watchlistStats.ts`, `ccInvestmentProxy.ts`, `us1040/fx.ts`.
+
+Browser check (an agent, synthetic person, desktop and 375 px): home «Próximos pagos», a card page
+in three period modes, Pasivos, income, both cash forms and the stock form (a deposit and a buy
+submitted) render and work. Found, none from this wave unless said:
+
+- The card page prints the raw key `account.creditCard.payByRule.ledger` (copy removed on main, 2026-11-12).
+- A card's nav card shows «—» for deposits in usd/eur where pesos show 0 (`deposits: null`; the
+  same in the pre-wave dump).
+- `/real_estate` for a person without property requests a daily series that answers 404, four times.
+- Wave 9 copy: the cash form's empty-date message is the add-account form's; its counterpart list
+  shows other-currency accounts without a code; the stock form prints «Shares (units_delta)» and a
+  new row defaults to a peso deposit on a dollar stock.
+- A parser note from the card stream: `parseDdMmYyToIso("30/04/2039")` returned a 2020 date.
+- Port 3299 holds a week-old server from the `untangle-client` worktree.
+
+Docs pass owed (stale lines listed in the stream reports): `AGENTS.md` 32, 58–60, 66;
+`.claude/rules/cards.md`, `instruments.md`, `market-data.md`, `valuation-series.md`, `expenses.md`,
+`ingest-sources.md`, `client-ui.md`.
+
 ### Wave 10 — optional structural, each needs a yes
 
 `ut-flow-id` (`flow_id` on the wire, `legacy_key` retired, line categories on the flow),
