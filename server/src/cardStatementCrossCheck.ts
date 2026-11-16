@@ -2,8 +2,7 @@ import { normalizeMerchantText } from "nw-tracker-contracts";
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { padCcStatementDate } from "./ccStatementJsonSource.js";
 import { db } from "./db.js";
-import { pesosOrDollars } from "./ingestCurrencies.js";
-import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
+import { cardPrimaryStatementCurrency, requireCardCurrency } from "./cards/cardCurrencies.js";
 
 /**
  * The cross-check of a `card.statement` against the statement already in the ledger: which lines
@@ -13,8 +12,11 @@ import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
 
 type DbLine = { merchant: string; amount: number };
 
-/** Lines already imported for a statement, whichever source wrote it. */
-function loadImportedLines(accountId: number, statementDate: string, currency: "clp" | "usd"): DbLine[] | null { // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
+/**
+ * Lines already imported for a statement, whichever source wrote it, each at its amount in the
+ * statement's currency (a line in another currency reads 0 there).
+ */
+function loadImportedLines(accountId: number, statementDate: string, currency: string): DbLine[] | null {
   const statement = db
     .prepare(
       `SELECT id FROM cc_statements
@@ -24,13 +26,11 @@ function loadImportedLines(accountId: number, statementDate: string, currency: "
     .get(accountId, padCcStatementDate(statementDate), currency) as { id: number } | undefined;
   if (!statement) return null;
   const rows = db
-    .prepare(
-      `SELECT merchant, ${lineAmountClpSql("")} AS amount_clp, ${lineAmountUsdSql("")} AS amount_usd FROM cc_statement_lines WHERE statement_id = ?`
-    )
-    .all(statement.id) as { merchant: string | null; amount_clp: number | null; amount_usd: number | null }[];
+    .prepare(`SELECT merchant, CASE WHEN currency = ? THEN amount END AS amount FROM cc_statement_lines WHERE statement_id = ?`)
+    .all(currency, statement.id) as { merchant: string | null; amount: number | null }[];
   return rows.map((r) => ({
     merchant: normalizeMerchantText(r.merchant),
-    amount: Number(currency === "usd" ? r.amount_usd ?? 0 : r.amount_clp ?? 0), // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
+    amount: Number(r.amount ?? 0),
   }));
 }
 
@@ -49,7 +49,7 @@ function merchantRenderingKey(value: string): string {
 
 export type StatementDiff = {
   file: string;
-  currency: "clp" | "usd"; // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
+  currency: string;
   statement_date: string;
   account_id: number;
   json_lines: number;
@@ -169,7 +169,9 @@ export function diffStatementAgainstLedger(
   statementDate: string,
   statement: Pick<CardStatementCurrency, "currency" | "document" | "lines">
 ): StatementDiff {
-  const currency = pesosOrDollars(statement.currency, "card statement cross-check");
+  const currency = requireCardCurrency(statement.currency, accountId, "card statement cross-check");
+  // The payment row is folded into the header of the card's main statement, so it is expected there only.
+  const main = currency === cardPrimaryStatementCurrency(accountId);
   const imported = loadImportedLines(accountId, statementDate, currency);
   const jsonLines: StatementJsonLine[] = statement.lines.map((line) => ({
     merchant: line.merchant,
@@ -189,6 +191,6 @@ export function diffStatementAgainstLedger(
     matched_by_rendering: pairing.matched_by_rendering,
     only_in_json: pairing.only_in_json,
     only_in_db: pairing.only_in_db,
-    expected_only_in_json: pairing.only_in_json.filter((l) => statement.currency === "clp" && l.kind === "payment").length, // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
+    expected_only_in_json: pairing.only_in_json.filter((l) => main && l.kind === "payment").length,
   };
 }

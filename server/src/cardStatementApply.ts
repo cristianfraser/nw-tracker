@@ -10,14 +10,14 @@ import { diffStatementAgainstLedger } from "./cardStatementCrossCheck.js";
 import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
 import { padCcStatementDate, statementSourceOwnerForClose } from "./ccStatementJsonSource.js";
 import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
-import { pesosOrDollars } from "./ingestCurrencies.js";
+import { cardPrimaryStatementCurrency, requireCardCurrency } from "./cards/cardCurrencies.js";
 import {
   assertNoCardRoutingConflict,
   buildSantanderStatement,
   fillStatementNextPeriodTo,
   inheritedStatementCtx,
   statementNextPeriodTo,
-  usdStatementIsStaleEcho,
+  secondaryStatementIsStaleEcho,
   writeSantanderStatements,
 } from "./santanderStatementImport.js";
 
@@ -28,18 +28,20 @@ import {
  *   (its lines against the PDF's: the report that has already caught real PDF data loss), and the
  *   announced next close fills the PDF statement when its format predates the printed line;
  * - anything else is a write candidate, written with `apply` through the same merge pipeline as a
- *   PDF, both currencies together (a traspaso month links its two legs in one transaction), then
+ *   PDF, every currency together (a traspaso month links its two legs in one transaction), then
  *   verified against itself — a write that does not reconcile throws;
- * - a USD side whose every line already sits on an earlier statement is the dateless international
- *   endpoint re-serving an old cycle, and is not written;
+ * - a side outside the card's main statement whose every line already sits on an earlier statement
+ *   is the dateless international endpoint re-serving an old cycle, and is not written;
  * - a plastic the card registry routes elsewhere than the issuer's account is a problem, never a
  *   side to take.
  *
- * Every side is reported line by line, as the feeder prints it.
+ * Every side is reported line by line, as the feeder prints it. A side is in any currency the
+ * card's issuer declares (`requireCardCurrency`); the side in the issuer's primary currency is the
+ * card's main statement (Santander's «nacional»), which states the header and the next close.
  */
 
-/** A statement side the card ledger can take: its sub-balances are pesos and dollars only. */
-type HandledStatement = CardStatementCurrency & { currency: "clp" | "usd" }; // convention-ok: the card ledger takes pesos and dollars only (Phase C)
+/** A statement side, its currency one the card's issuer bills in. */
+type HandledStatement = CardStatementCurrency;
 
 type Review = {
   statement: HandledStatement;
@@ -64,13 +66,14 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
       `ledger ${diff.db_lines ?? "not imported"}`
   );
 
+  const main = statement.currency === cardPrimaryStatementCurrency(accountId);
   const owner = statementSourceOwnerForClose(accountId, statementDate, statement.currency);
   let nextCloseDisagrees = false;
   const nextClose = payload.next_close ? padCcStatementDate(unpaddedCardLineDate(payload.next_close)) : null;
   // The announced next close is the same printed «próximo período» end the PDF carries; a
   // PDF-owned close gets it filled when the PDF format predates the line, and a disagreement is a
   // problem.
-  if (owner === "pdf" && nextClose && statement.currency === "clp") { // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
+  if (owner === "pdf" && nextClose && main) {
     const stored = statementNextPeriodTo(accountId, statementDate, statement.currency);
     if (stored && stored !== nextClose) {
       nextCloseDisagrees = true;
@@ -113,8 +116,8 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
   }
   // The dateless international endpoint can re-serve the last billed USD cycle on dormant months;
   // a full stale echo is expected there and must not import as new lines.
-  if (statement.currency === "usd" && usdStatementIsStaleEcho(accountId, statementDate, statement.lines)) { // convention-ok: the Santander statement JSON is national (pesos) or international (dollars)
-    report.push("  → every USD row already exists on an earlier statement (stale echo) — not imported");
+  if (!main && secondaryStatementIsStaleEcho(accountId, statement.currency, statementDate, statement.lines)) {
+    report.push(`  → every ${statement.currency.toUpperCase()} row already exists on an earlier statement (stale echo) — not imported`);
     return { statement, outcome: "skipped", owner, report };
   }
 
@@ -136,19 +139,20 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
 }
 
 export function applyCardStatement(payload: CardIssuerStatementPayload): CardStatementApplyDetails {
-  const accountId = cardAccountForIssuerNumber(payload.account);
+  return applyCardStatementToAccount(cardAccountForIssuerNumber(payload.account), payload);
+}
+
+/** {@link applyCardStatement} for the card master the statement's issuer account resolved to. */
+export function applyCardStatementToAccount(accountId: number, payload: CardIssuerStatementPayload): CardStatementApplyDetails {
   const statementDate = padCcStatementDate(unpaddedCardLineDate(payload.close));
   const reviews = payload.statements
-    .map((s): HandledStatement => {
-      const currency = pesosOrDollars(s.currency, "card.statement");
-      return { ...s, currency };
-    })
+    .map((s): HandledStatement => ({ ...s, currency: requireCardCurrency(s.currency, accountId, "card.statement") }))
     .map((s) => reviewStatement(accountId, statementDate, payload, s));
 
   let written: CardStatementApplyDetails["written"] = null;
   const pending = reviews.filter((r) => r.write != null);
   // The feeder sends the close every night until its PDF arrives: a JSON-owned close whose records
-  // hash to what the last write stored is unchanged and is not rewritten. Both currencies are
+  // hash to what the last write stored is unchanged and is not rewritten. Every currency is
   // written together or not at all (a traspaso month links its two legs in one transaction).
   if (
     pending.length > 0 &&
