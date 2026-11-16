@@ -20,6 +20,7 @@ import {
   type CardCanonicalStatement,
 } from "nw-tracker-contracts";
 import { isHomeCurrency } from "./displayUnits.js";
+import { lineHasPesoDollarView } from "./cards/lineAmountSql.js";
 
 const TOL_CLP = 1;
 const TOL_USD = 0.02;
@@ -582,15 +583,26 @@ export function dbLineToReconcileRow(
   line: ReturnType<typeof listCcStatementLinesForStatement>[number],
   stmt: { currency: string; layout: string; source_pdf: string; source_kind: string }
 ): CcReconcileRow {
+  // The reconcile row has a peso slot and one foreign slot (the international statement's rules):
+  // a peso line fills the first with its own amount and cuota, a foreign line the second. The
+  // foreign slot holds one currency per statement — dollars (the listing bucket's second currency)
+  // or the statement's own; a line in any other currency has no slot there.
+  const home = isHomeCurrency(line.currency);
+  if (!home && !lineHasPesoDollarView(line.currency) && line.currency !== stmt.currency) {
+    throw new Error(
+      `card line ${line.id}: a ${line.currency.toUpperCase()} line on a ${stmt.currency.toUpperCase()} statement (${stmt.source_pdf}) has no slot in that statement's reconcile`
+    );
+  }
+  const amount = line.amount ?? 0;
+  const cuota = line.cuota_amount ?? 0;
   return {
     currency: stmt.currency,
     installment_flag: line.installment_flag,
     merchant: line.merchant,
-    amount_clp: line.amount_clp ?? 0,
-    // A third currency's line rides in the foreign slot, in its own statement only.
-    amount_usd: line.amount_usd ?? (line.currency === stmt.currency && !isHomeCurrency(line.currency) ? (line.amount ?? 0) : 0),
-    valor_cuota_mensual_clp: line.valor_cuota_mensual_clp ?? 0,
-    valor_cuota_mensual_usd: line.valor_cuota_mensual_usd ?? 0,
+    amount_clp: home ? amount : 0,
+    amount_usd: home ? 0 : amount,
+    valor_cuota_mensual_clp: home ? cuota : 0,
+    valor_cuota_mensual_usd: home ? 0 : cuota,
     nro_cuota_current: line.nro_cuota_current,
     nro_cuota_total: line.nro_cuota_total,
     parser_layout: stmt.layout || "compact",

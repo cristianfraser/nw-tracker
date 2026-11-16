@@ -25,6 +25,7 @@ import {
   type CcOpenBucketLine,
   type ListingCurrency,
 } from "./ccFeedCuotaPurchases.js";
+import { currencyMinorDigits } from "./displayUnits.js";
 import { sameCoin } from "./matching/money.js";
 import {
   mirrorRemovedRow,
@@ -45,7 +46,7 @@ export type Currency = ListingCurrency;
 
 /** The amount of a card line in its own currency's coin (integer pesos, integer cents); `ccAnnulmentCupoGap.ts` reads it. */
 export function coin(amount: number, currency: Currency): number {
-  return currency === "usd" ? Math.round(amount * 100) : Math.round(amount); // convention-ok: pesos have no minor unit; dollars round to the cent
+  return Math.round(amount * 10 ** currencyMinorDigits(currency));
 }
 
 // ── annulling what a feed no longer lists ─────────────────────────────────────────────────────────
@@ -129,7 +130,7 @@ const selTaggedKind = db.prepare(`SELECT cuota_purchase_kind FROM cc_statement_l
  * as a cuota purchase (the statement's plan supersedes it), not a credit or payment. Anything else
  * keeps the delete the reconcile always did.
  */
-export function bucketLineAnnullable(line: { id: number; installment_flag: boolean | number; currency: string; amount_clp: number | null; amount_usd: number | null }): boolean {
+export function bucketLineAnnullable(line: { id: number; installment_flag: boolean | number; amount: number | null }): boolean {
   if (line.installment_flag) return false;
   const amount = listingLineAmount(line);
   if (amount == null || !(amount > 0)) return false;
@@ -137,11 +138,12 @@ export function bucketLineAnnullable(line: { id: number; installment_flag: boole
   return tagged == null;
 }
 
+/** A statement line as the annulment matchers read it: its amount in its own currency. */
 type StatementChargeLike = {
   id: number;
   merchant: string | null;
-  amount_clp: number | null;
-  amount_usd: number | null;
+  amount: number | null;
+  currency: Currency;
   iso: string | null;
 };
 
@@ -152,8 +154,8 @@ type StatementChargeLike = {
  * annulled — it was never voided.
  */
 export function statementRestatesBucketLine(
-  bucket: { id: number; merchant: string | null; currency: string; amount_clp: number | null; amount_usd: number | null; iso: string },
-  statementLines: readonly (StatementChargeLike & { currency: Currency })[]
+  bucket: { id: number; merchant: string | null; currency: string; amount: number | null; iso: string },
+  statementLines: readonly StatementChargeLike[]
 ): boolean {
   const currency = listingLineCurrency(bucket);
   const amount = listingLineAmount(bucket) ?? 0;
@@ -161,8 +163,8 @@ export function statementRestatesBucketLine(
   return statementLines.some((s) => {
     if (s.currency !== currency || s.iso == null) return false;
     if (Math.abs(daysBetweenIso(bucket.iso, s.iso)) > window) return false;
-    const sAmount = (currency === "usd" ? s.amount_usd : s.amount_clp) ?? 0; // convention-ok: a listing bucket line carries the legacy peso/dollar view (cards/lineAmountSql.ts)
-    if (!(sAmount > 0)) return false;
+    const sAmount = s.amount;
+    if (sAmount == null || !(sAmount > 0)) return false;
     return sameCoin(sAmount, amount, currency) ? true : merchantsMatchForCrossDedupe(bucket.merchant, s.merchant);
   });
 }
@@ -191,7 +193,7 @@ export type CcAnnulmentSettled = {
  */
 export function settleAnnulmentsAgainstStatement(
   accountId: number,
-  statementLines: readonly (StatementChargeLike & { currency: Currency })[],
+  statementLines: readonly StatementChargeLike[],
   usedLineIds: ReadonlySet<number>,
   opts?: { dryRun?: boolean }
 ): CcAnnulmentSettled[] {
@@ -201,10 +203,10 @@ export function settleAnnulmentsAgainstStatement(
   const free = statementLines.filter((s) => !usedLineIds.has(s.id) && s.iso != null);
   const taken = new Set<number>();
   const out: CcAnnulmentSettled[] = [];
-  const sameMoney = (a: CcAnnulledPurchase, s: StatementChargeLike & { currency: Currency }, sign: 1 | -1): boolean => {
+  const sameMoney = (a: CcAnnulledPurchase, s: StatementChargeLike, sign: 1 | -1): boolean => {
     if (s.currency !== a.currency) return false;
-    const v = (s.currency === "usd" ? s.amount_usd : s.amount_clp) ?? 0; // convention-ok: a listing bucket line carries the legacy peso/dollar view (cards/lineAmountSql.ts)
-    return sign * v > 0 && sameCoin(Math.abs(v), a.amount, s.currency);
+    const v = s.amount;
+    return v != null && sign * v > 0 && sameCoin(Math.abs(v), a.amount, s.currency);
   };
   for (const a of open) {
     const billed = free.find(

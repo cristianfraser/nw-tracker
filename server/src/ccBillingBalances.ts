@@ -279,7 +279,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
     // (`foreignPaymentPaidStatementDateResolver`).
     const paidFacturacionStatementDate = foreignPaymentPaidStatementDateResolver(accountId);
 
-    // A linked traspaso-de-deuda foreign abono carries minus its peso twin's booked pesos — the
+    // A linked traspaso-de-deuda foreign abono carries minus what its cargo twin is booked at — the
     // pair is one debt reclassification and must net to exactly zero, never an fx estimate.
     // Unlinked traspaso legs (web-paste pastes, twin statement not imported) keep the fx
     // conversion below until the PDF import links the real pair.
@@ -287,7 +287,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
     const linkedTraspasoClp = (lineId: number, currency: string): number | undefined => {
       let byLine = traspasoClpByLineIdByCurrency.get(currency);
       if (!byLine) {
-        byLine = ccTraspasoLinkedClpByForeignLineId(accountId, currency);
+        byLine = ccTraspasoLinkedClpByForeignLineId(accountId, currency, fxDateFor);
         traspasoClpByLineIdByCurrency.set(currency, byLine);
       }
       return byLine.get(lineId);

@@ -2,7 +2,7 @@ import type { CardUnbilledMovementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
-import { pesosOrDollars } from "./ingestCurrencies.js";
+import { requireCardCurrency } from "./cards/cardCurrencies.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import type { CcIssuerSlug } from "./ccIssuers.js";
 
@@ -13,7 +13,8 @@ import type { CcIssuerSlug } from "./ccIssuers.js";
  */
 export type SantanderBankCupo = {
   account_id: number;
-  currency: "clp" | "usd"; // convention-ok: Santander's product summary states cupos in pesos and dollars only
+  /** A currency the card's issuer bills in. */
+  currency: string;
   bank_account: string;
   plastic_last4: string;
   cupo_total: number;
@@ -48,7 +49,7 @@ export function bankCupoRowsFromListing(
     seen.add(key);
     out.push({
       account_id: accountId,
-      currency: pesosOrDollars(r.currency, "card.unbilled_movements issuer_balances"),
+      currency: requireCardCurrency(r.currency, accountId, "card.unbilled_movements issuer_balances"),
       bank_account: r.account.number,
       plastic_last4: r.card_last4,
       cupo_total: r.limit,

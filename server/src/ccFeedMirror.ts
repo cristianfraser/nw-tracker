@@ -36,7 +36,7 @@ import {
 import { daysBetweenIso } from "nw-tracker-contracts";
 import { isCardPaymentLine } from "./ccPaymentLines.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
-import { roundToCurrency } from "./displayUnits.js";
+import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import { sameCoin } from "./matching/money.js";
 import { pairOneToOne } from "./matching/pairing.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -47,12 +47,19 @@ export type CcFeedMirrorRemoved = {
   id: number;
   date: string;
   merchant: string | null;
+  /** The line's amount in its own currency. */
+  amount: number | null;
+  currency: string;
+  /** The same amount in the report's peso / dollar keys (null for a line in any other currency). */
   amount_clp: number | null;
   amount_usd: number | null;
 };
 
 /** How a currency's listing was proved complete, so its missing lines may be removed. */
 export type FeedMirrorCurrencyProof = "saldo_inicial" | "cupo_identity";
+
+/** What proved each mirrored currency's listing complete, by currency code. */
+export type FeedMirrorProof = Readonly<Record<string, FeedMirrorCurrencyProof>>;
 
 /** An unlisted line kept as an annulled purchase (`ccAnnulledPurchases.ts`) instead of deleted. */
 export type CcFeedMirrorAnnulled = CcFeedMirrorRemoved & {
@@ -63,9 +70,9 @@ export type CcFeedMirrorAnnulled = CcFeedMirrorRemoved & {
 
 export type CcFeedMirrorResult = {
   window_start: string;
-  currencies: ("clp" | "usd")[]; // convention-ok: Santander's card feed has a peso and a dollar slide only
+  currencies: string[];
   /** Per mirrored currency, what proved its listing complete. */
-  proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>; // convention-ok: Santander's card feed has a peso and a dollar slide only
+  proof: FeedMirrorProof;
   /** Restatements deleted: the bank re-listed the purchase under another amount, name or date. */
   removed: CcFeedMirrorRemoved[];
   /** Lines the bank dropped without restating them: kept as purchase + annulment. */
@@ -83,21 +90,22 @@ export type CcFeedMirrorResult = {
  */
 export function feedMirrorCurrencies(opts: {
   /** Currencies whose slide carried the SALDO INICIAL row. */
-  stated: ReadonlySet<"clp" | "usd">; // convention-ok: Santander's card feed has a peso and a dollar slide only
-  /** The close on record for the card (the listing's, or the latest recorded), with its billed totals. */
-  closeOnRecord: { saldo_inicial_clp: number | null; saldo_inicial_usd: number | null } | null;
+  stated: ReadonlySet<string>;
+  /** The close on record for the card (the listing's, or the latest recorded), with its billed total per currency. */
+  closeOnRecord: { saldo_inicial: Readonly<Record<string, number | null>> } | null;
   /** Every listed row, debt-positive, as the feeder sent it. */
   lines: readonly { currency: string; amount: number }[];
   /** The bank's cupo utilizado per currency, from the same session's product summary. */
-  bankUsed: Partial<Record<"clp" | "usd", number>>; // convention-ok: Santander's card feed has a peso and a dollar slide only
-}): Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>> { // convention-ok: Santander's card feed has a peso and a dollar slide only
-  const proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>> = {}; // convention-ok: Santander's card feed has a peso and a dollar slide only
-  for (const currency of ["clp", "usd"] as const) { // convention-ok: Santander's card feed has a peso and a dollar slide only
+  bankUsed: Readonly<Record<string, number>>;
+}): FeedMirrorProof {
+  const proof: Record<string, FeedMirrorCurrencyProof> = {};
+  // Every currency either side names: a slide that stated its close, or a cupo the bank reported.
+  for (const currency of [...new Set([...opts.stated, ...Object.keys(opts.bankUsed)])].sort()) {
     if (opts.stated.has(currency)) {
       proof[currency] = "saldo_inicial";
       continue;
     }
-    const saldoInicial = currency === "clp" ? opts.closeOnRecord?.saldo_inicial_clp : opts.closeOnRecord?.saldo_inicial_usd; // convention-ok: Santander's card feed has a peso and a dollar slide only
+    const saldoInicial = opts.closeOnRecord?.saldo_inicial[currency];
     const used = opts.bankUsed[currency];
     if (saldoInicial == null || used == null) continue;
     // Each figure to the currency's coin, then their sum against the bank's, to the coin.
@@ -195,6 +203,8 @@ export function mirrorRemovedRow(l: CcOpenBucketLine): CcFeedMirrorRemoved {
     id: l.id,
     date: bucketLinePurchaseIso(l) ?? String(l.transaction_date ?? ""),
     merchant: l.merchant,
+    amount: listingLineAmount(l),
+    currency: listingLineCurrency(l),
     amount_clp: l.amount_clp,
     amount_usd: l.amount_usd,
   };
@@ -210,7 +220,7 @@ export function assertMirrorWithinLimit(accountId: number, windowStartIso: strin
       lines
         .map((l) => {
           const r = mirrorRemovedRow(l);
-          return `${r.date} ${r.merchant} ${r.amount_usd ? `US$${r.amount_usd}` : r.amount_clp}`;
+          return `${r.date} ${r.merchant} ${isHomeCurrency(r.currency) ? r.amount : `${r.currency.toUpperCase()} ${r.amount}`}`;
         })
         .join("; ")
   );
@@ -225,11 +235,11 @@ export function planOpenBucketMirror(
   accountId: number,
   opts: {
     windowStartIso: string;
-    proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>; // convention-ok: Santander's card feed has a peso and a dollar slide only
+    proof: FeedMirrorProof;
     feedLines: readonly CcListingLine[];
   }
 ): { result: CcFeedMirrorResult; plan: CardLinePlan; toAnnul: CcOpenBucketLine[] } {
-  const currencies = new Set((Object.keys(opts.proof) as ("clp" | "usd")[]).filter((c) => opts.proof[c] != null)); // convention-ok: Santander's card feed has a peso and a dollar slide only
+  const currencies = new Set(Object.keys(opts.proof));
   const unlisted = planFeedMirror(accountId, { windowStartIso: opts.windowStartIso, currencies, feedLines: opts.feedLines });
   assertMirrorWithinLimit(accountId, opts.windowStartIso, unlisted);
   const classified = classifyUnlistedLines(unlisted, opts.feedLines);

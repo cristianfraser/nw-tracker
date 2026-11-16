@@ -18,7 +18,7 @@ import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccIssuerBySlug, ccIssuerForWebPasteCardGroup } from "./ccIssuers.js";
 import { ccImportFlowItemFromLine, ccStatementLabel, type CcImportFlowItem } from "./ccStatementsImport.js";
 import { requireLoadedCurrency } from "./ingestCurrencies.js";
-import { requireCardCurrency } from "./cards/cardCurrencies.js";
+import { cardPrimaryStatementCurrency, requireCardCurrency } from "./cards/cardCurrencies.js";
 
 /**
  * One line of a card's listing of movements not billed yet — the nightly feed, a pasted table, a
@@ -187,6 +187,9 @@ export function listingStatements(
   skipped_saldo_inicial: CcImportFlowItem[];
 } {
   const openBillingMonth = targetBillingMonthForManualImports(accountId, cardLast4);
+  // The bucket is a statement in the currency of the card's main statement; a line in another of
+  // the issuer's currencies sits on it as a foreign line (its own `amount` + `currency`).
+  const bucketCurrency = cardPrimaryStatementCurrency(accountId);
   /** One open-period bucket per billing month (append on re-import via dedupe_key). */
   const bucketFor = new Map<string, CardCanonicalStatement>();
   const bucket = (billingMonth: string): CardCanonicalStatement => {
@@ -201,9 +204,9 @@ export function listingStatements(
         pay_by: null,
         card_last4: cardLast4,
         card_product: null,
-        // USD charges land on the CLP open bucket as foreign lines: MONTO US$ is authoritative and
-        // the CLP value is derived at read time via FX (`ccExpenseAmountClp.ts`).
-        currency: "clp",
+        // A charge in another currency lands on the bucket as a foreign line: its own amount is
+        // authoritative and its pesos are derived at read time (`ccExpenseAmountClp.ts`).
+        currency: bucketCurrency,
         layout: "compact",
         header: EMPTY_CARD_STATEMENT_HEADER,
         lines: [],
@@ -242,7 +245,7 @@ export function listingStatements(
         // any other its amount as the peso slot (which only decides the sign and the peso rule).
         amount_clp: legacyAmountColumn(line.currency) === "amount_usd" ? 0 : amount,
         amount_usd: legacyAmountColumn(line.currency) === "amount_usd" ? amount : null,
-        statement_currency: "clp",
+        statement_currency: bucketCurrency,
       }),
       transaction_date: line.transaction_date,
       posting_date: null,
@@ -267,7 +270,7 @@ export function listingStatements(
         baseline_match: null,
       },
     };
-    const label = ccStatementLabel(statement.close, "clp");
+    const label = ccStatementLabel(statement.close, bucketCurrency);
     // The previous facturación's total, not a purchase (the feed reads it as the observed close).
     if (isCcSaldoInicialMerchant(line.merchant)) {
       skipped_saldo_inicial.push(ccImportFlowItemFromLine(canonical, label));

@@ -4,7 +4,7 @@ import { snapshotTables } from "./test/snapshotTables.js";
 import { jsonOwnedClosesForAccount, santanderJsonSourcePdf, statementSourceOwnerForClose } from "./ccStatementJsonSource.js";
 import { mergeCardStatements } from "./ccInstallmentLedgerMerge.js";
 import { db } from "./db.js";
-import { assertNoCardRoutingConflict, buildSantanderStatement, inheritedStatementCtx, resolveJsonCuotaCanonicalRowId, usdStatementIsStaleEcho, writeSantanderStatements } from "./santanderStatementImport.js";
+import { assertNoCardRoutingConflict, buildSantanderStatement, inheritedStatementCtx, resolveJsonCuotaCanonicalRowId, secondaryStatementIsStaleEcho, writeSantanderStatements } from "./santanderStatementImport.js";
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
@@ -77,6 +77,7 @@ describe("santanderStatementImport", () => {
 
   const CTX = {
     statementDate: "20/09/2026",
+    mainCurrency: "clp",
     cardGroup: "vitest-json",
     periodFrom: "20/08/2026",
     payBy: "10/10/2026",
@@ -340,14 +341,14 @@ describe("santanderStatementImport", () => {
     const echo = [
       line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: -84.77, transaction_date: "2026-07-31" }),
     ];
-    expect(usdStatementIsStaleEcho(id, "24/11/2026", echo)).toBe(true);
+    expect(secondaryStatementIsStaleEcho(id, "usd", "24/11/2026", echo)).toBe(true);
     // Same merchant + amount on a NEW date is a genuine repeat charge, not an echo.
     const fresh = [
       line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: -84.77, transaction_date: "2026-09-30" }),
     ];
-    expect(usdStatementIsStaleEcho(id, "24/11/2026", fresh)).toBe(false);
+    expect(secondaryStatementIsStaleEcho(id, "usd", "24/11/2026", fresh)).toBe(false);
     // A rewrite of the SAME close never reads as an echo of itself.
-    expect(usdStatementIsStaleEcho(id, "25/08/2026", echo)).toBe(false);
+    expect(secondaryStatementIsStaleEcho(id, "usd", "25/08/2026", echo)).toBe(false);
   });
 
   it("inherits card_group and period_from from the account's statement history", () => {

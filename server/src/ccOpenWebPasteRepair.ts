@@ -3,6 +3,7 @@ import { statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImpor
 import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import { db } from "./db.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
+import { cardPrimaryStatementCurrency } from "./cards/cardCurrencies.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 import {
@@ -33,7 +34,7 @@ const insOpenStmt = db.prepare(`
     saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado
   ) VALUES (
     ?, ?, ?, ?, NULL, NULL, NULL,
-    ?, NULL, 'compact', 'clp',
+    ?, NULL, 'compact', ?,
     NULL, NULL, NULL, NULL, NULL
   )
 `);
@@ -68,7 +69,9 @@ function ensureOpenWebPasteStatementId(
     cardGroup,
     sourcePdf,
     statementDate,
-    cardLast4
+    cardLast4,
+    // The bucket is in the currency of the card's main statement, as the listing import creates it.
+    cardPrimaryStatementCurrency(accountId)
   );
   return Number(r.lastInsertRowid);
 }

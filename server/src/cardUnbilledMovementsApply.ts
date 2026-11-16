@@ -5,6 +5,7 @@ import { withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
 import { listingLineFromCardListingLine } from "./cardListingLines.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
+import { requireLoadedCurrency } from "./ingestCurrencies.js";
 import { assertFeedClosesMatchStatements, recordFeedBillingClose } from "./ccBillingCloses.js";
 import { latestFeedBillingClose } from "./cards/facturacion.js";
 import { moveOpenBucketLinesByDedupeKey } from "./ccOpenWebPasteRepair.js";
@@ -56,9 +57,8 @@ export type CardListingClose = {
   /** The issuer's account number. */
   account: string;
   close_iso: string;
-  /** Null when the listing did not state that currency. */
-  saldo_inicial_clp: number | null;
-  saldo_inicial_usd: number | null;
+  /** The billed total per currency the listing names; null when it did not state that currency. */
+  saldo_inicial: Readonly<Record<string, number | null>>;
 };
 
 /** The close the listing states (the feed's SALDO INICIAL), as recorded for this import. */
@@ -67,8 +67,8 @@ export type CardListingCloseImport = {
   billing_month: string;
   /** `new` the first time this close is seen, `seen` on the daily repeats. */
   status: "new" | "seen";
-  saldo_inicial_clp: number | null;
-  saldo_inicial_usd: number | null;
+  /** The close's billed total per currency on record (a currency the feed never stated is absent). */
+  saldo_inicial: Readonly<Record<string, number>>;
   /**
    * The facturación this feed's rows are filed under by default: the month after the close. A
    * row dated in a later cycle than that month's (a close-day purchase on the close day itself,
@@ -168,7 +168,7 @@ function applyFeedClose(
   return db.transaction(() => {
     const recorded = recordFeedBillingClose(accountId, {
       close_iso: close.close_iso,
-      saldo_inicial: { clp: close.saldo_inicial_clp, usd: close.saldo_inicial_usd },
+      saldo_inicial: close.saldo_inicial,
       source_file: sourceFile,
     });
     assertFeedClosesMatchStatements(accountId);
@@ -193,8 +193,7 @@ function applyFeedClose(
         close_iso: recorded.close.close_date,
         billing_month: recorded.close.billing_month,
         status: recorded.status,
-        saldo_inicial_clp: recorded.close.saldo_inicial_clp,
-        saldo_inicial_usd: recorded.close.saldo_inicial_usd,
+        saldo_inicial: recorded.close.saldo_inicial,
         rows_billing_month: rowsBillingMonth,
         lines_in_later_cycle: lineBillingMonths.filter((m) => m !== rowsBillingMonth).length,
         lines_moved_forward: moved,
@@ -242,8 +241,10 @@ export function applyCardUnbilledMovements(
     closes.set(card.account.number, {
       account: card.account.number,
       close_iso: card.close.date,
-      saldo_inicial_clp: card.close.billed.clp,
-      saldo_inicial_usd: card.close.billed.usd,
+      // The contract's close names its currencies as keys (`billed`): read as a map by currency code.
+      saldo_inicial: Object.fromEntries(
+        Object.entries(card.close.billed).map(([currency, amount]) => [requireLoadedCurrency(currency, "card.unbilled_movements close"), amount])
+      ),
     });
   }
   // Validated before any write, recorded after the lines: the check compares it with the ledger
@@ -342,13 +343,12 @@ function applyCardListing(
   // Last: everything this listing shows is now on file, so what the buckets hold beyond it is
   // what the bank dropped. Only from a close on record (the window start) and per currency the
   // listing proves complete: its SALDO INICIAL row, or the bank's cupo identity.
-  const stated = new Set<"clp" | "usd">(); // convention-ok: Santander's card feed has a peso and a dollar slide only
-  if (close?.saldo_inicial_clp != null) stated.add("clp");
-  if (close?.saldo_inicial_usd != null) stated.add("usd");
+  const stated = new Set<string>();
+  for (const [currency, amount] of Object.entries(close?.saldo_inicial ?? {})) if (amount != null) stated.add(currency);
   const recordedClose = feedClose ? null : latestFeedBillingClose(accountId);
   const windowStartIso = feedClose?.close_iso ?? recordedClose?.close_date ?? null;
   const closeOnRecord = feedClose ?? recordedClose;
-  const bankUsed: Partial<Record<"clp" | "usd", number>> = {}; // convention-ok: Santander's card feed has a peso and a dollar slide only
+  const bankUsed: Record<string, number> = {};
   if (bankCupo.status === "present") {
     for (const row of bankCupo.rows) if (row.account_id === accountId) bankUsed[row.currency] = row.cupo_utilizado;
   }
@@ -376,9 +376,10 @@ function applyCardListing(
   // everything above is written, so the app's side is the ledger this listing leaves behind.
   const cupoGap: CcCupoGapReport[] = [];
   if (bankCupo.status === "present") {
-    for (const currency of ["clp", "usd"] as const) { // convention-ok: Santander's card feed has a peso and a dollar slide only
-      const used = bankUsed[currency];
-      if (used == null || proof[currency] != null) continue;
+    // Every currency the bank reported a cupo in, in a fixed order.
+    for (const currency of Object.keys(bankUsed).sort()) {
+      const used = bankUsed[currency]!;
+      if (proof[currency] != null) continue;
       const gap = planCupoGap(accountId, {
         currency,
         bankUsed: used,

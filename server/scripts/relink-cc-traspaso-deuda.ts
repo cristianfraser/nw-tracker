@@ -42,10 +42,12 @@ for (const { id } of accountRows) {
   totalPairs += pairs.length;
   console.log(`\naccount ${id}: ${pairs.length} pair(s) (${existing} link row(s) stored)`);
   for (const p of pairs) {
-    const rate = p.amount_clp / p.amount_usd;
+    const rate = p.to_amount / p.from_amount;
+    const to = p.to_currency.toUpperCase();
+    const from = p.from_currency.toUpperCase();
     console.log(
-      `  ${p.statement_date}  +${p.amount_clp} CLP ↔ −${p.amount_usd.toFixed(2)} USD` +
-        `  (implied ${rate.toFixed(2)} CLP/USD; lines ${p.clp_line_id}/${p.usd_line_id})`
+      `  ${p.statement_date}  +${p.to_amount} ${to} ↔ −${p.from_amount.toFixed(2)} ${from}` +
+        `  (implied ${rate.toFixed(2)} ${to}/${from}; lines ${p.to_line_id}/${p.from_line_id})`
     );
   }
   if (apply) {

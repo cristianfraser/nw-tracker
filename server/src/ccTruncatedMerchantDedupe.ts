@@ -52,7 +52,7 @@ import type { CardLinePlan } from "./cards/lineWriteSession.js";
 
 import { parseDdMmYyToIso, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
-import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
+import { sameCoin } from "./matching/money.js";
 
 
 export type MerchantDuplicateRule = "truncated" | "pending_authorization";
@@ -77,8 +77,9 @@ export type TruncatedMerchantDedupeResult = CardLinePlan & {
 type BucketLine = {
   id: number;
   merchant: string | null;
-  amount_clp: number | null;
-  amount_usd: number | null;
+  /** The line's amount in its own currency. */
+  amount: number | null;
+  currency: string;
   transaction_date: string | null;
 };
 
@@ -86,14 +87,11 @@ function normalized(merchant: string | null): string {
   return String(merchant ?? "").trim().toUpperCase().replace(/\s+/g, " ");
 }
 
-/** Same money, same currency — compared on the leg that is actually populated. */
+/** Same money, same currency: each line's own amount, to the currency's coin. A line with no amount is no one's twin. */
 function sameAmount(a: BucketLine, b: BucketLine): boolean {
-  const usdA = Number(a.amount_usd ?? 0);
-  const usdB = Number(b.amount_usd ?? 0);
-  if (usdA !== 0 || usdB !== 0) return Math.abs(usdA - usdB) < 0.005;
-  const clpA = Number(a.amount_clp ?? 0);
-  const clpB = Number(b.amount_clp ?? 0);
-  return clpA !== 0 && Math.round(clpA) === Math.round(clpB);
+  if (a.currency !== b.currency) return false;
+  if (a.amount == null || b.amount == null || a.amount === 0) return false;
+  return sameCoin(a.amount, b.amount, a.currency);
 }
 
 function daysApart(a: BucketLine, b: BucketLine): number | null {
@@ -162,7 +160,7 @@ function pairLabel(shorter: BucketLine, longer: BucketLine, rule: MerchantDuplic
 export function planTruncatedMerchantDuplicateLines(accountId: number): TruncatedMerchantDedupePlan[] {
   const lines = db
     .prepare(
-      `SELECT l.id, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, l.transaction_date
+      `SELECT l.id, l.merchant, l.amount, l.currency, l.transaction_date
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.source_kind IN ('listing_open', 'listing_other')`

@@ -114,7 +114,8 @@ export function recordPlanPrepayments(
         (b) =>
           !taken.has(b.id) &&
           !b.installment_flag &&
-          Math.sign(b.amount_clp ?? 0) === sign &&
+          b.amount != null &&
+          Math.sign(b.amount) === sign &&
           bucketLineMatchesFeedLine(b, feed, 0)
       );
     const planById = new Map(planRows([accountId]).map((p) => [p.id, p]));

@@ -466,7 +466,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
 
   it("proves a currency complete by the bank's cupo identity when its SALDO INICIAL row is missing", () => {
     // Pure rule: the dollar slide states no close, but utilizado = close on record + listed rows.
-    const closeOnRecord = { saldo_inicial_clp: 3_476_163, saldo_inicial_usd: 556.21 };
+    const closeOnRecord = { saldo_inicial: { clp: 3_476_163, usd: 556.21 } };
     const lines = [
       { currency: "usd" as const, amount: 13.24 },
       { currency: "usd" as const, amount: 13.22 },
@@ -482,6 +482,12 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     expect(feedMirrorCurrencies({ stated: new Set(), closeOnRecord: null, lines, bankUsed: { usd: 26.46 } })).toEqual({});
     // Pesos: the identity holds only without cuota plans outstanding.
     expect(feedMirrorCurrencies({ stated: new Set(), closeOnRecord, lines, bankUsed: { clp: 3_486_163 } })).toEqual({ clp: "cupo_identity" });
+    // Any currency the close and the bank's summary name is judged the same way: euros here.
+    const euroClose = { saldo_inicial: { eur: 120.5 } };
+    const euroLines = [{ currency: "eur", amount: 9.5 }, { currency: "eur", amount: -120.5 }];
+    expect(feedMirrorCurrencies({ stated: new Set(), closeOnRecord: euroClose, lines: euroLines, bankUsed: { eur: 9.5 } })).toEqual({ eur: "cupo_identity" });
+    expect(feedMirrorCurrencies({ stated: new Set(["eur"]), closeOnRecord: euroClose, lines: euroLines, bankUsed: {} })).toEqual({ eur: "saldo_inicial" });
+    expect(feedMirrorCurrencies({ stated: new Set(), closeOnRecord: euroClose, lines: euroLines, bankUsed: { eur: 9.51 } })).toEqual({});
   });
 
   it("mirrors the dollar side on the cupo identity when the slide lost its SALDO INICIAL row", () => {

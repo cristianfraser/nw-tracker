@@ -5,7 +5,16 @@ import { feedCloseStatementMismatches, recordFeedBillingClose } from "./ccBillin
 import { recomputeCcBillingMonthBalances } from "./ccBillingMonthBalancesRecompute.js";
 import { buildBillingDetailByMonth, buildFacturaciones, ccStatementOwedByCurrencyByMonth, facturadoForeignIn } from "./ccBillingViews.js";
 import { recordManualCardPayment } from "./ccManualPayments.js";
+import { computeCcTraspasoDeudaPairsForAccount, relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
+import { convertCurrency } from "./rates.js";
 import { listPlantedPaymentLines } from "./ccPlantedPayments.js";
+import { cardIssuerStatementSchema, type CardIssuerStatementPayload } from "nw-tracker-contracts";
+import { applyCardStatementToAccount } from "./cardStatementApply.js";
+import { IngestRefusal } from "./ingestReceiver.js";
+import { insertLines } from "./cards/lineWrites.js";
+import { webPasteLineMatchesStatementLine } from "./ccOpenWebPastePdfReconcile.js";
+import { dbLineToReconcileRow } from "./ccStatementImportReconcile.js";
+import { listCcStatementLinesForStatement } from "./ccStatementsDb.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { deleteTempCardMaster } from "./test/tempCardMaster.js";
@@ -18,6 +27,13 @@ import { cardPaymentMoney, loadCardPaymentTransfers } from "./latestCardPayments
  * billing snapshot, the post-close evidence (lines, a payment of the previous facturación, a
  * header payment leg, a financing charge read from its stored kind), a feed-observed close and its
  * cross-check, and a payment entered by hand with its planted line.
+ *
+ * Wave 9 `ut-card-import-currency`: a traspaso de deuda pairs a cargo on the card's main statement
+ * with an abono in another currency, checked against the pair's stored rate of the close; a
+ * facturación as the issuer states it (`card.statement`) is written and cross-checked in the
+ * card's own currency, its main statement stating the header; a listing's open bucket is a
+ * statement in the card's main currency, and its lines are matched and reconciled at their own
+ * amount and currency.
  */
 type Fixture = {
   label: string;
@@ -242,6 +258,189 @@ for (const fx of FIXTURES) {
       expect(
         recordManualCardPayment({ from_account_id: cashId, card_account_id: cardId, amount: 12.35, currency: fx.currency, paid_on: days.manual }).status
       ).toBe("already_recorded");
+    });
+
+    it("pairs a traspaso de deuda onto the main statement from another currency, at the bank's conversion", () => {
+      const other = fx.currency === "eur" ? "usd" : "eur";
+      const stored = convertCurrency(1, other, fx.currency, days.closeB, { side: "mid", storedOnly: true })!;
+      expect(stored).toBeGreaterThan(0);
+      // The bank's conversion: 3 % over the stored rate of the close.
+      const fromAmount = 40;
+      const toAmount = Math.round(fromAmount * stored * 1.03 * 100) / 100;
+      const mainStatement = (
+        db.prepare(`SELECT id FROM cc_statements WHERE account_id = ? AND statement_date = ?`).get(cardId, ddmm(days.closeB)) as { id: number }
+      ).id;
+      const otherStatement = Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_to, currency, layout, pay_by)
+             VALUES (?, ?, ?, ?, ?, ?, 'compact', ?)`
+          )
+          .run(cardId, fx.cardGroup, `${NOTE}-traspaso-${other}.pdf`, ddmm(days.closeB), ddmm(days.closeB), other, ddmm(days.payByB)).lastInsertRowid
+      );
+      const line = db.prepare(
+        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, kind, dedupe_key)
+         VALUES (?, ?, 'TRASPASO DEUDA VITEST', ?, ?, 0, 'card_debt_transfer', ?)`
+      );
+      const toLine = Number(line.run(mainStatement, ddmm(days.purchaseB), toAmount, fx.currency, `${NOTE}-traspaso-to`).lastInsertRowid);
+      const fromLine = Number(line.run(otherStatement, ddmm(days.purchaseB), -fromAmount, other, `${NOTE}-traspaso-from`).lastInsertRowid);
+      try {
+        expect(computeCcTraspasoDeudaPairsForAccount(cardId)).toEqual([
+          {
+            statement_date: ddmm(days.closeB),
+            to_line_id: toLine,
+            to_currency: fx.currency,
+            to_amount: toAmount,
+            from_line_id: fromLine,
+            from_currency: other,
+            from_amount: fromAmount,
+          },
+        ]);
+        expect(relinkCcTraspasoDeudaLinksForAccount(cardId)).toEqual({ links: 1 });
+        clearAggregationCache();
+        // The pair is one reclassification: the abono is valued at minus what the cargo is booked at.
+        const lines = normalizedPostCloseLines(cardId);
+        const to = lines.find((l) => l.key === `${NOTE}-traspaso-to`)!;
+        const from = lines.find((l) => l.key === `${NOTE}-traspaso-from`)!;
+        expect(to.clp).toBe(Math.round(toAmount * fx.rateB));
+        expect(from).toMatchObject({ currency: other, amount: -fromAmount, clp: -to.clp! });
+        // A conversion far from the stored rate of the close is two unrelated lines.
+        db.prepare(`UPDATE cc_statement_lines SET amount = ? WHERE id = ?`).run(toAmount * 2, toLine);
+        expect(() => computeCcTraspasoDeudaPairsForAccount(cardId)).toThrow(/implied rate .* is more than a factor of/);
+        // The cargo belongs on the main statement: two legs outside it do not pair.
+        db.prepare(`UPDATE cc_statement_lines SET currency = ? WHERE id = ?`).run(other, toLine);
+        expect(() => computeCcTraspasoDeudaPairsForAccount(cardId)).toThrow(
+          new RegExp(`exactly one ${fx.currency.toUpperCase()} leg and one leg in another currency, got 2 ${other}`)
+        );
+      } finally {
+        db.prepare(`DELETE FROM cc_traspaso_deuda_links WHERE account_id = ?`).run(cardId);
+        db.prepare(`DELETE FROM cc_statement_lines WHERE id IN (?, ?)`).run(toLine, fromLine);
+        db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(otherStatement);
+        clearAggregationCache();
+      }
+    });
+
+    it("writes a facturación as the issuer states it in the card's currency, then cross-checks it", () => {
+      const close = `${y}-06-05`;
+      const statementPayload = (amount: number, currency: string = fx.currency): CardIssuerStatementPayload =>
+        cardIssuerStatementSchema.parse({
+          format: "issuer_statement",
+          account: { issuer: fx.issuer, number: "4471" },
+          statement_number: "007",
+          close,
+          pay_by: `${y}-06-30`,
+          next_close: `${y}-07-05`,
+          titular_last4: null,
+          statements: [
+            {
+              currency,
+              document: `${NOTE}-issuer.json`,
+              billed_total: amount,
+              payments_total: 20,
+              lines: [
+                {
+                  kind: "purchase",
+                  transaction_date: `${y}-05-20`,
+                  posting_date: null,
+                  merchant: "PAPELERIA VITEST",
+                  amount,
+                  origin_amount: null,
+                  country: null,
+                  place: null,
+                  card_last4: null,
+                  authorization_code: null,
+                  installment: null,
+                  raw_text: "vitest",
+                },
+                {
+                  kind: "payment",
+                  transaction_date: `${y}-05-25`,
+                  posting_date: null,
+                  merchant: "MONTO CANCELADO",
+                  amount: -20,
+                  origin_amount: null,
+                  country: null,
+                  place: null,
+                  card_last4: null,
+                  authorization_code: null,
+                  installment: null,
+                  raw_text: "vitest",
+                },
+              ],
+            },
+          ],
+        });
+      const stored = () =>
+        db
+          .prepare(
+            `SELECT l.merchant, l.amount, l.currency, s.monto_facturado, s.monto_pagado_anterior, s.next_period_to
+             FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+             WHERE s.account_id = ? AND s.statement_date = ?`
+          )
+          .all(cardId, ddmm(close));
+      try {
+        const written = applyCardStatementToAccount(cardId, statementPayload(64.13));
+        expect(written.statements.map((s) => [s.currency, s.outcome])).toEqual([[fx.currency, "written"]]);
+        expect(written.written).toEqual({ currencies: [fx.currency], lines_inserted: 1 });
+        // The main statement: the payment is folded into the header, the line is in the card's currency.
+        expect(stored()).toEqual([
+          {
+            merchant: "PAPELERIA VITEST",
+            amount: 64.13,
+            currency: fx.currency,
+            monto_facturado: 64.13,
+            monto_pagado_anterior: -20,
+            next_period_to: ddmm(`${y}-07-05`),
+          },
+        ]);
+        // Sent again unchanged: this source owns the close and does not rewrite it.
+        const again = applyCardStatementToAccount(cardId, statementPayload(64.13));
+        expect(again.statements.map((s) => [s.outcome, s.owner])).toEqual([["clean", "json"]]);
+        expect(again.written).toBeNull();
+        // A currency the issuer does not bill in (or the app does not know) is refused, never written.
+        expect(() => applyCardStatementToAccount(cardId, statementPayload(5, fx.currency === "eur" ? "gbp" : "eur"))).toThrow(IngestRefusal);
+      } finally {
+        db.prepare(`DELETE FROM cc_statements WHERE account_id = ? AND statement_date = ?`).run(cardId, ddmm(close));
+        db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(cardId);
+        db.prepare(`DELETE FROM cc_billing_month_metrics WHERE account_id = ?`).run(cardId);
+        clearAggregationCache();
+      }
+    });
+
+    it("files a listing in an open bucket of the card's main currency and reads its lines at their own amount", () => {
+      const listed = `${y}-04-20`;
+      try {
+        const result = insertLines(cardId, {
+          lines: [{ transaction_date: listed, merchant: "FERRETERIA VITEST", currency: fx.currency, amount: 23.45, raw_line: "vitest" }],
+          errors: [],
+        });
+        expect(result.inserted).toBe(1);
+        const bucket = db
+          .prepare(`SELECT id, currency, source_pdf FROM cc_statements WHERE account_id = ? AND source_kind = 'listing_open'`)
+          .all(cardId) as { id: number; currency: string; source_pdf: string }[];
+        // One bucket (the hand payment's planted line sits in it too), in the card's main currency.
+        expect(bucket.map((b) => b.currency)).toEqual([fx.currency]);
+        const bucketLine = listCcStatementLinesForStatement(bucket[0]!.id).find((l) => l.merchant === "FERRETERIA VITEST");
+        expect(bucketLine).toMatchObject({ amount: 23.45, currency: fx.currency });
+        // The reconcile row carries the line in the statement's own foreign slot, never as 0.
+        const row = dbLineToReconcileRow(bucketLine!, { currency: fx.currency, layout: "compact", source_pdf: bucket[0]!.source_pdf, source_kind: "listing_open" });
+        expect([row.amount_clp, row.amount_usd]).toEqual([0, 23.45]);
+        // The statement that bills the purchase a day later is that purchase; another amount or currency is not.
+        const billed = { ...bucketLine!, id: -1, transaction_date: ddmm(`${y}-04-21`), merchant: "FERRETERIA VITEST (T)" };
+        expect(webPasteLineMatchesStatementLine(bucketLine!, { line: billed, currency: fx.currency })).toBe(true);
+        expect(webPasteLineMatchesStatementLine(bucketLine!, { line: { ...billed, amount: 23.46 }, currency: fx.currency })).toBe(false);
+        expect(webPasteLineMatchesStatementLine(bucketLine!, { line: { ...billed, currency: "clp" }, currency: "clp" })).toBe(false);
+        // A line in a currency that is neither the statement's nor one of the two slots has no place in its reconcile.
+        if (fx.currency !== "eur") {
+          expect(() =>
+            dbLineToReconcileRow({ ...bucketLine!, currency: "eur" }, { currency: fx.currency, layout: "compact", source_pdf: "vitest", source_kind: "listing_open" })
+          ).toThrow(/has no slot/);
+        }
+      } finally {
+        db.prepare(`DELETE FROM cc_statement_lines WHERE merchant = 'FERRETERIA VITEST' AND statement_id IN (SELECT id FROM cc_statements WHERE account_id = ?)`).run(cardId);
+        db.prepare(`DELETE FROM import_batches WHERE id > ? AND kind = 'cc_web_paste'`).run(batchFloor);
+        clearAggregationCache();
+      }
     });
 
     it("refuses a hand payment in a currency the issuer does not bill in, or from an account in another currency", () => {

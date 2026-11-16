@@ -150,7 +150,8 @@ export type CardStatementOutcome = "clean" | "written" | "pending" | "empty" | "
 export type CardStatementApplyDetails = {
   account_id: number;
   statements: {
-    currency: "clp" | "usd"; // convention-ok: the Santander statement JSON pipeline takes pesos and dollars only (plan C3 leftover)
+    /** A currency the card's issuer bills in. */
+    currency: string;
     document: string;
     outcome: CardStatementOutcome;
     /** `pdf` when a PDF holds the close (cross-check only), `json` when this source does, null when nothing does yet. */
@@ -159,5 +160,5 @@ export type CardStatementApplyDetails = {
     report: string[];
   }[];
   /** Set when this send wrote the facturación. */
-  written: { currencies: ("clp" | "usd")[]; lines_inserted: number } | null; // convention-ok: the Santander statement JSON pipeline takes pesos and dollars only (plan C3 leftover)
+  written: { currencies: string[]; lines_inserted: number } | null;
 };

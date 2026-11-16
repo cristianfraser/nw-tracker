@@ -84,17 +84,19 @@ describe("ccTraspasoDeudaLinks", () => {
     expect(pairs).toEqual([
       {
         statement_date: "20/08/2026",
-        clp_line_id: clpLineId,
-        usd_line_id: usdLineId,
-        amount_clp: 167_192,
-        amount_usd: 176.7,
+        to_line_id: clpLineId,
+        to_currency: "clp",
+        to_amount: 167_192,
+        from_line_id: usdLineId,
+        from_currency: "usd",
+        from_amount: 176.7,
       },
     ]);
 
     expect(relinkCcTraspasoDeudaLinksForAccount(id)).toEqual({ links: 1 });
     // Relink is a derived-state rebuild — a second run keeps exactly one row.
     expect(relinkCcTraspasoDeudaLinksForAccount(id)).toEqual({ links: 1 });
-    expect(ccTraspasoLinkedClpByForeignLineId(id, "usd")).toEqual(new Map([[usdLineId, 167_192]]));
+    expect(ccTraspasoLinkedClpByForeignLineId(id, "usd", () => null)).toEqual(new Map([[usdLineId, 167_192]]));
   });
 
   it("nets a linked pair to exactly zero in the post-close walk", () => {
@@ -112,7 +114,7 @@ describe("ccTraspasoDeudaLinks", () => {
     const usdStmt = newStatement(id, "20/08/2026", "usd");
     addLine(usdStmt, "2026-08-09", "TRASPASO DE DEUDA INTERNACIO", { usd: -176.7 });
 
-    expect(() => computeCcTraspasoDeudaPairsForAccount(id)).toThrow(/exactly one CLP and one USD leg/);
+    expect(() => computeCcTraspasoDeudaPairsForAccount(id)).toThrow(/exactly one CLP leg and one leg in another currency, got 1 usd/);
   });
 
   it("throws when a side has more than one leg on the same close", () => {
@@ -125,7 +127,7 @@ describe("ccTraspasoDeudaLinks", () => {
     expect(() => computeCcTraspasoDeudaPairsForAccount(id)).toThrow(/got 1 clp \/ 2 usd/);
   });
 
-  it("throws on sign anomalies and implausible rates", () => {
+  it("throws on sign anomalies and on a conversion far from the stored rate of the close", () => {
     const id = masterId();
     if (id == null) return;
     const clpStmt = newStatement(id, "20/08/2026", "clp");

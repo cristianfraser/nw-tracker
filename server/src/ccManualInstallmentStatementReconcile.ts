@@ -20,7 +20,8 @@ import { noteCardLineEvidence, withCardLineSession } from "./cards/lineWriteSess
 import { cardStatementKey, type CardCanonicalStatement } from "nw-tracker-contracts";
 import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
-import { lineAmountClpSql, lineCuotaClpSql } from "./cards/lineAmountSql.js";
+import { debtFrameClp, REAL_DEBT_FRAME_RATES } from "./ccExpenseAmountClp.js";
+import { isHomeCurrency } from "./displayUnits.js";
 
 const findStmtId = db.prepare(
   `SELECT id FROM cc_statements
@@ -35,13 +36,46 @@ const listManualPurchases = db.prepare(
 
 const listInstallmentLinesForStatement = db.prepare(
   `SELECT l.id, l.installment_flag, l.merchant, l.transaction_date, l.posting_date,
-          l.nro_cuota_total, l.nro_cuota_current, ${lineAmountClpSql("l")} AS amount_clp, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp
+          l.nro_cuota_total, l.nro_cuota_current, l.amount, l.currency, l.cuota_amount
    FROM cc_statement_lines l
    WHERE l.statement_id = ? AND l.installment_flag = 1`
 );
 
+type InstallmentLine = {
+  id: number;
+  installment_flag: number;
+  merchant: string | null;
+  transaction_date: string | null;
+  posting_date: string | null;
+  nro_cuota_total: number | null;
+  nro_cuota_current: number | null;
+  amount_clp: number | null;
+  valor_cuota_mensual_clp: number | null;
+};
+
+/**
+ * The statement's cuota lines with their contract figures in pesos, the currency a plan is stored
+ * in (`cc_installment_purchases.total_amount_clp`): a peso line's own amount and cuota, a line in
+ * any other currency at the stored close of the statement's date (`debtFrameClp` — amounts are only
+ * compared here), which throws when no rate is on file.
+ */
+function installmentLinesForStatement(statementId: number, statementDate: string): InstallmentLine[] {
+  const rows = listInstallmentLinesForStatement.all(statementId) as (Omit<InstallmentLine, "amount_clp" | "valor_cuota_mensual_clp"> & {
+    amount: number | null;
+    currency: string;
+    cuota_amount: number | null;
+  })[];
+  return rows.map(({ amount, currency, cuota_amount, ...line }) => {
+    const pesos = (v: number | null): number | null =>
+      v == null || isHomeCurrency(currency)
+        ? v
+        : debtFrameClp(v, currency, parseDdMmYyToIso(statementDate), REAL_DEBT_FRAME_RATES, `card line ${line.id} (statement ${statementDate})`);
+    return { ...line, amount_clp: pesos(amount), valor_cuota_mensual_clp: pesos(cuota_amount) };
+  });
+}
+
 const loadStatementMeta = db.prepare(
-  `SELECT id, account_id, card_group, source_pdf, source_kind, period_from, period_to
+  `SELECT id, account_id, card_group, source_pdf, source_kind, statement_date, period_from, period_to
    FROM cc_statements WHERE id = ?`
 );
 
@@ -417,6 +451,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
             card_group: string;
             source_pdf: string;
             source_kind: string;
+            statement_date: string;
             period_from: string | null;
             period_to: string | null;
           }
@@ -424,17 +459,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
       if (!st || st.account_id !== accountId) continue;
       if (isListingSourceKind(st.source_kind)) continue;
 
-      const lines = listInstallmentLinesForStatement.all(stmtId) as {
-        id: number;
-        installment_flag: number;
-        merchant: string | null;
-        transaction_date: string | null;
-        posting_date: string | null;
-        nro_cuota_total: number | null;
-        nro_cuota_current: number | null;
-        amount_clp: number | null;
-        valor_cuota_mensual_clp: number | null;
-      }[];
+      const lines = installmentLinesForStatement(stmtId, st.statement_date);
 
       for (const manual of manuals) {
         if (consumedManualIds.has(manual.id)) continue;

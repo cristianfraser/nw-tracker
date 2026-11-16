@@ -663,26 +663,29 @@ export function foreignDebtAbonoLines(accountId?: number): (CardPaymentLine & { 
 }
 
 const stmtTraspasoForeignLegs = db.prepare(
-  `SELECT t.id AS link_id, l.transaction_date, t.to_amount AS clp, t.from_amount AS amount
+  `SELECT t.id AS link_id, l.transaction_date, s.statement_date, t.to_amount, t.to_currency, t.from_amount AS amount
    FROM cc_traspaso_deuda_links t
    INNER JOIN cc_statement_lines l ON l.id = t.from_line_id
-   WHERE t.account_id = ? AND t.from_currency = ? AND t.to_currency = 'clp'`
+   INNER JOIN cc_statements s ON s.id = l.statement_id
+   WHERE t.account_id = ? AND t.from_currency = ?`
 );
 
+/** A traspaso de deuda out of a currency: the abono's date and statement, its amount, and what the bank booked it at on the main statement. */
+export type TraspasoForeignLeg = {
+  link_id: number;
+  transaction_date: string | null;
+  statement_date: string;
+  to_amount: number;
+  to_currency: string;
+  amount: number;
+};
+
 /**
- * Each traspaso de deuda of the card out of `currency` into pesos: the foreign leg's date, its
- * amount in `currency` and the pesos the bank moved it at.
+ * Each traspaso de deuda of the card out of `currency` onto its main statement: the abono's date,
+ * its amount in `currency` and the amount, in the main statement's currency, the bank moved it at.
  */
-export function traspasoForeignLegs(
-  accountId: number,
-  currency: string
-): { link_id: number; transaction_date: string | null; clp: number; amount: number }[] {
-  return stmtTraspasoForeignLegs.all(accountId, currency) as {
-    link_id: number;
-    transaction_date: string | null;
-    clp: number;
-    amount: number;
-  }[];
+export function traspasoForeignLegs(accountId: number, currency: string): TraspasoForeignLeg[] {
+  return stmtTraspasoForeignLegs.all(accountId, currency) as TraspasoForeignLeg[];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -945,9 +948,13 @@ export type OpenCycleCuotaPurchaseLine = {
   merchant: string | null;
   transaction_date: string | null;
   posting_date: string | null;
-  amount_clp: number | null;
+  /** The line's amount in its own currency. */
+  amount: number | null;
+  currency: string;
   cuota_purchase_kind: CcCuotaPurchaseKind;
   source_pdf: string;
+  /** The bucket statement's date (its debt frame is read by it). */
+  statement_date: string;
 };
 
 /**
@@ -957,8 +964,8 @@ export type OpenCycleCuotaPurchaseLine = {
 export function openCycleCuotaPurchaseLines(accountId: number): OpenCycleCuotaPurchaseLine[] {
   const rows = db
     .prepare(
-      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, ${lineAmountClpSql("l")} AS amount_clp, l.cuota_purchase_kind,
-              s.source_pdf
+      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.amount, l.currency, l.cuota_purchase_kind,
+              s.source_pdf, s.statement_date
        FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.source_kind = 'listing_open'
          AND l.cuota_purchase_kind IS NOT NULL

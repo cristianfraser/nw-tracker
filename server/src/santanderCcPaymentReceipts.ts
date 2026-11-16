@@ -56,11 +56,15 @@ import {
   syntheticCcPaymentMovementIdForMessageId,
 } from "./santanderSyntheticCcPayments.js";
 import { ddMmYyyyFromIso } from "nw-tracker-contracts";
-import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
+import { HOME_CURRENCY, isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { pesosOrDollars } from "./ingestCurrencies.js";
 
 export type ParsedPaymentReceipt = {
-  kind: "clp" | "usd"; // convention-ok: Santander's receipts pay a card's peso or dollar debt
+  /**
+   * The currency of the card debt the receipt pays. Santander's receipts print a peso payment or a
+   * dollar one (`amount_usd`), so the ingest edge narrows it to those two (`applyCardPaymentReceipt`).
+   */
+  kind: string;
   /** Real payment date (YYYY-MM-DD) printed in the receipt. */
   paid_on: string;
   /** Pesos leaving checking — the CLP payment amount, or the USD payment's peso equivalent. */
@@ -134,7 +138,8 @@ function synthesizeTransferFromReceipt(
   if (cardAccountId == null) {
     throw new Error(`Receipt names card ·${last4} but no credit-card master resolves it (${messageId})`);
   }
-  const isUsd = receipt.kind === "usd";
+  // A payment of foreign debt: the receipt's foreign amount is its dollar figure, the only one it prints.
+  const isUsd = !isHomeCurrency(receipt.kind);
   if (isUsd && receipt.amount_usd == null) {
     throw new Error(`USD receipt without a USD amount — cannot synthesize its payment (${messageId})`);
   }
@@ -149,7 +154,7 @@ function synthesizeTransferFromReceipt(
       amount: receipt.amount_clp,
       currency: HOME_CURRENCY,
       counterAmount: isUsd ? receipt.amount_usd : null,
-      counterCurrency: isUsd ? "usd" : null,
+      counterCurrency: isUsd ? receipt.kind : null,
       occurredOn: receipt.paid_on,
       note,
       flowKind: FLOW_KIND_PAGO_TARJETA,
@@ -169,7 +174,7 @@ function synthesizeTransferFromReceipt(
       cardAccountId,
       "cc_santander_receipt",
       {
-        currency: isUsd ? "usd" : "clp",
+        currency: receipt.kind,
         amount: isUsd ? Number(receipt.amount_usd!.toFixed(2)) : Math.round(receipt.amount_clp),
         paid_on: receipt.paid_on,
       },

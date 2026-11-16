@@ -37,6 +37,9 @@ export type CcOpenBucketLine = {
   merchant: string | null;
   /** The currency the line stores (`cc_statement_lines.currency`). */
   currency: string;
+  /** The line's amount in its own currency. */
+  amount: number | null;
+  /** The legacy peso / dollar view (`cards/lineAmountSql.ts`), kept for the mirror's report rows. */
   amount_clp: number | null;
   amount_usd: number | null;
   installment_flag: number;
@@ -44,27 +47,21 @@ export type CcOpenBucketLine = {
   source_pdf: string;
 };
 
-/** The currencies a card listing (a feed slide, a web paste) carries. */
-export type ListingCurrency = "clp" | "usd"; // convention-ok: Santander's and BCI's card listings are in pesos or dollars only
+/** A currency a card listing (a feed slide, a web paste) carries: any the card's issuer bills in (`requireCardCurrency` at import). */
+export type ListingCurrency = string;
 
-/**
- * A listing-bucket line's currency: the one it stores, never guessed from which amount is set. The
- * listings carry pesos and dollars only, so a bucket line in any other currency throws.
- */
-export function listingLineCurrency(line: { id: number; currency: string }): ListingCurrency {
-  if (line.currency === "clp" || line.currency === "usd") return line.currency; // convention-ok: Santander's and BCI's card listings are in pesos or dollars only
-  throw new Error(
-    `card line ${line.id}: a ${line.currency} line in the listing bucket (the card listings carry pesos and dollars only)`
-  );
+/** A listing-bucket line's currency: the one it stores, never guessed from which amount is set. */
+export function listingLineCurrency(line: { currency: string }): ListingCurrency {
+  return line.currency;
 }
 
-/** A listing-bucket line's amount in its own currency (the legacy peso / dollar view, picked by the stored currency). */
-export function listingLineAmount(line: { id: number; currency: string; amount_clp: number | null; amount_usd: number | null }): number | null {
-  return listingLineCurrency(line) === "usd" ? line.amount_usd : line.amount_clp; // convention-ok: a listing bucket line carries the legacy peso/dollar view (cards/lineAmountSql.ts)
+/** A listing-bucket line's amount in its own currency, as stored. */
+export function listingLineAmount(line: { amount: number | null }): number | null {
+  return line.amount;
 }
 
 const selOpenBucketLines = db.prepare<[number]>(
-  `SELECT l.id, l.kind, l.transaction_date, l.posting_date, l.merchant, l.currency, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
+  `SELECT l.id, l.kind, l.transaction_date, l.posting_date, l.merchant, l.currency, l.amount, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
           l.installment_flag, l.cuota_purchase_kind, s.source_pdf
    FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND s.source_kind = 'listing_open'
