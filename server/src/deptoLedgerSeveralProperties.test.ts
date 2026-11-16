@@ -18,7 +18,12 @@ import {
   loadDeptoLedgerForProperty,
 } from "./deptoLedgerFromMovements.js";
 import { buildRealEstateExpensesPayload, createRealEstatePlace } from "./flowsRealEstateExpenses.js";
-import { commitMortgagePayment } from "./mortgagePaymentCreate.js";
+import { mortgageLedgerDto } from "./mortgageLedgerDto.js";
+import {
+  commitMortgagePayment,
+  mortgagePaymentCreateSchemaForAccount,
+  previewMortgagePayment,
+} from "./mortgagePaymentCreate.js";
 import { buildUpcomingPayments } from "./upcomingPayments.js";
 import { DEPTO_HIPOTECA_CHART_ACCOUNT_ID, DEPTO_VALOR_CHART_ACCOUNT_ID } from "./valuationTimeseries.js";
 
@@ -204,6 +209,66 @@ describe("several properties, each with its own loan", () => {
     const cuotasOf = (slug: string) => slots.filter((s) => s.account_slug === slug).map((s) => s.spent_on).sort();
     expect(cuotasOf(placeSlugs[0]!)).toEqual(["1991-02-11", "1991-03-11"]);
     expect(cuotasOf(placeSlugs[1]!)).toEqual(["1991-02-11"]);
+  });
+
+  it("states a loan's ledger, the form's capability and its preview by role, never by currency", () => {
+    if (skip) return;
+    const rows = deptoLedgerForAccount(loans[0]!);
+    const ledger = mortgageLedgerDto({ accountId: loans[0]!, ledger: rows, rows, loanAccountId: loans[0]! });
+    expect(ledger.rows.map((r) => [r.cuota, r.loan_currency, r.payment_currency, r.pago_pay, r.credito_restante_loan])).toEqual([
+      ["pie", "uf", "clp", 58_000_000, 3950],
+      ["1", "uf", "clp", 1_200_000, 3000],
+      ["2", "uf", "clp", 800_000, 2988.6],
+    ]);
+    expect(ledger.rows[1]!.loan_rate_day).toBe(UF);
+    expect(ledger.rows[1]!.restante_pay).toBe(3000 * UF);
+    expect(ledger.meta).toMatchObject({
+      loan_currency: "uf",
+      payment_currency: "clp",
+      pie_pay: 58_000_000,
+      hipoteca_tras_pie_loan: 3950,
+      valor_vivienda_loan: 5400,
+    });
+    expect(ledger.payment_scenarios!.every((r) => r.loan_currency === "uf" && r.payment_currency === "clp")).toBe(true);
+
+    expect(mortgagePaymentCreateSchemaForAccount(loans[0]!)).toEqual({
+      next_cuota: "3",
+      loan_currency: "uf",
+      payment_currency: "clp",
+      default_incendio_pay: 40_000,
+    });
+    const preview = previewMortgagePayment(loans[0]!, {
+      occurred_on: "1991-04-11",
+      pago_clp: 800_000,
+      interes_clp: 300_000,
+      incendio_clp: 40_000,
+      desgravamen_clp: 4_000,
+      cuota: "3",
+      min_uf: 11,
+    });
+    expect(preview.input).toMatchObject({
+      occurred_on: "1991-04-11",
+      pago_pay: 800_000,
+      interes_pay: 300_000,
+      incendio_pay: 40_000,
+      desgravamen_pay: 4_000,
+      cuota: "3",
+      min_loan: 11,
+    });
+    expect([preview.loan_currency, preview.payment_currency]).toEqual(["uf", "clp"]);
+    expect(preview.sheet.pago_pay).toBe(800_000);
+    expect(preview.sheet.pago_loan).toBe(20);
+    expect(preview.mortgage_balance_pay).toBe(preview.sheet.restante_pay);
+    expect(preview.property_net_pay).toBe(preview.sheet.valor_neto_pay);
+    expect(preview.credito_restante_derived_loan).toBe(preview.sheet.credito_restante_loan);
+
+    const keysDeep = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.flatMap(keysDeep)
+        : value != null && typeof value === "object"
+          ? Object.entries(value).flatMap(([k, v]) => [k, ...keysDeep(v)])
+          : [];
+    expect(keysDeep([ledger, preview]).filter((k) => /(^|_)(clp|uf|usd|eur)(_|$)/.test(k))).toEqual([]);
   });
 
   it("refuses a loan payment row the roles cannot place", () => {
