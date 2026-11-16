@@ -91,7 +91,7 @@ export interface FxCoverage {
 export type FxConversionWarningCode =
   | "buy_rate_missing"
   | "sell_rate_missing"
-  | "usd_reference_clp";
+  | "reference_rate";
 
 export interface FxConversionWarning {
   code: FxConversionWarningCode;

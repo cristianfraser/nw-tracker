@@ -19,7 +19,7 @@ function warningMessage(t: (k: string) => string, w: FxConversionWarning): strin
       return t("fxCoverage.warningBuyRateMissing");
     case "sell_rate_missing":
       return t("fxCoverage.warningSellRateMissing");
-    case "usd_reference_clp":
+    case "reference_rate":
       return t("fxCoverage.warningUsdReferenceClp");
     default:
       return w.code;
