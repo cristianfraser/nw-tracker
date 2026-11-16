@@ -14,6 +14,7 @@ import { prettyRgbTripletForAccountId } from "../chartColorRgb.js";
 import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
 import { accountCashCurrency } from "../cashCurrency.js";
+import { accountProfile } from "../accountProfile.js";
 import { db } from "../db.js";
 import { monthlyPerfForAccountDisplay } from "../detalleDailyChainedPct.js";
 import { listPortfolioGroupAccountsForApi } from "../portfolioGroupAccountsApi.js";
@@ -25,7 +26,19 @@ import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
 import { isPositiveInteger } from "../requestValidation.js";
 import { asyncHandler, accountIdFromReq, queryChoice } from "./shared.js";
-import { requestDisplayUnit } from "../displayUnits.js";
+import { HOME_CURRENCY, requestDisplayUnit } from "../displayUnits.js";
+
+/**
+ * The currency a money ledger's own movements are in: pesos for a cartola checking ledger and a
+ * peso ledger, its own for a foreign cash ledger; null for an account whose quantity is not money
+ * itself (shares, cuotas, a card, a book mark). Read from the account profile's quantity source.
+ */
+function accountLedgerCurrency(accountId: number): string | null {
+  const q = accountProfile(accountId).quantity;
+  if (q.kind === "checking_ledger" || q.kind === "clp_ledger") return HOME_CURRENCY;
+  if (q.kind === "foreign_ledger") return q.currency;
+  return null;
+}
 
 export function registerAccountsRoutes(app: express.Express): void {
 app.get("/api/accounts", asyncHandler(async (req, res) => {
@@ -53,8 +66,15 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
     )
     .all() as ({ id: number } & Record<string, unknown>)[];
   // A cash ledger's currency (`cashCurrency.ts`), null for any other account: what a trade form
-  // offers as settlement accounts and labels the amount with.
-  res.json({ accounts: rows.map((r) => ({ ...r, cash_currency: accountCashCurrency(r.id) })) });
+  // offers as settlement accounts and labels the amount with. `ledger_currency` also covers the
+  // checking ledgers: what a cash form offers as the other account of a transfer or a conversion.
+  res.json({
+    accounts: rows.map((r) => ({
+      ...r,
+      cash_currency: accountCashCurrency(r.id),
+      ledger_currency: accountLedgerCurrency(r.id),
+    })),
+  });
 }));
 
 app.post("/api/accounts", asyncHandler(async (req, res) => {

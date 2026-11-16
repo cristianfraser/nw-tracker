@@ -30,6 +30,11 @@ export interface AccountListRow {
   chart_inactive?: boolean;
   /** The full list only: the currency a cash ledger account holds (`accounts.cash_currency` or its leaf's), null for any other account. */
   cash_currency?: string | null;
+  /**
+   * The full list only: the currency a money ledger's own movements are in — pesos for a checking
+   * ledger and a peso ledger, its own for a foreign cash ledger; null for any other account.
+   */
+  ledger_currency?: string | null;
 }
 
 /** What an account holds a quantity of: shares, coins, or (signed) option contracts. */
