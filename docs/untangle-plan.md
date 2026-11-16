@@ -2535,6 +2535,38 @@ Found by wave 8:
   `listAccountsForGroupTab`, the composition rows): one `node.members()` from `navTreeModel`.
   `slugMarkTotalsAtDatesClp` / `slugValueInUnitAt` are wrappers that differ only in policy.
 
+### Backlog: ledger amounts as integer minor units (considered 2026-11-15, not scheduled)
+
+Asked after wave 9: handle money as integers (cents) and divide only for display, to avoid
+floating-point arithmetic. Recorded for later; nothing is decided.
+
+What it can and cannot cover:
+
+- Ledger facts (a movement, a card line, a cuota, a payment, a bank balance) are exact amounts a
+  source printed: integer sums are exact and equality needs no tolerance.
+- Derived values stay floating point under any design: a holding is units × price × rate, chart
+  series, P/L and returns are exact and unrounded by decision (wave 8c), a converted amount is a
+  division by a rate.
+
+State when considered: money columns are `REAL`; `currencies.minor_digits` is 0 for pesos, 2 for
+dollars and euros, 4 for UF; every movement on the live copy is a whole coin of its currency
+(checked on `movements` only, not card lines or the other money tables); most rows are pesos,
+exact in `REAL`; about 205 server files call a rounding function.
+
+Two options:
+
+| Option | Does | Gives | Costs |
+|---|---|---|---|
+| A. `Money` at the boundary | a server type (integer minor units + currency) for ledger sums and comparisons; decimals converted at one read and one write boundary; a write-time check that a stored amount is a whole coin of its currency | exact ledger arithmetic in code, tolerances and scattered rounding gone, a fractional amount refused at the door | SQL-side sums still add decimals; no table changes |
+| B. Integer storage | every money column on about 20 tables rebuilt as integer minor units; SQL, ingest contract, Python parsers, scripts follow | exact sums in SQL too; the column cannot hold a fraction | a missed or doubled ×100 is a silent 100× error; an integer means nothing without its currency's scale (1, 100, 10 000), in every raw query; changing a currency's coin size becomes a data migration |
+
+Reading at the time: A first; B only if the app comes to hold many accounts in two-decimal
+currencies with heavy SQL-side aggregation, or a reconciliation bug traces back to decimal storage.
+
+First step for either: a read-only audit of where rounding and tolerances sit (which are ledger
+arithmetic, which are derived values), and the whole-coin check extended to every money table on
+a live copy, so the scope is measured.
+
 ### Backlog: what is still not currency agnostic after wave 9
 
 Source and legal facts stay as they are (the F22 in pesos, the 1040 in dollars, a cartola in pesos, the
