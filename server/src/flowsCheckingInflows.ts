@@ -505,8 +505,14 @@ function computeCheckingIncome(): CheckingIncomeComputation {
 
 type InUnit<R> = Omit<R, "amount_clp" | "amount_usd"> & { amount: number | null };
 
-/** A work earning with its net pay (and the deposit that paid it) in the display unit beside the payslip's own figures. */
-export type FlowWorkEarningUnitRow = FlowWorkEarningRow & { liquido: number | null; linked_amount: number | null };
+/**
+ * A work earning as served: the payslip's printed line items, and its net pay and the deposit that
+ * paid it in the display unit only (the builder's peso and dollar legs stay on the server).
+ */
+export type FlowWorkEarningUnitRow = Omit<FlowWorkEarningRow, "liquido_clp" | "liquido_usd" | "linked_amount_clp"> & {
+  liquido: number | null;
+  linked_amount: number | null;
+};
 
 /** The income lists in one display unit: each line's `amount` its legs in the unit (`flowLegsInUnit`; pesos rounded). */
 export type FlowsCheckingIncomeUnitLists = {
@@ -550,7 +556,8 @@ function workEarningInUnit(row: FlowWorkEarningRow, unit: string): FlowWorkEarni
           day,
           unit
         );
-  return { ...row, liquido, linked_amount };
+  const { liquido_clp: _clp, liquido_usd: _usd, linked_amount_clp: _linked, ...payslip } = row;
+  return { ...payslip, liquido, linked_amount };
 }
 
 export function flowsCheckingIncomeListsInUnit(

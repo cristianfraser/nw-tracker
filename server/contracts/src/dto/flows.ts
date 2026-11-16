@@ -1007,22 +1007,20 @@ export interface FlowWorkEarningRow {
   pay_period: "monthly" | "biweekly" | "semi_monthly";
   /** A US pay stub's pay date; null for a liquidación. */
   pay_date: string | null;
-  base_salary_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  colacion_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  movilizacion_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  gratificacion_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  total_imponible_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  total_no_imponible_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  total_haberes_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_afp_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_health_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_tax_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_cesantia_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_apv_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_other_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  total_descuentos_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  liquido_clp: number; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  liquido_usd: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
+  base_salary_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  colacion_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  movilizacion_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  gratificacion_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  total_imponible_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  total_no_imponible_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  total_haberes_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_afp_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_health_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_tax_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_cesantia_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_apv_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_other_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  total_descuentos_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
   wire_received_on: string | null;
   uf_mes: number | null;
   utm_mes: number | null;
@@ -1032,7 +1030,6 @@ export interface FlowWorkEarningRow {
   movement_id: number | null;
   link_source: PayrollLinkSource | null;
   linked_received_on: string | null;
-  linked_amount_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
   linked_account_label: string | null;
   /** Net pay in the payload's unit (a dollar contract's own dollars; pesos at the pay day's rate). */
   liquido: number | null;
