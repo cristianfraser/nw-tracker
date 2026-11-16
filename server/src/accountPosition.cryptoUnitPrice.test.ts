@@ -71,12 +71,12 @@ describe("crypto position meta — per-unit price", () => {
 
     const meta = getAccountPositionMeta(accountId, { asOfYmd: TODAY, now });
     expect(meta?.units).toBe(UNITS);
-    expect(meta?.afp_override_value_clp).toBeCloseTo(UNITS * 40_000 * SELL(950), 2);
+    expect(meta?.mark_value_clp).toBeCloseTo(UNITS * 40_000 * SELL(950), 2);
     // Dated on the day its pesos were framed on (the asked date), not the stale bar's day, so a
     // USD reader divides by the rate that multiplied (2f4172f9).
-    expect(meta?.afp_override_value_as_of).toBe(TODAY);
+    expect(meta?.mark_as_of).toBe(TODAY);
     // Tuesday's close at the value's live rate — not at Tuesday's stored 900.
-    expect(meta?.afp_override_valor_cuota_clp).toBeCloseTo(40_000 * SELL(950), 4);
-    expect(UNITS * meta!.afp_override_valor_cuota_clp!).toBeCloseTo(meta!.afp_override_value_clp!, 2);
+    expect(meta?.mark_unit_price_clp).toBeCloseTo(40_000 * SELL(950), 4);
+    expect(UNITS * meta!.mark_unit_price_clp!).toBeCloseTo(meta!.mark_value_clp!, 2);
   });
 });

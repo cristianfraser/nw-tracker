@@ -56,8 +56,8 @@ describe("AFC position — cuota ledger", () => {
     const meta = getAccountPositionMeta(accountId, { asOfYmd: asOf });
     expect(meta?.ticker).toBe("AFC CIC");
     expect(meta?.units).toBe(500);
-    expect(meta?.afp_override_value_clp).toBe(500 * px);
-    expect(meta?.afp_override_value_as_of).toBe(asOf);
+    expect(meta?.mark_value_clp).toBe(500 * px);
+    expect(meta?.mark_as_of).toBe(asOf);
 
     // Historical mark reads the same ledger (not the stored 1.xxx.xxx).
     const mark = accountMarkClpAtYmd(accountId, asOf);

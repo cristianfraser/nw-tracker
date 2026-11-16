@@ -45,7 +45,7 @@ describe("equity brokerage position meta", () => {
       expect(meta!.ticker).toBe(ticker);
       expect(meta!.units).not.toBeNull();
       expect(meta!.units!).toBeCloseTo(10, 9);
-      expect(meta!.afp_override_valor_cuota_clp).not.toBeNull();
+      expect(meta!.mark_unit_price_clp).not.toBeNull();
     } finally {
       db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(ticker);
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(movId);
@@ -78,6 +78,6 @@ describe("equity brokerage position meta", () => {
     expect(meta!.ticker).toBe(row.equity_ticker);
     expect(meta!.units).not.toBeNull();
     expect(meta!.units!).toBeGreaterThan(0);
-    expect(meta!.afp_override_valor_cuota_clp).not.toBeNull();
+    expect(meta!.mark_unit_price_clp).not.toBeNull();
   });
 });

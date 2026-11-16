@@ -269,12 +269,12 @@ describe("signed contracts and the intrinsic mark", () => {
     const meta = getAccountPositionMeta(callA, { asOfYmd: "2026-05-18" })!;
     expect(meta.units_kind).toBe("contracts");
     expect(meta.units).toBe(-2);
-    expect(meta.afp_override_value_clp).toBeCloseTo(Math.round(clp * 100) / 100, 2);
+    expect(meta.mark_value_clp).toBeCloseTo(Math.round(clp * 100) / 100, 2);
     expect(positionMarkFromMeta(callA, meta)?.value_clp).toBeCloseTo(Math.round(clp * 100) / 100, 2);
     // Per contract: 3 × 100 shares, in pesos.
-    expect(meta.afp_override_valor_cuota_clp).toBeCloseTo(convertValue(300, "usd", "clp", "2026-05-18", "asset")!, 2);
+    expect(meta.mark_unit_price_clp).toBeCloseTo(convertValue(300, "usd", "clp", "2026-05-18", "asset")!, 2);
     const closed = getAccountPositionMeta(callA, { asOfYmd: "2026-06-06" })!;
-    expect(closed).toMatchObject({ units: 0, afp_override_value_clp: 0 });
+    expect(closed).toMatchObject({ units: 0, mark_value_clp: 0 });
     expect(accountChartInactive(callA)).toBe(true);
     expect(accountChartInactive(callB)).toBe(false);
   });

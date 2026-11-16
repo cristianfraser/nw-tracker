@@ -47,8 +47,8 @@ describe("equityBrokeragePositionMeta", () => {
       const units = meta?.units ?? 0;
       expect(units).toBeGreaterThan(0);
 
-      expect(meta!.afp_override_valor_cuota_clp).toBeCloseTo(600 * SELL(900), 0);
-      expect(meta!.afp_override_value_clp).toBeCloseTo(units * 600 * SELL(900), -2);
+      expect(meta!.mark_unit_price_clp).toBeCloseTo(600 * SELL(900), 0);
+      expect(meta!.mark_value_clp).toBeCloseTo(units * 600 * SELL(900), -2);
     } finally {
       vi.useRealTimers();
     }
@@ -131,9 +131,9 @@ describe("equityBrokeragePositionMeta after the close (hold + fx frame)", () => 
 
     const meta = equityBrokeragePositionMeta(accountId!, TICKER, TODAY, now);
     expect(meta?.units).toBeCloseTo(UNITS, 9);
-    expect(meta?.afp_override_value_as_of).toBe(TODAY);
-    expect(meta?.afp_override_valor_cuota_clp).toBeCloseTo(510 * SELL(950), 4);
-    expect(meta?.afp_override_value_clp).toBeCloseTo(UNITS * 510 * SELL(950), 2);
+    expect(meta?.mark_as_of).toBe(TODAY);
+    expect(meta?.mark_unit_price_clp).toBeCloseTo(510 * SELL(950), 4);
+    expect(meta?.mark_value_clp).toBeCloseTo(UNITS * 510 * SELL(950), 2);
   });
 
   it("prices today's bar at the live fx while the fx day is open, the stored close after", () => {
@@ -146,15 +146,15 @@ describe("equityBrokeragePositionMeta after the close (hold + fx frame)", () => 
     vi.useFakeTimers();
     vi.setSystemTime(fxDayOpen);
     const open = equityBrokeragePositionMeta(accountId!, TICKER, TODAY, fxDayOpen);
-    expect(open?.afp_override_value_as_of).toBe(TODAY);
+    expect(open?.mark_as_of).toBe(TODAY);
     // Not 512 × 900 (Tuesday's stored close): the bar landed while the fx day was still open.
-    expect(open?.afp_override_value_clp).toBeCloseTo(UNITS * 512 * SELL(950), 2);
+    expect(open?.mark_value_clp).toBeCloseTo(UNITS * 512 * SELL(950), 2);
 
     // 17:30 New York: the fx day has ended and its close is stored.
     db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, 940)`).run(TODAY);
     const fxDayClosed = new Date("2099-01-07T22:30:00.000Z");
     vi.setSystemTime(fxDayClosed);
     const closed = equityBrokeragePositionMeta(accountId!, TICKER, TODAY, fxDayClosed);
-    expect(closed?.afp_override_value_clp).toBeCloseTo(UNITS * 512 * SELL(940), 2);
+    expect(closed?.mark_value_clp).toBeCloseTo(UNITS * 512 * SELL(940), 2);
   });
 });

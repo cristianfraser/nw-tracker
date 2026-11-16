@@ -34,8 +34,8 @@ describe("fintual cert v2 position", () => {
       });
       const meta = getAccountPositionMeta(accountId, { asOfYmd: "2025-01-10" });
       expect(meta?.units).toBe(10);
-      expect(meta?.afp_override_value_clp).toBe(1000);
-      expect(meta?.afp_override_valor_cuota_clp).toBe(100);
+      expect(meta?.mark_value_clp).toBe(1000);
+      expect(meta?.mark_unit_price_clp).toBe(100);
     } finally {
       db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
@@ -75,7 +75,7 @@ describe("fintual cert v2 position", () => {
         `INSERT INTO valuations (account_id, as_of_date, value) VALUES (?, '2025-01-10', ?)`
       ).run(accountId, 1005);
       const meta = getAccountPositionMeta(accountId, { asOfYmd: "2025-01-10" });
-      expect(meta?.afp_override_value_clp).toBe(1000);
+      expect(meta?.mark_value_clp).toBe(1000);
     } finally {
       db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
       db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);

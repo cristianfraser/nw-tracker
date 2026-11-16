@@ -53,9 +53,9 @@ describe("CLP-quoted equity MTM (.SN)", () => {
       const meta = getAccountPositionMeta(accountId, { asOfYmd: "2026-01-30" });
       expect(meta).not.toBeNull();
       expect(meta!.units!).toBeCloseTo(2282, 9);
-      expect(meta!.afp_override_value_clp!).toBeCloseTo(2282 * 1300, 2);
-      expect(meta!.afp_override_valor_cuota_clp!).toBeCloseTo(1300, 4);
-      expect(meta!.afp_override_value_as_of).toBe("2026-01-30");
+      expect(meta!.mark_value_clp!).toBeCloseTo(2282 * 1300, 2);
+      expect(meta!.mark_unit_price_clp!).toBeCloseTo(1300, 4);
+      expect(meta!.mark_as_of).toBe("2026-01-30");
     } finally {
       db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(ticker);
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(movId);
