@@ -2387,6 +2387,78 @@ Docs pass owed (stale lines listed in the stream reports): `AGENTS.md` 32, 58–
 `.claude/rules/cards.md`, `instruments.md`, `market-data.md`, `valuation-series.md`, `expenses.md`,
 `ingest-sources.md`, `client-ui.md`.
 
+#### Wave 9 leftovers (2026-11-15, merged on `untangle-2`)
+
+Waves 6–9 were pushed and deployed first (home server on `48d243d7`, 2026-11-15 22:57: six
+migrations applied, no error in the server log, the first hourly ingest run on the new code clean,
+16 steps). Then four streams in parallel: `ut-mortgage-money`, `ut-card-import-currency`,
+`ut-form-copy`, `ut-docs-pass`. Checks on the merged tip: typecheck and conventions ok, 0 files in
+import cycles, server 576 files / 3856 tests, client 499, ingest 491, contracts 148. Rehearsal
+against the dump of the code before them: 11 payload files differ — 8 `accounts_N_detail-bundle`
+and 2 mortgage-ledger payloads (the renames below; 25,050 values equal after mapping old keys to
+new, 0 unequal) and `accounts.json` (`accounts[].ledger_currency` added). No migration.
+
+Done:
+
+- Mortgage payloads: a key ending `_loan` is in `loan_currency` (what the lender states: UF), one
+  ending `_pay` in `payment_currency` (pesos), both named on rows, meta, scenarios, the form schema
+  and the preview; a lone figure is `Money`. One edge mapper (`mortgageLedgerDto.ts`); the ledger
+  in memory, the DB columns and the lender import keep their names. The payment form's body is
+  typed (`MortgagePaymentInputDto`, `pago_pay`, `min_loan`, …). `convention-ok` in the dto folder: 218 → 182.
+- Card import: a traspaso pairs the leg in the issuer's primary currency with one in any other,
+  its implied rate within a factor of 1,25 of the stored mid at the close (the fixed 300–3000 band
+  is gone); the statement JSON apply takes any declared currency («primary side» carries the
+  header, any other side is lines only); the 12 `?? 0` sites read the line's own amount and
+  currency; the open bucket is created in the issuer's primary currency; feed close, mirror proof
+  and cupo gap are maps by currency on the server; a receipt carries its currency.
+- Forms and display: the cash form has its own incomplete-row message, counterpart lists show each
+  account's currency and offer only accounts that can be that leg (`ledger_currency` on
+  `GET /api/accounts`), the empty text lists the kinds offered; the stock form's labels, default
+  row kind (a stock buy) and hint; the card page no longer renders the removed pay-by-rule note and
+  prints ISO billing dates; a group with no accounts requests no daily series; two rates-page fixes.
+- Docs: `AGENTS.md` and the ten topic files checked name by name against the code (3,474 names,
+  159 gone, 115 fixed, 44 left on purpose) and the rules whose meaning changed rewritten.
+
+Behaviour changes:
+
+- Server and client deploy together: no `_clp` / `_uf` mortgage keys on the wire; a payment body
+  under the old keys is a 400.
+- A traspaso more than a factor of 1,25 from the stored rate of its close, or with no stored rate,
+  throws at import. The nine links on the live copy sit at 1,02–1,07.
+- A foreign cuota line or pending cuota purchase with no stored rate throws (it read 0); a dollar
+  cuota line is compared with manual plans at its converted pesos (it never matched). The live copy
+  has no non-peso cuota line.
+- `card.statement` in an undeclared currency is `unsupported_currency`; a declared third one is written.
+- `GET /api/accounts` reads every account's profile: an account with an invalid profile fails the list.
+
+Left:
+
+- Mortgage: `ExpenseDepositLinkDto` (`payment_clp`, `amortization_clp`, `carrying_clp`; two are
+  `flow_links` columns and the rename runs through a card file); `closing_balance_uf` /
+  `uf_clp_day` on the monthly performance row; the form and table copy still says CLP / UF; the
+  ledger in memory is one fixed pair (UF loan, peso payments).
+- Cards: the feed close and receipt wire contracts (`billed_clp` / `billed_usd`, `amount_clp` /
+  `amount_usd`); cuota plans are peso contracts and the reconcile row is two slots; `cardLineKind`'s
+  two-slot input; the client's `formatCardBillingPesos`; no issuer fixture with a listing feed and
+  a second currency, so `applyCardStatement` is not run end to end in a third currency.
+- Small: the server still emits `pay_by_rule_i18n_key`; the facturaciones DTO still carries the
+  unread dd/mm dates; `AccountUnitsFlowForm` / `AccountBookMovementsForm` filter counterparts by
+  slug; a stock form's deposit row says «CLP amount» on a dollar stock; `ccManualPaymentMain.ts`
+  (ingest) refuses a currency other than pesos or dollars.
+- Found by the docs pass, in code: dead code after migration 294 (`listBudaAbonosWithoutRealOutflowLink`,
+  the `checking_gap_deposit_mirrors` entries in `markInputTriggers.ts`, `EXPENSE_KEY_PREFIXES.gap_mirror`,
+  two unarchived scripts); comments naming removed things (`lineMoney.ts`, `flowsMortgageCarrying.ts`,
+  `accountPerformance.ts`, `ccDailyHistorialBlock.ts`, `dashboardChartMarkTotals.ts`); four files
+  import `accountValueInUnitFromClp` under its old name; `dashboardCcUpcomingPayments.ts` keeps
+  `amount_clp` / `billed_clp` inside.
+- Docs sentences left because the code did not settle them: «Not yet on the rule: the deposits
+  reconciliation, and UF window flows» (valuation-series); the London market's «still peso/dollar-only»
+  list (instruments); «full-history daily series in both units»; the Fintual publisher lag's «two
+  scheduler intervals»; «Own copies remain in …» (ingest-sources); the mark-cache trim windows;
+  «debt fx» in the dollar payment bullets (expenses) — the rate is the stored mid; the crypto
+  missing-close readers. `PARSERS.md` (untracked) still names removed functions.
+- The README's «known 500s on `/api/mortgage-prepayment-comparison`» no longer hold (fixed in the note).
+
 ### Wave 10 — optional structural, each needs a yes
 
 `ut-flow-id` (`flow_id` on the wire, `legacy_key` retired, line categories on the flow),
