@@ -663,26 +663,29 @@ export function foreignDebtAbonoLines(accountId?: number): (CardPaymentLine & { 
 }
 
 const stmtTraspasoForeignLegs = db.prepare(
-  `SELECT t.id AS link_id, l.transaction_date, t.to_amount AS clp, t.from_amount AS amount
+  `SELECT t.id AS link_id, l.transaction_date, s.statement_date, t.to_amount, t.to_currency, t.from_amount AS amount
    FROM cc_traspaso_deuda_links t
    INNER JOIN cc_statement_lines l ON l.id = t.from_line_id
-   WHERE t.account_id = ? AND t.from_currency = ? AND t.to_currency = 'clp'`
+   INNER JOIN cc_statements s ON s.id = l.statement_id
+   WHERE t.account_id = ? AND t.from_currency = ?`
 );
 
+/** A traspaso de deuda out of a currency: the abono's date and statement, its amount, and what the bank booked it at on the main statement. */
+export type TraspasoForeignLeg = {
+  link_id: number;
+  transaction_date: string | null;
+  statement_date: string;
+  to_amount: number;
+  to_currency: string;
+  amount: number;
+};
+
 /**
- * Each traspaso de deuda of the card out of `currency` into pesos: the foreign leg's date, its
- * amount in `currency` and the pesos the bank moved it at.
+ * Each traspaso de deuda of the card out of `currency` onto its main statement: the abono's date,
+ * its amount in `currency` and the amount, in the main statement's currency, the bank moved it at.
  */
-export function traspasoForeignLegs(
-  accountId: number,
-  currency: string
-): { link_id: number; transaction_date: string | null; clp: number; amount: number }[] {
-  return stmtTraspasoForeignLegs.all(accountId, currency) as {
-    link_id: number;
-    transaction_date: string | null;
-    clp: number;
-    amount: number;
-  }[];
+export function traspasoForeignLegs(accountId: number, currency: string): TraspasoForeignLeg[] {
+  return stmtTraspasoForeignLegs.all(accountId, currency) as TraspasoForeignLeg[];
 }
 
 // ---------------------------------------------------------------------------------------------

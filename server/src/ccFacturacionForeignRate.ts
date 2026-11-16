@@ -1,11 +1,11 @@
 import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
-import { payByFxDateIso } from "./ccBillingBalances.js";
+import { balanceUsdFxDateIso, payByFxDateIso } from "./ccBillingBalances.js";
 import {
   listCcPaymentEvidenceRows,
   listCcPaymentPairings,
   type CcPaymentPairing,
 } from "./ccPaymentMirrorEvidence.js";
-import { ccTraspasoLinkedClpByForeignLineId } from "./ccTraspasoDeudaLinks.js";
+import { ccTraspasoLinkedClpByForeignLineId, traspasoToLegClp } from "./ccTraspasoDeudaLinks.js";
 import { currencyMinorDigits, HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
@@ -129,7 +129,7 @@ const stmtForeignCashPayments = db.prepare(
  * that currency — the pesos that left checking and the amount the card was credited), the payments
  * made in that currency from a foreign cash account holding it (`pago_tarjeta` in the currency with
  * no counter leg: the pesos that money cost, traced by `foreignCashCostLots.ts`) and the traspasos
- * de deuda out of it (the bank moving that debt to the peso side at its own rate,
+ * de deuda out of it (the bank moving that debt onto the card's main statement at its own rate,
  * `cc_traspaso_deuda_links`).
  */
 export function foreignDebtPaymentsForAccount(accountId: number, currency: string): ForeignDebtPayment[] {
@@ -173,7 +173,12 @@ export function foreignDebtPaymentsForAccount(accountId: number, currency: strin
     if (!date_iso) {
       throw new Error(`traspaso link ${r.link_id}: unparsable ${code} line date ${JSON.stringify(r.transaction_date)}`);
     }
-    out.push({ date_iso, clp: r.clp, amount: r.amount });
+    const clp = traspasoToLegClp(
+      { amount: r.to_amount, currency: r.to_currency },
+      isHomeCurrency(r.to_currency) ? null : balanceUsdFxDateIso(accountId, r.statement_date),
+      `traspaso link ${r.link_id}`
+    );
+    out.push({ date_iso, clp, amount: r.amount });
   }
   return out;
 }
@@ -189,7 +194,7 @@ export type CcForeignPaymentLine = { statement_line_id: number; date_iso: string
  *   evidence (`listCcPaymentEvidenceRows`: an ABONO DE DIVISAS no traspaso claims) and the converted
  *   payment (`listCcPaymentPairings`) the one with its card, date and dollars — whichever statement
  *   row printed that payment when it was paired;
- * - a traspaso de deuda's USD leg (`cc_traspaso_deuda_links`): minus its CLP leg's booked pesos, as
+ * - a traspaso de deuda's abono (`cc_traspaso_deuda_links`): minus what its cargo is booked at, as
  *   the owed walk values it;
  * - otherwise the rate of the facturación it paid ({@link facturacionPaidOn} — the window that
  *   facturación's paid rate sums over), `facturacionRate` being the rate its row shows.
@@ -210,7 +215,9 @@ export function foreignPaymentLineClpResolver(
     const paired = r.currency === currency ? divisasByKey.get(r.key) : undefined;
     if (paired) divisasByLine.set(r.id, paired);
   }
-  const traspasoClpByLine = ccTraspasoLinkedClpByForeignLineId(accountId, currency);
+  const traspasoClpByLine = ccTraspasoLinkedClpByForeignLineId(accountId, currency, (statementDate) =>
+    balanceUsdFxDateIso(accountId, statementDate)
+  );
   const sorted = sortedByDistinctClose(facturaciones);
   return (line) => {
     const divisas = divisasByLine.get(line.statement_line_id);

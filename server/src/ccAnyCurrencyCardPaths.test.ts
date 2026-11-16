@@ -5,6 +5,8 @@ import { feedCloseStatementMismatches, recordFeedBillingClose } from "./ccBillin
 import { recomputeCcBillingMonthBalances } from "./ccBillingMonthBalancesRecompute.js";
 import { buildBillingDetailByMonth, buildFacturaciones, ccStatementOwedByCurrencyByMonth, facturadoForeignIn } from "./ccBillingViews.js";
 import { recordManualCardPayment } from "./ccManualPayments.js";
+import { computeCcTraspasoDeudaPairsForAccount, relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
+import { convertCurrency } from "./rates.js";
 import { listPlantedPaymentLines } from "./ccPlantedPayments.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
@@ -18,6 +20,9 @@ import { cardPaymentMoney, loadCardPaymentTransfers } from "./latestCardPayments
  * billing snapshot, the post-close evidence (lines, a payment of the previous facturación, a
  * header payment leg, a financing charge read from its stored kind), a feed-observed close and its
  * cross-check, and a payment entered by hand with its planted line.
+ *
+ * Wave 9 `ut-card-import-currency`: a traspaso de deuda pairs a cargo on the card's main statement
+ * with an abono in another currency, checked against the pair's stored rate of the close.
  */
 type Fixture = {
   label: string;
@@ -242,6 +247,66 @@ for (const fx of FIXTURES) {
       expect(
         recordManualCardPayment({ from_account_id: cashId, card_account_id: cardId, amount: 12.35, currency: fx.currency, paid_on: days.manual }).status
       ).toBe("already_recorded");
+    });
+
+    it("pairs a traspaso de deuda onto the main statement from another currency, at the bank's conversion", () => {
+      const other = fx.currency === "eur" ? "usd" : "eur";
+      const stored = convertCurrency(1, other, fx.currency, days.closeB, { side: "mid", storedOnly: true })!;
+      expect(stored).toBeGreaterThan(0);
+      // The bank's conversion: 3 % over the stored rate of the close.
+      const fromAmount = 40;
+      const toAmount = Math.round(fromAmount * stored * 1.03 * 100) / 100;
+      const mainStatement = (
+        db.prepare(`SELECT id FROM cc_statements WHERE account_id = ? AND statement_date = ?`).get(cardId, ddmm(days.closeB)) as { id: number }
+      ).id;
+      const otherStatement = Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_to, currency, layout, pay_by)
+             VALUES (?, ?, ?, ?, ?, ?, 'compact', ?)`
+          )
+          .run(cardId, fx.cardGroup, `${NOTE}-traspaso-${other}.pdf`, ddmm(days.closeB), ddmm(days.closeB), other, ddmm(days.payByB)).lastInsertRowid
+      );
+      const line = db.prepare(
+        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, kind, dedupe_key)
+         VALUES (?, ?, 'TRASPASO DEUDA VITEST', ?, ?, 0, 'card_debt_transfer', ?)`
+      );
+      const toLine = Number(line.run(mainStatement, ddmm(days.purchaseB), toAmount, fx.currency, `${NOTE}-traspaso-to`).lastInsertRowid);
+      const fromLine = Number(line.run(otherStatement, ddmm(days.purchaseB), -fromAmount, other, `${NOTE}-traspaso-from`).lastInsertRowid);
+      try {
+        expect(computeCcTraspasoDeudaPairsForAccount(cardId)).toEqual([
+          {
+            statement_date: ddmm(days.closeB),
+            to_line_id: toLine,
+            to_currency: fx.currency,
+            to_amount: toAmount,
+            from_line_id: fromLine,
+            from_currency: other,
+            from_amount: fromAmount,
+          },
+        ]);
+        expect(relinkCcTraspasoDeudaLinksForAccount(cardId)).toEqual({ links: 1 });
+        clearAggregationCache();
+        // The pair is one reclassification: the abono is valued at minus what the cargo is booked at.
+        const lines = normalizedPostCloseLines(cardId);
+        const to = lines.find((l) => l.key === `${NOTE}-traspaso-to`)!;
+        const from = lines.find((l) => l.key === `${NOTE}-traspaso-from`)!;
+        expect(to.clp).toBe(Math.round(toAmount * fx.rateB));
+        expect(from).toMatchObject({ currency: other, amount: -fromAmount, clp: -to.clp! });
+        // A conversion far from the stored rate of the close is two unrelated lines.
+        db.prepare(`UPDATE cc_statement_lines SET amount = ? WHERE id = ?`).run(toAmount * 2, toLine);
+        expect(() => computeCcTraspasoDeudaPairsForAccount(cardId)).toThrow(/implied rate .* is more than a factor of/);
+        // The cargo belongs on the main statement: two legs outside it do not pair.
+        db.prepare(`UPDATE cc_statement_lines SET currency = ? WHERE id = ?`).run(other, toLine);
+        expect(() => computeCcTraspasoDeudaPairsForAccount(cardId)).toThrow(
+          new RegExp(`exactly one ${fx.currency.toUpperCase()} leg and one leg in another currency, got 2 ${other}`)
+        );
+      } finally {
+        db.prepare(`DELETE FROM cc_traspaso_deuda_links WHERE account_id = ?`).run(cardId);
+        db.prepare(`DELETE FROM cc_statement_lines WHERE id IN (?, ?)`).run(toLine, fromLine);
+        db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(otherStatement);
+        clearAggregationCache();
+      }
     });
 
     it("refuses a hand payment in a currency the issuer does not bill in, or from an account in another currency", () => {
