@@ -93,9 +93,10 @@ export function FxCoverageBanner({
         <p key={`${w.code}-${w.date}`} style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>
           {warningMessage(t, w)}
           {w.date ? (
-            <span className="mono muted" style={{ marginLeft: "0.35rem" }}>
-              ({w.date})
-            </span>
+            <>
+              {" "}
+              <span className="mono muted">({w.date})</span>
+            </>
           ) : null}
         </p>
       ))}
