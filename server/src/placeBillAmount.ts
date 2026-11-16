@@ -5,6 +5,10 @@
  * The readers select {@link placeBillPesosSql} and refuse a row it leaves NULL
  * ({@link requirePlaceBillPesos}): a bill in another currency is a data error, never read as pesos.
  */
+import { HOME_CURRENCY } from "./displayUnits.js";
+
+/** The currency a place's bills are kept in (the CHECK of migration 316): served beside their amounts. */
+export const PLACE_BILL_CURRENCY: string = HOME_CURRENCY;
 
 /** SQL: the bill's pesos, NULL when the row is in another currency (alias `a` for `expense_entries`). */
 export function placeBillPesosSql(a: string): string {

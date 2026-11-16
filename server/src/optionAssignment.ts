@@ -42,8 +42,10 @@ export type OptionAssignmentResult = {
   stock_movement_id: number;
   stock_flow_kind: "stock_sell" | "stock_buy";
   shares: number;
-  /** Strike × shares in the contract's currency (dollars for every contract today; the key is the wire's). */
-  amount_usd: number;
+  /** Strike × shares, to the coin of `currency`. */
+  amount: number;
+  /** The contract's currency: what the strike is quoted in and the shares settle in. */
+  currency: string;
   /** The contracts' sign on the contract row: + closes a short, − closes a long. */
   contracts_units_delta: number;
 };
@@ -135,7 +137,8 @@ export function assignOptionContract(input: OptionAssignmentInput): OptionAssign
       stock_movement_id: stockMovementId,
       stock_flow_kind: shareLeg,
       shares,
-      amount_usd: amount,
+      amount,
+      currency,
       contracts_units_delta: contractsUnits,
     };
   });

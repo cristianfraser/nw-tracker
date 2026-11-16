@@ -3,11 +3,11 @@ import type { TimeRange } from "./timeRange";
 import type { CcFacturadoBarSegments, CcHistorialChartPoint, DailySeriesResponse } from "./types";
 
 const NO_BAR: CcFacturadoBarSegments = {
-  facturado_cuotas_clp: null,
-  facturado_rest_clp: null,
-  facturado_foreign_clp: null,
+  facturado_cuotas: null,
+  facturado_rest: null,
+  facturado_foreign_total: null,
   facturado_foreign: null,
-  facturado_total_clp: null,
+  facturado_total: null,
 };
 
 function nextDayYmd(ymd: string): string {
@@ -36,22 +36,22 @@ export function buildCcDailyHistorialRows(
   const rows: CcHistorialChartPoint[] = daily.points.map((pt, i) => ({
     month: pt.as_of_date,
     ...NO_BAR,
-    cupo_en_cuotas_clp: debt?.[i] ?? null,
-    balance_total_clp: owed[i] ?? null,
+    cupo_en_cuotas: debt?.[i] ?? null,
+    balance_total: owed[i] ?? null,
   }));
   for (const tail of daily.cc_plan_tail ?? []) {
     rows.push({
       month: tail.as_of_date,
       ...NO_BAR,
-      cupo_en_cuotas_clp: tail.plan_debt_clp,
-      balance_total_clp: tail.balance_clp,
+      cupo_en_cuotas: tail.plan_debt,
+      balance_total: tail.balance,
     });
   }
   const bars = daily.cc_facturacion_bars ?? [];
   const lastBar = bars.at(-1)?.as_of_date ?? null;
   for (let d = rows.at(-1)!.month; lastBar != null && d < lastBar; ) {
     d = nextDayYmd(d);
-    rows.push({ month: d, ...NO_BAR, cupo_en_cuotas_clp: null, balance_total_clp: null });
+    rows.push({ month: d, ...NO_BAR, cupo_en_cuotas: null, balance_total: null });
   }
   const rowIndexByDay = new Map(rows.map((r, i) => [r.month, i] as const));
   for (const { as_of_date, ...bar } of bars) {
@@ -61,7 +61,7 @@ export function buildCcDailyHistorialRows(
     rows[i] = { ...rows[i]!, ...bar };
   }
   const firstData =
-    rows.find((r) => r.cupo_en_cuotas_clp != null || r.balance_total_clp != null)?.month ?? null;
+    rows.find((r) => r.cupo_en_cuotas != null || r.balance_total != null)?.month ?? null;
   const start = rangeWindowStartYmd(timeRange, firstData, todayYmd);
   return start == null ? rows : rows.filter((r) => r.month >= start);
 }

@@ -69,7 +69,7 @@ describe("projected future billing months", () => {
       const payload = ccInstallmentsDbApiPayload(accountId);
       const allScheduleMonths = payload.installment_history_months.map((h) => ({
         month: h.month,
-        total_clp: h.installment_payments_clp,
+        total: h.installment_payments,
         breakdown: [],
       }));
       const det = buildBillingDetailByMonth(accountId, allScheduleMonths);
@@ -88,15 +88,15 @@ describe("projected future billing months", () => {
       const remainingByMonth = installmentRemainingClpByCalendarMonth(accountId);
       for (const row of projectedRows) {
         expect(row.projected).toBe(true);
-        expect(row.total_facturado_clp).toBeNull();
-        expect(row.balance_statement_clp).toBe(
+        expect(row.total_facturado).toBeNull();
+        expect(row.balance_statement).toBe(
           remainingByMonth.get(addCalendarMonths(row.billing_month, -1)) ?? 0
         );
       }
 
       // Live «Balance total» must read the open row, never a projected month.
       expect(latestCreditCardBillingBalanceTotalClp(accountId)).toBe(
-        Math.round(openRow!.balance_statement_clp)
+        Math.round(openRow!.balance_statement)
       );
     } finally {
       wipeVitestCcFixtureData();
@@ -126,7 +126,7 @@ function expectOpenRowIsOwedTodayPerCurrency(
   const unknown = Object.keys(owed.owed).filter((c) => !isHomeCurrency(c) && !foreign.includes(c));
   if (unknown.length > 0) throw new Error(`the card owes ${unknown.join(", ")}, which it does not bill in`);
   const expected = (owed.owed[HOME_CURRENCY] ?? 0) + foreign.reduce((sum, c) => sum + (owed.owed[c] ?? 0) * RATE, 0);
-  expect(openRow.balance_statement_clp).toBe(Math.round(expected));
+  expect(openRow.balance_statement).toBe(Math.round(expected));
 }
 
 describe("buildBillingDetailByMonth", () => {
@@ -146,10 +146,10 @@ describe("buildBillingDetailByMonth", () => {
     const det = buildBillingDetailByMonth(master.id, payload.months);
     const may = det.find((d) => d.billing_month === lastPdf);
     const openRow = det.find((d) => d.billing_month === openBm);
-    if (!may?.total_facturado_clp || !openRow) throw new Error("the Vitest person's card lacks the state this test reads");
+    if (!may?.total_facturado || !openRow) throw new Error("the Vitest person's card lacks the state this test reads");
 
     expect(openRow.as_of_kind).toBe("manual");
-    expect(openRow.total_facturado_clp).toBeGreaterThan(0);
+    expect(openRow.total_facturado).toBeGreaterThan(0);
     // Open month: the live debt, the card's owed today in each currency — in the statement frame,
     // so a dollar it owes is not at today's rate (see `expectOpenRowIsOwedTodayPerCurrency`).
     expectOpenRowIsOwedTodayPerCurrency(master.id, payload.months, openBm);
@@ -170,14 +170,14 @@ describe("buildBillingDetailByMonth", () => {
     const det = buildBillingDetailByMonth(master.id, payload.months);
     const openRow = det.find((d) => d.billing_month === openBm);
     const may = det.find((d) => d.billing_month === lastPdf);
-    if (!openRow || !may?.total_facturado_clp) throw new Error("the Vitest person's card lacks the state this test reads");
+    if (!openRow || !may?.total_facturado) throw new Error("the Vitest person's card lacks the state this test reads");
 
     // Facturado for the open cycle = únicos billed this cycle + cuota a pagar; the prior
     // closed month's facturado is NOT rolled in (that lives in deuda/saldo).
     const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
-    const expected = uniquo + openRow.cuota_a_pagar_next_mes_clp;
+    const expected = uniquo + openRow.cuota_a_pagar_next_mes;
 
-    expect(openRow.total_facturado_clp).toBe(expected);
+    expect(openRow.total_facturado).toBe(expected);
     // …but the balance carries the prior closed month's debt forward: it is the card's owed today.
     expectOpenRowIsOwedTodayPerCurrency(master.id, payload.months, openBm);
   });
@@ -238,8 +238,8 @@ describe("buildBillingDetailByMonth", () => {
       // roll-forward only. So facturado rises by exactly the two charges even though the PAGO
       // (1,000,000) dwarfs them; the old netting formula would have clamped facturado to 0.
       const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
-      expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
-      expect(after!.total_facturado_clp! - (before.total_facturado_clp ?? 0)).toBe(
+      expect(after!.total_facturado).toBe(uniquo + after!.cuota_a_pagar_next_mes);
+      expect(after!.total_facturado! - (before.total_facturado ?? 0)).toBe(
         chargeA + chargeB
       );
       expect(uniquo).toBeGreaterThanOrEqual(chargeA + chargeB);
@@ -247,9 +247,9 @@ describe("buildBillingDetailByMonth", () => {
       const factAfter = buildFacturaciones(master.id, payload.months).find(
         (f) => f.billing_month === openBm
       );
-      expect(factAfter?.facturado_total_clp).toBe(after!.total_facturado_clp);
+      expect(factAfter?.facturado_total).toBe(after!.total_facturado);
       // Balance, in contrast, DOES net the PAGO: it moves by the charges less the payment.
-      expect(after!.balance_statement_clp - before.balance_statement_clp).toBe(chargeA + chargeB - pagoClp);
+      expect(after!.balance_statement - before.balance_statement).toBe(chargeA + chargeB - pagoClp);
     } finally {
       for (const id of [insA.lastInsertRowid, insB.lastInsertRowid, insPago.lastInsertRowid]) {
         db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(id);
@@ -295,10 +295,10 @@ describe("buildBillingDetailByMonth", () => {
       // Facturado tracks this cycle's charges + cuota; a PAGO settles the PRIOR bill and is not
       // netted, so inserting a PAGO alone (no new charges) leaves facturado exactly unchanged.
       const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
-      expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
-      expect(after!.total_facturado_clp).toBe(before.total_facturado_clp);
+      expect(after!.total_facturado).toBe(uniquo + after!.cuota_a_pagar_next_mes);
+      expect(after!.total_facturado).toBe(before.total_facturado);
       // The PAGO reduces the rolled balance by exactly its amount.
-      expect(after!.balance_statement_clp - before.balance_statement_clp).toBe(-pagoClp);
+      expect(after!.balance_statement - before.balance_statement).toBe(-pagoClp);
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(ins.lastInsertRowid);
     }
@@ -365,16 +365,16 @@ describe("buildFacturaciones", () => {
     recomputeCcBillingMonthBalances(master.id);
     const payload = ccInstallmentsDbApiPayload(master.id);
     const fact = buildFacturaciones(master.id, payload.months);
-    const withFacturado = fact.filter((f) => (f.facturado_total_clp ?? 0) > 0);
+    const withFacturado = fact.filter((f) => (f.facturado_total ?? 0) > 0);
     if (withFacturado.length === 0) throw new Error("the Vitest person's card lacks the state this test reads");
     const row = withFacturado[0]!;
     const det = buildBillingDetailByMonth(master.id, payload.months).find(
       (d) => d.billing_month === row.billing_month
     );
-    expect(row.facturado_total_clp).toBeGreaterThan(0);
+    expect(row.facturado_total).toBeGreaterThan(0);
     expect(row.close_date_iso).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(det).toBeDefined();
-    expect(det!.total_facturado_clp).toBe(row.facturado_total_clp);
+    expect(det!.total_facturado).toBe(row.facturado_total);
   });
 
   it("open month facturado_total equals uniquo statement lines plus cuota a pagar", () => {
@@ -393,8 +393,8 @@ describe("buildFacturaciones", () => {
     if (!openRow?.is_open_month) throw new Error("the Vitest person's card lacks the state this test reads");
 
     const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
-    const cuota = openRow.cuota_a_pagar_clp ?? 0;
-    expect(openRow.facturado_total_clp).toBe(uniquo + cuota);
+    const cuota = openRow.cuota_a_pagar ?? 0;
+    expect(openRow.facturado_total).toBe(uniquo + cuota);
     expect(openRow.is_open_month).toBe(true);
   });
 
@@ -411,10 +411,10 @@ describe("buildFacturaciones", () => {
     const openRow = buildFacturaciones(master.id, payload.months).find(
       (f) => f.billing_month === openBm
     );
-    if (!openRow?.facturado_total_clp) throw new Error("the Vitest person's card lacks the state this test reads");
+    if (!openRow?.facturado_total) throw new Error("the Vitest person's card lacks the state this test reads");
 
-    expect(openRow.facturado_total_clp).toBe(
-      (openRow.facturado_clp ?? 0) + (facturadoForeignIn(openRow, "usd")!.clp ?? 0)
+    expect(openRow.facturado_total).toBe(
+      (openRow.facturado ?? 0) + (facturadoForeignIn(openRow, "usd")!.billing_amount ?? 0)
     );
   });
 

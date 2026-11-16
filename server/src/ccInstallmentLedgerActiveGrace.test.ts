@@ -25,7 +25,7 @@ describe("installmentPurchaseShowsActive", () => {
     expect(lastInstallmentPaymentPayByYmd(payList)).toBe("2026-06-25");
     const settled = {
       remaining_installments: 0,
-      remaining_principal_clp: 0,
+      remaining_principal: 0,
       installments_paid: 3,
       installment_count: 3,
     };
@@ -66,7 +66,7 @@ describe("installmentPurchaseShowsActive", () => {
       installmentPurchaseShowsActive(
         {
           remaining_installments: 2,
-          remaining_principal_clp: 20_000,
+          remaining_principal: 20_000,
           installments_paid: 1,
           installment_count: 3,
         },

@@ -54,12 +54,15 @@ export type AccountPositionMeta = {
   /** ETF shares or coin units (BTC / ETH) */
   units: number | null;
   /**
-   * AFP (UNO Fondo A): when set, account summary `position` uses these for valor hoy / fecha / valor cuota
-   * instead of dividing latest DB valuation by units (Σ cuotas × latest `fund_unit_daily` row).
+   * The position's own mark, set by every kind that prices its units (AFP and fund cuotas, coins,
+   * shares, option contracts): the value in pesos, the day it is of and the peso price of one unit.
+   * When set, the account summary's `position` reads these instead of dividing the latest stored
+   * valuation by the units. Pesos: the position mark is still a peso-native path (the backlog of
+   * docs/untangle-plan.md).
    */
-  afp_override_value_clp?: number | null;
-  afp_override_value_as_of?: string | null;
-  afp_override_valor_cuota_clp?: number | null;
+  mark_value_clp?: number | null;
+  mark_as_of?: string | null;
+  mark_unit_price_clp?: number | null;
 };
 
 function fintualCertPositionMeta(
@@ -116,23 +119,23 @@ function fintualCertPositionMeta(
   // so live value / net worth don't fall back to the last stored (stale) valuation snapshot.
   if (cuotas == null || cuotas <= 1e-9) {
     out.units = 0;
-    out.afp_override_value_clp = 0;
-    out.afp_override_value_as_of = pxDay ?? today;
-    if (px != null && px > 0) out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
+    out.mark_value_clp = 0;
+    out.mark_as_of = pxDay ?? today;
+    if (px != null && px > 0) out.mark_unit_price_clp = Math.round(px * 10000) / 10000;
     return out;
   }
   if (goalsCuotaUnreconciled && cuotas != null && cuotas > 1e-9 && goalsNavClp != null) {
-    out.afp_override_value_clp = Math.round(goalsNavClp * 100) / 100;
-    out.afp_override_value_as_of = today;
-    out.afp_override_valor_cuota_clp = Math.round((goalsNavClp / cuotas) * 10000) / 10000;
+    out.mark_value_clp = Math.round(goalsNavClp * 100) / 100;
+    out.mark_as_of = today;
+    out.mark_unit_price_clp = Math.round((goalsNavClp / cuotas) * 10000) / 10000;
     return out;
   }
   if (cuotas != null && cuotas > 1e-9 && px != null && px > 0 && pxDay) {
-    out.afp_override_value_clp = Math.round(cuotas * px * 100) / 100;
-    out.afp_override_value_as_of = pxDay;
+    out.mark_value_clp = Math.round(cuotas * px * 100) / 100;
+    out.mark_as_of = pxDay;
   }
   if (px != null && px > 0 && pxDay) {
-    out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
+    out.mark_unit_price_clp = Math.round(px * 10000) / 10000;
   }
   return out;
 }
@@ -204,9 +207,9 @@ export function equityBrokeragePositionMeta(
   const mtm = convertValue(u * close, quote, "clp", asOfYmd, "asset", now);
   const perUnit = convertValue(close, quote, "clp", asOfYmd, "asset", now);
   if (mtm == null || perUnit == null) return out;
-  out.afp_override_value_clp = Math.round(mtm * 100) / 100;
-  out.afp_override_value_as_of = markDate;
-  out.afp_override_valor_cuota_clp = Math.round(perUnit * 10000) / 10000;
+  out.mark_value_clp = Math.round(mtm * 100) / 100;
+  out.mark_as_of = markDate;
+  out.mark_unit_price_clp = Math.round(perUnit * 10000) / 10000;
   return out;
 }
 
@@ -226,8 +229,8 @@ function optionPositionMeta(
   const out: AccountPositionMeta = { ticker: holding.occSymbol, units_kind: "contracts", units: contracts };
   if (!Number.isFinite(contracts) || contracts === 0) {
     out.units = 0;
-    out.afp_override_value_clp = 0;
-    out.afp_override_value_as_of = asOf;
+    out.mark_value_clp = 0;
+    out.mark_as_of = asOf;
     return out;
   }
   const today = chileCalendarTodayYmd();
@@ -237,9 +240,9 @@ function optionPositionMeta(
   const mtm = convertValue(contracts * perContractUsd, px.currency, "clp", asOf, "asset", now);
   const perContractClp = convertValue(perContractUsd, px.currency, "clp", asOf, "asset", now);
   if (mtm == null || perContractClp == null) return out;
-  out.afp_override_value_clp = Math.round(mtm * 100) / 100;
-  out.afp_override_value_as_of = px.as_of;
-  out.afp_override_valor_cuota_clp = Math.round(perContractClp * 10000) / 10000;
+  out.mark_value_clp = Math.round(mtm * 100) / 100;
+  out.mark_as_of = px.as_of;
+  out.mark_unit_price_clp = Math.round(perContractClp * 10000) / 10000;
   return out;
 }
 
@@ -292,11 +295,11 @@ function coinPositionMeta(accountId: number, priceTicker: string, asOf: string, 
     const native = cryptoTodayNativeValue(accountId, now);
     const mtm = native ? convertValue(native.value, "usd", "clp", today, "asset", now) : null;
     if (native && mtm != null && Number.isFinite(mtm)) {
-      out.afp_override_value_clp = Math.round(mtm * 100) / 100;
-      out.afp_override_value_as_of = native.as_of_date;
+      out.mark_value_clp = Math.round(mtm * 100) / 100;
+      out.mark_as_of = native.as_of_date;
       const u = out.units;
       if (u != null && u > 1e-12) {
-        out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
+        out.mark_unit_price_clp = Math.round((mtm / u) * 10000) / 10000;
       }
     }
     return out;
@@ -310,15 +313,15 @@ function coinPositionMeta(accountId: number, priceTicker: string, asOf: string, 
     )
     .get(priceTicker, asOf) as { trade_date: string; close: number } | undefined;
   if (mtm != null && Number.isFinite(mtm) && closeRow?.trade_date) {
-    out.afp_override_value_clp = Math.round(mtm * 100) / 100;
+    out.mark_value_clp = Math.round(mtm * 100) / 100;
     // `asOf`, the fx frame of these pesos (the bar may be older) — see the live branch.
-    out.afp_override_value_as_of = asOf;
+    out.mark_as_of = asOf;
     const u = out.units;
     // Per-unit price from the value itself — the same close at the same rate
     // (`computeCryptoMtmClp` reads the date's fx frame, live while that fx day is open), so
     // units × price is the value even when the coin quote is older than the date.
     if (u != null && u > 1e-12) {
-      out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
+      out.mark_unit_price_clp = Math.round((mtm / u) * 10000) / 10000;
     }
   }
   return out;
@@ -359,15 +362,15 @@ function cuotaLedgerPositionMeta(accountId: number, kind: string, series: string
   if (!(cuotas > 1e-9) || !Number.isFinite(cuotas)) {
     if (!hasCuotaLedgerUnitsEvents(accountId)) return out;
     out.units = 0;
-    out.afp_override_value_clp = 0;
-    out.afp_override_value_as_of = asOfCuotas;
-    if (px != null && px > 0) out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
+    out.mark_value_clp = 0;
+    out.mark_as_of = asOfCuotas;
+    if (px != null && px > 0) out.mark_unit_price_clp = Math.round(px * 10000) / 10000;
     return out;
   }
   if (px != null && px > 0 && pxDay) {
-    out.afp_override_value_clp = Math.round(cuotas * px * 100) / 100;
-    out.afp_override_value_as_of = pxDay;
-    out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
+    out.mark_value_clp = Math.round(cuotas * px * 100) / 100;
+    out.mark_as_of = pxDay;
+    out.mark_unit_price_clp = Math.round(px * 10000) / 10000;
   }
   return out;
 }
@@ -387,8 +390,8 @@ export function liveFintualCertDisplayValueClp(
   const profile = accountProfile(accountId);
   const asOf = requireIsoDay(asOfYmd, "liveFintualCertDisplayValueClp");
   const meta = fintualCertPositionMeta(accountId, profile.importKey ?? "", profile.name.trim() || "Fintual", asOf, now ?? new Date());
-  const clp = meta?.afp_override_value_clp;
-  const date = meta?.afp_override_value_as_of;
+  const clp = meta?.mark_value_clp;
+  const date = meta?.mark_as_of;
   if (clp != null && Number.isFinite(clp) && date) {
     return { value_clp: clp, as_of_date: date };
   }
@@ -414,8 +417,8 @@ export function liveCuotaLedgerDisplayValueClp(
 ): { value_clp: number; as_of_date: string } | null {
   const asOf = requireIsoDay(asOfYmd, "liveCuotaLedgerDisplayValueClp");
   const meta = getAccountPositionMeta(accountId, { asOfYmd: asOf });
-  const clp = meta?.afp_override_value_clp;
-  const date = meta?.afp_override_value_as_of;
+  const clp = meta?.mark_value_clp;
+  const date = meta?.mark_as_of;
   if (clp != null && Number.isFinite(clp) && date) {
     return { value_clp: clp, as_of_date: date };
   }
@@ -438,28 +441,28 @@ export function positionMarkFromMeta(
   const afp = q === "cuota_ledger";
   const crypto = q === "coin";
   const units = meta.units;
-  const ovc = meta.afp_override_value_clp;
+  const ovc = meta.mark_value_clp;
   // A contract's mark is its value whatever the sign: a short position marks negative, an empty
   // one 0 — the «positive value» tests below are for positions that cannot be short.
   if (q === "option_contracts") {
-    return ovc != null && Number.isFinite(ovc) && meta.afp_override_value_as_of != null
-      ? { value_clp: ovc, as_of_date: meta.afp_override_value_as_of }
+    return ovc != null && Number.isFinite(ovc) && meta.mark_as_of != null
+      ? { value_clp: ovc, as_of_date: meta.mark_as_of }
       : null;
   }
   const fundUnitMark =
     ovc != null &&
     Number.isFinite(ovc) &&
     ovc > 0 &&
-    meta.afp_override_valor_cuota_clp != null &&
-    Number.isFinite(meta.afp_override_valor_cuota_clp);
+    meta.mark_unit_price_clp != null &&
+    Number.isFinite(meta.mark_unit_price_clp);
   const explicitZeroMark =
-    ovc === 0 && meta.afp_override_value_as_of != null && (units == null || units <= 0);
+    ovc === 0 && meta.mark_as_of != null && (units == null || units <= 0);
   const mtmMark =
     fundUnitMark ||
     explicitZeroMark ||
     ((afp || crypto) && ovc != null && Number.isFinite(ovc) && (ovc > 0 || (crypto && ovc === 0)));
   if (!mtmMark || ovc == null) return null;
-  return { value_clp: ovc, as_of_date: meta.afp_override_value_as_of ?? null };
+  return { value_clp: ovc, as_of_date: meta.mark_as_of ?? null };
 }
 
 /**
@@ -500,15 +503,15 @@ export function positionClpFrameFromMeta(
   const fundUnitMark =
     mark != null &&
     mark.value_clp > 0 &&
-    meta.afp_override_valor_cuota_clp != null &&
-    Number.isFinite(meta.afp_override_valor_cuota_clp);
+    meta.mark_unit_price_clp != null &&
+    Number.isFinite(meta.mark_unit_price_clp);
   const value_clp = mark ? mark.value_clp : v != null && Number.isFinite(v) ? v : null;
   const value_as_of = mark ? mark.as_of_date : today?.as_of_date ?? null;
   const value_per_unit_clp =
-    fundUnitMark && meta.afp_override_valor_cuota_clp != null
-      ? meta.afp_override_valor_cuota_clp
-      : (afp || option) && meta.afp_override_valor_cuota_clp != null && Number.isFinite(meta.afp_override_valor_cuota_clp)
-        ? meta.afp_override_valor_cuota_clp
+    fundUnitMark && meta.mark_unit_price_clp != null
+      ? meta.mark_unit_price_clp
+      : (afp || option) && meta.mark_unit_price_clp != null && Number.isFinite(meta.mark_unit_price_clp)
+        ? meta.mark_unit_price_clp
         : v != null && units != null && units > 0 && Number.isFinite(v) && Number.isFinite(units)
           ? v / units
           : null;

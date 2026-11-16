@@ -10,7 +10,7 @@ export type CcBilledCuotasMonth = {
   /** Σ printed cuotas (installment lines with cuota ≥ 1) on the facturación's CLP statements. */
   billed_clp: number;
   /** The ledger's cuota a pagar for the facturación (plan schedule). */
-  cuota_a_pagar_clp: number;
+  cuota_a_pagar: number;
   /** Cuotas of nota-cancelled plans billed that month: printed, but out of the schedule by design. */
   cancelled_clp: number;
   /** billed − cuota a pagar − cancelled; 0 when the ledger carries every plan the statement bills. */
@@ -19,7 +19,7 @@ export type CcBilledCuotasMonth = {
 
 /**
  * Installment-ledger acceptance check: for every closed facturación of a card, the cuotas its
- * statement bills against the ledger's `cuota_a_pagar_clp`. A plan the ledger lacks (or holds
+ * statement bills against the ledger's `cuota_a_pagar`. A plan the ledger lacks (or holds
  * once for several identical purchases) shows up as an unexplained residual.
  */
 export function ccBilledCuotasIdentity(accountId: number): CcBilledCuotasMonth[] {
@@ -52,12 +52,12 @@ export function ccBilledCuotasIdentity(accountId: number): CcBilledCuotasMonth[]
     .facturaciones.filter((f) => !f.is_open_month && !f.is_provisional_close)
     .map((f) => {
       const billed = billedByMonth.get(f.billing_month) ?? 0;
-      const cuotaAPagar = f.cuota_a_pagar_clp ?? 0;
+      const cuotaAPagar = f.cuota_a_pagar ?? 0;
       const cancelled = cancelledByMonth.get(f.billing_month) ?? 0;
       return {
         billing_month: f.billing_month,
         billed_clp: billed,
-        cuota_a_pagar_clp: cuotaAPagar,
+        cuota_a_pagar: cuotaAPagar,
         cancelled_clp: cancelled,
         unexplained_clp: billed - cuotaAPagar - cancelled,
       };

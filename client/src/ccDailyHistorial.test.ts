@@ -5,20 +5,20 @@ import type { DailySeriesResponse } from "./types";
 const TODAY = "2026-07-01";
 
 const NO_BAR = {
-  facturado_cuotas_clp: null,
-  facturado_rest_clp: null,
-  facturado_foreign_clp: null,
+  facturado_cuotas: null,
+  facturado_rest: null,
+  facturado_foreign_total: null,
   facturado_foreign: null,
-  facturado_total_clp: null,
+  facturado_total: null,
 };
 
 const facturacionBar = (as_of_date: string, cuotas: number, rest: number) => ({
   as_of_date,
-  facturado_cuotas_clp: cuotas,
-  facturado_rest_clp: rest,
-  facturado_foreign_clp: null,
+  facturado_cuotas: cuotas,
+  facturado_rest: rest,
+  facturado_foreign_total: null,
   facturado_foreign: null,
-  facturado_total_clp: cuotas + rest,
+  facturado_total: cuotas + rest,
 });
 
 function daily(over: Partial<DailySeriesResponse>): DailySeriesResponse {
@@ -42,17 +42,17 @@ describe("buildCcDailyHistorialRows", () => {
       daily({
         cc_owed: [null, 500, 520, 510],
         cc_installment_debt: [null, 300, 300, 200],
-        cc_plan_tail: [{ as_of_date: "2026-07-02", plan_debt_clp: 200, balance_clp: 210 }],
+        cc_plan_tail: [{ as_of_date: "2026-07-02", plan_debt: 200, balance: 210 }],
       }),
       "total",
       TODAY
     );
     expect(rows).toEqual([
       // `total` starts flush at the first data day — the leading empty day is clipped.
-      { month: "2026-06-29", ...NO_BAR, cupo_en_cuotas_clp: 300, balance_total_clp: 500 },
-      { month: "2026-06-30", ...NO_BAR, cupo_en_cuotas_clp: 300, balance_total_clp: 520 },
-      { month: TODAY, ...NO_BAR, cupo_en_cuotas_clp: 200, balance_total_clp: 510 },
-      { month: "2026-07-02", ...NO_BAR, cupo_en_cuotas_clp: 200, balance_total_clp: 210 },
+      { month: "2026-06-29", ...NO_BAR, cupo_en_cuotas: 300, balance_total: 500 },
+      { month: "2026-06-30", ...NO_BAR, cupo_en_cuotas: 300, balance_total: 520 },
+      { month: TODAY, ...NO_BAR, cupo_en_cuotas: 200, balance_total: 510 },
+      { month: "2026-07-02", ...NO_BAR, cupo_en_cuotas: 200, balance_total: 210 },
     ]);
   });
 
@@ -61,20 +61,20 @@ describe("buildCcDailyHistorialRows", () => {
       daily({
         cc_owed: [null, 500, 520, 510],
         cc_installment_debt: [null, 300, 300, 200],
-        cc_plan_tail: [{ as_of_date: "2026-07-02", plan_debt_clp: 200, balance_clp: 210 }],
+        cc_plan_tail: [{ as_of_date: "2026-07-02", plan_debt: 200, balance: 210 }],
         cc_facturacion_bars: [facturacionBar("2026-06-30", 100, 400), facturacionBar("2026-07-02", 50, 0)],
       }),
       "total",
       TODAY
     )!;
-    expect(rows.map((r) => [r.month, r.facturado_cuotas_clp, r.facturado_rest_clp, r.facturado_total_clp])).toEqual([
+    expect(rows.map((r) => [r.month, r.facturado_cuotas, r.facturado_rest, r.facturado_total])).toEqual([
       ["2026-06-29", null, null, null],
       ["2026-06-30", 100, 400, 500],
       [TODAY, null, null, null],
       ["2026-07-02", 50, 0, 50],
     ]);
     // The lines are untouched on a bar day.
-    expect(rows[1]).toMatchObject({ cupo_en_cuotas_clp: 300, balance_total_clp: 520 });
+    expect(rows[1]).toMatchObject({ cupo_en_cuotas: 300, balance_total: 520 });
   });
 
   it("runs the grid on, lines empty, to a close past the plan tail's end", () => {
@@ -88,16 +88,16 @@ describe("buildCcDailyHistorialRows", () => {
       TODAY
     )!;
     expect(rows.slice(-3)).toEqual([
-      { month: "2026-07-01", ...NO_BAR, cupo_en_cuotas_clp: 200, balance_total_clp: 510 },
-      { month: "2026-07-02", ...NO_BAR, cupo_en_cuotas_clp: null, balance_total_clp: null },
+      { month: "2026-07-01", ...NO_BAR, cupo_en_cuotas: 200, balance_total: 510 },
+      { month: "2026-07-02", ...NO_BAR, cupo_en_cuotas: null, balance_total: null },
       {
         month: "2026-07-03",
         ...NO_BAR,
-        facturado_cuotas_clp: 0,
-        facturado_rest_clp: 80,
-        facturado_total_clp: 80,
-        cupo_en_cuotas_clp: null,
-        balance_total_clp: null,
+        facturado_cuotas: 0,
+        facturado_rest: 80,
+        facturado_total: 80,
+        cupo_en_cuotas: null,
+        balance_total: null,
       },
     ]);
   });
@@ -118,7 +118,7 @@ describe("buildCcDailyHistorialRows", () => {
       "total",
       TODAY
     )!;
-    expect(rows.map((r) => r.balance_total_clp)).toEqual([100, 100, 100]);
+    expect(rows.map((r) => r.balance_total)).toEqual([100, 100, 100]);
   });
 
   it("is null without the CC block (not a CC scope) and without points", () => {

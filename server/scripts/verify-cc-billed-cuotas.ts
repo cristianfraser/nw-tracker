@@ -1,6 +1,6 @@
 /**
  * Acceptance check for the installment ledger: for every closed facturación of every card, the
- * cuotas the statement bills must equal the ledger's `cuota_a_pagar_clp`, except the cuotas of
+ * cuotas the statement bills must equal the ledger's `cuota_a_pagar`, except the cuotas of
  * nota-cancelled plans (billed, but out of the schedule by design). Exits 1 on any other residual.
  *
  * Run (from server/): npx tsx scripts/verify-cc-billed-cuotas.ts [accountId ...]
@@ -33,7 +33,7 @@ for (const accountId of accountIds) {
   }
   for (const m of bad) {
     console.log(
-      `  ${m.billing_month}  billed ${fmt(m.billed_clp)}  cuota a pagar ${fmt(m.cuota_a_pagar_clp)}` +
+      `  ${m.billing_month}  billed ${fmt(m.billed_clp)}  cuota a pagar ${fmt(m.cuota_a_pagar)}` +
         `  UNEXPLAINED ${fmt(m.unexplained_clp)}`
     );
   }

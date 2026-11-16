@@ -35,34 +35,6 @@ import {
 import { planCupoGap, type CcCupoGapReport } from "./ccAnnulmentCupoGap.js";
 import { matchPlanPrepayments, recordPlanPrepayments, type CcPlanPrepaymentPaired } from "./ccPlanPrepayments.js";
 import type { PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
-import { pesosOrDollars } from "./ingestCurrencies.js";
-
-/** A currency as the `card.unbilled_movements` result states it. */
-type ListingResultCurrency = ReturnType<typeof pesosOrDollars>;
-
-/**
- * The planted-payment outcome as the `card.unbilled_movements` result carries it: the kind's result
- * contract names pesos and dollars (the wire shape is the DTO stream's to widen), so a payment in
- * another currency is refused here, by name, instead of leaving in a shape the feeder cannot read.
- */
-type ListingPlantedPayments = {
-  [K in "replaced" | "confirmed_in_place" | "ambiguous"]: (Omit<PlantedPaymentMatchResult[K][number], "currency"> & {
-    currency: ListingResultCurrency;
-  })[];
-} & Pick<PlantedPaymentMatchResult, "removed_from_date">;
-
-function listingPlantedPayments(result: PlantedPaymentMatchResult): ListingPlantedPayments {
-  const narrow = <T extends { currency: string }>(row: T): Omit<T, "currency"> & { currency: ListingResultCurrency } => ({
-    ...row,
-    currency: pesosOrDollars(row.currency, "card.unbilled_movements planted payment"),
-  });
-  return {
-    replaced: result.replaced.map(narrow),
-    confirmed_in_place: result.confirmed_in_place.map(narrow),
-    ambiguous: result.ambiguous.map(narrow),
-    removed_from_date: result.removed_from_date,
-  };
-}
 import type { PlantedSamePurchase } from "./ccPlantedCharges.js";
 import type { CcInstallmentFirstDueNudge } from "./ccWebPasteInstallmentNudge.js";
 import {
@@ -145,7 +117,7 @@ export type CardListingAccountImportResult = {
   /** Annulments undone because the listing shows the purchase again. */
   relisted_annulments: CcRelistedAnnulment[];
   /** Planted payment lines the listing replaced or confirmed (`ccPlantedPayments.ts`). */
-  planted_payments: ListingPlantedPayments;
+  planted_payments: PlantedPaymentMatchResult;
   /** Every plan of the card the bank paid off at once, as the listing now shows (`ccPlanPrepayments.ts`). */
   plan_prepayments: CcPlanPrepaymentPaired[];
 };
@@ -239,10 +211,10 @@ function provisionalCheck(
   const row = billingDetailCacheForAccount(accountId).facturaciones.find(
     (f) => f.billing_month === billingMonth
   );
-  if (!row?.is_provisional_close || row.provisional_estimate_total_clp == null) return null;
+  if (!row?.is_provisional_close || row.provisional_estimate_total == null) return null;
   return {
-    bank_total_clp: row.facturado_total_clp ?? 0,
-    app_estimate_clp: row.provisional_estimate_total_clp,
+    bank_total_clp: row.facturado_total ?? 0,
+    app_estimate_clp: row.provisional_estimate_total,
   };
 }
 
@@ -441,7 +413,7 @@ function applyCardListing(
     annulled,
     cupo_gap: cupoGap,
     relisted_annulments: relistedAnnulments,
-    planted_payments: listingPlantedPayments(result.planted_payments),
+    planted_payments: result.planted_payments,
     plan_prepayments: planPrepayments,
   };
 }

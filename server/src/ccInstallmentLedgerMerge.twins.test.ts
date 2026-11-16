@@ -127,7 +127,7 @@ describe("same-statement twin installment purchases", () => {
     const canonicalIds = new Set(plans.map((p) => p.canonical_row_id));
     const perMonth = [...installmentPlanBreakdownByMonth(accountId).values()]
       .map((slots) =>
-        slots.filter((s) => canonicalIds.has(s.purchase_id)).reduce((sum, s) => sum + s.amount_clp, 0)
+        slots.filter((s) => canonicalIds.has(s.purchase_id)).reduce((sum, s) => sum + s.amount, 0)
       )
       .filter((sum) => sum > 0);
     expect(perMonth).toEqual([60_000, 60_000, 60_000]);

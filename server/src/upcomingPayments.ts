@@ -11,11 +11,12 @@
  * (`estimated`, «≈»), future UF at the last twelve months' growth (`projectedUfClp`).
  */
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
+import type { Money, UpcomingPaymentsDto } from "nw-tracker-contracts/dto";
 import { db } from "./db.js";
 import { placeBillPesosSql, requirePlaceBillPesos } from "./placeBillAmount.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { convertCurrency, type CurrencyCode } from "./rates.js";
-import { roundToCurrency } from "./displayUnits.js";
+import { HOME_CURRENCY, roundToCurrency } from "./displayUnits.js";
 import { MORTGAGE_WINDOW_END_DAY } from "./mortgageCuotaDay.js";
 import { buildDashboardCcUpcomingPayments, type CcUpcomingPaymentRow } from "./dashboardCcUpcomingPayments.js";
 import { loadAllDeptoLedgers } from "./deptoLedgerFromMovements.js";
@@ -146,15 +147,11 @@ export type AutomaticRecurringOccurrence = {
   matched_line: { ref: string; purchase_on: string; merchant: string | null; amount_clp: number; covers_through: string | null } | null;
 };
 
-export type UpcomingPaymentsBlock = {
-  schema_version: (typeof DTO_SCHEMA_VERSIONS)["upcoming_payments"];
-  /** The display unit `*_in_unit` are in; the bills themselves are pesos (`*_clp`, native). */
-  unit: CurrencyCode;
-  /** Pay months with something due, oldest first, within the horizon; empty = nothing to show. */
-  months: UpcomingPaymentsMonthInUnit[];
-  /** Automatic declared payments in their window, every occurrence with its status (not listed in `months`). */
-  automatic_recurring: AutomaticRecurringOccurrence[];
-};
+/**
+ * The served block (`UpcomingPaymentsDto`): every bill as a money value in the currency it is
+ * stated in (`amount`, `total`), and each one in the display unit (`*_in_unit`).
+ */
+export type UpcomingPaymentsBlock = UpcomingPaymentsDto;
 
 type ItemDraft = Omit<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "detail" | "wip" | "route_path"> &
   Partial<Pick<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "detail" | "wip" | "route_path">>;
@@ -615,8 +612,8 @@ function recurringSection(
  * The months with each peso amount also in `unit`, at `todayYmd`'s mid rate (live today): every
  * payment still to make is valued at what paying it costs now, as a card's dollars still owed are
  * (`dashboardCcUpcomingPayments.ts`). In pesos the converted figures are the pesos. A card's
- * facturación converts what it owes in each currency (`card.owed`), each part rounded to the
- * unit's minor digits as its pesos are — never its dollars through their pesos.
+ * facturación converts what it owes in each currency (`card.owed`) — never its dollars through
+ * their pesos. Every converted figure is rounded to the unit's smallest coin.
  */
 export function upcomingMonthsInUnit(
   months: readonly UpcomingPaymentsMonth[],
@@ -628,27 +625,74 @@ export function upcomingMonthsInUnit(
     if (v == null || !Number.isFinite(v)) throw new Error(`upcoming payments: no ${from}→${unit} rate on or before ${todayYmd}`);
     return v;
   };
+  const inUnit = (amount: number, from: CurrencyCode): number => roundToCurrency(convert(amount, from), unit);
   const amountInUnit = (it: UpcomingPaymentsMonth["items"][number]): number => {
-    if (it.card == null) return convert(it.amount_clp, "clp");
+    if (it.card == null) return inUnit(it.amount_clp, HOME_CURRENCY);
     let sum = 0;
     for (const [currency, owed] of Object.entries(it.card.owed)) {
-      if (owed > 0) sum += roundToCurrency(convert(owed, currency), unit);
+      if (owed > 0) sum += inUnit(owed, currency);
     }
-    return sum;
+    return roundToCurrency(sum, unit);
   };
   return months.map((m) => {
     const items = m.items.map((it) => ({
       ...it,
       amount_in_unit: amountInUnit(it),
-      amount_max_in_unit: it.amount_max_clp == null ? null : convert(it.amount_max_clp, "clp"),
+      amount_max_in_unit: it.amount_max_clp == null ? null : inUnit(it.amount_max_clp, HOME_CURRENCY),
     }));
-    return { ...m, total_in_unit: items.reduce((a, it) => a + it.amount_in_unit, 0), items };
+    return {
+      ...m,
+      total_in_unit: roundToCurrency(
+        items.reduce((a, it) => a + it.amount_in_unit, 0),
+        unit
+      ),
+      items,
+    };
   });
+}
+
+/** A bill's figure as a money value: the bills, the card frame and the mortgage cuota are stated in the home currency. */
+function billMoney(value: number): Money {
+  return { value, currency: HOME_CURRENCY };
+}
+
+/** The months as served: each `_clp` builder figure becomes a money value with its currency. */
+export function upcomingPaymentsDtoMonths(months: readonly UpcomingPaymentsMonthInUnit[]): UpcomingPaymentsDto["months"] {
+  return months.map((m) => ({
+    pay_month: m.pay_month,
+    total: billMoney(m.total_clp),
+    total_in_unit: m.total_in_unit,
+    items: m.items.map((it) => {
+      const { amount_clp, amount_max_clp, card, ...rest } = it;
+      let cardDto: UpcomingPaymentsDto["months"][number]["items"][number]["card"] = null;
+      if (card != null) {
+        const { amount_clp: owedPesos, billed_clp, ...cardRest } = card;
+        cardDto = { ...cardRest, amount: billMoney(owedPesos), billed: billMoney(billed_clp) };
+      }
+      return {
+        ...rest,
+        amount: billMoney(amount_clp),
+        amount_max: amount_max_clp == null ? null : billMoney(amount_max_clp),
+        card: cardDto,
+      };
+    }),
+  }));
+}
+
+function automaticRecurringDto(o: AutomaticRecurringOccurrence): UpcomingPaymentsDto["automatic_recurring"][number] {
+  const { amount_clp, matched_line, ...rest } = o;
+  let matched: UpcomingPaymentsDto["automatic_recurring"][number]["matched_line"] = null;
+  if (matched_line != null) {
+    const { amount_clp: paid, ...lineRest } = matched_line;
+    matched = { ...lineRest, amount: billMoney(paid) };
+  }
+  return { ...rest, amount: billMoney(amount_clp), matched_line: matched };
 }
 
 /**
  * The dashboard's «Próximos pagos»: every source's items, grouped by pay month within the horizon.
- * The amounts are pesos (what the bills state); `unit` adds each one converted (`*_in_unit`).
+ * Each amount is a money value in the currency the bill states; `unit` adds each one converted
+ * (`*_in_unit`, rounded to the unit's smallest coin).
  */
 export function buildUpcomingPayments(
   todayYmd: string = chileCalendarTodayYmd(),
@@ -693,8 +737,8 @@ export function buildUpcomingPayments(
   return {
     schema_version: DTO_SCHEMA_VERSIONS.upcoming_payments,
     unit,
-    months: upcomingMonthsInUnit(groupUpcomingByMonth(items, todayYmd), unit, todayYmd),
-    automatic_recurring: recurring.automatic,
+    months: upcomingPaymentsDtoMonths(upcomingMonthsInUnit(groupUpcomingByMonth(items, todayYmd), unit, todayYmd)),
+    automatic_recurring: recurring.automatic.map(automaticRecurringDto),
   };
 }
 

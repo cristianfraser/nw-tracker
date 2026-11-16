@@ -89,7 +89,7 @@ function main() {
     if (ymCompare(row.month, from) < 0 || ymCompare(row.month, to) > 0) continue;
     const asOf = ymToMonthEndIso(row.month);
     if (!asOf) continue;
-    const ledger = row.ledger_remaining_installments_clp;
+    const ledger = row.ledger_remaining_installments;
     const ex = valOne.get(accountId, asOf) as
       | { as_of_date: string; value_clp: number; currency: string }
       | undefined;

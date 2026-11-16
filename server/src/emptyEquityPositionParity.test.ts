@@ -74,18 +74,18 @@ function priorEquityPositionMeta(
   const u = out.units;
   if (u == null || u <= 1e-12) return out;
   if (equityQuoteCurrency(ticker) === "clp") {
-    out.afp_override_value_clp = Math.round(u * close * 100) / 100;
-    out.afp_override_value_as_of = markDate;
-    out.afp_override_valor_cuota_clp = Math.round(close * 10000) / 10000;
+    out.mark_value_clp = Math.round(u * close * 100) / 100;
+    out.mark_as_of = markDate;
+    out.mark_unit_price_clp = Math.round(close * 10000) / 10000;
     return out;
   }
   // Converted once at the asked date's sell rate (`valueConvert.ts`).
   const value = convertValue(u * close, "usd", "clp", asOfYmd, "asset", now);
   const perUnit = convertValue(close, "usd", "clp", asOfYmd, "asset", now);
   if (value == null || perUnit == null) return out;
-  out.afp_override_value_clp = Math.round(value * 100) / 100;
-  out.afp_override_value_as_of = markDate;
-  out.afp_override_valor_cuota_clp = Math.round(perUnit * 10000) / 10000;
+  out.mark_value_clp = Math.round(value * 100) / 100;
+  out.mark_as_of = markDate;
+  out.mark_unit_price_clp = Math.round(perUnit * 10000) / 10000;
   return out;
 }
 

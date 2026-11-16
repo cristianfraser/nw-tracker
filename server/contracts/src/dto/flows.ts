@@ -1007,22 +1007,20 @@ export interface FlowWorkEarningRow {
   pay_period: "monthly" | "biweekly" | "semi_monthly";
   /** A US pay stub's pay date; null for a liquidación. */
   pay_date: string | null;
-  base_salary_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  colacion_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  movilizacion_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  gratificacion_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  total_imponible_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  total_no_imponible_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  total_haberes_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_afp_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_health_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_tax_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_cesantia_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_apv_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  desc_other_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  total_descuentos_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  liquido_clp: number; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
-  liquido_usd: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
+  base_salary_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  colacion_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  movilizacion_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  gratificacion_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  total_imponible_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  total_no_imponible_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  total_haberes_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_afp_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_health_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_tax_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_cesantia_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_apv_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  desc_other_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
+  total_descuentos_clp: number | null; // convention-ok: a liquidación's printed line item, in pesos as the payslip states it
   wire_received_on: string | null;
   uf_mes: number | null;
   utm_mes: number | null;
@@ -1032,7 +1030,6 @@ export interface FlowWorkEarningRow {
   movement_id: number | null;
   link_source: PayrollLinkSource | null;
   linked_received_on: string | null;
-  linked_amount_clp: number | null; // convention-ok: a payslip's printed figures in its own currency (liquidaciones in pesos, liquido_usd the contractor wire)
   linked_account_label: string | null;
   /** Net pay in the payload's unit (a dollar contract's own dollars; pesos at the pay day's rate). */
   liquido: number | null;
@@ -1074,7 +1071,9 @@ export interface RealEstateExpenseLinkDto {
   link_source: RealEstateExpenseLinkSource;
   merchant: string | null;
   purchase_on: string | null;
-  amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  amount: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
   origin_label: string;
   source: FlowCcExpenseLineSource;
 }
@@ -1086,11 +1085,13 @@ export interface RealEstateBillSlot {
   bill_month: string;
   spent_on: string;
   kind: string;
-  expected_amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  expected_amount: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
   link: RealEstateExpenseLinkDto | null;
   /** A stored link that no longer holds (purchase gone, or outside the bill's +0..+2 window). */
   broken_link: { purchase_key: string; problem: "missing_purchase" | "outside_window" } | null;
-  display_amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  display_amount: number;
   note: string | null;
   kwh: number | null;
   m3: number | null;
@@ -1099,7 +1100,7 @@ export interface RealEstateBillSlot {
   /** First month the payment covers (`bill_month` when it covers one). */
   covers_from: string;
   /** A mortgage cuota as paid: amortización, extra amortization and carrying (interés + seguros). */
-  mortgage_parts: { amortization_clp: number; extra_amortization_clp: number; carrying_clp: number } | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  mortgage_parts: { amortization: number; extra_amortization: number; carrying: number } | null;
   can_link: boolean;
 }
 
@@ -1109,7 +1110,9 @@ export interface RealEstateUnlinkedPurchaseDto {
   merchant: string | null;
   purchase_on: string | null;
   purchase_month: string;
-  amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  amount: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
   origin_label: string;
   source: FlowCcExpenseLineSource;
   category_slug: string;
@@ -1143,7 +1146,9 @@ export interface RealEstateExpenseAccountBlock {
   account_slug: ExpenseApartmentSlug;
   label: string;
   slots: RealEstateBillSlot[];
-  total_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  total: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
 }
 
 /** `GET /api/flows/expenses/real-estate` — bill slots linked to gastos purchases. */
@@ -1156,14 +1161,18 @@ export interface RealEstateExpensesResponse {
    * (`clipMonthsThenRollup`), counted back from the scope's last point.
    */
   chart_scopes: Record<string, RealEstateChartScopeDto>;
-  total_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  total: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
 }
 
 export interface RealEstateLinkCandidateDto {
   purchase_key: string;
   merchant: string | null;
   purchase_on: string | null;
-  amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  amount: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
   origin_label: string;
   source: FlowCcExpenseLineSource;
   merchant_matches: boolean;

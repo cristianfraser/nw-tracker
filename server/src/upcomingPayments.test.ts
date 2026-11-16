@@ -15,6 +15,7 @@ import {
   type RecurringLine,
   type UpcomingPaymentItem,
   upcomingMonthsInUnit,
+  upcomingPaymentsDtoMonths,
 } from "./upcomingPayments.js";
 
 const TODAY = "2026-11-02";
@@ -334,6 +335,20 @@ describe("groupUpcomingByMonth", () => {
       ]);
       expect(eur[0]!.total_in_unit).toBe(5);
       expect(eur[0]!.total_clp).toBe(5000);
+      // Each converted figure is rounded to the unit's smallest coin, and the total is their sum.
+      const odd = upcomingMonthsInUnit(groupUpcomingByMonth([it_("a", "2026-11-10", 1234), it_("b", "2026-11-11", 2345)], TODAY, 6), "eur", TODAY);
+      expect(odd[0]!.items.map((i) => i.amount_in_unit)).toEqual([1.23, 2.35]);
+      expect(odd[0]!.total_in_unit).toBe(3.58);
+      // Served, each bill is a money value in the currency it is stated in.
+      const [served] = upcomingPaymentsDtoMonths(eur);
+      expect(served!.total).toEqual({ value: 5000, currency: "clp" });
+      expect(served!.items.map((i) => [i.amount, i.amount_max])).toEqual([
+        [{ value: 2000, currency: "clp" }, null],
+        [
+          { value: 3000, currency: "clp" },
+          { value: 5000, currency: "clp" },
+        ],
+      ]);
     } finally {
       restore();
     }
@@ -359,6 +374,9 @@ describe("buildUpcomingPayments", () => {
     const block = buildUpcomingPayments(TODAY);
     const months = block.months.map((m) => m.pay_month);
     expect(months).toEqual([...months].sort());
-    for (const m of block.months) expect(m.total_clp).toBe(m.items.reduce((a, i) => a + i.amount_clp, 0));
+    for (const m of block.months) {
+      expect(m.total.value).toBe(m.items.reduce((a, i) => a + i.amount.value, 0));
+      for (const i of m.items) expect(i.amount.currency).toBe(m.total.currency);
+    }
   });
 });

@@ -19,8 +19,8 @@ export const DTO_SCHEMA_VERSIONS = {
   nav_strip: 20,
   /** `GET /api/meta/sidebar-nav`: v5 `chart_coverage`, v6 `member_account_ids`, v7 Retirement by country. */
   sidebar_nav: 7,
-  /** The page bundle's `upcoming_payments` («Próximos pagos»). */
-  upcoming_payments: 6,
+  /** The page bundle's `upcoming_payments` («Próximos pagos»); v7: bills as money values (`amount`, `total`, the card's `billed`). */
+  upcoming_payments: 7,
   /**
    * `GET /api/dashboard/latest-movements` («Últimos movimientos»: expense lines and income, by the
    * day each happened); v2: rows carry `amount` (native currency) + `values` per unit; v3: `values`

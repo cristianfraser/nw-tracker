@@ -9,10 +9,10 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 /**
  * Regression: billingDetailCacheForAccount (used by the valuation chart) and
  * creditCardInstallmentsResponse (used by historial / detalle por mes) must
- * produce identical balance_total_clp per billing month.
+ * produce identical balance_total per billing month.
  *
  * Root cause of prior divergence: the cache was built with payload.months
- * (filtered to >= nowYm) so cuota_a_pagar_next_mes_clp was 0 for past months,
+ * (filtered to >= nowYm) so cuota_a_pagar_next_mes was 0 for past months,
  * inflating closed-month balances by one cuota each.
  */
 describe("CC billing detail / valuation path invariant", () => {
@@ -40,7 +40,7 @@ describe("CC billing detail / valuation path invariant", () => {
 
       const response = creditCardInstallmentsResponse(id);
       const detailByMonth = new Map(
-        (response.billing_detail_by_month ?? []).map((r) => [r.billing_month, r.balance_total_clp])
+        (response.billing_detail_by_month ?? []).map((r) => [r.billing_month, r.balance_total])
       );
 
       // Only check months present in both (valuation pts include more months via ledgerMonths union)
@@ -63,7 +63,7 @@ describe("CC billing detail / valuation path invariant", () => {
     }
   });
 
-  it("facturaciones cuota_a_pagar_clp is non-null for past billing months when installment history exists", () => {
+  it("facturaciones cuota_a_pagar is non-null for past billing months when installment history exists", () => {
     const nowYm = monthKeyFromYmd(chileCalendarTodayYmd());
     const ccAccounts = db
       .prepare(
@@ -85,10 +85,10 @@ describe("CC billing detail / valuation path invariant", () => {
       // (these are the months that were broken: db.months was filtered to >= nowYm,
       //  so cuotaForPayByMonth returned null for them)
       // Only months with actual cuota dues — trailing zero-due months (plan finished,
-      // timeline padded to now) legitimately report null cuota_a_pagar_clp.
+      // timeline padded to now) legitimately report null cuota_a_pagar.
       const historyMonthSet = new Set(
         (response.installment_history_months ?? [])
-          .filter((h) => h.installment_payments_clp > 0)
+          .filter((h) => h.installment_payments > 0)
           .map((h) => h.month)
       );
 
@@ -98,15 +98,15 @@ describe("CC billing detail / valuation path invariant", () => {
         // Plan months are facturación months: the cuotas billed at this month's close live
         // at the billing month itself in the history schedule.
         if (!historyMonthSet.has(f.billing_month)) continue;
-        // This month billed installments at its close — cuota_a_pagar_clp must be set
-        if (f.cuota_a_pagar_clp == null) {
+        // This month billed installments at its close — cuota_a_pagar must be set
+        if (f.cuota_a_pagar == null) {
           broken.push({ billing_month: f.billing_month, pay_by: f.pay_by ?? undefined });
         }
       }
 
       expect(
         broken,
-        `account ${id} has past facturaciones with null cuota_a_pagar_clp despite installment history: ${JSON.stringify(broken)}`
+        `account ${id} has past facturaciones with null cuota_a_pagar despite installment history: ${JSON.stringify(broken)}`
       ).toHaveLength(0);
     }
   });

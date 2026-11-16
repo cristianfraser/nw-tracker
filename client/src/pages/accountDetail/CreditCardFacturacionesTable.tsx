@@ -33,7 +33,7 @@ function formatFacturadoForeignCell(row: CcFacturacionDto): string {
     .filter((f) => f.amount != null && Number.isFinite(f.amount))
     .map((f) => {
       const amount = formatMoney({ value: f.amount!, currency: f.currency });
-      return f.clp == null || !Number.isFinite(f.clp) ? amount : `${amount} (${formatCardBillingPesos(f.clp)})`;
+      return f.billing_amount == null || !Number.isFinite(f.billing_amount) ? amount : `${amount} (${formatCardBillingPesos(f.billing_amount)})`;
     });
   return parts.length > 0 ? parts.join(" · ") : "—";
 }
@@ -46,9 +46,9 @@ function formatProxyCell(
   if (!proxy) return "—";
   const t = proxy.by_ticker[inlineTicker];
   if (!t) return "—";
-  if (t.blended_return_pct == null) return formatCardBillingPesos(Math.round(t.total_gain_clp));
-  const sign = t.total_gain_clp >= 0 ? "+" : "";
-  return `${sign}${formatCardBillingPesos(Math.round(t.total_gain_clp))} (${t.blended_return_pct >= 0 ? "+" : ""}${formatPct(t.blended_return_pct, 1)})`;
+  if (t.blended_return_pct == null) return formatCardBillingPesos(Math.round(t.total_gain));
+  const sign = t.total_gain >= 0 ? "+" : "";
+  return `${sign}${formatCardBillingPesos(Math.round(t.total_gain))} (${t.blended_return_pct >= 0 ? "+" : ""}${formatPct(t.blended_return_pct, 1)})`;
 }
 
 /**
@@ -89,9 +89,9 @@ function ProvisionalMark({ row }: { row: CcFacturacionDto }) {
   const { t } = useTranslation();
   if (!row.is_provisional_close) return null;
   const estimate =
-    row.provisional_estimate_total_clp != null
+    row.provisional_estimate_total != null
       ? ` ${t("accountDetail.creditCard.provisionalEstimateHint", {
-          amount: formatCardBillingPesos(row.provisional_estimate_total_clp),
+          amount: formatCardBillingPesos(row.provisional_estimate_total),
         })}`
       : "";
   return (
@@ -130,7 +130,7 @@ function PendingCuotaPurchasesNotice({
           return (
             <li key={p.statement_line_id}>
               <span className="mono">{p.purchase_date}</span> · {p.merchant ?? "—"} ·{" "}
-              <span className="mono">{formatCardBillingPesos(p.amount_clp)}</span>
+              <span className="mono">{formatCardBillingPesos(p.amount)}</span>
               {open ? (
                 <>
                   {" "}
@@ -216,8 +216,8 @@ export function CreditCardFacturacionesTable({
           · {t("accountDetail.creditCard.colPayBy")}: {selected.pay_by}
         </>
       ) : null}
-      {selected.facturado_total_clp != null ? (
-        <> · {t("account.creditCard.colFacturadoTotal")}: {formatOrDash(selected.facturado_total_clp, formatCardBillingPesos)}</>
+      {selected.facturado_total != null ? (
+        <> · {t("account.creditCard.colFacturadoTotal")}: {formatOrDash(selected.facturado_total, formatCardBillingPesos)}</>
       ) : null}
     </>
   ) : null;
@@ -286,7 +286,7 @@ export function CreditCardFacturacionesTable({
       className: nowrapMono,
       cell: (row) => <PayByCell row={row} />,
     },
-    pesos("facturado", t("account.creditCard.colFacturado"), (row) => row.facturado_clp),
+    pesos("facturado", t("account.creditCard.colFacturado"), (row) => row.facturado),
     {
       key: "facturadoForeign",
       header: t("accountDetail.creditCard.colFacturadoUsd"),
@@ -294,15 +294,15 @@ export function CreditCardFacturacionesTable({
       section: 1,
       cell: formatFacturadoForeignCell,
     },
-    pesos("facturadoTotal", t("account.creditCard.colFacturadoTotal"), (row) => row.facturado_total_clp, {
+    pesos("facturadoTotal", t("account.creditCard.colFacturadoTotal"), (row) => row.facturado_total, {
       // The card has always read the page's own key (same copy as the header's).
       label: t("accountDetail.creditCard.colFacturadoTotal"),
     }),
-    pesos("cuotaAPagar", t("accountDetail.creditCard.colCuotaAPagar"), (row) => row.cuota_a_pagar_clp),
+    pesos("cuotaAPagar", t("accountDetail.creditCard.colCuotaAPagar"), (row) => row.cuota_a_pagar),
     pesos(
       "deudaEnCuotas",
       t("accountDetail.creditCard.colDeudaEnCuotasFacturacion"),
-      (row) => row.deuda_en_cuotas_clp,
+      (row) => row.deuda_en_cuotas,
       { headerProps: { title: t("accountDetail.creditCard.colDeudaEnCuotasFacturacionHint") } }
     ),
     {

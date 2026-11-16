@@ -80,7 +80,7 @@ export function buildInstallmentPlanGastosLines(
             : purchase.purchase_date;
         const merchant = slot.label.trim() || purchase.merchant;
         const merchantKey = normalizeCcExpenseMerchantKey(merchant);
-        const amount = Math.round(slot.amount_clp);
+        const amount = Math.round(slot.amount);
         const cuotaCurrent = slot.installment_index + 1;
         const cuotaTotal = slot.installment_count;
 

@@ -518,8 +518,7 @@ export function referenceAmountAtMid(amount: number, from: CurrencyCode, to: Cur
   if (!Number.isFinite(amount) || amount === 0) return 0;
   const out = convertCurrency(Math.abs(amount), from, to, ymd, { side: "mid", storedOnly: true });
   if (out == null) return null;
-  // The code and context are wire values of `fx_conversion_warnings` (named when the only pair was USD/CLP).
-  recordFxConversionWarning({ code: "usd_reference_clp", date: ymd, context: "usdToClpReferenceRounded" });
+  recordFxConversionWarning({ code: "reference_rate", date: ymd, context: "referenceAmountAtMid" });
   return roundReferenceAmount(out);
 }
 

@@ -111,8 +111,8 @@ export function latestCreditCardBillingBalanceTotalClp(accountId: number): numbe
   if (!hasBillingLedger(accountId)) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
   const row = latestBillingDetailRow(detail);
-  if (!row || !Number.isFinite(row.balance_statement_clp)) return null;
-  return Math.round(row.balance_statement_clp);
+  if (!row || !Number.isFinite(row.balance_statement)) return null;
+  return Math.round(row.balance_statement);
 }
 
 export function latestCreditCardBillingBalanceTotalClpAndAsOfDate(
@@ -121,9 +121,9 @@ export function latestCreditCardBillingBalanceTotalClpAndAsOfDate(
   if (!hasBillingLedger(accountId)) return null;
   const { detail } = billingDetailCacheForAccount(accountId);
   const row = latestBillingDetailRow(detail);
-  if (!row || !Number.isFinite(row.balance_statement_clp)) return null;
+  if (!row || !Number.isFinite(row.balance_statement)) return null;
   return {
-    value_clp: Math.round(row.balance_statement_clp),
+    value_clp: Math.round(row.balance_statement),
     as_of_date: row.as_of_date,
   };
 }
@@ -142,9 +142,9 @@ export function creditCardBillingBalanceTotalClpAsOf(
   const { detail } = billingDetailCacheForAccount(accountId);
   if (detail.length === 0) return null;
   const row = detail.find((r) => r.billing_month <= asOfMonth);
-  if (!row || !Number.isFinite(row.balance_statement_clp)) return null;
+  if (!row || !Number.isFinite(row.balance_statement)) return null;
   return {
-    value_clp: Math.round(row.balance_statement_clp),
+    value_clp: Math.round(row.balance_statement),
     as_of_date: row.as_of_date,
   };
 }
@@ -162,7 +162,7 @@ export function ccLedgerStatementClosingPointsClp(
   if (!hasBillingLedger(accountId)) return null;
   const { payload, detail } = billingDetailCacheForAccount(accountId);
   const ledgerMonths = payload?.months ?? [];
-  const balanceByMonth = new Map(detail.map((d) => [d.billing_month, d.balance_statement_clp]));
+  const balanceByMonth = new Map(detail.map((d) => [d.billing_month, d.balance_statement]));
   const months = [
     ...new Set([
       ...ledgerMonths.map((h) => h.month),

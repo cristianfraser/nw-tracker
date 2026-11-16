@@ -55,21 +55,21 @@ export type CcBillingDetailStatementRow = {
   as_of_date: string;
   as_of_kind: "statement" | "manual";
   /** Closed-statement facturado only; null when not yet closed. */
-  total_facturado_actual_clp: number | null;
+  total_facturado_actual: number | null;
   /** Same as actual for balance math (no manual estimate). */
-  total_facturado_clp: number | null;
+  total_facturado: number | null;
   /**
    * Statement frame: the plan remainder after this facturación's close, the live cupo for the
    * open month (`ccCupoFrame`). What the statement prints as «cupo utilizado en cuotas».
    */
-  cupo_statement_clp: number;
+  cupo_statement: number;
   /** Ledger cuota due in the pay-by month (~10th of month after close). */
-  cuota_a_pagar_next_mes_clp: number;
+  cuota_a_pagar_next_mes: number;
   /**
-   * Statement frame: facturado + `cupo_statement_clp`, plus — on a closed month — the activity
+   * Statement frame: facturado + `cupo_statement`, plus — on a closed month — the activity
    * dated through its calendar month-end that a later facturación bills. The month-end anchor.
    */
-  balance_statement_clp: number;
+  balance_statement: number;
   /** Plan-only future month (no statement or balance evidence yet). */
   projected?: boolean;
   /**
@@ -92,9 +92,9 @@ export type CcBillingDetailStatementRow = {
  */
 export type CcBillingDetailMonthRow = CcBillingDetailStatementRow & {
   /** Month frame: «deuda en cuotas» (the plan-debt walk) on the month's last day; null when the lines have none. */
-  cupo_en_cuotas_clp: number | null;
+  cupo_en_cuotas: number | null;
   /** Month frame: «saldo total» (the owed walk) on the month's last day; null when the lines have none. */
-  balance_total_clp: number | null;
+  balance_total: number | null;
 };
 
 export type CcFacturacionRow = {
@@ -107,14 +107,15 @@ export type CcFacturacionRow = {
    * (~10th of the next month) while no statement prints it — open and provisional months, and a
    * statement without the field. Null with no pay-by at all. */
   pay_by_source: "statement" | "derived" | null;
-  facturado_clp: number | null;
+  /** What it billed in the card's billing currency itself (`cardBillingCurrency`). */
+  facturado: number | null;
   /**
    * What the facturación billed in each foreign currency the card bills in (`cardForeignCurrencies`),
    * with its pesos and the rate they show at (docs/any-currency-plan.md C3).
    */
   facturado_foreign: CcFacturadoForeign[];
-  facturado_total_clp: number | null;
-  cuota_a_pagar_clp: number | null;
+  facturado_total: number | null;
+  cuota_a_pagar: number | null;
   /**
    * «Deuda en cuotas» in the statement frame: the plan cuotas not yet billed after this
    * facturación's close plus the month's tagged cuota purchases of unknown count — what the
@@ -122,7 +123,7 @@ export type CcFacturacionRow = {
    * month included (never the live cupo, which still holds the cuotas the open close will bill);
    * null only on a card with no plan ledger.
    */
-  deuda_en_cuotas_clp: number | null;
+  deuda_en_cuotas: number | null;
   /** No imported PDF close yet — facturado = únicos + cuota a pagar. */
   is_open_month: boolean;
   /** Closed at the bank, statement pending (feed SALDO INICIAL or a passed announced close). */
@@ -130,7 +131,7 @@ export type CcFacturacionRow = {
   /** Where `close_date` comes from; `estimated` = config cycle, nothing published by the bank. */
   close_date_source: CcCloseSource;
   /** Provisional month with the bank's total: what the app had estimated for it (únicos + cuotas). */
-  provisional_estimate_total_clp: number | null;
+  provisional_estimate_total: number | null;
 };
 
 /** A facturación's billing in one foreign currency. */
@@ -141,14 +142,14 @@ export type CcFacturadoForeign = {
    * that has billed nothing in it yet reads 0.
    */
   amount: number | null;
-  /** Its pesos: at the rate it shows (`rate_clp`) once rates apply, the debt frame (pay-by − 1) before. */
-  clp: number | null;
+  /** Its amount in the billing currency: at the rate it shows (`rate`) once rates apply, the debt frame (pay-by − 1) before. */
+  billing_amount: number | null;
   /**
    * The rate the charges in this currency show at — `clp` and the expense lines: the rate actually
    * paid, today's while unpaid (`ccFacturacionForeignRate.ts`). Null on a card that never billed
    * in the currency, and on the rows before rates apply.
    */
-  rate_clp: number | null;
+  rate: number | null;
   rate_source: FacturacionForeignRateSource | null;
 };
 
@@ -159,7 +160,7 @@ function facturadoForeignEntries(
 ): CcFacturadoForeign[] {
   return cardForeignCurrencies(accountId).map((currency) => {
     const b = billed.get(currency);
-    return { currency, amount: b?.amount ?? null, clp: b?.clp ?? null, rate_clp: null, rate_source: null };
+    return { currency, amount: b?.amount ?? null, billing_amount: b?.clp ?? null, rate: null, rate_source: null };
   });
 }
 
@@ -446,8 +447,8 @@ export type CcPendingCuotaPurchase = {
   merchant: string | null;
   /** Purchase date (ISO) — installment debt from this day, like a plan's contract. */
   purchase_date: string;
-  /** Full principal (CLP), what the feed listed. */
-  amount_clp: number;
+  /** Full principal in the card's billing currency, what the feed listed. */
+  amount: number;
   kind: CcCuotaPurchaseKind;
   /** The open-bucket facturación the line sits in (`YYYY-MM`). */
   billing_month: string;
@@ -473,7 +474,7 @@ export function pendingCuotaPurchaseLines(accountId: number): CcPendingCuotaPurc
       statement_line_id: r.id,
       merchant: r.merchant,
       purchase_date: purchaseDate,
-      amount_clp: Math.abs(r.amount_clp ?? 0),
+      amount: Math.abs(r.amount_clp ?? 0),
       kind: r.cuota_purchase_kind,
       billing_month: bm,
     });
@@ -485,7 +486,7 @@ export function pendingCuotaPurchaseLines(accountId: number): CcPendingCuotaPurc
 function cuotaPurchaseLinesClpByBucketMonth(accountId: number): Map<string, number> {
   const out = new Map<string, number>();
   for (const p of pendingCuotaPurchaseLines(accountId)) {
-    out.set(p.billing_month, (out.get(p.billing_month) ?? 0) + p.amount_clp);
+    out.set(p.billing_month, (out.get(p.billing_month) ?? 0) + p.amount);
   }
   return out;
 }
@@ -633,7 +634,7 @@ function cuotaAPagarNextMesClp(
   // pay-by-month lookup read the NEXT cycle's cuotas — nearly equal for constant-cuota
   // plans, wrong at every plan start/end.
   const row = ledgerMonths.find((m) => m.month === billingMonth);
-  return row && row.total_clp > 0 ? row.total_clp : 0;
+  return row && row.total > 0 ? row.total : 0;
 }
 
 export function buildBillingDetailByMonth(
@@ -649,7 +650,7 @@ export function buildBillingDetailByMonth(
 const SPLIT_RATES = [900, 1000, 1100] as const;
 
 /**
- * Each month's statement-frame balance (`balance_statement_clp`, the month-end anchor) split into
+ * Each month's statement-frame balance (`balance_statement`, the month-end anchor) split into
  * the pesos and each foreign currency it is made of (`cardForeignCurrencies`). The balance is
  * built from pesos and from foreign amounts converted at debt-frame rates, so it is affine in each
  * currency's uniform rate r_c: b = pesos + Σ amount_c · r_c. A base build with every currency at
@@ -664,7 +665,7 @@ export function ccStatementOwedByCurrencyByMonth(
   const currencies = cardForeignCurrencies(accountId);
   const build = (rates: Map<string, number>) =>
     new Map(
-      buildBillingDetailByMonth(accountId, ledgerMonths, debtFrameRates(rates)).map((row) => [row.billing_month, row.balance_statement_clp])
+      buildBillingDetailByMonth(accountId, ledgerMonths, debtFrameRates(rates)).map((row) => [row.billing_month, row.balance_statement])
     );
   const base = (over?: [string, number]) => {
     const rates = new Map(currencies.map((c) => [c, SPLIT_RATES[1] as number]));
@@ -805,11 +806,11 @@ function buildBillingDetailByMonthInner(
       billing_month: billingMonth,
       as_of_date: asOfDate,
       as_of_kind: kind,
-      total_facturado_actual_clp: totalFacturado,
-      total_facturado_clp: totalFacturado,
-      cupo_statement_clp: cupo,
-      cuota_a_pagar_next_mes_clp: cuotaNext,
-      balance_statement_clp: balanceTotal,
+      total_facturado_actual: totalFacturado,
+      total_facturado: totalFacturado,
+      cupo_statement: cupo,
+      cuota_a_pagar_next_mes: cuotaNext,
+      balance_statement: balanceTotal,
       ...(provisional ? { provisional: true } : {}),
     });
   }
@@ -829,7 +830,7 @@ function buildBillingDetailByMonthInner(
           incrementalChargesClpForBillingMonth(accountId, openBmRoll, rates) +
           installmentPurchasesClpAfter(accountId, ccLedgerMonthEndIso(priorClosed.billing_month)) -
           paymentAbonosClpForBillingMonth(accountId, openBmRoll, rates);
-        out[openIdx]!.balance_statement_clp = Math.round(priorClosed.balance_statement_clp + netCharges);
+        out[openIdx]!.balance_statement = Math.round(priorClosed.balance_statement + netCharges);
       }
     }
   }
@@ -860,7 +861,7 @@ function buildBillingDetailByMonthInner(
   );
   statementRows.forEach((row, i) => {
     const adj = adjustments[i]!;
-    if (adj !== 0) row.balance_statement_clp = Math.round(row.balance_statement_clp + adj);
+    if (adj !== 0) row.balance_statement = Math.round(row.balance_statement + adj);
   });
 
   withProjected.sort((a, b) => b.billing_month.localeCompare(a.billing_month));
@@ -933,11 +934,11 @@ function appendProjectedBillingDetailRows(
       billing_month: ym,
       as_of_date: `${ym}-01`,
       as_of_kind: "manual",
-      total_facturado_actual_clp: null,
-      total_facturado_clp: null,
-      cupo_statement_clp: cupo,
-      cuota_a_pagar_next_mes_clp: cuotaNext,
-      balance_statement_clp: billingDetailBalanceClp(null, cupo),
+      total_facturado_actual: null,
+      total_facturado: null,
+      cupo_statement: cupo,
+      cuota_a_pagar_next_mes: cuotaNext,
+      balance_statement: billingDetailBalanceClp(null, cupo),
       projected: true,
     });
   }
@@ -959,12 +960,12 @@ function applyFacturacionForeignRates(accountId: number, rows: CcFacturacionRow[
       const rate = rates.get(row.billing_month);
       if (!rate) throw new Error(`Account ${accountId}: no ${currency.toUpperCase()} rate for facturación ${row.billing_month}`);
       const entry = facturadoForeignIn(row, currency)!;
-      entry.rate_clp = rate.clp_per_unit;
+      entry.rate = rate.clp_per_unit;
       entry.rate_source = rate.source;
       if (entry.amount == null) continue;
-      entry.clp = Math.round(entry.amount * rate.clp_per_unit);
-      const total = (row.facturado_clp ?? 0) + row.facturado_foreign.reduce((s, f) => s + (f.clp ?? 0), 0);
-      row.facturado_total_clp = row.facturado_total_clp == null && total <= 0 ? null : total;
+      entry.billing_amount = Math.round(entry.amount * rate.clp_per_unit);
+      const total = (row.facturado ?? 0) + row.facturado_foreign.reduce((s, f) => s + (f.billing_amount ?? 0), 0);
+      row.facturado_total = row.facturado_total == null && total <= 0 ? null : total;
     }
   }
 }
@@ -1006,7 +1007,7 @@ export function buildFacturaciones(
 
 /**
  * The facturaciones without the rates their foreign charges show at (each `facturado_foreign`
- * entry's `rate_clp` / `rate_source` null, its `clp` and `facturado_total_clp` in the debt frame):
+ * entry's `rate_clp` / `rate_source` null, its `clp` and `facturado_total` in the debt frame):
  * everything but the part an unpaid facturación reads from today's live rate. The billing-detail
  * cache keeps it apart (`ccBillingDetailCache.ts`), so a tick that moves a rate re-applies only the rates.
  */
@@ -1076,7 +1077,7 @@ export function facturacionForeignRateWithSourceResolver(
   const byMonth = new Map<string, { clp_per_unit: number | null; source: FacturacionForeignRateSource | null }>(
     facturaciones.map((f) => {
       const e = facturadoForeignIn(f, currency);
-      return [f.billing_month, { clp_per_unit: e?.rate_clp ?? null, source: e?.rate_source ?? null }];
+      return [f.billing_month, { clp_per_unit: e?.rate ?? null, source: e?.rate_source ?? null }];
     })
   );
   return (billingMonth) => {
@@ -1153,15 +1154,15 @@ function buildFacturacionesInner(
       pay_by,
       pay_by_iso: payByIso,
       pay_by_source,
-      facturado_clp: facturadoClp,
+      facturado: facturadoClp,
       facturado_foreign: facturadoForeignEntries(accountId, billedForeign),
-      facturado_total_clp: facturadoTotal,
-      cuota_a_pagar_clp: cuotaAPagar,
-      deuda_en_cuotas_clp: deudaEnCuotasClp(billingMonth),
+      facturado_total: facturadoTotal,
+      cuota_a_pagar: cuotaAPagar,
+      deuda_en_cuotas: deudaEnCuotasClp(billingMonth),
       is_open_month: false,
       is_provisional_close: false,
       close_date_source: "statement",
-      provisional_estimate_total_clp: null,
+      provisional_estimate_total: null,
     });
   }
   // A provisional month with no bucket lines still closed at the bank.
@@ -1237,15 +1238,15 @@ function openFacturacionRow(
     pay_by: payByIso ? ddMmYyyyFromIso(payByIso) : null,
     pay_by_iso: payByIso,
     pay_by_source: payByIso ? "derived" : null,
-    facturado_clp: facturadoTotal - foreignClp,
+    facturado: facturadoTotal - foreignClp,
     facturado_foreign: facturadoForeignEntries(accountId, billed),
-    facturado_total_clp: facturadoTotal,
-    cuota_a_pagar_clp: cuotaAPagar,
-    deuda_en_cuotas_clp: deudaEnCuotasClp,
+    facturado_total: facturadoTotal,
+    cuota_a_pagar: cuotaAPagar,
+    deuda_en_cuotas: deudaEnCuotasClp,
     is_open_month: true,
     is_provisional_close: false,
     close_date_source: close.source,
-    provisional_estimate_total_clp: null,
+    provisional_estimate_total: null,
   };
 }
 
@@ -1263,14 +1264,14 @@ function provisionalFacturacionRow(
     pay_by: pv.pay_by_iso ? ddMmYyyyFromIso(pv.pay_by_iso) : null,
     pay_by_iso: pv.pay_by_iso,
     pay_by_source: pv.pay_by_iso ? "derived" : null,
-    facturado_clp: pv.facturado_clp,
+    facturado: pv.facturado_clp,
     facturado_foreign: facturadoForeignEntries(accountId, pv.foreign),
-    facturado_total_clp: pv.total_clp,
-    cuota_a_pagar_clp: cuotaAPagarClp > 0 ? cuotaAPagarClp : null,
-    deuda_en_cuotas_clp: deudaEnCuotasClp,
+    facturado_total: pv.total_clp,
+    cuota_a_pagar: cuotaAPagarClp > 0 ? cuotaAPagarClp : null,
+    deuda_en_cuotas: deudaEnCuotasClp,
     is_open_month: false,
     is_provisional_close: true,
     close_date_source: pv.close_source,
-    provisional_estimate_total_clp: pv.source === "feed" ? pv.estimate_total_clp : null,
+    provisional_estimate_total: pv.source === "feed" ? pv.estimate_total_clp : null,
   };
 }

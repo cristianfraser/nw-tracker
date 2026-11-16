@@ -1,5 +1,6 @@
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
+import { PLACE_BILL_CURRENCY } from "./placeBillAmount.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 import { assertLoanPaymentPartsCurrent, loanPaymentPartsByFlow } from "./flows/loanPaymentParts.js";
 import type {
@@ -34,7 +35,8 @@ export type RealEstateExpenseLinkDto = {
   link_source: "auto" | "manual";
   merchant: string | null;
   purchase_on: string | null;
-  amount_clp: number;
+  amount: number;
+  currency: string;
   origin_label: string;
   source: FlowCcExpenseLineSource;
 };
@@ -56,10 +58,12 @@ export type RealEstateBillSlot = {
   bill_month: string;
   spent_on: string;
   kind: string;
-  expected_amount_clp: number;
+  expected_amount: number;
+  /** The currency of the slot's amounts (`PLACE_BILL_CURRENCY`). */
+  currency: string;
   link: RealEstateExpenseLinkDto | null;
   broken_link: RealEstateBrokenLinkDto | null;
-  display_amount_clp: number;
+  display_amount: number;
   note: string | null;
   kwh: number | null;
   m3: number | null;
@@ -71,7 +75,7 @@ export type RealEstateBillSlot = {
    * A mortgage cuota as paid, split: the scheduled amortización, the extra amortization paid above
    * the minimum, and carrying = interés + fire and mortgage-life insurance. Null on every other bill.
    */
-  mortgage_parts: { amortization_clp: number; extra_amortization_clp: number; carrying_clp: number } | null;
+  mortgage_parts: { amortization: number; extra_amortization: number; carrying: number } | null;
   can_link: boolean;
 };
 
@@ -79,7 +83,8 @@ export type RealEstateExpenseAccountBlock = {
   account_slug: string;
   label: string;
   slots: RealEstateBillSlot[];
-  total_clp: number;
+  total: number;
+  currency: string;
 };
 
 /** One row of `expense_accounts` under the real_estate group — the tracked places. */
@@ -154,14 +159,16 @@ export type RealEstateExpensesPayload = {
    * AFTER cutting the months at its own Rango (a partial first year).
    */
   chart_scopes: Record<string, RealEstateChartScopeDto>;
-  total_clp: number;
+  total: number;
+  currency: string;
 };
 
 export type RealEstateLinkCandidateDto = {
   purchase_key: string;
   merchant: string | null;
   purchase_on: string | null;
-  amount_clp: number;
+  amount: number;
+  currency: string;
   origin_label: string;
   source: FlowCcExpenseLineSource;
   merchant_matches: boolean;
@@ -328,16 +335,16 @@ export function chartPartsOf(slot: RealEstateBillSlot): { kind: RealEstateChartS
   if (slot.kind === "mortgage") {
     if (!slot.mortgage_parts) throw new Error(`real-estate chart: mortgage cuota ${slot.spent_on} has no parts`);
     return [
-      { kind: "mortgage_amortization", amount: slot.mortgage_parts.amortization_clp },
-      { kind: "mortgage_extra_amortization", amount: slot.mortgage_parts.extra_amortization_clp },
-      { kind: "mortgage_carrying", amount: slot.mortgage_parts.carrying_clp },
+      { kind: "mortgage_amortization", amount: slot.mortgage_parts.amortization },
+      { kind: "mortgage_extra_amortization", amount: slot.mortgage_parts.extra_amortization },
+      { kind: "mortgage_carrying", amount: slot.mortgage_parts.carrying },
     ];
   }
   const kind = REAL_ESTATE_CHART_KINDS.find((k) => k === slot.kind);
   if (!kind) {
     throw new Error(`real-estate chart: bill kind '${slot.kind}' (${slot.account_slug} ${slot.bill_month}) has no chart series`);
   }
-  return [{ kind, amount: slot.display_amount_clp }];
+  return [{ kind, amount: slot.display_amount }];
 }
 
 /**
@@ -345,14 +352,14 @@ export function chartPartsOf(slot: RealEstateBillSlot): { kind: RealEstateChartS
  * bill month; the last month takes the rounding remainder, so the shares add up to the payment.
  */
 export function spreadOverCoveredMonths(
-  slot: Pick<RealEstateBillSlot, "bill_month" | "months_covered" | "display_amount_clp">
+  slot: Pick<RealEstateBillSlot, "bill_month" | "months_covered" | "display_amount">
 ): { month: string; amount: number }[] {
   const n = slot.months_covered;
   if (!Number.isInteger(n) || n < 1) throw new Error(`months_covered ${n} is not a positive integer`);
-  const share = Math.floor(slot.display_amount_clp / n);
+  const share = Math.floor(slot.display_amount / n);
   const out: { month: string; amount: number }[] = [];
   for (let i = n - 1; i >= 0; i--) {
-    out.push({ month: addCalendarMonths(slot.bill_month, -i), amount: i === 0 ? slot.display_amount_clp - share * (n - 1) : share });
+    out.push({ month: addCalendarMonths(slot.bill_month, -i), amount: i === 0 ? slot.display_amount - share * (n - 1) : share });
   }
   return out;
 }
@@ -373,7 +380,7 @@ function chartScope(
   const used = new Map<string, RealEstateChartSeriesDto>();
   const byPeriod = new Map<string, RealEstateExpenseChartPoint>();
   for (const slot of slots) {
-    if (slot.display_amount_clp <= 0) continue;
+    if (slot.display_amount <= 0) continue;
     for (const part of chartPartsOf(slot)) {
       if (part.amount <= 0) continue;
       const dataKey = `${slot.account_slug}__${part.kind}`;
@@ -385,7 +392,7 @@ function chartScope(
       const spread = spreadOverCoveredMonths({
         bill_month: slot.bill_month,
         months_covered: slot.months_covered,
-        display_amount_clp: part.amount,
+        display_amount: part.amount,
       });
       const sign = REAL_ESTATE_BELOW_ZERO_KINDS.has(part.kind) ? -1 : 1;
       for (const { month, amount } of spread) {
@@ -451,7 +458,8 @@ function linkToDto(
     link_source: link.link_source,
     merchant: line.merchant,
     purchase_on: line.purchase_on,
-    amount_clp: linePesos(line),
+    amount: linePesos(line),
+    currency: PLACE_BILL_CURRENCY,
     origin_label: line.origin_label ?? "",
     source: line.source,
   };
@@ -472,10 +480,11 @@ function expectationToSlot(
     bill_month,
     spent_on: exp.spent_on,
     kind,
-    expected_amount_clp: exp.amount_clp,
+    expected_amount: exp.amount_clp,
+    currency: PLACE_BILL_CURRENCY,
     link: link && linkedLine ? linkToDto(link, linkedLine) : null,
     broken_link: brokenLink ?? null,
-    display_amount_clp: displayAmountClp(exp.amount_clp, linkedLine),
+    display_amount: displayAmountClp(exp.amount_clp, linkedLine),
     note: exp.note,
     kwh: exp.kwh,
     m3: exp.m3,
@@ -611,16 +620,17 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
         bill_month: billMonths[i]!,
         spent_on: r.occurred_on,
         kind: "mortgage",
-        expected_amount_clp: amortization + extra + carrying,
+        expected_amount: amortization + extra + carrying,
+        currency: PLACE_BILL_CURRENCY,
         link: null,
         broken_link: null,
-        display_amount_clp: amortization + extra + carrying,
+        display_amount: amortization + extra + carrying,
         note: null,
         kwh: null,
         m3: null,
         months_covered: 1,
         covers_from: billMonths[i]!,
-        mortgage_parts: { amortization_clp: amortization, extra_amortization_clp: extra, carrying_clp: carrying },
+        mortgage_parts: { amortization, extra_amortization: extra, carrying },
         can_link: false,
       });
     });
@@ -671,19 +681,21 @@ export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
       account_slug: place.slug,
       label: place.label,
       slots: accountSlots,
-      total_clp: accountSlots.reduce((s, sl) => s + sl.display_amount_clp, 0),
+      total: accountSlots.reduce((s, sl) => s + sl.display_amount, 0),
+      currency: PLACE_BILL_CURRENCY,
     };
   }
 
   const chart_scopes = buildChartScopes(slots, places);
-  const total_clp = slots.reduce((s, sl) => s + sl.display_amount_clp, 0);
+  const total = slots.reduce((s, sl) => s + sl.display_amount, 0);
 
   return {
     places: places.map(placeToDto),
     slots,
     by_account,
     chart_scopes,
-    total_clp,
+    total,
+    currency: PLACE_BILL_CURRENCY,
   };
 }
 
@@ -692,7 +704,8 @@ export type RealEstateUnlinkedPurchaseDto = {
   merchant: string | null;
   purchase_on: string | null;
   purchase_month: string;
-  amount_clp: number;
+  amount: number;
+  currency: string;
   origin_label: string;
   source: FlowCcExpenseLineSource;
   category_slug: string;
@@ -751,7 +764,8 @@ export function listRealEstateUnlinkedPurchases(opts?: {
       merchant: ln.merchant,
       purchase_on: ln.purchase_on,
       purchase_month: purchaseMonthForLine(ln),
-      amount_clp: linePesos(ln),
+      amount: linePesos(ln),
+      currency: PLACE_BILL_CURRENCY,
       origin_label: ln.origin_label ?? "",
       source: ln.source,
       category_slug: ln.category_slug,
@@ -779,7 +793,8 @@ export function listRealEstateLinkCandidates(expenseEntryId: number): RealEstate
       purchase_key: ln.purchase_key,
       merchant: ln.merchant,
       purchase_on: ln.purchase_on,
-      amount_clp: linePesos(ln),
+      amount: linePesos(ln),
+      currency: PLACE_BILL_CURRENCY,
       origin_label: ln.origin_label ?? "",
       source: ln.source,
       merchant_matches: merchantMatchesExpectation(

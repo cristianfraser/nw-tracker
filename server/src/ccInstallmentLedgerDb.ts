@@ -126,7 +126,7 @@ export function lastInstallmentPaymentPayByYmd(payList: PaymentRow[]): string | 
 export function installmentPurchaseShowsActive(
   summary: {
     remaining_installments: number;
-    remaining_principal_clp: number;
+    remaining_principal: number;
     installments_paid: number;
     installment_count: number;
   },
@@ -134,7 +134,7 @@ export function installmentPurchaseShowsActive(
   todayYmd: string,
   finalCuotaRetiredOnYmd?: string | null
 ): boolean {
-  if (summary.remaining_installments > 0 || summary.remaining_principal_clp > 0) return true;
+  if (summary.remaining_installments > 0 || summary.remaining_principal > 0) return true;
   if (summary.installments_paid < summary.installment_count) return false;
   const settledYmd = finalCuotaRetiredOnYmd ?? lastInstallmentPaymentPayByYmd(payList);
   if (settledYmd == null) return false;
@@ -169,7 +169,7 @@ function indexedInstallmentPaymentStatements(payList: PaymentRow[]) {
     statement_date: p.statement_date,
     source_pdf: p.source_pdf,
     cuota_current: p.cuota_current,
-    amount_clp: p.amount_clp,
+    amount: p.amount_clp,
   }));
 }
 
@@ -228,15 +228,15 @@ export function cuotaProgressForPurchase(
       billing_month,
       pay_by_date,
       statement_date: row ? normalizeTransactionDateIso(row.statement_date) : null,
-      amount_clp,
+      amount: amount_clp,
       status,
     });
   }
   return {
-    total_clp: paid_clp + billed_clp + pending_clp,
-    paid_clp,
-    billed_clp,
-    pending_clp,
+    total: paid_clp + billed_clp + pending_clp,
+    paid: paid_clp,
+    billed: billed_clp,
+    pending: pending_clp,
     paid_count,
     cuotas,
   };
@@ -542,7 +542,7 @@ export function scheduledPaymentsPlanBreakdownByMonth(
           label: purchaseLabel(sched.purchase),
           installment_index: i,
           installment_count: sched.purchase.cuotas_totales,
-          amount_clp,
+          amount: amount_clp,
         });
       }
     }
@@ -957,9 +957,9 @@ function installmentHistoryMonthsFromLedgerData(
   accountId?: number
 ): {
   month: string;
-  remaining_balance_clp: number;
-  installment_payments_clp: number;
-  ledger_remaining_installments_clp: number;
+  remaining_balance: number;
+  installment_payments: number;
+  ledger_remaining_installments: number;
 }[] {
   const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, undefined, accountId);
   const payByMonth = scheduledPaymentsPlanDueByMonth(purchasesRaw, paymentsByPurchase, accountId);
@@ -971,9 +971,9 @@ function installmentHistoryMonthsFromLedgerData(
     const remaining = remainingByMonth.get(ym) ?? 0;
     return {
       month: ym,
-      remaining_balance_clp: remaining,
-      installment_payments_clp: payByMonth.get(ym) ?? 0,
-      ledger_remaining_installments_clp: remaining,
+      remaining_balance: remaining,
+      installment_payments: payByMonth.get(ym) ?? 0,
+      ledger_remaining_installments: remaining,
     };
   });
 }
@@ -992,13 +992,13 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   months: CcInstallmentCalendarMonthRow[];
   installment_history_months: {
     month: string;
-    remaining_balance_clp: number;
-    installment_payments_clp: number;
-    ledger_remaining_installments_clp: number;
+    remaining_balance: number;
+    installment_payments: number;
+    ledger_remaining_installments: number;
   }[];
   totals: {
-    total_remaining_principal_clp: number;
-    next_calendar_month_total_clp: number | null;
+    total_remaining_principal: number;
+    next_calendar_month_total: number | null;
     next_calendar_month: string | null;
   };
 } {
@@ -1034,7 +1034,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
           ? cuotaAmounts[cuotaAmounts.length - 1]!
           : 0;
 
-    const remaining_principal_clp = sched
+    const remaining_principal = sched
       ? scheduledOutstandingPrincipal(sched)
       : Math.max(0, principal - installmentProgressPayments(payList).reduce((s, x) => s + x.amount_clp, 0));
 
@@ -1074,20 +1074,20 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       origin,
       purchase_source: ccPurchaseSourceLegacyFromOrigin(origin),
       label,
-      principal_clp: principal,
+      principal,
       installment_count: pr.cuotas_totales,
       installments_paid,
-      cuota_clp,
+      cuota: cuota_clp,
       first_due_month,
       purchase_month: parseYearMonth(pr.purchase_date.slice(0, 7)),
       purchase_date: pr.purchase_date,
       purchase_billing_month: billingMonthContainingPurchase(accountId, pr.purchase_date, statements),
       remaining_installments,
-      remaining_principal_clp,
+      remaining_principal,
       next_due_month,
       next_installment_index,
       last_paid_month,
-      upcoming_cuota_clp: cuota_clp,
+      upcoming_cuota: cuota_clp,
       payment_statements,
       cuota_progress,
     });
@@ -1169,7 +1169,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       // Listed in the «Compras activas» order, so the two tables read the plans the same way.
       const breakdown = sortCuotaLinesInActiveOrder(breakdownByMonth.get(month) ?? [], computed);
       const total_clp = payByMonth.get(month) ?? 0;
-      const breakdownSum = breakdown.reduce((s, b) => s + b.amount_clp, 0);
+      const breakdownSum = breakdown.reduce((s, b) => s + b.amount, 0);
       if (breakdown.length > 0 && breakdownSum !== total_clp) {
         throw new Error(
           `installment month breakdown mismatch for account ${accountId} month ${month}: breakdown=${breakdownSum} total=${total_clp}`
@@ -1178,10 +1178,10 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       const pay_by_date = payByEvidenceByMonth.get(month) ?? derivedPayByForMonth(month);
       return {
         month,
-        total_clp,
+        total: total_clp,
         breakdown,
         pay_by_date,
-        debt_after_clp: debtAfterByMonth.get(month) ?? 0,
+        debt_after: debtAfterByMonth.get(month) ?? 0,
       };
     })
     // A facturación row stays visible through the day its cuotas are actually paid (real
@@ -1205,7 +1205,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     accountId
   );
 
-  let total_remaining_principal_clp = 0;
+  let total_remaining_principal = 0;
   const purchaseIsActive = (c: CcInstallmentPurchaseComputed): boolean => {
     if (cancelledPurchaseIds.has(c.purchase_db_id ?? -1)) return false;
     const payList = paymentsByPurchase.get(c.purchase_db_id ?? -1) ?? [];
@@ -1213,7 +1213,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     return installmentPurchaseShowsActive(
       {
         remaining_installments: c.remaining_installments,
-        remaining_principal_clp: c.remaining_principal_clp,
+        remaining_principal: c.remaining_principal,
         installments_paid: c.installments_paid,
         installment_count: c.installment_count,
       },
@@ -1225,7 +1225,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   // «Compras activas» order is a display shape the server owns: fewest cuotas left first, ties
   // broken by the first-cuota month, not by name (`ccActivePurchaseOrder.ts`).
   const purchases_active = sortActivePurchases(computed.filter(purchaseIsActive));
-  for (const c of purchases_active) total_remaining_principal_clp += c.remaining_principal_clp;
+  for (const c of purchases_active) total_remaining_principal += c.remaining_principal;
 
   const purchases_completed = computed
     .filter((c) => !cancelledPurchaseIds.has(c.purchase_db_id ?? -1) && !purchaseIsActive(c))
@@ -1242,11 +1242,11 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   // Deriving this from per-purchase next_due_month instead let a stale/behind purchase whose
   // next_due_month lags today drag "próximo pago" into the past.
   let next_calendar_month: string | null = null;
-  let next_calendar_month_total_clp: number | null = null;
-  const nextPaymentMonth = months.find((m) => m.total_clp > 0);
+  let next_calendar_month_total: number | null = null;
+  const nextPaymentMonth = months.find((m) => m.total > 0);
   if (nextPaymentMonth) {
     next_calendar_month = nextPaymentMonth.pay_by_date.slice(0, 7);
-    next_calendar_month_total_clp = nextPaymentMonth.total_clp;
+    next_calendar_month_total = nextPaymentMonth.total;
   }
 
   return {
@@ -1262,8 +1262,8 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     months,
     installment_history_months,
     totals: {
-      total_remaining_principal_clp,
-      next_calendar_month_total_clp,
+      total_remaining_principal,
+      next_calendar_month_total,
       next_calendar_month,
     },
   };

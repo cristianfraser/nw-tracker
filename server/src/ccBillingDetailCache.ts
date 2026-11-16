@@ -17,13 +17,13 @@ type CcInstallmentsDbPayload = ReturnType<typeof ccInstallmentsDbApiPayload>;
  * The plan schedule by facturación month over the full history — what the detalle and the
  * facturaciones read each month's cuota a pagar from. `payload.months` is filtered to rows whose
  * pay-by has not passed; building either view from it would leave past months at 0/null: flat
- * historial bars, a wrong balance_total_clp in the detalle table, and an empty "cuota a pagar"
+ * historial bars, a wrong balance_total in the detalle table, and an empty "cuota a pagar"
  * column in facturaciones.
  */
 export function planScheduleMonths(payload: CcInstallmentsDbPayload): CcInstallmentMonthRow[] {
   return payload.installment_history_months.map((h) => ({
     month: h.month,
-    total_clp: h.installment_payments_clp,
+    total: h.installment_payments,
     breakdown: [],
   }));
 }

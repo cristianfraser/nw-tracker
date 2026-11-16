@@ -71,17 +71,17 @@ describe("ccInstallmentsDbApiPayload facturación calendar", () => {
     expect(rows[2]!.pay_by_date).toBe("2099-04-10");
 
     // Suffix sums: each row's debt = what is left after paying that facturación; last row 0.
-    expect(rows.map((m) => m.total_clp)).toEqual([10000, 10000, 10000]);
-    expect(rows[0]!.debt_after_clp).toBe(20000);
-    expect(rows[1]!.debt_after_clp).toBe(10000);
-    expect(rows[2]!.debt_after_clp).toBe(0);
+    expect(rows.map((m) => m.total)).toEqual([10000, 10000, 10000]);
+    expect(rows[0]!.debt_after).toBe(20000);
+    expect(rows[1]!.debt_after).toBe(10000);
+    expect(rows[2]!.debt_after).toBe(0);
     for (let i = 0; i + 1 < rows.length; i++) {
-      expect(rows[i]!.debt_after_clp).toBe(rows[i + 1]!.total_clp + rows[i + 1]!.debt_after_clp);
+      expect(rows[i]!.debt_after).toBe(rows[i + 1]!.total + rows[i + 1]!.debt_after);
     }
 
     // Próximo pago reports the PAY month of the first visible row, not the facturación month.
     expect(payload.totals.next_calendar_month).toBe("2099-02");
-    expect(payload.totals.next_calendar_month_total_clp).toBe(10000);
+    expect(payload.totals.next_calendar_month_total).toBe(10000);
   });
 
   it("rolls a facturación row off the calendar once its pay-by date has passed", () => {

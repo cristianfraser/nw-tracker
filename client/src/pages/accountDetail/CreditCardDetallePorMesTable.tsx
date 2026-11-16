@@ -13,12 +13,12 @@ import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 const PAGE_SIZE = 12;
 
 function renderFacturado(row: CcBillingDetailMonthDto, projectedHint: string): ReactNode {
-  if (row.total_facturado_clp != null) {
-    return formatOrDash(row.total_facturado_clp, formatCardBillingPesos);
+  if (row.total_facturado != null) {
+    return formatOrDash(row.total_facturado, formatCardBillingPesos);
   }
   return (
     <span className="muted" title={projectedHint}>
-      ≈ {formatCardBillingPesos(row.cuota_a_pagar_next_mes_clp)}
+      ≈ {formatCardBillingPesos(row.cuota_a_pagar_next_mes)}
     </span>
   );
 }
@@ -79,13 +79,13 @@ export function CreditCardDetallePorMesTable({
       key: "cupo",
       header: t("accountDetail.creditCard.colCupoEnCuotas"),
       className: "mono",
-      cell: (row) => formatOrDash(row.cupo_en_cuotas_clp, formatCardBillingPesos),
+      cell: (row) => formatOrDash(row.cupo_en_cuotas, formatCardBillingPesos),
     },
     {
       key: "balance",
       header: t("accountDetail.creditCard.colBalanceTotal"),
       className: "mono",
-      cell: (row) => formatOrDash(row.balance_total_clp, formatCardBillingPesos),
+      cell: (row) => formatOrDash(row.balance_total, formatCardBillingPesos),
     },
   ];
 

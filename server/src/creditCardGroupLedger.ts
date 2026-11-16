@@ -1,3 +1,4 @@
+import { CARD_BILLING_CURRENCY } from "./cards/cardCurrencies.js";
 import { cacheKeyCcLedgerGroup } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { markJsonResponseCacheable } from "./jsonResponse.js";
@@ -60,12 +61,12 @@ function weakerCloseSource(a: CcCloseSource, b: CcCloseSource): CcCloseSource {
 function mergedForeignRate(
   a: CcFacturadoForeign,
   b: CcFacturadoForeign
-): Pick<CcFacturadoForeign, "rate_clp" | "rate_source"> {
-  if (a.rate_clp == null) return { rate_clp: b.rate_clp, rate_source: b.rate_source };
-  if (b.rate_clp == null) return { rate_clp: a.rate_clp, rate_source: a.rate_source };
-  return a.rate_clp === b.rate_clp && a.rate_source === b.rate_source
-    ? { rate_clp: a.rate_clp, rate_source: a.rate_source }
-    : { rate_clp: null, rate_source: null };
+): Pick<CcFacturadoForeign, "rate" | "rate_source"> {
+  if (a.rate == null) return { rate: b.rate, rate_source: b.rate_source };
+  if (b.rate == null) return { rate: a.rate, rate_source: a.rate_source };
+  return a.rate === b.rate && a.rate_source === b.rate_source
+    ? { rate: a.rate, rate_source: a.rate_source }
+    : { rate: null, rate_source: null };
 }
 
 /**
@@ -87,7 +88,7 @@ function mergeFacturadoForeign(
     out[i] = {
       currency: a.currency,
       amount: sumNullable(a.amount, f.amount),
-      clp: sumNullable(a.clp, f.clp),
+      billing_amount: sumNullable(a.billing_amount, f.billing_amount),
       ...mergedForeignRate(a, f),
     };
   }
@@ -102,15 +103,15 @@ const FACTURACION_ROW_FIELDS = new Set<string>([
   "pay_by",
   "pay_by_iso",
   "pay_by_source",
-  "facturado_clp",
+  "facturado",
   "facturado_foreign",
-  "facturado_total_clp",
-  "cuota_a_pagar_clp",
-  "deuda_en_cuotas_clp",
+  "facturado_total",
+  "cuota_a_pagar",
+  "deuda_en_cuotas",
   "is_open_month",
   "is_provisional_close",
   "close_date_source",
-  "provisional_estimate_total_clp",
+  "provisional_estimate_total",
 ] satisfies (keyof CcFacturacionRow)[]);
 
 /** A member's row as the merge sees it: a field without a merge rule throws, never takes the first member's value. */
@@ -130,20 +131,20 @@ function mergeFacturacionRow(prev: CcFacturacionRow, row: CcFacturacionRow): CcF
     pay_by: prev.pay_by ?? row.pay_by,
     pay_by_iso: prev.pay_by_iso ?? row.pay_by_iso,
     pay_by_source: prev.pay_by != null ? prev.pay_by_source : row.pay_by_source,
-    facturado_clp: sumNullable(prev.facturado_clp, row.facturado_clp),
+    facturado: sumNullable(prev.facturado, row.facturado),
     facturado_foreign: mergeFacturadoForeign(prev.facturado_foreign, row.facturado_foreign),
-    facturado_total_clp: sumNullable(prev.facturado_total_clp, row.facturado_total_clp),
-    cuota_a_pagar_clp: sumNullable(prev.cuota_a_pagar_clp, row.cuota_a_pagar_clp),
-    deuda_en_cuotas_clp: sumNullable(prev.deuda_en_cuotas_clp, row.deuda_en_cuotas_clp),
+    facturado_total: sumNullable(prev.facturado_total, row.facturado_total),
+    cuota_a_pagar: sumNullable(prev.cuota_a_pagar, row.cuota_a_pagar),
+    deuda_en_cuotas: sumNullable(prev.deuda_en_cuotas, row.deuda_en_cuotas),
     is_open_month: prev.is_open_month || row.is_open_month,
     // Provisional while any member still awaits its statement; its estimate is only
     // meaningful per card, so a merged month carries the Σ when every member has one.
     is_provisional_close: prev.is_provisional_close || row.is_provisional_close,
     // The weaker evidence wins, so a merged row never claims more certainty than a member.
     close_date_source: weakerCloseSource(prev.close_date_source, row.close_date_source),
-    provisional_estimate_total_clp:
-      prev.provisional_estimate_total_clp != null && row.provisional_estimate_total_clp != null
-        ? prev.provisional_estimate_total_clp + row.provisional_estimate_total_clp
+    provisional_estimate_total:
+      prev.provisional_estimate_total != null && row.provisional_estimate_total != null
+        ? prev.provisional_estimate_total + row.provisional_estimate_total
         : null,
   };
 }
@@ -171,16 +172,16 @@ function mergedTotalFacturadoClp(
   a: CcBillingDetailStatementRow,
   b: CcBillingDetailStatementRow
 ): number | null {
-  if (a.total_facturado_clp == null && b.total_facturado_clp == null) return null;
+  if (a.total_facturado == null && b.total_facturado == null) return null;
   return (
-    (a.total_facturado_clp ?? a.cuota_a_pagar_next_mes_clp) +
-    (b.total_facturado_clp ?? b.cuota_a_pagar_next_mes_clp)
+    (a.total_facturado ?? a.cuota_a_pagar_next_mes) +
+    (b.total_facturado ?? b.cuota_a_pagar_next_mes)
   );
 }
 
 /** A member's row without its own month frame: the merged row takes the group's (`mergeCreditCardLedgers`). */
 function statementRowOf(row: CcBillingDetailMonthRow): CcBillingDetailStatementRow {
-  const { cupo_en_cuotas_clp: _cupo, balance_total_clp: _balance, ...statement } = row;
+  const { cupo_en_cuotas: _cupo, balance_total: _balance, ...statement } = row;
   return statement;
 }
 
@@ -209,15 +210,15 @@ function mergeBillingDetail(ledgers: CcLedgerResponse[]): CcBillingDetailStateme
         billing_month: row.billing_month,
         as_of_date: asOfDate,
         as_of_kind: asOfKind,
-        total_facturado_actual_clp: sumNullable(
-          prev.total_facturado_actual_clp,
-          row.total_facturado_actual_clp
+        total_facturado_actual: sumNullable(
+          prev.total_facturado_actual,
+          row.total_facturado_actual
         ),
-        total_facturado_clp: mergedTotalFacturadoClp(prev, row),
-        cupo_statement_clp: prev.cupo_statement_clp + row.cupo_statement_clp,
-        cuota_a_pagar_next_mes_clp:
-          prev.cuota_a_pagar_next_mes_clp + row.cuota_a_pagar_next_mes_clp,
-        balance_statement_clp: prev.balance_statement_clp + row.balance_statement_clp,
+        total_facturado: mergedTotalFacturadoClp(prev, row),
+        cupo_statement: prev.cupo_statement + row.cupo_statement,
+        cuota_a_pagar_next_mes:
+          prev.cuota_a_pagar_next_mes + row.cuota_a_pagar_next_mes,
+        balance_statement: prev.balance_statement + row.balance_statement,
         ...(prev.projected === true && row.projected === true ? { projected: true } : {}),
         ...(prev.provisional === true || row.provisional === true ? { provisional: true } : {}),
       });
@@ -231,9 +232,9 @@ function mergeInstallmentHistory(ledgers: CcLedgerResponse[]) {
     string,
     {
       month: string;
-      remaining_balance_clp: number;
-      installment_payments_clp: number;
-      ledger_remaining_installments_clp?: number;
+      remaining_balance: number;
+      installment_payments: number;
+      ledger_remaining_installments?: number;
     }
   >();
   for (const ledger of ledgers) {
@@ -245,11 +246,11 @@ function mergeInstallmentHistory(ledgers: CcLedgerResponse[]) {
       }
       byMonth.set(row.month, {
         month: row.month,
-        remaining_balance_clp: prev.remaining_balance_clp + row.remaining_balance_clp,
-        installment_payments_clp: prev.installment_payments_clp + row.installment_payments_clp,
-        ledger_remaining_installments_clp:
-          (prev.ledger_remaining_installments_clp ?? 0) +
-          (row.ledger_remaining_installments_clp ?? 0),
+        remaining_balance: prev.remaining_balance + row.remaining_balance,
+        installment_payments: prev.installment_payments + row.installment_payments,
+        ledger_remaining_installments:
+          (prev.ledger_remaining_installments ?? 0) +
+          (row.ledger_remaining_installments ?? 0),
       });
     }
   }
@@ -257,14 +258,14 @@ function mergeInstallmentHistory(ledgers: CcLedgerResponse[]) {
 }
 
 function mergeTotals(ledgers: CcLedgerResponse[]): CcInstallmentsTotals {
-  const total_remaining_principal_clp = ledgers.reduce(
-    (sum, l) => sum + l.totals.total_remaining_principal_clp,
+  const total_remaining_principal = ledgers.reduce(
+    (sum, l) => sum + l.totals.total_remaining_principal,
     0
   );
   const byMonth = new Map<string, number>();
   for (const l of ledgers) {
     const m = l.totals.next_calendar_month;
-    const t = l.totals.next_calendar_month_total_clp;
+    const t = l.totals.next_calendar_month_total;
     if (m && t != null && t > 0) {
       byMonth.set(m, (byMonth.get(m) ?? 0) + t);
     }
@@ -272,9 +273,9 @@ function mergeTotals(ledgers: CcLedgerResponse[]): CcInstallmentsTotals {
   const months = [...byMonth.keys()].sort();
   const next_calendar_month = months[0] ?? null;
   return {
-    total_remaining_principal_clp,
+    total_remaining_principal,
     next_calendar_month,
-    next_calendar_month_total_clp: next_calendar_month
+    next_calendar_month_total: next_calendar_month
       ? (byMonth.get(next_calendar_month) ?? null)
       : null,
   };
@@ -292,13 +293,13 @@ function mergeCupo(ledgers: CcLedgerResponse[]): CcCupoSnapshot | undefined {
   let used: number | null = null;
   for (const l of active) {
     const c = l.cupo!;
-    total = total != null && c.total_clp != null ? total + c.total_clp : null;
-    if (c.used_clp != null) used = (used ?? 0) + c.used_clp;
+    total = total != null && c.total != null ? total + c.total : null;
+    if (c.used != null) used = (used ?? 0) + c.used;
   }
   return {
-    total_clp: total,
-    used_clp: used,
-    available_clp: total != null && used != null ? total - used : null,
+    total,
+    used,
+    available: total != null && used != null ? total - used : null,
     billing_month: mergeOpenBillingMonth(ledgers),
   };
 }
@@ -327,6 +328,7 @@ export function mergeCreditCardLedgers(
   if (ledgers.length === 0) {
     return {
       account_id: 0,
+      billing_currency: CARD_BILLING_CURRENCY,
       has_installment_ledger: false,
       has_imported_statements: false,
       meta: null,
@@ -334,8 +336,8 @@ export function mergeCreditCardLedgers(
       purchases_completed: [],
       months: [],
       totals: {
-        total_remaining_principal_clp: 0,
-        next_calendar_month_total_clp: null,
+        total_remaining_principal: 0,
+        next_calendar_month_total: null,
         next_calendar_month: null,
       },
     };
@@ -369,6 +371,7 @@ export function mergeCreditCardLedgers(
   );
   return {
     account_id: 0,
+    billing_currency: CARD_BILLING_CURRENCY,
     has_installment_ledger: ledgers.some((l) => l.has_installment_ledger),
     has_imported_statements: ledgers.some((l) => l.has_imported_statements),
     meta: null,

@@ -17,15 +17,15 @@ function fact(over: Partial<CcFacturacionRow> & Pick<CcFacturacionRow, "billing_
     pay_by: null,
     pay_by_iso: null,
     pay_by_source: null,
-    facturado_clp: null,
+    facturado: null,
     facturado_foreign: usdForeign(null, null),
-    facturado_total_clp: null,
-    cuota_a_pagar_clp: null,
-    deuda_en_cuotas_clp: null,
+    facturado_total: null,
+    cuota_a_pagar: null,
+    deuda_en_cuotas: null,
     is_open_month: false,
     is_provisional_close: false,
     close_date_source: "statement",
-    provisional_estimate_total_clp: null,
+    provisional_estimate_total: null,
     ...over,
   };
 }
@@ -47,9 +47,9 @@ const october = fact({
   close_date_iso: "2026-10-26",
   pay_by_iso: "2026-11-10",
   pay_by_source: "statement",
-  facturado_clp: 2_000_000,
+  facturado: 2_000_000,
   facturado_foreign: usdForeign(300, 300_000),
-  facturado_total_clp: 2_300_000,
+  facturado_total: 2_300_000,
 });
 const november = fact({
   billing_month: "2026-11",
@@ -57,9 +57,9 @@ const november = fact({
   close_date_source: "announced",
   pay_by_iso: "2026-12-10",
   pay_by_source: "derived",
-  facturado_clp: 400_000,
+  facturado: 400_000,
   facturado_foreign: usdForeign(50, 50_000),
-  facturado_total_clp: 450_000,
+  facturado_total: 450_000,
   is_open_month: true,
 });
 const september = fact({
@@ -67,8 +67,8 @@ const september = fact({
   close_date_iso: "2026-09-24",
   pay_by_iso: "2026-10-09",
   pay_by_source: "statement",
-  facturado_clp: 900_000,
-  facturado_total_clp: 900_000,
+  facturado: 900_000,
+  facturado_total: 900_000,
 });
 const card = [september, october, november];
 
@@ -173,7 +173,7 @@ describe("upcoming card payments", () => {
   it("throws on an open facturación without a pay-by", () => {
     expect(() =>
       upcomingPaymentRows(
-        [fact({ billing_month: "2026-11", is_open_month: true, facturado_clp: 1, facturado_total_clp: 1 })],
+        [fact({ billing_month: "2026-11", is_open_month: true, facturado: 1, facturado_total: 1 })],
         none,
         TODAY,
         live

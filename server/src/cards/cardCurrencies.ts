@@ -1,4 +1,5 @@
 import { ccIssuerBySlug } from "../ccIssuers.js";
+import { HOME_CURRENCY } from "../displayUnits.js";
 import { ccIssuerSlugForMasterAccount } from "../ccIssuerForAccount.js";
 import { requireLoadedCurrency } from "../ingestCurrencies.js";
 import { IngestRefusal } from "../ingestReceiver.js";
@@ -33,3 +34,10 @@ export function cardPrimaryStatementCurrency(accountId: number): string {
   if (!issuer) throw new Error(`Account ${accountId}: issuer ${slug} is not in CC_ISSUERS`);
   return issuer.statement_currencies.primary;
 }
+
+/**
+ * The currency of a card's billing frame: what its facturaciones, cuota plans, month detail,
+ * historial and cupo figures are totalled in (each foreign billing converted at its own rate).
+ * Served as `billing_currency` beside those figures.
+ */
+export const CARD_BILLING_CURRENCY: string = HOME_CURRENCY;

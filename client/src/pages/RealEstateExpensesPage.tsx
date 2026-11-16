@@ -13,8 +13,8 @@ import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { monthYearSurfacePeriod } from "../surfaceDisplayPrefs";
 import { clipMonthsThenRollup } from "../timeRange";
 import { rollupChartPointsByYear } from "../flowsDisplay";
-import { formatGroupedDecimal, formatGroupedDecimalTrimmed, formatNumberInput, parseNumberInput } from "../format";
-import { formatBillPesos } from "../formatNative";
+import { formatGroupedDecimal, formatGroupedDecimalTrimmed, formatMoney, formatNumberInput, parseNumberInput } from "../format";
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { expenseKindLabel, useTranslation } from "../i18n";
 import { formatYearMonthLabel } from "../formatDateLabel";
 import { useRealEstateExpenses } from "../queries/hooks";
@@ -37,9 +37,9 @@ function formatAmountCell(slot: RealEstateBillSlot): string {
   if (slot.kind === "kwh") {
     return slot.kwh != null ? formatGroupedDecimalTrimmed(slot.kwh) : "—";
   }
-  if (slot.display_amount_clp <= 0 && slot.expected_amount_clp <= 0) return "—";
-  if (slot.link) return formatBillPesos(slot.link.amount_clp);
-  return formatBillPesos(slot.expected_amount_clp);
+  if (slot.display_amount <= 0 && slot.expected_amount <= 0) return "—";
+  if (slot.link) return formatMoney({ value: slot.link.amount, currency: slot.link.currency });
+  return formatMoney({ value: slot.expected_amount, currency: slot.currency });
 }
 
 function consumptionLabel(slot: RealEstateBillSlot): string | null {
@@ -209,8 +209,10 @@ export function RealEstateExpensesPage() {
     accountSlug != null && data ? (data.by_account[accountSlug]?.label ?? accountSlug) : null;
 
   const groupTotal = accountSlug
-    ? (data?.by_account[accountSlug]?.total_clp ?? 0)
-    : (data?.total_clp ?? 0);
+    ? (data?.by_account[accountSlug]?.total ?? 0)
+    : (data?.total ?? 0);
+  // Before the payload answers the total reads 0, in the home currency.
+  const groupCurrency = data?.currency ?? HOME_CURRENCY;
 
   return (
     <>
@@ -236,7 +238,7 @@ export function RealEstateExpensesPage() {
         <h3>
           {t("expenses.groups.real_estate")}
           <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-            {formatBillPesos(groupTotal)}
+            {formatMoney({ value: groupTotal, currency: groupCurrency })}
           </span>
           {!accountSlug ? (
             <Button
@@ -251,7 +253,7 @@ export function RealEstateExpensesPage() {
             <h4>
               {acc.label}
               <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-                {formatBillPesos(acc.total_clp)}
+                {formatMoney({ value: acc.total, currency: acc.currency })}
               </span>
               <Button variant="secondary"
                 onClick={() => setAssignPlace({ slug: acc.account_slug, label: acc.label })}
@@ -397,18 +399,18 @@ export function RealEstateExpensesPage() {
                       {slot.mortgage_parts ? (
                         <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
                           {t("expenses.realEstate.mortgagePartsHint", {
-                            amortization: formatBillPesos(slot.mortgage_parts.amortization_clp),
-                            extra: formatBillPesos(slot.mortgage_parts.extra_amortization_clp),
-                            carrying: formatBillPesos(slot.mortgage_parts.carrying_clp),
+                            amortization: formatMoney({ value: slot.mortgage_parts.amortization, currency: slot.currency }),
+                            extra: formatMoney({ value: slot.mortgage_parts.extra_amortization, currency: slot.currency }),
+                            carrying: formatMoney({ value: slot.mortgage_parts.carrying, currency: slot.currency }),
                           })}
                         </span>
                       ) : null}
                       {slot.link &&
-                      slot.expected_amount_clp > 0 &&
-                      slot.link.amount_clp !== slot.expected_amount_clp ? (
+                      slot.expected_amount > 0 &&
+                      slot.link.amount !== slot.expected_amount ? (
                         <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
                           {t("expenses.realEstate.expectedHint", {
-                            amount: formatBillPesos(slot.expected_amount_clp),
+                            amount: formatMoney({ value: slot.expected_amount, currency: slot.currency }),
                           })}
                         </span>
                       ) : null}

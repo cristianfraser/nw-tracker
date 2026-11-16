@@ -312,11 +312,11 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     const september = buildFacturaciones(accountId, ledger.months).find((f) => f.billing_month === "2026-09")!;
     // Only the plain purchase and the stamp tax (a charge of the cycle) bill in September: the cuota
     // comercio bills from October, the precio contado's first cuota is unknown until the statement.
-    expect(september).toMatchObject({ is_open_month: true, facturado_total_clp: 10_000 + 79 });
+    expect(september).toMatchObject({ is_open_month: true, facturado_total: 10_000 + 79 });
     const october = ledger.months.find((m) => m.month === "2026-10");
     expect(october?.breakdown.map((b) => b.label)).toEqual(["MUNICIPALIDAD DE MAIPU"]);
     const detail = buildBillingDetailByMonth(accountId, ledger.months).find((d) => d.billing_month === "2026-09")!;
-    expect(detail.cupo_statement_clp).toBe(29_990 + 189_990);
+    expect(detail.cupo_statement).toBe(29_990 + 189_990);
   });
 
   it("carries a cuota purchase of unknown count as installment debt from its date, flat until its plan", () => {
@@ -327,7 +327,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
       expect.objectContaining({
         merchant: "FULLNEUMATICO QUILIN",
         purchase_date: "2026-09-05",
-        amount_clp: 189_990,
+        amount: 189_990,
         kind: "precio_contado",
         billing_month: "2026-09",
       }),
@@ -345,19 +345,19 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     // so the balance line never sits under the cuota line.
     const chart = creditCardInstallmentsResponse(accountId).historial_chart ?? [];
     const today = chileCalendarTodayYmd();
-    expect(chart.map((p) => p.cupo_en_cuotas_clp)).toEqual(
+    expect(chart.map((p) => p.cupo_en_cuotas)).toEqual(
       ccInstallmentDebtDailyClp(
         accountId,
         chart.map((p) => (p.month === today.slice(0, 7) ? today : ccLedgerMonthEndIso(p.month)))
       )
     );
     // Past the last pay-by the saldo is what is still owed in cuotas: the tagged purchase.
-    expect(chart.at(-1)).toMatchObject({ cupo_en_cuotas_clp: 189_990, balance_total_clp: 189_990 });
+    expect(chart.at(-1)).toMatchObject({ cupo_en_cuotas: 189_990, balance_total: 189_990 });
     const ledger = ccInstallmentsDbApiPayload(accountId);
     const projected = buildBillingDetailByMonth(accountId, ledger.months).filter((d) => d.projected);
     expect(projected.length).toBeGreaterThan(0);
     const last = projected.reduce((a, b) => (a.billing_month > b.billing_month ? a : b));
-    expect(last).toMatchObject({ cupo_statement_clp: 189_990, balance_statement_clp: 189_990 });
+    expect(last).toMatchObject({ cupo_statement: 189_990, balance_statement: 189_990 });
   });
 
   it("asks for the count: the line carries its type, and entering it pins the first cuota by type", () => {
@@ -371,7 +371,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     expect(imported.accounts[0]!.cuota_lines_tagged).toBe(1);
     const pending = pendingCuotaPurchaseLines(accountId);
     expect(pending).toEqual([
-      expect.objectContaining({ kind: "cuota_comercio", amount_clp: 120_000, billing_month: "2026-09" }),
+      expect.objectContaining({ kind: "cuota_comercio", amount: 120_000, billing_month: "2026-09" }),
     ]);
     expect(creditCardInstallmentsResponse(accountId).pending_cuota_purchases).toEqual(pending);
     const lineId = pending[0]!.statement_line_id;

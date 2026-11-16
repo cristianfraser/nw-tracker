@@ -1,7 +1,7 @@
 export type FxConversionWarningCode =
   | "buy_rate_missing"
   | "sell_rate_missing"
-  | "usd_reference_clp";
+  | "reference_rate";
 
 export type FxConversionWarning = {
   code: FxConversionWarningCode;

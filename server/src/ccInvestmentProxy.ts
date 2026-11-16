@@ -334,9 +334,9 @@ export function installmentPurchaseToLot(purchase: {
   payment_statements?: {
     pay_by_date: string;
     cuota_current: number | null;
-    amount_clp: number;
+    amount: number;
   }[];
-  principal_clp: number;
+  principal: number;
 }): ProxyLot | null {
   const stmts = purchase.payment_statements;
   if (!stmts || stmts.length === 0) return null;
@@ -363,11 +363,11 @@ export function installmentPurchaseToLot(purchase: {
         `ccInvestmentProxy: cuota ${cuota} of purchase ${purchaseDate} has no parseable pay-by («${s.pay_by_date}»)`
       );
     }
-    return { amount_clp: s.amount_clp, date: payBy, billing_month: addCalendarMonths(firstDueYm, cuota - 1) };
+    return { amount_clp: s.amount, date: payBy, billing_month: addCalendarMonths(firstDueYm, cuota - 1) };
   });
   withdrawals.sort((a, b) => a.date.localeCompare(b.date) || a.billing_month.localeCompare(b.billing_month));
   return {
-    deposit: { amount_clp: purchase.principal_clp, date: purchaseDate },
+    deposit: { amount_clp: purchase.principal, date: purchaseDate },
     withdrawals,
   };
 }
@@ -392,8 +392,8 @@ export function normalPurchaseToLot(opts: {
 // ─── Facturación aggregation ──────────────────────────────────────────────────
 
 export type ProxyFacturacionTickerAggregate = {
-  total_gain_clp: number;
-  /** `total_gain_clp` over the money the facturación floated; null when it floated none. */
+  total_gain: number;
+  /** `total_gain` over the money the facturación floated; null when it floated none. */
   blended_return_pct: number | null;
   projected: boolean;
 };
@@ -449,7 +449,7 @@ export function aggregateProxyByFacturacion(
     for (const ticker of tickers) {
       const agg = tickerMap?.get(ticker) ?? { gain: 0, floated: 0, projected: false };
       by_ticker[ticker] = {
-        total_gain_clp: agg.gain,
+        total_gain: agg.gain,
         blended_return_pct: agg.floated > 0 ? (agg.gain / agg.floated) * 100 : null,
         projected: agg.projected,
       };

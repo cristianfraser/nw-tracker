@@ -32,7 +32,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   const heroValue =
     data.accountDashRow?.current_value ??
     (isHomeCurrency(data.stripUnit)
-      ? summary.latest_valuation ?? ccLedger.totals.total_remaining_principal_clp
+      ? summary.latest_valuation ?? ccLedger.totals.total_remaining_principal
       : data.chartUnitVal);
 
   return (

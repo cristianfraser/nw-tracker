@@ -1,3 +1,4 @@
+import { CARD_BILLING_CURRENCY } from "./cards/cardCurrencies.js";
 import { isHomeCurrency } from "./displayUnits.js";
 import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { cacheKeyCcLedgerAccount } from "./cacheFamilies.js";
@@ -45,9 +46,9 @@ import {
 
 
 export type CcInstallmentsTotals = {
-  total_remaining_principal_clp: number;
+  total_remaining_principal: number;
   /** Sum of all cuotas due in the earliest month that still has a payment (any purchase). */
-  next_calendar_month_total_clp: number | null;
+  next_calendar_month_total: number | null;
   next_calendar_month: string | null;
 };
 
@@ -57,18 +58,18 @@ export type CcInstallmentsTotals = {
  * Computed here so the account page and the Pasivos group page show the same numbers.
  */
 export type CcCupoSnapshot = {
-  total_clp: number | null;
-  used_clp: number | null;
+  total: number | null;
+  used: number | null;
   /** `total − used` when both are known, else null (an unconfigured cupo is not 0). */
-  available_clp: number | null;
-  /** Billing month whose `balance_statement_clp` is `used_clp` (open month, else latest statement). */
+  available: number | null;
+  /** Billing month whose `balance_statement` is `used` (open month, else latest statement). */
   billing_month: string | null;
 };
 
 /** Statement frame on purpose: the open month's rolled balance is what the bank's cupo is used by. */
 export function ccCupoSnapshot(
   totalClp: number | null,
-  rows: readonly Pick<CcBillingDetailStatementRow, "billing_month" | "as_of_kind" | "balance_statement_clp">[],
+  rows: readonly Pick<CcBillingDetailStatementRow, "billing_month" | "as_of_kind" | "balance_statement">[],
   openBillingMonth: string | null
 ): CcCupoSnapshot {
   const openRow =
@@ -80,12 +81,12 @@ export function ccCupoSnapshot(
       undefined
     );
   const row = openRow ?? latestStatement;
-  const used = row?.balance_statement_clp ?? null;
+  const used = row?.balance_statement ?? null;
   const total = totalClp != null && Number.isFinite(totalClp) ? totalClp : null;
   return {
-    total_clp: total,
-    used_clp: used,
-    available_clp: total != null && used != null ? total - used : null,
+    total,
+    used,
+    available: total != null && used != null ? total - used : null,
     billing_month: row?.billing_month ?? null,
   };
 }
@@ -109,6 +110,8 @@ export type CcInstallmentsMeta = {
 
 export type CcInstallmentsResponseBase = {
   account_id: number;
+  /** The currency every money figure of the response is in: the card's billing frame. */
+  billing_currency: string;
   has_installment_ledger: boolean;
   has_imported_statements: boolean;
   meta: CcInstallmentsMeta | null;
@@ -119,9 +122,9 @@ export type CcInstallmentsResponseBase = {
   totals: CcInstallmentsTotals;
   installment_history_months?: {
     month: string;
-    remaining_balance_clp: number;
-    installment_payments_clp: number;
-    ledger_remaining_installments_clp?: number;
+    remaining_balance: number;
+    installment_payments: number;
+    ledger_remaining_installments?: number;
   }[];
   billing_detail_by_month?: CcBillingDetailMonthRow[];
   facturaciones?: CcFacturacionRow[];
@@ -245,6 +248,7 @@ function buildCreditCardInstallmentsResponse(
     );
     return {
       account_id: accountId,
+      billing_currency: CARD_BILLING_CURRENCY,
       has_installment_ledger: true,
       has_imported_statements: ccStatementRowCount(accountId) > 0,
       open_billing_month,
@@ -289,6 +293,7 @@ function buildCreditCardInstallmentsResponse(
     });
     return {
       account_id: accountId,
+      billing_currency: CARD_BILLING_CURRENCY,
       has_installment_ledger: false,
       has_imported_statements: true,
       open_billing_month,
@@ -301,8 +306,8 @@ function buildCreditCardInstallmentsResponse(
       hidden_cancelled_purchases: [],
       months: [],
       totals: {
-        total_remaining_principal_clp: latestCupo,
-        next_calendar_month_total_clp: null,
+        total_remaining_principal: latestCupo,
+        next_calendar_month_total: null,
         next_calendar_month: null,
       },
       billing_detail_by_month: overlayBillingDetailMonthLines(billingDetail, lines),
@@ -317,6 +322,7 @@ function buildCreditCardInstallmentsResponse(
 
   return {
     account_id: accountId,
+    billing_currency: CARD_BILLING_CURRENCY,
     has_installment_ledger: false,
     has_imported_statements: false,
     open_billing_month,
@@ -327,8 +333,8 @@ function buildCreditCardInstallmentsResponse(
     hidden_cancelled_purchases: [],
     months: [],
     totals: {
-      total_remaining_principal_clp: 0,
-      next_calendar_month_total_clp: null,
+      total_remaining_principal: 0,
+      next_calendar_month_total: null,
       next_calendar_month: null,
     },
   };

@@ -77,10 +77,10 @@ describe("crypto position meta — live vs EOD", () => {
   it("without a live quote, values at the last completed EOD close", () => {
     if (accountId == null) return;
     const meta = getAccountPositionMeta(accountId);
-    if (meta?.afp_override_value_clp == null) return; // fx row missing in this DB — nothing to assert
+    if (meta?.mark_value_clp == null) return; // fx row missing in this DB — nothing to assert
     // The value is the last completed close (not the live price) at the rate of the date it is
     // dated on — the date its pesos were framed on (2f4172f9), not the bar's trade date.
-    const asOf = meta.afp_override_value_as_of!;
+    const asOf = meta.mark_as_of!;
     const close = db
       .prepare(
         `SELECT close FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
@@ -88,7 +88,7 @@ describe("crypto position meta — live vs EOD", () => {
       .get(TICKER, asOf) as { close: number };
     const fx = pairRateOnOrBefore("usd", "clp", asOf)!;
     expect(close.close).not.toBe(LIVE_PRICE_USD);
-    expect(meta.afp_override_value_clp).toBeCloseTo(UNITS * close.close * (fx.mid - 2), 0);
+    expect(meta.mark_value_clp).toBeCloseTo(UNITS * close.close * (fx.mid - 2), 0);
   });
 
   it("with a fresh live quote, values live and dates the mark today (UTC session)", () => {
@@ -104,12 +104,12 @@ describe("crypto position meta — live vs EOD", () => {
       fetched_at: new Date().toISOString(),
     });
     const liveMeta = getAccountPositionMeta(accountId);
-    if (liveMeta?.afp_override_value_clp == null) return;
+    if (liveMeta?.mark_value_clp == null) return;
 
-    expect(liveMeta.afp_override_value_as_of).toBe(utcTodayYmd());
-    if (eodMeta?.afp_override_value_clp != null) {
+    expect(liveMeta.mark_as_of).toBe(utcTodayYmd());
+    if (eodMeta?.mark_value_clp != null) {
       // Same fx fallback row on both legs → the value ratio tracks the price ratio.
-      const ratio = liveMeta.afp_override_value_clp / eodMeta.afp_override_value_clp;
+      const ratio = liveMeta.mark_value_clp / eodMeta.mark_value_clp;
       expect(ratio).toBeGreaterThan(1.05);
       expect(ratio).toBeLessThan(1.15);
     }

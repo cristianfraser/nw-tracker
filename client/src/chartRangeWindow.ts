@@ -78,18 +78,18 @@ export function windowCcHistorialRows(
     range,
     (r) => r.month,
     (r) =>
-      r.cupo_en_cuotas_clp != null ||
-      r.balance_total_clp != null ||
-      r.facturado_total_clp != null,
+      r.cupo_en_cuotas != null ||
+      r.balance_total != null ||
+      r.facturado_total != null,
     (month) => ({
       month,
-      facturado_cuotas_clp: null,
-      facturado_rest_clp: null,
-      facturado_foreign_clp: null,
+      facturado_cuotas: null,
+      facturado_rest: null,
+      facturado_foreign_total: null,
       facturado_foreign: null,
-      facturado_total_clp: null,
-      cupo_en_cuotas_clp: null,
-      balance_total_clp: null,
+      facturado_total: null,
+      cupo_en_cuotas: null,
+      balance_total: null,
     }),
     todayYmd
   );

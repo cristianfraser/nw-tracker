@@ -42,7 +42,7 @@ describe("AFP position units", () => {
 
     const meta = getAccountPositionMeta(accountId, { asOfYmd: asOf });
     expect(meta?.units).toBe(500);
-    expect(meta?.afp_override_value_clp).toBe(500 * px);
+    expect(meta?.mark_value_clp).toBe(500 * px);
 
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
