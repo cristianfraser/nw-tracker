@@ -8,6 +8,7 @@
  * and answers with what it did. A file moves to `imported/` only once the server has applied it;
  * the first failure stops the run and leaves that file and the later ones staged for the next.
  */
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -59,8 +60,9 @@ function printDetails(details: CardUnbilledMovementsApplyDetails): void {
     if (card.cuota_lines_tagged > 0) {
       console.log(`    ${card.cuota_lines_tagged} cuota purchase line(s) tagged (count unknown until the statement)`);
     }
-    const money = (amount: number, currency: "clp" | "usd") => // convention-ok: Santander's card feed has a peso and a dollar slide only
-      currency === "usd" ? `US$${amount.toFixed(2)}` : `$${fmt(amount)}`; // convention-ok: Santander's card feed has a peso and a dollar slide only
+    // The result names each planted payment's own currency: pesos whole, any other with its code.
+    const money = (amount: number, currency: string) =>
+      isHomeCurrency(currency) ? `$${fmt(amount)}` : `${currency.toUpperCase()} ${amount.toFixed(2)}`;
     // Older servers do not send it.
     const planted = card.planted_payments ?? { replaced: [], confirmed_in_place: [], ambiguous: [] };
     for (const r of planted.replaced) {
