@@ -44,14 +44,12 @@
 import { addDaysIso } from "nw-tracker-contracts";
 import type { StoreReceiptApplyDetails, StoreReceiptDocumentKind, StoreReceiptPayload } from "nw-tracker-contracts";
 
-import { ccCardRegistry } from "./ccCardRegistry.js";
 import { groceryReceiptKey } from "./expenseKeys.js";
 import {
   learnBranchForPendingReceipt,
   markReceiptCardLine,
   receiptCardLineRawLinePrefix,
   receiptCardLineStatus,
-  resolveBranchMerchant,
   type PendingBranchReceipt,
 } from "./groceryBranchLearning.js";
 import { closeEvidenceForBillingMonth, lastPdfBillingMonthForAccount } from "./cards/facturacion.js";
@@ -63,8 +61,9 @@ import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { findLines } from "./cards/purchases.js";
+import { chainBranchMerchant, GROCERY_CHAIN_LIDER } from "./groceryReceiptCardCharges.js";
 
-export const GROCERY_CHAIN_LIDER = "lider";
+export { GROCERY_CHAIN_LIDER };
 
 /** The `grocery_receipts.source` of each document kind (migration 205 named them alike). */
 export type GroceryReceiptSource = StoreReceiptDocumentKind;
@@ -184,8 +183,6 @@ type ChainCardRule = {
   payment_method: string;
   batch_kind: ImportBatchKind;
   master_account_id: () => number;
-  /** Printed branch string (every rendering of it) → the bank's exact merchant string. */
-  branch_merchants: () => Readonly<Record<string, string>>;
   classify: (accountId: number, lines: readonly CcListingLine[]) => { importable: CcListingLine[] };
   raw_line_prefix: string;
 };
@@ -195,7 +192,6 @@ const CHAIN_CARD_RULES: Readonly<Record<string, ChainCardRule>> = {
     payment_method: "tarjeta_lider_bci",
     batch_kind: "cc_lider_boleta",
     master_account_id: liderMasterAccountId,
-    branch_merchants: () => ccCardRegistry().boleta_sucursal_merchants,
     classify: classifyLiderLines,
     raw_line_prefix: receiptCardLineRawLinePrefix(GROCERY_CHAIN_LIDER),
   },
@@ -549,7 +545,7 @@ export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApp
     };
     if (stored === "matched") {
       // Paired with the bank's own line by an earlier card write or an earlier import.
-      movement = { status: "matched", branch, merchant: resolveBranchMerchant(receipt.chain, branch, rule.branch_merchants()) };
+      movement = { status: "matched", branch, merchant: chainBranchMerchant(receipt.chain, branch) };
     } else if (closedThrough != null && purchaseIso <= closedThrough) {
       // Statement-covered. A receipt still pending at the close now has the statement's own
       // line to pair with, so it gets one more attempt before settling.
@@ -560,7 +556,7 @@ export function applyStoreReceipt(payload: StoreReceiptPayload): StoreReceiptApp
         movement = { status: "closed_month" };
       }
     } else {
-      const merchant = resolveBranchMerchant(receipt.chain, branch, rule.branch_merchants());
+      const merchant = chainBranchMerchant(receipt.chain, branch);
       if (!merchant) {
         // Flag, don't fail: the bank's own line for this day and amount — whichever source
         // writes it — pairs the receipt and teaches the branch's merchant string. The line
