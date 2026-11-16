@@ -149,28 +149,32 @@ export function GroupInfoPage() {
 
   // Day view: per-session lines fetched lazily; series identities/colors reuse the
   // matching monthly block (grouped/ungrouped bucket lines share its synthetic ids).
+  // A group whose nav node states no member accounts has no daily series to ask for (the route
+  // answers 404 «no accounts for group»): nothing is requested.
+  const groupHasNoAccounts = navMatchNode?.member_account_ids?.length === 0;
+  const dailyGroup = groupHasNoAccounts ? "" : portfolioGroup;
   const dailySeries = useDailySeries(
-    { portfolioGroup: portfolioGroup || undefined },
+    { portfolioGroup: dailyGroup || undefined },
     displayUnit,
     timeRangeToDays(valuationPrefs.range),
-    valuationIsDaily && portfolioGroup !== ""
+    valuationIsDaily && dailyGroup !== ""
   );
   const perfDailySeries = useDailySeries(
-    { portfolioGroup: portfolioGroup || undefined },
+    { portfolioGroup: dailyGroup || undefined },
     displayUnit,
     timeRangeToDays(perfPrefs.range),
-    perfIsDaily && portfolioGroup !== "",
+    perfIsDaily && dailyGroup !== "",
     { perfLevels: true }
   );
   const proportionalDailySeries = useDailySeries(
-    { portfolioGroup: portfolioGroup || undefined },
+    { portfolioGroup: dailyGroup || undefined },
     displayUnit,
     timeRangeToDays(proportionalPrefs.range),
-    proportionalIsDaily && !valueMapShown && portfolioGroup !== ""
+    proportionalIsDaily && !valueMapShown && dailyGroup !== ""
   );
-  const valuationDailyPending = dailyPayloadPending(valuationIsDaily, dailySeries);
-  const perfDailyPending = dailyPayloadPending(perfIsDaily, perfDailySeries);
-  const proportionalDailyPending = dailyPayloadPending(proportionalIsDaily, proportionalDailySeries);
+  const valuationDailyPending = dailyPayloadPending(valuationIsDaily && !groupHasNoAccounts, dailySeries);
+  const perfDailyPending = dailyPayloadPending(perfIsDaily && !groupHasNoAccounts, perfDailySeries);
+  const proportionalDailyPending = dailyPayloadPending(proportionalIsDaily && !groupHasNoAccounts, proportionalDailySeries);
   const dailyProportionalBlock = useMemo(() => {
     if (!proportionalIsDaily || proportionalDailyPending) return null;
     const daily = proportionalDailySeries.data;
