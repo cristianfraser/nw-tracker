@@ -13,6 +13,7 @@ import {
 import { prettyRgbTripletForAccountId } from "../chartColorRgb.js";
 import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
+import { accountCashCurrency } from "../cashCurrency.js";
 import { db } from "../db.js";
 import { monthlyPerfForAccountDisplay } from "../detalleDailyChainedPct.js";
 import { listPortfolioGroupAccountsForApi } from "../portfolioGroupAccountsApi.js";
@@ -50,8 +51,10 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
        INNER JOIN asset_groups g ON g.id = a.asset_group_id
        ORDER BY g.sort_order, a.id, a.name`
     )
-    .all() as Record<string, unknown>[];
-  res.json({ accounts: rows });
+    .all() as ({ id: number } & Record<string, unknown>)[];
+  // A cash ledger's currency (`cashCurrency.ts`), null for any other account: what a trade form
+  // offers as settlement accounts and labels the amount with.
+  res.json({ accounts: rows.map((r) => ({ ...r, cash_currency: accountCashCurrency(r.id) })) });
 }));
 
 app.post("/api/accounts", asyncHandler(async (req, res) => {

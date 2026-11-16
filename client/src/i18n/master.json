@@ -1593,13 +1593,13 @@
         "en": "CLP amount",
         "es": "Monto CLP"
       },
-      "amountUsd": {
-        "en": "USD amount",
-        "es": "Monto USD"
-      },
       "amountInCurrency": {
         "en": "{{currency}} amount",
         "es": "Monto {{currency}}"
+      },
+      "amountInCashAccountCurrency": {
+        "en": "Amount (the cash account's currency)",
+        "es": "Monto (moneda de la cuenta de caja)"
       },
       "unitsDelta": {
         "en": "Shares (units_delta)",
@@ -2354,6 +2354,10 @@
       "saveSuccess": {
         "en": "{{count}} movement(s) saved.",
         "es": "{{count}} movimiento(s) registrado(s)."
+      },
+      "rowIncomplete": {
+        "en": "Every row needs a date, and a trade, dividend or premium needs its cash account.",
+        "es": "Cada fila necesita fecha, y una compra, venta, dividendo o prima necesita su cuenta de caja."
       }
     },
     "cashMovements": {
@@ -2406,8 +2410,12 @@
         "es": "Acción que paga el dividendo"
       },
       "dividendCashAccount": {
-        "en": "USD cash account receiving the dividend",
-        "es": "Cuenta USD que recibe el dividendo"
+        "en": "Cash account receiving the dividend",
+        "es": "Cuenta de caja que recibe el dividendo"
+      },
+      "settlementCashAccount": {
+        "en": "Cash account it settles against",
+        "es": "Cuenta de caja contra la que se liquida"
       },
       "compraSourceAccount": {
         "en": "Source CLP account (optional)",

@@ -4,14 +4,10 @@ import {
   BROKERAGE_FLOW_KINDS,
   brokerageFlowKindCounterpartIsCash,
   brokerageFlowKindCounterpartIsEquity,
-  brokerageFlowKindCounterpartIsUsdCash,
-  brokerageFlowKindNeedsClpForQuote,
   brokerageFlowKindShowsCounterpart,
   brokerageFlowKindShowsUnits,
-  brokerageFlowKindNeedsUsdForQuote,
   type BrokerageFlowKind,
   type BrokerageFormContext,
-  type StockQuoteCurrency,
 } from "../../panelAccounts/brokerageFlowKinds";
 
 /** The currency a cash ledger form's account holds: a code of `/api/currencies` (the server's `movement_create.cash_currency`). */
@@ -19,10 +15,15 @@ export type CashFormCurrency = string;
 import { cashFormAllowsTransferCounterpart, cashFormRowFields } from "../../panelAccounts/cashAccountFormTypes";
 import {
   appendMovementRow,
+  cashCurrencyByAccountId,
+  draftSettlementCurrency,
   removeMovementRow,
+  stockFormKindSettlesInCash,
+  stockFormRowFields,
   updateMovementRow,
   type InitialMovementDraft,
 } from "../../panelAccounts/stockAccountFormTypes";
+import { useAccountsAll } from "../../queries/hooks";
 import { CounterpartAccountSelect } from "../account/CounterpartAccountSelect";
 import { formatNumberInput } from "../../format";
 import { Button, Field, Input } from "@crfrsr/ui";
@@ -43,7 +44,6 @@ export function BrokerageMovementRowFields({
   currentAccountId,
   flowKinds = BROKERAGE_FLOW_KINDS,
   cashCurrency,
-  stockQuoteCurrency,
 }: {
   row: InitialMovementDraft;
   onChange: (next: InitialMovementDraft) => void;
@@ -52,28 +52,29 @@ export function BrokerageMovementRowFields({
   currentAccountId?: number;
   flowKinds?: readonly BrokerageFlowKind[];
   cashCurrency?: CashFormCurrency;
-  /** Quote currency of the stock account behind this form (clp = `.SN`); trades settle in it. */
-  stockQuoteCurrency?: StockQuoteCurrency;
 }) {
   const { t } = useTranslation();
+  const { data: accountsData } = useAccountsAll();
   // Cash ledger forms pass `cashCurrency`; the stock account form does not. dividend_payout
   // counterpart semantics flip with this: cash form picks the paying stock, stock form picks
-  // the receiving USD cash account.
+  // the receiving cash account.
   const formContext: BrokerageFormContext = cashCurrency != null ? "cash" : "stock";
   const counterpartIsEquity = brokerageFlowKindCounterpartIsEquity(row.flowKind, formContext);
-  const counterpartIsUsdCash = brokerageFlowKindCounterpartIsUsdCash(row.flowKind, formContext);
+  // The stock form's trades, dividends and premiums settle against a cash account in any
+  // currency, and their amount is in that account's currency.
+  const settlesInCash = formContext === "stock" && stockFormKindSettlesInCash(row.flowKind);
   // A cash form shows the pesos field and/or its own currency's field (`cashFormRowFields`); the
-  // stock form's fields follow the stock's quote currency.
+  // stock form shows pesos for its own capital rows, or the chosen cash account's currency.
   const cashFields = cashCurrency != null ? cashFormRowFields(row.flowKind, cashCurrency) : null;
-  const showClp = cashFields != null ? cashFields.pesos : brokerageFlowKindNeedsClpForQuote(row.flowKind, stockQuoteCurrency);
-  const showUsd = cashFields != null ? cashFields.own : brokerageFlowKindNeedsUsdForQuote(row.flowKind, stockQuoteCurrency);
+  const stockFields = stockFormRowFields(row.flowKind);
+  const showClp = cashFields != null ? cashFields.pesos : stockFields.pesos;
+  const showCash = cashFields != null ? cashFields.own : stockFields.cash;
+  // The currency the cash field is typed in: the cash form's own, or the chosen settlement
+  // account's (unknown until one is chosen).
+  const cashFieldCurrency =
+    cashCurrency ?? draftSettlementCurrency(row, cashCurrencyByAccountId(accountsData?.accounts ?? []));
   const showUnits = brokerageFlowKindShowsUnits(row.flowKind);
   const clpTransferCounterpart = cashCurrency != null && cashFormAllowsTransferCounterpart(row.flowKind, cashCurrency);
-  const tradeSettlesInClp = stockQuoteCurrency === "clp" && counterpartIsUsdCash; // convention-ok: a Santiago stock trades in pesos, every other one in dollars (plan C1 leftover)
-  // dividend_payout is USD-only today (movementUnitsPolicy rejects CLP-quoted stocks).
-  const availableKinds = flowKinds.filter(
-    (k) => !(k === "dividend_payout" && stockQuoteCurrency === "clp") // convention-ok: a Santiago stock pays no dollar dividend to the broker cash
-  );
 
   return (
     <div
@@ -94,7 +95,7 @@ export function BrokerageMovementRowFields({
             onChange({ ...row, flowKind: e.target.value as BrokerageFlowKind })
           }
         >
-          {availableKinds.map((k) => (
+          {flowKinds.map((k) => (
             <option key={k} value={k}>
               {t(`panelAccounts.flowKinds.${k}`)}
             </option>
@@ -112,20 +113,20 @@ export function BrokerageMovementRowFields({
           />
         </Field>
       ) : null}
-      {showUsd ? (
+      {showCash ? (
         <Field
           label={
-            cashCurrency != null
-              ? t("panelAccounts.addAccount.amountInCurrency", { currency: cashCurrency.toUpperCase() })
-              : t("panelAccounts.addAccount.amountUsd")
+            cashFieldCurrency != null
+              ? t("panelAccounts.addAccount.amountInCurrency", { currency: cashFieldCurrency.toUpperCase() })
+              : t("panelAccounts.addAccount.amountInCashAccountCurrency")
           }
         >
           <Input
             type="text"
             inputMode="decimal"
-            value={row.amountUsd}
+            value={row.amountCash}
             placeholder={row.flowKind === "fx_exchange" ? formatNumberInput(3353.07) : ""}
-            onChange={(e) => onChange({ ...row, amountUsd: e.target.value })}
+            onChange={(e) => onChange({ ...row, amountCash: e.target.value })}
           />
         </Field>
       ) : null}
@@ -150,7 +151,9 @@ export function BrokerageMovementRowFields({
                   ? t("accountDetail.movements.dividendCashAccount")
                   : brokerageFlowKindCounterpartIsCash(row.flowKind)
                     ? t("accountDetail.movements.compraSourceAccount")
-                    : t("accountDetail.movements.counterpartAccount")
+                    : settlesInCash
+                      ? t("accountDetail.movements.settlementCashAccount")
+                      : t("accountDetail.movements.counterpartAccount")
             }
             value={row.counterpartAccountId}
             excludeAccountId={currentAccountId}
@@ -158,8 +161,7 @@ export function BrokerageMovementRowFields({
             cashAndCheckingOnly={
               brokerageFlowKindCounterpartIsCash(row.flowKind) || clpTransferCounterpart
             }
-            usdCashOnly={counterpartIsUsdCash && !tradeSettlesInClp}
-            clpCashOnly={tradeSettlesInClp}
+            cashLedgerOnly={settlesInCash}
             onChange={(counterpartAccountId) => onChange({ ...row, counterpartAccountId })}
           />
         </div>
@@ -191,7 +193,6 @@ export function BrokerageMovementsSection({
   currentAccountId,
   flowKinds,
   cashCurrency,
-  stockQuoteCurrency,
 }: {
   movements: InitialMovementDraft[];
   onChange: (next: InitialMovementDraft[]) => void;
@@ -204,7 +205,6 @@ export function BrokerageMovementsSection({
   currentAccountId?: number;
   flowKinds?: readonly BrokerageFlowKind[];
   cashCurrency?: CashFormCurrency;
-  stockQuoteCurrency?: StockQuoteCurrency;
 }) {
   const { t } = useTranslation();
   const resolvedTitleKey =
@@ -249,7 +249,6 @@ export function BrokerageMovementsSection({
             currentAccountId={currentAccountId}
             flowKinds={flowKinds}
             cashCurrency={cashCurrency}
-            stockQuoteCurrency={stockQuoteCurrency}
           />
         ))
       )}

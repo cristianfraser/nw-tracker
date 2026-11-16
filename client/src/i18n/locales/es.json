@@ -507,8 +507,8 @@
       "movementDate": "Fecha",
       "movementType": "Tipo",
       "amountClp": "Monto CLP",
-      "amountUsd": "Monto USD",
       "amountInCurrency": "Monto {{currency}}",
+      "amountInCashAccountCurrency": "Monto (moneda de la cuenta de caja)",
       "unitsDelta": "Acciones (units_delta)",
       "addMovement": "Añadir movimiento",
       "removeMovement": "Quitar",
@@ -728,7 +728,8 @@
       "hint": "Opcional: cuenta destino/origen para traspasos en una sola fila.",
       "emptyDraft": "Sin borradores. Usa los botones para añadir filas y luego registrar.",
       "saveBtn": "Registrar movimientos",
-      "saveSuccess": "{{count}} movimiento(s) registrado(s)."
+      "saveSuccess": "{{count}} movimiento(s) registrado(s).",
+      "rowIncomplete": "Cada fila necesita fecha, y una compra, venta, dividendo o prima necesita su cuenta de caja."
     },
     "cashMovements": {
       "title": "Añadir movimientos",
@@ -746,7 +747,8 @@
     "movements": {
       "counterpartAccount": "Cuenta contraparte",
       "dividendOriginAccount": "Acción que paga el dividendo",
-      "dividendCashAccount": "Cuenta USD que recibe el dividendo",
+      "dividendCashAccount": "Cuenta de caja que recibe el dividendo",
+      "settlementCashAccount": "Cuenta de caja contra la que se liquida",
       "compraSourceAccount": "Cuenta CLP de origen (opcional)"
     },
     "flowDirection": {

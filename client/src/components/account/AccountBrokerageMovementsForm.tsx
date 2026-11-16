@@ -5,41 +5,50 @@ import { api } from "../../api";
 import { BrokerageMovementsSection } from "../panel/BrokerageMovementsSection";
 import {
   buildBrokerageMovementPostBody,
+  cashCurrencyByAccountId,
   type InitialMovementDraft,
 } from "../../panelAccounts/stockAccountFormTypes";
-import { type BrokerageFlowKind, type StockQuoteCurrency } from "../../panelAccounts/brokerageFlowKinds";
+import { type BrokerageFlowKind } from "../../panelAccounts/brokerageFlowKinds";
+import { useAccountsAll } from "../../queries/hooks";
 import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import { Button } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
-  /** Stock's quote currency from the summary DTO (present even before the first movement). */
-  quoteCurrency?: StockQuoteCurrency | null;
+  /**
+   * No longer read: a trade's amount is in the chosen cash account's currency, whatever the stock
+   * is quoted in. Kept so the call site compiles; remove it there and here together.
+   */
+  quoteCurrency?: string | null;
   displayUnit: DisplayUnit;
   /** The kinds this account's form offers (an option contract's differ from a stock's). */
   flowKinds?: readonly BrokerageFlowKind[];
 };
 
-export function AccountBrokerageMovementsForm({
-  accountId,
-  quoteCurrency,
-  displayUnit,
-  flowKinds,
-}: Props) {
+/**
+ * The movement form of a stock or option contract account. A trade, a dividend and a premium
+ * settle against a cash account in any currency: the amount is typed and posted in the currency
+ * that account holds (the accounts list's `cash_currency`).
+ */
+export function AccountBrokerageMovementsForm({ accountId, displayUnit, flowKinds }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { data: accountsData } = useAccountsAll();
   const [movements, setMovements] = useState<InitialMovementDraft[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [lastSavedCount, setLastSavedCount] = useState<number | null>(null);
 
   const saveMutation = useMutation({
     mutationFn: async (rows: InitialMovementDraft[]) => {
+      const cashCurrencies = cashCurrencyByAccountId(accountsData?.accounts ?? []);
       const bodies = rows
-        .map((row) => buildBrokerageMovementPostBody(row, quoteCurrency ?? undefined))
+        .map((row) => buildBrokerageMovementPostBody(row, cashCurrencies))
         .filter((b): b is Record<string, unknown> => b != null);
-      if (bodies.length === 0) {
-        throw new Error(t("panelAccounts.addAccount.previewInvalid"));
+      // A row with no date, or a trade with no cash account chosen, has no body: nothing is
+      // posted until every row has one.
+      if (bodies.length === 0 || bodies.length !== rows.length) {
+        throw new Error(t("accountDetail.brokerageMovements.rowIncomplete"));
       }
       for (const body of bodies) {
         await api.createAccountMovement(accountId, body);
@@ -70,7 +79,6 @@ export function AccountBrokerageMovementsForm({
         legend="add"
         emptyTextKey="accountDetail.brokerageMovements.emptyDraft"
         currentAccountId={accountId}
-        stockQuoteCurrency={quoteCurrency ?? undefined}
         flowKinds={flowKinds}
       />
 

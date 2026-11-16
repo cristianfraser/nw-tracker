@@ -20,7 +20,6 @@ import { IngestRefusal, receiveIngestDocument } from "../ingestReceiver.js";
 import { completeIngestRun, ingestRunById, listRecentIngestRuns } from "../ingestRuns.js";
 import { runIngestTask } from "../ingestTasks.js";
 import { recordManualCardPayment } from "../ccManualPayments.js";
-import { pesosOrDollars } from "../ingestCurrencies.js";
 
 export interface IngestRoutesOptions {
   kinds?: readonly IngestKindDefinition[];
@@ -102,7 +101,8 @@ export function registerIngestRoutes(app: express.Express, options: IngestRoutes
     }
     let result: ReturnType<typeof recordManualCardPayment>;
     try {
-      result = recordManualCardPayment({ ...request.data, currency: pesosOrDollars(request.data.currency, CC_MANUAL_PAYMENT_TASK) });
+      // Any currency the card's issuer bills in: `requireCardCurrency` refuses the others by name.
+      result = recordManualCardPayment(request.data);
     } catch (err) {
       if (err instanceof IngestRefusal) {
         res.status(422).json({ error: err.code, message: err.message } satisfies IngestErrorBody);

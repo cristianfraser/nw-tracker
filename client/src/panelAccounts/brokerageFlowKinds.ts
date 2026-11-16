@@ -16,8 +16,8 @@ export const BROKERAGE_FLOW_KINDS = [
 
 ] as const;
 // There is no single-leg DRIP kind: dividends are `dividend_payout`
-// transfers (stock → USD cash) and reinvestments separate `stock_buy` rows. On this stock
-// form the payout counterpart is the RECEIVING USD cash account (role "to"); on the USD
+// transfers (stock → cash) and reinvestments separate `stock_buy` rows. On this stock
+// form the payout counterpart is the RECEIVING cash account (role "to"); on a foreign
 // cash form it is the paying stock (role "from") — see the form-context params below.
 
 /**
@@ -141,46 +141,6 @@ export function brokerageFlowKindCounterpartIsCash(kind: BrokerageFlowKind): boo
   return kind === "fx_exchange";
 }
 
-/** Counterpart is the USD cash account (trades and premiums settle there; stock-form dividends credit it). */
-export function brokerageFlowKindCounterpartIsUsdCash(
-  kind: BrokerageFlowKind,
-  form: BrokerageFormContext
-): boolean {
-  if (kind === "stock_buy" || kind === "stock_sell") return true;
-  if (isOptionPremiumFlowKind(kind)) return true;
-  return kind === "dividend_payout" && form === "stock";
-}
-
-/**
- * Quote currency of the stock behind a brokerage form — always the server's fact (the account
- * summary's `equity_quote_currency`, from the instrument registry, a currency code), never read
- * from the ticker.
- */
-export type StockQuoteCurrency = string;
-
-/** Trade kinds settle in the stock's quote currency (buy/sell move cash ↔ shares). */
-function brokerageTradeFlowKind(kind: BrokerageFlowKind): boolean {
-  return kind === "stock_buy" || kind === "stock_sell";
-}
-
-/** CLP amount field visibility, quote-currency aware (CLP-quoted stocks trade in CLP). */
-export function brokerageFlowKindNeedsClpForQuote(
-  kind: BrokerageFlowKind,
-  quote: StockQuoteCurrency | undefined
-): boolean {
-  if (quote === "clp" && brokerageTradeFlowKind(kind)) return true;
-  return stockFormFlowKindNeedsClp(kind);
-}
-
-/** USD amount field visibility, quote-currency aware (hidden on CLP-quoted trades). */
-export function brokerageFlowKindNeedsUsdForQuote(
-  kind: BrokerageFlowKind,
-  quote: StockQuoteCurrency | undefined
-): boolean {
-  if (quote === "clp" && brokerageTradeFlowKind(kind)) return false;
-  return brokerageFlowKindNeedsUsd(kind);
-}
-
 /**
  * CLP ledger cash form: deposit/withdrawal may optionally name the other cash/checking account,
  * posting a single internal-transfer leg (from/to) instead of a plain one-sided movement.
@@ -200,7 +160,7 @@ export function counterpartRoleForBrokerageFlowKind(
   if (kind === "option_sell_open" || kind === "option_sell_close") return "to";
   if (kind === "option_buy_open" || kind === "option_buy_close") return "from";
   // dividend_payout: cash form → the stock counterpart PAYS ("from");
-  // stock form → the USD cash counterpart RECEIVES ("to").
+  // stock form → the cash counterpart RECEIVES ("to").
   if (kind === "dividend_payout") return form === "cash" ? "from" : "to";
   // fx_exchange: the counterpart CLP account is the source of the pesos spent.
   if (kind === "fx_exchange") return "from";
@@ -220,12 +180,7 @@ export function brokerageFlowKindNeedsClp(kind: BrokerageFlowKind): boolean {
 
 }
 
-/** The stock form's pesos field: its deposits and withdrawals are pesos (legacy capital rows), plus the cash forms' rule. */
-function stockFormFlowKindNeedsClp(kind: BrokerageFlowKind): boolean {
-  return kind === "deposit" || kind === "withdrawal" || brokerageFlowKindNeedsClp(kind);
-}
-
-/** The premium is in dollars; an expiry moves no money. */
+/** The cash forms' own-currency field for a conversion, a dividend and the legacy share kinds (the stock form's fields are `stockFormRowFields`). */
 export function brokerageFlowKindNeedsUsd(kind: BrokerageFlowKind): boolean {
 
   return (

@@ -28,6 +28,8 @@ export interface AccountListRow {
   color_rgb?: string | null;
   /** Long trailing-zero tail; hidden from nav child cards, kept in group charts/tables. */
   chart_inactive?: boolean;
+  /** The full list only: the currency a cash ledger account holds (`accounts.cash_currency` or its leaf's), null for any other account. */
+  cash_currency?: string | null;
 }
 
 /** What an account holds a quantity of: shares, coins, or (signed) option contracts. */

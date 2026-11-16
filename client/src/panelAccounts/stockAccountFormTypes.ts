@@ -1,18 +1,23 @@
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { parseNumberInputOrThrow } from "../format";
-import type { BrokerageFlowKind, StockQuoteCurrency } from "./brokerageFlowKinds";
+import type { BrokerageFlowKind } from "./brokerageFlowKinds";
 import {
-  brokerageFlowKindNeedsClpForQuote,
-  brokerageFlowKindNeedsUsdForQuote,
   brokerageFlowKindShowsUnits,
   counterpartRoleForBrokerageFlowKind,
+  isOptionPremiumFlowKind,
 } from "./brokerageFlowKinds";
 
+/**
+ * One row of a movement form before it is posted. `amountClp` is typed pesos; `amountCash` is
+ * typed in a cash account's own currency — the form's own account on a cash ledger form, the
+ * chosen cash account on a stock (or option contract) form.
+ */
 export type InitialMovementDraft = {
   id: string;
   flowKind: BrokerageFlowKind;
   occurredOn: string;
   amountClp: string;
-  amountUsd: string;
+  amountCash: string;
   unitsDelta: string;
   counterpartAccountId: number | "";
 };
@@ -35,7 +40,7 @@ export function emptyMovementRow(flowKind: BrokerageFlowKind = "deposit"): Initi
     flowKind,
     occurredOn: "",
     amountClp: "",
-    amountUsd: "",
+    amountCash: "",
     unitsDelta: "",
     counterpartAccountId: "",
   };
@@ -64,47 +69,81 @@ export function removeMovementRow(
 }
 
 /**
- * Body for `POST /api/accounts/:id/movements` (brokerage accounts). `quote` is the currency the
- * account's stock is quoted in as the server's instrument registry states it (the account summary's
- * `equity_quote_currency`), undefined for an account that holds no stock. Throws the localized
- * message when a shown number field isn't a number (see `parseNumberInput`).
+ * The stock (or option contract) form's kinds that settle against a cash account: a share trade,
+ * a dividend paid out and an option premium. The amount is in that cash account's currency,
+ * whatever the stock is quoted in (the server's `validateTradeSettlement`).
+ */
+export function stockFormKindSettlesInCash(kind: BrokerageFlowKind): boolean {
+  return kind === "stock_buy" || kind === "stock_sell" || kind === "dividend_payout" || isOptionPremiumFlowKind(kind);
+}
+
+/**
+ * Which amount field a stock form row shows: `cash` (the draft's `amountCash`, in the chosen cash
+ * account's currency) for a kind that settles against one; `pesos` (the draft's `amountClp`) for
+ * the account's own single-leg capital rows; neither for an option expiry, which moves no money.
+ */
+export function stockFormRowFields(kind: BrokerageFlowKind): { pesos: boolean; cash: boolean } {
+  if (stockFormKindSettlesInCash(kind)) return { pesos: false, cash: true };
+  if (kind === "option_expire") return { pesos: false, cash: false };
+  return { pesos: true, cash: false };
+}
+
+/** The accounts list's cash ledgers, by id: the currency each one holds (`AccountListRow.cash_currency`). */
+export function cashCurrencyByAccountId(
+  accounts: readonly { id: number; cash_currency?: string | null }[]
+): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const a of accounts) {
+    if (a.cash_currency != null) out.set(a.id, a.cash_currency);
+  }
+  return out;
+}
+
+/** The currency the row's chosen cash account holds; null with no account chosen or one that is not a cash ledger. */
+export function draftSettlementCurrency(
+  row: InitialMovementDraft,
+  cashCurrencies: ReadonlyMap<number, string>
+): string | null {
+  if (row.counterpartAccountId === "") return null;
+  return cashCurrencies.get(row.counterpartAccountId) ?? null;
+}
+
+/**
+ * Body for `POST /api/accounts/:id/movements` on a stock or option contract account.
+ * `cashCurrencies` is the cash ledger accounts' currencies by account id
+ * ({@link cashCurrencyByAccountId}). A kind that settles against cash posts its amount in the
+ * chosen cash account's currency; without a cash account chosen the row has no body (null).
+ * Only the field the kind shows is sent, so a value left behind in a now-hidden input never is.
+ * Throws the localized message when a shown number field isn't a number (see `parseNumberInput`).
  */
 export function buildBrokerageMovementPostBody(
   row: InitialMovementDraft,
-  quote: StockQuoteCurrency | undefined
+  cashCurrencies: ReadonlyMap<number, string>
 ): Record<string, unknown> | null {
   const occurred_on = row.occurredOn.trim();
   if (!occurred_on) return null;
-  // Only submit the fields that the flow kind actually shows — a value left behind in a now-hidden
-  // input (e.g. CLP typed before switching to "compra acciones") must not be sent. A kind that
-  // shows both fields (fx_exchange) sends CLP as the amount and USD as the counter leg.
-  const clp = brokerageFlowKindNeedsClpForQuote(row.flowKind, quote)
-    ? parseNumberInputOrThrow(row.amountClp)
-    : null;
-  const usd = brokerageFlowKindNeedsUsdForQuote(row.flowKind, quote)
-    ? parseNumberInputOrThrow(row.amountUsd)
-    : null;
+  const fields = stockFormRowFields(row.flowKind);
+  const units = brokerageFlowKindShowsUnits(row.flowKind)
+    ? { units_delta: parseNumberInputOrThrow(row.unitsDelta) }
+    : {};
+  if (fields.cash) {
+    const currency = draftSettlementCurrency(row, cashCurrencies);
+    if (currency == null) return null;
+    const amount = parseNumberInputOrThrow(row.amountCash);
+    return {
+      occurred_on,
+      flow_kind: row.flowKind,
+      ...(amount != null ? { amount, currency } : {}),
+      ...units,
+      counterpart_account_id: row.counterpartAccountId,
+      counterpart_role: counterpartRoleForBrokerageFlowKind(row.flowKind, "stock"),
+    };
+  }
+  const pesos = fields.pesos ? parseNumberInputOrThrow(row.amountClp) : null;
   return {
     occurred_on,
     flow_kind: row.flowKind,
-    ...(clp != null
-      ? {
-          amount: clp,
-          currency: "clp",
-          ...(usd != null ? { counter_amount: usd, counter_currency: "usd" } : {}),
-        }
-      : usd != null
-        ? { amount: usd, currency: "usd" }
-        : {}),
-    ...(brokerageFlowKindShowsUnits(row.flowKind)
-      ? { units_delta: parseNumberInputOrThrow(row.unitsDelta) }
-      : {}),
-    ...(row.counterpartAccountId !== ""
-      ? {
-          counterpart_account_id: row.counterpartAccountId,
-          counterpart_role: counterpartRoleForBrokerageFlowKind(row.flowKind, "stock"),
-        }
-      : {}),
+    ...(pesos != null ? { amount: pesos, currency: HOME_CURRENCY } : {}),
+    ...units,
   };
 }
-

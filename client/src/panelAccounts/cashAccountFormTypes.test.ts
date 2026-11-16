@@ -38,7 +38,7 @@ describe("the cash movements form, by the account's currency", () => {
   });
 
   it("a euro deposit posts its amount in euros", () => {
-    const row = { ...emptyMovementRow("deposit"), occurredOn: "2026-06-15", amountUsd: "1.250,5", amountClp: "999" };
+    const row = { ...emptyMovementRow("deposit"), occurredOn: "2026-06-15", amountCash: "1.250,5", amountClp: "999" };
     expect(buildCashMovementPostBody(row, "eur")).toEqual({
       occurred_on: "2026-06-15",
       flow_kind: "deposit",
@@ -52,7 +52,7 @@ describe("the cash movements form, by the account's currency", () => {
       ...emptyMovementRow("fx_exchange"),
       occurredOn: "2026-06-15",
       amountClp: "500.000",
-      amountUsd: "480,5",
+      amountCash: "480,5",
       counterpartAccountId: 7 as const,
     };
     expect(buildCashMovementPostBody(row, "eur")).toEqual({
@@ -68,7 +68,7 @@ describe("the cash movements form, by the account's currency", () => {
   });
 
   it("a dividend received on a dollar ledger posts dollars from the paying stock", () => {
-    const row = { ...emptyMovementRow("dividend_payout"), occurredOn: "2026-06-15", amountUsd: "3,2", counterpartAccountId: 9 as const };
+    const row = { ...emptyMovementRow("dividend_payout"), occurredOn: "2026-06-15", amountCash: "3,2", counterpartAccountId: 9 as const };
     expect(buildCashMovementPostBody(row, "usd")).toEqual({
       occurred_on: "2026-06-15",
       flow_kind: "dividend_payout",
@@ -80,7 +80,7 @@ describe("the cash movements form, by the account's currency", () => {
   });
 
   it("a peso deposit naming the other account posts one transfer row; without it, a single-leg row", () => {
-    const base = { ...emptyMovementRow("deposit"), occurredOn: "2026-06-15", amountClp: "300.000", amountUsd: "5" };
+    const base = { ...emptyMovementRow("deposit"), occurredOn: "2026-06-15", amountClp: "300.000", amountCash: "5" };
     expect(buildCashMovementPostBody({ ...base, counterpartAccountId: 4 }, "clp")).toEqual({
       occurred_on: "2026-06-15",
       amount: 300000,
