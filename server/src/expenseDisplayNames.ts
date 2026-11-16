@@ -13,6 +13,8 @@
  *     then the vendor catalog (`vendorCatalog.ts`); a card merchant the listing cut reads as the
  *     longer merchant it starts on the same account, when they all read the same
  *   - a name the catalog does not know, with a shop's or processor's own receipt: the receipt's payee
+ *   - a card name the catalog does not know, on the charge of a grocery receipt: the catalog's name
+ *     for the receipt's branch («SUPERMERCADO PLAZA LYON LTDA.» → «Lider Express (Lyon)»)
  *   - a payslip line: its label spelled, its employer without the legal suffix
  *
  * Link label (`link_label`):
@@ -52,6 +54,7 @@ import { linkKeyForName } from "./expenseCategoryRules.js";
 
 export { cleanBankMerchant, splitProcessorPrefix };
 import { foldVendorName, loadVendorCatalog, type VendorCatalog } from "./vendorCatalog.js";
+import { groceryBranchMerchantByCardLine, type ReceiptChargeLine } from "./groceryReceiptCardCharges.js";
 
 
 export type ExpenseDisplayNames = {
@@ -229,6 +232,11 @@ export type DisplayNameContext = {
   cardMerchantsByAccount: ReadonlyMap<number, readonly string[]>;
   /** The events a ticket receipt names, by the day they start (`inEventCharge`). */
   ticketEventsByDay?: ReadonlyMap<string, readonly TicketEvent[]>;
+  /**
+   * Card line (`statement_line_id`) → the bank merchant of the branch its grocery receipt names
+   * (`groceryReceiptCardCharges.ts`).
+   */
+  groceryBranchMerchantByLine?: ReadonlyMap<number, string>;
 };
 
 export type TicketEvent = { name: string; starts_on: string };
@@ -284,7 +292,8 @@ export function cardMerchantsByAccount(
 }
 
 export function loadDisplayNameContext(
-  lines: readonly (Pick<FlowCcExpenseLineRow, "payment_receipt" | "source" | "merchant" | "account_id"> & { refund_of_line_id?: number })[]
+  lines: readonly (Pick<FlowCcExpenseLineRow, "payment_receipt" | "source" | "merchant" | "account_id"> &
+    ReceiptChargeLine & { refund_of_line_id?: number })[]
 ): DisplayNameContext {
   const payees = lines.flatMap((l) =>
     l.payment_receipt && l.payment_receipt.processor !== "apple_app_store" ? [l.payment_receipt.payee] : []
@@ -295,6 +304,7 @@ export function loadDisplayNameContext(
     brands: brandsFromPayees(payees),
     cardMerchantsByAccount: cardMerchantsByAccount(lines),
     ticketEventsByDay: loadTicketEventsByDay(),
+    groceryBranchMerchantByLine: groceryBranchMerchantByCardLine(lines),
   };
 }
 
@@ -377,7 +387,7 @@ function cutMerchantListed(raw: string, accountId: number, ctx: DisplayNameConte
 /** The names one line shows. */
 export function expenseLineDisplayNames(
   line: Pick<FlowCcExpenseLineRow, "source" | "merchant" | "account_id" | "payment_receipt" | "transfer_counterparty"> &
-    Partial<Pick<FlowCcExpenseLineRow, "recurring_payment" | "purchase_on" | "occurred_on">>,
+    Partial<Pick<FlowCcExpenseLineRow, "recurring_payment" | "purchase_on" | "occurred_on" | "statement_line_id">>,
   ctx: DisplayNameContext
 ): ExpenseDisplayNames {
   const out: ExpenseDisplayNames = {};
@@ -409,7 +419,13 @@ export function expenseLineDisplayNames(
     if (choices) out.branch_choices = choices;
     // A shop's or processor's receipt names the merchant the bank's name hides.
     const r = line.payment_receipt;
-    if (known == null && r && !r.guess && RECEIPT_NAMES_MERCHANT.has(r.processor)) {
+    // So does a grocery receipt on its card charge: the catalog's name for the receipt's branch.
+    const branchMerchant =
+      line.source === "cc" && line.statement_line_id != null ? ctx.groceryBranchMerchantByLine?.get(line.statement_line_id) : undefined;
+    const branchListed = known == null && branchMerchant ? catalogMerchant(branchMerchant, ctx.catalog).listed : null;
+    if (branchListed) {
+      shown = branchListed;
+    } else if (known == null && r && !r.guess && RECEIPT_NAMES_MERCHANT.has(r.processor)) {
       const label = receiptLabel(r, ctx.catalog, ctx.brands);
       if (label) shown = label.text;
     }
