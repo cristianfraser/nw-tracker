@@ -9,69 +9,71 @@ import {
 import type { DeptoMortgageSheetRow, DeptoPaymentScenarioRow } from "../../types";
 
 function sheetRow(
-  overrides: Partial<DeptoMortgageSheetRow> & Pick<DeptoMortgageSheetRow, "occurred_on" | "pago_clp">
+  overrides: Partial<DeptoMortgageSheetRow> & Pick<DeptoMortgageSheetRow, "occurred_on" | "pago_pay">
 ): DeptoMortgageSheetRow {
   return {
     cuota: "1",
-    pago_uf: null,
+    loan_currency: "uf",
+    payment_currency: "clp",
+    pago_loan: null,
     pct_dividendo: null,
-    uf_clp_day: null,
+    loan_rate_day: null,
     mm_pct: null,
     yy_pct: null,
     tasa_plus: null,
-    credito_restante_uf: null,
-    pct_credito_uf: null,
-    restante_clp: null,
+    credito_restante_loan: null,
+    pct_credito_loan: null,
+    restante_pay: null,
     pct_de_total: null,
-    delta_credito_clp: null,
-    valor_neto_uf: null,
-    valor_neto_clp: null,
-    pagado_neto_uf: null,
-    delta_valor_neto_clp: null,
-    valor_vivienda_uf: null,
-    valor_vivienda_clp: null,
-    min_uf: null,
-    max_uf: null,
-    incendio_clp: null,
-    incendio_uf: null,
-    desgravamen_clp: null,
-    desgravamen_uf: null,
-    total_seguros_uf: null,
-    total_seguros_clp: null,
-    seguros_interes_uf: null,
-    seguros_interes_clp: null,
-    amortizacion_total_uf: null,
-    amortizacion_total_clp: null,
-    amortizacion_clp: null,
-    amortizacion_uf: null,
-    amortizacion_ext_clp: null,
-    amortizacion_ext_uf: null,
-    interes_clp: null,
-    interes_uf: null,
-    delta_credito_amort_clp: null,
-    interes_oculto_clp: null,
-    interes_oculto_b_clp: null,
-    interes_real_clp: null,
-    interes_calculado_uf: null,
+    delta_credito_pay: null,
+    valor_neto_loan: null,
+    valor_neto_pay: null,
+    pagado_neto_loan: null,
+    delta_valor_neto_pay: null,
+    valor_vivienda_loan: null,
+    valor_vivienda_pay: null,
+    min_loan: null,
+    max_loan: null,
+    incendio_pay: null,
+    incendio_loan: null,
+    desgravamen_pay: null,
+    desgravamen_loan: null,
+    total_seguros_loan: null,
+    total_seguros_pay: null,
+    seguros_interes_loan: null,
+    seguros_interes_pay: null,
+    amortizacion_total_loan: null,
+    amortizacion_total_pay: null,
+    amortizacion_pay: null,
+    amortizacion_loan: null,
+    amortizacion_ext_pay: null,
+    amortizacion_ext_loan: null,
+    interes_pay: null,
+    interes_loan: null,
+    delta_credito_amort_pay: null,
+    interes_oculto_pay: null,
+    interes_oculto_b_pay: null,
+    interes_real_pay: null,
+    interes_calculado_loan: null,
     amort_interes_text: null,
-    pago_acumulado_clp: null,
-    amort_acum_clp: null,
-    interes_acum_clp: null,
-    prepayment_charge_clp: null,
-    prepayment_charge_uf: null,
+    pago_acumulado_pay: null,
+    amort_acum_pay: null,
+    interes_acum_pay: null,
+    prepayment_charge_pay: null,
+    prepayment_charge_loan: null,
     ...overrides,
   };
 }
 
 describe("lastMortgagePaymentRow", () => {
-  it("picks the latest row with pago_clp > 0", () => {
+  it("picks the latest row with pago_pay > 0", () => {
     const rows = [
-      sheetRow({ occurred_on: "2025-01-11", pago_clp: 100_000 }),
-      sheetRow({ occurred_on: "2025-03-11", pago_clp: 120_000 }),
-      sheetRow({ occurred_on: "2025-02-11", pago_clp: 0 }),
+      sheetRow({ occurred_on: "2025-01-11", pago_pay: 100_000 }),
+      sheetRow({ occurred_on: "2025-03-11", pago_pay: 120_000 }),
+      sheetRow({ occurred_on: "2025-02-11", pago_pay: 0 }),
     ];
     expect(lastMortgagePaymentRow(rows)?.occurred_on).toBe("2025-03-11");
-    expect(lastMortgagePaymentRow(rows)?.pago_clp).toBe(120_000);
+    expect(lastMortgagePaymentRow(rows)?.pago_pay).toBe(120_000);
   });
 });
 
@@ -81,21 +83,25 @@ describe("nextMortgagePaymentScenario", () => {
       {
         occurred_on: "2025-02-11",
         cuota: "10",
-        min_payment_uf: 10,
-        min_payment_clp: 400_000,
+        loan_currency: "uf",
+        payment_currency: "clp",
+        min_payment_loan: 10,
+        min_payment_pay: 400_000,
         scenarios: [],
       },
       {
         occurred_on: "2025-03-11",
         cuota: "11",
-        min_payment_uf: 9.5,
-        min_payment_clp: 380_000,
+        loan_currency: "uf",
+        payment_currency: "clp",
+        min_payment_loan: 9.5,
+        min_payment_pay: 380_000,
         scenarios: [],
         is_next_payment: true,
       },
     ];
     expect(nextMortgagePaymentScenario(scenarios)?.occurred_on).toBe("2025-03-11");
-    expect(nextMortgagePaymentScenario(scenarios)?.min_payment_clp).toBe(380_000);
+    expect(nextMortgagePaymentScenario(scenarios)?.min_payment_pay).toBe(380_000);
   });
 });
 
@@ -104,18 +110,18 @@ describe("latestLedgerSnapshotRow", () => {
     const rows = [
       sheetRow({
         occurred_on: "2025-01-11",
-        pago_clp: 100_000,
-        credito_restante_uf: 3000,
-        restante_clp: 90_000_000,
+        pago_pay: 100_000,
+        credito_restante_loan: 3000,
+        restante_pay: 90_000_000,
       }),
       sheetRow({
         occurred_on: "2025-03-11",
-        pago_clp: 120_000,
-        credito_restante_uf: 2900,
-        restante_clp: 85_000_000,
+        pago_pay: 120_000,
+        credito_restante_loan: 2900,
+        restante_pay: 85_000_000,
       }),
     ];
-    expect(latestLedgerSnapshotRow(rows)?.credito_restante_uf).toBe(2900);
+    expect(latestLedgerSnapshotRow(rows)?.credito_restante_loan).toBe(2900);
   });
 });
 
@@ -131,17 +137,19 @@ describe("buildMortgageSummaryCardsData", () => {
         rows: [
           sheetRow({
             occurred_on: "2025-02-11",
-            pago_clp: 500_000,
-            credito_restante_uf: 2800,
-            restante_clp: 74_695_292,
+            pago_pay: 500_000,
+            credito_restante_loan: 2800,
+            restante_pay: 74_695_292,
           }),
         ],
         payment_scenarios: [
           {
             occurred_on: "2025-03-11",
             cuota: "12",
-            min_payment_uf: 8,
-            min_payment_clp: 320_000,
+            loan_currency: "uf",
+            payment_currency: "clp",
+            min_payment_loan: 8,
+            min_payment_pay: 320_000,
             scenarios: [],
             is_next_payment: true,
           },
@@ -151,12 +159,67 @@ describe("buildMortgageSummaryCardsData", () => {
       [],
       null
     );
-    expect(data.balanceUf).toBe(2800);
-    expect(data.balanceClp).toBe(74_695_292);
-    expect(data.lastPaymentClp).toBe(500_000);
+    expect(data.balanceLoan).toEqual({ value: 2800, currency: "uf" });
+    expect(data.balancePay).toEqual({ value: 74_695_292, currency: "clp" });
+    expect(data.lastPayment).toEqual({ value: 500_000, currency: "clp" });
     expect(data.lastPaymentDate).toBe("2025-02-11");
-    expect(data.nextPaymentClp).toBe(320_000);
+    expect(data.nextPayment).toEqual({ value: 320_000, currency: "clp" });
     expect(data.nextPaymentDate).toBe("2025-03-11");
+  });
+
+  it("reads each figure in the currency its row names (a euro loan paid in dollars)", () => {
+    const data = buildMortgageSummaryCardsData(
+      {
+        account_id: 1,
+        has_sheet_rows: true,
+        meta: null,
+        card_matches: [],
+        card_lines_without_payment: [],
+        rows: [
+          sheetRow({
+            occurred_on: "2025-02-11",
+            loan_currency: "eur",
+            payment_currency: "usd",
+            pago_pay: 650.25,
+            credito_restante_loan: 91_000,
+            restante_pay: 98_280.5,
+          }),
+        ],
+        payment_scenarios: [
+          {
+            occurred_on: "2025-03-11",
+            cuota: "12",
+            loan_currency: "eur",
+            payment_currency: "usd",
+            min_payment_loan: 600,
+            min_payment_pay: 648,
+            scenarios: [],
+            is_next_payment: true,
+          },
+        ],
+      },
+      // The fallbacks (home currency) are not reached: the ledger row carries the balance.
+      { latest_valuation: 1 },
+      [],
+      null
+    );
+    expect(data.balanceLoan).toEqual({ value: 91_000, currency: "eur" });
+    expect(data.balancePay).toEqual({ value: 98_280.5, currency: "usd" });
+    expect(data.lastPayment).toEqual({ value: 650.25, currency: "usd" });
+    expect(data.nextPayment).toEqual({ value: 648, currency: "usd" });
+  });
+
+  it("falls back to the home-currency valuation while the ledger has no balance row", () => {
+    const data = buildMortgageSummaryCardsData(
+      { account_id: 1, has_sheet_rows: false, meta: null, card_matches: [], card_lines_without_payment: [], rows: [] },
+      { latest_valuation: 70_000_000 },
+      [],
+      null
+    );
+    expect(data.balanceLoan).toBeNull();
+    expect(data.balancePay).toEqual({ value: 70_000_000, currency: "clp" });
+    expect(data.lastPayment).toBeNull();
+    expect(data.nextPayment).toBeNull();
   });
 });
 
@@ -172,9 +235,9 @@ describe("buildPropertySummaryCardsData", () => {
         rows: [
           sheetRow({
             occurred_on: "2025-02-11",
-            pago_clp: 1,
-            valor_neto_uf: 1200,
-            valor_neto_clp: 45_000_000,
+            pago_pay: 1,
+            valor_neto_loan: 1200,
+            valor_neto_pay: 45_000_000,
           }),
         ],
       },
@@ -207,8 +270,8 @@ describe("buildPropertySummaryCardsData", () => {
       ],
       null
     );
-    expect(data.valueUf).toBe(1200);
-    expect(data.valueClp).toBe(45_000_000);
+    expect(data.valueLoan).toEqual({ value: 1200, currency: "uf" });
+    expect(data.valuePay).toEqual({ value: 45_000_000, currency: "clp" });
     expect(data.deposited).toBe(94_511_320);
     expect(data.depositedUnit).toBe("clp");
     expect(data.plYtd).toBe(350_000);

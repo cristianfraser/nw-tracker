@@ -5,20 +5,34 @@ import type {
   DashboardAccountRow,
   DeptoMortgageSheetRow,
   DeptoPaymentScenarioRow,
+  Money,
 } from "../../types";
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 
+function money(value: number | null | undefined, currency: string | null | undefined): Money | null {
+  return value != null && currency != null ? { value, currency } : null;
+}
+
+/**
+ * The cards' figures, each with the currency it is in. A figure read from the ledger is in its
+ * row's `loan_currency` or `payment_currency`; the fallbacks for a ledger still loading are the
+ * home currency (the summary's valuation and the dashboard row: callers pass them only in pesos).
+ */
 export type MortgageSummaryCardsData = {
-  balanceUf: number | null;
-  balanceClp: number | null;
-  lastPaymentClp: number | null;
+  /** The balance in the loan's currency. */
+  balanceLoan: Money | null;
+  /** The balance in the payment currency. */
+  balancePay: Money | null;
+  lastPayment: Money | null;
   lastPaymentDate: string | null;
-  nextPaymentClp: number | null;
+  nextPayment: Money | null;
   nextPaymentDate: string | null;
 };
 
 export type PropertySummaryCardsData = {
-  valueUf: number | null;
-  valueClp: number | null;
+  /** Net equity in the loan's currency and in the payment currency. */
+  valueLoan: Money | null;
+  valuePay: Money | null;
   /** Deposited, in `depositedUnit` (the account summary's unit). */
   deposited: number | null;
   depositedUnit: string;
@@ -38,7 +52,7 @@ export function latestLedgerSnapshotRow(
   rows: readonly DeptoMortgageSheetRow[]
 ): DeptoMortgageSheetRow | null {
   for (const row of sortRowsByOccurredDesc(rows)) {
-    if (row.credito_restante_uf != null || row.restante_clp != null) return row;
+    if (row.credito_restante_loan != null || row.restante_pay != null) return row;
   }
   return null;
 }
@@ -48,18 +62,18 @@ export function latestPropertyValueRow(
   rows: readonly DeptoMortgageSheetRow[]
 ): DeptoMortgageSheetRow | null {
   for (const row of sortRowsByOccurredDesc(rows)) {
-    if (row.valor_neto_uf != null || row.valor_neto_clp != null) return row;
+    if (row.valor_neto_loan != null || row.valor_neto_pay != null) return row;
   }
   return null;
 }
 
-/** Last dividend payment row (`pago_clp > 0`). */
+/** Last dividend payment row (`pago_pay > 0`). */
 export function lastMortgagePaymentRow(
   rows: readonly DeptoMortgageSheetRow[]
 ): DeptoMortgageSheetRow | null {
   let best: DeptoMortgageSheetRow | null = null;
   for (const row of rows) {
-    if (!(row.pago_clp > 0)) continue;
+    if (!(row.pago_pay > 0)) continue;
     if (best == null || row.occurred_on.localeCompare(best.occurred_on) > 0) best = row;
   }
   return best;
@@ -92,22 +106,21 @@ export function buildMortgageSummaryCardsData(
   const nextPayment = nextMortgagePaymentScenario(ledger.payment_scenarios);
   const latestPerf = latestMonthlyPerfRow(monthlyPerfRows);
 
-  const balanceUf =
-    snapshot?.credito_restante_uf ??
-    latestPerf?.closing_balance_uf ??
-    null;
-  const balanceClp =
-    snapshot?.restante_clp ??
-    summary.latest_valuation ??
-    accountDashRow?.current_value ??
-    null;
+  // The performance row's closing balance is the ledger's, in the loan's currency: shown once the
+  // ledger names that currency.
+  const balanceLoan =
+    money(snapshot?.credito_restante_loan, snapshot?.loan_currency) ??
+    money(latestPerf?.closing_balance_uf, ledger.meta?.loan_currency);
+  const balancePay =
+    money(snapshot?.restante_pay, snapshot?.payment_currency) ??
+    money(summary.latest_valuation ?? accountDashRow?.current_value, HOME_CURRENCY);
 
   return {
-    balanceUf,
-    balanceClp,
-    lastPaymentClp: lastPayment?.pago_clp ?? null,
+    balanceLoan,
+    balancePay,
+    lastPayment: money(lastPayment?.pago_pay, lastPayment?.payment_currency),
     lastPaymentDate: lastPayment?.occurred_on ?? null,
-    nextPaymentClp: nextPayment?.min_payment_clp ?? null,
+    nextPayment: money(nextPayment?.min_payment_pay, nextPayment?.payment_currency),
     nextPaymentDate: nextPayment?.occurred_on ?? null,
   };
 }
@@ -123,12 +136,10 @@ export function buildPropertySummaryCardsData(
   const latestPerf = latestMonthlyPerfRow(monthlyPerfRows);
 
   return {
-    valueUf: valueRow?.valor_neto_uf ?? null,
-    valueClp:
-      valueRow?.valor_neto_clp ??
-      summary.latest_valuation ??
-      accountDashRow?.current_value ??
-      null,
+    valueLoan: money(valueRow?.valor_neto_loan, valueRow?.loan_currency),
+    valuePay:
+      money(valueRow?.valor_neto_pay, valueRow?.payment_currency) ??
+      money(summary.latest_valuation ?? accountDashRow?.current_value, HOME_CURRENCY),
     deposited: summary.deposits,
     depositedUnit: summary.unit,
     plYtd: latestPerf?.ytd_nominal_pl ?? accountDashRow?.delta_year ?? null,

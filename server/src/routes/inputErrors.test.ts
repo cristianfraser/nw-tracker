@@ -307,7 +307,7 @@ describe("mortgage routes", () => {
   it("a body without its figures and an account that is no loan are 400s", async () => {
     const noBody = await call("POST", `/api/accounts/${UNKNOWN_ID}/mortgage-payments/preview`, {});
     expect(noBody).toMatchObject({ status: 400, json: { error: "occurred_on is required" } });
-    const body = { occurred_on: "2031-01-10", pago_clp: 500_000, interes_clp: 200_000, incendio_clp: 10_000 };
+    const body = { occurred_on: "2031-01-10", pago_pay: 500_000, interes_pay: 200_000, incendio_pay: 10_000 };
     for (const path of ["mortgage-payments/preview", "mortgage-payments"]) {
       const r = await call("POST", `/api/accounts/${UNKNOWN_ID}/${path}`, body);
       expect(r).toMatchObject({ status: 400, json: { error: "Account not found" } });

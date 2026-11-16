@@ -46,29 +46,47 @@ export interface AccountMonthlyPerformanceResponse {
   yearly: AccountMonthlyPerformanceRow[];
 }
 
+/**
+ * The mortgage payment form's capability. Its figures name their role as the ledger rows do
+ * (`DeptoMortgageSheetRow`): `_loan` in `loan_currency`, `_pay` in `payment_currency`.
+ */
 export interface MortgagePaymentCreateSchema {
   next_cuota: string;
-  default_incendio_clp: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  /** The currency the lender states the balance and the minimum / maximum payment in. */
+  loan_currency: string;
+  /** The currency the payment and its parts are typed in. */
+  payment_currency: string;
+  default_incendio_pay: number | null;
+}
+
+/** The body of `POST /api/accounts/:id/mortgage-payments` and its `/preview`. */
+export interface MortgagePaymentInputDto {
+  occurred_on: string;
+  pago_pay: number;
+  interes_pay: number;
+  incendio_pay: number;
+  desgravamen_pay?: number | null;
+  cuota?: string | null;
+  /** The lender's minimum and maximum payment, as its statement prints them. */
+  min_loan?: number | null;
+  max_loan?: number | null;
+  amortizacion_ext_pay?: number | null;
+  /** The balance after the payment as the lender states it. */
+  credito_restante_loan?: number | null;
 }
 
 export interface MortgagePaymentPreviewResponse {
   sheet: DeptoMortgageSheetRow;
-  input: {
-    occurred_on: string;
-    pago_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-    interes_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-    incendio_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-    desgravamen_clp?: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-    cuota?: string | null;
-    amortizacion_ext_clp?: number | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-    credito_restante_uf?: number | null;
-  };
-  desgravamen_default_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  input: MortgagePaymentInputDto;
+  loan_currency: string;
+  payment_currency: string;
+  desgravamen_default_pay: number;
   desgravamen_used_override: boolean;
-  credito_restante_derived_uf: number;
+  credito_restante_derived_loan: number;
   credito_restante_used_override: boolean;
-  property_net_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
-  mortgage_balance_clp: number; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  /** The property's net equity and the loan's balance after the payment. */
+  property_net_pay: number;
+  mortgage_balance_pay: number;
 }
 
 export interface MortgagePaymentCommitResponse {

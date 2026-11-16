@@ -1,34 +1,37 @@
-import { formatUfUnitsFine } from "../../format";
-import { formatMortgagePesos } from "../../formatNative";
+import { formatLoanFigure } from "../../formatLoan";
+import type { Money } from "../../types";
 import { cn } from "../../cn";
 import styles from "./ClpUfSuperscriptAmount.module.css";
 
 export type ClpUfSuperscriptAmountProps = {
-  clpClp: number | null | undefined;
-  ufAmount: number | null | undefined;
+  /** The amount in the payment currency (the main figure). */
+  pay: Money | null;
+  /** The same amount in the loan's currency (the superscript). */
+  loan: Money | null;
   className?: string;
 };
 
 /**
- * Renders CLP amount with UF equivalent in superscript (e.g. $1.xxx.xxx with small UF above).
+ * A loan figure in the payment currency with its amount in the loan's currency in superscript
+ * (a peso amount with the small UF figure above it).
  */
-export function ClpUfSuperscriptAmount({ clpClp, ufAmount, className }: ClpUfSuperscriptAmountProps) {
-  if (clpClp == null || !Number.isFinite(clpClp)) {
-    if (ufAmount != null && Number.isFinite(ufAmount)) {
+export function ClpUfSuperscriptAmount({ pay, loan, className }: ClpUfSuperscriptAmountProps) {
+  const loanText = loan != null && Number.isFinite(loan.value) ? formatLoanFigure(loan.value, loan.currency) : null;
+  if (pay == null || !Number.isFinite(pay.value)) {
+    if (loanText != null) {
       return (
         <span className={cn("mono", styles.root, className)}>
           <span className={styles.clpMuted}>—</span>
-          <sup className={styles.ufSup}>{formatUfUnitsFine(ufAmount)}</sup>
+          <sup className={styles.ufSup}>{loanText}</sup>
         </span>
       );
     }
     return <span className={cn("mono", styles.root, className)}>—</span>;
   }
-  const ufOk = ufAmount != null && Number.isFinite(ufAmount);
   return (
     <span className={cn("mono", styles.root, className)}>
-      <span className={styles.clp}>{formatMortgagePesos(clpClp)}</span>
-      {ufOk ? <sup className={styles.ufSup}>{formatUfUnitsFine(ufAmount)}</sup> : null}
+      <span className={styles.clp}>{formatLoanFigure(pay.value, pay.currency)}</span>
+      {loanText != null ? <sup className={styles.ufSup}>{loanText}</sup> : null}
     </span>
   );
 }

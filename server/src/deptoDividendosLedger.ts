@@ -1,3 +1,4 @@
+import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { db } from "./db.js";
 import { storedPairRate } from "./rates.js";
 
@@ -362,11 +363,20 @@ export type LoanPaymentRow = {
 /** The columns a payment row fills (everything but the movement, account, leg and origin). */
 export type LoanPaymentColumns = Omit<LoanPaymentRow, "movement_id" | "loan_account_id" | "leg" | "origin">;
 
+/**
+ * The one pair of currencies the depto ledger's in-memory rows hold (their `_uf` / `_clp` fields):
+ * the loan's own and the one its payments are charged in. `assertDeptoLoanPaymentCurrencies`
+ * refuses a `loan_payments` row of any other pair, and the API names them on every ledger payload
+ * (`mortgageLedgerDto.ts`), whose keys carry the role (`_loan` / `_pay`), not the currency.
+ */
+export const DEPTO_LOAN_CURRENCY: string = "uf";
+export const DEPTO_PAYMENT_CURRENCY: string = HOME_CURRENCY;
+
 /** Fail fast: the depto ledger's in-memory shape is a UF loan with its parts in pesos. */
 export function assertDeptoLoanPaymentCurrencies(
   row: Pick<LoanPaymentRow, "movement_id" | "loan_currency" | "payment_currency">
 ): void {
-  if (row.loan_currency !== "uf" || row.payment_currency !== "clp") { // convention-ok: a mortgage is stated in UF and paid in pesos (loan_payments)
+  if (row.loan_currency !== DEPTO_LOAN_CURRENCY || row.payment_currency !== DEPTO_PAYMENT_CURRENCY) {
     throw new Error(
       `loan_payments row ${row.movement_id}: the depto ledger reads a UF loan paid in pesos, got loan ${row.loan_currency} / payment ${row.payment_currency}`
     );
@@ -407,11 +417,11 @@ export function loanPaymentColumnsFromPaymentRow(r: DeptoDividendosPaymentRow): 
   const peso = (v: number | null | undefined) => (v != null ? Math.round(v) : null);
   return {
     cuota: r.cuota,
-    loan_currency: "uf",
+    loan_currency: DEPTO_LOAN_CURRENCY,
     balance_after: r.credito_restante_uf ?? null,
     min_payment: r.min_uf ?? null,
     max_payment: r.max_uf ?? null,
-    payment_currency: "clp",
+    payment_currency: DEPTO_PAYMENT_CURRENCY,
     principal: peso(r.amortizacion_clp),
     extra_principal: peso(r.amortizacion_ext_clp),
     interest: peso(r.interes_clp),

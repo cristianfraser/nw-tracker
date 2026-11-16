@@ -36,8 +36,9 @@ import type { NetWorthAthDto as S_NetWorthAthDto, NetWorthAthByPeriod as S_NetWo
 import type { PeriodReturnKey as S_PeriodReturnKey, PeriodReturnCell as S_PeriodReturnCell, PeriodReturnsPayload as S_PeriodReturnsPayload } from "../periodReturns.js";
 import type { BenchmarkComparisonCell as S_BenchmarkComparisonCell, BenchmarkComparisonPayload as S_BenchmarkComparisonPayload } from "../benchmarkComparison.js";
 import type { PrepaymentRow as S_PrepaymentRow, MortgagePrepaymentComparison as S_MortgagePrepaymentComparison } from "../mortgagePrepaymentComparison.js";
-import type { DeptoMortgageSheetRow as S_DeptoMortgageSheetRow, DeptoPaymentScenarioTerm as S_DeptoPaymentScenarioTerm, DeptoPaymentScenarioCell as S_DeptoPaymentScenarioCell, DeptoPaymentScenarioRow as S_DeptoPaymentScenarioRow } from "../deptoDividendosLedger.js";
-import type { MortgageCardLine as S_MortgageCardLine, MortgageCardMatchStatus as S_MortgageCardMatchStatus, MortgagePaymentCardMatch as S_MortgagePaymentCardMatch } from "../mortgagePaymentCardMatch.js";
+import type { DeptoPaymentScenarioTerm as S_DeptoPaymentScenarioTerm } from "../deptoDividendosLedger.js";
+import type { MortgageCardMatchStatus as S_MortgageCardMatchStatus } from "../mortgagePaymentCardMatch.js";
+import type { MortgageGroupLedgerResponse as S_MortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
 import type { DepositFlowCategory as S_DepositFlowCategory, FlowDepositUnitRow as S_FlowDepositRow, FlowDepositChartPoint as S_FlowDepositChartPoint } from "../flowsDeposits.js";
 import type { FlowsPlBucketSlug as S_FlowsPlBucketSlug, FlowsPlChartPoint as S_FlowsPlChartPoint, FlowsPlAccountRow as S_FlowsPlAccountRow, FlowsPlBucketBlock as S_FlowsPlBucketBlock } from "../flowsPl.js";
 import type { FlowsOverviewRow as S_FlowsOverviewRow, FlowsOverviewTotals as S_FlowsOverviewTotals, FlowsIncomeAggregates as S_FlowsIncomeAggregates } from "../flowsOverview.js";
@@ -160,13 +161,9 @@ export type ServerDtosFitContracts = [
   Fits<S_BenchmarkComparisonPayload, Dto.BenchmarkComparisonPayload>,
   Fits<S_PrepaymentRow, Dto.PrepaymentRow>,
   Fits<S_MortgagePrepaymentComparison, Dto.MortgagePrepaymentComparison>,
-  Fits<S_DeptoMortgageSheetRow, Dto.DeptoMortgageSheetRow>,
   Fits<S_DeptoPaymentScenarioTerm, Dto.DeptoPaymentScenarioTerm>,
-  Fits<S_DeptoPaymentScenarioCell, Dto.DeptoPaymentScenarioCell>,
-  Fits<S_DeptoPaymentScenarioRow, Dto.DeptoPaymentScenarioRow>,
-  Fits<S_MortgageCardLine, Dto.MortgageCardLine>,
   Fits<S_MortgageCardMatchStatus, Dto.MortgageCardMatchStatus>,
-  Fits<S_MortgagePaymentCardMatch, Dto.MortgagePaymentCardMatch>,
+  Fits<S_MortgageGroupLedgerResponse, Dto.AccountMortgageLedgerResponse>,
   Fits<S_DepositFlowCategory, Dto.DepositFlowCategory>,
   Fits<S_FlowDepositRow, Dto.FlowDepositRow>,
   Fits<S_FlowDepositChartPoint, Dto.FlowDepositChartPoint>,

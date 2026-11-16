@@ -465,12 +465,12 @@ export const api = {
       `/api/accounts/${id}/movements`,
       { method: "POST", body: JSON.stringify(body) }
     ),
-  previewMortgagePayment: (id: string | number, body: Record<string, unknown>) =>
+  previewMortgagePayment: (id: string | number, body: import("./types").MortgagePaymentInputDto) =>
     j<import("./types").MortgagePaymentPreviewResponse>(
       `/api/accounts/${id}/mortgage-payments/preview`,
       { method: "POST", body: JSON.stringify(body) }
     ),
-  commitMortgagePayment: (id: string | number, body: Record<string, unknown>) =>
+  commitMortgagePayment: (id: string | number, body: import("./types").MortgagePaymentInputDto) =>
     j<import("./types").MortgagePaymentCommitResponse>(`/api/accounts/${id}/mortgage-payments`, {
       method: "POST",
       body: JSON.stringify(body),

@@ -1,51 +1,23 @@
-import {
-  isDeptoMortgagePaymentCuota,
-  mortgageMetaFromSheetRows,
-} from "./deptoDividendosLedger.js";
+import { isDeptoMortgagePaymentCuota } from "./deptoDividendosLedger.js";
 import { deptoLedgerForLoan } from "./deptoLedgerFromMovements.js";
-import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
-import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
-import { nextCuotaQuoteForLoan } from "./mortgageLenderQuotes.js";
-import { mortgageCardMatches, type MortgageCardLine, type MortgagePaymentCardMatch } from "./mortgagePaymentCardMatch.js";
+import { emptyMortgageLedgerDto, mortgageLedgerDto, type AccountMortgageLedgerResponse } from "./mortgageLedgerDto.js";
 
-export type MortgageGroupLedgerResponse = {
-  account_id: number;
-  has_sheet_rows: boolean;
-  meta: ReturnType<typeof mortgageMetaFromSheetRows> | null;
-  rows: DeptoMortgageSheetRow[];
-  payment_scenarios?: ReturnType<typeof buildDeptoPaymentScenarioRows>;
-  /** Each regular cuota paired with the card line that paid it (`mortgagePaymentCardMatch.ts`). */
-  card_matches: MortgagePaymentCardMatch[];
-  /** Mortgage card lines no cuota in the ledger claims (the sheet row is not posted yet). */
-  card_lines_without_payment: MortgageCardLine[];
-};
+/** `GET /api/portfolio-groups/:slug/mortgage-ledger`: the shared ledger payload (`mortgageLedgerDto.ts`). */
+export type MortgageGroupLedgerResponse = AccountMortgageLedgerResponse;
 
 function emptyMortgageGroupLedger(): MortgageGroupLedgerResponse {
-  return {
-    account_id: 0,
-    has_sheet_rows: false,
-    meta: null,
-    rows: [],
-    payment_scenarios: [],
-    card_matches: [],
-    card_lines_without_payment: [],
-  };
+  return { ...emptyMortgageLedgerDto(0), payment_scenarios: [] };
 }
 
 function mortgageLedgerForOperationalAccount(operationalId: number): MortgageGroupLedgerResponse {
   const sheetRowsAll = deptoLedgerForLoan(operationalId);
-  const sheetRows = sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota));
-  const matches = mortgageCardMatches(operationalId);
-  return {
-    account_id: operationalId,
-    has_sheet_rows: sheetRowsAll.length > 0,
-    meta: sheetRowsAll.length > 0 ? mortgageMetaFromSheetRows(sheetRowsAll) : null,
-    rows: sheetRows,
-    payment_scenarios: buildDeptoPaymentScenarioRows(sheetRowsAll, nextCuotaQuoteForLoan(operationalId, sheetRowsAll)),
-    card_matches: matches.payments,
-    card_lines_without_payment: matches.unmatched_lines,
-  };
+  return mortgageLedgerDto({
+    accountId: operationalId,
+    ledger: sheetRowsAll,
+    rows: sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota)),
+    loanAccountId: operationalId,
+  });
 }
 
 /**

@@ -13,13 +13,10 @@ import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { withPurchaseExpenseLinks } from "./ccPurchaseExpenseLinks.js";
 import {
   isDeptoMortgagePaymentCuota,
-  mortgageMetaFromSheetRows,
 } from "./deptoDividendosLedger.js";
-import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
-import { nextCuotaQuoteForLoan } from "./mortgageLenderQuotes.js";
+import { emptyMortgageLedgerDto, mortgageLedgerDto, type AccountMortgageLedgerResponse } from "./mortgageLedgerDto.js";
 import { bookLedgerEditSchemaForAccount } from "./accountBookLedgerEdit.js";
 import { mortgagePaymentCreateSchemaForAccount } from "./mortgagePaymentCreate.js";
-import { mortgageCardMatches } from "./mortgagePaymentCardMatch.js";
 import { accountRowForId } from "./accountRowForMovement.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
@@ -188,15 +185,7 @@ export async function buildAccountDetailBundle(
     state_contribution_events: stateInUnit.rows,
   };
 
-  let mortgageLedger: {
-    account_id: number;
-    has_sheet_rows: boolean;
-    meta: unknown;
-    rows: unknown[];
-    payment_scenarios?: unknown[];
-    card_matches: unknown[];
-    card_lines_without_payment: unknown[];
-  } = { account_id: accountId, has_sheet_rows: false, meta: null, rows: [], card_matches: [], card_lines_without_payment: [] };
+  let mortgageLedger: AccountMortgageLedgerResponse = emptyMortgageLedgerDto(accountId);
   if (
     category_slug === "property" ||
     category_slug === "real_estate" ||
@@ -205,22 +194,16 @@ export async function buildAccountDetailBundle(
     // The account's own property ledger (a property's, or its loan's property's); the card
     // pairing is the loan's.
     const sheetRowsAll = deptoLedgerForAccount(accountId);
-    const sheetRows =
-      category_slug === "mortgage"
-        ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
-        : sheetRowsAll;
     const propertyId = deptoPropertyIdOfAccount(accountId);
-    const loanId = propertyId != null ? loanAccountIdOfProperty(propertyId) : null;
-    const matches = loanId != null ? mortgageCardMatches(loanId) : { payments: [], unmatched_lines: [] };
-    mortgageLedger = {
-      account_id: accountId,
-      has_sheet_rows: sheetRowsAll.length > 0,
-      meta: sheetRowsAll.length > 0 ? mortgageMetaFromSheetRows(sheetRowsAll) : null,
-      rows: sheetRows,
-      payment_scenarios: buildDeptoPaymentScenarioRows(sheetRowsAll, loanId != null ? nextCuotaQuoteForLoan(loanId, sheetRowsAll) : null),
-      card_matches: matches.payments,
-      card_lines_without_payment: matches.unmatched_lines,
-    };
+    mortgageLedger = mortgageLedgerDto({
+      accountId,
+      ledger: sheetRowsAll,
+      rows:
+        category_slug === "mortgage"
+          ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
+          : sheetRowsAll,
+      loanAccountId: propertyId != null ? loanAccountIdOfProperty(propertyId) : null,
+    });
   }
 
   let ccLedger: Awaited<ReturnType<typeof creditCardInstallmentsResponse>> = {

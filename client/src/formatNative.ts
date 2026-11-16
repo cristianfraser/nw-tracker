@@ -24,9 +24,6 @@ export const formatChileTaxPesos = (n: number): string => formatClp(n); // conve
 /** A card's billing frame: statement facturado, cuotas, cupo, the facturación and month modals. */
 export const formatCardBillingPesos = (n: number): string => formatClp(n); // convention-ok: the card's billing frame is kept in pesos
 
-/** A mortgage cuota and its parts as the lender bills them. */
-export const formatMortgagePesos = (n: number): string => formatClp(n); // convention-ok: a mortgage cuota is billed in pesos
-
 /** The UF of a day in pesos (UF día). */
 export const formatUfDayPesos = (n: number | null | undefined): string => formatClpUfDay(n); // convention-ok: the UF's value in pesos
 

@@ -5,6 +5,7 @@ import {
   parseMortgagePaymentBody,
   previewMortgagePayment,
 } from "../mortgagePaymentCreate.js";
+import { mortgageLedgerRowDto } from "../mortgageLedgerDto.js";
 import { buildMortgageUfReminder } from "../mortgageUfReminder.js";
 import { writeHandler } from "../inputError.js";
 import { accountIdFromReq } from "./shared.js";
@@ -28,7 +29,8 @@ app.post("/api/accounts/:id/mortgage-payments/preview", writeHandler((req, res) 
 app.post("/api/accounts/:id/mortgage-payments", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   const input = parseMortgagePaymentBody((req.body ?? {}) as Record<string, unknown>);
-  res.status(201).json(commitMortgagePayment(id, input));
+  const committed = commitMortgagePayment(id, input);
+  res.status(201).json({ ...committed, sheet_row: mortgageLedgerRowDto(committed.sheet_row) });
 }));
 
 /** Tarjeta de crédito: cupos desde SQLite (`cc_installment_*` o estados PDF); sin lectura runtime del CSV. */
