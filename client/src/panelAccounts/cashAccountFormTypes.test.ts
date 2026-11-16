@@ -5,6 +5,7 @@ import {
   buildCashMovementPostBody,
   cashFlowKindsFor,
   cashFormAllowsTransferCounterpart,
+  cashFormCounterpartCurrency,
   cashFormRowFields,
 } from "./cashAccountFormTypes";
 import { emptyMovementRow } from "./stockAccountFormTypes";
@@ -98,5 +99,18 @@ describe("the cash movements form, by the account's currency", () => {
 
   it("builds nothing without a date", () => {
     expect(buildCashMovementPostBody(emptyMovementRow("deposit"), "eur")).toBeNull();
+  });
+
+  it("names the currency the other account of a row must hold", () => {
+    // A conversion's source account holds the pesos spent, whatever the form's currency.
+    expect(cashFormCounterpartCurrency("fx_exchange", "usd")).toBe("clp");
+    expect(cashFormCounterpartCurrency("fx_exchange", "eur")).toBe("clp");
+    // A peso transfer is one row in one currency: the other account holds pesos too.
+    expect(cashFormCounterpartCurrency("deposit", "clp")).toBe("clp");
+    expect(cashFormCounterpartCurrency("withdrawal", "clp")).toBe("clp");
+    // A dividend's counterpart is the paying stock, and the other kinds name no account.
+    expect(cashFormCounterpartCurrency("dividend_payout", "usd")).toBeNull();
+    expect(cashFormCounterpartCurrency("deposit", "eur")).toBeNull();
+    expect(cashFormCounterpartCurrency("savings_earnings", "clp")).toBeNull();
   });
 });

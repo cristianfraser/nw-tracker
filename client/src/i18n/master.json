@@ -517,6 +517,10 @@
         "en": "Source",
         "es": "Fuente"
       },
+      "gapsSourceMidInferred": {
+        "en": "Estimated from the mid rate",
+        "es": "Estimado desde el tipo medio"
+      },
       "gapsInvalidValues": {
         "en": "Buy and sell must be positive numbers.",
         "es": "Compra y venta deben ser números positivos."
@@ -1597,13 +1601,17 @@
         "en": "{{currency}} amount",
         "es": "Monto {{currency}}"
       },
-      "amountInCashAccountCurrency": {
-        "en": "Amount (the cash account's currency)",
-        "es": "Monto (moneda de la cuenta de caja)"
+      "amount": {
+        "en": "Amount",
+        "es": "Monto"
       },
-      "unitsDelta": {
-        "en": "Shares (units_delta)",
-        "es": "Acciones (units_delta)"
+      "sharesCount": {
+        "en": "Shares",
+        "es": "Acciones"
+      },
+      "contractsCount": {
+        "en": "Contracts",
+        "es": "Contratos"
       },
       "addMovement": {
         "en": "Add movement",
@@ -2340,8 +2348,8 @@
         "es": "Añadir movimientos"
       },
       "hint": {
-        "en": "Optional: destination/source account for single-row transfers.",
-        "es": "Opcional: cuenta destino/origen para traspasos en una sola fila."
+        "en": "A trade, a dividend or a premium settles against a cash account; its amount is in that account's currency.",
+        "es": "Una compra, una venta, un dividendo o una prima se liquida contra una cuenta de caja; su monto va en la moneda de esa cuenta."
       },
       "emptyDraft": {
         "en": "No drafts. Use the buttons to add rows, then save.",
@@ -2370,8 +2378,12 @@
         "es": "El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). En una cuenta en pesos, un depósito o retiro puede indicar la otra cuenta para registrar el traspaso en una sola fila."
       },
       "emptyDraft": {
-        "en": "No drafts. Add deposits, withdrawals, interest or conversions.",
-        "es": "Sin borradores. Añade depósitos, retiros, interés o conversiones."
+        "en": "No drafts. Add a row of one of these types: {{kinds}}.",
+        "es": "Sin borradores. Añade una fila de uno de estos tipos: {{kinds}}."
+      },
+      "rowIncomplete": {
+        "en": "Every row needs a date, and a row that names another account needs its amount.",
+        "es": "Cada fila necesita fecha, y una fila que indica otra cuenta necesita su monto."
       },
       "saveBtn": {
         "en": "Save movements",

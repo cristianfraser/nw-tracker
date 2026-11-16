@@ -175,6 +175,7 @@
       "gapsEmpty": "No dates pending review for US$ buy/sell.",
       "gapsColMid": "Mid (Yahoo)",
       "gapsColSource": "Source",
+      "gapsSourceMidInferred": "Estimated from the mid rate",
       "gapsInvalidValues": "Buy and sell must be positive numbers.",
       "gapsBuySellOrder": "Buy must be ≥ sell (more CLP per US$ when buying)."
     }
@@ -508,8 +509,9 @@
       "movementType": "Type",
       "amountClp": "CLP amount",
       "amountInCurrency": "{{currency}} amount",
-      "amountInCashAccountCurrency": "Amount (the cash account's currency)",
-      "unitsDelta": "Shares (units_delta)",
+      "amount": "Amount",
+      "sharesCount": "Shares",
+      "contractsCount": "Contracts",
       "addMovement": "Add movement",
       "removeMovement": "Remove",
       "createBtn": "Create account",
@@ -725,7 +727,7 @@
     },
     "brokerageMovements": {
       "title": "Add movements",
-      "hint": "Optional: destination/source account for single-row transfers.",
+      "hint": "A trade, a dividend or a premium settles against a cash account; its amount is in that account's currency.",
       "emptyDraft": "No drafts. Use the buttons to add rows, then save.",
       "saveBtn": "Save movements",
       "saveSuccess": "{{count}} movement(s) saved.",
@@ -734,7 +736,8 @@
     "cashMovements": {
       "title": "Add movements",
       "hint": "Interest raises the balance but does not count as your own contribution (it is a return). On a peso account, a deposit or withdrawal may name the other account to record the transfer in a single row.",
-      "emptyDraft": "No drafts. Add deposits, withdrawals, interest or conversions.",
+      "emptyDraft": "No drafts. Add a row of one of these types: {{kinds}}.",
+      "rowIncomplete": "Every row needs a date, and a row that names another account needs its amount.",
       "saveBtn": "Save movements",
       "saved": "{{count}} movement(s) saved."
     },

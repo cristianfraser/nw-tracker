@@ -28,6 +28,11 @@ type Props = {
    * premium settles against); each option names the currency the account holds.
    */
   cashLedgerOnly?: boolean;
+  /**
+   * Limit options to money ledgers whose own movements are in this currency (the accounts list's
+   * `ledger_currency`: checking and cash ledgers); each option names its currency.
+   */
+  ledgerCurrency?: string;
 };
 
 export function CounterpartAccountSelect({
@@ -38,6 +43,7 @@ export function CounterpartAccountSelect({
   cashAndCheckingOnly,
   equityBrokerageOnly,
   cashLedgerOnly,
+  ledgerCurrency,
 }: Props) {
   const { data } = useAccountsAll();
   const accounts = (data?.accounts ?? []).filter((a) => {
@@ -48,8 +54,12 @@ export function CounterpartAccountSelect({
     }
     if (equityBrokerageOnly && !a.bucket_slug?.startsWith("brokerage_acciones")) return false;
     if (cashLedgerOnly && a.cash_currency == null) return false;
+    if (ledgerCurrency != null && a.ledger_currency !== ledgerCurrency) return false;
     return true;
   });
+  // The currency named beside an option: the one the filter in force reads.
+  const optionCurrency = (a: (typeof accounts)[number]): string | null =>
+    ledgerCurrency != null ? (a.ledger_currency ?? null) : cashLedgerOnly ? (a.cash_currency ?? null) : null;
 
   return (
     <label style={{ display: "block" }}>
@@ -62,11 +72,14 @@ export function CounterpartAccountSelect({
         }}
       >
         <option value="">—</option>
-        {accounts.map((a) => (
-          <option key={a.id} value={a.id}>
-            {cashLedgerOnly && a.cash_currency != null ? `${a.name} · ${a.cash_currency.toUpperCase()}` : a.name} (#{a.id})
-          </option>
-        ))}
+        {accounts.map((a) => {
+          const currency = optionCurrency(a);
+          return (
+            <option key={a.id} value={a.id}>
+              {currency != null ? `${a.name} · ${currency.toUpperCase()}` : a.name} (#{a.id})
+            </option>
+          );
+        })}
       </select>
     </label>
   );

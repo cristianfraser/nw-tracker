@@ -6,16 +6,22 @@ import {
   brokerageFlowKindCounterpartIsEquity,
   brokerageFlowKindShowsCounterpart,
   brokerageFlowKindShowsUnits,
+  isOptionFlowKind,
   type BrokerageFlowKind,
   type BrokerageFormContext,
 } from "../../panelAccounts/brokerageFlowKinds";
 
 /** The currency a cash ledger form's account holds: a code of `/api/currencies` (the server's `movement_create.cash_currency`). */
 export type CashFormCurrency = string;
-import { cashFormAllowsTransferCounterpart, cashFormRowFields } from "../../panelAccounts/cashAccountFormTypes";
+import {
+  cashFormAllowsTransferCounterpart,
+  cashFormCounterpartCurrency,
+  cashFormRowFields,
+} from "../../panelAccounts/cashAccountFormTypes";
 import {
   appendMovementRow,
   cashCurrencyByAccountId,
+  defaultMovementRowKind,
   draftSettlementCurrency,
   removeMovementRow,
   stockFormKindSettlesInCash,
@@ -118,7 +124,7 @@ export function BrokerageMovementRowFields({
           label={
             cashFieldCurrency != null
               ? t("panelAccounts.addAccount.amountInCurrency", { currency: cashFieldCurrency.toUpperCase() })
-              : t("panelAccounts.addAccount.amountInCashAccountCurrency")
+              : t("panelAccounts.addAccount.amount")
           }
         >
           <Input
@@ -131,7 +137,13 @@ export function BrokerageMovementRowFields({
         </Field>
       ) : null}
       {showUnits ? (
-        <Field label={t("panelAccounts.addAccount.unitsDelta")}>
+        <Field
+          label={
+            isOptionFlowKind(row.flowKind)
+              ? t("panelAccounts.addAccount.contractsCount")
+              : t("panelAccounts.addAccount.sharesCount")
+          }
+        >
           <Input
             type="text"
             inputMode="decimal"
@@ -158,8 +170,8 @@ export function BrokerageMovementRowFields({
             value={row.counterpartAccountId}
             excludeAccountId={currentAccountId}
             equityBrokerageOnly={counterpartIsEquity}
-            cashAndCheckingOnly={
-              brokerageFlowKindCounterpartIsCash(row.flowKind) || clpTransferCounterpart
+            ledgerCurrency={
+              cashCurrency != null ? (cashFormCounterpartCurrency(row.flowKind, cashCurrency) ?? undefined) : undefined
             }
             cashLedgerOnly={settlesInCash}
             onChange={(counterpartAccountId) => onChange({ ...row, counterpartAccountId })}
@@ -219,8 +231,10 @@ export function BrokerageMovementsSection({
         : null
       : hintKey;
 
+  const offeredKinds = flowKinds ?? BROKERAGE_FLOW_KINDS;
+
   function addMovement() {
-    onChange(appendMovementRow(movements));
+    onChange(appendMovementRow(movements, defaultMovementRowKind(offeredKinds)));
   }
 
   return (
@@ -236,7 +250,8 @@ export function BrokerageMovementsSection({
 
       {movements.length === 0 ? (
         <p className="muted" style={{ fontSize: "var(--font-size-prose)" }}>
-          {t(emptyTextKey)}
+          {/* The copy may list the kinds this form offers (`{{kinds}}`), as the type menu names them. */}
+          {t(emptyTextKey, { kinds: offeredKinds.map((k) => t(`panelAccounts.flowKinds.${k}`)).join(", ") })}
         </p>
       ) : (
         movements.map((row) => (

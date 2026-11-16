@@ -618,7 +618,6 @@ export function StandardAccountDetailPage({ data }: Props) {
           ) : showBrokerageMovementsForm ? (
             <AccountBrokerageMovementsForm
               accountId={summary.account_id}
-              quoteCurrency={summary.equity_quote_currency ?? null}
               displayUnit={displayUnit}
               flowKinds={isOptionContract ? OPTION_CONTRACT_FLOW_KINDS : undefined}
             />
