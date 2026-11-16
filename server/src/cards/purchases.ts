@@ -948,9 +948,13 @@ export type OpenCycleCuotaPurchaseLine = {
   merchant: string | null;
   transaction_date: string | null;
   posting_date: string | null;
-  amount_clp: number | null;
+  /** The line's amount in its own currency. */
+  amount: number | null;
+  currency: string;
   cuota_purchase_kind: CcCuotaPurchaseKind;
   source_pdf: string;
+  /** The bucket statement's date (its debt frame is read by it). */
+  statement_date: string;
 };
 
 /**
@@ -960,8 +964,8 @@ export type OpenCycleCuotaPurchaseLine = {
 export function openCycleCuotaPurchaseLines(accountId: number): OpenCycleCuotaPurchaseLine[] {
   const rows = db
     .prepare(
-      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, ${lineAmountClpSql("l")} AS amount_clp, l.cuota_purchase_kind,
-              s.source_pdf
+      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.amount, l.currency, l.cuota_purchase_kind,
+              s.source_pdf, s.statement_date
        FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? AND s.source_kind = 'listing_open'
          AND l.cuota_purchase_kind IS NOT NULL

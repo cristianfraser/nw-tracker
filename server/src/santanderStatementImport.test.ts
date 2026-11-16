@@ -77,6 +77,7 @@ describe("santanderStatementImport", () => {
 
   const CTX = {
     statementDate: "20/09/2026",
+    mainCurrency: "clp",
     cardGroup: "vitest-json",
     periodFrom: "20/08/2026",
     payBy: "10/10/2026",

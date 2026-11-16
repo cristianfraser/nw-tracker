@@ -117,7 +117,7 @@ export function planCupoGap(
 
   const unlisted = planFeedMirror(accountId, { windowStartIso: owed.close_iso, currencies: new Set([currency]), feedLines: opts.feedLines });
   const matching = unlisted.filter((l) => {
-    const amt = currency === "usd" ? l.amount_usd : l.amount_clp; // convention-ok: a listing bucket line carries the legacy peso/dollar view (cards/lineAmountSql.ts)
+    const amt = l.amount;
     return amt != null && coin(amt, currency) === coin(delta, currency);
   });
   report.candidates = matching.length;

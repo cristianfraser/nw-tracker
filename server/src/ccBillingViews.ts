@@ -32,7 +32,7 @@ import { feedBillingCloseForMonth, type CcCloseSource } from "./cards/facturacio
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { parseOpenWebPasteBillingMonth } from "./cards/openWebPasteSource.js";
-import { linesOfStatement, openCycleCuotaPurchaseLines } from "./cards/purchases.js";
+import { linesOfStatement, openCycleCuotaPurchaseLines, type OpenCycleCuotaPurchaseLine } from "./cards/purchases.js";
 import { isCardPaymentLine } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -447,7 +447,7 @@ export type CcPendingCuotaPurchase = {
   merchant: string | null;
   /** Purchase date (ISO) — installment debt from this day, like a plan's contract. */
   purchase_date: string;
-  /** Full principal in the card's billing currency, what the feed listed. */
+  /** Full principal in the card's billing currency: what the feed listed, a foreign principal in its bucket's debt frame. */
   amount: number;
   kind: CcCuotaPurchaseKind;
   /** The open-bucket facturación the line sits in (`YYYY-MM`). */
@@ -474,12 +474,29 @@ export function pendingCuotaPurchaseLines(accountId: number): CcPendingCuotaPurc
       statement_line_id: r.id,
       merchant: r.merchant,
       purchase_date: purchaseDate,
-      amount: Math.abs(r.amount_clp ?? 0),
+      amount: pendingCuotaPrincipalClp(accountId, r),
       kind: r.cuota_purchase_kind,
       billing_month: bm,
     });
   }
   return out;
+}
+
+/**
+ * The pesos of a pending cuota purchase's principal: a peso line's amount as listed, a line in any
+ * other currency in the debt frame of its bucket (`debtFrameClp`, which throws when no rate is on
+ * file — the cupo figures would otherwise carry the purchase as 0).
+ */
+function pendingCuotaPrincipalClp(accountId: number, r: OpenCycleCuotaPurchaseLine): number {
+  if (r.amount == null) throw new Error(`Cuota purchase line ${r.id} has no amount`);
+  if (isHomeCurrency(r.currency)) return Math.abs(r.amount);
+  return debtFrameClp(
+    Math.abs(r.amount),
+    r.currency,
+    balanceUsdFxDateIso(accountId, r.statement_date),
+    REAL_DEBT_FRAME_RATES,
+    `Account ${accountId} cuota purchase line ${r.id}`
+  );
 }
 
 /** Σ CLP of {@link pendingCuotaPurchaseLines} per open-bucket month. */

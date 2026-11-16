@@ -37,6 +37,7 @@ import { findPlanForOneShotLine } from "./cards/purchases.js";
 import { carryPlanPrepaymentLines } from "./ccPlanPrepayments.js";
 import { planPrepaymentRows } from "./ccPlanPrepaymentsRead.js";
 import { listingLineCurrency } from "./ccFeedCuotaPurchases.js";
+import { isHomeCurrency } from "./displayUnits.js";
 import { sameCoin } from "./matching/money.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
@@ -72,7 +73,7 @@ export type CcOpenWebPastePdfReconcileResult = {
    * Bucket currencies settled: every line once the month is fully closed, else only the lines in
    * a currency whose statement is in (one twin arriving before the other).
    */
-  currencies: ("clp" | "usd")[]; // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
+  currencies: string[];
   deleted_count: number;
   deleted_line_ids: number[];
   /** Earliest purchase date among the deleted lines — evidence the owed walk must re-read from. */
@@ -165,9 +166,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
     statementSlotsByBillingMonth(accountId).get(billingMonth),
     requiredStatementCurrenciesForAccount(accountId)
   );
-  const statementCurrencies = new Set<"clp" | "usd">( // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
-    pdfStatements.map((st) => (st.currency === "usd" ? "usd" : "clp")) // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
-  );
+  const statementCurrencies = new Set<string>(pdfStatements.map((st) => st.currency));
   const settles = (line: CcStatementLineRow): boolean =>
     fullyClosed || statementCurrencies.has(bucketLineCurrency(line));
 
@@ -258,8 +257,8 @@ export function reconcileOpenWebPasteAfterPdfClose(
     .map((s) => ({
       id: s.line.id,
       merchant: s.line.merchant,
-      amount_clp: s.line.amount_clp,
-      amount_usd: s.line.amount_usd,
+      // The line's own amount; a line in another currency than its statement's bills nothing there.
+      amount: s.line.currency === s.currency ? s.line.amount : null,
       iso: linePurchaseIso(s.line),
       currency: s.currency,
     }));
@@ -270,14 +269,14 @@ export function reconcileOpenWebPasteAfterPdfClose(
     if (
       isBucket &&
       bucketLineAnnullable(line) &&
-      !findPlanForOneShotLine(
-        accountId,
-        line.merchant,
-        purchaseIso,
-        Math.abs(Math.trunc((bucketLineCurrency(line) === "usd" ? 0 : line.amount_clp) ?? 0)) // convention-ok: a cuota plan is in pesos, so a dollar bucket line looks for none
+      // A cuota plan is a peso contract (`cc_installment_purchases.total_amount_clp`): only a peso line can be one's purchase.
+      !(
+        isHomeCurrency(line.currency) &&
+        line.amount != null &&
+        findPlanForOneShotLine(accountId, line.merchant, purchaseIso, Math.abs(Math.trunc(line.amount)))
       ) &&
       !statementRestatesBucketLine(
-        { id: line.id, merchant: line.merchant, currency: line.currency, amount_clp: line.amount_clp, amount_usd: line.amount_usd, iso: purchaseIso },
+        { id: line.id, merchant: line.merchant, currency: line.currency, amount: line.amount, iso: purchaseIso },
         matchable
       )
     ) {
@@ -337,10 +336,11 @@ export function reconcileOpenWebPasteAfterPdfClose(
   };
 }
 
-type StatementLineForMatching = { line: CcStatementLineRow; currency: "clp" | "usd" }; // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
+/** A statement line with the currency of the statement it sits on. */
+type StatementLineForMatching = { line: CcStatementLineRow; currency: string };
 
-/** A bucket line's currency: the one it stores (a line in a currency the listings do not carry throws). */
-function bucketLineCurrency(line: CcStatementLineRow): "clp" | "usd" { // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
+/** A bucket line's currency: the one it stores. */
+function bucketLineCurrency(line: CcStatementLineRow): string {
   return listingLineCurrency(line);
 }
 
@@ -351,7 +351,7 @@ function statementLinesForMatching(
   for (const st of pdfStatements) {
     for (const line of listCcStatementLinesForStatement(st.id)) {
       if (line.installment_flag) continue;
-      out.push({ line, currency: st.currency === "usd" ? "usd" : "clp" }); // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
+      out.push({ line, currency: st.currency });
     }
   }
   return out;
@@ -372,8 +372,10 @@ export function webPasteLineMatchesStatementLine(
   if (web.installment_flag || stmt.line.installment_flag) return false;
   const currency = bucketLineCurrency(web);
   if (currency !== stmt.currency) return false;
-  const a = currency === "usd" ? web.amount_usd : web.amount_clp; // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
-  const b = currency === "usd" ? stmt.line.amount_usd : stmt.line.amount_clp; // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
+  // Each line's own amount; a statement line in another currency than its statement's is not that purchase.
+  if (stmt.line.currency !== currency) return false;
+  const a = web.amount;
+  const b = stmt.line.amount;
   if (a == null || b == null || a === 0 || !sameCoin(a, b, currency)) return false;
   const wd = linePurchaseIso(web);
   const sd = linePurchaseIso(stmt.line);

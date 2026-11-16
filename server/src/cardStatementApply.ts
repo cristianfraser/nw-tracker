@@ -124,6 +124,7 @@ function reviewStatement(accountId: number, statementDate: string, payload: Card
   const ctx = inheritedStatementCtx(accountId, statement.currency, statementDate);
   const write = buildSantanderStatement(statement.currency, statement.lines, statement, {
     accountId,
+    mainCurrency: cardPrimaryStatementCurrency(accountId),
     statementDate,
     cardGroup: ctx.cardGroup,
     periodFrom: ctx.periodFrom,

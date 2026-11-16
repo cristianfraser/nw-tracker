@@ -39,6 +39,7 @@ describe("canonical card line, per source", () => {
       const statement = buildSantanderStatement(c.currency, [c.line], null, {
         accountId: 0,
         statementDate: "20/09/2026",
+        mainCurrency: "clp",
         cardGroup: "vitest",
         periodFrom: "20/08/2026",
         payBy: null,

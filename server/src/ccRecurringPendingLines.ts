@@ -17,8 +17,7 @@ import { parseDdMmYyToIso, dayWithinWindow } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { pairOneToOne } from "./matching/pairing.js";
 import { sameCoin } from "./matching/money.js";
-import { HOME_CURRENCY } from "./displayUnits.js";
-import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
+import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 
 export type RecurringPendingReplacement = { pending_line_id: number; posted_line_id: number; entry: string; amount_clp: number; pending_on: string };
 
@@ -32,7 +31,7 @@ export type RecurringPendingResult = {
 /** The pairs, and the card-line funnel's plan: each pending line, its assignments carried to the posted one. */
 export type RecurringPendingPlan = { result: RecurringPendingResult; plan: CardLinePlan };
 
-type CardLine = { id: number; merchant: string | null; amount_clp: number | null; amount_usd: number | null; transaction_date: string | null; bucket: number };
+type CardLine = { id: number; merchant: string | null; amount: number | null; currency: string; transaction_date: string | null; bucket: number };
 
 /** A peso card line as the pending-listing rule reads it. */
 export type RecurringPendingLine = { id: number; merchant: string | null; amount_clp: number; iso: string; bucket: number };
@@ -79,15 +78,16 @@ export function planRecurringPendingReplacement(accountId: number): RecurringPen
   const lines = (
     db
       .prepare(
-        `SELECT l.id, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd, l.transaction_date,
+        `SELECT l.id, l.merchant, l.amount, l.currency, l.transaction_date,
                 CASE WHEN s.source_kind IN ('listing_open', 'listing_other') THEN 1 ELSE 0 END AS bucket
          FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id = ?`
       )
       .all(accountId) as CardLine[]
   )
-    .filter((l) => !l.amount_usd && (l.amount_clp ?? 0) > 0)
-    .map((l) => ({ ...l, amount_clp: l.amount_clp!, iso: parseDdMmYyToIso(String(l.transaction_date ?? "")) }))
+    // A UF-priced declared payment posts in pesos: only the card's peso charges can be one.
+    .filter((l): l is CardLine & { amount: number } => isHomeCurrency(l.currency) && l.amount != null && l.amount > 0)
+    .map((l) => ({ id: l.id, merchant: l.merchant, bucket: l.bucket, amount_clp: l.amount, iso: parseDdMmYyToIso(String(l.transaction_date ?? "")) }))
     .filter((l): l is typeof l & { iso: string } => l.iso != null);
   if (lines.length === 0) return none();
   const uf = ufProjector();

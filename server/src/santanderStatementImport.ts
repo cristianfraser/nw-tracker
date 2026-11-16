@@ -46,7 +46,7 @@ import {
   type CardCanonicalLine,
   type CardCanonicalStatement,
 } from "nw-tracker-contracts";
-import { cardPrimaryStatementCurrency, requireCardCurrency } from "./cards/cardCurrencies.js";
+import { requireCardCurrency } from "./cards/cardCurrencies.js";
 import { currencyMinorDigits } from "./displayUnits.js";
 import { legacyAmountColumn } from "./cards/statementStorage.js";
 
@@ -89,6 +89,8 @@ export function resolveJsonCuotaCanonicalRowId(
 
 export type SantanderStatementRecordsCtx = {
   accountId: number;
+  /** The currency of the card's main statement (`cardPrimaryStatementCurrency`): the side that states the header and the cuotas. */
+  mainCurrency: string;
   /** Statement close, zero-padded dd/mm/yyyy (the national FechaFactActual; international
    * statements take it from the national twin — that RESPUESTA carries no dates). */
   statementDate: string;
@@ -118,7 +120,7 @@ export function buildSantanderStatement(
   totals: Pick<CardStatementCurrency, "billed_total" | "payments_total"> | null,
   ctx: SantanderStatementRecordsCtx
 ): CardCanonicalStatement {
-  const main = currency === cardPrimaryStatementCurrency(ctx.accountId);
+  const main = currency === ctx.mainCurrency;
   const digits = currencyMinorDigits(currency);
   const paymentRows = main ? lines.filter((l) => l.kind === "payment") : [];
   const nonPaymentRows = lines.filter((l) => !paymentRows.includes(l));
