@@ -16,11 +16,6 @@ import { Button } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
-  /**
-   * No longer read: a trade's amount is in the chosen cash account's currency, whatever the stock
-   * is quoted in. Kept so the call site compiles; remove it there and here together.
-   */
-  quoteCurrency?: string | null;
   displayUnit: DisplayUnit;
   /** The kinds this account's form offers (an option contract's differ from a stock's). */
   flowKinds?: readonly BrokerageFlowKind[];

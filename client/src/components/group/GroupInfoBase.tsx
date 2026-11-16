@@ -202,11 +202,14 @@ export function GroupInfoBase({
   // Day view: per-day rows over FULL history (tables include all; the first build of a
   // full-history daily series is a known one-time server cost, cached after).
   const isDaily = tablePeriod === "day";
+  // A group whose nav node states no member accounts has no daily series (the route answers 404
+  // «no accounts for group»): nothing is requested and the table reads empty, not loading.
+  const groupHasNoAccounts = portfolio?.navNode.member_account_ids?.length === 0;
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolio?.groupSlug || undefined },
     displayUnit,
     0,
-    isDaily && tablesFetchEnabled
+    isDaily && tablesFetchEnabled && !groupHasNoAccounts
   );
 
   const stripPlaceholderPhase = portfolio?.placeholderPhase ?? loading;
@@ -346,7 +349,7 @@ export function GroupInfoBase({
                 <DailyPerfDetailTable
                   series={dailySeries.data}
                   displayUnit={displayUnit}
-                  loading={queryShowsLoading(dailySeries)}
+                  loading={!groupHasNoAccounts && queryShowsLoading(dailySeries)}
                 />
               )
             ) : monthlyError ? (

@@ -30,7 +30,7 @@ export function AccountCashMovementsForm({ accountId, displayUnit, currency }: P
         .map((row) => buildCashMovementPostBody(row, currency))
         .filter((b): b is Record<string, unknown> => b != null);
       if (bodies.length === 0 || bodies.length !== rows.length) {
-        throw new Error(t("panelAccounts.addAccount.previewInvalid"));
+        throw new Error(t("accountDetail.cashMovements.rowIncomplete"));
       }
       for (const body of bodies) {
         await api.createAccountMovement(accountId, body);

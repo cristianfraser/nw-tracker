@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setDecimalSeparatorForFormatting } from "../format";
-import { BROKERAGE_FLOW_KINDS, OPTION_CONTRACT_FLOW_KINDS } from "./brokerageFlowKinds";
+import {
+  BROKERAGE_FLOW_KINDS,
+  CLP_CASH_FLOW_KINDS,
+  FOREIGN_CASH_FLOW_KINDS,
+  OPTION_CONTRACT_FLOW_KINDS,
+} from "./brokerageFlowKinds";
 import {
   buildBrokerageMovementPostBody,
   cashCurrencyByAccountId,
   categorySlugFromTicker,
+  defaultMovementRowKind,
   draftSettlementCurrency,
   emptyMovementRow,
   stockFormKindSettlesInCash,
@@ -196,5 +202,18 @@ describe("stockAccountFormTypes", () => {
       counterpartAccountId: 90 as const,
     };
     expect(() => buildBrokerageMovementPostBody(row, CASH)).toThrow("1.50.000");
+  });
+});
+
+describe("the kind a new row starts on", () => {
+  it("is a share buy on a stock form and the form's first kind elsewhere, always one the form offers", () => {
+    expect(defaultMovementRowKind(BROKERAGE_FLOW_KINDS)).toBe("stock_buy");
+    expect(defaultMovementRowKind(OPTION_CONTRACT_FLOW_KINDS)).toBe("option_sell_open");
+    expect(defaultMovementRowKind(CLP_CASH_FLOW_KINDS)).toBe("deposit");
+    expect(defaultMovementRowKind(FOREIGN_CASH_FLOW_KINDS)).toBe("deposit");
+    for (const kinds of [BROKERAGE_FLOW_KINDS, OPTION_CONTRACT_FLOW_KINDS, CLP_CASH_FLOW_KINDS, FOREIGN_CASH_FLOW_KINDS]) {
+      expect(kinds).toContain(defaultMovementRowKind(kinds));
+    }
+    expect(() => defaultMovementRowKind([])).toThrow("no flow kinds");
   });
 });

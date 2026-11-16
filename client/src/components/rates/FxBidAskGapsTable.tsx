@@ -23,6 +23,13 @@ function emptyDraft(): RowDraft {
   return { buy: "", sell: "", saving: false, error: null };
 }
 
+/** The buy/sell row's source as copy: the known provenance ids are labelled, any other id prints as stored. */
+function gapSourceLabel(t: (key: string) => string, source: string | null): string {
+  if (source == null) return "—";
+  if (source === "mid_spread_inferred") return t("rates.fx.gapsSourceMidInferred");
+  return source;
+}
+
 export function FxBidAskGapsTable() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -180,7 +187,7 @@ export function FxBidAskGapsTable() {
                   />
                 </span>
                 <span className={cn("muted", styles.source)}>
-                  {gap.source ?? "—"}
+                  {gapSourceLabel(t, gap.source)}
                   {gap.buy_clp_per_usd != null && gap.sell_clp_per_usd != null ? (
                     <span className={cn("mono muted", styles.sourceRates)}>
                       {formatPesosPerDollar(gap.buy_clp_per_usd)} / {formatPesosPerDollar(gap.sell_clp_per_usd)}

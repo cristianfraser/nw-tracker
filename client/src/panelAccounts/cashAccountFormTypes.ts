@@ -2,6 +2,7 @@ import { HOME_CURRENCY, isHomeCurrency } from "nw-tracker-contracts/dto/apiConst
 import {
   CLP_CASH_FLOW_KINDS,
   FOREIGN_CASH_FLOW_KINDS,
+  brokerageFlowKindCounterpartIsCash,
   brokerageFlowKindNeedsClp,
   brokerageFlowKindNeedsUsd,
   clpCashFlowKindAllowsCounterpart,
@@ -39,6 +40,18 @@ export function cashFormRowFields(kind: BrokerageFlowKind, currency: string): { 
 /** A peso cash deposit or withdrawal may name the other account: one internal-transfer row. */
 export function cashFormAllowsTransferCounterpart(kind: BrokerageFlowKind, currency: string): boolean {
   return isHomeCurrency(currency) && clpCashFlowKindAllowsCounterpart(kind);
+}
+
+/**
+ * The currency the other account of a cash form row must hold, or null when the row's counterpart
+ * is not a money ledger (a dividend's paying stock) or the kind names none. A conversion's source
+ * holds pesos (the pesos spent); a peso transfer's other account holds pesos too (one row, one
+ * currency).
+ */
+export function cashFormCounterpartCurrency(kind: BrokerageFlowKind, currency: string): string | null {
+  if (brokerageFlowKindCounterpartIsCash(kind)) return HOME_CURRENCY;
+  if (cashFormAllowsTransferCounterpart(kind, currency)) return currency;
+  return null;
 }
 
 /**

@@ -175,6 +175,7 @@
       "gapsEmpty": "No hay fechas pendientes de revisión para compra/venta US$.",
       "gapsColMid": "Medio (Yahoo)",
       "gapsColSource": "Fuente",
+      "gapsSourceMidInferred": "Estimado desde el tipo medio",
       "gapsInvalidValues": "Compra y venta deben ser números positivos.",
       "gapsBuySellOrder": "Compra debe ser ≥ venta (más CLP por US$ al comprar)."
     }
@@ -508,8 +509,9 @@
       "movementType": "Tipo",
       "amountClp": "Monto CLP",
       "amountInCurrency": "Monto {{currency}}",
-      "amountInCashAccountCurrency": "Monto (moneda de la cuenta de caja)",
-      "unitsDelta": "Acciones (units_delta)",
+      "amount": "Monto",
+      "sharesCount": "Acciones",
+      "contractsCount": "Contratos",
       "addMovement": "Añadir movimiento",
       "removeMovement": "Quitar",
       "createBtn": "Crear cuenta",
@@ -725,7 +727,7 @@
     },
     "brokerageMovements": {
       "title": "Añadir movimientos",
-      "hint": "Opcional: cuenta destino/origen para traspasos en una sola fila.",
+      "hint": "Una compra, una venta, un dividendo o una prima se liquida contra una cuenta de caja; su monto va en la moneda de esa cuenta.",
       "emptyDraft": "Sin borradores. Usa los botones para añadir filas y luego registrar.",
       "saveBtn": "Registrar movimientos",
       "saveSuccess": "{{count}} movimiento(s) registrado(s).",
@@ -734,7 +736,8 @@
     "cashMovements": {
       "title": "Añadir movimientos",
       "hint": "El interés sube el saldo pero no cuenta como aporte propio (es rentabilidad). En una cuenta en pesos, un depósito o retiro puede indicar la otra cuenta para registrar el traspaso en una sola fila.",
-      "emptyDraft": "Sin borradores. Añade depósitos, retiros, interés o conversiones.",
+      "emptyDraft": "Sin borradores. Añade una fila de uno de estos tipos: {{kinds}}.",
+      "rowIncomplete": "Cada fila necesita fecha, y una fila que indica otra cuenta necesita su monto.",
       "saveBtn": "Registrar movimientos",
       "saved": "{{count}} movimiento(s) registrado(s)."
     },

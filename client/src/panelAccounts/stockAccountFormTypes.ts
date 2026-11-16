@@ -34,7 +34,7 @@ export function newMovementRowId(): string {
   return `mv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function emptyMovementRow(flowKind: BrokerageFlowKind = "deposit"): InitialMovementDraft {
+export function emptyMovementRow(flowKind: BrokerageFlowKind): InitialMovementDraft {
   return {
     id: newMovementRowId(),
     flowKind,
@@ -46,9 +46,21 @@ export function emptyMovementRow(flowKind: BrokerageFlowKind = "deposit"): Initi
   };
 }
 
+/**
+ * The kind a new row of a form starts on: a share buy on a form that offers one (a stock
+ * account's), else the first kind the form offers (a cash ledger's deposit, a contract's first
+ * premium kind) — never a kind missing from the form's own list.
+ */
+export function defaultMovementRowKind(flowKinds: readonly BrokerageFlowKind[]): BrokerageFlowKind {
+  if (flowKinds.includes("stock_buy")) return "stock_buy";
+  const first = flowKinds[0];
+  if (first == null) throw new Error("movement form: no flow kinds offered");
+  return first;
+}
+
 export function appendMovementRow(
   movements: InitialMovementDraft[],
-  kind?: BrokerageFlowKind
+  kind: BrokerageFlowKind
 ): InitialMovementDraft[] {
   return [...movements, emptyMovementRow(kind)];
 }

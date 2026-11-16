@@ -75,4 +75,30 @@ describe("GET /api/accounts states each cash ledger's currency", () => {
     // The list holds accounts that are not cash ledgers, and they read null.
     expect(accounts.some((a) => a.cash_currency == null)).toBe(true);
   });
+
+  it("states the currency of every money ledger as ledger_currency, checking ledgers included", async () => {
+    const res = await fetch(`${base}/api/accounts`);
+    const { accounts } = (await res.json()) as {
+      accounts: { id: number; bucket_slug: string; cash_currency: string | null; ledger_currency: string | null }[];
+    };
+    const byId = new Map(accounts.map((a) => [a.id, a]));
+    expect(byId.get(euroId)!.ledger_currency).toBe("eur");
+    expect(byId.get(pesoId)!.ledger_currency).toBe("clp");
+    // A cash ledger's two fields agree.
+    for (const a of accounts) {
+      expect(a).toHaveProperty("ledger_currency");
+      if (a.cash_currency != null) expect(a.ledger_currency).toBe(a.cash_currency);
+    }
+    // The synthetic person's cartola checking account holds pesos and is not a cash ledger.
+    const checking = accounts.filter((a) => a.bucket_slug === "cash_eqs__cuenta_corriente");
+    expect(checking.length).toBeGreaterThan(0);
+    for (const a of checking) {
+      expect(a.cash_currency).toBeNull();
+      expect(a.ledger_currency).toBe("clp");
+    }
+    // A stock account is not a money ledger.
+    const stocks = accounts.filter((a) => a.bucket_slug.startsWith("brokerage_acciones"));
+    expect(stocks.length).toBeGreaterThan(0);
+    for (const a of stocks) expect(a.ledger_currency).toBeNull();
+  });
 });

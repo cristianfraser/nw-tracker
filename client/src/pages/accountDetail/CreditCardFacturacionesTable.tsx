@@ -60,28 +60,28 @@ function CloseDateCell({ row }: { row: CcFacturacionDto }) {
   if (row.close_date_source === "estimated") {
     return (
       <span className="muted" title={t("accountDetail.creditCard.closeDateEstimatedHint")}>
-        ≈ {row.close_date}
+        ≈ {row.close_date_iso}
       </span>
     );
   }
   if (row.close_date_source === "announced") {
-    return <span title={t("accountDetail.creditCard.closeDateAnnouncedHint")}>{row.close_date}</span>;
+    return <span title={t("accountDetail.creditCard.closeDateAnnouncedHint")}>{row.close_date_iso}</span>;
   }
-  return <>{row.close_date}</>;
+  return <>{row.close_date_iso}</>;
 }
 
 /** Pay-by with its provenance: one derived from the close (no statement prints it yet) reads «≈». */
 function PayByCell({ row }: { row: CcFacturacionDto }) {
   const { t } = useTranslation();
-  if (row.pay_by == null) return <>—</>;
+  if (row.pay_by_iso == null) return <>—</>;
   if (row.pay_by_source === "derived") {
     return (
       <span className="muted" title={t("accountDetail.creditCard.payByDerivedHint")}>
-        ≈ {row.pay_by}
+        ≈ {row.pay_by_iso}
       </span>
     );
   }
-  return <>{row.pay_by}</>;
+  return <>{row.pay_by_iso}</>;
 }
 
 /** A bare asterisk next to a month closed at the bank whose statement is not imported yet. */
@@ -204,16 +204,16 @@ export function CreditCardFacturacionesTable({
   const modalSubtitle = selected ? (
     <>
       <span className="mono">{selected.billing_month}</span>
-      {selected.close_date ? (
+      {selected.close_date_iso ? (
         <>
           {" "}
-          · {t("accountDetail.creditCard.colCloseDate")}: {selected.close_date}
+          · {t("accountDetail.creditCard.colCloseDate")}: {selected.close_date_iso}
         </>
       ) : null}
-      {selected.pay_by ? (
+      {selected.pay_by_iso ? (
         <>
           {" "}
-          · {t("accountDetail.creditCard.colPayBy")}: {selected.pay_by}
+          · {t("accountDetail.creditCard.colPayBy")}: {selected.pay_by_iso}
         </>
       ) : null}
       {selected.facturado_total != null ? (
