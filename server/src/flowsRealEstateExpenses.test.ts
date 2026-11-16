@@ -95,8 +95,8 @@ describe("buildRealEstateExpensesPayload", () => {
 
   it("total_clp matches sum of slot display amounts", () => {
     const payload = buildRealEstateExpensesPayload();
-    const sum = payload.slots.reduce((s, sl) => s + sl.display_amount_clp, 0);
-    expect(payload.total_clp).toBe(sum);
+    const sum = payload.slots.reduce((s, sl) => s + sl.display_amount, 0);
+    expect(payload.total).toBe(sum);
   });
 });
 
@@ -168,13 +168,13 @@ describe("real-estate chart scopes", () => {
 
 describe("spreadOverCoveredMonths", () => {
   it("keeps a one-month bill in its month", () => {
-    expect(spreadOverCoveredMonths({ bill_month: "2023-06", months_covered: 1, display_amount_clp: 84_787 })).toEqual([
+    expect(spreadOverCoveredMonths({ bill_month: "2023-06", months_covered: 1, display_amount: 84_787 })).toEqual([
       { month: "2023-06", amount: 84_787 },
     ]);
   });
 
   it("divides a payment over the months ending at its bill month, the last taking the remainder", () => {
-    expect(spreadOverCoveredMonths({ bill_month: "2024-01", months_covered: 3, display_amount_clp: 100_000 })).toEqual([
+    expect(spreadOverCoveredMonths({ bill_month: "2024-01", months_covered: 3, display_amount: 100_000 })).toEqual([
       { month: "2023-11", amount: 33_333 },
       { month: "2023-12", amount: 33_333 },
       { month: "2024-01", amount: 33_334 },
@@ -182,7 +182,7 @@ describe("spreadOverCoveredMonths", () => {
   });
 
   it("throws on a covered count that is not a positive integer", () => {
-    expect(() => spreadOverCoveredMonths({ bill_month: "2024-01", months_covered: 0, display_amount_clp: 1 })).toThrow();
+    expect(() => spreadOverCoveredMonths({ bill_month: "2024-01", months_covered: 0, display_amount: 1 })).toThrow();
   });
 });
 
@@ -192,7 +192,8 @@ describe("chartPartsOf", () => {
     account_slug: "depto",
     bill_month: "2036-10",
     spent_on: "2036-10-11",
-    expected_amount_clp: 0,
+    expected_amount: 0,
+    currency: "clp",
     link: null,
     broken_link: null,
     note: null,
@@ -207,8 +208,8 @@ describe("chartPartsOf", () => {
     const parts = chartPartsOf({
       ...base,
       kind: "mortgage",
-      display_amount_clp: 700_000,
-      mortgage_parts: { amortization_clp: 100_000, extra_amortization_clp: 350_000, carrying_clp: 250_000 },
+      display_amount: 700_000,
+      mortgage_parts: { amortization: 100_000, extra_amortization: 350_000, carrying: 250_000 },
     });
     expect(parts).toEqual([
       { kind: "mortgage_amortization", amount: 100_000 },
@@ -224,8 +225,8 @@ describe("chartPartsOf", () => {
   });
 
   it("throws on a mortgage cuota without parts, and on a kind the chart does not know", () => {
-    expect(() => chartPartsOf({ ...base, kind: "mortgage", display_amount_clp: 1, mortgage_parts: null })).toThrow();
-    expect(() => chartPartsOf({ ...base, kind: "kwh2", display_amount_clp: 1, mortgage_parts: null })).toThrow();
+    expect(() => chartPartsOf({ ...base, kind: "mortgage", display_amount: 1, mortgage_parts: null })).toThrow();
+    expect(() => chartPartsOf({ ...base, kind: "kwh2", display_amount: 1, mortgage_parts: null })).toThrow();
   });
 });
 
@@ -253,16 +254,17 @@ describe("buildChartScopes", () => {
           bill_month: "2036-10",
           spent_on: "2036-10-11",
           kind: "mortgage",
-          expected_amount_clp: 700_000,
+          expected_amount: 700_000,
+    currency: "clp",
           link: null,
           broken_link: null,
-          display_amount_clp: 700_000,
+          display_amount: 700_000,
           note: null,
           kwh: null,
           m3: null,
           months_covered: 1,
           covers_from: "2036-10",
-          mortgage_parts: { amortization_clp: 100_000, extra_amortization_clp: 350_000, carrying_clp: 250_000 },
+          mortgage_parts: { amortization: 100_000, extra_amortization: 350_000, carrying: 250_000 },
           can_link: false,
         },
       ],

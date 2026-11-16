@@ -1074,7 +1074,9 @@ export interface RealEstateExpenseLinkDto {
   link_source: RealEstateExpenseLinkSource;
   merchant: string | null;
   purchase_on: string | null;
-  amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  amount: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
   origin_label: string;
   source: FlowCcExpenseLineSource;
 }
@@ -1086,11 +1088,13 @@ export interface RealEstateBillSlot {
   bill_month: string;
   spent_on: string;
   kind: string;
-  expected_amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  expected_amount: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
   link: RealEstateExpenseLinkDto | null;
   /** A stored link that no longer holds (purchase gone, or outside the bill's +0..+2 window). */
   broken_link: { purchase_key: string; problem: "missing_purchase" | "outside_window" } | null;
-  display_amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  display_amount: number;
   note: string | null;
   kwh: number | null;
   m3: number | null;
@@ -1099,7 +1103,7 @@ export interface RealEstateBillSlot {
   /** First month the payment covers (`bill_month` when it covers one). */
   covers_from: string;
   /** A mortgage cuota as paid: amortización, extra amortization and carrying (interés + seguros). */
-  mortgage_parts: { amortization_clp: number; extra_amortization_clp: number; carrying_clp: number } | null; // convention-ok: a mortgage cuota as the lender bills it, in pesos
+  mortgage_parts: { amortization: number; extra_amortization: number; carrying: number } | null;
   can_link: boolean;
 }
 
@@ -1109,7 +1113,9 @@ export interface RealEstateUnlinkedPurchaseDto {
   merchant: string | null;
   purchase_on: string | null;
   purchase_month: string;
-  amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  amount: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
   origin_label: string;
   source: FlowCcExpenseLineSource;
   category_slug: string;
@@ -1143,7 +1149,9 @@ export interface RealEstateExpenseAccountBlock {
   account_slug: ExpenseApartmentSlug;
   label: string;
   slots: RealEstateBillSlot[];
-  total_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  total: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
 }
 
 /** `GET /api/flows/expenses/real-estate` — bill slots linked to gastos purchases. */
@@ -1156,14 +1164,18 @@ export interface RealEstateExpensesResponse {
    * (`clipMonthsThenRollup`), counted back from the scope's last point.
    */
   chart_scopes: Record<string, RealEstateChartScopeDto>;
-  total_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  total: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
 }
 
 export interface RealEstateLinkCandidateDto {
   purchase_key: string;
   merchant: string | null;
   purchase_on: string | null;
-  amount_clp: number; // convention-ok: a place's bill is stored in pesos (expense_entries CHECK)
+  amount: number;
+  /** The currency of the row's amounts: the one the place's bills are kept in. */
+  currency: string;
   origin_label: string;
   source: FlowCcExpenseLineSource;
   merchant_matches: boolean;

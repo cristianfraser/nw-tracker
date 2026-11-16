@@ -65,7 +65,7 @@ function isMortgageCash(p: RealEstateUnlinkedPurchaseDto): boolean {
 }
 
 function fmt(p: RealEstateUnlinkedPurchaseDto): string {
-  return `${p.purchase_on ?? p.purchase_month}  ${String(Math.round(p.amount_clp)).padStart(9)}  ${p.merchant ?? "?"}  [${p.origin_label} ${p.source}]`;
+  return `${p.purchase_on ?? p.purchase_month}  ${String(Math.round(p.amount)).padStart(9)}  ${p.merchant ?? "?"}  [${p.origin_label} ${p.source}]`;
 }
 
 let applied = 0;
@@ -74,7 +74,7 @@ const claimed = new Set<string>();
 
 function propose(place: string, kind: string, rows: RealEstateUnlinkedPurchaseDto[], apply: boolean) {
   if (rows.length === 0) return;
-  const total = rows.reduce((s, r) => s + r.amount_clp, 0);
+  const total = rows.reduce((s, r) => s + r.amount, 0);
   console.log(`\n  ${kind} — ${rows.length} purchase(s), sum ${Math.round(total).toLocaleString("en-US")}${apply ? "" : "  [REVIEW ONLY]"}`);
   for (const r of rows.sort((a, b) => (a.purchase_on ?? "").localeCompare(b.purchase_on ?? ""))) {
     console.log(`    ${fmt(r)}`);
@@ -132,7 +132,7 @@ for (const place of listRealEstatePlaces()) {
     const dups: RealEstateUnlinkedPurchaseDto[] = [];
     const clean: RealEstateUnlinkedPurchaseDto[] = [];
     for (const r of rows) {
-      const key = `${r.purchase_on}|${Math.round(r.amount_clp)}`;
+      const key = `${r.purchase_on}|${Math.round(r.amount)}`;
       if (seen.has(key)) {
         const prev = seen.get(key)!;
         if (!dups.includes(prev)) {
@@ -162,8 +162,8 @@ for (const place of listRealEstatePlaces()) {
     const rentPool = pool.filter(
       (p) => !claimed.has(p.purchase_key) && (p.merchant ?? "").toUpperCase().includes(rentRule.merchant.toUpperCase())
     );
-    const exact = rentPool.filter((p) => rentRule.exactAmounts.includes(Math.round(p.amount_clp)));
-    const review = rentPool.filter((p) => !rentRule.exactAmounts.includes(Math.round(p.amount_clp)));
+    const exact = rentPool.filter((p) => rentRule.exactAmounts.includes(Math.round(p.amount)));
+    const review = rentPool.filter((p) => !rentRule.exactAmounts.includes(Math.round(p.amount)));
     exact.forEach((r) => claimed.add(r.purchase_key));
     propose(place.slug, "rent", exact, true);
     if (review.length > 0) {
