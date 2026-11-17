@@ -15,7 +15,7 @@ N x $`, per-unit `DESCUENTO RNR`, a fee's own `DESCUENTO DESPACHO`); a discount 
 the last item by a blank line — `RF CANJE PESOS MCL` (Mi Club points redeemed), `RF 10% DSCTO
 BCI CUPON` — is receipt-level and lands in `receipt_discounts`. `CANJE PESOS MCL` is forced
 receipt-level regardless of position (points are never product info). Payments are collected
-as legs (TARJETA LIDER BCI / LIDERBCI, EFECTIVO net of VUELTO, MICLUB canjeados) and the parse
+as legs (TARJETA LIDER BCI / LIDERBCI / bare LIDER BCI, EFECTIVO net of VUELTO, MICLUB canjeados) and the parse
 FAILS unless sum(items) - item discounts - receipt discounts == sum(payments), AND unless the
 printed «TOTAL NUMERO DE ARTIC VEND» equals the item count (unit items by qty, each weighed
 item once — true on the whole PDF corpus) — a boleta that does not balance must surface, not
@@ -48,7 +48,8 @@ RE_DISCOUNT = re.compile(rf"^\s*(RF .*?|DESCUENTO .*?)\s+\$?\s*-\s*({AMT})\s*$")
 # Weighted item continuation: `x 1.744 KG` (dot is the DECIMAL here, unlike peso amounts).
 RE_WEIGHT = re.compile(r"^\s*x\s+(\d+\.\d+)(?:\s*KG)?\s*$")
 RE_TOTALS_START = re.compile(r"^\s*(SUBTOTAL|TOTAL AFECTO|TOTAL NETO|PESOS MICLUB CANJEADOS)\b")
-RE_PAY_CARD = re.compile(rf"^\s*TARJETA LIDER ?BCI\s*\$?\s*({AMT})\s*$")
+# Since 2026-11-17 the store boleta prints the card leg without «TARJETA»: `LIDER BCI   9.000`.
+RE_PAY_CARD = re.compile(rf"^\s*(?:TARJETA )?LIDER ?BCI\s*\$?\s*({AMT})\s*$")
 RE_PAY_EFECTIVO = re.compile(rf"^\s*EFECTIVO\s*\$?\s*({AMT})\s*$")
 RE_PAY_MICLUB = re.compile(rf"^\s*PESOS MICLUB CANJEADOS\s*\$?\s*({AMT})\s*$")
 # A boleta paid with another card goes through Transbank: items stored, no Lider-card movement.

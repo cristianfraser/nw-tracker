@@ -114,6 +114,12 @@ class LiderStoreTemplateTest(unittest.TestCase):
         self.assertEqual(p.mi_club_points, 120)
         self.assertEqual(p.ignored_lines, [])
 
+    def test_card_leg_printed_without_tarjeta(self) -> None:
+        text = STORE_PDF_TEXT.replace("TARJETA LIDER BCI                          9.000", "LIDER BCI                                  9.000")
+        p = parse_receipt_text(text)
+        self.assertEqual(p.payments, [{"method": "tarjeta_lider_bci", "amount_clp": 9000}])
+        self.assertEqual(p.mi_club_points, 120)
+
     def test_balance_failure_raises(self) -> None:
         text = STORE_PDF_TEXT.replace("TARJETA LIDER BCI                          9.000", "TARJETA LIDER BCI                          9.500")
         with self.assertRaisesRegex(ReceiptParseError, "does not balance"):
