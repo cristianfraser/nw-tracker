@@ -1,49 +1,38 @@
 /**
- * Racional web app (app.racional.cl) — an Ionic/Angular SPA.
- *
- * Everything here was verified against the live, logged-in app on 2026-08-05.
- *
- * **The movements list is NOT served by a REST call.** Opening «Movimientos» fires only
- * Firestore Listen-channel POSTs (`firestore.googleapis.com/.../projects/racional-prod/...`),
- * so intercepting XHR — the approach that works for Santander — yields nothing usable for
- * transactions. Holdings DO have a clean REST API. Hence the split:
- *
- *   - positions / cash  → `GET https://api.racional.cl/positions`
- *                         `GET https://api.racional.cl/positions/buying-power`
- *   - movements         → rendered DOM (`app-investment-movement` rows) + a detail view
- *
- * Reading movements out of the DOM is a deliberate trade-off: it is more fragile than an API,
- * but the alternative is re-implementing Firestore's auth + channel framing, which is a real
- * step up in both effort and adversarial posture for the same data.
+ * Racional web app (app.racional.cl), rebuilt in 2026-11 («Racional 2.0»: React, Firebase sign-in
+ * followed by a passkey on a new session, data from its own server functions — see `appData.ts`).
+ * Until then it was an Ionic/Angular app whose movements arrived over Firestore and were read
+ * from the rendered list; that crawl is gone.
  */
-export const LOGIN_URL = "https://app.racional.cl/login";
-export const MOVEMENTS_URL = "https://app.racional.cl/tabs/movements";
+export const APP_ORIGIN = "https://app.racional.cl";
+export const LOGIN_URL = `${APP_ORIGIN}/login`;
+export const HOME_URL = `${APP_ORIGIN}/home`;
+export const POSITIONS_URL = `${APP_ORIGIN}/positions`;
 
 export const SELECTOR = {
-  /** Ionic wraps the real input; target the native element so fill()/inputValue() work. */
-  loginEmail: 'ion-input[formcontrolname="email"] input',
   /**
-   * The password lives in an `app-password-input` whose OUTER component is
-   * `formcontrolname="password"` while the actual field is `passwordValue` — targeting the
-   * outer name finds the component, not the input.
+   * The login page was rebuilt (seen 2026-11-17: plain inputs with React ids, a Base UI checkbox,
+   * a passkey button beside the submit), so the fields are found by type, not by component.
    */
-  loginPassword: 'ion-input[formcontrolname="passwordValue"] input',
-  loginSubmit: 'ion-button:has-text("Iniciar sesión"), button:has-text("Iniciar sesión")',
+  loginEmail: 'input[type="email"]',
+  loginPassword: 'input[type="password"]',
+  /** The form's submit; «Iniciar sesión con passkey» beside it is a plain button. */
+  loginSubmit: 'button[type="submit"]',
   /** «Mantener sesión» — the control itself, for reading its checked state. */
-  keepSession: "ion-checkbox, ion-toggle, input[type=checkbox]",
+  keepSession: '[role="checkbox"], input[type="checkbox"]',
 
-  /** One rendered movement row. Angular component selector — stabler than a CSS class. */
-  movementRow: "app-investment-movement",
-  /** Inside a row: `.movement-description p.title` is the label, e.g. "Compra SLV". */
-  movementTitle: ".movement-description p.title",
-  movementBody: ".content-movement",
-  /** The right-hand panel after a row is clicked. */
-  movementDetail: "ion-content",
+  /** The menu's «Movimientos» link: a navigation inside the app, which asks the server for the list. */
+  movementsLink: 'a[href="/movements"]',
+  /**
+   * One row of the movements list (2026-11-18: a clickable block holding the date, a dot, the
+   * label in a truncated paragraph and the amount right-aligned), in the order of the answer.
+   */
+  movementRow: "div.cursor-pointer",
+  movementLabel: "p.truncate",
+  movementAmount: "span.text-right p",
 } as const;
 
 export const TEXT = {
-  movementsTab: /movimientos/i,
-  home: /inicio/i,
   /** Ticking this is what keeps scheduled runs from triggering a fresh e-mail 2FA each night. */
   keepSession: /mantener\s+sesi[óo]n/i,
   /** The e-mailed verification step; only a supervised run can answer it. */

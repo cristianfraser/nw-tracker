@@ -10,23 +10,17 @@ import { assertRunAllowed } from "../runGuard.js";
 import { assertValidSteps, shouldRunStep } from "../steps.js";
 import { setForceRefetch } from "../documentLedger.js";
 import { login } from "./login.js";
-import {
-  openHome,
-  openMovements,
-  openPositions,
-  rawDividendsResponseFromRecorder,
-  takeScrapedMovements,
-} from "./steps.js";
+import { openHome, openMovements, openPositions, takeScrapedMovements } from "./steps.js";
 import { readRacionalCrawlCursor } from "./crawlCursor.js";
 import type { RunOptions, StepResult } from "../runTypes.js";
 
 /**
  * One pass over Racional. Steps are independent: a broken positions view keeps the movements.
  *
- * **The first run must be `--capture` and supervised.** Racional's endpoints and payload shapes
- * are unknown, so this run navigates and records rather than parsing; there is no importer yet
- * and nothing is written to the inbox. Build the adapter from what the capture reveals, exactly
- * as the Santander card feed was built.
+ * A new session needs a person: since the 2026-11 rebuild Racional follows the password with a
+ * passkey («Confirma que eres tú»), so the first run on a machine (or after the session expires)
+ * is a supervised `--capture` run that someone confirms at the screen; «Mantener sesión» keeps
+ * the session for the scheduled runs after it.
  */
 export async function runRacional(opts: RunOptions): Promise<number> {
   assertValidSteps("racional", opts.only);
@@ -39,13 +33,8 @@ export async function runRacional(opts: RunOptions): Promise<number> {
   // No host fragment: the API hosts are unconfirmed, so record every xhr/fetch and let the
   // third-party noise filter drop the telemetry.
   const recorder = new Recorder(opts.capture, stamp, "racional");
-
-  if (!opts.capture) {
-    log(
-      "NOTE: Racional has no parser yet — this run only navigates and records. " +
-        "Run with --capture to keep the payloads for building one.",
-    );
-  }
+  // The sign-in request carries the password, and every run keeps its recorded calls.
+  recorder.redactSecrets([password]);
 
   const context = await launchBrowser({ bank: "racional", headless: false, background: opts.background });
   const results: StepResult[] = [];
@@ -69,8 +58,7 @@ export async function runRacional(opts: RunOptions): Promise<number> {
   fs.writeFileSync(outFile, JSON.stringify(recorder.calls, null, 2));
   log(`${recorder.calls.length} API call(s) → ${outFile}`);
 
-  // Movements are scraped from the DOM (Firestore pushes them, so they never appear as XHR).
-  // Staged whenever the movements step succeeded — an empty list on a quiet night too: it is the
+  // Movements are read from the app's own answers (`appData.ts`). Staged whenever the movements step succeeded — an empty list on a quiet night too: it is the
   // server's evidence that this crawl read the list, which is what answers the e-mail nudges
   // mailed before it (`broker_read_coverage`). A failed step stages nothing.
   if (results.find((r) => r.name === "movements")?.ok) {
@@ -80,16 +68,8 @@ export async function runRacional(opts: RunOptions): Promise<number> {
     log(`${movements.length} movement row(s) → ${movFile}`);
   }
 
-  // The dividends API response, verbatim, on every run that made the call: the importer pairs
-  // each record with its ledger row and stores the gross / withholding breakdown, which is
-  // also how dividends booked before the breakdown existed get theirs. Small (every dividend
-  // the account ever received, a few hundred bytes each) and idempotent on the import side.
-  const dividends = rawDividendsResponseFromRecorder(recorder);
-  if (dividends != null) {
-    const divFile = path.join(outDir, `dividends-${stamp}.json`);
-    fs.writeFileSync(divFile, JSON.stringify(dividends, null, 2));
-    log(`dividends API response → ${divFile}`);
-  }
+  // No `dividends-<stamp>.json` any more: the rebuilt app has no dividends list call, and each
+  // new dividend row carries its own breakdown from its detail answer.
 
   log("");
   log("Summary:");

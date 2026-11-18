@@ -11,14 +11,15 @@ import { log, logStep } from "../log.js";
  * profile, but an autofilled value left in a field would otherwise merge with the typed one and
  * fail authentication in a way that looks like a wrong password.
  *
- * The inputs are Ionic components that hydrate after first paint, so every locator here waits
- * rather than assuming the field exists.
+ * The page hydrates after first paint, so every locator here waits rather than assuming the
+ * field exists.
  */
 export async function login(page: Page, email: string, password: string): Promise<void> {
   await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" });
   await settle(page);
 
   if (!page.url().includes("/login")) {
+    assertNoPasskeyChallenge(page);
     logStep("session still valid — skipping login");
     return;
   }
@@ -26,7 +27,6 @@ export async function login(page: Page, email: string, password: string): Promis
   logStep("logging in");
   const emailInput = page.locator(SELECTOR.loginEmail).first();
   const passInput = page.locator(SELECTOR.loginPassword).first();
-  // Ionic creates the native input only once the component hydrates.
   await emailInput.waitFor({ state: "visible", timeout: 60_000 });
 
   await emailInput.click();
@@ -52,25 +52,29 @@ export async function login(page: Page, email: string, password: string): Promis
 
   const submit = page.locator(SELECTOR.loginSubmit).first();
   await submit.waitFor({ state: "visible" });
-  // The button starts disabled and enables on form validity — waiting for that is also the
-  // clearest signal that both fields were accepted.
-  await page
-    .waitForFunction(
-      (sel) => {
-        const el = document.querySelector(sel) as HTMLButtonElement | null;
-        return !!el && !el.disabled && !el.getAttribute("disabled");
-      },
-      'ion-button:not([disabled]), button:not([disabled])',
-      { timeout: 30_000 },
-    )
-    .catch(() => {
-      /* Some builds never set the attribute; fall through to the click and let it fail loudly. */
-    });
+  // The button starts disabled and enables on form validity; click() waits for it to enable,
+  // which is also the clearest signal that both fields were accepted.
   await submit.click();
 
   await waitForLoginToLand(page);
   await settle(page, 20_000);
+  assertNoPasskeyChallenge(page);
   logStep("logged in");
+}
+
+/**
+ * Since the 2026-11 rebuild Racional follows the password with «Confirma que eres tú — Usa la
+ * llave de acceso de este equipo» at /passkey: a WebAuthn passkey prompt (fingerprint or the
+ * device's password) whose only other button is «Cerrar sesión». A scheduled run cannot answer
+ * it, and nothing here tries to — fail with what a person has to do instead.
+ */
+function assertNoPasskeyChallenge(page: Page): void {
+  if (new URL(page.url()).pathname.startsWith("/passkey")) {
+    throw new Error(
+      "Racional asks for this device's passkey after the password («Confirma que eres tú»). " +
+        "A scheduled run cannot answer it: confirm it by hand on this machine, or change the account's sign-in settings.",
+    );
+  }
 }
 
 /**

@@ -70,6 +70,17 @@ export type RacionalScrapedRow = {
    * never shows: the paying instrument, and the gross / withholding behind the credited net.
    */
   dividend?: RacionalScrapedDividend | null;
+  /**
+   * Since the 2026-11 rebuild the crawl reads the app's own data (`appData.ts`) instead of the
+   * page: the list row's ISO instant (`created_at`, the occurred_at of every row), its type as
+   * the app names it (`api_type`, provenance), a trade's fill and what a Retiro sold, read from
+   * the detail answer. Rows staged before carry `detail` text instead, parsed as it always was.
+   */
+  created_at?: string | null;
+  api_type?: string | null;
+  fill?: RacionalDetailFields | null;
+  /** A Retiro's detail as read: the liquidation, or null for cash sent to a bank. */
+  liquidation?: RacionalLiquidationDetail | null;
 };
 
 /**
@@ -149,6 +160,8 @@ const KIND_BY_CLASS: Record<string, RacionalMovementKind> = {
   dividends: "dividend",
   withdrawal: "withdrawal",
   commissions: "fee",
+  // The rebuilt app lists a split as «División de acciones <ticker>» (`corporate_action_split`).
+  corporate_action: "corporate_action",
 };
 
 /** The `pending-` state prefix a `.movement-type` class carries while the row is in flight. */
@@ -177,6 +190,7 @@ const KIND_BY_PREFIX: [RegExp, RacionalMovementKind][] = [
   [/^inter[ée]s|^intereses/i, "interest"],
   [/^comisi[óo]n/i, "fee"],
   [/^evento\s+corporativo/i, "corporate_action"],
+  [/^divisi[óo]n\s+de\s+acciones/i, "corporate_action"],
 ];
 
 export function racionalMovementKind(title: string): RacionalMovementKind {
@@ -303,6 +317,11 @@ export function normalizeRacionalListRowKey(key: string): string {
   return String(key ?? "").replace(/^([^|]*)\|pending-/i, "$1|");
 }
 
+/** Whether the crawl read the row's detail: text (before the rebuild) or the app's detail answer. */
+function detailRead(row: RacionalScrapedRow): boolean {
+  return Boolean(row.detail) || (row.detail_status === "opened" && (row.fill != null || row.liquidation !== undefined || row.dividend != null));
+}
+
 /** What keeps a movement from being written as it stands (see `RacionalMovement.incomplete`). */
 function incompleteReason(
   kind: RacionalMovementKind,
@@ -319,7 +338,7 @@ function incompleteReason(
       (s): s is string => s != null
     );
     if (unknown.length === 0) return null;
-    const why = unopened ?? (row.detail ? "its detail view printed no fill" : "the crawl never opened its detail view");
+    const why = unopened ?? (detailRead(row) ? "its detail view printed no fill" : "the crawl never opened its detail view");
     return `${unknown.join(" and ")} unknown — ${why}`;
   }
   if (kind === "dividend" && !ticker) {
@@ -328,7 +347,7 @@ function incompleteReason(
   // A «Retiro» is either cash sent to a bank or a portfolio liquidated into the wallet, and only
   // its detail view says which (since 2026-10-21 the crawl opens it): without one the row cannot
   // be set aside as a bank withdrawal, which is how the 2026-10-20 liquidation was lost.
-  if (kind === "withdrawal" && !row.detail) {
+  if (kind === "withdrawal" && !detailRead(row)) {
     return `whether it liquidated a portfolio or paid a bank account unknown — ${
       unopened ?? "the crawl never opened its detail view"
     }`;
@@ -366,7 +385,7 @@ export function racionalRowToMovement(row: RacionalScrapedRow): RacionalMovement
 export function racionalRowToMovements(row: RacionalScrapedRow): RacionalMovement[] {
   const single = decodeRacionalRow(row);
   if (single.kind !== "withdrawal") return [single];
-  const liquidation = parseRacionalLiquidationDetail(row.detail);
+  const liquidation = row.liquidation !== undefined ? row.liquidation : parseRacionalLiquidationDetail(row.detail);
   if (!liquidation) return [single];
   if (single.currency !== "clp") { // convention-ok: Racional's managed portfolios are peso portfolios
     throw new Error(`Racional liquidation "${row.title}" (${row.amount}) is listed in ${single.currency} — only CLP portfolios are mapped`);
@@ -483,7 +502,7 @@ function decodeRacionalRow(row: RacionalScrapedRow): RacionalMovement {
   if (!movementId && !listDate) {
     throw new Error(`Racional row "${row.title}" has neither a date nor a movement id`);
   }
-  if (row.detail_status === "unopened" && row.detail) {
+  if (row.detail_status === "unopened" && (row.detail || row.fill || row.liquidation)) {
     throw new Error(`Racional row "${row.title}" (${row.amount}) is flagged unopened but carries a detail text — the crawl output is inconsistent`);
   }
   const kindClass = racionalRowKindClass(row.kind_class) ?? "";
@@ -498,11 +517,16 @@ function decodeRacionalRow(row: RacionalScrapedRow): RacionalMovement {
         `credited ${dividend.net} usd — the crawl matched the wrong record`
     );
   }
-  // The list date covers every row; the id's timestamp adds the time, for rows that have one.
-  const occurredAt = movementId
-    ? racionalMovementTimestamp(movementId)
-    : `${listDate}T00:00:00.000Z`;
-  const detail = parseRacionalDetail(row.detail);
+  // The app's own instant when the crawl read it (every row since the rebuild); before, the list
+  // date covered every row and the id's timestamp added the time for rows that had one.
+  const createdAt = String(row.created_at ?? "").trim();
+  if (createdAt && !listDate) {
+    throw new Error(`Racional row "${row.title}" carries an instant but no list day — the crawl output is inconsistent`);
+  }
+  const occurredAt = createdAt || (movementId ? racionalMovementTimestamp(movementId) : `${listDate}T00:00:00.000Z`);
+  // The day is the one the app prints (Chile), not the instant's UTC date.
+  const occurredOn = createdAt ? listDate : occurredAt.slice(0, 10);
+  const detail = row.fill ?? parseRacionalDetail(row.detail);
   const ticker =
     racionalMovementTicker(row.title) ??
     detail.detail_ticker ??
@@ -520,7 +544,7 @@ function decodeRacionalRow(row: RacionalScrapedRow): RacionalMovement {
     movement_id: movementId || `${occurredAt.slice(0, 10)}|${kind}|${amount}`,
     kind,
     ticker,
-    occurred_on: occurredAt.slice(0, 10),
+    occurred_on: occurredOn,
     occurred_at: occurredAt,
     amount,
     currency,
