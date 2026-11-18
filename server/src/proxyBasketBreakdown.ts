@@ -111,7 +111,7 @@ function inForceOnOrBefore(history: CompositePositionsRow[], ymd: string): Compo
 /** One day's price of a holding in the display unit. */
 type DayValue = number;
 
-/** Prices every day of (yearAnchor, today] for one price ticker, plus the anchor itself. */
+/** Prices the held days of (yearAnchor, today] for one price ticker, each with the day before it. */
 class HoldingValues {
   private readonly closes = new Map<string, number>();
 
@@ -229,8 +229,9 @@ export function loadProxyBasketBreakdown(
       year: newAccumulator(),
     };
 
+    // Only held days are priced: a holding that entered the basket recently may have no closes
+    // before it (an ETF the fund bought soon after its launch), and days out never need a price.
     let prevDay = anchors.year;
-    let prev = values.value(prevDay);
     for (let d = walkStart; d <= today; d = chileCalendarAddDays(d, 1)) {
       const inForce = inForceOnOrBefore(history, prevDay);
       if (inForce == null) {
@@ -239,8 +240,7 @@ export function loadProxyBasketBreakdown(
         );
       }
       const weight = fundWeightIn(bucketSlug, inForce, stated.ticker);
-      const cur = values.value(d);
-      const r = cur / prev - 1;
+      const r = weight > 0 ? values.value(d) / values.value(prevDay) - 1 : 0;
       for (const period of PERIODS) {
         if (d <= anchors[period]) continue;
         const a = acc[period];
@@ -252,7 +252,6 @@ export function loadProxyBasketBreakdown(
         }
       }
       prevDay = d;
-      prev = cur;
     }
 
     const pct = {} as Record<CardMetricsPeriod, number | null>;

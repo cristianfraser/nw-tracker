@@ -52,6 +52,7 @@ export const VITEST_INSTRUMENTS: Readonly<Record<string, Partial<InstrumentFacts
   VTSPLITX: {},
   VTSPLITM: {},
   VTPB1: {},
+  VTPB3: {},
   VTST: {},
   VTEST: {},
   VTOPTX: {},

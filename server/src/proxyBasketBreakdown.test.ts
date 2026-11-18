@@ -39,11 +39,14 @@ const DAY_ANCHOR = "2026-07-14";
 
 const T1 = "VTPB1";
 const T2 = "VTPB2";
+/** Listed mid-year: closes from 2026-07-01 only (a fund buying a recently launched ETF). */
+const T3 = "VTPB3";
+const T3_FIRST_CLOSE = "2026-07-01";
 const BUCKET_PREFIX = "vitest_proxy_breakdown";
-const BUCKETS = ["all", "entered", "returned", "late", "no_sum"].map((s) => `${BUCKET_PREFIX}_${s}`);
+const BUCKETS = ["all", "entered", "recent", "returned", "late", "no_sum"].map((s) => `${BUCKET_PREFIX}_${s}`);
 
 /** Weekday closes 2025-12-29 → today; a weekend repeats Friday's close (on-or-before). */
-const closes = new Map<string, Map<string, number>>([[T1, new Map()], [T2, new Map()]]);
+const closes = new Map<string, Map<string, number>>([[T1, new Map()], [T2, new Map()], [T3, new Map()]]);
 
 function isWeekend(ymd: string): boolean {
   const dow = new Date(`${ymd}T00:00:00Z`).getUTCDay();
@@ -109,6 +112,11 @@ beforeAll(() => {
     closes.get(T2)!.set(d, p2);
     insert.run(T1, d, p1);
     insert.run(T2, d, p2);
+    if (d >= T3_FIRST_CLOSE) {
+      const p3 = 25 * (1 + 0.004 * k + 0.01 * Math.sin(k / 2));
+      closes.get(T3)!.set(d, p3);
+      insert.run(T3, d, p3);
+    }
   }
 });
 
@@ -117,7 +125,7 @@ afterEach(() => {
 });
 
 afterAll(() => {
-  db.prepare(`DELETE FROM equity_daily WHERE ticker IN (?, ?)`).run(T1, T2);
+  db.prepare(`DELETE FROM equity_daily WHERE ticker IN (?, ?, ?)`).run(T1, T2, T3);
 });
 
 describe("loadProxyBasketBreakdown", () => {
@@ -202,6 +210,24 @@ describe("loadProxyBasketBreakdown", () => {
     expect(h1.days_held.year).toEqual({ held: 196, total: 196 });
     expect(h1.contribution_pct.year.usd).toBeCloseTo(
       contributionUsd(T1, YEAR_ANCHOR, (prev) => (prev >= "2026-07-05" ? 0.7 : 1)),
+      10
+    );
+  });
+
+  it("a holding with no closes before it entered is priced only on the days it was held", () => {
+    const bucket = `${BUCKET_PREFIX}_recent`;
+    record(bucket, "2025-12-15", 1, [{ ticker: T1, weight: 1 }]);
+    record(bucket, "2026-07-05", 1, [
+      { ticker: T1, weight: 0.8 },
+      { ticker: T3, weight: 0.2 },
+    ]);
+
+    const out = loadProxyBasketBreakdown(bucket, { now: NOW, includeUsd: true })!;
+    const h3 = out.holdings.find((h) => h.ticker === T3)!;
+    expect(h3.days_held.year).toEqual({ held: 10, total: 196 });
+    expect(h3.pct.year.usd).toBeCloseTo(priceOnOrBefore(T3, TODAY) / priceOnOrBefore(T3, "2026-07-05") - 1, 10);
+    expect(h3.contribution_pct.year.usd).toBeCloseTo(
+      contributionUsd(T3, "2026-07-05", () => 0.2),
       10
     );
   });
