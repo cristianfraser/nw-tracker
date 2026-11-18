@@ -148,17 +148,44 @@ function writeEquityLiveQuote(ticker: string, live: LiveEquityObservation, fetch
   return changed;
 }
 
-async function syncOneEquityLiveQuote(ticker: string, fetchedAt: string): Promise<LiveQuoteSyncTickerResult> {
+type FetchedEquityLiveQuote =
+  | { ticker: string; live: Awaited<ReturnType<typeof fetchYahooLiveQuote>> }
+  | { ticker: string; error: string };
+
+function equityLiveQuoteFailure(ticker: string, e: unknown): LiveQuoteSyncTickerResult {
+  const msg = e instanceof Error ? e.message : String(e);
+  recordMarketSymbolFetchError(ticker, "live", msg);
+  return { ticker, ok: false, error: msg.slice(0, 200) };
+}
+
+/** One ticker's live quote from Yahoo; nothing is written yet (see {@link writeEquityLiveQuotes}). */
+async function fetchOneEquityLiveQuote(ticker: string): Promise<FetchedEquityLiveQuote> {
   try {
-    const live = await fetchYahooLiveQuote(ticker);
-    recordYahooSplits(ticker, live.splits);
-    const changed = writeEquityLiveQuote(ticker, live, fetchedAt);
-    return { ticker, ok: true, changed };
+    return { ticker, live: await fetchYahooLiveQuote(ticker) };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    recordMarketSymbolFetchError(ticker, "live", msg);
-    return { ticker, ok: false, error: msg.slice(0, 200) };
+    const failed = equityLiveQuoteFailure(ticker, e);
+    return { ticker, error: failed.error! };
   }
+}
+
+/**
+ * Writes the fetched quotes and drops what read a moved one in one synchronous step: a request
+ * served in between would otherwise read the new rows beside caches built on the old ones (the
+ * value map then disagreed with the bucket cards, 2026-11-18).
+ */
+function writeEquityLiveQuotes(fetched: readonly FetchedEquityLiveQuote[], fetchedAt: string): LiveQuoteSyncTickerResult[] {
+  const results = fetched.map((f): LiveQuoteSyncTickerResult => {
+    if ("error" in f) return { ticker: f.ticker, ok: false, error: f.error };
+    try {
+      recordYahooSplits(f.ticker, f.live.splits);
+      return { ticker: f.ticker, ok: true, changed: writeEquityLiveQuote(f.ticker, f.live, fetchedAt) };
+    } catch (e) {
+      return equityLiveQuoteFailure(f.ticker, e);
+    }
+  });
+  const moved = results.filter((r) => r.changed === true).map((r) => r.ticker);
+  if (moved.length > 0) publishLiveQuoteChanges(fetchedAt, moved, [], false);
+  return results;
 }
 
 function priorFxDailyClpPerUsd(beforeDate: string): number | null {
@@ -222,6 +249,9 @@ async function mirrorFxDailyWithCatchUp(now: Date, fetchedAt: string): Promise<F
   const catchUpChanged = catchUp.rows > 0;
   try {
     const mirror = mirrorFxDailyToLiveQuotes(fetchedAt);
+    if (mirror.changed || catchUpChanged) {
+      publishLiveQuoteChanges(fetchedAt, [], [LIVE_FX_SYMBOL], catchUpChanged);
+    }
     return {
       rows: mirror.rows,
       changed: mirror.changed || catchUpChanged,
@@ -230,6 +260,7 @@ async function mirrorFxDailyWithCatchUp(now: Date, fetchedAt: string): Promise<F
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (catchUpChanged) publishLiveQuoteChanges(fetchedAt, [], [LIVE_FX_SYMBOL], true);
     return { rows: catchUp.rows, changed: catchUpChanged, wroteFxDaily: catchUpChanged, error: msg.slice(0, 200) };
   }
 }
@@ -264,6 +295,7 @@ async function syncLiveFxQuote(now: Date, fetchedAt: string, skipLiveFetch: bool
     try {
       const live = await fetchYahooLiveUsdClpPerUsd(now);
       const changed = writeLiveFxQuote(live, fetchedAt);
+      if (changed) publishLiveQuoteChanges(fetchedAt, [], [LIVE_FX_SYMBOL], false);
       return { rows: 1, changed };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -357,9 +389,11 @@ async function syncLivePairQuote(
       if (skipLiveFetch) return { pair: pair.key, ok: true, rows: 0, changed: false, wrote_close: false };
       const live = await fetchYahooLivePairRate(pair, now);
       const changed = writeLivePairQuote(pair, live, fetchedAt);
+      if (changed) publishLiveQuoteChanges(fetchedAt, [], [pair.key], false);
       return { pair: pair.key, ok: true, rows: 1, changed, wrote_close: false };
     }
     const wrote = writeLivePairDayCloseIfMissing(pair, now);
+    if (wrote) publishLiveQuoteChanges(fetchedAt, [], [pair.key], true);
     return { pair: pair.key, ok: true, rows: wrote ? 1 : 0, changed: wrote, wrote_close: wrote };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -447,10 +481,12 @@ export async function syncAllLiveMarketQuotes(
   const allTickers = equityTickersForLiveSync();
   const tickers = allTickers.filter((t) => !options.skipTickers?.has(t.toUpperCase()));
   const streamed = allTickers.length - tickers.length;
-  const equities: LiveQuoteSyncTickerResult[] = [];
-  for (const ticker of tickers) {
-    equities.push(await syncOneEquityLiveQuote(ticker, fetchedAt));
-  }
+  // Every write below drops what read it in the same synchronous step (no await between a
+  // row and its invalidation), so a request served while the poll awaits a fetch never reads
+  // new rows beside caches built on the old ones.
+  const fetched: FetchedEquityLiveQuote[] = [];
+  for (const ticker of tickers) fetched.push(await fetchOneEquityLiveQuote(ticker));
+  const equities = writeEquityLiveQuotes(fetched, fetchedAt);
 
   const fxSync = await syncLiveFxQuote(now, fetchedAt, options.skipLiveFxPairs?.has(LIVE_FX_SYMBOL) === true);
   const otherPairs: LiveMarketQuotesSyncResult["fx_pairs"] = [];
@@ -471,15 +507,8 @@ export async function syncAllLiveMarketQuotes(
   const okCount = equities.filter((r) => r.ok).length;
 
   const fxChanged = [...(fxSync.changed ? [LIVE_FX_SYMBOL] : []), ...otherPairs.filter((p) => p.changed).map((p) => p.pair)];
+  // Already published, each where it was written.
   const valuesChanged = equities.some((r) => r.changed === true) || fxChanged.length > 0;
-  if (valuesChanged) {
-    publishLiveQuoteChanges(
-      fetchedAt,
-      equities.filter((r) => r.changed === true).map((r) => r.ticker),
-      fxChanged,
-      fxSync.wroteFxDaily === true || otherPairs.some((p) => p.wrote_close)
-    );
-  }
 
   console.log(
     `live-quotes:sync — equities ${okCount}/${equities.length}${streamed > 0 ? ` (${streamed} on the stream)` : ""}, fx ${fxRows} row(s)${shouldUseLivePairQuote(LIVE_FX_SYMBOL, now) ? (options.skipLiveFxPairs?.has(LIVE_FX_SYMBOL) ? " (on the stream)" : " (Yahoo CLP=X)") : " (Yahoo EOD fx_daily)"}, ${otherPairs.map((p) => `, ${p.pair} ${p.rows} row(s)${p.wrote_close ? " (day close)" : ""}`).join("")}, pruned ${pruned}${valuesChanged ? ", aggregations invalidated" : ""}`

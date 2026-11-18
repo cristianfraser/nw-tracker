@@ -5,10 +5,13 @@ import {
   getLatestLiveEquityQuoteRow,
   getLatestLiveFxQuoteRow,
   getLatestLivePairQuoteRow,
+  insertLiveMarketQuote,
 } from "./liveMarketQuotesDb.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import { syncAllLiveMarketQuotes, writeStreamQuotes } from "./liveMarketQuotesSync.js";
 import { fetchYahooLiveQuote } from "./equityYahooEod.js";
+import { fetchYahooLiveUsdClpPerUsd } from "./fxLive.js";
+import { getAggregationCached } from "./cacheRegistry.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
 vi.mock("./equityYahooEod.js", async (importOriginal) => ({
@@ -154,6 +157,39 @@ describe("syncAllLiveMarketQuotes", () => {
       expect(stored).toEqual({ mid: 1.1, source: "live:EURUSD=X" });
       const again = await syncAllLiveMarketQuotes(new Date(`${day}T21:15:00.000Z`));
       expect(again.fx_pairs[0]).toMatchObject({ rows: 0, wrote_close: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops what read a moved price before awaiting its next fetch", async () => {
+    // 2026-11-18: the poll wrote each equity row as it arrived but dropped the caches only at its
+    // end, so a request served while it awaited the dollar read new rows beside cached figures
+    // built on the old ones (the value map's Brokerage vs its bucket card).
+    const now = new Date("2026-06-01T16:00:00Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      insertLiveMarketQuote({
+        symbol: "SPY",
+        kind: "equity",
+        value: 590,
+        currency: "usd",
+        session_ymd: "2026-06-01",
+        previous_value: 585,
+        fetched_at: new Date(now.getTime() - 60_000).toISOString(),
+      });
+      const key = "dashboard.page_bundle|account_row|vitest-live-poll|usd";
+      const cachedSpy = () => getAggregationCached(key, () => getLatestLiveEquityQuoteRow("SPY")?.value ?? null);
+      expect(cachedSpy()).toBe(590);
+      let seenDuringFxFetch: number | null = null;
+      vi.mocked(fetchYahooLiveUsdClpPerUsd).mockImplementationOnce(async () => {
+        seenDuringFxFetch = cachedSpy();
+        return { clp_per_usd: 950, session_ymd: "2026-06-01", previous_clp_per_usd: 945 };
+      });
+      await syncAllLiveMarketQuotes(now);
+      expect(getLatestLiveEquityQuoteRow("SPY")?.value).toBe(600);
+      expect(seenDuringFxFetch).toBe(600);
     } finally {
       vi.useRealTimers();
     }
