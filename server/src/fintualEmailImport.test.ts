@@ -757,7 +757,7 @@ describe("fintualEmailImport", () => {
     expect(noPesos[0]!.requires_manual).toMatch(/both the dollars and the pesos/);
   });
 
-  it("maps the Invesco semiconductor fund to SOXQ and plans its account when none exists", () => {
+  it("maps the Invesco semiconductor fund to SOXQ and plans its account under Acciones when none exists", () => {
     expect(tickerFromFundName("Invesco PHLX Semiconductor ETF")).toBe("SOXQ");
     const accounts = fintualBalanceAccounts();
     if (!accounts) return;
@@ -771,36 +771,14 @@ describe("fintualEmailImport", () => {
       units: "7.713961329",
       currency: "usd",
     });
-    const pg = db.prepare(`SELECT id, slug FROM portfolio_groups WHERE group_kind = 'bucket' ORDER BY id LIMIT 1`).get() as
-      | { id: number; slug: string }
-      | undefined;
-    const bucketOfFintualStocks = db
-      .prepare(
-        `SELECT COUNT(DISTINCT a.primary_portfolio_group_id) AS n FROM movements m JOIN accounts a ON a.id = m.to_account_id
-         WHERE m.from_account_id = ? AND m.units_delta IS NOT NULL AND a.equity_ticker IS NOT NULL`
-      )
-      .get(accounts.usd) as { n: number };
-    if (!pg || bucketOfFintualStocks.n !== 0) return;
-    // No Fintual stock yet → no bucket to put it in: a human creates the position.
-    expect(planFintualEmailBatch([buy])[0]!.requires_manual).toMatch(/no single bucket/);
-    // One Fintual stock in a bucket → the new ticker is planned there.
-    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
-    db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, equity_ticker, primary_portfolio_group_id)
-       VALUES (?, 'vitest XYZQ', 0, datetime('now'), 'XYZQ', ?)`
-    ).run(group.id, pg.id);
-    const stockId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
-    db.prepare(
-      `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, units_delta, flow_kind, note)
-       VALUES (?, ?, 10, 'usd', '2097-10-01', 1, 'stock_buy', 'vitest buy')`
-    ).run(accounts.usd, stockId);
-    created.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
-    createdAccounts.unshift(stockId);
+    // A broker's new stock is filed under Brokerage › Acciones, wherever its other stocks sit.
+    const acciones = db.prepare(`SELECT slug FROM portfolio_groups WHERE slug = 'brokerage_acciones'`).get();
+    if (!acciones) return;
     const planned = planFintualEmailBatch([buy]);
     expect(planned[0]).toMatchObject({
       from_account_id: accounts.usd,
       to_account_id: null,
-      create_account: { ticker: "SOXQ", bucket_slug: pg.slug },
+      create_account: { ticker: "SOXQ", bucket_slug: "brokerage_acciones" },
       units_delta: "7.713961329",
       requires_manual: null,
     });

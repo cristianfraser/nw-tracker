@@ -40,7 +40,7 @@ import {
 import type { BrokerNotification } from "nw-tracker-contracts";
 import { brokerNotificationIsBookable, notificationChileYmd } from "./brokerNotifications.js";
 import { syntheticRetiroMovementIdForMessageId } from "./fintualSyntheticRetiros.js";
-import { brokerSymbolForFundName } from "./brokerInstruments.js";
+import { brokerSymbolForFundName, NEW_STOCK_BUCKET_SLUG, newStockBucketSlug } from "./brokerInstruments.js";
 
 /** The window `fintualCertImport` uses too, for the same reason (`BROKER_SETTLEMENT_WINDOW_DAYS`). */
 const EMAIL_MATCH_WINDOW_DAYS = BROKER_SETTLEMENT_WINDOW_DAYS;
@@ -121,19 +121,6 @@ export type FintualPlannedMovement = {
 const FX_SANITY_MIN_CLP_PER_USD = 300;
 const FX_SANITY_MAX_CLP_PER_USD = 2000;
 
-/** The bucket every stock Fintual USD has bought sits in, when there is exactly one. */
-function fintualEquityBucketSlug(): string | null {
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT pg.slug AS slug
-       FROM movements m
-       JOIN accounts a ON a.id = m.to_account_id
-       JOIN portfolio_groups pg ON pg.id = a.primary_portfolio_group_id
-       WHERE m.from_account_id = ? AND m.units_delta IS NOT NULL AND a.equity_ticker IS NOT NULL`
-    )
-    .all(fintualUsdAccountId()) as { slug: string }[];
-  return rows.length === 1 ? rows[0]!.slug : null;
-}
 
 const findNearbyTransfers = db.prepare(
   `SELECT id, occurred_on, amount FROM movements
@@ -241,13 +228,11 @@ export function planFintualEmailMovement(
         return { ...buyBase, to_account_id: atFintual[0]! };
       }
       if (holders.length === 1) return { ...buyBase, to_account_id: holders[0]! };
-      const bucket = fintualEquityBucketSlug();
+      const bucket = newStockBucketSlug();
       if (!bucket) {
         return {
           ...buyBase,
-          requires_manual:
-            `no account for ticker ${ticker} and no single bucket the Fintual stocks sit in — ` +
-            "create the position in the panel first",
+          requires_manual: `no account for ticker ${ticker} and no ${NEW_STOCK_BUCKET_SLUG} bucket to file it under — create the position in the panel first`,
         };
       }
       if (marketSymbol(ticker) == null) {

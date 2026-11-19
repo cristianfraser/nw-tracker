@@ -97,3 +97,17 @@ export function brokerSymbolForFundName(broker: BrokerSlugWithPositions, fundNam
   }[]).filter((r) => brokerInstrumentNameKey(r.name) === key);
   return hits.length === 1 ? hits[0]!.symbol : null;
 }
+
+/**
+ * Where a broker's first buy of a new stock files its account: Brokerage › Acciones, whatever the
+ * broker (the user's choice, 2026-11-19). Moving it elsewhere is a panel edit. Null when the bucket
+ * does not exist (a database without the seeded tree): the buy then stays for a person.
+ */
+export const NEW_STOCK_BUCKET_SLUG = "brokerage_acciones";
+
+export function newStockBucketSlug(): string | null {
+  const row = db.prepare(`SELECT slug FROM portfolio_groups WHERE slug = ?`).get(NEW_STOCK_BUCKET_SLUG) as
+    | { slug: string }
+    | undefined;
+  return row?.slug ?? null;
+}
