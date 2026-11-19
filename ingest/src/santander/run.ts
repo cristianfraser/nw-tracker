@@ -34,6 +34,8 @@ import { formatBalancePollResult, requestBalancePoll } from "./balancePoll.js";
  * deterministic crash cannot turn into a burst of bank logins.
  */
 const MAX_BROWSER_RELAUNCHES = 1;
+/** How long closing the browser may take before the run stops waiting (a frozen Chrome never answers). */
+const CONTEXT_CLOSE_TIMEOUT_MS = 15_000;
 
 /** Two URL reads this far apart that agree count as a settled window (see `sessionVerdict`). */
 const URL_STABILITY_PAUSE_MS = 300;
@@ -127,7 +129,16 @@ export async function runSantander(opts: RunOptions): Promise<number> {
   const closeSession = async (session: Session): Promise<void> => {
     await session.keepAlive.stop();
     try {
-      await session.context.close();
+      // A frozen browser may never acknowledge the close; past the timeout the run goes on and
+      // main.ts's forced exit takes the browser down with the process (Playwright kills it on exit).
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        session.context.close(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`no answer within ${CONTEXT_CLOSE_TIMEOUT_MS / 1000}s`)), CONTEXT_CLOSE_TIMEOUT_MS);
+          timer.unref();
+        }),
+      ]).finally(() => clearTimeout(timer));
     } catch (err) {
       // A context whose browser already crashed may refuse to close; there is nothing left to free.
       log(`(browser context close: ${errorMessage(err).split("\n")[0]})`);

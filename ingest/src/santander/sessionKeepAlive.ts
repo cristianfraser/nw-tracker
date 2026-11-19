@@ -5,10 +5,13 @@ import { log } from "../log.js";
 /** Poll interval — the prompt gives ten seconds before it logs the session out. */
 const POLL_MS = 2_000;
 
+/** How long `stop` waits for an in-flight poll before abandoning it (a frozen page never answers). */
+const STOP_TIMEOUT_MS = 10_000;
+
 export type SessionKeepAlive = {
   /** How many times the prompt was answered during this session. */
   readonly extensions: number;
-  /** Stop polling; resolves once the loop has exited (at most one poll interval). */
+  /** Stop polling; resolves once the loop has exited, or after `STOP_TIMEOUT_MS` on a frozen page. */
   stop: () => Promise<void>;
 };
 
@@ -57,7 +60,20 @@ export function keepSessionAlive(page: Page): SessionKeepAlive {
     },
     stop: async () => {
       stopped = true;
-      await loop;
+      // A poll on a frozen renderer never settles (`count()` takes no timeout): on 2026-11-19 the
+      // balance poll's page stopped answering, even a screenshot timed out, and awaiting the loop
+      // held the run — and every hourly poll behind it — open for hours. Stop waiting after one
+      // interval plus a margin; the abandoned poll dies with the browser.
+      let timer: NodeJS.Timeout | undefined;
+      const gaveUp = await Promise.race([
+        loop.then(() => false),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(true), STOP_TIMEOUT_MS);
+          timer.unref();
+        }),
+      ]);
+      clearTimeout(timer);
+      if (gaveUp) log(`(keep-alive: the page did not answer within ${STOP_TIMEOUT_MS / 1000}s — stopped waiting for it)`);
     },
   };
 }
