@@ -25,6 +25,7 @@ import {
   type RecordCompositePositionsResult,
 } from "./watchlistCompositeHistory.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
+import { rnCompositionCurrentSlotKey } from "./rnCompositionSlots.js";
 import {
   APV_PROXY_NEGLIGIBLE_REL_DIFF,
   basketUsdForHoldings,
@@ -420,7 +421,7 @@ export type SyncRiskyNorrisCompositionOptions = {
 
 /**
  * @param sharedState When called from `runGlobalSyncAll`, its in-memory state snapshot.
- * The runner saves that snapshot in its `finally`, so the `fintualRnCompositionLastSyncYmd`
+ * The runner saves that snapshot in its `finally`, so the `fintualRnCompositionLastSlot`
  * stamp must land on the same object — a load/save here would be clobbered by that final save,
  * leaving the source stale forever (15-minute re-sync loop). Standalone callers omit it and
  * this function loads/saves the state file itself.
@@ -523,12 +524,16 @@ export async function syncRiskyNorrisComposition(
     }
   })();
 
-  if (sharedState) {
-    sharedState.fintualRnCompositionLastSyncYmd = last_sync_ymd;
-  } else {
-    const state = loadGlobalSyncState();
-    state.fintualRnCompositionLastSyncYmd = last_sync_ymd;
-    saveGlobalSyncState(state);
+  // A run before the day's first slot (by hand) serves no slot and stamps nothing.
+  const slot = rnCompositionCurrentSlotKey(cl);
+  if (slot != null) {
+    if (sharedState) {
+      sharedState.fintualRnCompositionLastSlot = slot;
+    } else {
+      const state = loadGlobalSyncState();
+      state.fintualRnCompositionLastSlot = slot;
+      saveGlobalSyncState(state);
+    }
   }
 
   return {

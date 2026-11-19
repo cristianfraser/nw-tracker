@@ -41,8 +41,8 @@ export type GlobalSyncStateFile = {
   afcCicLastPublishedYmd?: string;
   /** Last UTC day we synced crypto EOD. */
   equityEodLastCryptoUtcYmd?: string;
-  /** Chile day of last successful Risky Norris proxy composition sync. */
-  fintualRnCompositionLastSyncYmd?: string;
+  /** Slot (`YYYY-MM-DD HH:MM`, Chile) of the last successful Risky Norris composition sync (`rnCompositionSlots.ts`). */
+  fintualRnCompositionLastSlot?: string;
   /** Latest CMF portfolio filing month (YYYYMM) on record for the Risky Norris basket (`cmfRnPortfolioSync.ts`). */
   cmfRnPortfolioLastMonth?: string;
   /** Chile day of the last attempt to fetch the next CMF filing (one attempt per day). */

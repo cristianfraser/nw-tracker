@@ -30,14 +30,11 @@ import {
   equitySantiagoEodCaughtUp,
 } from "./equityEodSync.js";
 import {
-  FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE,
-  FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE,
   chileDayKind,
   cmfNextSync,
   cryptoNextSync,
   fintualNextSync,
   forexDayKind,
-  isFintualRnCompositionDueDay,
   londonDayKindAt,
   nyseDayKindAt,
   officialSerieNextSync,
@@ -84,6 +81,7 @@ import {
   type SyncPublisherLag,
 } from "./publisherSchedule.js";
 import { GLOBAL_SYNC_SOURCES, isGlobalSyncSource, type GlobalSyncSource } from "./syncSourceIds.js";
+import { rnCompositionCurrentSlotKey } from "./rnCompositionSlots.js";
 
 export {
   GLOBAL_SYNC_SOURCES,
@@ -93,16 +91,14 @@ export {
 export { PUBLISHER_LAG_MAX_POLL_AGE_MS, type SyncPublisherLag } from "./publisherSchedule.js";
 
 /**
- * Due once per due day (`isFintualRnCompositionDueDay`: a Chile business day or the day after one)
- * from 18:30: stale until that day's composition sync ran. A Sunday or a holiday after a weekend
- * is never stale (nothing newly published to anchor on), and re-running when the composition is
- * unchanged is fine — the sync re-anchors on the same day and re-stamps `fintualRnCompositionLastSyncYmd`.
+ * Due once per slot (`FINTUAL_RN_COMPOSITION_SLOTS_CHILE`) on a due day (a Chile business day or
+ * the day after one): stale from a slot until a run stamps it. A Sunday or a holiday after a
+ * weekend is never stale (nothing newly published to anchor on), and re-running when the
+ * composition is unchanged is fine — the sync re-anchors on the same day.
  */
 export function isFintualRnCompositionStale(cl: ChileWallClock, state: GlobalSyncStateFile): boolean {
-  if (!isFintualRnCompositionDueDay(cl.ymd)) return false;
-  const dueMins = FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE * 60 + FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE;
-  if (cl.hour * 60 + cl.minute < dueMins) return false;
-  return state.fintualRnCompositionLastSyncYmd?.trim() !== cl.ymd;
+  const current = rnCompositionCurrentSlotKey(cl);
+  return current != null && state.fintualRnCompositionLastSlot?.trim() !== current;
 }
 
 function userForcedStaleSet(state: GlobalSyncStateFile): Set<GlobalSyncSource> {

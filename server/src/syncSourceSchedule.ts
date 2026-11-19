@@ -27,6 +27,14 @@ import {
 import { londonWallClock } from "./londonSession.js";
 import { isAfterNyseRegularClose, nyseWallClock } from "./nyseSession.js";
 import { EVENING_PUBLISH_HOUR_CHILE, nextPublishDue, type PublisherSchedule } from "./publisherSchedule.js";
+import {
+  FINTUAL_RN_COMPOSITION_SLOTS_CHILE,
+  isFintualRnCompositionDueDay,
+  rnCompositionCurrentSlotKey,
+  rnCompositionLaterSlotToday,
+} from "./rnCompositionSlots.js";
+
+export { isFintualRnCompositionDueDay } from "./rnCompositionSlots.js";
 
 /**
  * When each sync source next becomes due, one function per source; the source table
@@ -35,23 +43,6 @@ import { EVENING_PUBLISH_HOUR_CHILE, nextPublishDue, type PublisherSchedule } fr
  */
 
 const SBIF_OBSERVED_STALE_AFTER_HOUR_CHILE = 18;
-/**
- * Chile wall time (inclusive) from which the daily Risky Norris composition sync is due. After the
- * Fintual publish hour: the Risky Norris A serie the proxy anchors on publishes day D on D+1
- * through the official public prices, which the sync refreshes itself, so an evening run anchors
- * at most one session behind (the old 10:00 run found nothing newer than D−2).
- */
-export const FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE = 18;
-export const FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE = 30;
-
-/**
- * A day with something new to anchor on: a Chile business day (the composition may have moved and
- * the previous business day's cuota is published), or the day after one (a Friday's cuota
- * publishes on Saturday). A Sunday, or a holiday following a weekend, brings nothing.
- */
-export function isFintualRnCompositionDueDay(ymd: string): boolean {
-  return isChileBusinessDay(ymd) || isChileBusinessDay(chileCalendarAddDays(ymd, -1));
-}
 
 function nextFintualRnCompositionDueYmd(ymd: string, maxSteps = 14): string | null {
   let cur = ymd;
@@ -280,16 +271,20 @@ export function cryptoNextSync(cl: ChileWallClock): SyncWallTime {
   return chileTimeOnYmd(chileCalendarAddDays(cl.ymd, 1), CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE, CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE);
 }
 
-/** Risky Norris composition: once per due day at 18:30 (today if not yet reached, else the next due day). */
+/**
+ * Risky Norris composition: the slot in force when it has not run yet (now — the scheduler polls
+ * while stale), else the next slot today, else the first slot of the next due day.
+ */
 export function rnCompositionNextSync(cl: ChileWallClock, state: GlobalSyncStateFile): SyncWallTime | null {
-  const last = state.fintualRnCompositionLastSyncYmd?.trim();
-  const nowMins = cl.hour * 60 + cl.minute;
-  const dueMins = FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE * 60 + FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE;
-  const dueToday = isFintualRnCompositionDueDay(cl.ymd) && nowMins < dueMins && last !== cl.ymd;
-  const nextYmd = dueToday ? cl.ymd : nextFintualRnCompositionDueYmd(cl.ymd);
-  return nextYmd
-    ? chileTimeOnYmd(nextYmd, FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE, FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE)
-    : null;
+  const current = rnCompositionCurrentSlotKey(cl);
+  if (current != null && state.fintualRnCompositionLastSlot?.trim() !== current) {
+    return chileTimeToday(cl, cl.hour, cl.minute);
+  }
+  const later = rnCompositionLaterSlotToday(cl);
+  if (later != null) return chileTimeToday(cl, later.hour, later.minute);
+  const nextYmd = nextFintualRnCompositionDueYmd(cl.ymd);
+  const first = FINTUAL_RN_COMPOSITION_SLOTS_CHILE[0]!;
+  return nextYmd ? chileTimeOnYmd(nextYmd, first.hour, first.minute) : null;
 }
 
 /** Fintual official serie: due again while a placeholder row waits for it; nothing pending = no wake. */

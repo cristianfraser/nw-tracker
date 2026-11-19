@@ -3,7 +3,7 @@ import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { isFintualRnCompositionStale } from "./globalSyncStale.js";
 import { holdingsAsStated, holdingsForPricing, parseManagedFundPositionsBody } from "./fintualRiskyNorrisComposition.js";
-import { isFintualRnCompositionDueDay } from "./syncSourceSchedule.js";
+import { isFintualRnCompositionDueDay, rnCompositionNextSync } from "./syncSourceSchedule.js";
 
 const FIXTURE = {
   date: "2026-06-22",
@@ -148,26 +148,53 @@ describe("isFintualRnCompositionStale", () => {
     monthKey: "2026-06",
   });
 
-  it("is not stale before 18:30 on a business day", () => {
+  it("is not stale before the day's first slot", () => {
     expect(isFintualRnCompositionStale(businessDay(9, 59), {})).toBe(false);
-    expect(isFintualRnCompositionStale(businessDay(18, 29), {})).toBe(false);
   });
 
-  it("is stale from 18:30 when not yet synced today", () => {
-    expect(isFintualRnCompositionStale(businessDay(18, 30), {})).toBe(true);
-    const staleState: GlobalSyncStateFile = { fintualRnCompositionLastSyncYmd: "2026-06-22" };
-    expect(isFintualRnCompositionStale(businessDay(18, 30), staleState)).toBe(true);
+  it("each slot is due once: stale from the slot until a run stamps it", () => {
+    expect(isFintualRnCompositionStale(businessDay(10, 0), {})).toBe(true);
+    const ranAt10: GlobalSyncStateFile = { fintualRnCompositionLastSlot: "2026-06-23 10:00" };
+    expect(isFintualRnCompositionStale(businessDay(11, 59), ranAt10)).toBe(false);
+    expect(isFintualRnCompositionStale(businessDay(12, 0), ranAt10)).toBe(true);
+    expect(isFintualRnCompositionStale(businessDay(18, 29), { fintualRnCompositionLastSlot: "2026-06-23 15:00" })).toBe(false);
+    expect(isFintualRnCompositionStale(businessDay(18, 30), { fintualRnCompositionLastSlot: "2026-06-23 15:00" })).toBe(true);
+    expect(isFintualRnCompositionStale(businessDay(23), { fintualRnCompositionLastSlot: "2026-06-23 18:30" })).toBe(false);
   });
 
-  it("is fresh once today's composition sync ran", () => {
-    const state: GlobalSyncStateFile = { fintualRnCompositionLastSyncYmd: "2026-06-23" };
-    expect(isFintualRnCompositionStale(businessDay(19), state)).toBe(false);
+  it("a missed slot is one run, not several: only the slot in force counts", () => {
+    const ranYesterday: GlobalSyncStateFile = { fintualRnCompositionLastSlot: "2026-06-22 18:30" };
+    expect(isFintualRnCompositionStale(businessDay(16), ranYesterday)).toBe(true);
+    expect(isFintualRnCompositionStale(businessDay(16), { fintualRnCompositionLastSlot: "2026-06-23 15:00" })).toBe(false);
   });
 
-  it("a Saturday is due from 18:30 (Friday's cuota publishes on Saturday); a Sunday never is", () => {
-    expect(isFintualRnCompositionStale(weekendDay(20, 11), {})).toBe(false);
-    expect(isFintualRnCompositionStale(weekendDay(20, 18, 30), {})).toBe(true);
+  it("a Saturday is due (Friday's cuota publishes on Saturday); a Sunday never is", () => {
+    expect(isFintualRnCompositionStale(weekendDay(20, 9), {})).toBe(false);
+    expect(isFintualRnCompositionStale(weekendDay(20, 12), {})).toBe(true);
     expect(isFintualRnCompositionStale(weekendDay(21, 18, 30), {})).toBe(false);
+  });
+});
+
+describe("rnCompositionNextSync", () => {
+  const at = (ymd: string, hour: number, minute = 0): ChileWallClock => {
+    const [year, month, day] = ymd.split("-").map(Number) as [number, number, number];
+    return { ymd, year, month, day, hour, minute, monthKey: ymd.slice(0, 7) };
+  };
+  const wall = (t: ReturnType<typeof rnCompositionNextSync>) => (t ? `${t.ymd} ${t.hour}:${t.minute}` : null);
+
+  it("wakes at the next slot today, then the next due day's first slot", () => {
+    expect(wall(rnCompositionNextSync(at("2026-06-23", 8), {}))).toBe("2026-06-23 10:0");
+    const ran12: GlobalSyncStateFile = { fintualRnCompositionLastSlot: "2026-06-23 12:00" };
+    expect(wall(rnCompositionNextSync(at("2026-06-23", 13), ran12))).toBe("2026-06-23 15:0");
+    const ran1830: GlobalSyncStateFile = { fintualRnCompositionLastSlot: "2026-06-23 18:30" };
+    expect(wall(rnCompositionNextSync(at("2026-06-23", 19), ran1830))).toBe("2026-06-24 10:0");
+    // Saturday's last slot ran: Sunday is not due, Monday is.
+    const ranSat: GlobalSyncStateFile = { fintualRnCompositionLastSlot: "2026-06-20 18:30" };
+    expect(wall(rnCompositionNextSync(at("2026-06-20", 20), ranSat))).toBe("2026-06-22 10:0");
+  });
+
+  it("an unrun slot in force is due now", () => {
+    expect(wall(rnCompositionNextSync(at("2026-06-23", 13, 7), {}))).toBe("2026-06-23 13:7");
   });
 });
 
