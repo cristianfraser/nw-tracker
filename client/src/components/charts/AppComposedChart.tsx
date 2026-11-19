@@ -7,16 +7,8 @@ import { appTooltipElement, type AppTooltipSpec } from "./ChartTooltip";
 import { groupedBarSpacing } from "./groupedBarSpacing";
 import { useElementSize } from "./useElementSize";
 import { useChartStyle } from "./chartStyle";
-import {
-  RoughAxisLines,
-  RoughChartDefs,
-  injectRoughShapes,
-  roughAxisSides,
-  roughGrainFilterId,
-  roughGridProps,
-  roughModeFor,
-  roughSeed,
-} from "./roughShapes";
+import { RoughChartDefs, roughGrainFilterId, roughGridProps, roughModeFor, roughSeed } from "./roughShapes";
+import { RoughAxisLines, injectRoughShapes, roughAxisSides } from "./roughChartInjection";
 
 /** Side-by-side bars drawn per category, and what the wrapper needs to space them. */
 export type AppBarGroup = {

@@ -23,8 +23,8 @@ import {
   yAxisWidthForTicks,
   resolvePeriodXAxis,
   type ChartDisplayUnit,
-  UNDER_SERIES_Z_INDEX,
 } from "./chartLayout";
+import { UNDER_SERIES_Z_INDEX } from "./chartZIndex";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 const BAR_MAX_SIZE = 28;

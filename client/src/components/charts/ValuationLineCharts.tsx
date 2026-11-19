@@ -43,8 +43,8 @@ import {
   moneyYAxisProps,
   DIM_LEGEND_OPACITY,
   type ChartDisplayUnit,
-  UNDER_SERIES_Z_INDEX,
 } from "./chartLayout";
+import { UNDER_SERIES_Z_INDEX } from "./chartZIndex";
 import {
   ChartTooltipRows,
   dedupeTooltipPayloadPreferVisibleStroke,

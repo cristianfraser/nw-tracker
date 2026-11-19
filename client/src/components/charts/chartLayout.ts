@@ -1,4 +1,3 @@
-import { DefaultZIndexes } from "recharts";
 import { formatCompactMoney, formatCurrency, formatPct } from "../../format";
 import { formatDayMonthShortLabel, formatMonthYearShortLabel } from "../../formatDateLabel";
 
@@ -14,12 +13,6 @@ export const RECHARTS_MONEY_CHART_MARGIN = { top: 8, right: 0, left: 0, bottom: 
 
 /** Match default axis / tick stroke on dark charts (see YAxis/XAxis axisLine usage). */
 export const AXIS_LINE_STROKE = "#64748b";
-
-/**
- * Layer for guides that sit under every series (the zero line, the current-period marker). Recharts 3
- * paints by layer, not by JSX order, and draws reference lines in the line layer, over the bars.
- */
-export const UNDER_SERIES_Z_INDEX = DefaultZIndexes.area - 1;
 
 /** Shared `tick={…}` style for X/Y axes across all charts. */
 export const CHART_TICK_STYLE = { fontSize: 11, fill: "#94a3b8" } as const;

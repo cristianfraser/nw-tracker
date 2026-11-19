@@ -13,15 +13,8 @@ import { useElementSize } from "./useElementSize";
 import { RECHARTS_MONEY_CHART_MARGIN } from "./chartLayout";
 import { appTooltipElement, type AppTooltipSpec } from "./ChartTooltip";
 import { useChartStyle } from "./chartStyle";
-import {
-  RoughAxisLines,
-  RoughChartDefs,
-  injectRoughShapes,
-  roughAxisSides,
-  roughGrainFilterId,
-  roughModeFor,
-  roughSeed,
-} from "./roughShapes";
+import { RoughChartDefs, roughGrainFilterId, roughModeFor, roughSeed } from "./roughShapes";
+import { RoughAxisLines, injectRoughShapes, roughAxisSides } from "./roughChartInjection";
 
 function tailClipKeySet(tailClippedKeys: ReadonlySet<string> | readonly string[] | null | undefined): Set<string> {
   if (tailClippedKeys == null) return new Set();

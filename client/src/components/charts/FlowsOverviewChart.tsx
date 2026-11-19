@@ -15,8 +15,8 @@ import {
   extractSortedAsOfDates,
   moneyYAxisProps,
   resolvePeriodXAxis,
-  UNDER_SERIES_Z_INDEX,
 } from "./chartLayout";
+import { UNDER_SERIES_Z_INDEX } from "./chartZIndex";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 const CHART_ANIM_MS = 90;

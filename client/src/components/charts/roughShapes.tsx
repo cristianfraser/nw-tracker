@@ -1,35 +1,14 @@
 import {
-  Children,
-  cloneElement,
-  isValidElement,
   useId,
   useMemo,
   useState,
   type CSSProperties,
-  type ReactElement,
   type ReactNode,
 } from "react";
-import {
-  Area,
-  Bar,
-  CartesianGrid,
-  DefaultLegendContent,
-  DefaultZIndexes,
-  Legend,
-  Line,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-  ZIndexLayer,
-  usePlotArea,
-  type AreaRevealShapeProps,
-  type BarShapeProps,
-  type LineDrawShapeProps,
-} from "recharts";
+import type { AreaRevealShapeProps, BarShapeProps, LineDrawShapeProps } from "recharts";
 import { RoughGenerator } from "roughjs/bin/generator";
 import type { Options } from "roughjs/bin/core";
 import type { Point } from "roughjs/bin/geometry";
-import { AXIS_LINE_STROKE } from "./chartLayout";
 import type { ChartStyle } from "../../chartStylePreference";
 import { useChartStyle } from "./chartStyle";
 import { HATCH_TUNING } from "./hatchTuning";
@@ -432,7 +411,7 @@ function prng(seed: number): () => number {
 }
 
 /** A seed derived from `seed` and an index, kept in rough's [1, 2^31) (0 means «random»). */
-function subSeed(seed: number, i: number): number {
+export function subSeed(seed: number, i: number): number {
   return ((seed + i * 104729) % 2147483646) + 1;
 }
 
@@ -480,7 +459,7 @@ export function tileHatchAngle(falling: boolean, seed: number, range: number): n
  * Hands each of a chart's bar series a slot: the slots in a seeded order rather than the series'
  * own (so a chart does not run 35° → 55° left to right in its legend), and a seeded flip.
  */
-function barHatchSlots(keys: readonly string[]): Map<string, BarHatchSlot> {
+export function barHatchSlots(keys: readonly string[]): Map<string, BarHatchSlot> {
   const shuffled = [...keys].sort((a, b) => roughSeed(a, 3301) - roughSeed(b, 3301));
   return new Map(
     shuffled.map((k, index) => [k, { index, count: keys.length, flip: prng(roughSeed(k, 3307))() < 0.5 }])
@@ -1568,7 +1547,7 @@ export function LegendSquiggle({
  * inside a 32-unit box drawn at the legend's icon size, so the squiggle sits in a nested
  * 14-unit `<svg>` that comes out at about 1:1 on screen.
  */
-function LegendSquiggleIcon(props: { color?: string }) {
+export function LegendSquiggleIcon(props: { color?: string }) {
   const color = typeof props.color === "string" ? props.color : "#94a3b8";
   return (
     <svg x={0} y={0} width={32} height={32} viewBox="0 0 18 14" preserveAspectRatio="none" overflow="visible">
@@ -1693,7 +1672,7 @@ export function RoughSwatchTriangleDown({ color }: { color: string }) {
  * A box legend icon (a bar series: the plain legend draws a filled square) in the hand-drawn
  * styles, in the series colour. Same nested 14-unit box as {@link LegendSquiggleIcon}.
  */
-function LegendBoxIcon(props: { color?: string; hatchSlot?: BarHatchSlot }) {
+export function LegendBoxIcon(props: { color?: string; hatchSlot?: BarHatchSlot }) {
   const color = typeof props.color === "string" ? props.color : "#94a3b8";
   return (
     <svg x={0} y={0} width={32} height={32} viewBox="0 0 14 14" overflow="visible">
@@ -1702,37 +1681,6 @@ function LegendBoxIcon(props: { color?: string; hatchSlot?: BarHatchSlot }) {
   );
 }
 
-type LegendContentProps = { payload?: readonly { color?: string; type?: string; dataKey?: unknown }[] } & Record<string, unknown>;
-
-/** A `<Legend>`'s `content` that hands every entry the squiggle icon, keeping the chart's own content. */
-function roughLegendContent(original: unknown, barSlots: ReadonlyMap<string, BarHatchSlot>) {
-  return (lp: LegendContentProps) => {
-    // Recharts draws its built-in line / plainline / rect icons before it looks at `legendIcon`,
-    // so each entry (except hidden ones) is re-typed to a symbol type that falls through to it,
-    // and the legend's own `iconType` override is dropped.
-    // A box entry (the plain legend's filled square, a bar series) gets a hand-drawn box; every
-    // other entry a hand-drawn line.
-    const payload = (lp.payload ?? []).map((e) =>
-      e.type === "none"
-        ? e
-        : {
-            ...e,
-            type: "square",
-            legendIcon:
-              e.type === "rect" || e.type === "square" ? (
-                // A bar series' box leans the way its bars do.
-                <LegendBoxIcon color={e.color} hatchSlot={barSlots.get(dataKeyString(e.dataKey))} />
-              ) : (
-                <LegendSquiggleIcon color={e.color} />
-              ),
-          }
-    );
-    const next = { ...lp, payload, iconType: undefined };
-    if (typeof original === "function") return (original as (p: LegendContentProps) => ReactNode)(next);
-    if (isValidElement(original)) return cloneElement(original, next as Record<string, unknown>);
-    return <DefaultLegendContent {...(next as object)} />;
-  };
-}
 
 // ---------------------------------------------------------------------------------------------
 // Area
@@ -2086,7 +2034,7 @@ export function roughBarShape(
 /** Moves or resizes a bar before it is drawn; null draws nothing. */
 export type BarShapeGeometry = (props: BarShapeProps) => BarShapeProps | null;
 
-type GeometryBarShape = ((props: BarShapeProps) => ReactNode) & { roughGeometry: BarShapeGeometry };
+export type GeometryBarShape = ((props: BarShapeProps) => ReactNode) & { roughGeometry: BarShapeGeometry };
 
 /**
  * A custom `<Bar>` shape that only places the bar (a fixed width, a centring): the plain style
@@ -2173,7 +2121,7 @@ function coord(v: number | string | undefined): number | null {
 }
 
 /** A ruled line between the two points, as hand strokes ({@link RULED_STROKES}): one `d`. */
-function sketchLine(x1: number, y1: number, x2: number, y2: number, options: Options, seed: number): string {
+export function sketchLine(x1: number, y1: number, x2: number, y2: number, options: Options, seed: number): string {
   const strokes = handStrokes(
     [
       [x1, y1],
@@ -2277,69 +2225,6 @@ export function roughGridLine(seed: number, multiStroke: boolean) {
 }
 
 export type AxisSide = "top" | "bottom" | "left" | "right";
-
-/**
- * The axis lines, hand-drawn: one rough line along each plot edge in `sides` (the originals are
- * hidden by `chart-rough.css`). A chart child, like `AlternatingXBands`: it reads the plot area
- * from the chart and paints in the axis layer. Tick lines stay the axis' own.
- */
-export function RoughAxisLines({
-  sides,
-  seed,
-  multiStroke,
-}: {
-  sides: readonly AxisSide[];
-  seed: number;
-  multiStroke: boolean;
-}) {
-  const plot = usePlotArea();
-  const ds = useMemo(() => {
-    if (!plot) return [];
-    const { x, y, width, height } = plot;
-    const out: string[] = [];
-    const o: Options = { roughness: 1, bowing: 0.5, strokeWidth: 1, disableMultiStroke: !multiStroke };
-    sides.forEach((side, i) => {
-      const sd = subSeed(seed, i);
-      if (side === "bottom") out.push(sketchLine(x, y + height, x + width, y + height, o, sd));
-      else if (side === "top") out.push(sketchLine(x, y, x + width, y, o, sd));
-      else if (side === "left") out.push(sketchLine(x, y, x, y + height, o, sd));
-      else out.push(sketchLine(x + width, y, x + width, y + height, o, sd));
-    });
-    return out;
-  }, [plot, sides, seed, multiStroke]);
-  if (!ds.length) return null;
-  return (
-    <ZIndexLayer zIndex={DefaultZIndexes.axis}>
-      <g className="nw-rough nw-rough--axis" pointerEvents="none">
-        {ds.map((d, i) => (
-          <path key={i} d={d} fill="none" stroke={AXIS_LINE_STROKE} strokeWidth={1} strokeLinecap="round" />
-        ))}
-      </g>
-    </ZIndexLayer>
-  );
-}
-
-type AxisElement = ReactElement<{ orientation?: AxisSide; hide?: boolean; children?: ReactNode }>;
-
-/** The plot sides the chart's visible `<XAxis>` / `<YAxis>` children sit on (defaults bottom / left). */
-export function roughAxisSides(node: ReactNode): AxisSide[] {
-  const sides = new Set<AxisSide>();
-  const walk = (n: ReactNode) => {
-    Children.forEach(n, (child) => {
-      if (!isValidElement(child)) return;
-      const el = child as AxisElement;
-      if (el.type === XAxis || el.type === YAxis) {
-        if (el.props.hide) return;
-        sides.add(el.props.orientation ?? (el.type === XAxis ? "bottom" : "left"));
-        return;
-      }
-      if (el.props?.children != null) walk(el.props.children);
-    });
-  };
-  walk(node);
-  return [...sides];
-}
-
 /** Rough `horizontal` / `vertical` render functions for a `<CartesianGrid>`, unless it sets its own. */
 export function roughGridProps(existing: { horizontal?: unknown; vertical?: unknown }, mode: RoughMode) {
   const out: { horizontal?: unknown; vertical?: unknown } = {};
@@ -2350,104 +2235,4 @@ export function roughGridProps(existing: { horizontal?: unknown; vertical?: unkn
     out.vertical = roughGridLine(roughSeed("grid-v", mode.seedSalt), mode.multiStrokeExtras);
   }
   return out;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Injection
-
-type SeriesElement = ReactElement<{
-  dataKey?: unknown;
-  shape?: unknown;
-  stroke?: string;
-  children?: ReactNode;
-  x?: unknown;
-  y?: unknown;
-  segment?: unknown;
-  horizontal?: unknown;
-  vertical?: unknown;
-}>;
-
-function dataKeyString(dk: unknown): string {
-  return typeof dk === "string" || typeof dk === "number" ? String(dk) : "";
-}
-
-/**
- * Clone every `<Line>`, `<Bar>` and `<Area>` in `node` (recursively) with its rough shape and
- * the entrance animation off. Elements that already carry a `shape`, and lines whose stroke is
- * `transparent` / `none` (the hit layers behind the visible lines), are left alone so hover keeps
- * working as it does in the plain style. With `mode.extras`, `<ReferenceLine>`s get
- * {@link roughReferenceLineShape} (seeded from where they sit) and a `<CartesianGrid>` child the
- * rough grid-line renderers. `grainFilterId` names the chart's {@link RoughChartDefs} filter for a
- * pen with grain.
- */
-export function injectRoughShapes(node: ReactNode, mode: RoughMode, grainFilterId?: string): ReactNode {
-  // Each bar series of the chart gets its own hatch angle, spread evenly over the tuned range.
-  const barKeys: string[] = [];
-  collectBarSeriesKeys(node, barKeys);
-  const barAngles = barHatchSlots(barKeys);
-  return injectRoughShapesInner(node, mode, grainFilterId, barAngles);
-}
-
-/** The `dataKey`s of the `<Bar>`s in `node` (recursively), in drawing order, each once. */
-function collectBarSeriesKeys(node: ReactNode, out: string[]): void {
-  Children.forEach(node, (child) => {
-    if (!isValidElement(child)) return;
-    const el = child as SeriesElement;
-    if (el.type === Bar) {
-      const key = dataKeyString(el.props.dataKey);
-      if (!out.includes(key)) out.push(key);
-      return;
-    }
-    if (el.props?.children != null) collectBarSeriesKeys(el.props.children, out);
-  });
-}
-
-function injectRoughShapesInner(
-  node: ReactNode,
-  mode: RoughMode,
-  grainFilterId: string | undefined,
-  barAngles: ReadonlyMap<string, BarHatchSlot>
-): ReactNode {
-  return Children.map(node, (child) => {
-    if (!isValidElement(child)) return child;
-    const el = child as SeriesElement;
-    const props = el.props;
-    if (el.type === Legend) {
-      const legendContent = (props as { content?: unknown }).content;
-      return cloneElement(el, { content: roughLegendContent(legendContent, barAngles) } as Partial<typeof props>);
-    }
-    if (el.type === ReferenceLine) {
-      if (!mode.extras || props.shape != null) return child;
-      const where = `${String(props.x ?? "")}|${String(props.y ?? "")}|${JSON.stringify(props.segment ?? null)}`;
-      return cloneElement(el, {
-        shape: roughReferenceLineShape(roughSeed(where, 1000 + mode.seedSalt), mode.multiStrokeExtras),
-      } as Partial<typeof props>);
-    }
-    if (el.type === CartesianGrid) {
-      return mode.extras ? cloneElement(el, roughGridProps(props, mode) as Partial<typeof props>) : child;
-    }
-    if (el.type === Line || el.type === Bar || el.type === Area) {
-      const geometry =
-        el.type === Bar && typeof props.shape === "function"
-          ? (props.shape as Partial<GeometryBarShape>).roughGeometry
-          : undefined;
-      if (props.shape != null && !geometry) return child;
-      if (el.type !== Bar && (props.stroke === "transparent" || props.stroke === "none")) return child;
-      const seed = roughSeed(dataKeyString(props.dataKey), mode.seedSalt);
-      const grain = mode.grain === "filter" ? grainFilterId : undefined;
-      const shape =
-        el.type === Line
-          ? roughLineShape(seed, mode, grain)
-          : el.type === Bar
-            ? roughBarShape(seed, mode, grain, geometry, barAngles.get(dataKeyString(props.dataKey)))
-            : roughAreaShape(seed, mode, grain);
-      return cloneElement(el, { shape, isAnimationActive: false } as Partial<typeof props>);
-    }
-    const ch = props?.children;
-    if (ch != null) {
-      const mapped = injectRoughShapesInner(ch, mode, grainFilterId, barAngles);
-      if (mapped !== ch) return cloneElement(el, { children: mapped } as { children: ReactNode });
-    }
-    return child;
-  });
 }
