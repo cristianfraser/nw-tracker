@@ -131,7 +131,13 @@ export const feederAlreadyRanSchema = z
   .strict();
 
 export const ingestRunStepSchema = z
-  .object({ label: z.string().min(1), ok: z.boolean(), seconds: z.number().nonnegative() })
+  .object({
+    label: z.string().min(1),
+    ok: z.boolean(),
+    seconds: z.number().nonnegative(),
+    /** Why a step failed, in its own words (the run message lists them under the step). */
+    problems: z.array(z.string().min(1).max(1000)).max(20).optional(),
+  })
   .strict();
 
 export type IngestRunStep = z.infer<typeof ingestRunStepSchema>;

@@ -12,6 +12,7 @@ import {
 } from "./fintualEmailImport.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { bankPostedOn } from "./movementBankPostings.js";
+import { brokerPlanRow } from "./brokerAdapter.js";
 
 /** The real 2026-08-05 SPY pair — the movements this whole connector was built to capture. */
 const DIVIDEND = brokerNotification({
@@ -76,6 +77,27 @@ describe("fintualEmailImport", () => {
     expect(tickerFromFundName("Linde plc")).toBe("LIN");
     expect(tickerFromFundName("State Street SPDR S&P 500 ETF Trust")).toBe("SPY");
     expect(tickerFromFundName("Some Brand New Fund")).toBeNull();
+  });
+
+  it("refuses a buy of an unknown fund and names it for the feeder's lookup", () => {
+    const seeded = seedFintualAccounts();
+    if (!seeded) return;
+    const unknown = brokerNotification({
+      kind: "buy",
+      subject: "Invertiste US $50,00 dólares en 0,5 acciones de Some Brand New Fund",
+      occurred_at: "2026-08-06T14:00:00Z",
+      fund_name: "Some Brand New Fund",
+      amount: 50,
+      units: "0.5",
+      price: 100,
+      currency: "usd",
+    });
+    const [buy] = planFintualEmailBatch([unknown]);
+    expect(buy!.requires_manual).toMatch(/no Fintual positions read names "Some Brand New Fund"/);
+    expect(buy!.unknown_fund).toEqual({ name: "Some Brand New Fund", price: 100 });
+    const row = brokerPlanRow(buy!);
+    expect(row.state).toBe("manual");
+    expect(row.unknown_fund).toEqual({ name: "Some Brand New Fund", price: 100 });
   });
 
   it("plans the SPY pair as the ledger's own DRIP shape", () => {

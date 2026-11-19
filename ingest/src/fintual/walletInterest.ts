@@ -9,9 +9,10 @@
  * it ~10 days later. A changed shape throws: a silently empty list would read as «no interest».
  */
 import type { BrokerMovement } from "nw-tracker-contracts";
-import { loadRootDotenv } from "../rootDotenv.js";
+import { fintualGql, fintualSessionCookie } from "./gql.js";
 
-export const FINTUAL_GQL_URL = "https://fintual.cl/gql/";
+export { FINTUAL_GQL_URL } from "./gql.js";
+
 const OPERATION = "NwTrackerWalletCashInterests";
 const QUERY =
   `query ${OPERATION}($limit: Int!, $offset: Int!) {` +
@@ -53,41 +54,16 @@ export function decodeFintualCashInterests(data: unknown): BrokerMovement[] {
   });
 }
 
-function sessionCookie(): string {
-  loadRootDotenv();
-  const raw = process.env.FINTUAL_COOKIE?.trim().replace(/^["']|["']$/g, "");
-  if (!raw) throw new Error("FINTUAL_COOKIE is not set in the root .env (the session cookie the Fintual poll uses)");
-  return raw.includes("=") ? raw : `_fintual_session_cookie=${raw}`;
-}
-
 async function fetchPage(cookie: string, offset: number): Promise<unknown> {
-  const res = await fetch(FINTUAL_GQL_URL, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Origin: "https://fintual.cl",
-      Referer: "https://fintual.cl/f/stocks/wallet/movements/",
-      Cookie: cookie,
-    },
-    body: JSON.stringify({ operationName: OPERATION, query: QUERY, variables: { limit: PAGE, offset } }),
+  return fintualGql(OPERATION, QUERY, { limit: PAGE, offset }, {
+    cookie,
+    referer: "https://fintual.cl/f/stocks/wallet/movements/",
   });
-  const text = await res.text();
-  let body: { data?: unknown; errors?: unknown };
-  try {
-    body = JSON.parse(text) as typeof body;
-  } catch {
-    throw new Error(`Fintual /gql ${OPERATION}: non-JSON HTTP ${res.status}: ${text.slice(0, 200)}`);
-  }
-  if (!res.ok || (Array.isArray(body.errors) && body.errors.length > 0)) {
-    throw new Error(`Fintual /gql ${OPERATION}: HTTP ${res.status} ${JSON.stringify(body.errors ?? body).slice(0, 300)}`);
-  }
-  return body.data;
 }
 
 /** Every cash interest credit the wallet has had, newest first as Fintual lists them. */
 export async function fetchFintualCashInterests(): Promise<BrokerMovement[]> {
-  const cookie = sessionCookie();
+  const cookie = fintualSessionCookie();
   const out: BrokerMovement[] = [];
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const rows = decodeFintualCashInterests(await fetchPage(cookie, page * PAGE));

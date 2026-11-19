@@ -19,6 +19,8 @@ export type StepResult = {
   differs?: boolean;
   /** The broker mail named a broker whose movement list must be read («racional»). */
   read_brokers?: string[];
+  /** Why the step failed, in its own words: the run message lists them under the step. */
+  problems?: string[];
 };
 
 /** Report this command's result; a no-op outside a run. Several reports merge, later fields winning. */

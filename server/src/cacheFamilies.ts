@@ -46,7 +46,7 @@ export type CacheFamily = {
  */
 export const EXPENSE_METADATA_TABLES: ReadonlySet<string> = new Set([
   "art107_instruments", "bank_account_balance_checks", "bank_account_balance_snapshots", "bank_transfer_notices",
-  "broker_read_coverage", "categories", "cc_bank_cupo_captures", "cc_bank_cupo_checks", "cc_bank_cupo_snapshots",
+  "broker_instruments", "broker_read_coverage", "categories", "cc_bank_cupo_captures", "cc_bank_cupo_checks", "cc_bank_cupo_snapshots",
   "cc_expense_big_groups", "cc_expense_categories", "cc_expense_generic_unique_merchants",
   "cc_expense_line_categories",
   "crypto_trade_details", "expense_accounts", "expense_category_rules",

@@ -36,6 +36,8 @@ export interface IngestApplyContext<P> {
   /** The validated payload (the kind's schema output). */
   payload: P;
   envelope: IngestEnvelope<P>;
+  /** What the handler's `prepare` returned (before the transaction), when it has one. */
+  prepared?: unknown;
 }
 
 /**

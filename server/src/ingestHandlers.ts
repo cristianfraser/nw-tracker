@@ -18,6 +18,11 @@ import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "./expenseLi
 import { matchPaymentReceiptsToExpenseLines, storePaymentProcessorReceipts } from "./paymentProcessorReceipts.js";
 import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
+import {
+  applyBrokerPositions,
+  registerBrokerPositionSymbols,
+  type BrokerPositionRegistration,
+} from "./brokerInstruments.js";
 import { applyCardStatement } from "./cardStatementApply.js";
 import { applyCanonicalCardStatements, applyParsedStatementsPayload } from "./ccParsedStatementsApply.js";
 import { applyMerchantPurchaseDocument } from "./merchantPurchaseDocumentApply.js";
@@ -48,6 +53,12 @@ export type { IngestApplyContext, IngestHandlerResult } from "./ingestReceiver.j
  * holds, anything else on a server fault (→ 500). Runs inside the receiver's transaction.
  */
 export interface IngestHandler<P = unknown> {
+  /**
+   * Optional work that needs the network (asking a price provider about a symbol), run before the
+   * receiver's transaction opens; what it returns reaches `apply` as `ctx.prepared`. It must write
+   * nothing on a dry run.
+   */
+  prepare?(payload: P, opts: { dryRun: boolean }): Promise<unknown>;
   apply(ctx: IngestApplyContext<P>): IngestHandlerResult;
 }
 
@@ -133,6 +144,12 @@ const HANDLERS: IngestHandlerMap = {
   "payroll.parameters": { apply: ({ payload }) => ({ details: applyPayrollParameters(payload) }) },
   "pension_account.balance": { apply: ({ payload }) => ({ details: applyPensionAccountBalance(payload) }) },
   "unemployment_fund.balance": { apply: ({ payload }) => ({ details: applyUnemploymentFundBalance(payload) }) },
+  "broker.positions": {
+    prepare: (payload, { dryRun }) => registerBrokerPositionSymbols(payload, { dryRun }),
+    apply: ({ payload, prepared }) => ({
+      details: applyBrokerPositions(payload, prepared as BrokerPositionRegistration),
+    }),
+  },
   "pension_account.certificates": {
     apply: ({ payload, envelope }) => ({ details: applyPensionAccountCertificates(payload, envelope.source.ref) }),
   },
@@ -220,9 +237,28 @@ export function receiveIngest<K extends IngestKindName>(
   const kind = findIngestKind(INGEST_KINDS, name);
   if (!kind) throw new Error(`Unknown ingest kind: ${name}`);
   const handler = INGEST_HANDLERS[name] as IngestHandler<IngestPayloadOf<K>>;
+  if (handler.prepare) throw new Error(`${name} has network work before its transaction: use receiveIngestPrepared`);
   return receiveIngestDocument(
     kind,
     { schema_version: kind.schema_version, feeder_id: "server", source: options.source, dry_run: options.dryRun ?? false, payload },
     (ctx) => handler.apply(ctx)
+  );
+}
+
+/** `receiveIngest` for any kind, running the handler's `prepare` first as the route does. */
+export async function receiveIngestPrepared<K extends IngestKindName>(
+  name: K,
+  payload: IngestPayloadOf<K>,
+  options: { source: IngestSource; dryRun?: boolean }
+): Promise<IngestResult> {
+  const kind = findIngestKind(INGEST_KINDS, name);
+  if (!kind) throw new Error(`Unknown ingest kind: ${name}`);
+  const handler = INGEST_HANDLERS[name] as IngestHandler<IngestPayloadOf<K>>;
+  const dryRun = options.dryRun ?? false;
+  const prepared = handler.prepare ? await handler.prepare(payload, { dryRun }) : undefined;
+  return receiveIngestDocument(
+    kind,
+    { schema_version: kind.schema_version, feeder_id: "server", source: options.source, dry_run: dryRun, payload },
+    (ctx) => handler.apply({ ...ctx, prepared })
   );
 }

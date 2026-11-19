@@ -98,6 +98,8 @@ export type BrokerNotificationPlanRow = {
   /** new | synthesized | promoted | creates_account | duplicate | manual */
   state: string;
   detail: string | null;
+  /** A buy or sale whose fund name no ticker is known for (the feeder looks the name up). */
+  unknown_fund?: { name: string; price: number | null } | null;
 };
 
 /** `details` of an applied `broker.notifications`. */

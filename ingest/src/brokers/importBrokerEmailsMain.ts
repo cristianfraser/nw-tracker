@@ -13,6 +13,15 @@
  * never appeared — the wire never arrived, and a phantom credit would be absorbed silently into
  * the next checking-anchor derivation. The failed step is what badges a notification.
  *
+ * Both: exits 1 on a notification the server could not book without a person (`manual`: an
+ * unknown fund, an ambiguous holding, …) or that disagrees with the ledger (`conflict`), naming
+ * each in the step's problems, which the run's notification lists. A buy or sale of a fund the
+ * server has no ticker for is looked up on Yahoo by name and the candidate is printed with it.
+ *
+ * Fintual: its positions are read and sent first (`broker.positions`), so a first buy of a new
+ * line books on its own: the symbol comes from the name Fintual prints beside it, and the server
+ * registers the symbol before the transaction.
+ *
  * Racional: reports the server's crawl decision to the runner (`read_brokers`, `stepResult.ts`),
  * which opens the Racional browser only when it names Racional.
  */
@@ -23,6 +32,8 @@ import { reportStepResult } from "../stepResult.js";
 import { brokerNotificationsFromScan } from "./brokerEmail.js";
 import { readStagedBrokerEmails } from "./stagedScans.js";
 import { logWireBookings } from "../wires/incomingWiresStep.js";
+import { describeTickerHint, lookUpTickerHint } from "./tickerLookup.js";
+import { sendBrokerPositions } from "./brokerPositionsStep.js";
 
 const brokerArg = /^--broker=(fintual|racional)$/.exec(process.argv.find((a) => a.startsWith("--broker=")) ?? "");
 if (!brokerArg) throw new Error("usage: importBrokerEmailsMain.ts --broker=fintual|racional [--apply]");
@@ -30,6 +41,10 @@ const broker = brokerArg[1] as "fintual" | "racional";
 const apply = process.argv.includes("--apply");
 
 async function main(): Promise<number> {
+  // The broker's own positions first: a buy of a line the app has never held resolves its symbol
+  // from the name the broker prints beside it, and the symbol is registered before the buy books.
+  const positionsProblem = broker === "fintual" ? await sendBrokerPositions("fintual", apply) : null;
+
   const { files, scan } = readStagedBrokerEmails();
   const notifications = brokerNotificationsFromScan(scan, broker);
   const payload = brokerNotificationsKind.payload.parse({ broker, notifications });
@@ -82,9 +97,25 @@ async function main(): Promise<number> {
   }
   // Dollar withdrawals Fintual confirmed, and the wires that paid them (`bank_account.incoming_wires`).
   const overdueWithdrawal = details.usd_withdrawals ? logWireBookings(details.usd_withdrawals, apply) : false;
-  // A notice that disagrees with the ledger (a split's share counts) wrote nothing: a human looks.
-  const conflicts = details.planned.filter((r) => r.state === "conflict").length;
-  return details.overdue_synthetic_retiros.length > 0 || overdueWithdrawal || conflicts > 0 ? 1 : 0;
+  // A notice that disagrees with the ledger (a split's share counts) or that the server could not
+  // book without a person (an unknown fund) wrote nothing: a human looks.
+  const problems: string[] = positionsProblem ? [positionsProblem] : [];
+  for (const r of details.planned) {
+    if (r.state !== "conflict" && r.state !== "manual") continue;
+    let line = `${r.occurred_on} ${r.kind} ${r.amount} ${r.currency.toUpperCase()}: ${r.detail ?? r.state}`;
+    if (r.unknown_fund) {
+      const hint = describeTickerHint(r.unknown_fund.name, r.unknown_fund.price, await lookUpTickerHint(r.unknown_fund.name));
+      console.error(`  ↳ ${hint}`);
+      line += ` · ${hint}`;
+    }
+    problems.push(line);
+  }
+  if (problems.length > 0) {
+    console.error(`\n⚠ ${problems.length} ${broker} notification(s) need a person — nothing was written for them:`);
+    for (const p of problems) console.error(`  ${p}`);
+    reportStepResult({ problems });
+  }
+  return details.overdue_synthetic_retiros.length > 0 || overdueWithdrawal || problems.length > 0 ? 1 : 0;
 }
 
 process.exitCode = await main();

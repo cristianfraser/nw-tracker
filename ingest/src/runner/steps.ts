@@ -73,8 +73,9 @@ export function processStepRunner(opts: { cwd: string; logFd: number; env?: Node
       const seconds = Math.round((Date.now() - started) / 1000);
       const ok = code === 0;
       note(ok ? `--- ok: ${label}` : `*** FAILED (${code}): ${label}`);
-      steps.push({ label, ok, seconds });
       const result = readStepResult(resultFile);
+      const problems = !ok && result.problems && result.problems.length > 0 ? result.problems.slice(0, 20) : undefined;
+      steps.push({ label, ok, seconds, ...(problems ? { problems: problems.map((p) => p.slice(0, 1000)) } : {}) });
       fs.rmSync(resultFile, { force: true });
       return { ok, code, result };
     },

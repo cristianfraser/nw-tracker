@@ -73,6 +73,13 @@ describe("dailyRunLog", () => {
     expect(body).toContain("FAIL  inbox pipeline (2s)");
   });
 
+  it("lists a failed step's problems under it", () => {
+    const body = formatDailyRunBody([
+      { label: "Fintual e-mail movements (apply)", ok: false, seconds: 3, problems: ["2026-11-19 buy 50 USD: cannot tell which holding"] },
+    ]);
+    expect(body).toContain("FAIL  Fintual e-mail movements (apply) (3s)\n        2026-11-19 buy 50 USD: cannot tell which holding");
+  });
+
   it("reports the gap when nightly runs were missed", () => {
     expect(staleDailyRunDays()).toBeNull();
     expect(formatDailyRunBody([{ label: "x", ok: true }])).toContain("First recorded run.");

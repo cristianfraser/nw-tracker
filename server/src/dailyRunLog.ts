@@ -31,6 +31,8 @@ export type DailyRunStep = {
   ok: boolean;
   /** Seconds the step took, when the runner measured it. */
   seconds?: number | null;
+  /** Why the step failed, as the step reported it (listed under the step in the message). */
+  problems?: string[];
 };
 
 /** Most recent run of either outcome, from the messages the runner writes. */
@@ -157,6 +159,7 @@ function formatRunStepLines(steps: readonly DailyRunStep[]): string[] {
   for (const s of steps) {
     const secs = s.seconds != null && Number.isFinite(s.seconds) ? ` (${Math.round(s.seconds)}s)` : "";
     lines.push(`${s.ok ? "ok  " : "FAIL"}  ${s.label}${secs}`);
+    for (const p of s.problems ?? []) lines.push(`        ${p}`);
   }
   return lines;
 }

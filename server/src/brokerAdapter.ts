@@ -296,6 +296,7 @@ export type BrokerPlannedMovementView = {
   create_account: { ticker: string; bucket_slug: string } | null;
   synthesized?: boolean;
   promote_movement_id?: number;
+  unknown_fund?: { name: string; price: number | null } | null;
 };
 
 function legs(from: number | null, to: number | null): string | null {
@@ -338,5 +339,6 @@ export function brokerPlanRow(p: BrokerPlannedMovementView): BrokerNotificationP
     units: p.units_delta,
     state,
     detail,
+    ...(p.requires_manual != null && p.unknown_fund ? { unknown_fund: p.unknown_fund } : {}),
   };
 }

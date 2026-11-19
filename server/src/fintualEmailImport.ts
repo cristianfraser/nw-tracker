@@ -40,6 +40,7 @@ import {
 import type { BrokerNotification } from "nw-tracker-contracts";
 import { brokerNotificationIsBookable, notificationChileYmd } from "./brokerNotifications.js";
 import { syntheticRetiroMovementIdForMessageId } from "./fintualSyntheticRetiros.js";
+import { brokerSymbolForFundName } from "./brokerInstruments.js";
 
 /** The window `fintualCertImport` uses too, for the same reason (`BROKER_SETTLEMENT_WINDOW_DAYS`). */
 const EMAIL_MATCH_WINDOW_DAYS = BROKER_SETTLEMENT_WINDOW_DAYS;
@@ -50,9 +51,11 @@ const EMAIL_MATCH_WINDOW_DAYS = BROKER_SETTLEMENT_WINDOW_DAYS;
  * A purchase subject names the fund ("… acciones de State Street SPDR S&P 500 ETF Trust") while
  * a dividend subject names the ticker (the feeder sends the name as `fund_name`). Reinvestments
  * are resolved by pairing with their
- * dividend (below), which needs no table at all; this map only covers ordinary purchases, and
- * an unknown fund is reported rather than guessed — booking shares against the wrong holding
- * is not a recoverable mistake.
+ * dividend (below), which needs no table at all; this map covers the names known before
+ * Fintual's positions were read. Any other name resolves to the symbol Fintual prints beside it in
+ * its positions read (`broker_instruments`, `brokerInstruments.ts`) — the read runs before the mail
+ * import — and a name neither knows is reported rather than guessed: booking shares against the
+ * wrong holding is not a recoverable mistake.
  */
 const FUND_NAME_TICKERS: [RegExp, string][] = [
   [/State Street SPDR S&P 500 ETF Trust/i, "SPY"],
@@ -66,7 +69,8 @@ export function tickerFromFundName(fundName: string): string | null {
   for (const [re, ticker] of FUND_NAME_TICKERS) {
     if (re.test(fundName)) return ticker;
   }
-  return null;
+  // The symbol Fintual itself prints beside that name in its positions read (`broker.positions`).
+  return brokerSymbolForFundName("fintual", fundName);
 }
 
 /**
@@ -109,6 +113,8 @@ export type FintualPlannedMovement = {
   note: string;
   duplicate_of: number | null;
   requires_manual: string | null;
+  /** A buy or sale whose fund name `FUND_NAME_TICKERS` does not know: the feeder looks it up. */
+  unknown_fund?: { name: string; price: number | null } | null;
 };
 
 /** Same band as the Racional conversion: a rate outside it is a misread mail, not a trade. */
@@ -216,7 +222,8 @@ export function planFintualEmailMovement(
       if (!ticker) {
         return {
           ...base,
-          requires_manual: `cannot tell which holding "${event.subject}" is — add its fund name (${event.fund_name ?? "none stated"}) to FUND_NAME_TICKERS`,
+          requires_manual: `cannot tell which holding "${event.subject}" is — no Fintual positions read names "${event.fund_name ?? "none stated"}" (the feeder reads them before the mail; else add it to FUND_NAME_TICKERS)`,
+          unknown_fund: event.fund_name ? { name: event.fund_name, price: event.price ?? null } : null,
         };
       }
       const buyBase = { ...base, from_account_id: fintualUsdAccountId(), units_delta: event.units, flow_kind: "stock_buy" };
@@ -258,7 +265,8 @@ export function planFintualEmailMovement(
       if (!ticker) {
         return {
           ...base,
-          requires_manual: `cannot tell which holding "${event.subject}" sold — add its fund name (${event.fund_name ?? "none stated"}) to FUND_NAME_TICKERS`,
+          requires_manual: `cannot tell which holding "${event.subject}" sold — no Fintual positions read names "${event.fund_name ?? "none stated"}" (else add it to FUND_NAME_TICKERS)`,
+          unknown_fund: event.fund_name ? { name: event.fund_name, price: event.price ?? null } : null,
         };
       }
       const sellBase = { ...base, to_account_id: fintualUsdAccountId(), units_delta: event.units, flow_kind: "stock_sell" };

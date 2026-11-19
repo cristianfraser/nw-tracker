@@ -9,6 +9,7 @@ import { paymentProcessorReceiptsKind } from "./kinds/paymentProcessorReceipts.j
 import { bankAccountStatementsKind } from "./kinds/bankAccountStatements.js";
 import { brokerMovementsKind } from "./kinds/brokerMovements.js";
 import { brokerNotificationsKind } from "./kinds/brokerNotifications.js";
+import { brokerPositionsKind } from "./kinds/brokerPositions.js";
 import { cardPaymentReceiptKind } from "./kinds/cardPaymentReceipt.js";
 import { cardParsedStatementsKind } from "./kinds/cardParsedStatements.js";
 import { cardStatementKind } from "./kinds/cardStatement.js";
@@ -30,7 +31,7 @@ import { mortgageLenderStatementKind } from "./kinds/mortgageLenderStatement.js"
 export { defineIngestKind, type IngestKindDefinition, type IngestRefMode } from "./defineKind.js";
 
 /** Every kind the server accepts. */
-export const INGEST_KINDS = [cardUnbilledMovementsKind, bankAccountMovementsKind, cardPaymentReceiptKind, brokerNotificationsKind, brokerMovementsKind, pensionAccountCertificatesKind, pensionAccountBalanceKind, cardStatementKind, merchantPurchaseDocumentKind, cardParsedStatementsKind, bankAccountStatementsKind, storeReceiptKind, employmentPayslipsKind, brokerDividendStatementKind, fundAccountTransactionsKind, unemploymentFundDocumentsKind, unemploymentFundBalanceKind, bankAccountBalancesKind, bankProductSummaryKind, bankAccountTransferNoticesKind, bankAccountIncomingWiresKind, paymentProcessorReceiptsKind, payrollParametersKind, utilityBillKind, mortgagePaymentReceiptKind, mortgageLenderStatementKind] as const satisfies readonly IngestKindDefinition[];
+export const INGEST_KINDS = [cardUnbilledMovementsKind, bankAccountMovementsKind, cardPaymentReceiptKind, brokerNotificationsKind, brokerMovementsKind, brokerPositionsKind, pensionAccountCertificatesKind, pensionAccountBalanceKind, cardStatementKind, merchantPurchaseDocumentKind, cardParsedStatementsKind, bankAccountStatementsKind, storeReceiptKind, employmentPayslipsKind, brokerDividendStatementKind, fundAccountTransactionsKind, unemploymentFundDocumentsKind, unemploymentFundBalanceKind, bankAccountBalancesKind, bankProductSummaryKind, bankAccountTransferNoticesKind, bankAccountIncomingWiresKind, paymentProcessorReceiptsKind, payrollParametersKind, utilityBillKind, mortgagePaymentReceiptKind, mortgageLenderStatementKind] as const satisfies readonly IngestKindDefinition[];
 
 export type IngestKind = (typeof INGEST_KINDS)[number];
 export type IngestKindName = IngestKind["kind"];

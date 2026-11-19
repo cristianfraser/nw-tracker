@@ -17,6 +17,7 @@ import {
 import { ingestAuthMiddleware, type IngestAuthConfig } from "../ingestAuth.js";
 import { INGEST_HANDLERS, type IngestHandler } from "../ingestHandlers.js";
 import { IngestRefusal, receiveIngestDocument } from "../ingestReceiver.js";
+import { asyncHandler } from "./shared.js";
 import { completeIngestRun, ingestRunById, listRecentIngestRuns } from "../ingestRuns.js";
 import { runIngestTask } from "../ingestTasks.js";
 import { recordManualCardPayment } from "../ccManualPayments.js";
@@ -131,8 +132,8 @@ export function registerIngestRoutes(app: express.Express, options: IngestRoutes
     res.json(result);
   });
 
-  // Synchronous: a handler fault reaches the error middleware as a thrown error.
-  router.post("/:kind", (req, res) => {
+  // A handler fault reaches the error middleware as a thrown error (or a rejected `prepare`).
+  router.post("/:kind", asyncHandler(async (req, res) => {
     const refuse = (status: number, body: IngestErrorBody) => void res.status(status).json(body);
     const name = String(req.params.kind);
     const kind = findIngestKind(kinds, name);
@@ -167,12 +168,18 @@ export function registerIngestRoutes(app: express.Express, options: IngestRoutes
       return;
     }
     try {
-      res.json(receiveIngestDocument(kind, { ...envelope.data, payload: payload.data }, (ctx) => handler.apply(ctx)));
+      // Network work a handler needs (a price provider) runs before the transaction opens.
+      const prepared = handler.prepare
+        ? await handler.prepare(payload.data, { dryRun: envelope.data.dry_run })
+        : undefined;
+      res.json(
+        receiveIngestDocument(kind, { ...envelope.data, payload: payload.data }, (ctx) => handler.apply({ ...ctx, prepared }))
+      );
     } catch (err) {
       if (!(err instanceof IngestRefusal)) throw err;
       refuse(422, { error: err.code, message: err.message });
     }
-  });
+  }));
 
   app.use(INGEST_API_PATH, router);
 }
