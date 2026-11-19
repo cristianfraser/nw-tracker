@@ -54,6 +54,46 @@ function bareAmount(amount: number, currency: string): string {
 
 type SegmentLook = { background: string; color: string; name: string; kindName: string };
 
+/** The narrowest a segment is drawn, in px (a 2px gap included), so a small month stays visible. */
+const MIN_SEGMENT_PX = 4;
+
+/**
+ * The bar's segment widths with every segment at least `minPx` wide (layout only: amounts and
+ * tooltips keep the server's figures). What the small ones gain comes out of the free part first,
+ * then evenly out of what the larger segments have above the minimum.
+ */
+function widenSmallSegments(shares: readonly number[], widthPx: number, minPx: number): number[] {
+  if (!(widthPx > 0)) return [...shares];
+  const min = minPx / widthPx;
+  const used = shares.reduce((a, b) => a + b, 0);
+  const out = shares.map((s) => (s > 0 ? Math.max(s, min) : 0));
+  let extra = out.reduce((a, b) => a + b, 0) - used - Math.max(0, 1 - used);
+  if (extra <= 0) return out;
+  const room = out.reduce((a, s) => (s > min ? a + (s - min) : a), 0);
+  if (room <= 0) return out;
+  const k = Math.min(1, extra / room);
+  return out.map((s) => (s > min ? s - (s - min) * k : s));
+}
+
+/** The bracket's span on the widened bar: the same segments it covers on the server's shares. */
+function bracketOnWidened(
+  bracket: { start_share: number; share: number },
+  shares: readonly number[],
+  widened: readonly number[]
+): { start: number; width: number } {
+  const eps = 1e-9;
+  let cum = 0;
+  let start = 0;
+  let width = 0;
+  shares.forEach((s, i) => {
+    const mid = cum + s / 2;
+    if (mid > bracket.start_share - eps && mid < bracket.start_share + bracket.share + eps) width += widened[i]!;
+    else if (mid <= bracket.start_share) start += widened[i]!;
+    cum += s;
+  });
+  return { start, width };
+}
+
 /**
  * The billing currency's bar: to scale over the cupo, its segments left to right, the bracket over the
  * open facturación, and one row of labels under it — a label only while it fits inside its own
@@ -101,11 +141,13 @@ function SegmentedBar({
   const labels = segments.map((s, i) => ({ name: looks[i]!.name, amount: bareAmount(s.amount, side.currency) }));
   // What the fit check reads: the labels' text and the segments' widths.
   const fitKey = segments.map((s, i) => `${labels[i]!.name}|${labels[i]!.amount}|${s.share}`).join(" ");
-  const shares = segments.map((s) => s.share);
+  const serverShares = segments.map((s) => s.share);
+  const [barPx, setBarPx] = useState(0);
+  const shares = widenSmallSegments(serverShares, barPx, MIN_SEGMENT_PX);
   // The chart's segments with their tooltips (month, what the segment is, its amount).
   const barSegments: CcGlanceCupoBarSegment[] = segments.map((s, i) => ({
     key: `${s.kind}-${s.billing_month}`,
-    share: s.share,
+    share: shares[i]!,
     fill: looks[i]!.background,
     title: formatYearMonthLabel(s.billing_month),
     name: looks[i]!.kindName,
@@ -121,28 +163,31 @@ function SegmentedBar({
     if (!bar || !measure) return;
     const fit = () => {
       const width = bar.getBoundingClientRect().width;
+      setBarPx(width);
+      const drawn = widenSmallSegments(serverShares, width, MIN_SEGMENT_PX);
       const widths = [...measure.children].map((el) => el.getBoundingClientRect().width);
       let n = 0;
-      while (n < shares.length && widths[n]! <= shares[n]! * width) n++;
+      while (n < drawn.length && widths[n]! <= drawn[n]! * width) n++;
       setFitting(n);
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(bar);
     return () => ro.disconnect();
-  }, [fitKey]); // eslint-disable-line react-hooks/exhaustive-deps -- `fitKey` carries `shares`
+  }, [fitKey]); // eslint-disable-line react-hooks/exhaustive-deps -- `fitKey` carries `serverShares`
   const labelLines: LabelLines = fitting > 0 ? 2 : side.free != null ? 1 : 0;
   useEffect(() => onLabelLines(labelLines), [labelLines, onLabelLines]);
 
   const bracket = side.bracket;
+  const bracketSpan = bracket ? bracketOnWidened(bracket, serverShares, shares) : null;
   return (
     <>
       <div className={styles.bracket}>
         {bracket ? (
           <>
-            <i style={{ left: pct(bracket.start_share), width: pct(bracket.share) }} />
+            <i style={{ left: pct(bracketSpan!.start), width: pct(bracketSpan!.width) }} />
             {bracket.amount != null ? (
-              <span className="mono" style={{ left: pct(bracket.start_share + bracket.share / 2) }}>
+              <span className="mono" style={{ left: pct(bracketSpan!.start + bracketSpan!.width / 2) }}>
                 {formatMoney({ value: bracket.amount, currency: side.currency })}
               </span>
             ) : null}
@@ -156,7 +201,7 @@ function SegmentedBar({
       </div>
       <div className={styles.labels}>
         {segments.slice(0, fitting).map((s, i) => (
-          <span key={`${s.kind}-${s.billing_month}`} style={{ width: pct(s.share) }}>
+          <span key={`${s.kind}-${s.billing_month}`} style={{ width: pct(shares[i]!) }}>
             <em>{labels[i]!.name}</em>
             <b className="mono" style={{ color: looks[i]!.color }}>
               {labels[i]!.amount}
