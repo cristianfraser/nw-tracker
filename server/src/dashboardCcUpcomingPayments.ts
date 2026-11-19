@@ -92,6 +92,24 @@ function foreignCurrenciesOf(facturaciones: readonly CcFacturacionRow[], payment
 }
 
 /**
+ * The open facturación (the latest one still open) and the latest one before it. A card with no
+ * close on record reads every month as open, so only the latest open one is.
+ */
+export function openAndLatestClosedFacturacion<T extends Pick<CcFacturacionRow, "close_date_iso" | "is_open_month">>(
+  facturaciones: readonly T[]
+): { open: T | null; latestClosed: T | null } {
+  const byClose = [...facturaciones].sort((a, b) => a.close_date_iso.localeCompare(b.close_date_iso));
+  let open: T | null = null;
+  for (const f of byClose) if (f.is_open_month) open = f;
+  let latestClosed: T | null = null;
+  for (const f of byClose) {
+    if (f === open) break;
+    latestClosed = f;
+  }
+  return { open, latestClosed };
+}
+
+/**
  * The rows of one card the panel shows: the open facturación and the latest one before it (closed
  * by statement or provisionally), each with what is still owed on it; a row owing nothing is left out.
  *
@@ -112,16 +130,7 @@ export function upcomingPaymentRows(
   todayYmd: string,
   liveRate: (currency: string) => number
 ): CcUpcomingPaymentRow[] {
-  // The open facturación is the latest one still open; the closed one is the latest before it. A
-  // card with no close on record reads every month as open, so only the latest open one is.
-  const byClose = [...facturaciones].sort((a, b) => a.close_date_iso.localeCompare(b.close_date_iso));
-  let openRow: CcFacturacionRow | null = null;
-  for (const f of byClose) if (f.is_open_month) openRow = f;
-  let latestClosed: CcFacturacionRow | null = null;
-  for (const f of byClose) {
-    if (f === openRow) break;
-    latestClosed = f;
-  }
+  const { open: openRow, latestClosed } = openAndLatestClosedFacturacion(facturaciones);
   const currencies = ["clp", ...foreignCurrenciesOf(facturaciones, payments)];
 
   const rates = new Map<string, number>();
@@ -219,7 +228,7 @@ export function ccUpcomingPaymentsFromCards(
  * share a key), the dollar debt payments (`foreignDebtPaymentsForAccount`: divisas purchases,
  * payments from a dollar account, traspasos de deuda) and the open facturación's credits.
  */
-function cardPayments(accountId: number, facturaciones: readonly CcFacturacionRow[]): CcCardPayments {
+export function cardPayments(accountId: number, facturaciones: readonly CcFacturacionRow[]): CcCardPayments {
   const clp: CcCardPayment[] = [];
   const seen = new Set<string>();
   for (const e of listCcPaymentEvidenceRows(accountId)) {
@@ -268,12 +277,16 @@ export function buildDashboardCcUpcomingPayments(): CcUpcomingPaymentsBlock {
   return ccUpcomingPaymentsFromCards(
     cards,
     today,
-    (currency) => {
-      // Today's mid (live while the fx day is open), through `rates.ts`.
-      const rate = convertCurrency(1, currency, "clp", today, { side: "mid" });
-      if (rate == null || !(rate > 0)) throw new Error(`No ${currency.toUpperCase()}/CLP rate for ${today}`);
-      return rate;
-    },
+    upcomingPaymentLiveRate(today),
     getLiabilitiesNavRootNode()?.route_path ?? null
   );
+}
+
+/** The rate a foreign amount still owed is valued at: today's mid (live while the fx day is open), through `rates.ts`. */
+export function upcomingPaymentLiveRate(today: string): (currency: string) => number {
+  return (currency) => {
+    const rate = convertCurrency(1, currency, "clp", today, { side: "mid" });
+    if (rate == null || !(rate > 0)) throw new Error(`No ${currency.toUpperCase()}/CLP rate for ${today}`);
+    return rate;
+  };
 }

@@ -60,6 +60,15 @@ export function formatYearMonthLabel(ym: string): string {
   return `${monthShort(mo)} ${y}`;
 }
 
+/** `2026-12` (or `2026-12-31`) → `dic` / `Dec`: the month alone, where the year is evident (bar labels). */
+export function formatMonthShortLabel(ym: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(ym.trim());
+  if (!m) return ym;
+  const mo = Number(m[2]);
+  if (mo < 1 || mo > 12) return ym;
+  return monthShort(mo);
+}
+
 /** `2026-12-31` (or `2026-12`) → `dic 26` / `Dec 26` (chart X-axis ticks, tooltips). */
 export function formatMonthYearShortLabel(dateStr: string): string {
   const m = /^(\d{4})-(\d{2})/.exec(dateStr.trim());

@@ -860,44 +860,95 @@ export function installmentRemainderAfterFacturacionClp(
   purchasedThroughIso: string
 ): { amount_clp: number; cuotas: number } {
   if (planCount(accountId) === 0) return { amount_clp: 0, cuotas: 0 };
+  return installmentRemainderReader(accountId, purchasedThroughIso)(billingMonth);
+}
+
+/**
+ * {@link installmentRemainderAfterFacturacionClp} split by the facturación that bills it: after
+ * `billingMonth`, one entry per later billing month with an unbilled cuota, in month order, each
+ * the principal that month's close retires — the remainder after the previous month less the
+ * remainder after it, the same rule read twice, so the entries add up to the remainder after
+ * `billingMonth` exactly (the last month leaves 0).
+ */
+export function installmentRemainderByFacturacionClp(
+  accountId: number,
+  billingMonth: string | null,
+  purchasedThroughIso: string
+): { billing_month: string; amount_clp: number }[] {
+  if (planCount(accountId) === 0) return [];
+  const read = installmentRemainderReader(accountId, purchasedThroughIso);
+  const months = read.unbilledMonths(billingMonth);
+  const out: { billing_month: string; amount_clp: number }[] = [];
+  let before = read(billingMonth).amount_clp;
+  for (const month of months) {
+    const after = read(month).amount_clp;
+    out.push({ billing_month: month, amount_clp: before - after });
+    before = after;
+  }
+  if (before !== 0) {
+    throw new Error(`Account ${accountId}: ${before} of installment principal left after its last billing month`);
+  }
+  return out;
+}
+
+type InstallmentRemainderReader = ((billingMonth: string | null) => { amount_clp: number; cuotas: number }) & {
+  /** The billing months after `billingMonth` that bill a cuota, ascending. */
+  unbilledMonths: (billingMonth: string | null) => string[];
+};
+
+function installmentRemainderReader(accountId: number, purchasedThroughIso: string): InstallmentRemainderReader {
   const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
-  const schedules = buildSchedulesByPurchaseId(schedulePurchases, paymentsByPurchase, undefined, accountId);
+  const schedules = [...buildSchedulesByPurchaseId(schedulePurchases, paymentsByPurchase, undefined, accountId).values()].filter(
+    (sched) => String(sched.purchase.purchase_date).trim() <= purchasedThroughIso
+  );
   const printed = ccInstallmentPrintedPrincipalByPlan(accountId);
   const interestByPlan = new Map(ccInstallmentInterestForAccount(accountId).map((p) => [p.purchase_id, p]));
-  let amount = 0;
-  let cuotas = 0;
-  for (const sched of schedules.values()) {
-    const pr = sched.purchase;
-    if (String(pr.purchase_date).trim() > purchasedThroughIso) continue;
-    let billed = 0;
-    let billedInterest = 0;
-    let unbilled = 0;
-    const n = sched.cuotaAmounts.length;
-    const interest = interestByPlan.get(pr.id)?.interest_clp ?? 0;
-    for (let i = 0; i < n; i++) {
-      if (billingMonth && ymCompare(installmentDueYm(sched.firstDueYm, i), billingMonth) <= 0) {
-        billed += sched.cuotaAmounts[i]!;
-        billedInterest += Math.round((interest * (i + 1)) / n) - Math.round((interest * i) / n);
-      } else {
-        unbilled += 1;
+  const read = (billingMonth: string | null): { amount_clp: number; cuotas: number } => {
+    let amount = 0;
+    let cuotas = 0;
+    for (const sched of schedules) {
+      const pr = sched.purchase;
+      let billed = 0;
+      let billedInterest = 0;
+      let unbilled = 0;
+      const n = sched.cuotaAmounts.length;
+      const interest = interestByPlan.get(pr.id)?.interest_clp ?? 0;
+      for (let i = 0; i < n; i++) {
+        if (billingMonth && ymCompare(installmentDueYm(sched.firstDueYm, i), billingMonth) <= 0) {
+          billed += sched.cuotaAmounts[i]!;
+          billedInterest += Math.round((interest * (i + 1)) / n) - Math.round((interest * i) / n);
+        } else {
+          unbilled += 1;
+        }
+      }
+      if (unbilled === 0) continue;
+      if (printed.conflicting.has(pr.id)) {
+        throw new Error(`installment plan ${pr.id}: its cuota lines print different principals`);
+      }
+      const principal = printed.principal.get(pr.id) ?? Math.round(pr.total_amount_clp);
+      const remainder = principal - billed + billedInterest;
+      if (remainder <= 0) {
+        throw new Error(
+          `installment plan ${pr.id}: ${unbilled} cuota(s) left to bill but its billed cuotas (${billed}) ` +
+            `cover its principal ${principal}`
+        );
+      }
+      amount += remainder;
+      cuotas += unbilled;
+    }
+    return { amount_clp: Math.round(amount), cuotas };
+  };
+  const unbilledMonths = (billingMonth: string | null): string[] => {
+    const months = new Set<string>();
+    for (const sched of schedules) {
+      for (let i = 0; i < sched.cuotaAmounts.length; i++) {
+        const due = installmentDueYm(sched.firstDueYm, i);
+        if (!billingMonth || ymCompare(due, billingMonth) > 0) months.add(due);
       }
     }
-    if (unbilled === 0) continue;
-    if (printed.conflicting.has(pr.id)) {
-      throw new Error(`installment plan ${pr.id}: its cuota lines print different principals`);
-    }
-    const principal = printed.principal.get(pr.id) ?? Math.round(pr.total_amount_clp);
-    const remainder = principal - billed + billedInterest;
-    if (remainder <= 0) {
-      throw new Error(
-        `installment plan ${pr.id}: ${unbilled} cuota(s) left to bill but its billed cuotas (${billed}) ` +
-          `cover its principal ${principal}`
-      );
-    }
-    amount += remainder;
-    cuotas += unbilled;
-  }
-  return { amount_clp: Math.round(amount), cuotas };
+    return [...months].sort(ymCompare);
+  };
+  return Object.assign(read, { unbilledMonths });
 }
 
 /** Live outstanding installment principal (cupo utilizado en cuotas) from PDF ledger schedules. */

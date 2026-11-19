@@ -3480,6 +3480,48 @@
       "provisionalEstimateHint": {
         "en": "The app had estimated {{amount}} for this facturación.",
         "es": "La app había estimado {{amount}} para esta facturación."
+      },
+      "glance": {
+        "closes": {
+          "en": "closes",
+          "es": "cierra"
+        },
+        "payBy": {
+          "en": "pay by",
+          "es": "paga hasta"
+        },
+        "paid": {
+          "en": "paid",
+          "es": "pagado"
+        },
+        "today": {
+          "en": "today",
+          "es": "hoy"
+        },
+        "inOneDay": {
+          "en": "in 1 day",
+          "es": "en 1 día"
+        },
+        "inDays": {
+          "en": "in {{n}} days",
+          "es": "en {{n}} días"
+        },
+        "oneDayAgo": {
+          "en": "1 day ago",
+          "es": "hace 1 día"
+        },
+        "daysAgo": {
+          "en": "{{n}} days ago",
+          "es": "hace {{n}} días"
+        },
+        "of": {
+          "en": "of",
+          "es": "de"
+        },
+        "purchases": {
+          "en": "purchases",
+          "es": "compras"
+        }
       }
     },
     "monthlyPerfNotEnough": {

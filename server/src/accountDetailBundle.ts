@@ -11,6 +11,7 @@ import { deptoPropertyIdOfAccount, loanAccountIdOfProperty } from "./accountRole
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { withPurchaseExpenseLinks } from "./ccPurchaseExpenseLinks.js";
+import { buildCcGlanceForAccount } from "./ccGlance.js";
 import {
   isDeptoMortgagePaymentCuota,
 } from "./deptoDividendosLedger.js";
@@ -227,6 +228,7 @@ export async function buildAccountDetailBundle(
       ...ledger,
       purchases: withPurchaseExpenseLinks(accountId, ledger.purchases),
       purchases_completed: withPurchaseExpenseLinks(accountId, ledger.purchases_completed),
+      glance: buildCcGlanceForAccount(accountId, ledger.billing_currency),
     };
   }
 

@@ -1,4 +1,3 @@
-import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useTranslation } from "../../i18n";
 import {
   CreditCardDetalleSurface,
@@ -6,7 +5,7 @@ import {
   type CcSurfaceScope,
 } from "../../components/liabilities/CreditCardLedgerSurfaces";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
-import { CreditCardSummaryCards } from "../../components/liabilities/CreditCardSummaryCards";
+import { CreditCardGlance } from "../../components/credit-card/CreditCardGlance";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import { ExportToolbarButton } from "../../components/export/ExportModal";
@@ -29,24 +28,13 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   // credit-card group pages render (`CreditCardLedgerSurfaces`).
   const ccScope: CcSurfaceScope = { variant: "account", accountId: summary.account_id };
 
-  const heroValue =
-    data.accountDashRow?.current_value ??
-    (isHomeCurrency(data.stripUnit)
-      ? summary.latest_valuation ?? ccLedger.totals.total_remaining_principal
-      : data.chartUnitVal);
-
+  // The card's own summary in the hero strip's place: the open and previous facturación, the cupo per currency.
   return (
     <AccountDetailSharedLayout
       title={ts.name}
-      accountMetricsAgg={data.accountMetricsAgg}
-      stripUnit={data.stripUnit}
-      heroValue={heroValue}
-      dash={data.dash}
-      accountNavChildren={data.accountNavChildren}
-      stripDetailSlots={<CreditCardSummaryCards ccLedger={ccLedger} stripSlots />}
+      strip={ccLedger.glance === null ? null : <CreditCardGlance glance={ccLedger.glance} />}
       toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
       loading={data.contentLoading}
-      showNavChildCards={false}
     >
       <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
 

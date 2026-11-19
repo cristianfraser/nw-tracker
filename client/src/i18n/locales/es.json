@@ -1038,7 +1038,19 @@
       "closeDateEstimatedHint": "Estimada desde el último cierre conocido de la tarjeta: el banco aún no publica este cierre.",
       "closeDateAnnouncedHint": "Anunciada como próximo período de facturación en el estado de cuenta anterior.",
       "provisionalCloseHint": "Cerrada en el banco, estado de cuenta aún sin importar. El facturado es el total que cobró el banco (SALDO INICIAL del feed de la tarjeta) si el feed vio el cierre; si no, la estimación de la app.",
-      "provisionalEstimateHint": "La app había estimado {{amount}} para esta facturación."
+      "provisionalEstimateHint": "La app había estimado {{amount}} para esta facturación.",
+      "glance": {
+        "closes": "cierra",
+        "payBy": "paga hasta",
+        "paid": "pagado",
+        "today": "hoy",
+        "inOneDay": "en 1 día",
+        "inDays": "en {{n}} días",
+        "oneDayAgo": "hace 1 día",
+        "daysAgo": "hace {{n}} días",
+        "of": "de",
+        "purchases": "compras"
+      }
     },
     "monthlyPerfNotEnough": "Sin suficientes meses de valorización mensual para calcular variaciones.",
     "stateContribution": {

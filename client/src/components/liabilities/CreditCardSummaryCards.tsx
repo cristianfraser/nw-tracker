@@ -28,14 +28,8 @@ function FacturacionCardBody({ fact, note }: { fact: CcFacturacionDto | undefine
   );
 }
 
-export function CreditCardSummaryCards({
-  ccLedger,
-  stripSlots = false,
-}: {
-  ccLedger: AccountCcInstallmentsResponse;
-  /** Render bare cards for a `PortfolioEntityCardsStrip` row instead of a standalone `.cards` grid. */
-  stripSlots?: boolean;
-}) {
+/** The credit-card group page's summary row (the single card's page shows `CreditCardGlance`). */
+export function CreditCardSummaryCards({ ccLedger }: { ccLedger: AccountCcInstallmentsResponse }) {
   const { t } = useTranslation();
   const detalle = ccLedger.billing_detail_by_month ?? [];
   const latestClosed = detalle.find((r) => r.as_of_kind === "statement");
@@ -64,8 +58,8 @@ export function CreditCardSummaryCards({
       ? [{ key: "clp", available: formatCardBillingPesos(cupo.available), total: formatCardBillingPesos(cupo.total) }]
       : [];
 
-  const cards = (
-    <>
+  return (
+    <div className="cards">
       <div className="card">
         <div className="label">{t("accountDetail.creditCard.openFacturacion")}</div>
         <FacturacionCardBody fact={openFact} />
@@ -105,9 +99,6 @@ export function CreditCardSummaryCards({
           </div>
         ))}
       </div>
-    </>
+    </div>
   );
-
-  if (stripSlots) return cards;
-  return <div className="cards">{cards}</div>;
 }

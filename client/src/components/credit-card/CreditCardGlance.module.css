@@ -1,0 +1,261 @@
+/* The credit-card page's «at a glance» block (CreditCardGlance.tsx): the facturaciones on the
+   left (250px), the cupo bars on the right. One column on a phone. */
+.glance {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 7.5rem;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--font-size-ui);
+  line-height: 1.3;
+}
+
+/* Row 1 the open facturación, row 2 the previous one under a hairline. */
+.facturacion {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--hairline);
+}
+
+.bill {
+  flex: 1;
+  padding: 10px 14px;
+}
+
+/* The open facturación's month, the block's title. */
+.month {
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.big {
+  margin-bottom: 7px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.split {
+  margin-top: 2px;
+  font-size: 0.72rem;
+}
+
+.quiet {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.quiet b,
+.foot b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.foot {
+  min-height: 1.2em;
+  padding: 7px 14px;
+  border-top: 1px solid var(--hairline);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.paid {
+  color: var(--positive);
+}
+
+.due {
+  color: var(--text);
+}
+
+.foreign {
+  color: var(--accent);
+}
+
+/* The cupo cell: an inner grid [bar | figure], every currency's bar on the same start and end. */
+.cupo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  column-gap: 12px;
+  align-content: center;
+  padding: 10px 14px;
+  position: relative;
+}
+
+.bracket {
+  grid-column: 1;
+  position: relative;
+  height: 13px;
+}
+
+.bracket i {
+  position: absolute;
+  bottom: 0;
+  height: 5px;
+  border: 1px solid var(--muted);
+  border-bottom: 0;
+  box-sizing: border-box;
+}
+
+.bracket span {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  padding: 0 5px;
+  background: var(--bg);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.bar {
+  grid-column: 1;
+  display: flex;
+  height: 18px;
+  background: var(--surface2);
+}
+
+.bar span {
+  flex: none;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.bar span + span {
+  border-left: 2px solid var(--bg);
+}
+
+.figure {
+  grid-column: 2;
+  align-self: center;
+  text-align: right;
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.figure b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.figure b.foreign {
+  color: var(--accent);
+}
+
+.labels {
+  grid-column: 1;
+  display: flex;
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.labels > span,
+.measure > span {
+  flex: none;
+  min-width: 0;
+  padding-left: 3px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.labels > span:first-child,
+.measure > span:first-child {
+  padding-left: 0;
+}
+
+.labels em,
+.measure em {
+  font-style: normal;
+  color: var(--muted);
+}
+
+.labels b,
+.measure b {
+  font-weight: 400;
+  font-size: 0.7rem;
+}
+
+.labels > .spacer {
+  flex: 1;
+}
+
+.labels > .free {
+  padding: 0;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* Hidden copies of the labels at their natural width (the fit check measures them). */
+.measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* No box of its own: its children keep their natural width for the fit check without widening the page. */
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.thinBar {
+  grid-column: 1;
+  align-self: center;
+  height: 4px;
+  margin-top: 12px;
+  background: var(--surface2);
+}
+
+.thinBar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.thinFigure {
+  margin-top: 12px;
+}
+
+.sum {
+  grid-column: 2;
+  justify-self: end;
+  min-width: 60%;
+  margin-top: 5px;
+  padding-top: 4px;
+  border-top: 1px solid var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+@media (max-width: 599px) {
+  .glance {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .facturacion {
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .cupo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .figure,
+  .sum {
+    grid-column: 1;
+    grid-row: auto !important;
+    justify-self: start;
+    margin-top: 3px;
+    text-align: left;
+  }
+}

@@ -30,6 +30,7 @@ import type {
   CcInstallmentPurchaseComputed,
 } from "./cards/planTypes.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import type { CcGlance } from "./ccGlance.js";
 import { ccHistorialLinesAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
 import { latestBankCupoForAccount, type CcBankCupoStatus } from "./ccBankCupoCheck.js";
 import {
@@ -145,6 +146,8 @@ export type CcInstallmentsResponseBase = {
   proxy_tickers?: string[];
   /** Per-facturación aggregated proxy earnings. */
   facturacion_proxy?: ProxyFacturacionAggregate[];
+  /** The card page's «at a glance» block (`ccGlance.ts`); set by the account detail bundle only. */
+  glance?: CcGlance | null;
 };
 
 /**

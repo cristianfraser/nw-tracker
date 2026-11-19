@@ -383,7 +383,75 @@ export interface AccountCcInstallmentsResponse {
   proxy_tickers?: string[];
   /** Per-facturación aggregated proxy earnings (installments + normal purchases). */
   facturacion_proxy?: CcProxyFacturacionAggregate[];
+  /**
+   * The card page's «at a glance» block (server `ccGlance.ts`), card page only: null when the card
+   * has no open facturación (it stopped billing).
+   */
+  glance?: CcGlanceDto | null;
 }
+
+/** An amount in its own currency (`currency`: lowercase code). */
+export type CcGlanceAmountDto = { currency: string; amount: number };
+
+/** One segment of the billing currency's cupo bar, left to right. */
+export type CcGlanceSegmentDto = {
+  /** `previous`: the previous facturación's unpaid part; `purchases`: the open cycle's; `cuotas`: one billing month's plan cuotas. */
+  kind: "previous" | "purchases" | "cuotas";
+  /** The facturación it belongs to (`YYYY-MM`). */
+  billing_month: string;
+  amount: number;
+  /** Its width on the bar (fraction of the bar). */
+  share: number;
+};
+
+/** One currency side of the card's cupo. */
+export type CcGlanceSideDto = {
+  currency: string;
+  /** What the card uses of its cupo in this currency. */
+  used: number;
+  /** The configured cupo; null when none is configured. */
+  total: number | null;
+  /** `total − used`; null without a configured cupo. */
+  free: number | null;
+  /** `used` as a fraction of the bar. */
+  used_share: number;
+  /** The billing currency's segments (they add up to `used`); null on another currency. */
+  segments: CcGlanceSegmentDto[] | null;
+  /** Billing currency only: the bracket over the open facturación's segments; `amount` null on a single-currency card. */
+  bracket: { start_share: number; share: number; amount: number | null } | null;
+};
+
+/** The credit-card page's «at a glance» block: everything in it decided by the server. */
+export type CcGlanceDto = {
+  billing_currency: string;
+  open: {
+    billing_month: string;
+    /** In the billing currency, foreign amounts at their rate. */
+    total: number;
+    /** Per currency side, billing currency first. */
+    amounts: CcGlanceAmountDto[];
+    close_iso: string;
+    /** Calendar days from today (Chile) to the close. */
+    days_to_close: number;
+  };
+  /** The last closed facturación; null when none has closed. */
+  previous: {
+    billing_month: string;
+    /** In the billing currency. */
+    total: number;
+    paid: boolean;
+    /** What it still owes per currency (owed currencies only, billing first); empty when paid. */
+    owed: CcGlanceAmountDto[];
+    pay_by_iso: string;
+    /** Calendar days from today (Chile) to the pay-by; negative when overdue. */
+    days_to_pay_by: number;
+    is_provisional_close: boolean;
+  } | null;
+  /** Billing currency first. */
+  sides: CcGlanceSideDto[];
+  /** Σ of the sides' used in the billing currency at today's rate; null on a single-currency card. */
+  total_owed: number | null;
+};
 
 /** A card's cupo in one currency (`currency`: a `currencies` code); null when none is configured. */
 export type CcCupoEntry = { currency: string; value: number | null };

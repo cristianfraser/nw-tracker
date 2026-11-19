@@ -1038,7 +1038,19 @@
       "closeDateEstimatedHint": "Estimated from the card's latest known close: the bank has not published this close yet.",
       "closeDateAnnouncedHint": "Announced as the next billing period by the previous statement.",
       "provisionalCloseHint": "Closed at the bank, statement not imported yet. The facturado is the bank's billed total (the card feed's SALDO INICIAL) when the feed saw the close, otherwise the app's estimate.",
-      "provisionalEstimateHint": "The app had estimated {{amount}} for this facturación."
+      "provisionalEstimateHint": "The app had estimated {{amount}} for this facturación.",
+      "glance": {
+        "closes": "closes",
+        "payBy": "pay by",
+        "paid": "paid",
+        "today": "today",
+        "inOneDay": "in 1 day",
+        "inDays": "in {{n}} days",
+        "oneDayAgo": "1 day ago",
+        "daysAgo": "{{n}} days ago",
+        "of": "of",
+        "purchases": "purchases"
+      }
     },
     "monthlyPerfNotEnough": "Not enough months of monthly valuation to compute changes.",
     "stateContribution": {
