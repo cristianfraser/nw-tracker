@@ -190,6 +190,29 @@ type Matcher = {
 };
 
 /**
+ * A Fintual «Invertiste / Vendiste US $X dólares … N acciones de <fund>» mail: amount, shares and
+ * fund from the subject, the fill price from the body («Precio de la acción US $ 99,50», Chilean
+ * format) when the preview carries it. A price that does not explain the trade (shares × price more
+ * than 1 % off the amount) is a misread, and throws.
+ */
+function fintualTradeFromSubject(m: RegExpExecArray, snippet: string): Partial<BrokerEmailEvent> {
+  const amount = parseChileanNumber(m[1]!);
+  const units = decimalString(m[2]!);
+  const priceMatch = /Precio de la acci[óo]n US \$\s*([\d.,]+)/i.exec(snippet);
+  const price = priceMatch ? parseChileanNumber(priceMatch[1]!) : null;
+  if (price != null && Math.abs(Number(units) * price - amount) > amount * 0.01) {
+    throw new Error(`Fintual trade mail: ${units} shares × US$${price} does not make US$${amount} («${m[0]}»)`);
+  }
+  return {
+    amount,
+    units,
+    fund_name: m[3]!.trim(),
+    currency: "usd",
+    ...(price != null ? { price } : {}),
+  };
+}
+
+/**
  * Racional's snippet: "Acciones compradas 24.74186066 Precio promedio US$54.41 Monto comprado
  * US$1346.17". The Margin-era template renders BOTH table column headers before each value
  * ("Acciones compradas Acciones vendidas 8.45850913 … Monto comprado Monto vendido US$4345.96")
@@ -226,12 +249,8 @@ const FINTUAL_MATCHERS: Matcher[] = [
     kind: "buy",
     is_transaction: true,
     re: /^Invertiste US \$\s*([\d.,]+) d[óo]lares en ([\d.,]+) acciones de (.+)$/i,
-    read: (m) => ({
-      amount: parseChileanNumber(m[1]!),
-      units: decimalString(m[2]!),
-      fund_name: m[3]!.trim(),
-      currency: "usd",
-    }),
+    // The body states the fill price: «Monto invertido US $ 1.000,00 Precio de la acción US $ 99,50».
+    read: (m, snippet) => fintualTradeFromSubject(m, snippet),
   },
   {
     // "Vendiste US $1.963,51 dólares de 28,438160398 acciones de Cameco Corporation" — a sale:
@@ -239,12 +258,7 @@ const FINTUAL_MATCHERS: Matcher[] = [
     kind: "sell",
     is_transaction: true,
     re: /^Vendiste US \$\s*([\d.,]+) d[óo]lares de ([\d.,]+) acciones de (.+)$/i,
-    read: (m) => ({
-      amount: parseChileanNumber(m[1]!),
-      units: decimalString(m[2]!),
-      fund_name: m[3]!.trim(),
-      currency: "usd",
-    }),
+    read: (m, snippet) => fintualTradeFromSubject(m, snippet),
   },
   {
     // "Reinvertimos tu dividendo de LIN" — the DRIP fill since 2026-09-18 (was an «Invertiste …
