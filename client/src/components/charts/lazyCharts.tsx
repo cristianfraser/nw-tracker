@@ -71,6 +71,9 @@ function linePanelFrame(props: { title: string; titleAs?: "h2" | "h3"; controls?
   return panelFrame(props, <ChartLegendPlaceholder />);
 }
 
+/** The card glance's cupo bars: the caller's box is the track (height and background), so the frame is that track, empty. */
+const FILL_STYLE: CSSProperties = { width: "100%", height: "100%" };
+
 /** CcInstallmentHistoryChart's box: no heading of its own, a fixed 280 px plot. */
 const CC_HISTORIAL_BOX_STYLE: CSSProperties = { height: 280, marginTop: "0.35rem" };
 
@@ -89,3 +92,5 @@ export const CcInstallmentHistoryChart = lazyChart("CcInstallmentHistoryChart", 
     <ChartEmptyState loading message="" boxStyle={CC_HISTORIAL_BOX_STYLE} />
   </div>
 ));
+
+export const CcGlanceCupoBar = lazyChart("CcGlanceCupoBar", () => <div aria-hidden style={FILL_STYLE} />);

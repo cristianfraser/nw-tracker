@@ -1049,7 +1049,10 @@
         "oneDayAgo": "1 day ago",
         "daysAgo": "{{n}} days ago",
         "of": "of",
-        "purchases": "purchases"
+        "purchases": "purchases",
+        "segmentPrevious": "previous statement, unpaid",
+        "segmentCuotas": "installments",
+        "cupoUsed": "credit line used"
       }
     },
     "monthlyPerfNotEnough": "Not enough months of monthly valuation to compute changes.",

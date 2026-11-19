@@ -1049,7 +1049,10 @@
         "oneDayAgo": "hace 1 día",
         "daysAgo": "hace {{n}} días",
         "of": "de",
-        "purchases": "compras"
+        "purchases": "compras",
+        "segmentPrevious": "facturación anterior, por pagar",
+        "segmentCuotas": "cuotas",
+        "cupoUsed": "cupo utilizado"
       }
     },
     "monthlyPerfNotEnough": "Sin suficientes meses de valorización mensual para calcular variaciones.",

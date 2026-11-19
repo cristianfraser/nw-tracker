@@ -3521,6 +3521,18 @@
         "purchases": {
           "en": "purchases",
           "es": "compras"
+        },
+        "segmentPrevious": {
+          "en": "previous statement, unpaid",
+          "es": "facturación anterior, por pagar"
+        },
+        "segmentCuotas": {
+          "en": "installments",
+          "es": "cuotas"
+        },
+        "cupoUsed": {
+          "en": "credit line used",
+          "es": "cupo utilizado"
         }
       }
     },

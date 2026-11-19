@@ -32,7 +32,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   return (
     <AccountDetailSharedLayout
       title={ts.name}
-      strip={ccLedger.glance === null ? null : <CreditCardGlance glance={ccLedger.glance} />}
+      strip={ccLedger.glance === null ? null : <CreditCardGlance accountId={summary.account_id} glance={ccLedger.glance} />}
       toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
       loading={data.contentLoading}
     >

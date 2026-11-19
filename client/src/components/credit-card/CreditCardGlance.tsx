@@ -1,8 +1,19 @@
-import { Fragment, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { CcGlanceCupoBar } from "../charts/lazyCharts";
+import type { CcGlanceCupoBarSegment } from "../charts/CcGlanceCupoBar";
 import { useTranslation } from "../../i18n";
 import { currencyFormatInfo, formatGroupedDecimal, formatMoney } from "../../format";
 import { formatMonthShortLabel, formatYearMonthLabel } from "../../formatDateLabel";
-import type { CcGlanceAmountDto, CcGlanceDto, CcGlanceSegmentDto, CcGlanceSideDto } from "../../types";
+import type {
+  AccountDetailBundleResponse,
+  CcGlanceAmountDto,
+  CcGlanceDto,
+  CcGlanceSegmentDto,
+  CcGlanceSideDto,
+} from "../../types";
+import { queryKeys } from "../../queries/keys";
+import { persistedPayload, readPersistedPayload, writePersistedPayload } from "../../queries/persistedPayloadCache";
 import styles from "./CreditCardGlance.module.css";
 
 /** Percent of the bar for a server share (layout only). */
@@ -41,23 +52,42 @@ function bareAmount(amount: number, currency: string): string {
   return formatGroupedDecimal(amount, currencyFormatInfo(currency).minorDigits);
 }
 
-type SegmentLook = { background: string; color: string; name: string };
+type SegmentLook = { background: string; color: string; name: string; kindName: string };
 
 /**
  * The billing currency's bar: to scale over the cupo, its segments left to right, the bracket over the
  * open facturación, and one row of labels under it — a label only while it fits inside its own
  * segment, stopping at the first that does not (measured: the one computation this block makes).
  */
-function SegmentedBar({ side, figure }: { side: CcGlanceSideDto; figure: ReactNode }) {
+function SegmentedBar({
+  side,
+  figure,
+  onLabelLines,
+}: {
+  side: CcGlanceSideDto;
+  figure: ReactNode;
+  /** How many text lines the labels row took (2 with a segment label, 1 with only the free amount, 0 empty). */
+  onLabelLines: (lines: LabelLines) => void;
+}) {
   const { t } = useTranslation();
   const segments = side.segments ?? [];
   let cuotaIndex = 0;
   const looks: SegmentLook[] = segments.map((s: CcGlanceSegmentDto) => {
     if (s.kind === "previous") {
-      return { background: "var(--muted)", color: "var(--text)", name: formatMonthShortLabel(s.billing_month) };
+      return {
+        background: "var(--muted)",
+        color: "var(--text)",
+        name: formatMonthShortLabel(s.billing_month),
+        kindName: t("accountDetail.creditCard.glance.segmentPrevious"),
+      };
     }
     if (s.kind === "purchases") {
-      return { background: "var(--accent)", color: "var(--accent)", name: t("accountDetail.creditCard.glance.purchases") };
+      return {
+        background: "var(--accent)",
+        color: "var(--accent)",
+        name: t("accountDetail.creditCard.glance.purchases"),
+        kindName: t("accountDetail.creditCard.glance.purchases"),
+      };
     }
     // Each later month fades a step further into the track, down to a floor.
     const strength = Math.max(32, 100 - 9 * cuotaIndex++);
@@ -65,12 +95,22 @@ function SegmentedBar({ side, figure }: { side: CcGlanceSideDto; figure: ReactNo
       background: `color-mix(in srgb, var(--cuota-billed) ${strength}%, var(--surface2))`,
       color: "var(--cuota-billed)",
       name: formatMonthShortLabel(s.billing_month),
+      kindName: t("accountDetail.creditCard.glance.segmentCuotas"),
     };
   });
   const labels = segments.map((s, i) => ({ name: looks[i]!.name, amount: bareAmount(s.amount, side.currency) }));
   // What the fit check reads: the labels' text and the segments' widths.
   const fitKey = segments.map((s, i) => `${labels[i]!.name}|${labels[i]!.amount}|${s.share}`).join(" ");
   const shares = segments.map((s) => s.share);
+  // The chart's segments with their tooltips (month, what the segment is, its amount).
+  const barSegments: CcGlanceCupoBarSegment[] = segments.map((s, i) => ({
+    key: `${s.kind}-${s.billing_month}`,
+    share: s.share,
+    fill: looks[i]!.background,
+    title: formatYearMonthLabel(s.billing_month),
+    name: looks[i]!.kindName,
+    value: formatMoney({ value: s.amount, currency: side.currency }),
+  }));
 
   const barRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -91,6 +131,8 @@ function SegmentedBar({ side, figure }: { side: CcGlanceSideDto; figure: ReactNo
     ro.observe(bar);
     return () => ro.disconnect();
   }, [fitKey]); // eslint-disable-line react-hooks/exhaustive-deps -- `fitKey` carries `shares`
+  const labelLines: LabelLines = fitting > 0 ? 2 : side.free != null ? 1 : 0;
+  useEffect(() => onLabelLines(labelLines), [labelLines, onLabelLines]);
 
   const bracket = side.bracket;
   return (
@@ -107,14 +149,10 @@ function SegmentedBar({ side, figure }: { side: CcGlanceSideDto; figure: ReactNo
           </>
         ) : null}
       </div>
+      {/* The track (the free part) with the Recharts bar over it at full width, no margin: the
+          bracket above and the labels below use the same shares over the same width. */}
       <div className={styles.bar} ref={barRef}>
-        {segments.map((s, i) => (
-          <span
-            key={`${s.kind}-${s.billing_month}`}
-            style={{ width: pct(s.share), background: looks[i]!.background }}
-            title={i < fitting ? undefined : `${labels[i]!.name} ${labels[i]!.amount}`}
-          />
-        ))}
+        <CcGlanceCupoBar segments={barSegments} gapPx={2} />
       </div>
       <div className={styles.labels}>
         {segments.slice(0, fitting).map((s, i) => (
@@ -146,6 +184,30 @@ function SegmentedBar({ side, figure }: { side: CcGlanceSideDto; figure: ReactNo
   );
 }
 
+/** Another currency's thin bar: used over the bar, with its tooltip. */
+function ThinBar({ side }: { side: CcGlanceSideDto }) {
+  const { t } = useTranslation();
+  const used = formatMoney({ value: side.used, currency: side.currency });
+  const total = side.total != null ? formatMoney({ value: side.total, currency: side.currency }) : null;
+  const usedLabel = t("accountDetail.creditCard.glance.cupoUsed");
+  const ofLabel = t("accountDetail.creditCard.glance.of");
+  const segments = useMemo<CcGlanceCupoBarSegment[]>(
+    () => [
+      {
+        key: side.currency,
+        share: side.used_share,
+        fill: "var(--accent)",
+        title: usedLabel,
+        name: side.currency.toUpperCase(),
+        value: used,
+        subValue: total != null ? `${ofLabel} ${total}` : undefined,
+      },
+    ],
+    [side.currency, side.used_share, used, total, usedLabel, ofLabel]
+  );
+  return <CcGlanceCupoBar segments={segments} />;
+}
+
 /** «<used> de <total>», the used figure emphasised. */
 function UsedOfTotal({ side, accent }: { side: CcGlanceSideDto; accent: boolean }) {
   const { t } = useTranslation();
@@ -162,26 +224,140 @@ function UsedOfTotal({ side, accent }: { side: CcGlanceSideDto; accent: boolean 
   );
 }
 
+const BLANK = "\u00a0";
+
+type LabelLines = 0 | 1 | 2;
+
+/**
+ * Which rows a card's block has, remembered per card (`cc_glance_shape`) so the pending block has the
+ * loaded one's height: no amounts, only the sides' currencies (billing first; a second side adds the
+ * split line, a thin bar and the sum), the previous facturación's state (its line count) and the
+ * labels row's line count.
+ */
+type GlanceShape = {
+  currencies: string[];
+  previous: "none" | "paid" | "due";
+  label_lines: LabelLines;
+};
+
+function isGlanceShape(v: unknown): v is GlanceShape {
+  if (v == null || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    Array.isArray(o.currencies) &&
+    o.currencies.length > 0 &&
+    o.currencies.every((c) => typeof c === "string") &&
+    (o.previous === "none" || o.previous === "paid" || o.previous === "due") &&
+    (o.label_lines === 0 || o.label_lines === 1 || o.label_lines === 2)
+  );
+}
+
+const GLANCE_SHAPE = persistedPayload<GlanceShape>("cc_glance_shape", isGlanceShape);
+
+/** The guess for a card this browser has never shown: two currencies, previous facturación paid. */
+const GUESSED_SHAPE: Omit<GlanceShape, "currencies"> & { sides: number } = { sides: 2, previous: "paid", label_lines: 2 };
+
+function shapeOf(glance: CcGlanceDto, labelLines: LabelLines): GlanceShape {
+  const prev = glance.previous;
+  return {
+    currencies: glance.sides.map((s) => s.currency),
+    previous: prev == null ? "none" : prev.paid ? "paid" : "due",
+    label_lines: labelLines,
+  };
+}
+
+/**
+ * The pending block's shape: a glance react-query still holds for this card (another unit's bundle,
+ * this session), else the browser's stored copy, else the guess.
+ */
+function usePendingShape(accountId: number): { sides: number; previous: GlanceShape["previous"]; label_lines: LabelLines } {
+  const queryClient = useQueryClient();
+  const stored = readPersistedPayload(GLANCE_SHAPE, [String(accountId)]);
+  const held = queryClient
+    .getQueriesData<AccountDetailBundleResponse>({ queryKey: queryKeys.accountDetailAll(String(accountId)) })
+    .map(([, data]) => data?.ccLedger?.glance)
+    .find((g): g is CcGlanceDto => g != null);
+  if (held) {
+    const shape = shapeOf(held, stored?.label_lines ?? GUESSED_SHAPE.label_lines);
+    return { sides: shape.currencies.length, previous: shape.previous, label_lines: shape.label_lines };
+  }
+  if (stored) return { sides: stored.currencies.length, previous: stored.previous, label_lines: stored.label_lines };
+  return GUESSED_SHAPE;
+}
+
+/**
+ * The block while the page data is pending (the page dims it): the loaded block's rows with blank
+ * text, in the card's remembered shape (`usePendingShape`), so nothing moves when the data lands. The
+ * figure column has a fixed minimum width (CSS), so blank figures keep it.
+ */
+function PendingGlance({ accountId }: { accountId: number }) {
+  const shape = usePendingShape(accountId);
+  const multi = shape.sides > 1;
+  return (
+    <div className={styles.glance}>
+      <div className={styles.facturacion}>
+        <div className={styles.bill}>
+          <div className={styles.month}>{BLANK}</div>
+          <div className={`${styles.big} mono`}>{BLANK}</div>
+          {multi ? <div className={`${styles.split} mono`}>{BLANK}</div> : null}
+          <div className={styles.quiet}>{BLANK}</div>
+        </div>
+        <div className={styles.foot}>
+          {shape.previous === "none" ? null : shape.previous === "paid" ? (
+            BLANK
+          ) : (
+            <>
+              {BLANK}
+              <br />
+              {BLANK}
+            </>
+          )}
+        </div>
+      </div>
+      <div className={styles.cupo}>
+        <div className={styles.bracket} />
+        <div className={styles.bar} />
+        <div className={styles.labels}>
+          {shape.label_lines === 2 ? (
+            <span>
+              <em>{BLANK}</em>
+              <b className="mono">{BLANK}</b>
+            </span>
+          ) : shape.label_lines === 1 ? (
+            <span className={`${styles.free} mono`}>{BLANK}</span>
+          ) : null}
+        </div>
+        <div className={`${styles.figure} mono`} style={{ gridRow: 2 }}>
+          {BLANK}
+        </div>
+        {Array.from({ length: shape.sides - 1 }, (_, i) => (
+          <Fragment key={i}>
+            <div className={styles.thinBar} />
+            <div className={`${styles.figure} ${styles.thinFigure} mono`}>{BLANK}</div>
+          </Fragment>
+        ))}
+        {multi ? <div className={`${styles.sum} mono`}>{BLANK}</div> : null}
+      </div>
+    </div>
+  );
+}
+
 /**
  * The credit-card page's «at a glance» block (server `glance`, `ccGlance.ts`): the open facturación and
  * the previous one on the left, the cupo per currency on the right. `glance` undefined while the page
  * data is not in (an empty frame, dimmed by the page); null when the card has no open facturación.
  */
-export function CreditCardGlance({ glance }: { glance: CcGlanceDto | null | undefined }) {
+export function CreditCardGlance({ accountId, glance }: { accountId: number; glance: CcGlanceDto | null | undefined }) {
   const { t } = useTranslation();
   const daysLabel = useDaysLabel();
+  // The labels row's line count, reported by the bar once it has measured the labels.
+  const [labelLines, setLabelLines] = useState<LabelLines | null>(null);
+  const shapeKey = glance && labelLines != null ? JSON.stringify(shapeOf(glance, labelLines)) : null;
+  useEffect(() => {
+    if (shapeKey != null) writePersistedPayload(GLANCE_SHAPE, [String(accountId)], JSON.parse(shapeKey) as GlanceShape);
+  }, [accountId, shapeKey]);
   if (glance === null) return null;
-  if (glance === undefined) {
-    return (
-      <div className={styles.glance}>
-        <div className={styles.facturacion}>
-          <div className={styles.bill} />
-          <div className={styles.foot} />
-        </div>
-        <div className={styles.cupo} />
-      </div>
-    );
-  }
+  if (glance === undefined) return <PendingGlance accountId={accountId} />;
   const billing = glance.billing_currency;
   const multi = glance.sides.length > 1;
   const [main, ...others] = glance.sides;
@@ -231,11 +407,11 @@ export function CreditCardGlance({ glance }: { glance: CcGlanceDto | null | unde
         </div>
       </div>
       <div className={styles.cupo}>
-        {main ? <SegmentedBar side={main} figure={<UsedOfTotal side={main} accent={false} />} /> : null}
+        {main ? <SegmentedBar side={main} figure={<UsedOfTotal side={main} accent={false} />} onLabelLines={setLabelLines} /> : null}
         {others.map((side) => (
           <Fragment key={side.currency}>
             <div className={styles.thinBar}>
-              <i style={{ width: pct(side.used_share) } as CSSProperties} />
+              <ThinBar side={side} />
             </div>
             <div className={`${styles.figure} ${styles.thinFigure} mono`}>
               <UsedOfTotal side={side} accent />
