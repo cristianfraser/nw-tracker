@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "typecheck": "node ../scripts/tsc.mjs --noEmit",
     "i18n:generate": "node scripts/i18n-generate.mjs",
-    "test": "npm run typecheck && vitest run",
+    "test": "node ../scripts/run-parallel.mjs \"typecheck=npm run typecheck\" \"vitest=npm run test:vitest\"",
+    "test:vitest": "vitest run",
+    "test:related": "vitest related --run",
     "lint": "eslint ."
   },
   "dependencies": {

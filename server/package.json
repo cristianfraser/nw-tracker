@@ -52,7 +52,9 @@
     "sync:equity-eod": "tsx scripts/sync-equity-eod.ts",
     "prune:future-month-end-valuations": "tsx scripts/prune-future-month-end-valuations.ts",
     "typecheck": "node ../scripts/tsc.mjs --noEmit",
-    "test": "npm run typecheck && NW_TRACKER_TEST_DB=nw-tracker.test.db vitest run",
+    "test": "node ../scripts/run-parallel.mjs \"typecheck=npm run typecheck\" \"vitest=npm run test:vitest\"",
+    "test:vitest": "NW_TRACKER_TEST_DB=nw-tracker.test.db vitest run",
+    "test:related": "NW_TRACKER_TEST_DB=nw-tracker.test.db vitest related --run",
     "profile:dashboard": "tsx scripts/profile-dashboard.ts",
     "db:verify-backup": "tsx scripts/verify-db-backup.ts",
     "match:app-store-notes": "tsx scripts/match-app-store-notes.ts"
