@@ -12,6 +12,7 @@ import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { withPurchaseExpenseLinks } from "./ccPurchaseExpenseLinks.js";
 import { buildCcGlanceForAccount } from "./ccGlance.js";
+import { buildEquityGlanceForAccount } from "./equityGlance.js";
 import {
   isDeptoMortgagePaymentCuota,
 } from "./deptoDividendosLedger.js";
@@ -275,6 +276,14 @@ export async function buildAccountDetailBundle(
     return { ...rest, notes: notes ?? null };
   })();
 
+  // The stock page's «at a glance» block, from the position and row above (`equityGlance.ts`):
+  // built with the bundle, so a live tick that drops the bundle rebuilds it with the position.
+  const equity_glance = buildEquityGlanceForAccount(accountId, accountUsesEquityMtm(accountId), {
+    unit,
+    position: positionFull,
+    row: dashboard_account_row,
+  });
+
   return {
     summary,
     ts,
@@ -285,6 +294,7 @@ export async function buildAccountDetailBundle(
     monthly_performance,
     period_returns,
     dashboard_account_row,
+    equity_glance,
   };
 }
 

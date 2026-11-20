@@ -1076,6 +1076,29 @@
       "totalLabel": "All payments",
       "coveredFrom": "Totals from {{date}} ({{covered}} of {{total}} payments): earlier payments predate this portfolio."
     },
+    "equityGlance": {
+      "sessionClosed": "at the {{market}} close",
+      "sessionOpen": "live · {{market}}",
+      "market": {
+        "nyse": "NYSE",
+        "santiago": "the Santiago Exchange",
+        "london": "the London Stock Exchange",
+        "crypto24": "the 24h market"
+      },
+      "previous": "previous",
+      "high": "high",
+      "valueToday": "value today",
+      "deposited": "deposited",
+      "price": "price",
+      "dividends": "dividends",
+      "day": "day",
+      "month": "month",
+      "year": "year",
+      "dayPl": "Day P/L",
+      "sparkline": "{{ticker}} price since first held",
+      "plMonthlyTitle": "Monthly P/L",
+      "movementsTitle": "Movements"
+    },
     "brokerHoldings": {
       "title": "Holdings by cash account",
       "hint": "The same ticker held at several brokers: the shares split by the cash account that paid for them.",
@@ -1084,6 +1107,23 @@
       "colShare": "Share",
       "colValue": "Value today",
       "noCashAccount": "No cash account"
+    }
+  },
+  "surfaceControls": {
+    "short": {
+      "day": "D",
+      "month": "M",
+      "year": "Y"
+    },
+    "shortRange": {
+      "30d": "30d",
+      "60d": "60d",
+      "90d": "90d",
+      "1y": "1y",
+      "3y": "3y",
+      "5y": "5y",
+      "10y": "10y",
+      "total": "total"
     }
   },
   "periodReturns": {
@@ -1103,6 +1143,7 @@
     "windowTitleDate": "From {{start}}",
     "actual": "Actual",
     "compareWith": "Compare with",
+    "versus": "vs",
     "delta": "Δ {{amount}}",
     "shadowTitle": "The same deposits and withdrawals, on the same days, invested in {{benchmark}} from {{start}}. Δ = your P/L − its P/L.",
     "benchmarkUnavailable": "{{benchmark}} has no history for this period",

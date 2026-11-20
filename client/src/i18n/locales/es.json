@@ -1076,6 +1076,29 @@
       "totalLabel": "Todos los pagos",
       "coveredFrom": "Totales desde {{date}} ({{covered}} de {{total}} pagos): los pagos anteriores son de antes de este portafolio."
     },
+    "equityGlance": {
+      "sessionClosed": "al cierre de {{market}}",
+      "sessionOpen": "en vivo · {{market}}",
+      "market": {
+        "nyse": "NYSE",
+        "santiago": "la Bolsa de Santiago",
+        "london": "la Bolsa de Londres",
+        "crypto24": "el mercado 24 h"
+      },
+      "previous": "anterior",
+      "high": "máximo",
+      "valueToday": "valor hoy",
+      "deposited": "depositado",
+      "price": "precio",
+      "dividends": "dividendos",
+      "day": "día",
+      "month": "mes",
+      "year": "año",
+      "dayPl": "P/L del día",
+      "sparkline": "Precio de {{ticker}} desde la primera compra",
+      "plMonthlyTitle": "P/L mensual",
+      "movementsTitle": "Movimientos"
+    },
     "brokerHoldings": {
       "title": "Tenencia por cuenta de origen",
       "hint": "El mismo ticker en varios brókeres: las acciones según la cuenta de caja que las pagó.",
@@ -1084,6 +1107,23 @@
       "colShare": "Proporción",
       "colValue": "Valor hoy",
       "noCashAccount": "Sin cuenta de caja"
+    }
+  },
+  "surfaceControls": {
+    "short": {
+      "day": "D",
+      "month": "M",
+      "year": "A"
+    },
+    "shortRange": {
+      "30d": "30d",
+      "60d": "60d",
+      "90d": "90d",
+      "1y": "1a",
+      "3y": "3a",
+      "5y": "5a",
+      "10y": "10a",
+      "total": "total"
     }
   },
   "periodReturns": {
@@ -1103,6 +1143,7 @@
     "windowTitleDate": "Desde {{start}}",
     "actual": "Real",
     "compareWith": "Comparar con",
+    "versus": "frente a",
     "delta": "Δ {{amount}}",
     "shadowTitle": "Los mismos aportes y retiros, en las mismas fechas, invertidos en {{benchmark}} desde {{start}}. Δ = tu ganancia − la suya.",
     "benchmarkUnavailable": "{{benchmark}} no tiene historia para este período",

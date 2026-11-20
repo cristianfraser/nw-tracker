@@ -170,6 +170,8 @@ interface BlockProps {
   drawInMs?: number;
   /** The draw-in waits while true (the chart is not on screen yet: the demo's held-back preview). */
   drawInHold?: boolean;
+  /** No legend under the plot (a page whose chart has one line it names elsewhere); the plot takes its height. */
+  hideLegend?: boolean;
   /**
    * The block is a placeholder or held prior data: the panel dims itself and, with nothing to
    * plot, draws an empty chart box instead of the «no valuation series» copy.
@@ -451,6 +453,7 @@ export function LineChartPanel({
   athMarker,
   drawInMs,
   drawInHold = false,
+  hideLegend = false,
   loading,
 }: BlockProps) {
   const timeRange = timeRangeProp ?? "total";
@@ -610,7 +613,7 @@ export function LineChartPanel({
           loading={loading}
           message={i18n.t("charts.noValuationSeries")}
           legend={
-            visibleSeries.length > 0 ? (
+            hideLegend ? undefined : visibleSeries.length > 0 ? (
               <InteractiveLegend series={visibleSeries} focusColorIndex={null} onHighlight={() => {}} />
             ) : (
               <ChartLegendPlaceholder />
@@ -792,7 +795,9 @@ export function LineChartPanel({
             })()}
         </AppLineChart>
         </div>
-        <InteractiveLegend series={visibleSeries} focusColorIndex={focusColorIndex} onHighlight={setHighlightedKey} />
+        {hideLegend ? null : (
+          <InteractiveLegend series={visibleSeries} focusColorIndex={focusColorIndex} onHighlight={setHighlightedKey} />
+        )}
       </div>
     </div>
   );

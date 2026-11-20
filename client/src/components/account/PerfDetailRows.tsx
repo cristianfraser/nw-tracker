@@ -28,8 +28,11 @@ export type PerfDetailRow = {
   flows: readonly (PerfDetailFlow | null)[];
   /** The period's result: ▲ / ▼ by sign, the absolute amount and its % when there is one. */
   result: { sign: 1 | -1 | 0; amount: string; pct?: string; title: string } | null;
-  /** Running totals, quieter: the year so far and all time. */
-  totals: readonly { key: string; prefix: string; amount: string; title: string }[];
+  /**
+   * Running totals, quieter: the year so far and all time. `pct` (the year so far's return, the
+   * server's `ytd_pct`) follows the amount in parentheses when the row carries one.
+   */
+  totals: readonly { key: string; prefix: string; amount: string; pct?: string; title: string }[];
   dim?: boolean;
 };
 
@@ -117,6 +120,7 @@ export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailR
                   </span>
                   <span className="visually-hidden">{total.title}: </span>
                   {total.amount}
+                  {total.pct ? <span className={styles.pct}>({total.pct})</span> : null}
                 </span>
               ))}
             </span>

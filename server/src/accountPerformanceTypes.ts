@@ -23,6 +23,14 @@ export type AccountMonthlyPerformanceRow = {
   ytd_nominal_pl: number | null;
   /** Running sum of nominal_pl from first month with a row through this month. */
   cumulative_nominal_pl: number | null;
+  /**
+   * The YTD % at this row's date: the scope's daily returns of the row's calendar year compounded
+   * through its date — the Rentabilidad YTD rule (`periodPctDailyChain.ts`). Absent where the
+   * scope keeps the one-step % (liability-only scopes, a legacy group sub-tab) — those % are a
+   * cost, not a return; null when no day of the year has a return. On a yearly row it is the
+   * latest month's (= the year's YTD through its last month).
+   */
+  ytd_pct?: number | null;
   /** Mortgage: remaining principal in UF from `depto-dividendos.csv` (crédito restante), aligned to month-end. */
   closing_balance_uf?: number | null;
   /** Mortgage: UF value in CLP from `uf_daily` on or before month-end (not from the dividendos sheet). */

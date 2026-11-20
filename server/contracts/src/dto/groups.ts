@@ -170,6 +170,14 @@ export type ConsolidatedMonthlyPerfRow = {
   pct_month: number | null;
   ytd_nominal_pl: number | null;
   cumulative_nominal_pl: number | null;
+  /**
+   * The YTD % at this row's date: the scope's daily returns of the row's calendar year compounded
+   * through its date — the Rentabilidad YTD rule (`periodPctDailyChain.ts`). Absent where the
+   * scope keeps the one-step % (liability-only scopes, a legacy group sub-tab) — those % are a
+   * cost, not a return; null when no day of the year has a return. On a yearly row it is the
+   * latest month's (= the year's YTD through its last month).
+   */
+  ytd_pct?: number | null;
   /** Net worth's server-paginated rows only: the month's (or year's) income and expenses. */
   income?: number;
   expenses?: number;

@@ -17,6 +17,9 @@ import {
   pageChartPlan,
 } from "./groupChartBuckets.js";
 import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
+import { accountDailyPctPoints, groupDailyPctPoints, type DailyPctPoint } from "./dailyPctSeries.js";
+import { isLiabilityOnlyScope, withDailyYtdPct } from "./periodPctDailyChain.js";
+import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 import { HeavyWork, timeHeavy } from "./heavyWork.js";
 import { getNavChartGroupNodeBySlug } from "./navTree.js";
 import { chartHostSlugForValuationGroup, listReferenceGroupsForChartHost } from "./portfolioGroupReference.js";
@@ -153,8 +156,14 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
   // each card's facturación bars on its close dates, in the series' unit
   // (`ccDailyHistorialBlock.ts`).
   const ccDaily = ccDailyHistorialBlockForGroup(portfolioGroup, series);
+  const groupMembers = listAccountsForGroupTab(portfolioGroup).filter((r) => r.account_id > 0);
   return {
     ...withRefs,
+    points: withYtdPctUnlessLiabilities(
+      withRefs.points,
+      isLiabilityOnlyScope(groupMembers.map((r) => r.account_id), accountIsDebt),
+      days === 0 ? series.points : () => groupDailyPctPoints(portfolioGroup, unit) ?? []
+    ),
     ...(wantPerfLevels ? { perf_levels: dailyPerfLevelsForGroup(portfolioGroup, unit, series) } : {}),
     ...(groupOverlays.length ? { accounts: [...withRefs.accounts!, ...groupOverlays] } : {}),
     ...(ccDaily ?? {}),
@@ -230,7 +239,15 @@ function buildAccountDailySeriesResponse(
   const accountId = row.account_id;
   // Excluded-from-totals accounts still get their own daily series on their page.
   const series = resolveAccountDailySeries(row, unit, days);
-  const { deposit_cums_raw: _rawDepsAcct, ...accountSeriesBase } = series;
+  const { deposit_cums_raw: _rawDepsAcct, ...accountSeriesRaw } = series;
+  const accountSeriesBase = {
+    ...accountSeriesRaw,
+    points: withYtdPctUnlessLiabilities(
+      accountSeriesRaw.points,
+      accountIsDebt(accountId),
+      days === 0 ? series.points : () => accountDailyPctPoints(row, unit)
+    ),
+  };
   const accountSeriesPayload = wantPerfLevels
     ? {
         ...accountSeriesBase,
@@ -260,4 +277,19 @@ function buildAccountDailySeriesResponse(
     if (ccDaily) return { ...accountSeriesPayload, ...ccDaily };
   }
   return accountSeriesPayload;
+}
+
+/**
+ * The detalle's daily points with each day's YTD % (`withDailyYtdPct`), from the scope's
+ * full-history daily returns: the series itself when it is the full history (`days` 0), else the
+ * cached return-only series of the same scope (`dailyPctSeries.ts`). A scope of liabilities only
+ * keeps the one-step rule and gets none.
+ */
+function withYtdPctUnlessLiabilities<T extends { as_of_date: string }>(
+  points: readonly T[],
+  liabilitiesOnly: boolean,
+  fullPoints: readonly DailyPctPoint[] | (() => readonly DailyPctPoint[])
+): (T & { ytd_pct?: number | null })[] {
+  if (liabilitiesOnly) return [...points];
+  return withDailyYtdPct(points, typeof fullPoints === "function" ? fullPoints() : fullPoints);
 }

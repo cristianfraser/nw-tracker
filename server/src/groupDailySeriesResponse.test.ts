@@ -41,7 +41,9 @@ describe("groupDailySeriesResponse — closings net of the linked cards", () => 
   it("leaves a group without a netting node as its members' sum", () => {
     const res = groupDailySeriesResponse("brokerage", "clp", DAYS, false)!;
     const raw = resolveGroupDailySeries("brokerage", "clp", DAYS)!;
-    expect(res.points).toEqual(raw.points);
+    // The response adds each day's YTD % (`withDailyYtdPct`); everything else is the members' series.
+    expect(res.points.map(({ ytd_pct: _ytd, ...p }) => p)).toEqual(raw.points);
+    expect(res.points.every((p) => p.ytd_pct === null || Number.isFinite(p.ytd_pct))).toBe(true);
     expect(res.baseline).toEqual(raw.baseline);
   });
 });

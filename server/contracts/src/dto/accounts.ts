@@ -31,6 +31,14 @@ export interface AccountMonthlyPerformanceRow {
   pct_month: number | null;
   ytd_nominal_pl: number | null;
   cumulative_nominal_pl: number | null;
+  /**
+   * The YTD % at this row's date: the scope's daily returns of the row's calendar year compounded
+   * through its date — the Rentabilidad YTD rule (`periodPctDailyChain.ts`). Absent where the
+   * scope keeps the one-step % (liability-only scopes, a legacy group sub-tab) — those % are a
+   * cost, not a return; null when no day of the year has a return. On a yearly row it is the
+   * latest month's (= the year's YTD through its last month).
+   */
+  ytd_pct?: number | null;
   /** Mortgage: crédito restante (UF) from depto dividendos sheet at month-end. */
   closing_balance_uf?: number | null;
   /** Mortgage: UF/CLP rate from depto dividendos sheet at month-end. */
@@ -148,6 +156,141 @@ export interface AccountDetailBundleResponse {
   period_returns: PeriodReturnsPayload | null;
   /** Fresh dashboard card row (live MTM + perf deltas); do not use cached nav snapshot on detail. */
   dashboard_account_row: DashboardAccountRow | null;
+  /**
+   * The stock page's «at a glance» block (server `equityGlance.ts`): an equity MTM account holding
+   * shares today. Null on every other account, and on a stock account that holds no shares today
+   * (sold out: no cost to draw). The server always sends the key; it is optional only so a
+   * client placeholder bundle may leave it out (read absent as «not loaded»).
+   */
+  equity_glance?: EquityGlanceDto | null;
+}
+
+/** «up» above zero, «down» below, «flat» at zero (or no figure). */
+export type EquityGlanceDirection = "up" | "down" | "flat";
+
+/** One period's P/L in the display unit, with its zero-centred bar. */
+export interface EquityGlancePeriodDto {
+  /** The period's P/L (the dashboard account row's `delta_day` / `delta_month` / `delta_year`); null when unknown. */
+  pl: Money | null;
+  /** Its return as a fraction (0.0207 = 2,07 %): the row's chained `pct_day` / `pct_month` / `pct_year`, = Rentabilidad. */
+  pct: number | null;
+  /** The bar's length from the centre, 0..1: |pl| over the largest |pl| of the three periods (0 when all are 0 or null). */
+  share: number;
+  /** Which side of the centre the bar grows to (and the colour). */
+  direction: EquityGlanceDirection;
+}
+
+/** A point of the price sparkline: its close in the quote currency and its height on the chart. */
+export interface EquityGlanceSparkPointDto {
+  date: string;
+  price: number;
+  /** Height 0..1 between the sparkline's `low` (0) and `high` (1). */
+  y: number;
+}
+
+/** One segment of the composition bar, left to right; positions are fractions of the bar. */
+export interface EquityGlanceSegmentDto {
+  /**
+   * `deposited`: net capital; `price`: the price result (gain); `dividends`: dividends received;
+   * `loss`: a negative price result, drawn OVER the end of the bar (from `value_share` to 1).
+   */
+  kind: "deposited" | "price" | "dividends" | "loss";
+  /** Its size in the display unit (≥ 0; a loss's absolute value). */
+  amount: number;
+  /** Where it starts on the bar (0..1). */
+  start: number;
+  /** Its width (0..1). */
+  share: number;
+}
+
+/** A tick on the price track. */
+export interface EquityGlanceTrackTickDto {
+  /** In the quote currency. */
+  price: Money;
+  /** Its position on the track, 0 (track `min`) .. 1 (track `max`). */
+  share: number;
+}
+
+/**
+ * The stock (equity) account page's «at a glance» block — every figure decided by the server, the
+ * client formats and lays out. Money in the display unit is `{value, currency: unit}`; quote figures
+ * are `{value, currency: quote currency}`. Percentages are fractions.
+ */
+export interface EquityGlanceDto {
+  /** The registry's symbol without an exchange suffix (`market_symbols.display_symbol`: VEA, CFIETFIPSA). */
+  ticker: string;
+  /** The registry's instrument name; null when none is on file (the client omits it). */
+  name: string | null;
+  /** The display unit every non-quote money figure is in. */
+  unit: DisplayUnitCode;
+  /** Today's value (the position's `value`, = the header / dashboard card's). */
+  value: Money;
+  quote: {
+    /** Today's price (the one the position is valued at: live in session, the held print, else the close). */
+    price: Money;
+    /** The session the price belongs to (ISO date). */
+    price_as_of: string;
+    /** The stored close of the session before `price_as_of`; null when none is on file. */
+    previous_close: Money | null;
+    /** `price − previous_close` in the quote currency; null without a previous close. */
+    change: Money | null;
+    /** `change / previous_close` as a fraction; null without a previous close. */
+    change_pct: number | null;
+    direction: EquityGlanceDirection;
+    /** `open`: the market's regular session is open (the price is live, «en vivo»); `closed`: the price is a close («al cierre»). */
+    session: "open" | "closed";
+    /** The registry's market (`market_symbols.market_kind`); the client words it through i18n (nyse → «NYSE»). */
+    market_kind: "nyse" | "santiago" | "london" | "crypto24";
+  };
+  /** Daily closes in the quote currency from the first day shares were held to `quote.price_as_of`. */
+  sparkline: {
+    /** At most ~120 points (evenly sampled; first and last kept); the last is the quote's price. */
+    points: EquityGlanceSparkPointDto[];
+    first_date: string;
+    last_date: string;
+    /** The vertical range: covers every point and the average cost (y 0 = low, 1 = high). */
+    low: number;
+    high: number;
+    /** The average-cost reference line's height (0..1), dotted. */
+    cost_y: number;
+  };
+  /** Average cost vs today's price vs the highest close since first held, on one horizontal track. */
+  track: {
+    /** The track's ends in the quote currency, rounded outwards to a 1/2/5 step. */
+    min: Money;
+    max: Money;
+    /** Average cost per share of the shares held now (FIFO open lots, `equityTaxLotEvents.ts`). */
+    cost: EquityGlanceTrackTickDto;
+    /** Today's price (= `quote.price`). */
+    price: EquityGlanceTrackTickDto;
+    /** The highest close since first held (today's price counts) and its date. */
+    high: EquityGlanceTrackTickDto & { date: string; /** Today's price vs the high, a fraction ≤ 0. */ pct_from_high: number };
+    /** The fill between cost and today's price; `side` none when equal (start = end). */
+    fill: { start: number; end: number; side: "gain" | "loss" | "none" };
+  };
+  /** Today's price vs the average cost, compared at the quote currency's minor digits (the colour of every rendering of the price). */
+  price_vs_cost: "above" | "below" | "equal";
+  /**
+   * Today's value split as value = deposited + price + dividends, in the display unit. Bar: with a
+   * price gain (or 0) its length is the value and `value_share` is 1; with a price loss its length
+   * is deposited + dividends, the `loss` segment covers its last |price| (overlaying the others)
+   * and `value_share` = value ÷ length marks where today's value ends. Zero segments are left out.
+   * Null when `deposited` is null (a missing rate) or ≤ 0 (all capital withdrawn: no base to draw).
+   */
+  composition: {
+    value: Money;
+    /** Net capital (the position's `deposited`, net of payouts). */
+    deposited: Money;
+    /** value − deposited − dividends; signed. */
+    price: Money;
+    price_direction: EquityGlanceDirection;
+    /** Dividends received (the position's `dividends`). */
+    dividends: Money;
+    segments: EquityGlanceSegmentDto[];
+    value_share: number;
+  } | null;
+  /** Día / mes / año (`day` is also the title line's day P/L). */
+  periods: { day: EquityGlancePeriodDto; month: EquityGlancePeriodDto; year: EquityGlancePeriodDto };
 }
 
 export interface CheckingCartolaMonthRowDto {

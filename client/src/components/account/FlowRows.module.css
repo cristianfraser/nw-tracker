@@ -12,6 +12,12 @@
   container-type: inline-size;
 }
 
+/* An account page whose account holds units: the units moved are a column of their own, after
+   the amount. */
+.listUnits {
+  grid-template-columns: max-content max-content max-content max-content max-content minmax(8rem, 1fr);
+}
+
 .header,
 .row {
   display: grid;
@@ -78,6 +84,13 @@
   white-space: nowrap;
 }
 
+.unitsCell {
+  text-align: right;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--font-size-prose-sm);
+}
+
 .units {
   margin-left: 0.3em;
   font-size: 0.7em;
@@ -98,7 +111,9 @@
    and needs more room: each breakpoint is the measured one-line width of the widest list of that
    kind on 2026-11-04 data (net worth's: 887 px; an account page's: 629 px) plus a margin. It
    replaced measuring the list after every render (`useWrapWhenOverflowing`), which switched the
-   rows to one line and back on every refetch and made Firefox show the page's scrollbar. */
+   rows to one line and back on every refetch and made Firefox show the page's scrollbar. An
+   account page's list with the units column needs that column more (VEA on the 2026-11-19 test
+   data: 69 px + a gap; the note keeps its 8rem minimum): 50rem. */
 .frameWide {
   container: flow-rows-wide / inline-size;
 }
@@ -107,9 +122,14 @@
   container: flow-rows-narrow / inline-size;
 }
 
+/* An account page's list with the units column: the narrow list plus that column. */
+.frameUnits {
+  container: flow-rows-units / inline-size;
+}
+
 /* Wrapped: three lines — the date and the type with the amount on the right; the accounts; the
    note, which wraps in full. No header: the rows read without it. */
-@container flow-rows-wide (max-width: 58rem), flow-rows-narrow (max-width: 44rem) {
+@container flow-rows-wide (max-width: 58rem), flow-rows-narrow (max-width: 44rem), flow-rows-units (max-width: 50rem) {
   .list {
     display: block;
   }
@@ -150,6 +170,23 @@
     grid-area: amount;
   }
 
+  /* The units beside the amount, on its line. */
+  .listUnits .row {
+    grid-template-columns: max-content minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "date     type     amount   units"
+      "accounts accounts accounts accounts"
+      "note     note     note     note";
+  }
+
+  .unitsCell {
+    grid-area: units;
+  }
+
+  .unitsCell:empty {
+    display: none;
+  }
+
   .note {
     grid-area: note;
     white-space: normal;
@@ -168,6 +205,13 @@
         "date     amount   amount"
         "accounts accounts accounts"
         "type     note     note";
+    }
+
+    .listUnits .row {
+      grid-template-areas:
+        "date     amount   amount   units"
+        "accounts accounts accounts accounts"
+        "type     note     note     note";
     }
 
     .amount {

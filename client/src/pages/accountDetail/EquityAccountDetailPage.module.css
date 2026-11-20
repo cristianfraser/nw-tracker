@@ -1,0 +1,85 @@
+/* The stock page (EquityAccountDetailPage.tsx) on the page grid: the band [valuation chart 8 |
+   rail 4] between two hairlines, then row A [P/L mensual 7 | Rentabilidad 5] split by a hairline
+   in the gutter, then Movimientos and Detalle each across the page (side by side their rows
+   could not stay on one line at the app's sizes). One column below 880, in DOM order (the chart
+   before the rail). */
+
+:global(.page-grid).band {
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  row-gap: 0;
+}
+
+/* The chart about as tall as the rail's four groups beside it. */
+.band > .bandChart {
+  --chart-panel-min-height: 300px;
+  --chart-panel-height: 320px;
+  padding: 10px 0 6px;
+}
+
+.band > .bandRail {
+  align-self: stretch;
+  min-width: 0;
+  border-top: 1px solid var(--hairline);
+}
+
+/* The P/L chart is a row's chart, not a page's: at least 240px, and on a desktop row it grows
+   to end with the Rentabilidad list beside it (the tile stretches, the chart box takes the rest). */
+.plTile {
+  --chart-panel-min-height: 240px;
+  --chart-panel-height: 240px;
+}
+
+@media (min-width: 880px) {
+  :global(.page-grid) > .plTile {
+    align-self: stretch;
+    --chart-panel-height: auto;
+  }
+}
+
+@media (min-width: 880px) {
+  .band > .bandChart {
+    grid-column: span 8;
+    padding-right: 0;
+  }
+
+  /* The rail behind a vertical hairline in the middle of the gutter. */
+  .band > .bandRail {
+    grid-column: span 4;
+    margin-left: calc(-0.5 * var(--gutter));
+    padding-left: calc(0.5 * var(--gutter));
+    border-top: 0;
+    border-left: 1px solid var(--hairline);
+  }
+
+  :global(.page-grid) > .wide {
+    grid-column: span 7;
+  }
+
+  :global(.page-grid) > .narrow {
+    grid-column: span 5;
+  }
+
+  /* The second tile of a row: a hairline in the middle of the gutter before it. */
+  :global(.page-grid) > .second {
+    align-self: stretch;
+    margin-left: calc(-0.5 * var(--gutter));
+    padding-left: calc(0.5 * var(--gutter));
+    border-left: 1px solid var(--hairline);
+  }
+}
+
+/* One column: a hairline above each section after the band. */
+/* Movimientos and Detalle: every column, a hairline above each. */
+:global(.page-grid) > .fullRow {
+  padding-top: var(--row-gap);
+  border-top: 1px solid var(--hairline);
+}
+
+@media (max-width: 879px) {
+  :global(.page-grid) > .wide,
+  :global(.page-grid) > .narrow {
+    padding-top: var(--row-gap);
+    border-top: 1px solid var(--hairline);
+  }
+}

@@ -95,6 +95,8 @@ type FlowsTableProps = {
   /** Off for consolidated group tables (mixed instruments). */
   showUnitsColumn?: boolean;
   unitsKind?: "shares" | "coin" | "contracts";
+  /** An account's list whose account holds units (shares, coins, cuotas): units as a column, not a superscript. */
+  unitsAsColumn?: boolean;
   emptyMessage?: string;
   filteredEmptyMessage?: string;
   filterOptions?: FlowsFilterOptions;
@@ -112,6 +114,7 @@ export function FlowsTable(props: FlowsTableProps) {
     showAccountColumn = false,
     showUnitsColumn = true,
     unitsKind,
+    unitsAsColumn = false,
     emptyMessage,
     filteredEmptyMessage,
     filterOptions,
@@ -286,6 +289,8 @@ export function FlowsTable(props: FlowsTableProps) {
       </div>
     ) : null;
 
+  // An account's list whose account holds units: the units are a column of their own.
+  const unitsColumn = showUnitsColumn && !showAccountColumn && unitsAsColumn;
   const items: FlowRowItem[] = rows.map((row) => ({
     key: row.key,
     date: row.occurred_on,
@@ -305,6 +310,7 @@ export function FlowsTable(props: FlowsTableProps) {
     <FlowRows
       rows={items}
       bothAccounts={showAccountColumn}
+      unitsColumn={unitsColumn}
       accountsLabel={
         showAccountColumn
           ? t("accountDetail.flowAccountsColumn")

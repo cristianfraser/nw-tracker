@@ -404,6 +404,13 @@ export interface DailySeriesPointDto {
   delta: number | null;
   pl: number | null;
   pct: number | null;
+  /**
+   * `/api/daily-series` only: the YTD % at this day — the scope's daily returns of the day's
+   * calendar year compounded through it, from the full history whatever the window (the
+   * Rentabilidad YTD rule). Absent on liability-only scopes (one-step rule); null when no day of
+   * the year has a return. The YTD amount is `perf_levels.ytd` (request `perf_levels=1`).
+   */
+  ytd_pct?: number | null;
   /** False on weekends/shared holidays — the detalle table dims those rows. */
   market_day?: boolean;
 }

@@ -197,3 +197,57 @@
     border-bottom: none;
   }
 }
+
+/* The compact list (`compact`): one line per period — label, %, amount, the benchmark's % — a
+   hairline under each, the picker in the heading row. */
+.compactPicker {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+.compactSelect {
+  max-width: 14rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.compactList {
+  border-top: 1px solid var(--hairline);
+  font-size: var(--font-size-prose-sm);
+}
+
+.compactRow {
+  display: grid;
+  grid-template-columns: minmax(3.5rem, 1fr) minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(4rem, 0.8fr);
+  column-gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+
+.compactLabel {
+  color: var(--muted);
+}
+
+.compactNum {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.compactBench {
+  color: var(--muted);
+  font-size: var(--font-size-card-meta);
+}
+
+.compactTotal {
+  font-weight: 600;
+}

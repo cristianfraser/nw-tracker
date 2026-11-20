@@ -1,17 +1,6 @@
 import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
-import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { LineChartPanel, MonthlyPerformanceComboChart } from "../../components/charts/lazyCharts";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
-import { DailyPerfDetailTable } from "../../components/account/DailyPerfDetailTable";
-import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
-import { buildDailyValuationBlock } from "../../dailySeriesChart";
-import { servedDailyPerfComboPoints } from "../../servedDailyPerfCombo";
-import { useDailySeries } from "../../queries/hooks";
-import { dailyPayloadPending, queryShowsLoading } from "../../queries/pageShapeReady";
-import { timeRangeToDays } from "../../timeRange";
-import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
-import { SurfaceControls } from "../../components/ui/SurfaceControls";
 import { PeriodReturnsWithBenchmark } from "../../components/perf/PeriodReturnsTable";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
@@ -20,19 +9,10 @@ import { Loadable, loadableClass } from "../../components/ui/Loadable";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import { formatInstrumentUnits, formatMoney, formatPct } from "../../format";
 import { formatOptionStrikeDollars } from "../../formatNative";
-import { OPTION_CONTRACT_FLOW_KINDS } from "../../panelAccounts/brokerageFlowKinds";
-import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
-import { AccountCashMovementsForm } from "../../components/account/AccountCashMovementsForm";
-import { AccountUnitsFlowForm } from "../../components/account/AccountUnitsFlowForm";
 import { AccountBookLedgerSection } from "../../components/account/AccountBookLedgerSection";
 import { MortgagePaymentForm } from "../../components/account/MortgagePaymentForm";
 import { MortgagePrepaymentSection } from "../../components/account/MortgagePrepaymentSection";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
-import {
-  supportsBrokerageMovements,
-  cashMovementsCurrency,
-  supportsUnitsFlowMovements,
-} from "../../accountMovementCreate";
 import { supportsBookLedgerEdit } from "../../accountBookLedgerEdit";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { ExportToolbarButton } from "../../components/export/ExportModal";
@@ -40,38 +20,32 @@ import { DeptoAccountSummaryCards } from "./DeptoAccountSummaryCards";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "./MortgageTables";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
 import {
+  AccountDeltaAccumCombo,
+  AccountDetalleSurface,
+  AccountPlYtdCombo,
+  AccountValuationChart,
+  useAccountChartSurfaces,
+  useAccountMovementForm,
+} from "./accountSurfaces";
+import {
   MONTHLY_PERF_COLLAPSED,
   isDeptoMortgageCategory,
   isDeptoPropertyCategory,
 } from "./shared";
 
-import type { TimeseriesBlock } from "../../types";
-
 type Props = {
   data: AccountDetailPageData;
 };
 
-/** A Diario valuation chart whose daily series has not arrived: no lines, the pending frame. */
-const EMPTY_VALUATION_BLOCK: TimeseriesBlock = { accounts: [], points: [] };
-
 export function StandardAccountDetailPage({ data }: Props) {
   const { t } = useTranslation();
   const {
-    id,
     summary,
-    ts,
     depositInflows,
     mortgageLedger,
     displayUnit,
-    valuationPrefs,
-    perfPrefs,
     monthlyPerfRows,
-    monthlyPerfYearlyRows,
     periodReturns,
-    ytdChartPoints,
-    accChartPoints,
-    valuationBlockForChart,
-    accountChartTheme,
     checkingCartolaMonths,
   } = data;
 
@@ -79,93 +53,12 @@ export function StandardAccountDetailPage({ data }: Props) {
   const loading = data.contentLoading;
   // Capability forms (movement_create / book_ledger_edit / mortgage_payment_create) stay hidden
   // until the bundle states them: a wrong form is worse than a late one.
-  // A cash ledger's form follows the currency the account declares (`movement_create.cash_currency`).
-  const cashFormCurrency = cashMovementsCurrency(summary.movement_create);
-  const foreignCashCapability = cashFormCurrency != null && !isHomeCurrency(cashFormCurrency);
-  // The foreign-cash frame needs no capability: the placeholder's category (`usd`) is enough to draw it.
-  const isUsdCashAccount = foreignCashCapability || (loading && summary.category_slug === "usd");
-  const showBrokerageMovementsForm =
-    supportsBrokerageMovements(summary.movement_create) && !isUsdCashAccount && cashFormCurrency == null;
+  const { form: addMovementsForm, isForeignCashAccount: isUsdCashAccount } = useAccountMovementForm(data);
   const showBookLedgerEdit = supportsBookLedgerEdit(summary.book_ledger_edit);
-  const showUnitsFlowForm = supportsUnitsFlowMovements(summary.movement_create);
-  const unitsFlowUnitLabel = showUnitsFlowForm
-    ? t(`accountDetail.unitsFlow.unitLabels.${summary.movement_create?.unit_label ?? "unidades"}`)
-    : null;
-
-  const valuationIsDaily = valuationPrefs.period === "day";
-  const perfIsDaily = perfPrefs.period === "day";
-  // Detalle table período (independent of the charts); tables always cover full history.
-  const detallePrefs = useSurfacePrefs(
-    summary.account_id ? `account.${summary.account_id}.detalle` : null,
-    "month",
-    "total"
-  );
-  const isDaily = detallePrefs.period === "day";
-  const detalleDailySeries = useDailySeries(
-    { accountId: summary.account_id },
-    displayUnit,
-    0,
-    isDaily && summary.account_id > 0
-  );
-  // Day view: per-session line + detalle por día, fetched lazily while a D control is on.
-  const dailySeries = useDailySeries(
-    { accountId: summary.account_id },
-    displayUnit,
-    timeRangeToDays(valuationPrefs.range),
-    valuationIsDaily
-  );
-  const perfDailySeries = useDailySeries(
-    { accountId: summary.account_id },
-    displayUnit,
-    timeRangeToDays(perfPrefs.range),
-    perfIsDaily,
-    { perfLevels: true }
-  );
-  const valuationDailyPending = dailyPayloadPending(valuationIsDaily, dailySeries);
-  const perfDailyPending = dailyPayloadPending(perfIsDaily, perfDailySeries);
-  const dailyValuationBlock = useMemo(() => {
-    if (!valuationIsDaily || valuationDailyPending) return null;
-    return buildDailyValuationBlock(dailySeries.data, valuationBlockForChart ?? ts.accounts);
-  }, [valuationIsDaily, valuationDailyPending, dailySeries.data, valuationBlockForChart, ts.accounts]);
-  const valuationLoading = loading || valuationDailyPending;
-  const perfLoading = loading || perfDailyPending;
-  const detalleDailyLoading = queryShowsLoading(detalleDailySeries);
-  const valuationControls = (
-    <SurfaceControls
-      period={valuationPrefs.period}
-      onPeriodChange={valuationPrefs.setPeriod}
-      range={valuationPrefs.range}
-      onRangeChange={valuationPrefs.setRange}
-    />
-  );
-  const perfControls = (
-    <SurfaceControls
-      period={perfPrefs.period}
-      onPeriodChange={perfPrefs.setPeriod}
-      range={perfPrefs.range}
-      onRangeChange={perfPrefs.setRange}
-    />
-  );
-
-  // Day view P/L bars: one bar account (this account), so a single pick serves both combos —
-  // `nominal_pl`/`delta_month` are the same daily P/L and the server's two levels ride along.
-  const dailyPerfPoints = useMemo(() => {
-    if (!perfIsDaily || perfDailyPending) return null;
-    if (!perfDailySeries.data?.points.length || !monthlyPerfRows.length) return null;
-    const line = perfDailySeries.data.accounts?.find((l) => l.account_id === summary.account_id);
-    if (!line?.pl) return null;
-    return servedDailyPerfComboPoints({
-      series: perfDailySeries.data,
-      lines: [line],
-      barAccounts: [{ account_id: summary.account_id, bar_data_key: "nominal_pl" }],
-      ytdKey: "ytd_nominal_pl",
-      totalKey: "delta_month",
-    });
-  }, [perfIsDaily, perfDailyPending, perfDailySeries.data, monthlyPerfRows, summary.account_id]);
+  const surfaces = useAccountChartSurfaces(data);
 
   // An option contract account (server `option_contract`): its terms above the position, its own kinds on the form.
   const optionContract = summary.option_contract ?? null;
-  const isOptionContract = optionContract != null;
   const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
   const showMonthlyPerformance =
     !isMovementCartolaAccount && summary.category_slug !== "cuenta_ahorro_vivienda";
@@ -194,7 +87,7 @@ export function StandardAccountDetailPage({ data }: Props) {
   return (
     <AccountDetailSharedLayout
       toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
-      title={ts.name}
+      title={data.ts.name}
       accountMetricsAgg={data.accountMetricsAgg}
       stripUnit={data.stripUnit}
       heroValue={
@@ -380,22 +273,7 @@ export function StandardAccountDetailPage({ data }: Props) {
       ) : null}
 
       <PageGridTile id="valuation" className="chart-grid chart-grid--full-line">
-        <LineChartPanel
-          title={t("charts.valuationAndDeposits")}
-          block={
-            valuationIsDaily
-              ? (dailyValuationBlock ?? EMPTY_VALUATION_BLOCK)
-              : (valuationBlockForChart ?? ts.accounts)
-          }
-          displayUnit={displayUnit}
-          xAxisGranularity={
-            valuationIsDaily ? "day" : valuationPrefs.period === "year" ? "year" : "month"
-          }
-          timeRange={valuationPrefs.range}
-          controls={valuationControls}
-          trimLeadingInactive={!isMovementCartolaAccount}
-          loading={valuationLoading}
-        />
+        <AccountValuationChart data={data} surfaces={surfaces} trimLeadingInactive={!isMovementCartolaAccount} />
       </PageGridTile>
 
       {isMovementCartolaAccount ? (
@@ -444,96 +322,17 @@ export function StandardAccountDetailPage({ data }: Props) {
           {monthlyPerfRows.length === 0 && !loading ? null : (
             <>
               <PageGridTile id="perf-combo" className="chart-grid chart-grid--full-line">
-                <MonthlyPerformanceComboChart
-                  title={t("accountDetail.plMonthlyVsYtdTitle")}
-                  titleAs="h3"
-                  points={perfIsDaily ? (dailyPerfPoints ?? []) : ytdChartPoints}
-                  displayUnit={displayUnit}
-                  xAxisGranularity={
-                    perfIsDaily ? "day" : perfPrefs.period === "year" ? "year" : "month"
-                  }
-                  timeRange={perfPrefs.range}
-                  controls={perfControls}
-                  barSeries={[
-                    {
-                      dataKey: "nominal_pl",
-                      name: isMortgageAccount
-                        ? t("accountDetail.financingCostMonth")
-                        : t("accountDetail.deltaMonthNominal"),
-                      color: accountChartTheme.bar,
-                    },
-                  ]}
-                  areaKey="ytd_nominal_pl"
-                  areaName="YTD"
-                  areaFill={accountChartTheme.areaFill}
-                  areaStroke={accountChartTheme.areaStroke}
-                  loading={perfLoading}
-                />
+                <AccountPlYtdCombo data={data} surfaces={surfaces} isMortgageAccount={isMortgageAccount} />
               </PageGridTile>
               <PageGridTile id="perf-accum" className="chart-grid chart-grid--full-line">
-                <MonthlyPerformanceComboChart
-                  title={t("accountDetail.monthlyDeltaAndAccumTitle")}
-                  titleAs="h3"
-                  points={perfIsDaily ? (dailyPerfPoints ?? []) : accChartPoints}
-                  displayUnit={displayUnit}
-                  xAxisGranularity={
-                    perfIsDaily ? "day" : perfPrefs.period === "year" ? "year" : "month"
-                  }
-                  timeRange={perfPrefs.range}
-                  controls={perfControls}
-                  barSeries={[
-                    {
-                      dataKey: "delta_month",
-                      name: isMortgageAccount
-                        ? t("accountDetail.financingCostMonth")
-                        : t("accountDetail.monthlyDelta"),
-                      color: accountChartTheme.bar,
-                    },
-                  ]}
-                  areaKey="accumulated_earnings"
-                  areaName={t("dashboard.sections.accumulatedEarnings")}
-                  areaFill={accountChartTheme.areaFill}
-                  areaStroke={accountChartTheme.areaStroke}
-                  alternateYearAreaStripes={false}
-                  loading={perfLoading}
-                />
+                <AccountDeltaAccumCombo data={data} surfaces={surfaces} isMortgageAccount={isMortgageAccount} />
               </PageGridTile>
               <PageGridTile id="detail">
-                <div className="chart-panel-title-row">
-                  <h3>
-                    {t(
-                      isDaily
-                        ? "accountDetail.dailyDetailTitle"
-                        : detallePrefs.period === "year"
-                          ? "accountDetail.yearlyDetailTitle"
-                          : "accountDetail.monthlyDetailTitle"
-                    )}
-                  </h3>
-                  <SurfaceControls
-                    period={detallePrefs.period}
-                    onPeriodChange={detallePrefs.setPeriod}
-                  />
-                </div>
-                {isDaily ? (
-                  <DailyPerfDetailTable
-                    series={detalleDailySeries.data}
-                    displayUnit={displayUnit}
-                    dimClosedDays
-                    loading={detalleDailyLoading}
-                  />
-                ) : (
-                  <MonthlyPerfDetailTable
-                    key={`${id}-${displayUnit}-mp-detail`}
-                    rows={monthlyPerfRows}
-                    yearlyRows={monthlyPerfYearlyRows}
-                    displayUnit={displayUnit}
-                    period={detallePrefs.period === "year" ? "year" : "month"}
-                    isMortgageAccount={isMortgageAccount}
-                    isAfpAccount={isCuotaLedgerAccount}
-                    unitsKind={summary.units_kind}
-                    loading={loading}
-                  />
-                )}
+                <AccountDetalleSurface
+                  data={data}
+                  isMortgageAccount={isMortgageAccount}
+                  isCuotaLedgerAccount={isCuotaLedgerAccount}
+                />
               </PageGridTile>
             </>
           )}
@@ -608,29 +407,10 @@ export function StandardAccountDetailPage({ data }: Props) {
       ) : null}
 
       <AccountFlowsSection
-        addMovementsForm={
-          cashFormCurrency != null ? (
-            <AccountCashMovementsForm
-              accountId={summary.account_id}
-              displayUnit={displayUnit}
-              currency={cashFormCurrency}
-            />
-          ) : showBrokerageMovementsForm ? (
-            <AccountBrokerageMovementsForm
-              accountId={summary.account_id}
-              displayUnit={displayUnit}
-              flowKinds={isOptionContract ? OPTION_CONTRACT_FLOW_KINDS : undefined}
-            />
-          ) : showUnitsFlowForm && unitsFlowUnitLabel ? (
-            <AccountUnitsFlowForm
-              accountId={summary.account_id}
-              unitLabel={unitsFlowUnitLabel}
-              displayUnit={displayUnit}
-            />
-          ) : null
-        }
+        addMovementsForm={addMovementsForm}
         accountId={summary.account_id}
         unitsKind={summary.units_kind}
+        unitsAsColumn={summary.position?.units != null}
       />
     </AccountDetailSharedLayout>
   );

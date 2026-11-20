@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { BenchmarkSelectOptions, benchmarkOptionLabel } from "../../benchmarkLabels";
 import { cn } from "../../cn";
 import { formatMoney, formatPct } from "../../format";
@@ -226,6 +226,79 @@ export function PeriodReturnsTable({
   );
 }
 
+/** Periods a compact list shows while its payload loads (blank rows, the loaded list's usual height). */
+const COMPACT_PENDING_PERIODS: readonly PeriodReturnKey[] = ["d1", "w1", "mtd", "ytd", "total"];
+
+/**
+ * Rentabilidad as a short list (a page that places it beside a chart): the heading row carries
+ * the benchmark picker («vs <benchmark> ▾»), then one line per period the payload has a return
+ * for — its label, the % (green / red), the amount, the benchmark's % muted at the right — a
+ * hairline under each. Every figure is the payload's and the comparison's, as in the table.
+ */
+function PeriodReturnsCompactList({
+  title,
+  data,
+  displayUnit,
+  comparison,
+  loading,
+}: {
+  title: ReactNode;
+  data: PeriodReturnsPayload | null;
+  displayUnit: DisplayUnit;
+  comparison: BenchmarkComparisonProps;
+  loading?: boolean;
+}) {
+  const { t } = useTranslation();
+  const benchByPeriod = new Map<PeriodReturnKey, BenchmarkComparisonCell>();
+  for (const c of comparison.data?.periods ?? []) benchByPeriod.set(c.period, c);
+  const rows: { period: PeriodReturnKey; cell: PeriodReturnCell | null }[] =
+    data == null
+      ? COMPACT_PENDING_PERIODS.map((period) => ({ period, cell: null }))
+      : data.periods.filter((c) => c.pct != null).map((cell) => ({ period: cell.period, cell }));
+  const blank = "\u00a0";
+  return (
+    <>
+      <div className="chart-panel-title-row">
+        <h2>{title}</h2>
+        <label className={styles.compactPicker}>
+          <span>{t("periodReturns.versus")}</span>
+          <select
+            className={styles.compactSelect}
+            aria-label={t("periodReturns.compareWith")}
+            value={comparison.selected}
+            onChange={(e) => comparison.onSelect(e.target.value)}
+          >
+            <BenchmarkSelectOptions t={t} options={comparison.options} />
+          </select>
+        </label>
+      </div>
+      <div role="list" className={loadableClass(loading, styles.compactList)} aria-busy={loading || undefined}>
+        {rows.map(({ period, cell }) => {
+          const b = benchByPeriod.get(period);
+          return (
+            <div
+              key={period}
+              role="listitem"
+              className={cn(styles.compactRow, period === "total" && styles.compactTotal)}
+            >
+              <span className={styles.compactLabel}>{t(PERIOD_LABEL_KEY[period])}</span>
+              <span className={cn("mono", styles.compactNum, toneClass(cell?.pct ?? null))}>
+                {cell?.pct != null ? formatPct(cell.pct * 100) : blank}
+              </span>
+              <span className={cn("mono", styles.compactNum, toneClass(cell?.nominal_pl ?? null))}>
+                {cell?.nominal_pl != null ? formatMoney({ value: cell.nominal_pl, currency: displayUnit }) : blank}
+              </span>
+              <span className={cn("mono", styles.compactNum, styles.compactBench)}>
+                {b?.benchmark_pct != null ? formatPct(b.benchmark_pct * 100) : blank}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 /**
  * The Rentabilidad table with its benchmark row: the choice is remembered per surface
  * (`<pageKey>.returns`), default the mortgage. A stored slug the server no longer lists falls
@@ -238,6 +311,7 @@ export function PeriodReturnsWithBenchmark({
   scope,
   surfaceId,
   loading,
+  compact,
 }: {
   data: PeriodReturnsPayload | null;
   displayUnit: DisplayUnit;
@@ -246,6 +320,11 @@ export function PeriodReturnsWithBenchmark({
   surfaceId: string | null;
   /** The payload is not in yet (or is held prior data): the table dims. */
   loading?: boolean;
+  /**
+   * A short list instead of the table (one line per period with a return, the picker in its
+   * heading row), with this heading; off by default.
+   */
+  compact?: { title: ReactNode };
 }) {
   const { benchmark, setBenchmark } = useSurfaceBenchmark(surfaceId, DEFAULT_BENCHMARK);
   const benchmarks = useBenchmarks();
@@ -258,20 +337,27 @@ export function PeriodReturnsWithBenchmark({
     !loading && data != null && options.some((o) => o.slug === selected)
   );
   const cmp = comparison.data;
+  const comparisonProps: BenchmarkComparisonProps = {
+    options,
+    selected,
+    onSelect: setBenchmark,
+    data:
+      !loading && cmp != null && cmp.unit === displayUnit && cmp.benchmark.slug === selected
+        ? cmp
+        : null,
+  };
+  if (compact) {
+    return (
+      <PeriodReturnsCompactList
+        title={compact.title}
+        data={data}
+        displayUnit={displayUnit}
+        comparison={comparisonProps}
+        loading={loading}
+      />
+    );
+  }
   return (
-    <PeriodReturnsTable
-      data={data}
-      displayUnit={displayUnit}
-      loading={loading}
-      comparison={{
-        options,
-        selected,
-        onSelect: setBenchmark,
-        data:
-          !loading && cmp != null && cmp.unit === displayUnit && cmp.benchmark.slug === selected
-            ? cmp
-            : null,
-      }}
-    />
+    <PeriodReturnsTable data={data} displayUnit={displayUnit} loading={loading} comparison={comparisonProps} />
   );
 }

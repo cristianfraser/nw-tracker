@@ -13,3 +13,34 @@
   align-items: center;
   gap: var(--space-2xs);
 }
+
+/* The compact row (SurfaceControls `compact`): short text buttons, the current one underlined. */
+.surface-controls--compact {
+  gap: var(--space-lg);
+  font-size: var(--font-size-card-meta);
+}
+
+.surface-controls__set {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+
+.surface-controls__set > button {
+  padding: 0 0 1px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.surface-controls__set > button:hover {
+  color: var(--text);
+}
+
+.surface-controls__set > button.is-on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}

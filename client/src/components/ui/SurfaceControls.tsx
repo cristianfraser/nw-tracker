@@ -29,7 +29,21 @@ export type SurfaceControlsProps = {
   periodOptions?: readonly SurfacePeriod[];
   range?: TimeRange;
   onRangeChange?: (r: TimeRange) => void;
+  /**
+   * Short text buttons instead of the labelled selects: «D M A» then the ranges of
+   * {@link COMPACT_RANGE_OPTIONS}, the current one underlined. Period and range only.
+   */
+  compact?: boolean;
   style?: CSSProperties;
+};
+
+/** The ranges the compact row offers (no 6m: the row stays short). */
+export const COMPACT_RANGE_OPTIONS: readonly TimeRange[] = ["30d", "60d", "90d", "1y", "3y", "5y", "10y", "total"];
+
+const PERIOD_SHORT_KEYS: Record<SurfacePeriod, string> = {
+  day: "surfaceControls.short.day",
+  month: "surfaceControls.short.month",
+  year: "surfaceControls.short.year",
 };
 
 /**
@@ -47,9 +61,48 @@ export function SurfaceControls({
   periodOptions = ALL_PERIODS,
   range,
   onRangeChange,
+  compact = false,
   style,
 }: SurfaceControlsProps) {
   const { t } = useTranslation();
+
+  if (compact) {
+    return (
+      <div className="surface-controls surface-controls--compact" style={style}>
+        {period != null && onPeriodChange ? (
+          <span className="surface-controls__set" role="group" aria-label={t("dashboard.chartGranularityLabel")}>
+            {periodOptions.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={p === period ? "is-on" : undefined}
+                aria-pressed={p === period}
+                title={t(PERIOD_LABEL_KEYS[p])}
+                onClick={() => onPeriodChange(p)}
+              >
+                {t(PERIOD_SHORT_KEYS[p])}
+              </button>
+            ))}
+          </span>
+        ) : null}
+        {range != null && onRangeChange ? (
+          <span className="surface-controls__set" role="group" aria-label={t("dashboard.rangeLabel")}>
+            {COMPACT_RANGE_OPTIONS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                className={r === range ? "is-on" : undefined}
+                aria-pressed={r === range}
+                onClick={() => onRangeChange(r)}
+              >
+                {t(`surfaceControls.shortRange.${r}`)}
+              </button>
+            ))}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="surface-controls" style={style}>

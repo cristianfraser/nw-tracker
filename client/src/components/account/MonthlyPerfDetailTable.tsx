@@ -5,6 +5,7 @@ import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from ".
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { PerfDetailRows, type PerfDetailFlow, type PerfDetailRow } from "./PerfDetailRows";
+import { perfDetailServesYtdPct, perfDetailYtdPct } from "./perfDetailYtd";
 import { BanknoteIcon } from "../icons/BanknoteIcon";
 import { CoinsIcon } from "../icons/CoinsIcon";
 import { ShoppingBagIcon } from "../icons/ShoppingBagIcon";
@@ -176,8 +177,18 @@ export function MonthlyPerfDetailTable({
           ? null
           : { sign: pl > 0 ? 1 : pl < 0 ? -1 : 0, amount: amount(pl), pct, title: pct ? `${plLabel} · ${pctLabel}` : plLabel },
       totals: [
-        ...(!isYearly
-          ? [{ key: "ytd", prefix: t("periodReturns.ytd"), amount: fmtPerf(row.ytd_nominal_pl), title: ytdLabel }]
+        // A month always reads its year so far; a year only where the scope serves its YTD % (the
+        // year's compounded return, beside the result's one-step %).
+        ...(!isYearly || perfDetailServesYtdPct(row)
+          ? [
+              {
+                key: "ytd",
+                prefix: t("periodReturns.ytd"),
+                amount: fmtPerf(row.ytd_nominal_pl),
+                pct: perfDetailYtdPct(row),
+                title: ytdLabel,
+              },
+            ]
           : []),
         { key: "cum", prefix: "Σ", amount: fmtPerf(row.cumulative_nominal_pl), title: cumLabel },
       ],

@@ -4,6 +4,7 @@ import { formatMoney, formatPct } from "../../format";
 import type { DailySeriesPointDto, DailySeriesResponse } from "../../types";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { PerfDetailRows, type PerfDetailRow } from "./PerfDetailRows";
+import { perfDetailServesYtdPct, perfDetailYtdPct } from "./perfDetailYtd";
 import { CoinsIcon } from "../icons/CoinsIcon";
 import type { DisplayUnit } from "../../queries/keys";
 
@@ -47,6 +48,18 @@ export function DailyPerfDetailTable({
   );
 
   const { page, total, pageRows, setPage } = useClientPagination(rowsDesc, PAGE_SIZE);
+  // The year so far, when the series carries the server's levels (`perf_levels`) and its scope
+  // serves the YTD % (index-aligned with `series.points`, looked up by date).
+  const ytdByDate = useMemo(() => {
+    const levels = series?.perf_levels?.ytd;
+    if (!levels || !series) return null;
+    const out = new Map<string, number>();
+    series.points.forEach((p, i) => {
+      const v = levels[i];
+      if (v != null && Number.isFinite(v)) out.set(p.as_of_date, v);
+    });
+    return out;
+  }, [series]);
 
   const labels = {
     date: t("accountDetail.dayColumn"),
@@ -81,7 +94,18 @@ export function DailyPerfDetailTable({
             pct: row.pct != null && Number.isFinite(row.pct) ? cellPct(row.pct) : undefined,
             title: `${labels.pl} · ${labels.pct}`,
           },
-    totals: [],
+    totals:
+      ytdByDate && perfDetailServesYtdPct(row)
+        ? [
+            {
+              key: "ytd",
+              prefix: t("periodReturns.ytd"),
+              amount: fmt(ytdByDate.get(row.as_of_date)),
+              pct: perfDetailYtdPct(row),
+              title: t("accountDetail.perf.ytdInvestmentMonthly"),
+            },
+          ]
+        : [],
     dim: dimClosedDays && row.market_day === false,
   }));
 

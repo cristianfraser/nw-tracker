@@ -31,6 +31,8 @@ type LayoutProps = {
   toolbar?: ReactNode;
   /** The page data is not in (or is held prior-unit data): the body dims. */
   loading?: boolean;
+  /** A title block of the page's own in place of the plain title (the stock page's title line). */
+  titleRow?: ReactNode;
 } & (
   | HeroStripProps
   /** A page with a summary block of its own in the strip's place (the credit card's glance); null = none. */
@@ -38,13 +40,13 @@ type LayoutProps = {
 );
 
 export function AccountDetailSharedLayout(props: LayoutProps) {
-  const { title, children, toolbar, loading = false } = props;
+  const { title, children, toolbar, loading = false, titleRow } = props;
   // The page sits on the column grid (styles/page-grid.css): <main> and the content shell are
   // page grids, every section below is a tile with its heading inside, and the row gap is the
   // only space between them.
   return (
     <main>
-      <PageTitleRow title={title} />
+      {titleRow ?? <PageTitleRow title={title} />}
       <div className={loadableClass(loading, styles.contentShell, "page-grid")}>
         {"heroValue" in props ? (
           <HeroStrip {...props} />

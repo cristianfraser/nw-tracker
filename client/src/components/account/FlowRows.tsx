@@ -11,7 +11,7 @@ export type FlowRowItem = {
   /** The accounts cell: names either side of the arrow; null when the page or the outside world is that side. */
   accounts: FlowAccountsCell;
   amount: string;
-  /** Units moved («12,4 acciones»), drawn small after the amount. */
+  /** Units moved («12,4 acciones»): their own column on a units list (`unitsColumn`), else drawn small after the amount. */
   units: string | null;
   /** The text shown (the server's `display_note`, else the note). */
   note: string | null;
@@ -54,20 +54,27 @@ export function flowAccountsCell(
  * The flows list, one rendering at every width (no desktop table beside mobile cards), styled
  * like the detalle and expense rows. While every row fits on one line the rows share the list's
  * columns (a subgrid of it) under a header line: date, type, accounts (`flowAccountsCell`),
- * amount, note. Below the list's breakpoint (a container query on its frame, wider for a list
- * that names both accounts: `FlowRows.module.css`) a row is three lines: date and type with the
- * amount on the right; the accounts; the note.
+ * amount, units (an account page whose account holds units: `unitsColumn`), note. Below the
+ * list's breakpoint (a container query on its frame, wider for a list that names both accounts:
+ * `FlowRows.module.css`) a row is three lines: date and type with the amount (and the units)
+ * on the right; the accounts; the note.
  */
 export function FlowRows({
   rows,
   accountsLabel,
   emptyMessage,
   bothAccounts,
+  unitsColumn = false,
   placeholderRows = 0,
 }: {
   rows: readonly FlowRowItem[];
   /** The rows name both accounts (a group's list): they need more room before wrapping. */
   bothAccounts: boolean;
+  /**
+   * The units moved are a column of their own (right-aligned, quiet) instead of a superscript on
+   * the amount: an account's list whose account holds units (the page knows its `unitsKind`).
+   */
+  unitsColumn?: boolean;
   /** Header of the accounts column («Cuentas» with the row's account shown, «Cuenta contraparte» without). */
   accountsLabel: string;
   /** Shown when there are no rows; null while loading. */
@@ -80,13 +87,14 @@ export function FlowRows({
 }) {
   const { t } = useTranslation();
   return (
-    <div className={bothAccounts ? styles.frameWide : styles.frameNarrow}>
-      <div role="list" className={styles.list}>
+    <div className={bothAccounts ? styles.frameWide : unitsColumn ? styles.frameUnits : styles.frameNarrow}>
+      <div role="list" className={cn(styles.list, unitsColumn && styles.listUnits)}>
         <div className={styles.header} aria-hidden="true">
           <span>{t("accountDetail.flowDateColumn")}</span>
           <span>{t("accountDetail.flowTypeColumn")}</span>
           <span>{accountsLabel}</span>
           <span className={styles.headerAmount}>{t("accountDetail.flowAmountColumn")}</span>
+          {unitsColumn ? <span className={styles.headerAmount}>{t("accountDetail.flowUnitsColumn")}</span> : null}
           <span>{t("accountDetail.flowNoteColumn")}</span>
         </div>
         {rows.length === 0 && emptyMessage ? (
@@ -103,6 +111,7 @@ export function FlowRows({
                 </span>
                 <span className={styles.accounts}>{"\u00a0"}</span>
                 <span className={cn("mono", styles.amount)}>{"\u00a0"}</span>
+                {unitsColumn ? <span className={cn("mono", styles.unitsCell)}>{"\u00a0"}</span> : null}
                 <span className={styles.note}>{"\u00a0"}</span>
               </div>
             ))
@@ -124,12 +133,17 @@ export function FlowRows({
             </span>
             <span className={cn("mono", styles.amount)}>
               {row.amount}
-              {row.units ? (
+              {row.units && !unitsColumn ? (
                 <sup className={styles.units} title={t("accountDetail.flowUnitsColumn")}>
                   {row.units}
                 </sup>
               ) : null}
             </span>
+            {unitsColumn ? (
+              <span className={cn("mono", styles.unitsCell)} title={t("accountDetail.flowUnitsColumn")}>
+                {row.units}
+              </span>
+            ) : null}
             <span className={cn("muted", styles.note)} title={row.noteTitle ?? row.note ?? undefined}>
               {row.note}
             </span>

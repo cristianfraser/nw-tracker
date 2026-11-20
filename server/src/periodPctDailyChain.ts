@@ -52,26 +52,73 @@ export function chainDailyPct(
 export type { DailyPctPoint };
 
 /**
+ * The YTD % at `ymd`: the daily returns of `ymd`'s calendar year compounded through `ymd` — the
+ * rule the Rentabilidad YTD window uses at today (`chainPeriodStartYmd("year", …)`: from the
+ * prior year-end, exclusive). `byYear` holds the scope's points keyed by `YYYY`.
+ */
+function ytdPctAt(byYear: ReadonlyMap<string, readonly DailyPctPoint[]>, ymd: string): number | null {
+  return chainDailyPct(byYear.get(ymd.slice(0, 4)) ?? [], null, ymd);
+}
+
+function groupPointsBy(points: readonly DailyPctPoint[], keyLength: 4 | 7): Map<string, DailyPctPoint[]> {
+  const out = new Map<string, DailyPctPoint[]>();
+  for (const p of points) {
+    const k = p.as_of_date.slice(0, keyLength);
+    const list = out.get(k);
+    if (list) list.push(p);
+    else out.set(k, [p]);
+  }
+  return out;
+}
+
+/**
  * Detalle rows with `pct_month` replaced by the compound of the daily returns of the row's
- * calendar month up to the row's date (the month in progress: through today). The rows keep
- * every other field; a month with no daily return reads null. Rows of the same month would get
- * the same window, which no detalle series has (one row per month).
+ * calendar month up to the row's date (the month in progress: through today), and `ytd_pct` the
+ * compound of the daily returns of the row's calendar year through the row's date (the YTD
+ * window's rule, {@link ytdPctAt}; beside `ytd_nominal_pl`). The rows keep every other field; a
+ * month (year) with no daily return reads null. Rows of the same month would get the same
+ * window, which no detalle series has (one row per month).
  */
 export function withDailyChainedMonthPct<T extends { as_of_date: string; pct_month: number | null }>(
   rows: readonly T[],
   points: readonly DailyPctPoint[]
-): T[] {
-  const byMonth = new Map<string, DailyPctPoint[]>();
-  for (const p of points) {
-    const mk = p.as_of_date.slice(0, 7);
-    const list = byMonth.get(mk);
-    if (list) list.push(p);
-    else byMonth.set(mk, [p]);
-  }
+): (T & { ytd_pct: number | null })[] {
+  const byMonth = groupPointsBy(points, 7);
+  const byYear = groupPointsBy(points, 4);
   return rows.map((row) => ({
     ...row,
     pct_month: chainDailyPct(byMonth.get(row.as_of_date.slice(0, 7)) ?? [], null, row.as_of_date),
+    ytd_pct: ytdPctAt(byYear, row.as_of_date),
   }));
+}
+
+/**
+ * Daily detalle points with `ytd_pct`: each day's YTD % from the scope's FULL-history daily
+ * returns (`fullPoints`, so a short window still compounds from January 1), the same rule as the
+ * monthly rows' `ytd_pct`.
+ */
+export function withDailyYtdPct<T extends { as_of_date: string }>(
+  points: readonly T[],
+  fullPoints: readonly DailyPctPoint[]
+): (T & { ytd_pct: number | null })[] {
+  const byYear = groupPointsBy(fullPoints, 4);
+  // One running compound per year over the full series, read back per point date.
+  const ytdByDate = new Map<string, number | null>();
+  for (const [, list] of byYear) {
+    let factor = 1;
+    let any = false;
+    for (const p of [...list].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date))) {
+      if (p.pct != null && Number.isFinite(p.pct)) {
+        factor *= 1 + p.pct;
+        any = true;
+      }
+      ytdByDate.set(p.as_of_date, any ? factor - 1 : null);
+    }
+  }
+  return points.map((p) => {
+    const hit = ytdByDate.get(p.as_of_date);
+    return { ...p, ytd_pct: hit !== undefined ? hit : ytdPctAt(byYear, p.as_of_date) };
+  });
 }
 
 /** A scope made only of liabilities keeps the one-step rule (its P/L is a cost, not a return). */
