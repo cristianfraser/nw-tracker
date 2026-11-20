@@ -50,6 +50,7 @@ import {
   positionHeldSpans,
   POSITION_GLANCE_SPARK_MAX_POINTS,
   POSITION_GLANCE_SPARK_RANGES,
+  sampleIndices,
   type HeldSpan,
 } from "./positionGlance.js";
 import { flowEventInUnit, type CurrencyCode } from "./rates.js";
@@ -97,14 +98,6 @@ function direction(x: number | null): PositionGlanceDirection {
   return x > 0 ? "up" : "down";
 }
 
-/** Evenly sampled indices of `n` points, at most `max`, first and last kept (the position sparkline's rule). */
-function sampleIndices(n: number, max: number): number[] {
-  if (n <= max) return Array.from({ length: n }, (_, i) => i);
-  const out = new Set<number>();
-  for (let i = 0; i < max; i++) out.add(Math.round((i * (n - 1)) / (max - 1)));
-  return [...out].sort((a, b) => a - b);
-}
-
 const stmtMovementDays = db.prepare(
   `SELECT DISTINCT substr(occurred_on, 1, 10) AS day FROM movements
    WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?
@@ -138,7 +131,7 @@ function cashHeldSpans(accountId: number, today: string): HeldSpan[] {
 }
 
 /** A member's held stretches: its unit ledger's, else its cash balance's. */
-function memberHeldSpans(accountId: number, today: string): HeldSpan[] {
+export function memberHeldSpans(accountId: number, today: string): HeldSpan[] {
   return isUnitPositionAccount(accountId) ? positionHeldSpans(accountId) : cashHeldSpans(accountId, today);
 }
 
@@ -157,10 +150,15 @@ export function unionHeldSpans(spans: readonly HeldSpan[]): HeldSpan[] {
   return out;
 }
 
-/** Σ over the members of the account position's inputs on `asOf`, in `unit`. */
-function basketPositionOn(
+/**
+ * Σ over the members of the account position's inputs on `asOf`, in `unit` — what
+ * `compositionFromParts` reads for a set of accounts (the basket glance and the investment group
+ * glance, `groupGlance.ts`). `heldOn(id)` says whether a member held something on `asOf`: a member
+ * that did must have a value that day (throws), one that did not may have none.
+ */
+export function basketPositionOn(
   memberIds: readonly number[],
-  spansById: ReadonlyMap<number, readonly HeldSpan[]>,
+  heldOn: (accountId: number) => boolean,
   asOf: string,
   unit: CurrencyCode,
   now: Date
@@ -170,10 +168,9 @@ function basketPositionOn(
   let stateBonus: number | null = null;
   let dividends = 0;
   for (const id of memberIds) {
-    const heldThen = (spansById.get(id) ?? []).some((s) => s.from <= asOf && (s.to == null || s.to > asOf));
     const v = accountValueAt(id, asOf, unit, { now });
     if (v == null) {
-      if (heldThen) throw new Error(`Basket member ${id}: no value on ${asOf}, a day it held something`);
+      if (heldOn(id)) throw new Error(`Basket member ${id}: no value on ${asOf}, a day it held something`);
     } else {
       value += v.value;
     }
@@ -188,6 +185,30 @@ function basketPositionOn(
     dividends += totalDividendsInUnitForAccount(id, unit, asOf);
   }
   return { value, deposited, stateBonus, dividends };
+}
+
+/**
+ * The members' summed composition on the last day any of them held something (today while one
+ * does; the day before the last stretch ended otherwise), by the account composition's own rule
+ * (`compositionFromParts` fed {@link basketPositionOn}). Null when none ever held anything, or as
+ * the account's is (a deposited figure that cannot be computed). `spansById` / `heldSpans`: each
+ * member's held stretches and their union ({@link memberHeldSpans}, {@link unionHeldSpans}).
+ */
+export function compositionOnLastHeldDay(
+  label: string,
+  memberIds: readonly number[],
+  spansById: ReadonlyMap<number, readonly HeldSpan[]>,
+  heldSpans: readonly HeldSpan[],
+  unit: string,
+  today: string,
+  now: Date
+): PositionGlanceDto["composition"] {
+  const last = heldSpans[heldSpans.length - 1];
+  if (last == null) return null;
+  const asOf = last.to == null ? today : chileCalendarAddDays(last.to, -1);
+  const heldOn = (id: number) => (spansById.get(id) ?? []).some((s) => s.from <= asOf && (s.to == null || s.to > asOf));
+  const pos = basketPositionOn(memberIds, heldOn, asOf, unit as CurrencyCode, now);
+  return compositionFromParts({ accountLabel: label, asOf, isToday: asOf === today, unit, ...pos });
 }
 
 /** The index level on or before `ymd` (null before the first). */
@@ -244,7 +265,6 @@ export function basketSparklineFor(
 export function buildBasketGlance(inp: BasketGlanceInputs): BasketGlanceDto {
   const now = inp.now ?? new Date();
   const today = chileWallClockAt(now).ymd;
-  const unit = inp.unit as CurrencyCode;
   const money = (value: number) => ({ value, currency: inp.unit });
   const rowById = new Map(inp.rows.map((r) => [r.account_id, r]));
   const value = inp.card.value.parent;
@@ -298,20 +318,7 @@ export function buildBasketGlance(inp: BasketGlanceInputs): BasketGlanceDto {
   members.sort((a, b) => b.value.value - a.value.value || a.name.localeCompare(b.name));
 
   // Composition on the basket's last day holding anything.
-  const last = heldSpans[heldSpans.length - 1];
-  let composition: PositionGlanceDto["composition"] = null;
-  if (last != null) {
-    const asOf = last.to == null ? today : chileCalendarAddDays(last.to, -1);
-    const pos = basketPositionOn(memberIds, spansById, asOf, unit, now);
-    // The account composition's own rule, fed the members' summed parts.
-    composition = compositionFromParts({
-      accountLabel: `Basket ${inp.slug}`,
-      asOf,
-      isToday: asOf === today,
-      unit: inp.unit,
-      ...pos,
-    });
-  }
+  const composition = compositionOnLastHeldDay(`Basket ${inp.slug}`, memberIds, spansById, heldSpans, inp.unit, today, now);
 
   // Sparklines: the group's daily returns chained into an index.
   const { dates, levels } = chainDailyReturns(inp.dailyPct ?? []);

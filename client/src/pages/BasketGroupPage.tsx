@@ -60,7 +60,7 @@ export function BasketGroupPage({
       tableAccounts={tableAccounts}
       accountsTree={null}
       exportSlot={exportSlot}
-      basket={{
+      layout={{
         titleRow: <BasketGlanceTitle glance={glance} fallbackTitle={title} loading={glanceLoading} />,
         arrange: ({ returns, detail, flows, exportRow }) => (
           <>

@@ -207,6 +207,7 @@ export function MonthlyPerformanceComboChart({
   controls,
   loading,
   valueFormat = "money",
+  hideLegend = false,
 }: {
   title: string;
   titleAs?: "h2" | "h3";
@@ -236,6 +237,8 @@ export function MonthlyPerformanceComboChart({
    * and shows ticks and tooltips as percents; a missing period is a gap, never a zero.
    */
   valueFormat?: "money" | "percent";
+  /** No legend under the plot (the glance pages: the table's dots name the colours). */
+  hideLegend?: boolean;
 }) {
   const compactAxis = useIsNarrowViewport();
   const isPercent = valueFormat === "percent";
@@ -385,17 +388,19 @@ export function MonthlyPerformanceComboChart({
               tickFormatter={(d: string) => xAxis.formatTick(String(d))}
             />
             <YAxis domain={yScale.domain} ticks={yScale.ticks} {...valueAxis} />
-            <Legend
-              itemSorter={null}
-              wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
-              formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
-              content={(legend) => (
-                <DefaultLegendContent
-                  {...legend}
-                  payload={sortBySeriesRank(legend.payload ?? [], seriesRank)}
-                />
-              )}
-            />
+            {hideLegend ? null : (
+              <Legend
+                itemSorter={null}
+                wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
+                formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
+                content={(legend) => (
+                  <DefaultLegendContent
+                    {...legend}
+                    payload={sortBySeriesRank(legend.payload ?? [], seriesRank)}
+                  />
+                )}
+              />
+            )}
             {areaKey && areaFill && areaStroke && areaName ? (
               alternateYearAreaStripes ? (
                 <>

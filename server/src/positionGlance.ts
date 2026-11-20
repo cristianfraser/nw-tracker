@@ -180,8 +180,8 @@ export function positionTrackRange(levels: readonly number[]): { min: number; ma
   return { min, max };
 }
 
-/** Evenly sampled indices of `n` points, at most `max`, first and last kept. */
-function sampleIndices(n: number, max: number): number[] {
+/** Evenly sampled indices of `n` points, at most `max`, first and last kept (every glance sparkline's rule). */
+export function sampleIndices(n: number, max: number): number[] {
   if (n <= max) return Array.from({ length: n }, (_, i) => i);
   const out = new Set<number>();
   for (let i = 0; i < max; i++) out.add(Math.round((i * (n - 1)) / (max - 1)));

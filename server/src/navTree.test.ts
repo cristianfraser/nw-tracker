@@ -35,6 +35,7 @@ function navChildStub(overrides: Partial<NavTreeNodeDto>): NavTreeNodeDto {
     kind_slug: null,
     dashboard_bucket_slug: null,
     exclude_from_parent_total: false,
+    investment_glance: false,
     group_kind: "bucket",
     children: [],
     ...overrides,

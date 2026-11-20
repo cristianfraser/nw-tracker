@@ -1,0 +1,109 @@
+/* The investment group page (InvestmentGroupPage.tsx) on the page grid: the band [valuation
+   chart 7 | value map 5] and the strip [composition 7 | día / mes / año 5] between hairlines,
+   split by a hairline in the gutter, the children table across the page, the pair [«Valor por
+   posición» 6 | «P/L mensual» 6] under one control row, then [Rentabilidad 5 | Detalle 7],
+   Movimientos across. One column below 880, in DOM order. */
+
+:global(.page-grid).band {
+  border-top: 1px solid var(--hairline);
+  row-gap: 0;
+}
+
+.band > .bandChart,
+.band > .bandMap {
+  --chart-panel-min-height: 300px;
+  --chart-panel-height: 320px;
+  padding: 10px 0;
+}
+
+:global(.page-grid).strip {
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  row-gap: 0;
+  margin-top: calc(-1 * var(--row-gap));
+}
+
+.strip > * {
+  min-width: 0;
+}
+
+.tableTile {
+  min-width: 0;
+}
+
+/* The pair's shared Período / Rango row, right-aligned over both charts. */
+.pairControls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+:global(.page-grid).pair {
+  row-gap: 0.25rem;
+}
+
+.pair > .pairFirst,
+.pair > .pairSecond {
+  --chart-panel-min-height: 260px;
+  --chart-panel-height: 300px;
+}
+
+:global(.page-grid) > .fullRow {
+  padding-top: var(--row-gap);
+  border-top: 1px solid var(--hairline);
+}
+
+@media (min-width: 880px) {
+  .band > .bandChart,
+  .strip > :first-child {
+    grid-column: span 7;
+  }
+
+  /* The right half behind a vertical hairline in the middle of the gutter. */
+  .band > .bandMap,
+  .strip > :last-child {
+    grid-column: span 5;
+    margin-left: calc(-0.5 * var(--gutter));
+    padding-left: calc(0.5 * var(--gutter));
+    border-left: 1px solid var(--hairline);
+  }
+
+  .pair > .pairFirst,
+  .pair > .pairSecond {
+    grid-column: span 6;
+  }
+
+  .pair > .pairSecond {
+    margin-left: calc(-0.5 * var(--gutter));
+    padding-left: calc(0.5 * var(--gutter));
+    border-left: 1px solid var(--hairline);
+  }
+
+  :global(.page-grid) > .wide {
+    grid-column: span 7;
+  }
+
+  :global(.page-grid) > .narrow {
+    grid-column: span 5;
+  }
+
+  :global(.page-grid) > .second {
+    align-self: stretch;
+    margin-left: calc(-0.5 * var(--gutter));
+    padding-left: calc(0.5 * var(--gutter));
+    border-left: 1px solid var(--hairline);
+  }
+}
+
+@media (max-width: 879px) {
+  .band > .bandMap,
+  .strip > :last-child {
+    border-top: 1px solid var(--hairline);
+  }
+
+  .pair > .pairSecond,
+  :global(.page-grid) > .wide,
+  :global(.page-grid) > .narrow {
+    padding-top: var(--row-gap);
+    border-top: 1px solid var(--hairline);
+  }
+}

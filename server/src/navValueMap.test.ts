@@ -38,6 +38,7 @@ function navNode(partial: Partial<NavTreeNodeDto> & { slug: string }): NavTreeNo
     kind_slug: null,
     dashboard_bucket_slug: null,
     exclude_from_parent_total: false,
+    investment_glance: false,
     group_kind: "bucket",
     children: [],
     ...partial,
@@ -393,6 +394,19 @@ describe("buildNavValueMap proxy breakdown", () => {
     expect(root.value_clp).toBe(1300);
     expect(leaves(root).reduce((s, l) => s + l.value_clp!, 0)).toBe(1300);
     expect(leaves(root).map((l) => l.slug)).not.toContain("retirement_apv_a");
+  });
+
+  it("rooted at a sibling the full map folds into the basket's frame, each sibling gets its own breakdown", () => {
+    const apvNode = tree.children[0]!;
+    for (const [i, id, value] of [[0, 46, 600], [1, 47, 400]] as const) {
+      const map = buildNavValueMap({ navRoot: apvNode.children[i]!, rows, linkedCreditCards, proxy: proxyX });
+      expect(map).toMatchObject({ kind: "group", slug: apvNode.children[i]!.slug, frame: true });
+      expect(map.value_clp).toBe(value);
+      expect(map.children!.map((c) => c.slug)).toEqual(["holding_x_spxs", "holding_x_ftec", "holding_x_other"]);
+      expect(map.children!.map((c) => c.value_clp)).toEqual([value * 0.5, value * 0.3, value * 0.2]);
+      const own = rows.find((r) => r.account_id === id)!;
+      expect(map.pl.day.clp).toBe(own.delta_day_clp);
+    }
   });
 
   it("accounts on different baskets break down under their own leaf groups", () => {

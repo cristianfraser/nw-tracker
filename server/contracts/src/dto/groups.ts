@@ -112,6 +112,84 @@ export interface DashboardNavContextResponse {
    * Built with this payload (`basketGlance.ts`), so it shares its cache entry and lifetime.
    */
   basket_glance?: BasketGlanceDto | null;
+  /**
+   * The investment group page's «at a glance» block when the page's node (`root`) has
+   * `NavTreeNodeDto.investment_glance` (a group at or under «Inversiones», not a basket); null for
+   * every other root. Built with this payload (`groupGlance.ts`), so it shares its cache entry.
+   */
+  group_glance?: GroupGlanceDto | null;
+}
+
+/**
+ * One row of an investment group page's children table (`docs/investment-group-pages-plan.md`).
+ * Every money figure is in the display unit, from the card metrics (a group) or the dashboard
+ * row (an account), so the table equals the cards and «Detalle».
+ */
+export interface GroupGlanceRowDto {
+  /** "group" = a child nav group (or the page's own group for the total row), "account" = a direct account. */
+  kind: "group" | "account";
+  /** Group rows. */
+  slug: string | null;
+  /** Account rows. */
+  account_id: number | null;
+  /** The nav label / account name (the server's; translate `label_i18n_key` when present). */
+  label: string;
+  label_i18n_key: string | null;
+  route_path: string;
+  /**
+   * The id of this child's line in the grouped valuation block / bar key in the grouped P/L bars
+   * (`nav_grouped_blocks.grouped`, `nav_grouped_bars.grouped`: a synthetic negative id for a
+   * bucket line, the account's own id when the page draws per-account lines), so the client takes
+   * its colour from the same colour map the charts use; null for the total row and for basket members.
+   */
+  chart_line_account_id: number | null;
+  color_rgb: string | null;
+  /** Today, display unit. */
+  value: Money;
+  /** value ÷ the group's value (0..1); 1 on the total row; 0 when sold out. */
+  share: number;
+  /** The card's chained %s (a child: `row_pct`; the total row: `parent_pct`; an account: its row's `pct_*`). */
+  month_pct: number | null;
+  year_pct: number | null;
+  /** Lifetime P/L (the card's `delta_total`, the row's `delta_total`). */
+  total_pl: Money | null;
+  /** Compounded all-time return (the `total` % cell, the row's `pct_total`). */
+  total_pct: number | null;
+  /** Lifetime aportes (net deposits). */
+  deposits: Money | null;
+  /** Holds something today. */
+  held: boolean;
+  /** One year ending today, own scale: up to ~60 points, x/y in 0..1 (x by calendar day from today−364). */
+  spark: { x: number; y: number }[];
+  /** A basket child's members (one level); empty otherwise. */
+  members: GroupGlanceRowDto[];
+}
+
+/** The investment group page's «at a glance» block (`groupGlance.ts`); the client only picks and formats. */
+export interface GroupGlanceDto {
+  slug: string;
+  title: string;
+  unit: DisplayUnitCode;
+  value: Money;
+  day: PositionGlancePeriodDto;
+  /** Direct children holding something today. */
+  positions_held: number;
+  /** Direct children sold out. */
+  positions_sold: number;
+  /** Lifetime aportes of the group. */
+  deposits: Money | null;
+  total_pl: Money | null;
+  total_pct: number | null;
+  /**
+   * Summed over the group's member accounts on the last day any held something (today while one
+   * does), the basket composition's rule; null only when the deposited figure cannot be computed.
+   */
+  composition: PositionGlanceDto["composition"];
+  periods: { day: PositionGlancePeriodDto; month: PositionGlancePeriodDto; year: PositionGlancePeriodDto };
+  /** The total row (the group itself). */
+  total: GroupGlanceRowDto;
+  /** Children: held ones heaviest first, then sold-out ones (by total P/L magnitude). */
+  rows: GroupGlanceRowDto[];
 }
 
 /** One member account of a basket, as the breakdown block lists it. */
@@ -437,6 +515,11 @@ export interface NavTreeNodeDto {
    * group editor) — a managed set of holdings shown as one position. Absent on leaves.
    */
   basket?: boolean;
+  /**
+   * The node's page is an investment group page (`group_glance` on its nav-context): a group at
+   * or under «Inversiones» that is not a basket. False on every other node.
+   */
+  investment_glance: boolean;
   api_group: string | null;
   api_subgroup: string | null;
   color_rgb: string | null;

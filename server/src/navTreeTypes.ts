@@ -47,6 +47,11 @@ export type NavTreeNodeDto = {
    * group editor) — a managed set of holdings shown as one position. Absent on leaves.
    */
   basket?: boolean;
+  /**
+   * The node's page is an investment group page (`group_glance` on its nav-context): a group at
+   * or under «Inversiones» (`isInvestmentGroup`) that is not a basket. False on every other node.
+   */
+  investment_glance: boolean;
   /** `nav_bucket` = sidebar grouping only (e.g. inversiones, efectivo); `liability_group` = Pasivos root. */
   group_kind: "bucket" | "reference" | "nav_bucket" | "liability_group";
   /**

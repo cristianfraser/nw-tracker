@@ -5,6 +5,7 @@ import { db } from "./db.js";
 export type { NavTreeNodeDto } from "./navTreeTypes.js";
 import type { NavTreeNodeDto } from "./navTreeTypes.js";
 import { getLiabilitiesNavChildren } from "./liabilityTree.js";
+import { isInvestmentGroup } from "./navTreeModel.js";
 import { listSingleSourceReferenceSlugsByChartHost } from "./portfolioGroupReference.js";
 
 export type NavTreeBuildOptions = {
@@ -154,6 +155,7 @@ function buildNode(
         kind_slug: null,
         dashboard_bucket_slug: null,
         exclude_from_parent_total: false,
+        investment_glance: false,
         color_rgb,
         color: rgbTripletToCss(color_rgb),
         children: [],
@@ -181,6 +183,7 @@ function buildNode(
         kind_slug: null,
         dashboard_bucket_slug: null,
         exclude_from_parent_total: false,
+        investment_glance: false,
         color_rgb: null,
         color: null,
         children: [],
@@ -225,6 +228,9 @@ function buildNode(
     dashboard_bucket_slug: group.dashboard_bucket_slug,
     exclude_from_parent_total: group.exclude_from_parent_total === 1,
     basket: group.basket === 1,
+    // An investment group page: at or under «Inversiones» (the tree's investment roots and the hub
+    // over them), except a basket, which keeps its basket page.
+    investment_glance: group.basket !== 1 && isInvestmentGroup(group.slug),
     color_rgb: resolved,
     color: rgbTripletToCss(resolved),
     group_kind: groupKind,

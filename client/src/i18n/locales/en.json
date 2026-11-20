@@ -1186,6 +1186,28 @@
     "ownPortfolios": "Your portfolios"
   },
   "groupPage": {
+    "investmentGlance": {
+      "positionsOne": "{{count}} position",
+      "positionsMany": "{{count}} positions",
+      "soldOne": "{{count}} sold",
+      "soldMany": "{{count}} sold",
+      "deposits": "contributions",
+      "total": "total",
+      "tableLabel": "Positions of {{name}}",
+      "expand": "Show the members of {{name}}",
+      "collapse": "Hide the members of {{name}}",
+      "col": {
+        "value": "value",
+        "share": "weight",
+        "month": "month",
+        "year": "year",
+        "total": "total",
+        "deposits": "contributions"
+      },
+      "positionsChartTitle": "Value by position",
+      "percentToggle": "%",
+      "percentToggleTitle": "Show each position's share of the total"
+    },
     "basketGlance": {
       "units": {
         "shares": "{{units}} shares",

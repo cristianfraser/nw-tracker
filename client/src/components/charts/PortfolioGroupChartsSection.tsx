@@ -86,6 +86,7 @@ export function GroupPlCombo({
   controls,
   barSeries,
   groupTotalStroke,
+  hideLegend = false,
   loading = false,
 }: {
   /** Default «P/L por cuenta / subgrupo, YTD combinado y Δ total». */
@@ -98,6 +99,8 @@ export function GroupPlCombo({
   controls?: ReactNode;
   barSeries: PerfBarSeries[];
   groupTotalStroke: string;
+  /** No legend under the plot (the investment pages). */
+  hideLegend?: boolean;
   loading?: boolean;
 }) {
   return (
@@ -122,6 +125,7 @@ export function GroupPlCombo({
           showDot: true,
         },
       ]}
+      hideLegend={hideLegend}
       loading={loading}
     />
   );

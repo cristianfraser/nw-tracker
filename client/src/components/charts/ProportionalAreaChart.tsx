@@ -35,6 +35,7 @@ export function ProportionalAreaChart({
   timeRange,
   colorFor,
   loading,
+  hideLegend = false,
 }: {
   title: string;
   titleAs?: "h2" | "h3";
@@ -48,6 +49,8 @@ export function ProportionalAreaChart({
   colorFor: (line: ProportionalSeriesLineDto, index: number) => string;
   /** The block is not in yet (or is held prior data): dim the panel, no «no data» copy. */
   loading?: boolean;
+  /** No legend under the plot (the investment pages: the table's dots name the colours). */
+  hideLegend?: boolean;
 }) {
   const allSeries = block?.series ?? [];
 
@@ -135,11 +138,13 @@ export function ProportionalAreaChart({
             tickLine={{ stroke: AXIS_LINE_STROKE }}
             tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
           />
-          <Legend
-            itemSorter={null}
-            wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
-            formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
-          />
+          {hideLegend ? null : (
+            <Legend
+              itemSorter={null}
+              wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
+              formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
+            />
+          )}
           {visibleSeries.map(({ line: s, index }) => {
             const color = colorFor(s, index);
             return (

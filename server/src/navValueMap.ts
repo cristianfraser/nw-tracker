@@ -509,7 +509,7 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
   };
 
   const root = build(navRoot);
-  if (!root || !isVisible(root)) throw new Error("nav value map: net worth is not positive");
+  if (!root || !isVisible(root)) throw new Error(`nav value map: ${navRoot.slug} is not positive`);
   settleMapToCoins(root, unit, input.headlineBuckets ?? {});
   return toDto(prune(root));
 }
@@ -566,4 +566,38 @@ export function buildNavValueMapPayload(
     }),
     value_map_color_bounds: NAV_VALUE_MAP_COLOR_BOUNDS,
   };
+}
+
+/**
+ * The map of one group as if the tree were rooted at it, for a page whose group the full map has
+ * no node for: a group inside a proxy-holdings frame (apv-a and apv-b sit on the one Risky Norris
+ * basket, so the APV node is that basket's frame and they have no node of their own) gets its own
+ * breakdown, its holdings sized by its own value. Same rules as {@link buildNavValueMapPayload}
+ * (rows, proxies, colours, coin settling against the headline buckets); the full map is untouched.
+ * Throws when the group is not worth more than 0 (the caller asks only for one that is).
+ */
+export function buildNavValueMapForRoot(
+  rootNode: NavTreeNodeDto,
+  rows: readonly CardMetricsAccountRow[],
+  unit: TsUnit,
+  headline: { buckets: Readonly<Record<string, number | null>> },
+  chainedPct?: ChainedGroupPct
+): NavValueMapNodeDto {
+  if (!isMapGroup(rootNode)) throw new Error(`nav value map: ${rootNode.slug} is not a map group`);
+  const today = chileCalendarTodayYmd();
+  const clp = linkedCreditCardClpForCashCardAsOf(today);
+  return buildNavValueMap({
+    navRoot: rootNode,
+    rows,
+    linkedCreditCards: { clp, value: linkedCardsClpInUnit(clp, today, unit) },
+    headlineBuckets: headline.buckets,
+    proxy: loadNavValueMapProxyInput(rows, unit),
+    chainedPct,
+    unit,
+  });
+}
+
+/** A net-worth group a map can be rooted at (a bucket or hub; not an account, expense or liability node). */
+export function isValueMapRootNode(n: NavTreeNodeDto): boolean {
+  return isMapGroup(n);
 }

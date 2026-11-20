@@ -85,6 +85,8 @@ export const ProportionalAreaChart = lazyChart("ProportionalAreaChart", panelFra
 
 export const CoverageLineChart = lazyChart("CoverageLineChart", panelFrame);
 
+export const StackedValueAreaChart = lazyChart("StackedValueAreaChart", panelFrame);
+
 export const FlowsOverviewChart = lazyChart("FlowsOverviewChart", panelFrame);
 
 export const CcInstallmentHistoryChart = lazyChart("CcInstallmentHistoryChart", () => (

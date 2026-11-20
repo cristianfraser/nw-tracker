@@ -118,6 +118,7 @@ function node(partial: Partial<NavTreeNodeDto> & { slug: string }): NavTreeNodeD
     color_rgb: partial.color_rgb ?? null,
     color: null,
     kind_slug: null,
+    investment_glance: false,
     dashboard_bucket_slug: partial.dashboard_bucket_slug ?? null,
     exclude_from_parent_total: false,
     group_kind: partial.group_kind ?? "bucket",

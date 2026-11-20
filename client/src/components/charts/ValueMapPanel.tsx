@@ -22,18 +22,22 @@ export function ValueMapPanel({
   bounds,
   unit,
   loading,
+  compact = false,
 }: {
-  /** The composition chart's title: the map takes its place in the same panel. */
+  /** The composition chart's title: the map takes its place in the same panel ("" = untitled). */
   title: string;
   surfaceId: string;
-  view: SurfaceCompositionView;
-  onViewChange: (v: SurfaceCompositionView) => void;
+  /** The Composición / Mapa switch; omitted where the map is the only view (investment pages). */
+  view?: SurfaceCompositionView;
+  onViewChange?: (v: SurfaceCompositionView) => void;
   /** null until the first payload for this page arrives (the panel renders empty). */
   root: NavValueMapNodeDto | null;
   bounds: NavValueMapColorBounds | null;
   unit: DisplayUnit;
   /** The payload is pending or held prior data: the map dims (empty box when `root` is null). */
   loading?: boolean;
+  /** The compact text row (día mes año) instead of the labelled select. */
+  compact?: boolean;
 }) {
   const prefs = useSurfacePrefs(surfaceId, "day", "total");
   return (
@@ -46,6 +50,7 @@ export function ValueMapPanel({
           periodKind="return"
           period={prefs.period}
           onPeriodChange={prefs.setPeriod}
+          compact={compact}
         />
       }
       root={root}

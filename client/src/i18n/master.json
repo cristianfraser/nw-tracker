@@ -3829,6 +3829,82 @@
     }
   },
   "groupPage": {
+    "investmentGlance": {
+      "positionsOne": {
+        "en": "{{count}} position",
+        "es": "{{count}} posición"
+      },
+      "positionsMany": {
+        "en": "{{count}} positions",
+        "es": "{{count}} posiciones"
+      },
+      "soldOne": {
+        "en": "{{count}} sold",
+        "es": "{{count}} vendida"
+      },
+      "soldMany": {
+        "en": "{{count}} sold",
+        "es": "{{count}} vendidas"
+      },
+      "deposits": {
+        "en": "contributions",
+        "es": "aportes"
+      },
+      "total": {
+        "en": "total",
+        "es": "total"
+      },
+      "tableLabel": {
+        "en": "Positions of {{name}}",
+        "es": "Posiciones de {{name}}"
+      },
+      "expand": {
+        "en": "Show the members of {{name}}",
+        "es": "Mostrar los miembros de {{name}}"
+      },
+      "collapse": {
+        "en": "Hide the members of {{name}}",
+        "es": "Ocultar los miembros de {{name}}"
+      },
+      "col": {
+        "value": {
+          "en": "value",
+          "es": "valor"
+        },
+        "share": {
+          "en": "weight",
+          "es": "peso"
+        },
+        "month": {
+          "en": "month",
+          "es": "mes"
+        },
+        "year": {
+          "en": "year",
+          "es": "año"
+        },
+        "total": {
+          "en": "total",
+          "es": "total"
+        },
+        "deposits": {
+          "en": "contributions",
+          "es": "aportes"
+        }
+      },
+      "positionsChartTitle": {
+        "en": "Value by position",
+        "es": "Valor por posición"
+      },
+      "percentToggle": {
+        "en": "%",
+        "es": "%"
+      },
+      "percentToggleTitle": {
+        "en": "Show each position's share of the total",
+        "es": "Ver la participación de cada posición en el total"
+      }
+    },
     "basketGlance": {
       "units": {
         "shares": {

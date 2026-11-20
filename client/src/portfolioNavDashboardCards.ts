@@ -103,6 +103,7 @@ export function inactiveAccountNavLeaf(row: DashboardAccountRow): NavTreeNodeDto
     asset_group_slug: null,
     kind_slug: null,
     dashboard_bucket_slug: null,
+    investment_glance: false,
     api_group: null,
     api_subgroup: null,
     color_rgb: null,

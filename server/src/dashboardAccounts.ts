@@ -46,10 +46,12 @@ import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { nodeNetsLinkedCards } from "./nodeValue.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
-import { buildNavValueMapPayload } from "./navValueMap.js";
-import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
+import { buildNavValueMapForRoot, buildNavValueMapPayload, isValueMapRootNode, type NavValueMapNodeDto } from "./navValueMap.js";
+import type { NavTreeNodeDto } from "./navTreeTypes.js";
+import { getLiabilitiesNavRootNode, getNavChartGroupNodeBySlug, getNetWorthNavGroupNode } from "./navTree.js";
 import { findBySlug, navContextScope, valueMapSubtree } from "./navContextScope.js";
 import { buildBasketGlance } from "./basketGlance.js";
+import { buildGroupGlance } from "./groupGlance.js";
 import { groupDailyPctPoints } from "./dailyPctSeries.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
@@ -632,6 +634,18 @@ async function buildDashboardNavContextInner(unit: TsUnit, rootSlug: string) {
           dailyPct: groupDailyPctPoints(rootSlug, unit),
         })
       : null;
+  // An investment group's page draws its glance from the same card metrics and rows (`groupGlance.ts`).
+  const group_glance =
+    node?.investment_glance === true && node.account_id == null
+      ? buildGroupGlance({
+          slug: rootSlug,
+          title: node.label,
+          unit,
+          chartNode: requireChartNode(getNavChartGroupNodeBySlug(rootSlug), rootSlug),
+          rows: nav.accounts,
+          cardMetricsBySlug: nav.card_metrics_by_slug,
+        })
+      : null;
   return {
     schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
     unit,
@@ -642,10 +656,41 @@ async function buildDashboardNavContextInner(unit: TsUnit, rootSlug: string) {
     card_metrics_by_slug: Object.fromEntries(
       Object.entries(nav.card_metrics_by_slug).filter(([slug]) => scope.slugs.has(slug))
     ),
-    value_map: valueMapSubtree(nav.value_map, rootSlug),
+    value_map: await navContextValueMap(nav, unit, rootSlug, navRoot),
     value_map_color_bounds: nav.value_map_color_bounds,
     basket_glance,
+    group_glance,
   };
+}
+
+/**
+ * The page's value map: its node of the full map, else (a group the full map folds into a proxy
+ * frame, apv-a / apv-b) the map rooted at the group itself (`buildNavValueMapForRoot`). Absent for
+ * a page with no net-worth group or a group worth nothing; a positive group without one throws.
+ */
+async function navContextValueMap(
+  nav: Awaited<ReturnType<typeof buildDashboardNavSnapshot>>,
+  unit: TsUnit,
+  rootSlug: string,
+  navRoot: NavTreeNodeDto
+): Promise<NavValueMapNodeDto | undefined> {
+  const sub = valueMapSubtree(nav.value_map, rootSlug);
+  if (sub) return sub;
+  const node = findBySlug([navRoot], rootSlug);
+  if (!node || !isValueMapRootNode(node)) return undefined;
+  const value = nav.card_metrics_by_slug[rootSlug]?.value.parent;
+  if (value == null || !(value > 0)) return undefined;
+  const rows = await buildDashboardAccountRows(unit);
+  const chainedPct = chainedGroupPctResolver(rows, unit, accountIsDebt);
+  const map = buildNavValueMapForRoot(node, rows, unit, nav.nw_bucket_totals, chainedPct);
+  const hit = valueMapSubtree(map, rootSlug);
+  if (!hit) throw new Error(`nav-context: ${rootSlug} is worth more than 0 and has no value map`);
+  return hit;
+}
+
+function requireChartNode<T>(node: T | null, slug: string): T {
+  if (node == null) throw new Error(`nav-context: investment group ${slug} has no chart node`);
+  return node;
 }
 
 function requireBasketCard<T>(card: T | undefined, slug: string): T {

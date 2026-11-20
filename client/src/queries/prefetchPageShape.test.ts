@@ -31,6 +31,7 @@ const minimalPayload: SidebarNavResponse = {
       portfolio_group_id: 1,
       asset_group_slug: "inversiones",
       dashboard_bucket_slug: null,
+      investment_glance: false,
       api_group: null,
       api_subgroup: null,
       group_kind: "nav_bucket",

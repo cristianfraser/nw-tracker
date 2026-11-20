@@ -110,8 +110,11 @@ export type GroupInfoBaseProps = {
   hideConsolidatedTables?: boolean;
   /** The home dashboard's own layout and tables. */
   dashboard?: GroupInfoDashboardOptions;
-  /** A basket group's page (BasketGroupPage): its own title line and arrangement of the tables. */
-  basket?: GroupInfoBasketLayout;
+  /**
+   * A glance page (BasketGroupPage, InvestmentGroupPage): its own title line and arrangement of
+   * the tables, no card strip, the compact Rentabilidad and «Movimientos».
+   */
+  layout?: GroupInfoGlanceLayout;
 };
 
 /** The tables' bodies GroupInfoBase builds (headings included), for a page that places them itself. */
@@ -127,10 +130,11 @@ export type GroupInfoTableParts = {
 };
 
 /**
- * The basket page's shape: its title line in the plain title's place, no card strip, and the
- * page's tiles placed by `arrange` (the band, the P/L chart, then these tables).
+ * A glance page's shape (the basket and investment group pages): its title line in the plain
+ * title's place, no card strip, and the page's tiles placed by `arrange` (its own tiles, then
+ * these tables).
  */
-export type GroupInfoBasketLayout = {
+export type GroupInfoGlanceLayout = {
   titleRow: ReactNode;
   arrange: (parts: GroupInfoTableParts) => ReactNode;
 };
@@ -146,7 +150,7 @@ export function GroupInfoBase({
   loading = false,
   hideConsolidatedTables = false,
   dashboard,
-  basket,
+  layout,
 }: GroupInfoBaseProps) {
   const serverPaginatedMonthlyDetail = dashboard?.serverPaginatedMonthlyDetail ?? false;
   const flowsTitleKey = dashboard?.flowsTitleKey ?? "groupPage.flowsTitle";
@@ -308,14 +312,14 @@ export function GroupInfoBase({
   const returnsBody =
     tablesEnabled && shownPeriodReturns !== null ? (
       <>
-        {rail || basket ? null : <h2>{t("periodReturns.title")}</h2>}
+        {rail || layout ? null : <h2>{t("periodReturns.title")}</h2>}
         <PeriodReturnsWithBenchmark
           data={shownPeriodReturns ?? null}
           displayUnit={displayUnit}
           scope={{ portfolioGroup: returnsGroupSlug }}
           surfaceId={returnsGroupSlug ? `group.${returnsGroupSlug}.returns` : null}
           loading={shownPeriodReturns === undefined || periodReturnsHeld}
-          compact={basket ? { title: t("periodReturns.title") } : undefined}
+          compact={layout ? { title: t("periodReturns.title") } : undefined}
         />
       </>
     ) : null;
@@ -382,7 +386,7 @@ export function GroupInfoBase({
   );
   const flowsBody = (
     <>
-      <h2>{t(basket ? "accountDetail.positionGlance.movementsTitle" : flowsTitleKey)}</h2>
+      <h2>{t(layout ? "accountDetail.positionGlance.movementsTitle" : flowsTitleKey)}</h2>
       {tablesError ? (
         <p className="error">{tablesError}</p>
       ) : (
@@ -404,12 +408,12 @@ export function GroupInfoBase({
       <BelowFoldHiddenContext.Provider value={fold === "hidden"}>{node}</BelowFoldHiddenContext.Provider>
     );
 
-  if (basket) {
+  if (layout) {
     return (
       <main>
         <Loadable loading={loading} className={cn(pageShellStyles.contentShell, "page-grid")}>
-          {basket.titleRow}
-          {basket.arrange({
+          {layout.titleRow}
+          {layout.arrange({
             returns: returnsBody,
             detail: tablesEnabled ? detailBody : null,
             flows: tablesEnabled ? flowsBody : null,

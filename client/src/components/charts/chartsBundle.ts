@@ -10,3 +10,4 @@ export { CoverageLineChart } from "./CoverageLineChart";
 export { CcInstallmentHistoryChart } from "./CcInstallmentHistoryChart";
 export { FlowsOverviewChart } from "./FlowsOverviewChart";
 export { CcGlanceCupoBar } from "./CcGlanceCupoBar";
+export { StackedValueAreaChart } from "./StackedValueAreaChart";

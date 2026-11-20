@@ -20,6 +20,7 @@ function navNode(partial: Partial<NavTreeNodeDto> & { account_id: number; label:
     asset_group_slug: null,
     kind_slug: null,
     dashboard_bucket_slug: null,
+    investment_glance: false,
     api_group: null,
     api_subgroup: null,
     color_rgb: null,

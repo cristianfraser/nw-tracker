@@ -51,6 +51,8 @@ export type DashboardNavContext = {
   value_map_color_bounds?: DashboardResponse["value_map_color_bounds"];
   /** A basket group's glance (non-null only when `root` is a basket, `NavTreeNodeDto.basket`). */
   basket_glance?: DashboardNavContextResponse["basket_glance"];
+  /** An investment group's glance (non-null only when `root` has `NavTreeNodeDto.investment_glance`). */
+  group_glance?: DashboardNavContextResponse["group_glance"];
 };
 
 export async function fetchDashboardNavSnapshot(
@@ -71,6 +73,7 @@ export async function fetchDashboardNavContext(unit: DisplayUnit, root: string):
     value_map: nav.value_map,
     value_map_color_bounds: nav.value_map_color_bounds,
     basket_glance: nav.basket_glance,
+    group_glance: nav.group_glance,
   };
 }
 

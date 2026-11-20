@@ -1,0 +1,252 @@
+/* The investment group page's glance pieces (GroupGlance.tsx): the title's sub-line, the sold
+   line under the map, the strip's two halves and the children table — a row list, one line per
+   row while it fits, name / value / mes / total when its frame is narrow (container query). */
+
+.positive {
+  color: var(--positive);
+}
+
+.negative {
+  color: var(--negative);
+}
+
+.sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.45em;
+  margin-top: 3px;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+.stripComposition,
+.stripPeriods {
+  min-width: 0;
+}
+
+/* ---- Children table ---- */
+
+.frame {
+  container: group-glance / inline-size;
+  min-width: 0;
+}
+
+.table {
+  display: grid;
+  grid-template-columns:
+    minmax(7rem, 1.1fr) minmax(4rem, 1fr) max-content minmax(6rem, 0.9fr)
+    max-content max-content max-content max-content;
+  column-gap: 1.25rem;
+  font-size: var(--font-size-ui);
+}
+
+.rowGroup {
+  display: contents;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  min-height: 2.25rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.headRow {
+  min-height: 1.75rem;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+.totalRow {
+  font-weight: 600;
+}
+
+.totalRow .name {
+  font-weight: 600;
+}
+
+.memberRow {
+  min-height: 2rem;
+  color: var(--muted);
+}
+
+.memberRow .nameCell {
+  padding-left: 1.1rem;
+}
+
+.memberRow .dot {
+  opacity: 0.55;
+}
+
+.soldRow {
+  min-height: 1.9rem;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.soldRow .dot {
+  visibility: hidden;
+}
+
+.nameCell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.caret,
+.caretSpace {
+  flex: none;
+  width: 0.9rem;
+}
+
+.caret {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.caretOpen {
+  transform: rotate(90deg);
+}
+
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--surface2);
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.name:hover {
+  text-decoration: underline;
+}
+
+.sparkCell {
+  min-width: 0;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 20px;
+}
+
+.spark polyline {
+  fill: none;
+  stroke: var(--positive);
+  stroke-width: 1.2;
+}
+
+.spark.sparkChild polyline {
+  stroke: var(--accent);
+}
+
+.soldRow .spark polyline {
+  stroke: var(--muted);
+  opacity: 0.6;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.value {
+  font-weight: 600;
+}
+
+.memberRow .value,
+.soldRow .value {
+  font-weight: 400;
+}
+
+.shareCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shareBar {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  background: var(--surface2);
+}
+
+.shareBar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 3px;
+  background: var(--muted);
+}
+
+.sharePct {
+  flex: none;
+  min-width: 3.4rem;
+  text-align: right;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+.deposits {
+  color: var(--muted);
+}
+
+.totalRow .deposits {
+  color: var(--text);
+}
+
+/* Narrow frame: name, value, mes and total on one line. */
+@container group-glance (max-width: 46rem) {
+  .table {
+    grid-template-columns: minmax(4.5rem, 1fr) max-content max-content max-content;
+    column-gap: 0.75rem;
+  }
+
+  .memberRow .nameCell {
+    padding-left: 0.6rem;
+  }
+
+  .sparkCell,
+  .shareCell,
+  .year,
+  .deposits {
+    display: none;
+  }
+}
+
+/* A phone's frame: the figures one step smaller, so the names keep a few letters more. */
+@container group-glance (max-width: 26rem) {
+  .table {
+    column-gap: 0.6rem;
+  }
+
+  .num {
+    font-size: var(--font-size-card-meta);
+  }
+
+  .caret,
+  .caretSpace {
+    width: 0.6rem;
+  }
+}

@@ -16,9 +16,10 @@ export function ChartPanelTitleRow({
 }) {
   const TitleTag = titleAs;
   if (!controls) return <TitleTag className="chart-panel-title">{title}</TitleTag>;
+  // An untitled panel (the investment page's value map) keeps its controls row alone.
   return (
     <div className="chart-panel-title-row">
-      <TitleTag className="chart-panel-title">{title}</TitleTag>
+      {title ? <TitleTag className="chart-panel-title">{title}</TitleTag> : null}
       {controls}
     </div>
   );

@@ -22,6 +22,7 @@ function accountNavLeafFromListRow(acc: AccountListRow): NavTreeNodeDto {
     color: null,
     kind_slug: acc.category_slug ?? null,
     dashboard_bucket_slug: null,
+    investment_glance: false,
     group_kind: "bucket",
     chart_inactive: acc.chart_inactive,
     children: [],

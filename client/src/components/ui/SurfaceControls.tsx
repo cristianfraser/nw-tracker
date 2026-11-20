@@ -70,17 +70,21 @@ export function SurfaceControls({
     return (
       <div className="surface-controls surface-controls--compact" style={style}>
         {period != null && onPeriodChange ? (
-          <span className="surface-controls__set" role="group" aria-label={t("dashboard.chartGranularityLabel")}>
+          <span
+            className="surface-controls__set"
+            role="group"
+            aria-label={t(periodKind === "return" ? "valueMap.periodLabel" : "dashboard.chartGranularityLabel")}
+          >
             {periodOptions.map((p) => (
               <button
                 key={p}
                 type="button"
                 className={p === period ? "is-on" : undefined}
                 aria-pressed={p === period}
-                title={t(PERIOD_LABEL_KEYS[p])}
+                title={periodKind === "return" ? undefined : t(PERIOD_LABEL_KEYS[p])}
                 onClick={() => onPeriodChange(p)}
               >
-                {t(PERIOD_SHORT_KEYS[p])}
+                {t((periodKind === "return" ? RETURN_PERIOD_LABEL_KEYS : PERIOD_SHORT_KEYS)[p])}
               </button>
             ))}
           </span>
