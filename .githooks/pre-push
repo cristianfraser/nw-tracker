@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pre-push gate (docs/test-speed-plan.md step 5): typecheck the affected workspaces and run
+# the convention checks, under a 9 s budget. Do not bypass with --no-verify.
+root="$(dirname "$0")/.."
+exec node "$root/scripts/pre-push-check.mjs" "$@"

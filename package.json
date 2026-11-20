@@ -73,6 +73,8 @@
     "fetch:lider-boletas": "npm run fetch:lider-boletas -w nw-tracker-ingest --",
     "import:grocery-receipts": "npm run import:grocery-receipts -w nw-tracker-ingest --",
     "fetch:lider-statements": "npm run fetch:lider-statements -w nw-tracker-ingest --",
+    "check:pre-push": "node scripts/pre-push-check.mjs < /dev/null",
+    "prepare": "node scripts/install-git-hooks.mjs",
     "postinstall": "patch-package"
   }
 }
