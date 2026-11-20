@@ -24,7 +24,7 @@ import {
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import { equityAsTradedClose } from "./equitySplits.js";
-import { assertFundSeriesClp, fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
+import { AFP_CERT_FUND_UNIT_SCRATCH, assertFundSeriesClp, fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
 import type { Holding } from "./holdings.js";
 import { optionIntrinsicPerShare } from "./optionContracts.js";
 import type { CurrencyCode } from "./rates.js";
@@ -35,7 +35,13 @@ import {
   shouldUseRiskyNorrisProxyMtm,
 } from "./riskyNorrisProxyMtm.js";
 
-export type HoldingPrice = { price: number; currency: CurrencyCode; as_of: string };
+export type HoldingPrice = {
+  price: number;
+  currency: CurrencyCode;
+  as_of: string;
+  /** Set when the price is the Risky Norris basket's estimate of a fund's cuota, not a published one. */
+  source?: "proxy";
+};
 
 export type InstrumentHolding = Exclude<Holding, { kind: "currency" } | { kind: "card" }>;
 
@@ -82,7 +88,7 @@ function fundPriceAt(seriesKey: string, ymd: string, isToday: boolean, now: Date
     // The basket proxy is built in pesos (the observado frame): only for a peso series.
     assertFundSeriesClp(seriesKey, "holdingPrices (Risky Norris proxy)");
     const px = riskyNorrisProxyCuotaForMtm(seriesKey, now, isToday ? undefined : ymd);
-    return validPrice(px) ? { price: px, currency: "clp", as_of: ymd } : null;
+    return validPrice(px) ? { price: px, currency: "clp", as_of: ymd, source: "proxy" } : null;
   }
   const fu = fundUnitRowOnOrBeforeForDisplay(seriesKey, ymd);
   return fu && validPrice(fu.unit_value) ? { price: fu.unit_value, currency: fu.currency, as_of: fu.day } : null;
@@ -205,4 +211,30 @@ export function pastHoldingPriceLookup(h: InstrumentHolding): (ymd: string) => H
     }
     return p;
   };
+}
+
+export type UnitPricePoint = { date: string; price: number };
+
+const stmtEquityCloses = db.prepare(
+  `SELECT trade_date AS date, close AS price FROM equity_daily
+   WHERE ticker = ? AND trade_date < ? AND close > 0 ORDER BY trade_date`
+);
+const stmtFundUnits = db.prepare(
+  `SELECT day AS date, unit_value AS price FROM fund_unit_daily
+   WHERE series_key = ? AND day < ? AND unit_value > 0 AND COALESCE(note, '') NOT LIKE ?
+   ORDER BY day`
+);
+
+/**
+ * Every stored price of one unit of `h` strictly before `beforeYmd`, ascending, in its quote
+ * currency — the series a position's sparkline and highest price read: a stock's split-adjusted
+ * `equity_daily` closes (today's share terms), a coin's price series closes, a fund's valor cuota
+ * rows in their display frame (certificate scratch rows left out). An option has no stored series.
+ */
+export function unitPriceSeries(h: InstrumentHolding, beforeYmd: string): UnitPricePoint[] {
+  if (h.kind === "option") throw new Error(`unitPriceSeries: option ${h.occSymbol} has no stored price series`);
+  if (h.kind === "fund") {
+    return stmtFundUnits.all(h.seriesKey, beforeYmd, `%${AFP_CERT_FUND_UNIT_SCRATCH}%`) as UnitPricePoint[];
+  }
+  return stmtEquityCloses.all(tickerOf(h)!, beforeYmd) as UnitPricePoint[];
 }

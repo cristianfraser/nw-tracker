@@ -97,6 +97,8 @@ type FlowsTableProps = {
   unitsKind?: "shares" | "coin" | "contracts";
   /** An account's list whose account holds units (shares, coins, cuotas): units as a column, not a superscript. */
   unitsAsColumn?: boolean;
+  /** The units column's header («Cuotas» on a fund); default «Unidades». */
+  unitsLabel?: string;
   emptyMessage?: string;
   filteredEmptyMessage?: string;
   filterOptions?: FlowsFilterOptions;
@@ -115,6 +117,7 @@ export function FlowsTable(props: FlowsTableProps) {
     showUnitsColumn = true,
     unitsKind,
     unitsAsColumn = false,
+    unitsLabel,
     emptyMessage,
     filteredEmptyMessage,
     filterOptions,
@@ -311,6 +314,7 @@ export function FlowsTable(props: FlowsTableProps) {
       rows={items}
       bothAccounts={showAccountColumn}
       unitsColumn={unitsColumn}
+      unitsLabel={unitsLabel}
       accountsLabel={
         showAccountColumn
           ? t("accountDetail.flowAccountsColumn")

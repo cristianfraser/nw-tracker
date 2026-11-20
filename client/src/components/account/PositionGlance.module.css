@@ -1,6 +1,6 @@
-/* The stock page's glance (EquityGlance.tsx): the title line, and the rail beside the valuation
-   chart — four groups (quote + sparkline, price track, composition, period bars) divided by
-   hairlines. */
+/* The unit-position page's glance (PositionGlance.tsx): the title line, and the rail beside the
+   valuation chart — groups (quote + sparkline, price track, a fund's basket, composition, broker
+   split, period bars) divided by hairlines. */
 
 .positive {
   color: var(--positive);
@@ -112,9 +112,11 @@
 }
 
 /* a. Quote + sparkline */
+/* The sparkline's range row, at the rail's right edge. */
 .quoteLine {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: baseline;
   column-gap: 10px;
 }
@@ -349,6 +351,11 @@
   background: color-mix(in srgb, var(--muted) 38%, var(--surface2));
 }
 
+.seg_state_bonus {
+  background: var(--state-bonus);
+  opacity: 0.75;
+}
+
 .seg_price {
   background: var(--positive);
 }
@@ -367,6 +374,18 @@
   margin-left: 0;
   background: var(--negative);
   opacity: 0.85;
+}
+
+/* Net capital taken out (deposited < 0) covers the tail just before any loss: neutral, hatched — not a loss. */
+.compBar > .seg_withdrawn {
+  position: absolute;
+  top: 0;
+  margin-left: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--muted) 55%, var(--surface2)) 0 3px,
+    var(--surface2) 3px 6px
+  );
 }
 
 .compLabels {
@@ -403,6 +422,87 @@
 
 .dividends {
   color: var(--dividends);
+}
+
+.stateBonus {
+  color: var(--state-bonus);
+}
+
+/* A capital piece after «depositado» (the state bonus), still on the left. */
+.compLabels > .labelNext {
+  padding-left: 14px;
+}
+
+/* A proxy-priced fund's basket: ticker + name | share bar | % | value, one line each. */
+.basketHead {
+  display: flex;
+  justify-content: space-between;
+  column-gap: 10px;
+  margin-bottom: 5px;
+  color: var(--muted);
+}
+
+.basketHead > .mono {
+  font-size: var(--font-size-card-meta-sm);
+}
+
+.basket {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px max-content max-content;
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: center;
+}
+
+.basketRow {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+}
+
+.basketRow > span:nth-child(n + 3) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.basketName {
+  display: flex;
+  align-items: baseline;
+  column-gap: 0.4em;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.basketFull {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.basketOther {
+  color: var(--muted);
+}
+
+.basketBar {
+  position: relative;
+  height: 3px;
+  background: var(--surface2);
+}
+
+.basketBar i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 3px;
+  background: var(--accent);
+  opacity: 0.8;
+}
+
+.basketBar i.basketBarOther {
+  background: var(--muted);
 }
 
 /* The broker split (two or more cash accounts hold the ticker). */

@@ -42,6 +42,11 @@ export type NavTreeNodeDto = {
   kind_slug: string | null;
   dashboard_bucket_slug: string | null;
   exclude_from_parent_total: boolean;
+  /**
+   * Group nodes: the group is declared a basket (`portfolio_groups.basket`, set from the panel's
+   * group editor) — a managed set of holdings shown as one position. Absent on leaves.
+   */
+  basket?: boolean;
   /** `nav_bucket` = sidebar grouping only (e.g. inversiones, efectivo); `liability_group` = Pasivos root. */
   group_kind: "bucket" | "reference" | "nav_bucket" | "liability_group";
   /**

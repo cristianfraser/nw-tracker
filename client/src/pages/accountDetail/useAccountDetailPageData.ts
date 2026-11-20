@@ -28,7 +28,7 @@ import type {
   AccountMonthlyPerformanceResponse,
   CheckingCartolaMonthsResponse,
   DashboardAccountRow,
-  EquityGlanceDto,
+  PositionGlanceDto,
   PeriodReturnsPayload,
 } from "../../types";
 import type { DisplayUnit } from "../../queries/keys";
@@ -51,10 +51,10 @@ export type AccountDetailPageData = {
   ccLedger: AccountCcInstallmentsResponse;
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
   /**
-   * The stock page's glance (server `equity_glance`): undefined while the bundle is not in, null
-   * when the account has none (not a stock held in shares today — the standard page).
+   * The unit-position page's glance (server `position_glance`): undefined while the bundle is not in, null
+   * when the account has none (not a unit position — the standard page).
    */
-  equityGlance: EquityGlanceDto | null | undefined;
+  positionGlance: PositionGlanceDto | null | undefined;
   dash: ReturnType<typeof dashPickForNavStrip> | null;
   /** `dash` is the nav-tree zero frame (nav-context not in yet): its cards are in the placeholder phase. */
   dashIsPlaceholder: boolean;
@@ -151,7 +151,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const monthlyPerf = detail?.monthly_performance ?? placeholder.monthly_performance;
   const periodReturns = detail?.period_returns;
   const checkingCartolaMonths = detail?.checkingCartolaMonths ?? null;
-  const equityGlance = bundleReady ? detail?.equity_glance : undefined;
+  const positionGlance = bundleReady ? detail?.position_glance : undefined;
 
   const needsNavChildCards =
     (navSelfEarly?.children?.filter((c) => c.route_path?.trim()).length ?? 0) > 0;
@@ -278,7 +278,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     mortgageLedger,
     ccLedger,
     checkingCartolaMonths,
-    equityGlance,
+    positionGlance,
     dash,
     dashIsPlaceholder,
     monthlyPerf,

@@ -140,6 +140,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ color_rgb }),
     }),
+  updatePortfolioGroupBasket: (slug: string, basket: boolean) =>
+    j<{ basket: boolean }>(`/api/portfolio-groups/${encodeURIComponent(slug)}/basket`, {
+      method: "PATCH",
+      body: JSON.stringify({ basket }),
+    }),
   updateLiabilityGroupColor: (slug: string, color_rgb: string | null) =>
     j<{ color_rgb: string | null; color: string }>(`/api/liability-groups/${slug}/color`, {
       method: "PATCH",

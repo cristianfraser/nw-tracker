@@ -457,6 +457,8 @@
     "colGroupKind": "Tipo",
     "colAccount": "Cuenta",
     "colBucket": "Bucket",
+    "colBasket": "Canasta",
+    "groupBasketToggle": "Declarar este grupo una canasta",
     "colExclude": "No sumar en totales",
     "colActions": "Acciones",
     "colSlug": "Slug",
@@ -1076,7 +1078,7 @@
       "totalLabel": "Todos los pagos",
       "coveredFrom": "Totales desde {{date}} ({{covered}} de {{total}} pagos): los pagos anteriores son de antes de este portafolio."
     },
-    "equityGlance": {
+    "positionGlance": {
       "sessionClosed": "al cierre de {{market}}",
       "sessionOpen": "en vivo · {{market}}",
       "market": {
@@ -1089,6 +1091,7 @@
       "valueToday": "valor hoy",
       "valueOn": "valor al {{date}}",
       "deposited": "depositado",
+      "withdrawn": "retirado neto",
       "price": "precio",
       "dividends": "dividendos",
       "day": "día",
@@ -1097,7 +1100,30 @@
       "dayPl": "P/L del día",
       "sparkline": "Precio de {{ticker}} desde la primera compra",
       "plMonthlyTitle": "P/L mensual",
-      "movementsTitle": "Movimientos"
+      "movementsTitle": "Movimientos",
+      "stateBonus": "aporte estatal",
+      "fundAsOf": "al {{date}}",
+      "fundEstimated": "estimado",
+      "fundSeries": {
+        "afp": "Fondo {{fund}} · {{manager}}",
+        "afc": "Fondo de Cesantía (CIC)",
+        "afpManager": {
+          "uno": "AFP UNO",
+          "planvital": "AFP PlanVital",
+          "modelo": "AFP Modelo"
+        }
+      },
+      "basket": {
+        "title": "Cartera del fondo",
+        "asOf": "declarada al {{date}}",
+        "other": "Otros"
+      },
+      "unitsColumn": {
+        "cuotas": "Cuotas",
+        "BTC": "BTC",
+        "ETH": "ETH",
+        "unidades": "Unidades"
+      }
     },
     "brokerHoldings": {
       "title": "Tenencia por cuenta de origen",
@@ -1160,6 +1186,15 @@
     "ownPortfolios": "Tus portafolios"
   },
   "groupPage": {
+    "basketGlance": {
+      "units": {
+        "shares": "{{units}} acciones",
+        "coin": "{{units}} unidades",
+        "contracts": "{{units}} contratos"
+      },
+      "priceTitle": "Precio al {{date}} · costo medio {{cost}}",
+      "sparkline": "Índice de valor de {{name}}"
+    },
     "notFound": "No se encontró la vista de grupo para esta ruta.",
     "monthlyDetailTitle": "Detalle por mes",
     "yearlyDetailTitle": "Detalle por año",

@@ -1,7 +1,13 @@
 import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
-import type { AccountMonthlyPerformanceRow } from "./accounts.js";
+import type {
+  AccountMonthlyPerformanceRow,
+  PositionGlanceDto,
+  PositionGlancePeriodDto,
+  PositionGlanceSparkRange,
+} from "./accounts.js";
 import type { PeriodReturnsPayload } from "./performance.js";
-import type { FxCoverage, DisplayUnitCode } from "./core.js";
+import type { FxCoverage, DisplayUnitCode, UnitsKind } from "./core.js";
+import type { Money } from "./flows.js";
 import type { UpcomingPaymentsDto } from "./creditCard.js";
 import type {
   DashboardAccountRow,
@@ -100,6 +106,114 @@ export interface DashboardNavContextResponse {
   card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
   value_map?: DashboardResponse["value_map"];
   value_map_color_bounds?: DashboardResponse["value_map_color_bounds"];
+  /**
+   * The basket page's «at a glance» block when the page's node (`root`) is a group declared a
+   * basket (`portfolio_groups.basket`, `NavTreeNodeDto.basket`); null for every other root.
+   * Built with this payload (`basketGlance.ts`), so it shares its cache entry and lifetime.
+   */
+  basket_glance?: BasketGlanceDto | null;
+}
+
+/** One member account of a basket, as the breakdown block lists it. */
+export interface BasketGlanceMemberDto {
+  account_id: number;
+  /** The account's name (the dashboard row's). */
+  name: string;
+  /** The member's own page (`/account/<id>`). */
+  route_path: string;
+  /** Today's value in the display unit (the dashboard row's `current_value`, the card's member figure). */
+  value: Money;
+  /**
+   * Share of the basket, 0..1: value ÷ Σ of the members' positive values (so the shares of the
+   * members with a positive value add up to 1); 0 for a member worth 0 or less.
+   */
+  share: number;
+  /** True while the member holds something today (units, or a cash balance). */
+  held: boolean;
+  /** The units held today (the dashboard row's position); null for a cash member. */
+  units: { amount: number; kind: UnitsKind } | null;
+  /**
+   * A unit-position member that holds units today: its unit price and average cost, the same
+   * figures its own page shows (`positionGlance.ts`: today's price, the FIFO average cost of the
+   * units held, compared at the quote currency's minor digits). Null for a cash member and for a
+   * member that holds no units today.
+   */
+  quote: {
+    /** In the quote currency. */
+    price: Money;
+    price_as_of: string;
+    /** Average cost per unit, in the quote currency. */
+    average_cost: Money;
+    /** The colour of the member's price pill. */
+    price_vs_cost: PositionGlanceDto["price_vs_cost"];
+  } | null;
+}
+
+/** A point of the basket's value index: its level (1 = the day before its first return) and its place on the chart. */
+export interface BasketGlanceSparkPointDto {
+  date: string;
+  /** The index level: the basket's daily flow-adjusted returns compounded (a growth factor, not money). */
+  level: number;
+  /** Position 0..1 on the range's time axis (`from` = 0, `to` = 1), by calendar day. */
+  x: number;
+  /** Height 0..1 between the sparkline's `low` (0) and `high` (1). */
+  y: number;
+}
+
+/**
+ * The basket's value index over one range — the same axis and held-stretch rules as a position's
+ * price sparkline (`PositionGlanceSparklineDto`), with index levels in place of unit prices.
+ */
+export interface BasketGlanceSparklineDto {
+  range: PositionGlanceSparkRange;
+  /** N days ending today (today included); `total` starts at the index's first day. */
+  from: string;
+  to: string;
+  /** At most ~150 points (evenly sampled; first and last kept); the last is today's level. */
+  points: BasketGlanceSparkPointDto[];
+  /** The vertical range: covers the range's points and the cost level when there is one. */
+  low: number;
+  high: number;
+  /**
+   * The cost reference line's height (0..1): the level at which the basket would be worth its
+   * deposited capital — the level on `composition.as_of` × deposited ÷ value on that day (the
+   * holdings of that day moving with the index, no further flows). It reads like a position's
+   * average-cost line: the cost of what is held now, drawn across the history. Null when the
+   * composition is null, its deposited capital is ≤ 0 (all capital withdrawn: no cost level) or
+   * the basket was worth nothing then.
+   */
+  cost_y: number | null;
+  /** The stretches any member held something, as 0..1 positions on the axis (ascending, apart). */
+  held: { start: number; end: number }[];
+}
+
+/**
+ * The basket page's «at a glance» block: a portfolio group declared a basket, shown as one
+ * position. Every figure, share and comparison is decided by the server (`basketGlance.ts`); the
+ * client formats and lays out. Money in the display unit is `{value, currency: unit}`.
+ */
+export interface BasketGlanceDto {
+  /** The group's slug and label (the title line). */
+  slug: string;
+  title: string;
+  unit: DisplayUnitCode;
+  /** Today's value: the group's page card value (`card_metrics_by_slug[slug].value.parent`). */
+  value: Money;
+  /** The members, heaviest first (value descending, then name). */
+  members: BasketGlanceMemberDto[];
+  /**
+   * value = deposited + state bonus + price + dividends, summed over the members on the last day
+   * the basket held anything (today while any member holds units or cash), built by the account
+   * composition's own rule (`compositionFromParts` in `positionGlance.ts`, the segment rules of
+   * `PositionGlanceDto.composition`). A cash member's money counts as deposited capital (its own
+   * result — fees, interest — lands in `price`); money moved between members nets out. Null as
+   * the account's is (a deposited figure that cannot be computed).
+   */
+  composition: PositionGlanceDto["composition"];
+  /** The basket's value index, one block per `PositionGlanceSparkRange`, in that order; empty when it has no daily return yet. */
+  sparklines: BasketGlanceSparklineDto[];
+  /** Día / mes / año: the group card's own metrics (`parent` variant P/L, `parent_pct` %). */
+  periods: { day: PositionGlancePeriodDto; month: PositionGlancePeriodDto; year: PositionGlancePeriodDto };
 }
 
 /** `GET /api/dashboard/page-bundle` — home dashboard in one response. */
@@ -318,6 +432,11 @@ export interface NavTreeNodeDto {
   kind_slug: string | null;
   dashboard_bucket_slug: string | null;
   exclude_from_parent_total?: boolean;
+  /**
+   * Group nodes: the group is declared a basket (`portfolio_groups.basket`, set from the panel's
+   * group editor) — a managed set of holdings shown as one position. Absent on leaves.
+   */
+  basket?: boolean;
   api_group: string | null;
   api_subgroup: string | null;
   color_rgb: string | null;

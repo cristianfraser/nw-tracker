@@ -74,8 +74,8 @@
 /* Portfolio groups: the wide row (id · indented label · slug · kind · count · color) needs ~48rem
    for the deep labels and long slugs; below that, slug and kind/count/color move under the label. */
 .groupRow {
-  grid-template-columns: 2.5rem minmax(0, 1.4fr) minmax(0, 1fr) auto 4rem auto;
-  grid-template-areas: "id label slug kind count actions";
+  grid-template-columns: 2.5rem minmax(0, 1.4fr) minmax(0, 1fr) auto 4rem 4rem auto;
+  grid-template-areas: "id label slug kind count basket actions";
 }
 
 .label {
@@ -92,6 +92,11 @@
   grid-area: kind;
 }
 
+.basket {
+  grid-area: basket;
+  text-align: center;
+}
+
 .count {
   grid-area: count;
   text-align: right;
@@ -105,10 +110,10 @@
 
 @container (max-width: 48rem) {
   .groupRow {
-    grid-template-columns: 2.5rem minmax(0, 1fr) auto auto;
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto auto auto;
     grid-template-areas:
-      "id label label label"
-      "id slug  slug  slug"
-      "id kind  count actions";
+      "id label label label label"
+      "id slug  slug  slug  slug"
+      "id kind  count basket actions";
   }
 }

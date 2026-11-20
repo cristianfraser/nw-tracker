@@ -5,6 +5,7 @@ import { groupTabPieSliceFill } from "../../chartColors";
 import { cn } from "../../cn";
 import i18n from "../../i18n";
 import { PageGridTile } from "../layout/PageGridTile";
+import { groupPerfAbsent } from "./groupPerfAbsent";
 import type { GroupTabColorMaps, PortfolioGroupChartsColorSlug } from "../../usePortfolioGroupCharts";
 import type { GroupPageChartContext } from "../../groupPageChartViews";
 import type { TimeRange } from "../../timeRange";
@@ -17,7 +18,114 @@ type PerfBarSeries = {
 };
 
 /** The valuation chart's frame when the page has no block yet (cold nav: no node to chart). */
-const EMPTY_VALUATION_BLOCK: TimeseriesBlock = { accounts: [], points: [] };
+export const EMPTY_VALUATION_BLOCK: TimeseriesBlock = { accounts: [], points: [] };
+
+/** A group's «Valorización y aportes» chart (the group page's, and the basket page's band). */
+export function GroupValuationChart({
+  block,
+  displayUnit,
+  xAxisGranularity,
+  timeRange,
+  controls,
+  includeAccumulatedLines,
+  chartColorSlug,
+  colorPlanGroupSlug,
+  chartCtx,
+  groupColorRgb,
+  hideLegend = false,
+  loading = false,
+}: {
+  block: TimeseriesBlock;
+  displayUnit: ChartDisplayUnit;
+  xAxisGranularity: "month" | "year" | "day";
+  timeRange?: TimeRange;
+  controls?: ReactNode;
+  includeAccumulatedLines: boolean;
+  chartColorSlug: PortfolioGroupChartsColorSlug;
+  colorPlanGroupSlug: GroupPageChartContext["colorPlanGroupSlug"];
+  chartCtx: GroupPageChartContext | null;
+  groupColorRgb?: string | null;
+  /** No legend under the plot (the basket page, as the position page). */
+  hideLegend?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <LineChartPanel
+      title={i18n.t("charts.valuationAndDeposits")}
+      block={block}
+      displayUnit={displayUnit}
+      xAxisGranularity={xAxisGranularity}
+      timeRange={timeRange}
+      controls={controls}
+      includeAccumulatedLines={includeAccumulatedLines}
+      colorPlan={{
+        kind: "group-tab",
+        groupSlug:
+          chartColorSlug === "liabilities"
+            ? ("liabilities" as typeof colorPlanGroupSlug)
+            : colorPlanGroupSlug,
+        brokerageSubgroup: chartCtx?.brokerageSubgroup,
+        accounts: block.accounts ?? [],
+        groupTotalColorRgb: groupColorRgb,
+      }}
+      thickKey={block.accounts?.some((a) => a.dataKey === "__group_val_total") ? "__group_val_total" : undefined}
+      hideLegend={hideLegend}
+      loading={loading}
+    />
+  );
+}
+
+/** A group's P/L combo: the members' period P/L bars, the group's running YTD and its total Δ. */
+export function GroupPlCombo({
+  title,
+  titleAs,
+  points,
+  displayUnit,
+  xAxisGranularity,
+  timeRange,
+  controls,
+  barSeries,
+  groupTotalStroke,
+  loading = false,
+}: {
+  /** Default «P/L por cuenta / subgrupo, YTD combinado y Δ total». */
+  title?: string;
+  titleAs?: "h2" | "h3";
+  points: Record<string, string | number | null>[];
+  displayUnit: ChartDisplayUnit;
+  xAxisGranularity: "month" | "year" | "day";
+  timeRange?: TimeRange;
+  controls?: ReactNode;
+  barSeries: PerfBarSeries[];
+  groupTotalStroke: string;
+  loading?: boolean;
+}) {
+  return (
+    <MonthlyPerformanceComboChart
+      title={title ?? i18n.t("charts.groupPerfComboTitle")}
+      titleAs={titleAs}
+      points={points}
+      displayUnit={displayUnit}
+      xAxisGranularity={xAxisGranularity}
+      timeRange={timeRange}
+      controls={controls}
+      barSeries={barSeries}
+      areaKey="ytd_group"
+      areaName={i18n.t("charts.ytdGroupSeries")}
+      areaFill="rgba(148, 163, 184, 0.22)"
+      areaStroke="#64748b"
+      lineSeries={[
+        {
+          dataKey: "delta_total",
+          name: i18n.t("charts.deltaTotalSeries"),
+          stroke: groupTotalStroke,
+          showDot: true,
+        },
+      ]}
+      loading={loading}
+    />
+  );
+}
 
 export function PortfolioGroupChartsSection({
   accountsEmpty,
@@ -108,41 +216,28 @@ export function PortfolioGroupChartsSection({
   }
 
   const valuationBlock = valuationBlockForChart ?? EMPTY_VALUATION_BLOCK;
-  // Only the loaded bundle can say the group has no P/L; a placeholder keeps the combos' frames.
-  // A Diario combo with no points is its daily series still loading (or a window without
-  // days), never «no P/L»: it stays mounted with its controls.
-  const perfAbsent =
-    !loading &&
-    (groupPerfBarSeries.length === 0 ||
-      ((perfXAxisGranularity ?? xAxisGranularity) !== "day" && !groupPerfForChart?.points.length));
+  const perfAbsent = groupPerfAbsent({
+    loading,
+    barSeriesCount: groupPerfBarSeries.length,
+    granularity: perfXAxisGranularity ?? xAxisGranularity,
+    pointsCount: groupPerfForChart?.points.length ?? 0,
+  });
   const includeDeposits = chartCtx?.showGroupedToggle ? showValuationDeposits : true;
 
   return (
     <>
       <PageGridTile id="valuation" className={cn("chart-grid", chartSeriesCount <= 1 && "chart-grid--full-line")}>
-        <LineChartPanel
-          title={i18n.t("charts.valuationAndDeposits")}
+        <GroupValuationChart
           block={valuationBlock}
           displayUnit={displayUnit}
           xAxisGranularity={valuationXAxisGranularity ?? xAxisGranularity}
           timeRange={valuationTimeRange}
           controls={valuationControls}
           includeAccumulatedLines={includeDeposits}
-          colorPlan={{
-            kind: "group-tab",
-            groupSlug:
-              chartColorSlug === "liabilities"
-                ? ("liabilities" as typeof colorPlanGroupSlug)
-                : colorPlanGroupSlug,
-            brokerageSubgroup: chartCtx?.brokerageSubgroup,
-            accounts: valuationBlock.accounts ?? [],
-            groupTotalColorRgb: groupColorRgb,
-          }}
-          thickKey={
-            valuationBlock.accounts?.some((a) => a.dataKey === "__group_val_total")
-              ? "__group_val_total"
-              : undefined
-          }
+          chartColorSlug={chartColorSlug}
+          colorPlanGroupSlug={colorPlanGroupSlug}
+          chartCtx={chartCtx}
+          groupColorRgb={groupColorRgb}
           loading={valuationLoading}
         />
         {proportionalReplacement ??
@@ -171,26 +266,14 @@ export function PortfolioGroupChartsSection({
       {!hideGroupPerf && !perfAbsent ? (
         <>
           <PageGridTile id="perf-combo" className="chart-grid chart-grid--full-line">
-            <MonthlyPerformanceComboChart
-              title={i18n.t("charts.groupPerfComboTitle")}
+            <GroupPlCombo
               points={groupPerfForChart?.points ?? []}
               displayUnit={displayUnit}
               xAxisGranularity={perfXAxisGranularity ?? xAxisGranularity}
               timeRange={perfTimeRange}
               controls={perfControls}
               barSeries={groupPerfBarSeries}
-              areaKey="ytd_group"
-              areaName={i18n.t("charts.ytdGroupSeries")}
-              areaFill="rgba(148, 163, 184, 0.22)"
-              areaStroke="#64748b"
-              lineSeries={[
-                {
-                  dataKey: "delta_total",
-                  name: i18n.t("charts.deltaTotalSeries"),
-                  stroke: groupTotalStroke,
-                  showDot: true,
-                },
-              ]}
+              groupTotalStroke={groupTotalStroke}
               loading={perfLoading}
             />
           </PageGridTile>

@@ -110,6 +110,29 @@ export type GroupInfoBaseProps = {
   hideConsolidatedTables?: boolean;
   /** The home dashboard's own layout and tables. */
   dashboard?: GroupInfoDashboardOptions;
+  /** A basket group's page (BasketGroupPage): its own title line and arrangement of the tables. */
+  basket?: GroupInfoBasketLayout;
+};
+
+/** The tables' bodies GroupInfoBase builds (headings included), for a page that places them itself. */
+export type GroupInfoTableParts = {
+  /** Rentabilidad as the compact list (its heading in its picker row); null when the server sends none. */
+  returns: ReactNode | null;
+  /** «Detalle por mes / año / día» with its Período control. */
+  detail: ReactNode;
+  /** The group's movements list, under «Movimientos». */
+  flows: ReactNode;
+  /** The export button. */
+  exportRow: ReactNode | null;
+};
+
+/**
+ * The basket page's shape: its title line in the plain title's place, no card strip, and the
+ * page's tiles placed by `arrange` (the band, the P/L chart, then these tables).
+ */
+export type GroupInfoBasketLayout = {
+  titleRow: ReactNode;
+  arrange: (parts: GroupInfoTableParts) => ReactNode;
 };
 
 export function GroupInfoBase({
@@ -123,6 +146,7 @@ export function GroupInfoBase({
   loading = false,
   hideConsolidatedTables = false,
   dashboard,
+  basket,
 }: GroupInfoBaseProps) {
   const serverPaginatedMonthlyDetail = dashboard?.serverPaginatedMonthlyDetail ?? false;
   const flowsTitleKey = dashboard?.flowsTitleKey ?? "groupPage.flowsTitle";
@@ -280,19 +304,98 @@ export function GroupInfoBase({
   // undefined = still loading (frame, dimmed — also before the nav names the group); null = the
   // server sends none. With a rail (the dashboard) the table sits in the main stack right under
   // the charts, untitled: the net-worth chart above it names what it measures.
-  const returnsTile =
+  const returnsGroupSlug = portfolio?.groupSlug ?? "";
+  const returnsBody =
     tablesEnabled && shownPeriodReturns !== null ? (
-      <PageGridTile id="returns" order={tileOrder?.("returns")} wide={tileWide?.("returns")}>
-        {rail ? null : <h2>{t("periodReturns.title")}</h2>}
+      <>
+        {rail || basket ? null : <h2>{t("periodReturns.title")}</h2>}
         <PeriodReturnsWithBenchmark
           data={shownPeriodReturns ?? null}
           displayUnit={displayUnit}
-          scope={{ portfolioGroup: portfolio?.groupSlug ?? "" }}
-          surfaceId={portfolio?.groupSlug ? `group.${portfolio.groupSlug}.returns` : null}
+          scope={{ portfolioGroup: returnsGroupSlug }}
+          surfaceId={returnsGroupSlug ? `group.${returnsGroupSlug}.returns` : null}
           loading={shownPeriodReturns === undefined || periodReturnsHeld}
+          compact={basket ? { title: t("periodReturns.title") } : undefined}
         />
-      </PageGridTile>
+      </>
     ) : null;
+  const returnsTile = returnsBody ? (
+    <PageGridTile id="returns" order={tileOrder?.("returns")} wide={tileWide?.("returns")}>
+      {returnsBody}
+    </PageGridTile>
+  ) : null;
+
+  const detailBody = (
+    <>
+      <div className="chart-panel-title-row">
+        <h2>
+          {t(
+            isDaily
+              ? "groupPage.dailyDetailTitle"
+              : tablePeriod === "year"
+                ? "groupPage.yearlyDetailTitle"
+                : "groupPage.monthlyDetailTitle"
+          )}
+        </h2>
+        <SurfaceControls period={tablePeriod} onPeriodChange={detallePrefs.setPeriod} />
+      </div>
+      {isDaily ? (
+        queryLoadError(dailySeries) ? (
+          <p className="error">
+            {dailySeries.error instanceof Error
+              ? dailySeries.error.message
+              : t("common.loadFailedTables")}
+          </p>
+        ) : (
+          <DailyPerfDetailTable
+            series={dailySeries.data}
+            displayUnit={displayUnit}
+            loading={!groupHasNoAccounts && queryShowsLoading(dailySeries)}
+          />
+        )
+      ) : monthlyError ? (
+        <p className="error">{monthlyError}</p>
+      ) : monthlyRows.length > 0 || monthlyLoading ? (
+        <MonthlyPerfDetailTable
+          rows={monthlyRows}
+          yearlyRows={yearlyRows}
+          displayUnit={displayUnit}
+          period={monthYearSurfacePeriod(tablePeriod)}
+          isMortgageAccount={tableFlags.isMortgageAccount}
+          showStockInflowsColumn={false}
+          loading={monthlyLoading}
+          serverPagination={
+            serverPaginatedMonthlyDetail && !loading && serverMonthly.data != null
+              ? {
+                  page: serverMonthly.data?.page ?? monthlyPage,
+                  total: serverMonthly.data?.total ?? 0,
+                  onPageChange: setMonthlyPage,
+                  loading: queryShowsLoading(serverMonthly),
+                }
+              : undefined
+          }
+        />
+      ) : (
+        <p className="muted">{t("groupPage.monthlyDetailEmpty")}</p>
+      )}
+    </>
+  );
+  const flowsBody = (
+    <>
+      <h2>{t(basket ? "accountDetail.positionGlance.movementsTitle" : flowsTitleKey)}</h2>
+      {tablesError ? (
+        <p className="error">{tablesError}</p>
+      ) : (
+        <FlowsPanel
+          kind="group"
+          groupSlug={portfolio?.groupSlug ?? ""}
+          showUnitsColumn={false}
+          excludeSpending={flowsExcludeSpending}
+          enabled={flowsEnabled}
+        />
+      )}
+    </>
+  );
 
   // Tiles below the first screen: left out (`cut`), or rendered hidden through the context (no DOM
   // of its own, so the grid placement and the element identity survive the switch to `full`).
@@ -300,6 +403,22 @@ export function GroupInfoBase({
     fold === "cut" ? null : (
       <BelowFoldHiddenContext.Provider value={fold === "hidden"}>{node}</BelowFoldHiddenContext.Provider>
     );
+
+  if (basket) {
+    return (
+      <main>
+        <Loadable loading={loading} className={cn(pageShellStyles.contentShell, "page-grid")}>
+          {basket.titleRow}
+          {basket.arrange({
+            returns: returnsBody,
+            detail: tablesEnabled ? detailBody : null,
+            flows: tablesEnabled ? flowsBody : null,
+            exportRow: exportSlot ?? null,
+          })}
+        </Loadable>
+      </main>
+    );
+  }
 
   return (
     <main className={dashboard?.mainClassName}>
@@ -326,72 +445,11 @@ export function GroupInfoBase({
         {tablesEnabled && fold !== "cut" ? (
           <BelowFoldHiddenContext.Provider value={fold === "hidden"}>
             <PageGridTile id="detail" order={tileOrder?.("detail")} wide={tileWide?.("detail")}>
-            <div className="chart-panel-title-row">
-              <h2>
-                {t(
-                  isDaily
-                    ? "groupPage.dailyDetailTitle"
-                    : tablePeriod === "year"
-                      ? "groupPage.yearlyDetailTitle"
-                      : "groupPage.monthlyDetailTitle"
-                )}
-              </h2>
-              <SurfaceControls period={tablePeriod} onPeriodChange={detallePrefs.setPeriod} />
-            </div>
-            {isDaily ? (
-              queryLoadError(dailySeries) ? (
-                <p className="error">
-                  {dailySeries.error instanceof Error
-                    ? dailySeries.error.message
-                    : t("common.loadFailedTables")}
-                </p>
-              ) : (
-                <DailyPerfDetailTable
-                  series={dailySeries.data}
-                  displayUnit={displayUnit}
-                  loading={!groupHasNoAccounts && queryShowsLoading(dailySeries)}
-                />
-              )
-            ) : monthlyError ? (
-              <p className="error">{monthlyError}</p>
-            ) : monthlyRows.length > 0 || monthlyLoading ? (
-              <MonthlyPerfDetailTable
-                rows={monthlyRows}
-                yearlyRows={yearlyRows}
-                displayUnit={displayUnit}
-                period={monthYearSurfacePeriod(tablePeriod)}
-                isMortgageAccount={tableFlags.isMortgageAccount}
-                showStockInflowsColumn={false}
-                loading={monthlyLoading}
-                serverPagination={
-                  serverPaginatedMonthlyDetail && !loading && serverMonthly.data != null
-                    ? {
-                        page: serverMonthly.data?.page ?? monthlyPage,
-                        total: serverMonthly.data?.total ?? 0,
-                        onPageChange: setMonthlyPage,
-                        loading: queryShowsLoading(serverMonthly),
-                      }
-                    : undefined
-                }
-              />
-            ) : (
-              <p className="muted">{t("groupPage.monthlyDetailEmpty")}</p>
-            )}
+              {detailBody}
             </PageGridTile>
 
             <PageGridTile id="wealth-flows" order={tileOrder?.("wealth-flows")} wide={tileWide?.("wealth-flows")}>
-              <h2>{t(flowsTitleKey)}</h2>
-              {tablesError ? (
-                <p className="error">{tablesError}</p>
-              ) : (
-                <FlowsPanel
-                  kind="group"
-                  groupSlug={portfolio?.groupSlug ?? ""}
-                  showUnitsColumn={false}
-                  excludeSpending={flowsExcludeSpending}
-                  enabled={flowsEnabled}
-                />
-              )}
+              {flowsBody}
             </PageGridTile>
           </BelowFoldHiddenContext.Provider>
         ) : null}

@@ -4,7 +4,13 @@ import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { ExportToolbarButton } from "../components/export/ExportModal";
 import { GroupChartViewToggles } from "../components/group/GroupChartViewToggles";
-import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
+import {
+  EMPTY_VALUATION_BLOCK,
+  GroupPlCombo,
+  GroupValuationChart,
+  PortfolioGroupChartsSection,
+} from "../components/charts/PortfolioGroupChartsSection";
+import { groupPerfAbsent } from "../components/charts/groupPerfAbsent";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
   buildDisplayGroupPerf,
@@ -32,6 +38,7 @@ import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../componen
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useMarkUsagePageNotFound } from "../usagePageTiming";
 import { usePortfolioPageData } from "./usePortfolioPageData";
+import { BasketGroupPage } from "./BasketGroupPage";
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
   const { t } = useTranslation();
@@ -263,23 +270,100 @@ export function GroupInfoPage() {
     );
   }
 
+  const portfolio =
+    navMatchNode && dashForStrip
+      ? {
+        navNode: navMatchNode,
+        groupSlug: portfolioGroup,
+        dash: dashForStrip,
+        unit: stripUnit,
+        // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.
+        placeholderPhase: stripIsPlaceholder || navCtx == null,
+        linkedCardNavChildren,
+      }
+      : null;
+  const exportSlot = <ExportToolbarButton exportPath={`/api/groups/${portfolioGroup}/export.xlsx`} />;
+
+  // A basket group (declared on the group, known from the nav tree before any payload): the
+  // position page's layout, with the same charts and tables. The rail reads the nav context's
+  // `basket_glance` (this page's own nav-context request, keyed on the unit).
+  if (navMatchNode?.basket) {
+    const perfGranularity = perfIsDaily ? "day" : perfPrefs.period === "year" ? "year" : "month";
+    const perfPoints = perfIsDaily ? (dailyGroupPerfPoints ?? []) : (charts.groupPerfForChart?.points ?? []);
+    const plAbsent = groupPerfAbsent({
+      loading: contentLoading,
+      barSeriesCount: charts.groupPerfBarSeries.length,
+      granularity: perfGranularity,
+      pointsCount: perfPoints.length,
+    });
+    return (
+      <BasketGroupPage
+        title={title}
+        groupSlug={portfolioGroup}
+        glance={navCtx?.basket_glance ?? undefined}
+        glanceLoading={valueMapLoading || navCtx?.basket_glance == null}
+        pendingMembers={navMatchNode.member_account_ids?.length ?? 0}
+        loading={contentLoading}
+        portfolio={portfolio}
+        tableAccounts={tableAccountsForPerf}
+        exportSlot={exportSlot}
+        valuationChart={
+          <GroupValuationChart
+            block={(valuationIsDaily ? dailyValuationBlock : charts.valuationBlockForChart) ?? EMPTY_VALUATION_BLOCK}
+            displayUnit={displayUnit}
+            xAxisGranularity={valuationIsDaily ? "day" : valuationPrefs.period === "year" ? "year" : "month"}
+            timeRange={valuationPrefs.range}
+            controls={
+              <SurfaceControls
+                period={valuationPrefs.period}
+                onPeriodChange={valuationPrefs.setPeriod}
+                range={valuationPrefs.range}
+                onRangeChange={valuationPrefs.setRange}
+                compact
+              />
+            }
+            includeAccumulatedLines
+            chartColorSlug={charts.chartColorSlug}
+            colorPlanGroupSlug={charts.colorPlanGroupSlug}
+            chartCtx={chartCtx}
+            groupColorRgb={navMatchNode.color_rgb}
+            hideLegend
+            loading={contentLoading || valuationDailyPending}
+          />
+        }
+        plChart={
+          plAbsent ? null : (
+            <GroupPlCombo
+              title={t("accountDetail.positionGlance.plMonthlyTitle")}
+              titleAs="h2"
+              points={perfPoints}
+              displayUnit={displayUnit}
+              xAxisGranularity={perfGranularity}
+              timeRange={perfPrefs.range}
+              controls={
+                <SurfaceControls
+                  period={perfPrefs.period}
+                  onPeriodChange={perfPrefs.setPeriod}
+                  range={perfPrefs.range}
+                  onRangeChange={perfPrefs.setRange}
+                  compact
+                />
+              }
+              barSeries={charts.groupPerfBarSeries}
+              groupTotalStroke={charts.groupTotalStroke}
+              loading={contentLoading || perfDailyPending}
+            />
+          )
+        }
+      />
+    );
+  }
+
   return (
     <GroupInfoBase
       title={title}
       loading={contentLoading}
-      portfolio={
-        navMatchNode && dashForStrip
-          ? {
-            navNode: navMatchNode,
-            groupSlug: portfolioGroup,
-            dash: dashForStrip,
-            unit: stripUnit,
-            // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.
-            placeholderPhase: stripIsPlaceholder || navCtx == null,
-            linkedCardNavChildren,
-          }
-          : null
-      }
+      portfolio={portfolio}
       coldStripShape={GROUP_COLD_STRIP}
       charts={
         <PortfolioGroupChartsSection
@@ -378,7 +462,7 @@ export function GroupInfoPage() {
           <NavAccountsTree root={accountsTreeRoot} titleI18nKey="groupPage.accountsTreeTitle" />
         ) : null
       }
-      exportSlot={<ExportToolbarButton exportPath={`/api/groups/${portfolioGroup}/export.xlsx`} />}
+      exportSlot={exportSlot}
     />
   );
 }

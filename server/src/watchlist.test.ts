@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import { equityQuoteCurrency, marketQuoteCurrency } from "./equityQuote.js";
 import {
@@ -16,6 +16,7 @@ import {
   syncWatchlistFromApp,
 } from "./watchlist.js";
 import { RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
+import { snapshotTables } from "./test/snapshotTables.js";
 
 vi.mock("./globalSyncSchedulerSignal.js", () => ({
   notifyGlobalSyncScheduler: vi.fn(),
@@ -29,6 +30,10 @@ const TEST_INDEX = "^ZZWLIX";
 const ACCOUNT_TICKER = "ZZWLACC";
 const AFP_SERIES = "afp_uno_cuota_a";
 const SEED_DAY = "2026-01-02";
+
+/** A test below wipes the UNO-A series the test person's AFP account is valued with: put it back. */
+const restoreFundUnits = snapshotTables(["fund_unit_daily"]);
+afterAll(() => restoreFundUnits());
 
 /** UNO-A / RN-proxy builtins are inserted only when their backing data exists (demo lacks it). */
 function seedAfpUnoFundUnit(): void {

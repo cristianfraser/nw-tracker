@@ -53,6 +53,8 @@ type AccountFlowsPanelProps = {
   unitsKind?: "shares" | "coin" | "contracts";
   /** The account holds units: they are a column of the list. */
   unitsAsColumn?: boolean;
+  /** The units column's header («Cuotas» on a fund); default «Unidades». */
+  unitsLabel?: string;
   showPersonalOnlyFilter?: boolean;
 };
 
@@ -125,6 +127,7 @@ function AccountFlowsPanel({
   accountId,
   unitsKind,
   unitsAsColumn,
+  unitsLabel,
   showPersonalOnlyFilter = true,
   enabled = true,
 }: AccountFlowsPanelProps & { enabled?: boolean }) {
@@ -178,6 +181,7 @@ function AccountFlowsPanel({
       showAccountColumn={false}
       unitsKind={unitsKind}
       unitsAsColumn={unitsAsColumn}
+      unitsLabel={unitsLabel}
       emptyMessage={t("accountDetail.flowsEmpty")}
       filteredEmptyMessage={t("accountDetail.flowsFilteredEmpty")}
       filterOptions={data?.filter_options}

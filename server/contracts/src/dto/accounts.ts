@@ -157,19 +157,20 @@ export interface AccountDetailBundleResponse {
   /** Fresh dashboard card row (live MTM + perf deltas); do not use cached nav snapshot on detail. */
   dashboard_account_row: DashboardAccountRow | null;
   /**
-   * The stock page's «at a glance» block (server `equityGlance.ts`): an equity MTM account holding
-   * shares today. Null on every other account, and on a stock account that holds no shares today
-   * (sold out: no cost to draw). The server always sends the key; it is optional only so a
+   * The unit-position page's «at a glance» block (server `positionGlance.ts`): a stock or a coin
+   * (units × a market price) or a fund (cuotas × a published unit value: AFP, AFC, Fintual goals,
+   * US fund accounts) that has ever held units — held today or sold out (measured on its last day
+   * held). Null on every other account. The server always sends the key; it is optional only so a
    * client placeholder bundle may leave it out (read absent as «not loaded»).
    */
-  equity_glance?: EquityGlanceDto | null;
+  position_glance?: PositionGlanceDto | null;
 }
 
 /** «up» above zero, «down» below, «flat» at zero (or no figure). */
-export type EquityGlanceDirection = "up" | "down" | "flat";
+export type PositionGlanceDirection = "up" | "down" | "flat";
 
 /** One period's P/L in the display unit, with its zero-centred bar. */
-export interface EquityGlancePeriodDto {
+export interface PositionGlancePeriodDto {
   /** The period's P/L (the dashboard account row's `delta_day` / `delta_month` / `delta_year`); null when unknown. */
   pl: Money | null;
   /** Its return as a fraction (0.0207 = 2,07 %): the row's chained `pct_day` / `pct_month` / `pct_year`, = Rentabilidad. */
@@ -177,11 +178,11 @@ export interface EquityGlancePeriodDto {
   /** The bar's length from the centre, 0..1: |pl| over the largest |pl| of the three periods (0 when all are 0 or null). */
   share: number;
   /** Which side of the centre the bar grows to (and the colour). */
-  direction: EquityGlanceDirection;
+  direction: PositionGlanceDirection;
 }
 
-/** A point of the price sparkline: its close in the quote currency and its height on the chart. */
-export interface EquityGlanceSparkPointDto {
+/** A point of the price sparkline: its unit price in the quote currency and its height on the chart. */
+export interface PositionGlanceSparkPointDto {
   date: string;
   price: number;
   /** Position 0..1 on the range's time axis (`from` = 0, `to` = 1), by calendar day. */
@@ -191,40 +192,42 @@ export interface EquityGlanceSparkPointDto {
 }
 
 /** The ranges the price sparkline is served for (the client's compact range row). */
-export type EquityGlanceSparkRange = "30d" | "60d" | "90d" | "1y" | "3y" | "5y" | "10y" | "total";
+export type PositionGlanceSparkRange = "30d" | "60d" | "90d" | "1y" | "3y" | "5y" | "10y" | "total";
 
-/** The instrument's price over one range, in the quote currency. */
-export interface EquityGlanceSparklineDto {
-  range: EquityGlanceSparkRange;
+/** The unit price over one range, in the quote currency. */
+export interface PositionGlanceSparklineDto {
+  range: PositionGlanceSparkRange;
   /**
    * The time axis: N days ending today (today included), so the axis spans the whole range even
    * when the price history starts later (its points then begin part way along); `total` starts at
-   * the first stored close.
+   * the first stored price.
    */
   from: string;
   to: string;
   /** At most ~150 points (evenly sampled; first and last kept); the last is the quote's price. */
-  points: EquityGlanceSparkPointDto[];
+  points: PositionGlanceSparkPointDto[];
   /** The vertical range: covers the range's points and the average cost (y 0 = low, 1 = high). */
   low: number;
   high: number;
   /** The average-cost reference line's height (0..1), dotted. */
   cost_y: number;
   /**
-   * The stretches of the axis the account held shares in, as 0..1 positions on it (ascending, apart);
+   * The stretches of the axis the account held units in, as 0..1 positions on it (ascending, apart);
    * the line outside them is drawn dimmed. Empty when none of the range was held.
    */
   held: { start: number; end: number }[];
 }
 
 /** One segment of the composition bar, left to right; positions are fractions of the bar. */
-export interface EquityGlanceSegmentDto {
+export interface PositionGlanceSegmentDto {
   /**
-   * `deposited`: net capital; `price`: the price result (gain); `dividends`: dividends received;
-   * `loss`: a negative price result, drawn OVER the end of the bar (from `value_share` to 1).
+   * `deposited`: net personal capital; `state_bonus`: the APV state bonus received (in the value,
+   * not in the personal deposits); `price`: the price result (gain); `dividends`: dividends
+   * received; overlaying the bar's tail: `loss` (a negative price result, at the far right) and
+   * `withdrawn` (net capital taken out when deposited < 0, just left of the loss).
    */
-  kind: "deposited" | "price" | "dividends" | "loss";
-  /** Its size in the display unit (≥ 0; a loss's absolute value). */
+  kind: "deposited" | "state_bonus" | "price" | "dividends" | "loss" | "withdrawn";
+  /** Its size in the display unit (≥ 0; an overlay's absolute value). */
   amount: number;
   /** Where it starts on the bar (0..1). */
   start: number;
@@ -233,7 +236,7 @@ export interface EquityGlanceSegmentDto {
 }
 
 /** A tick on the price track. */
-export interface EquityGlanceTrackTickDto {
+export interface PositionGlanceTrackTickDto {
   /** In the quote currency. */
   price: Money;
   /** Its position on the track, 0 (track `min`) .. 1 (track `max`). */
@@ -241,78 +244,153 @@ export interface EquityGlanceTrackTickDto {
 }
 
 /**
- * The stock (equity) account page's «at a glance» block — every figure decided by the server, the
- * client formats and lays out. Money in the display unit is `{value, currency: unit}`; quote figures
- * are `{value, currency: quote currency}`. Percentages are fractions.
+ * What a fund's unit value series is, so the client words it (nothing parsed from the key):
+ * a Fintual fund (its name as Fintual states it), an AFP fund (its manager's slug — `uno`,
+ * `planvital`, `modelo` — and its letter), the AFC's Fondo de Cesantía (CIC), or another fund
+ * series (a US 401(k) / HSA fund: only its key).
  */
-export interface EquityGlanceDto {
-  /** The registry's symbol without an exchange suffix (`market_symbols.display_symbol`: VEA, CFIETFIPSA). */
-  ticker: string;
-  /** The registry's instrument name; null when none is on file (the client omits it). */
-  name: string | null;
+export type PositionGlanceFundSeriesDto =
+  | { kind: "fintual"; series_key: string; name: string }
+  | { kind: "afp"; series_key: string; manager: string; fund: string }
+  | { kind: "afc"; series_key: string }
+  | { kind: "other"; series_key: string };
+
+/** The instrument a unit position holds, as its kind states it. */
+export type PositionGlanceInstrumentDto =
+  | {
+      /** A registry instrument with a live quote: a stock or ETF (shares) or a coin (`crypto24`). */
+      kind: "market";
+      /** The registry's symbol without an exchange suffix (`market_symbols.display_symbol`: VEA, CFIETFIPSA, BTC-USD). */
+      ticker: string;
+      /** The registry's instrument name; null when none is on file (the client omits it). */
+      name: string | null;
+      /** The registry's market (`market_symbols.market_kind`); the client words it through i18n (nyse → «NYSE»). */
+      market_kind: "nyse" | "santiago" | "london" | "crypto24";
+      /** `open`: the market's regular session is open (the price is live, «en vivo»); `closed`: the price is a close («al cierre»). */
+      session: "open" | "closed";
+    }
+  | {
+      /** Cuotas of a fund priced by a published unit value (`fund_unit_daily`). */
+      kind: "fund";
+      series: PositionGlanceFundSeriesDto;
+      /**
+       * `official`: today's price is the published valor cuota of `published_on`; `proxy`: it is
+       * the in-session Risky Norris basket estimate (`riskyNorrisProxyMtm.ts`), «estimado».
+       */
+      price_source: "official" | "proxy";
+      /** The day of the latest published valor cuota on file (display frame, on or before today). */
+      published_on: string;
+    };
+
+/** One line of a proxy-priced fund's basket: an ETF the fund states, or its non-ETF rest. */
+export type PositionGlanceBasketRowDto =
+  | {
+      kind: "holding";
+      /** The ticker as the fund states it (SPXS, not its pricing stand-in SPY). */
+      ticker: string;
+      /** The registry's name of the ETF it is priced with; null when none is on file. */
+      name: string | null;
+      /** Share of the whole fund (stated ETF weight × the ETF sleeve's share of assets), 0..1. */
+      share: number;
+      /** That share of today's value, in the display unit. */
+      value: Money;
+    }
+  | {
+      /** Cash, bonds, futures: the part of the fund outside its stated ETFs. */
+      kind: "other";
+      share: number;
+      value: Money;
+    };
+
+/**
+ * The basket that prices a proxied fund in session (`loadProxyBasketBreakdown`: the latest basket
+ * the fund stated), heaviest first, the `other` line last; shares add up to 1.
+ */
+export interface PositionGlanceBasketDto {
+  /** The stated basket's positions date. */
+  positions_date: string;
+  rows: PositionGlanceBasketRowDto[];
+}
+
+/**
+ * The unit-position page's «at a glance» block — every figure decided by the server, the client
+ * formats and lays out. Money in the display unit is `{value, currency: unit}`; unit prices are
+ * `{value, currency: quote currency}`. Percentages are fractions.
+ */
+export interface PositionGlanceDto {
+  /** The title line's name: a market instrument's ticker (= `instrument.ticker`), a fund's account name. */
+  title: string;
+  instrument: PositionGlanceInstrumentDto;
   /** The display unit every non-quote money figure is in. */
   unit: DisplayUnitCode;
   /** Today's value (the position's `value`, = the header / dashboard card's). */
   value: Money;
   quote: {
-    /** Today's price (the one the position is valued at: live in session, the held print, else the close). */
+    /**
+     * Today's unit price (the one the position is valued at: a market instrument's live price in
+     * session, the held print, else the close; a fund's published valor cuota, or the proxy estimate).
+     */
     price: Money;
-    /** The session the price belongs to (ISO date). */
+    /** The day the price belongs to (ISO date): the session, the valor cuota's day, today for the proxy. */
     price_as_of: string;
-    /** `open`: the market's regular session is open (the price is live, «en vivo»); `closed`: the price is a close («al cierre»). */
-    session: "open" | "closed";
-    /** The registry's market (`market_symbols.market_kind`); the client words it through i18n (nyse → «NYSE»). */
-    market_kind: "nyse" | "santiago" | "london" | "crypto24";
   };
-  /** The instrument's daily closes, one block per range of `EquityGlanceSparkRange`, in that order. */
-  sparklines: EquityGlanceSparklineDto[];
+  /** The unit price history, one block per range of `PositionGlanceSparkRange`, in that order. */
+  sparklines: PositionGlanceSparklineDto[];
   /**
-   * Average cost vs today's price vs the highest close since first held, on one horizontal track.
+   * Average cost vs today's price vs the highest price since first held, on one horizontal track.
    * The cost (here, in `price_vs_cost` and the sparklines' `cost_y`) is the average cost of the
-   * shares held on `composition.as_of`'s day rule: the last day the account held shares.
+   * units held on `composition.as_of`'s day rule: the last day the account held units.
    */
   track: {
     /** The track's ends in the quote currency, rounded outwards to a 1/2/5 step. */
     min: Money;
     max: Money;
-    /** Average cost per share of the shares held now (FIFO open lots, `equityTaxLotEvents.ts`). */
-    cost: EquityGlanceTrackTickDto;
+    /**
+     * Average cost per unit of the units held (FIFO open lots: `equityTaxLotEvents.ts` for shares,
+     * `cryptoTaxLotEvents.ts` for coins, `fundTaxLotEvents.ts` for cuotas — the APV state bonus at
+     * 0 cost, so a fund's cost is the personal cost).
+     */
+    cost: PositionGlanceTrackTickDto;
     /** Today's price (= `quote.price`). */
-    price: EquityGlanceTrackTickDto;
-    /** The highest close since first held (today's price counts) and its date. */
-    high: EquityGlanceTrackTickDto & { date: string; /** Today's price vs the high, a fraction ≤ 0. */ pct_from_high: number };
+    price: PositionGlanceTrackTickDto;
+    /** The highest price since first held (today's price counts) and its date. */
+    high: PositionGlanceTrackTickDto & { date: string; /** Today's price vs the high, a fraction ≤ 0. */ pct_from_high: number };
     /** The fill between cost and today's price; `side` none when equal (start = end). */
     fill: { start: number; end: number; side: "gain" | "loss" | "none" };
   };
   /** Today's price vs the average cost, compared at the quote currency's minor digits (the colour of every rendering of the price). */
   price_vs_cost: "above" | "below" | "equal";
   /**
-   * Today's value split as value = deposited + price + dividends, in the display unit. Bar: with a
-   * price gain (or 0) its length is the value and `value_share` is 1; with a price loss its length
-   * is deposited + dividends, the `loss` segment covers its last |price| (overlaying the others)
-   * and `value_share` = value ÷ length marks where today's value ends. Zero segments are left out.
-   * Null when `deposited` is null (a missing rate) or ≤ 0 (all capital withdrawn: no base to draw).
+   * The value split as value = deposited + state bonus + price + dividends, in the display unit
+   * (`compositionFromParts`). Bar: its length is the sum of the positive parts, drawn left to right;
+   * every negative part overlays the tail (`loss`, then `withdrawn` before it), so `value_share` =
+   * value ÷ length marks where the value still held ends (1 with no negative part). Zero parts are
+   * left out. Null only when `deposited` is null (a missing rate).
    */
   composition: {
     /**
-     * The day the split is measured on: the position's last day holding shares — today while it
-     * holds any (`is_today`), else the day before its last sale emptied it.
+     * The day the split is measured on: the position's last day holding units — today while it
+     * holds any (`is_today`), else the day before the movement that emptied it.
      */
     as_of: string;
     is_today: boolean;
     value: Money;
-    /** Net capital (the position's `deposited`, net of payouts). */
+    /** Net personal capital (the account's personal deposits, net of withdrawals and payouts). */
     deposited: Money;
-    /** value − deposited − dividends; signed. */
+    /** The APV state bonus received through `as_of`; null on an account that never received one. */
+    state_bonus: Money | null;
+    /** value − deposited − state bonus − dividends; signed. */
     price: Money;
-    price_direction: EquityGlanceDirection;
-    /** Dividends received (the position's `dividends`). */
+    price_direction: PositionGlanceDirection;
+    /** Dividends received (stocks' `dividend_payout`; 0 for coins and funds). */
     dividends: Money;
-    segments: EquityGlanceSegmentDto[];
+    segments: PositionGlanceSegmentDto[];
     value_share: number;
   } | null;
   /** Día / mes / año (`day` is also the title line's day P/L). */
-  periods: { day: EquityGlancePeriodDto; month: EquityGlancePeriodDto; year: EquityGlancePeriodDto };
+  periods: { day: PositionGlancePeriodDto; month: PositionGlancePeriodDto; year: PositionGlancePeriodDto };
+  /** A proxy-priced fund's basket (the Risky Norris ETFs) while it holds cuotas; null otherwise. */
+  basket: PositionGlanceBasketDto | null;
 }
 
 export interface CheckingCartolaMonthRowDto {

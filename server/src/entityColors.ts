@@ -59,3 +59,10 @@ export function updatePortfolioGroupColorRgb(
   db.prepare(`UPDATE portfolio_groups SET color_rgb = ? WHERE slug = ?`).run(color_rgb, slug);
   return { color_rgb, color: rgbTripletToCss(color_rgb) };
 }
+
+/** Declares or clears a portfolio group as a basket (`portfolio_groups.basket`); null on an unknown slug or a non-boolean. */
+export function updatePortfolioGroupBasket(slug: string, raw: unknown): { basket: boolean } | null {
+  if (typeof raw !== "boolean") return null;
+  const r = db.prepare(`UPDATE portfolio_groups SET basket = ? WHERE slug = ?`).run(raw ? 1 : 0, slug);
+  return r.changes === 0 ? null : { basket: raw };
+}

@@ -12,7 +12,8 @@ export type NavContextScope = {
   accountIds: Set<number>;
 };
 
-function findBySlug(roots: readonly NavTreeNodeDto[], slug: string): NavTreeNodeDto | null {
+/** The first node named `slug` in `roots`, in order (a depth-first walk of each tree). */
+export function findBySlug(roots: readonly NavTreeNodeDto[], slug: string): NavTreeNodeDto | null {
   const walk = (n: NavTreeNodeDto): NavTreeNodeDto | null => {
     if (n.slug === slug) return n;
     for (const c of n.children ?? []) {

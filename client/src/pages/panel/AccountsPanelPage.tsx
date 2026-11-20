@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import { AddAccountForm } from "../../components/panel/AddAccountForm";
 import { AccountExcludeFromTotalsToggle } from "../../components/panel/AccountExcludeFromTotalsToggle";
+import { GroupBasketToggle } from "../../components/panel/GroupBasketToggle";
 import { EditAccountModal } from "../../components/panel/EditAccountModal";
 import { EntityColorPicker } from "../../components/dashboard/EntityColorPicker";
 import { Loadable, loadableClass } from "../../components/ui/Loadable";
@@ -53,6 +54,11 @@ function PortfolioGroupTableRows({
         <span className={cn("mono", styles.slug)}>{node.slug}</span>
         <span className={cn("mono", styles.kind)}>{node.group_kind}</span>
         <span className={cn("mono", styles.count)}>{accountCount}</span>
+        <span className={styles.basket}>
+          {node.portfolio_group_id != null ? (
+            <GroupBasketToggle slug={node.slug} basket={node.basket === true} />
+          ) : null}
+        </span>
         <span className={styles.actions}>
           <EntityColorPicker
             colorRgb={node.color_rgb}
@@ -190,6 +196,7 @@ export function AccountsPanelPage() {
             <span className={styles.slug}>{t("panelAccounts.colSlug")}</span>
             <span className={styles.kind}>{t("panelAccounts.colGroupKind")}</span>
             <span className={styles.count}>{t("panelAccounts.colAccounts")}</span>
+            <span className={styles.basket}>{t("panelAccounts.colBasket")}</span>
             <span className={styles.actions}>{t("panelAccounts.colActions")}</span>
           </div>
           {!netWorthNode ? (

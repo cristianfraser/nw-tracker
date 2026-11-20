@@ -19,10 +19,11 @@ const PREFIX = "nw:cache:";
  * Shapes the client builds itself from server payloads. v2: the group shell's `first_month`; v3: its
  * rows carry one value per field in the shell's unit (no `_clp` / `_usd` pairs). `cc_glance_shape`:
  * which rows a card's «at a glance» block has (CreditCardGlance.tsx), no amounts.
- * `equity_glance_shape`: that a stock account's page is the stock page, and which optional rows
- * its glance has (EquityGlance.tsx), no amounts.
+ * `position_glance_shape`: that an account's page is the unit-position page (a stock, coin or fund),
+ * and which optional rows its glance has (PositionGlance.tsx), no amounts; it replaced the stock
+ * page's `equity_glance_shape` (swept at boot as an unknown name).
  */
-const CLIENT_SCHEMA_VERSIONS = { group_shell: 3, cc_glance_shape: 1, equity_glance_shape: 1 } as const;
+const CLIENT_SCHEMA_VERSIONS = { group_shell: 3, cc_glance_shape: 1, position_glance_shape: 1 } as const;
 
 export const PERSISTED_PAYLOAD_VERSIONS = { ...DTO_SCHEMA_VERSIONS, ...CLIENT_SCHEMA_VERSIONS };
 

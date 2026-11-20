@@ -32,6 +32,7 @@ type GroupRow = {
   kind_slug: string | null;
   dashboard_bucket_slug: string | null;
   exclude_from_parent_total: number;
+  basket: number;
 };
 
 type ItemRow = {
@@ -48,7 +49,7 @@ function loadGroups(): GroupRow[] {
     .prepare(
       `SELECT id, parent_id, slug, label, sort_order, color_rgb, route_path, active_prefix,
               nav_end, show_leaf_hyphen, label_i18n_key, api_group, api_subgroup, asset_group_slug, sidebar_section,
-              group_kind, kind_slug, dashboard_bucket_slug, exclude_from_parent_total
+              group_kind, kind_slug, dashboard_bucket_slug, exclude_from_parent_total, basket
        FROM portfolio_groups
        ORDER BY sort_order, id`
     )
@@ -223,6 +224,7 @@ function buildNode(
     kind_slug: group.kind_slug,
     dashboard_bucket_slug: group.dashboard_bucket_slug,
     exclude_from_parent_total: group.exclude_from_parent_total === 1,
+    basket: group.basket === 1,
     color_rgb: resolved,
     color: rgbTripletToCss(resolved),
     group_kind: groupKind,

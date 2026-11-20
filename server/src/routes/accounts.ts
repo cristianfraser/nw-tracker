@@ -11,7 +11,7 @@ import {
   type PanelAccountUpdateBody,
 } from "../createPanelAccount.js";
 import { prettyRgbTripletForAccountId } from "../chartColorRgb.js";
-import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
+import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupBasket, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
 import { accountCashCurrency } from "../cashCurrency.js";
 import { accountProfile } from "../accountProfile.js";
@@ -225,6 +225,18 @@ app.patch("/api/portfolio-groups/:slug/color", (req, res) => {
       return;
     }
     res.status(400).json({ error: "invalid color_rgb" });
+    return;
+  }
+  res.json(updated);
+});
+
+app.patch("/api/portfolio-groups/:slug/basket", (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  const body = req.body as { basket?: unknown };
+  const updated = updatePortfolioGroupBasket(slug, body.basket);
+  if (!updated) {
+    const exists = db.prepare(`SELECT 1 AS o FROM portfolio_groups WHERE slug = ?`).get(slug) as { o: number } | undefined;
+    res.status(exists ? 400 : 404).json({ error: exists ? "basket must be boolean" : "portfolio group not found" });
     return;
   }
   res.json(updated);

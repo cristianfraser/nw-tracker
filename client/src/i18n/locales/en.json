@@ -457,6 +457,8 @@
     "colGroupKind": "Kind",
     "colAccount": "Account",
     "colBucket": "Bucket",
+    "colBasket": "Basket",
+    "groupBasketToggle": "Declare this group a basket",
     "colExclude": "Exclude from totals",
     "colActions": "Actions",
     "colSlug": "Slug",
@@ -1076,7 +1078,7 @@
       "totalLabel": "All payments",
       "coveredFrom": "Totals from {{date}} ({{covered}} of {{total}} payments): earlier payments predate this portfolio."
     },
-    "equityGlance": {
+    "positionGlance": {
       "sessionClosed": "at the {{market}} close",
       "sessionOpen": "live · {{market}}",
       "market": {
@@ -1089,6 +1091,7 @@
       "valueToday": "value today",
       "valueOn": "value on {{date}}",
       "deposited": "deposited",
+      "withdrawn": "net withdrawn",
       "price": "price",
       "dividends": "dividends",
       "day": "day",
@@ -1097,7 +1100,30 @@
       "dayPl": "Day P/L",
       "sparkline": "{{ticker}} price since first held",
       "plMonthlyTitle": "Monthly P/L",
-      "movementsTitle": "Movements"
+      "movementsTitle": "Movements",
+      "stateBonus": "state bonus",
+      "fundAsOf": "as of {{date}}",
+      "fundEstimated": "estimate",
+      "fundSeries": {
+        "afp": "Fund {{fund}} · {{manager}}",
+        "afc": "Unemployment Fund (CIC)",
+        "afpManager": {
+          "uno": "AFP UNO",
+          "planvital": "AFP PlanVital",
+          "modelo": "AFP Modelo"
+        }
+      },
+      "basket": {
+        "title": "Fund holdings",
+        "asOf": "stated {{date}}",
+        "other": "Other"
+      },
+      "unitsColumn": {
+        "cuotas": "Fund units",
+        "BTC": "BTC",
+        "ETH": "ETH",
+        "unidades": "Units"
+      }
     },
     "brokerHoldings": {
       "title": "Holdings by cash account",
@@ -1160,6 +1186,15 @@
     "ownPortfolios": "Your portfolios"
   },
   "groupPage": {
+    "basketGlance": {
+      "units": {
+        "shares": "{{units}} shares",
+        "coin": "{{units}} units",
+        "contracts": "{{units}} contracts"
+      },
+      "priceTitle": "Price on {{date}} · average cost {{cost}}",
+      "sparkline": "{{name}} value index"
+    },
     "notFound": "No group view found for this route.",
     "monthlyDetailTitle": "Monthly detail",
     "yearlyDetailTitle": "Yearly detail",

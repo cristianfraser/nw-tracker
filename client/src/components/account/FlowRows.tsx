@@ -65,6 +65,7 @@ export function FlowRows({
   emptyMessage,
   bothAccounts,
   unitsColumn = false,
+  unitsLabel,
   placeholderRows = 0,
 }: {
   rows: readonly FlowRowItem[];
@@ -75,6 +76,8 @@ export function FlowRows({
    * the amount: an account's list whose account holds units (the page knows its `unitsKind`).
    */
   unitsColumn?: boolean;
+  /** The units column's header («Cuotas» on a fund); default «Unidades». */
+  unitsLabel?: string;
   /** Header of the accounts column («Cuentas» with the row's account shown, «Cuenta contraparte» without). */
   accountsLabel: string;
   /** Shown when there are no rows; null while loading. */
@@ -94,7 +97,7 @@ export function FlowRows({
           <span>{t("accountDetail.flowTypeColumn")}</span>
           <span>{accountsLabel}</span>
           <span className={styles.headerAmount}>{t("accountDetail.flowAmountColumn")}</span>
-          {unitsColumn ? <span className={styles.headerAmount}>{t("accountDetail.flowUnitsColumn")}</span> : null}
+          {unitsColumn ? <span className={styles.headerAmount}>{unitsLabel ?? t("accountDetail.flowUnitsColumn")}</span> : null}
           <span>{t("accountDetail.flowNoteColumn")}</span>
         </div>
         {rows.length === 0 && emptyMessage ? (
@@ -134,13 +137,13 @@ export function FlowRows({
             <span className={cn("mono", styles.amount)}>
               {row.amount}
               {row.units && !unitsColumn ? (
-                <sup className={styles.units} title={t("accountDetail.flowUnitsColumn")}>
+                <sup className={styles.units} title={unitsLabel ?? t("accountDetail.flowUnitsColumn")}>
                   {row.units}
                 </sup>
               ) : null}
             </span>
             {unitsColumn ? (
-              <span className={cn("mono", styles.unitsCell)} title={t("accountDetail.flowUnitsColumn")}>
+              <span className={cn("mono", styles.unitsCell)} title={unitsLabel ?? t("accountDetail.flowUnitsColumn")}>
                 {row.units}
               </span>
             ) : null}

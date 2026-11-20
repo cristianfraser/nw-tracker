@@ -8,7 +8,8 @@ import {
   priceTone,
   sparklinePoints,
   centredLabelLeft,
-} from "./equityGlanceLayout";
+  fundSeriesLabel,
+} from "./positionGlanceLayout";
 
 beforeEach(() => setDecimalSeparatorForFormatting("comma"));
 afterEach(() => setDecimalSeparatorForFormatting("comma"));
@@ -55,5 +56,24 @@ describe("glance layout from the server's shares", () => {
   it("places the sparkline by the server's day and price positions, height 1 at the top", () => {
     expect(sparklinePoints([{ x: 0.4, y: 0 }, { x: 0.7, y: 0.5 }, { x: 1, y: 1 }], 100, 50)).toBe("40.0,50.0 70.0,25.0 100.0,0.0");
     expect(sparklinePoints([], 100, 50)).toBe("");
+  });
+});
+
+describe("a fund series on the sub-line", () => {
+  const t = (key: string, o?: Record<string, string>) => (o ? `${key}|${JSON.stringify(o)}` : key);
+
+  it("words an AFP fund by its manager's name and letter", () => {
+    expect(fundSeriesLabel({ kind: "afp", series_key: "afp_uno_cuota_a", manager: "uno", fund: "A" }, t)).toBe(
+      'accountDetail.positionGlance.fundSeries.afp|{"fund":"A","manager":"accountDetail.positionGlance.fundSeries.afpManager.uno"}'
+    );
+  });
+
+  it("throws on an AFP manager it has no name for", () => {
+    expect(() => fundSeriesLabel({ kind: "afp", series_key: "afp_x_cuota_a", manager: "x", fund: "A" }, t)).toThrow(/x/);
+  });
+
+  it("keeps a Fintual fund's own name and an unknown series' key", () => {
+    expect(fundSeriesLabel({ kind: "fintual", series_key: "k", name: "Risky Norris" }, t)).toBe("Risky Norris");
+    expect(fundSeriesLabel({ kind: "other", series_key: "hsa_fund" }, t)).toBe("hsa_fund");
   });
 });

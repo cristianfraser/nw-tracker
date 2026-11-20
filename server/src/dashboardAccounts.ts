@@ -48,7 +48,9 @@ import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import { buildNavValueMapPayload } from "./navValueMap.js";
 import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
-import { navContextScope, valueMapSubtree } from "./navContextScope.js";
+import { findBySlug, navContextScope, valueMapSubtree } from "./navContextScope.js";
+import { buildBasketGlance } from "./basketGlance.js";
+import { groupDailyPctPoints } from "./dailyPctSeries.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
@@ -615,6 +617,21 @@ async function buildDashboardNavContextInner(unit: TsUnit, rootSlug: string) {
   const liabilitiesRoot = getLiabilitiesNavRootNode();
   if (!liabilitiesRoot) throw new Error("nav-context: liabilities nav tree missing");
   const scope = navContextScope(rootSlug, [liabilitiesRoot, navRoot], liabilitiesRoot);
+  // A basket group's page draws its glance from this payload's own card and rows (`basketGlance.ts`).
+  const node = findBySlug([liabilitiesRoot, navRoot], rootSlug);
+  const card = nav.card_metrics_by_slug[rootSlug];
+  const basket_glance =
+    node?.basket === true && node.account_id == null
+      ? buildBasketGlance({
+          slug: rootSlug,
+          title: node.label,
+          unit,
+          memberAccountIds: node.member_account_ids ?? [],
+          rows: nav.accounts,
+          card: requireBasketCard(card, rootSlug),
+          dailyPct: groupDailyPctPoints(rootSlug, unit),
+        })
+      : null;
   return {
     schema_version: DTO_SCHEMA_VERSIONS.nav_strip,
     unit,
@@ -627,5 +644,11 @@ async function buildDashboardNavContextInner(unit: TsUnit, rootSlug: string) {
     ),
     value_map: valueMapSubtree(nav.value_map, rootSlug),
     value_map_color_bounds: nav.value_map_color_bounds,
+    basket_glance,
   };
+}
+
+function requireBasketCard<T>(card: T | undefined, slug: string): T {
+  if (card == null) throw new Error(`nav-context: basket ${slug} has no card metrics`);
+  return card;
 }

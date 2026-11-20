@@ -246,6 +246,19 @@ export function transferLegUnitsThroughDate(
   return total;
 }
 
+/**
+ * One movement's units for `accountId` as the cuota and coin ledgers count them
+ * (`afpCuotasCumulativeThroughDate`, `fintualGoalUnitsFromMovementsThroughDate`,
+ * `cryptoCoinCumulativeThroughDate`): a single-leg row on the account adds its `units_delta` as
+ * stored, a transfer leg what {@link transferLegUnitsThroughDate} counts for it (equity legs 0).
+ */
+export function ledgerUnitsDeltaForAccountMovement(row: MovementTransferRow, accountId: number): number {
+  if (isMovementTransferRow(row)) return transferLegUnitsDelta(row, accountId);
+  if (row.account_id !== accountId || row.units_delta == null) return 0;
+  if (!Number.isFinite(row.units_delta)) throw new Error(`movement ${row.id ?? "?"} carries non-finite units (${row.units_delta})`);
+  return row.units_delta;
+}
+
 function ledgerDeltaKey(r: MovementTransferRow) {
   return { id: r.id!, occurred_on: r.occurred_on, account_id: r.account_id, from_account_id: r.from_account_id };
 }

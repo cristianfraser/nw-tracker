@@ -1414,6 +1414,14 @@
       "en": "Bucket",
       "es": "Bucket"
     },
+    "colBasket": {
+      "en": "Basket",
+      "es": "Canasta"
+    },
+    "groupBasketToggle": {
+      "en": "Declare this group a basket",
+      "es": "Declarar este grupo una canasta"
+    },
     "colExclude": {
       "en": "Exclude from totals",
       "es": "No sumar en totales"
@@ -3608,7 +3616,7 @@
         "es": "Totales desde {{date}} ({{covered}} de {{total}} pagos): los pagos anteriores son de antes de este portafolio."
       }
     },
-    "equityGlance": {
+    "positionGlance": {
       "sessionClosed": { "en": "at the {{market}} close", "es": "al cierre de {{market}}" },
       "sessionOpen": { "en": "live · {{market}}", "es": "en vivo · {{market}}" },
       "market": {
@@ -3621,6 +3629,7 @@
       "valueToday": { "en": "value today", "es": "valor hoy" },
       "valueOn": { "en": "value on {{date}}", "es": "valor al {{date}}" },
       "deposited": { "en": "deposited", "es": "depositado" },
+      "withdrawn": { "en": "net withdrawn", "es": "retirado neto" },
       "price": { "en": "price", "es": "precio" },
       "dividends": { "en": "dividends", "es": "dividendos" },
       "day": { "en": "day", "es": "día" },
@@ -3629,7 +3638,30 @@
       "dayPl": { "en": "Day P/L", "es": "P/L del día" },
       "sparkline": { "en": "{{ticker}} price since first held", "es": "Precio de {{ticker}} desde la primera compra" },
       "plMonthlyTitle": { "en": "Monthly P/L", "es": "P/L mensual" },
-      "movementsTitle": { "en": "Movements", "es": "Movimientos" }
+      "movementsTitle": { "en": "Movements", "es": "Movimientos" },
+      "stateBonus": { "en": "state bonus", "es": "aporte estatal" },
+      "fundAsOf": { "en": "as of {{date}}", "es": "al {{date}}" },
+      "fundEstimated": { "en": "estimate", "es": "estimado" },
+      "fundSeries": {
+        "afp": { "en": "Fund {{fund}} · {{manager}}", "es": "Fondo {{fund}} · {{manager}}" },
+        "afc": { "en": "Unemployment Fund (CIC)", "es": "Fondo de Cesantía (CIC)" },
+        "afpManager": {
+          "uno": { "en": "AFP UNO", "es": "AFP UNO" },
+          "planvital": { "en": "AFP PlanVital", "es": "AFP PlanVital" },
+          "modelo": { "en": "AFP Modelo", "es": "AFP Modelo" }
+        }
+      },
+      "basket": {
+        "title": { "en": "Fund holdings", "es": "Cartera del fondo" },
+        "asOf": { "en": "stated {{date}}", "es": "declarada al {{date}}" },
+        "other": { "en": "Other", "es": "Otros" }
+      },
+      "unitsColumn": {
+        "cuotas": { "en": "Fund units", "es": "Cuotas" },
+        "BTC": { "en": "BTC", "es": "BTC" },
+        "ETH": { "en": "ETH", "es": "ETH" },
+        "unidades": { "en": "Units", "es": "Unidades" }
+      }
     },
     "brokerHoldings": {
       "title": {
@@ -3797,6 +3829,30 @@
     }
   },
   "groupPage": {
+    "basketGlance": {
+      "units": {
+        "shares": {
+          "en": "{{units}} shares",
+          "es": "{{units}} acciones"
+        },
+        "coin": {
+          "en": "{{units}} units",
+          "es": "{{units}} unidades"
+        },
+        "contracts": {
+          "en": "{{units}} contracts",
+          "es": "{{units}} contratos"
+        }
+      },
+      "priceTitle": {
+        "en": "Price on {{date}} · average cost {{cost}}",
+        "es": "Precio al {{date}} · costo medio {{cost}}"
+      },
+      "sparkline": {
+        "en": "{{name}} value index",
+        "es": "Índice de valor de {{name}}"
+      }
+    },
     "notFound": {
       "en": "No group view found for this route.",
       "es": "No se encontró la vista de grupo para esta ruta."

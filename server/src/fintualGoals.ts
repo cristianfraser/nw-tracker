@@ -16,6 +16,8 @@ export type FintualGoal = Readonly<{
   seriesKey: string;
   /** Fintual's public `managed_fund_serie` id (official prices since inception). */
   publicSerie: number;
+  /** The fund the goal holds, as Fintual names it (the fund page's sub-line). */
+  fundName: string;
   /** The Risky Norris basket proxies the fund intraday (`riskyNorrisProxyMtm.ts`). */
   rnProxy: boolean;
   /** An APV régimen serie (the APV/RN ratio's numerator). */
@@ -31,6 +33,7 @@ export const FINTUAL_GOALS: readonly FintualGoal[] = [
     apvLeafSlug: null,
     seriesKey: "fintual_cert_reserva2",
     publicSerie: 1, // Very Conservative Streep, serie A.
+    fundName: "Very Conservative Streep",
     rnProxy: false,
     apv: false,
   },
@@ -42,6 +45,7 @@ export const FINTUAL_GOALS: readonly FintualGoal[] = [
     apvLeafSlug: null,
     seriesKey: "fintual_cert_risky_norris",
     publicSerie: 6, // Risky Norris, serie A.
+    fundName: "Risky Norris",
     rnProxy: true,
     apv: false,
   },
@@ -53,6 +57,7 @@ export const FINTUAL_GOALS: readonly FintualGoal[] = [
     apvLeafSlug: "retirement_apv_a__apv",
     seriesKey: "fintual_cert_apv_a",
     publicSerie: 7, // Risky Norris, serie APV — the fund both APV goals hold.
+    fundName: "Risky Norris",
     rnProxy: true,
     apv: true,
   },
@@ -64,6 +69,7 @@ export const FINTUAL_GOALS: readonly FintualGoal[] = [
     apvLeafSlug: "retirement_apv_b__apv",
     seriesKey: "fintual_cert_apv_b",
     publicSerie: 7,
+    fundName: "Risky Norris",
     rnProxy: true,
     apv: true,
   },
@@ -105,3 +111,8 @@ export const RISKY_NORRIS_APV_SERIES_KEYS: ReadonlySet<string> = new Set([
 export const FINTUAL_PUBLIC_SERIE_BY_SERIES_KEY: Readonly<Record<string, number>> = Object.fromEntries(
   FINTUAL_GOALS.map((g) => [g.seriesKey, g.publicSerie])
 );
+
+/** The goal whose fund account prices with `seriesKey`, or null for a series no goal holds. */
+export function fintualGoalBySeriesKey(seriesKey: string): FintualGoal | null {
+  return FINTUAL_GOALS.find((g) => g.seriesKey === seriesKey) ?? null;
+}
