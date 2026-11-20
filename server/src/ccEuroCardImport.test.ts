@@ -31,8 +31,18 @@ const TODAY = chileCalendarTodayYmd();
 const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
-const CLOSE_1 = addDays(TODAY, -50);
+/** The same day one calendar month earlier (clamped to that month's last day). */
+const monthBefore = (ymd: string) => {
+  const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
+  const lastDay = new Date(Date.UTC(y, m - 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 2, Math.min(d, lastDay))).toISOString().slice(0, 10);
+};
+
+// A statement's facturación is its close's calendar month, so the two closes sit one calendar month
+// apart: a fixed day count (50 and 20 days back) puts both in one month on some days of the year
+// (today − 50 = the 1st of a 31-day month).
 const CLOSE_2 = addDays(TODAY, -20);
+const CLOSE_1 = monthBefore(CLOSE_2);
 const PAYMENT_DAY = addDays(CLOSE_1, 10);
 
 function line(day: string, merchant: string, amount: number, kind: CardCanonicalLine["kind"], id: string): CardCanonicalLine {
@@ -65,6 +75,7 @@ function line(day: string, merchant: string, amount: number, kind: CardCanonical
 
 function statement(opts: {
   close: string;
+  from: string;
   saldoAnterior: number;
   paid: number;
   facturado: number;
@@ -74,7 +85,7 @@ function statement(opts: {
     document: `vitest-euronova-${opts.close}.pdf`,
     card_group: "EURONOVA",
     close: ddmm(opts.close),
-    period_from: ddmm(addDays(opts.close, -29)),
+    period_from: ddmm(opts.from),
     period_to: ddmm(opts.close),
     pay_by: ddmm(addDays(opts.close, 25)),
     card_last4: LAST4,
@@ -115,6 +126,7 @@ beforeAll(() => {
     [
       statement({
         close: CLOSE_1,
+        from: addDays(CLOSE_1, -29),
         saldoAnterior: 0,
         paid: 0,
         facturado: 300,
@@ -125,6 +137,7 @@ beforeAll(() => {
       }),
       statement({
         close: CLOSE_2,
+        from: addDays(CLOSE_1, 1),
         saldoAnterior: 300,
         paid: 300,
         facturado: 100,
@@ -164,7 +177,7 @@ describe("a euro card imported through the card statement import", () => {
 
   it("refuses a currency the card's issuer does not bill in", () => {
     // A dry run: nothing is written either way.
-    const base = statement({ close: CLOSE_2, saldoAnterior: 0, paid: 0, facturado: 1, lines: [line(CLOSE_2, "X", 1, "card_purchase", "x")] });
+    const base = statement({ close: CLOSE_2, from: addDays(CLOSE_1, 1), saldoAnterior: 0, paid: 0, facturado: 1, lines: [line(CLOSE_2, "X", 1, "card_purchase", "x")] });
     const uf = { ...base, lines: [{ ...base.lines[0]!, currency: "uf" }] };
     expect(() => applyCanonicalCardStatements([uf], { dryRun: true, full: true })).toThrow(
       /UF is not a currency the card's issuer \(euronova\) bills in/
@@ -264,9 +277,15 @@ describe("the open cycle of a euro card", () => {
     expect(foreign.get("eur")!.amount).toBeCloseTo(30, 2);
     expect(foreign.get("eur")!.clp).toBeGreaterThan(0);
     const open = billingDetailCacheForAccount(cardId).facturaciones.find((r) => r.is_open_month)!;
-    expect(facturadoForeignIn(open, "eur")!.amount).toBeCloseTo(30, 2);
+    const eur = facturadoForeignIn(open, "eur")!;
+    expect(eur.amount).toBeCloseTo(30, 2);
     expect(open.facturado).toBe(0);
-    expect(open.facturado_total).toBe(foreign.get("eur")!.clp);
+    // The served row shows its euros at the rate it bills them at — today's mid while unpaid —, not
+    // the debt frame (`foreign.clp`, the stored mid on pay-by − 1) the split above is in.
+    expect(eur.rate_source).toBe("live");
+    expect(eur.rate).toBe(eurRate(TODAY, "mid"));
+    expect(eur.billing_amount).toBe(Math.round(30 * eurRate(TODAY, "mid")));
+    expect(open.facturado_total).toBe(open.facturado + eur.billing_amount!);
   });
 
   it("counts the open cycle's credit in euros", () => {

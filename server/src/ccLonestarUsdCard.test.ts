@@ -37,8 +37,18 @@ function ddmmyyyy(iso: string): string {
 }
 const usd = (n: number) => n.toFixed(2).replace(".", ",");
 
-const CLOSE_1 = addDaysIso(TODAY, -50);
+/** The same day one calendar month earlier (clamped to that month's last day). */
+function monthBefore(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
+  const lastDay = new Date(Date.UTC(y, m - 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 2, Math.min(d, lastDay))).toISOString().slice(0, 10);
+}
+
+// A statement's facturación is its close's calendar month, so the two closes sit one calendar month
+// apart: a fixed day count (50 and 20 days back) puts both in one month on some days of the year
+// (today − 50 = the 1st of a 31-day month).
 const CLOSE_2 = addDaysIso(TODAY, -20);
+const CLOSE_1 = monthBefore(CLOSE_2);
 const PAY_BY_1 = addDaysIso(CLOSE_1, 25);
 const PAY_BY_2 = addDaysIso(CLOSE_2, 25);
 const PAYMENT_DATE = addDaysIso(TODAY, -30);
@@ -113,7 +123,7 @@ beforeAll(() => {
     }),
     ...statementRecords({
       close: CLOSE_2,
-      from: addDaysIso(CLOSE_2, -29),
+      from: addDaysIso(CLOSE_1, 1),
       payBy: PAY_BY_2,
       nextClose: addDaysIso(CLOSE_2, 30),
       saldoAnterior: 300,
