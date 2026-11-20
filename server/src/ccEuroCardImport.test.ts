@@ -285,7 +285,7 @@ describe("the open cycle of a euro card", () => {
     expect(eur.rate_source).toBe("live");
     expect(eur.rate).toBe(eurRate(TODAY, "mid"));
     expect(eur.billing_amount).toBe(Math.round(30 * eurRate(TODAY, "mid")));
-    expect(open.facturado_total).toBe(open.facturado + eur.billing_amount!);
+    expect(open.facturado_total).toBe(open.facturado! + eur.billing_amount!);
   });
 
   it("counts the open cycle's credit in euros", () => {
