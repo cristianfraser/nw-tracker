@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getCcExpenseCategoryBySlug } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
 import { fixtureMovement } from "./test/flowFixtures.js";
@@ -12,7 +12,6 @@ import {
 
 // A movement id no fixture uses; the pieces sit on its flow.
 const LINE_ID = 987_654_321;
-const dropMovement = fixtureMovement(LINE_ID, -150_000);
 
 function withdrawal(): FlowCcExpenseLineRowDraft {
   return {
@@ -53,6 +52,12 @@ function clearPieces(): void {
 }
 
 describe("line pieces", () => {
+  // Written in a hook, not at collection: the per-file leak check (vitest.setup.ts) takes its
+  // snapshot after collection, so a top-level fixture would count as found and its delete as a leak.
+  let dropMovement: () => void = () => undefined;
+  beforeAll(() => {
+    dropMovement = fixtureMovement(LINE_ID, -150_000);
+  });
   afterAll(() => {
     clearPieces();
     dropMovement();
