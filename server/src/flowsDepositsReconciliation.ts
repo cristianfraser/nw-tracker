@@ -22,7 +22,7 @@ import {
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { convertFlowOrNull } from "./rates.js";
 
-import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
+import { getCheckingCartolaImportedMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { flowLegsInUnit } from "./flowLegs.js";
 import { loadF22RefundMovements } from "./f22Settlements.js";
@@ -196,9 +196,7 @@ function loadCuentaCorrienteMonthsWithData(): Set<string> {
   const months = new Set<string>();
   for (const accountId of listMovementBalanceCashAccountIds()) {
     if (accountKindSlugForAccountId(accountId) !== "cuenta_corriente") continue;
-    const resp = getCheckingCartolaMonths(accountId);
-    if (!resp) continue;
-    for (const m of resp.imported_months) months.add(m);
+    for (const m of getCheckingCartolaImportedMonths(accountId) ?? []) months.add(m);
   }
   return months;
 }

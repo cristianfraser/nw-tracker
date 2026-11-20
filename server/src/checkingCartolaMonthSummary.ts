@@ -42,7 +42,19 @@ export type CheckingCartolaMonthsResponse = {
   cartola_derived_anchor: CartolaDerivedAnchorDto | null;
 };
 
-export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMonthsResponse | null {
+type CartolaImportRow = {
+  source_file: string;
+  movement_count: number;
+  saldo_final_clp: number | null;
+  saldo_inicial_clp: number | null;
+  imported_at: string;
+};
+
+/**
+ * The account's cartola imports by period month (DESDE-boundary phantom months skipped), or null
+ * when the account is not a movement-balance cash account.
+ */
+function loadCartolaImportsByMonth(accountId: number): Map<string, CartolaImportRow> | null {
   const cat = db
     .prepare(
       `SELECT g.slug AS bucket_slug FROM accounts a
@@ -52,32 +64,18 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
     .get(accountId) as { bucket_slug: string } | undefined;
   if (!cat || !isMovementBalanceCashCategory(accountBucketKindSlug(cat.bucket_slug))) return null;
 
-  const importByMonth = new Map<
-    string,
-    {
-      source_file: string;
-      movement_count: number;
-      saldo_final_clp: number | null;
-      saldo_inicial_clp: number | null;
-      imported_at: string;
-    }
-  >();
+  const importByMonth = new Map<string, CartolaImportRow>();
   const imports = db
     .prepare(
       `SELECT period_month, source_file, movement_count, saldo_final_clp, saldo_inicial_clp, imported_at,
               period_from, period_to
        FROM checking_cartola_imports WHERE account_id = ?`
     )
-    .all(accountId) as {
+    .all(accountId) as (CartolaImportRow & {
     period_month: string;
-    source_file: string;
-    movement_count: number;
-    saldo_final_clp: number | null;
-    saldo_inicial_clp: number | null;
-    imported_at: string;
     period_from: string | null;
     period_to: string | null;
-  }[];
+  })[];
   for (const imp of imports) {
     if (
       isCartolaDesdeBoundaryPhantomMonth({
@@ -91,6 +89,22 @@ export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMont
     }
     importByMonth.set(imp.period_month, imp);
   }
+  return importByMonth;
+}
+
+/**
+ * The months with an imported cartola, ascending: `imported_months` of
+ * {@link getCheckingCartolaMonths} without its month table (two ledger reads per calendar month
+ * of history). Null when the account is not a movement-balance cash account.
+ */
+export function getCheckingCartolaImportedMonths(accountId: number): string[] | null {
+  const importByMonth = loadCartolaImportsByMonth(accountId);
+  return importByMonth ? [...importByMonth.keys()].sort(ymCompare) : null;
+}
+
+export function getCheckingCartolaMonths(accountId: number): CheckingCartolaMonthsResponse | null {
+  const importByMonth = loadCartolaImportsByMonth(accountId);
+  if (!importByMonth) return null;
 
   const monthKeys = checkingTimelineMonthKeys(accountId);
   if (monthKeys.length === 0) {
