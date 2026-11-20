@@ -184,8 +184,37 @@ export interface EquityGlancePeriodDto {
 export interface EquityGlanceSparkPointDto {
   date: string;
   price: number;
+  /** Position 0..1 on the range's time axis (`from` = 0, `to` = 1), by calendar day. */
+  x: number;
   /** Height 0..1 between the sparkline's `low` (0) and `high` (1). */
   y: number;
+}
+
+/** The ranges the price sparkline is served for (the client's compact range row). */
+export type EquityGlanceSparkRange = "30d" | "60d" | "90d" | "1y" | "3y" | "5y" | "10y" | "total";
+
+/** The instrument's price over one range, in the quote currency. */
+export interface EquityGlanceSparklineDto {
+  range: EquityGlanceSparkRange;
+  /**
+   * The time axis: N days ending today (today included), so the axis spans the whole range even
+   * when the price history starts later (its points then begin part way along); `total` starts at
+   * the first stored close.
+   */
+  from: string;
+  to: string;
+  /** At most ~150 points (evenly sampled; first and last kept); the last is the quote's price. */
+  points: EquityGlanceSparkPointDto[];
+  /** The vertical range: covers the range's points and the average cost (y 0 = low, 1 = high). */
+  low: number;
+  high: number;
+  /** The average-cost reference line's height (0..1), dotted. */
+  cost_y: number;
+  /**
+   * The stretches of the axis the account held shares in, as 0..1 positions on it (ascending, apart);
+   * the line outside them is drawn dimmed. Empty when none of the range was held.
+   */
+  held: { start: number; end: number }[];
 }
 
 /** One segment of the composition bar, left to right; positions are fractions of the bar. */
@@ -230,31 +259,18 @@ export interface EquityGlanceDto {
     price: Money;
     /** The session the price belongs to (ISO date). */
     price_as_of: string;
-    /** The stored close of the session before `price_as_of`; null when none is on file. */
-    previous_close: Money | null;
-    /** `price − previous_close` in the quote currency; null without a previous close. */
-    change: Money | null;
-    /** `change / previous_close` as a fraction; null without a previous close. */
-    change_pct: number | null;
-    direction: EquityGlanceDirection;
     /** `open`: the market's regular session is open (the price is live, «en vivo»); `closed`: the price is a close («al cierre»). */
     session: "open" | "closed";
     /** The registry's market (`market_symbols.market_kind`); the client words it through i18n (nyse → «NYSE»). */
     market_kind: "nyse" | "santiago" | "london" | "crypto24";
   };
-  /** Daily closes in the quote currency from the first day shares were held to `quote.price_as_of`. */
-  sparkline: {
-    /** At most ~120 points (evenly sampled; first and last kept); the last is the quote's price. */
-    points: EquityGlanceSparkPointDto[];
-    first_date: string;
-    last_date: string;
-    /** The vertical range: covers every point and the average cost (y 0 = low, 1 = high). */
-    low: number;
-    high: number;
-    /** The average-cost reference line's height (0..1), dotted. */
-    cost_y: number;
-  };
-  /** Average cost vs today's price vs the highest close since first held, on one horizontal track. */
+  /** The instrument's daily closes, one block per range of `EquityGlanceSparkRange`, in that order. */
+  sparklines: EquityGlanceSparklineDto[];
+  /**
+   * Average cost vs today's price vs the highest close since first held, on one horizontal track.
+   * The cost (here, in `price_vs_cost` and the sparklines' `cost_y`) is the average cost of the
+   * shares held on `composition.as_of`'s day rule: the last day the account held shares.
+   */
   track: {
     /** The track's ends in the quote currency, rounded outwards to a 1/2/5 step. */
     min: Money;
@@ -278,6 +294,12 @@ export interface EquityGlanceDto {
    * Null when `deposited` is null (a missing rate) or ≤ 0 (all capital withdrawn: no base to draw).
    */
   composition: {
+    /**
+     * The day the split is measured on: the position's last day holding shares — today while it
+     * holds any (`is_today`), else the day before its last sale emptied it.
+     */
+    as_of: string;
+    is_today: boolean;
     value: Money;
     /** Net capital (the position's `deposited`, net of payouts). */
     deposited: Money;

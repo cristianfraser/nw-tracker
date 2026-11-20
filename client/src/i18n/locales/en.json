@@ -1085,9 +1085,9 @@
         "london": "the London Stock Exchange",
         "crypto24": "the 24h market"
       },
-      "previous": "previous",
       "high": "high",
       "valueToday": "value today",
+      "valueOn": "value on {{date}}",
       "deposited": "deposited",
       "price": "price",
       "dividends": "dividends",

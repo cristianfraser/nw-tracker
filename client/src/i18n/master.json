@@ -3617,9 +3617,9 @@
         "london": { "en": "the London Stock Exchange", "es": "la Bolsa de Londres" },
         "crypto24": { "en": "the 24h market", "es": "el mercado 24 h" }
       },
-      "previous": { "en": "previous", "es": "anterior" },
       "high": { "en": "high", "es": "máximo" },
       "valueToday": { "en": "value today", "es": "valor hoy" },
+      "valueOn": { "en": "value on {{date}}", "es": "valor al {{date}}" },
       "deposited": { "en": "deposited", "es": "depositado" },
       "price": { "en": "price", "es": "precio" },
       "dividends": { "en": "dividends", "es": "dividendos" },

@@ -119,11 +119,7 @@
   column-gap: 10px;
 }
 
-.previous {
-  margin-left: auto;
-  font-size: var(--font-size-card-meta-sm);
-  color: var(--muted);
-}
+
 
 .spark {
   position: relative;
@@ -143,6 +139,11 @@
   stroke-linejoin: round;
 }
 
+/* The line where the account held no shares: the same stroke, faint (the held stretches redraw over it). */
+.sparkLineUnheld {
+  stroke-opacity: 0.3;
+}
+
 .sparkCost {
   stroke: var(--muted);
   stroke-opacity: 0.6;
@@ -151,10 +152,10 @@
 
 .sparkDot {
   position: absolute;
-  right: -2px;
   width: 5px;
   height: 5px;
   margin-top: -2.5px;
+  margin-left: -2.5px;
   border-radius: 50%;
   background: var(--text);
 }

@@ -51,10 +51,16 @@ export function totalDividendsClpForAccount(accountId: number): number {
   return sum;
 }
 
-/** Σ of the dividends received in `unit`, each at its own day's rate (its own amount in the currency it was paid in). */
-export function totalDividendsInUnitForAccount(accountId: number, unit: DisplayUnitCode): number {
+/**
+ * Σ of the dividends received in `unit`, each at its own day's rate (its own amount in the currency
+ * it was paid in); with `throughYmd`, only those paid on or before that day.
+ */
+export function totalDividendsInUnitForAccount(accountId: number, unit: DisplayUnitCode, throughYmd?: string): number {
   let sum = 0;
-  for (const e of dividendEventsForAccount(accountId)) sum += flowEventInUnit(e, unit);
+  for (const e of dividendEventsForAccount(accountId)) {
+    if (throughYmd != null && e.occurred_on > throughYmd) continue;
+    sum += flowEventInUnit(e, unit);
+  }
   return sum;
 }
 

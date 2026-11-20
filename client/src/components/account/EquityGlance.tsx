@@ -1,14 +1,16 @@
 import type { ReactNode } from "react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { formatInstrumentUnits, formatMoney, formatPct } from "../../format";
-import { formatMonthShortLabel } from "../../formatDateLabel";
+import { formatDayMonthShortLabel, formatMonthYearShortLabel } from "../../formatDateLabel";
 import type { AccountDetailBundleResponse, AccountPositionSnapshot, EquityGlanceDto, EquityGlancePeriodDto } from "../../types";
 import { queryKeys } from "../../queries/keys";
 import { loadableClass } from "../ui/Loadable";
 import { HoverPopover } from "../ui/HoverPopover";
+import { SurfaceControls } from "../ui/SurfaceControls";
+import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import {
   persistedPayload,
   readPersistedPayload,
@@ -179,20 +181,28 @@ function Group({ children, className }: { children: ReactNode; className?: strin
   return <div className={cn(styles.group, className)}>{children}</div>;
 }
 
-/** a. Today's price, its change and the previous close; the price since first held under it. */
-function QuoteGroup({ glance }: { glance: EquityGlanceDto }) {
+/** Ranges up to 90 days label their axis ends by day («nov 13»), longer ones by month and year («nov 25»). */
+const DAY_LABEL_RANGES: ReadonlySet<string> = new Set(["30d", "60d", "90d"]);
+
+/**
+ * a. The instrument's price over the chosen range (its own compact range row, default a year): the
+ * axis always spans the whole range, the history placed by day; the dotted line is the average cost.
+ */
+function QuoteGroup({ glance, accountId }: { glance: EquityGlanceDto; accountId: number }) {
   const { t } = useTranslation();
-  const { quote, sparkline } = glance;
+  const prefs = useSurfacePrefs(`account.${accountId}.sparkline`, "day", "1y");
+  const line = glance.sparklines.find((l) => l.range === prefs.range);
+  if (!line) throw new Error(`equity_glance: no sparkline for range ${prefs.range}`);
   const tone = toneClass(priceTone(glance.price_vs_cost));
-  const last = sparkline.points[sparkline.points.length - 1];
+  const last = line.points[line.points.length - 1];
+  const label = DAY_LABEL_RANGES.has(line.range) ? formatDayMonthShortLabel : formatMonthYearShortLabel;
+  // The whole line dimmed, the stretches held drawn again over it through a clip of the server's spans.
+  const clipId = `spark-held-${useId().replace(/:/g, "")}`;
+  const linePoints = sparklinePoints(line.points, SPARK_W, SPARK_H);
   return (
     <Group>
       <div className={styles.quoteLine}>
-        {quote.previous_close ? (
-          <span className={styles.previous}>
-            {t("accountDetail.equityGlance.previous")} <span className="mono">{formatMoney(quote.previous_close)}</span>
-          </span>
-        ) : null}
+        <SurfaceControls range={prefs.range} onRangeChange={prefs.setRange} compact />
       </div>
       <div className={styles.spark}>
         <svg
@@ -205,20 +215,38 @@ function QuoteGroup({ glance }: { glance: EquityGlanceDto }) {
             className={styles.sparkCost}
             x1={0}
             x2={SPARK_W}
-            y1={(1 - sparkline.cost_y) * SPARK_H}
-            y2={(1 - sparkline.cost_y) * SPARK_H}
+            y1={(1 - line.cost_y) * SPARK_H}
+            y2={(1 - line.cost_y) * SPARK_H}
+            vectorEffect="non-scaling-stroke"
+          />
+          <defs>
+            <clipPath id={clipId}>
+              {line.held.map((h) => (
+                <rect key={h.start} x={h.start * SPARK_W} y={-2} width={(h.end - h.start) * SPARK_W} height={SPARK_H + 4} />
+              ))}
+            </clipPath>
+          </defs>
+          <polyline
+            className={cn(styles.sparkLine, styles.sparkLineUnheld)}
+            points={linePoints}
             vectorEffect="non-scaling-stroke"
           />
           <polyline
             className={styles.sparkLine}
-            points={sparklinePoints(sparkline.points, SPARK_W, SPARK_H)}
+            points={linePoints}
+            clipPath={`url(#${clipId})`}
             vectorEffect="non-scaling-stroke"
           />
         </svg>
-        {last ? <i className={cn(styles.sparkDot, tone)} style={{ top: `${(1 - last.y) * SPARK_H}px` }} /> : null}
+        {last ? (
+          <i
+            className={cn(styles.sparkDot, tone)}
+            style={{ left: pctOf(last.x), top: `${(1 - last.y) * SPARK_H}px` }}
+          />
+        ) : null}
         <div className={cn("mono", styles.sparkLabels)}>
-          <span>{formatMonthShortLabel(sparkline.first_date)}</span>
-          <span>{formatMonthShortLabel(sparkline.last_date)}</span>
+          <span>{label(line.from)}</span>
+          <span>{label(line.to)}</span>
         </div>
       </div>
     </Group>
@@ -310,7 +338,11 @@ function CompositionGroup({ composition }: { composition: NonNullable<EquityGlan
     <Group>
       <div className={styles.bracket}>
         <i style={{ left: 0, width: pctOf(composition.value_share) }} />
-        <span style={{ left: pctOf(composition.value_share / 2) }}>{t("accountDetail.equityGlance.valueToday")}</span>
+        <span style={{ left: pctOf(composition.value_share / 2) }}>
+          {composition.is_today
+            ? t("accountDetail.equityGlance.valueToday")
+            : t("accountDetail.equityGlance.valueOn", { date: composition.as_of })}
+        </span>
       </div>
       <div className={styles.compBar}>
         {flow.map((s) => (
@@ -457,10 +489,12 @@ function PendingRail({ shape }: { shape: EquityGlanceShape }) {
  * is pending (the frames with blank figures, dimmed by the page).
  */
 export function EquityGlanceRail({
+  accountId,
   glance,
   position,
   pendingShape,
 }: {
+  accountId: number;
   glance: EquityGlanceDto | undefined;
   position: AccountPositionSnapshot | null;
   pendingShape: EquityGlanceShape | null;
@@ -468,7 +502,7 @@ export function EquityGlanceRail({
   if (!glance) return <div className={styles.rail}><PendingRail shape={pendingShape ?? GUESSED_SHAPE} /></div>;
   return (
     <div className={styles.rail}>
-      <QuoteGroup glance={glance} />
+      <QuoteGroup glance={glance} accountId={accountId} />
       <TrackGroup glance={glance} />
       {glance.composition ? <CompositionGroup composition={glance.composition} /> : null}
       {position && (position.brokers?.length ?? 0) >= 2 ? <BrokersGroup position={position} /> : null}

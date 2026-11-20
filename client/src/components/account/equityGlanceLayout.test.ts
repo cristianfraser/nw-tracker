@@ -52,8 +52,8 @@ describe("glance layout from the server's shares", () => {
     expect(priceTone("equal")).toBe("neutral");
   });
 
-  it("spreads the sparkline over the box, height 1 at the top", () => {
-    expect(sparklinePoints([{ y: 0 }, { y: 0.5 }, { y: 1 }], 100, 50)).toBe("0.0,50.0 50.0,25.0 100.0,0.0");
+  it("places the sparkline by the server's day and price positions, height 1 at the top", () => {
+    expect(sparklinePoints([{ x: 0.4, y: 0 }, { x: 0.7, y: 0.5 }, { x: 1, y: 1 }], 100, 50)).toBe("40.0,50.0 70.0,25.0 100.0,0.0");
     expect(sparklinePoints([], 100, 50)).toBe("");
   });
 });

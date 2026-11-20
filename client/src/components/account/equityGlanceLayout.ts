@@ -62,11 +62,7 @@ export function priceTone(priceVsCost: EquityGlanceDto["price_vs_cost"]): "posit
   return priceVsCost === "above" ? "positive" : priceVsCost === "below" ? "negative" : "neutral";
 }
 
-/** A sparkline's polyline points on a `width` × `height` box: x by index, y from the server's 0..1 height. */
-export function sparklinePoints(points: readonly { y: number }[], width: number, height: number): string {
-  if (points.length === 0) return "";
-  const step = points.length > 1 ? width / (points.length - 1) : 0;
-  return points
-    .map((p, i) => `${(i * step).toFixed(1)},${((1 - p.y) * height).toFixed(1)}`)
-    .join(" ");
+/** A sparkline's polyline points on a `width` × `height` box, from the server's 0..1 positions (x by day, y by price). */
+export function sparklinePoints(points: readonly { x: number; y: number }[], width: number, height: number): string {
+  return points.map((p) => `${(p.x * width).toFixed(1)},${((1 - p.y) * height).toFixed(1)}`).join(" ");
 }

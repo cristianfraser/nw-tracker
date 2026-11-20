@@ -1085,9 +1085,9 @@
         "london": "la Bolsa de Londres",
         "crypto24": "el mercado 24 h"
       },
-      "previous": "anterior",
       "high": "máximo",
       "valueToday": "valor hoy",
+      "valueOn": "valor al {{date}}",
       "deposited": "depositado",
       "price": "precio",
       "dividends": "dividendos",

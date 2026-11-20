@@ -72,7 +72,12 @@ export function EquityAccountDetailPage({
           <AccountValuationChart data={data} surfaces={surfaces} hideLegend />
         </div>
         <div className={loadableClass(loading, styles.bandRail)} aria-busy={loading || undefined}>
-          <EquityGlanceRail glance={glance} position={summary.position} pendingShape={pendingShape} />
+          <EquityGlanceRail
+            accountId={summary.account_id}
+            glance={glance}
+            position={summary.position}
+            pendingShape={pendingShape}
+          />
         </div>
       </PageGridTile>
 
