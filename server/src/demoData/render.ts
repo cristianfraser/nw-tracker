@@ -220,7 +220,10 @@ function statementRecords(s: CardStatement, cards: readonly CardDef[]): ParsedRe
     r.description_merged = c.plan.merchant;
     r.raw_line = `${ddmmyyyy(c.plan.purchaseDate)} ${c.plan.merchant} ${String(c.n).padStart(2, "0")}/${String(c.plan.cuotas).padStart(2, "0")}`;
     r.installment_flag = "true";
-    r.amount_clp = String(c.plan.cuotaClp);
+    // Like every parsed installment layout: the line prints the plan's principal («Monto
+    // operación») as its amount and the cuota in the cuota field (cards.md «A 00/N row stores its
+    // principal»); the ledger reads a plan's principal from its printed cuota lines.
+    r.amount_clp = String(c.plan.totalClp);
     r.nro_cuota_current = String(c.n);
     r.nro_cuota_total = String(c.plan.cuotas);
     r.valor_cuota_mensual_clp = String(c.plan.cuotaClp);
