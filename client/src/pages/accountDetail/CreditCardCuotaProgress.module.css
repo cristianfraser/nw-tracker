@@ -24,7 +24,7 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--cuota-segment-gap);
-  height: 8px;
+  height: 6px;
   --cuota-segment-gap: 2px;
 }
 
@@ -37,8 +37,19 @@
     );
   box-sizing: border-box;
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: 0;
   background: var(--surface2);
+}
+
+/* Only the bar's two ends are rounded; the cuotas between them meet square. */
+.segment:first-child {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.segment:last-child {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
 }
 
 .paid {
