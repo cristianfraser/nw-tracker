@@ -48,17 +48,29 @@ function ensurePlace(slug: string): number {
 /** A one-shot card line on the fixture master; returns its purchase key. */
 function cardLine(merchant: string, ddmmyyyy: string, amount: number): string {
   const accountId = getVitestSantanderCcMasterAccountId()!;
-  const stmt = db
-    .prepare(
-      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, card_last4, layout, currency)
-       VALUES (?, 'santander', ?, ?, '01/01/2036', ?, '0000', 'compact', 'clp')`
-    )
-    .run(accountId, `${SOURCE}-${randomUUID()}`, ddmmyyyy, ddmmyyyy);
+  // One statement per month (a facturación is one statement per currency), closing on its last day.
+  const [, mm, yyyy] = ddmmyyyy.split("/");
+  const lastDay = new Date(Date.UTC(Number(yyyy), Number(mm), 0)).getUTCDate();
+  const close = `${String(lastDay).padStart(2, "0")}/${mm}/${yyyy}`;
+  const source = `${SOURCE}-${yyyy}-${mm}`;
+  const existing = db
+    .prepare(`SELECT id FROM cc_statements WHERE account_id = ? AND source_pdf = ? AND statement_date = ?`)
+    .get(accountId, source, close) as { id: number } | undefined;
+  const statementId =
+    existing?.id ??
+    Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, card_last4, layout, currency)
+           VALUES (?, 'santander', ?, ?, '01/01/2036', ?, '0000', 'compact', 'clp')`
+        )
+        .run(accountId, source, close, close).lastInsertRowid
+    );
   const parserRowId = `vitest-util-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   db.prepare(
     `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, installment_flag, parser_row_id, dedupe_key)
      VALUES (?, ?, ?, ?, 0, ?, ?)`
-  ).run(Number(stmt.lastInsertRowid), ddmmyyyy, merchant, amount, parserRowId, `vitest-util-dedupe-${parserRowId}`);
+  ).run(statementId, ddmmyyyy, merchant, amount, parserRowId, `vitest-util-dedupe-${parserRowId}`);
   const line = loadGastosLinesForRealEstateMatching().find((l) => l.merchant === merchant && l.amount_clp === amount);
   if (!line) throw new Error(`fixture line ${merchant} ${amount} is not a gastos line`);
   return line.purchase_key;

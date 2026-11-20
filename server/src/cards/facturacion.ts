@@ -366,6 +366,83 @@ export function lastPdfBillingMonthForAccount(accountId: number): string | null 
   return max;
 }
 
+/** Two or more different statements of one currency whose closes fall in one billing month. */
+export type SameMonthStatementConflict = {
+  billing_month: string;
+  currency: string;
+  statements: { id: number; source_pdf: string; close_iso: string }[];
+};
+
+/**
+ * Facturaciones that two DIFFERENT statements of the same currency claim: the billing month is the
+ * calendar month of `period_to` (`billingMonthForCcStatement`), so two closes a few weeks apart in
+ * one month (e.g. the 1st and the 31st) land in one row — the facturaciones table loses one and the
+ * owed walk reads one statement's balance as the month's. «Different» = a different own close
+ * (`statementOwnCloseIso`); several rows with the SAME close are copies of one statement (a second
+ * physical copy, the A/B renderings of one PDF), which the parse collection and
+ * `statementFacturadoClpForBillingMonth` handle, so they are not a conflict here. Listings (open
+ * buckets) are not statements and are ignored.
+ */
+export function sameMonthStatementConflicts(
+  statements: readonly CcStatementRow[]
+): SameMonthStatementConflict[] {
+  const byKey = new Map<string, { bm: string; currency: string; closes: Map<string, CcStatementRow[]> }>();
+  for (const st of statements) {
+    if (!isStatementSourceKind(st.source_kind)) continue;
+    const bm = st.billing_month;
+    const closeIso = statementOwnCloseIso(st);
+    if (!bm || !closeIso) continue;
+    const key = `${bm}|${st.currency}`;
+    let slot = byKey.get(key);
+    if (!slot) byKey.set(key, (slot = { bm, currency: st.currency, closes: new Map() }));
+    const rows = slot.closes.get(closeIso) ?? [];
+    rows.push(st);
+    slot.closes.set(closeIso, rows);
+  }
+  const out: SameMonthStatementConflict[] = [];
+  for (const { bm, currency, closes } of byKey.values()) {
+    if (closes.size < 2) continue;
+    out.push({
+      billing_month: bm,
+      currency,
+      statements: [...closes.entries()]
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .flatMap(([close_iso, rows]) => rows.map((r) => ({ id: r.id, source_pdf: r.source_pdf, close_iso }))),
+    });
+  }
+  return out.sort((a, b) => ymCompare(a.billing_month, b.billing_month) || (a.currency < b.currency ? -1 : 1));
+}
+
+/** Human description of {@link sameMonthStatementConflicts}, one clause per facturación. */
+export function describeSameMonthStatementConflicts(conflicts: readonly SameMonthStatementConflict[]): string {
+  return conflicts
+    .map(
+      (c) =>
+        `${c.billing_month} ${c.currency}: ` +
+        c.statements.map((s) => `statement ${s.id} closing ${s.close_iso} («${s.source_pdf}»)`).join(", ")
+    )
+    .join("; ");
+}
+
+/**
+ * Throws when two different statements of one currency close in the same billing month
+ * ({@link sameMonthStatementConflicts}). The merge import calls it inside its transaction (nothing
+ * written); {@link closedBillingMonthsFromStatements} calls it too, so a store that reached this
+ * state another way fails on read instead of silently merging the two.
+ */
+export function assertOneStatementPerFacturacion(
+  statements: readonly CcStatementRow[],
+  accountLabel: string
+): void {
+  const conflicts = sameMonthStatementConflicts(statements);
+  if (conflicts.length === 0) return;
+  throw new Error(
+    `${accountLabel}: two different statements of one currency close in the same billing month — ` +
+      `${describeSameMonthStatementConflicts(conflicts)}. A facturación is one statement per currency; ` +
+      `one of the closes is wrong (period_to misread, or a statement filed on the wrong card).`
+  );
+}
+
 /**
  * Which billing months a set of statements closes: a month closes when the primary currency's
  * imported statement is in and so is each other required currency's (they are mailed the same
@@ -383,6 +460,8 @@ export function closedBillingMonthsFromStatements(
   required: ReadonlySet<string>,
   latestBankClose: string | null
 ): Set<string> {
+  // One statement per currency per month, or the merge below would keep one close and drop the other.
+  if (statements.length > 0) assertOneStatementPerFacturacion(statements, `Account ${statements[0]!.account_id}`);
   const byMonth = new Map<string, { currencies: Set<string>; primaryCloseIso: string | null }>();
   for (const st of statements) {
     if (!isStatementSourceKind(st.source_kind)) continue;

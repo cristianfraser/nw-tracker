@@ -13,6 +13,8 @@ import { importCcStatementsMerge, type CcStatementsMergeOpts } from "./ccStateme
 import { storedCardLineAmounts } from "./cards/statementStorage.js";
 import { reconcileManualInstallmentPurchasesAfterStatementImport } from "./ccManualInstallmentStatementReconcile.js";
 import { assertFeedClosesMatchStatements } from "./ccBillingCloses.js";
+import { assertOneStatementPerFacturacion } from "./cards/facturacion.js";
+import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
 import {
   reconcileOpenWebPasteAfterPdfImports,
@@ -629,6 +631,9 @@ function mergeInSession(
   // SALDO INICIAL on the same date — two independent renderings of one number. Throws inside
   // the transaction, so a disagreeing import writes nothing.
   assertFeedClosesMatchStatements(accountId);
+  // Two different statements of one currency closing in one billing month would merge into one
+  // facturación (one close dropped). Throws inside the transaction, so nothing is written.
+  assertOneStatementPerFacturacion(listCcStatementsForAccount(accountId), `Account ${accountId}`);
   const ledger = mergeInstallmentLedgerFromStatements(accountId, statements, {
     replaceLedger: opts?.replaceLedger ?? false,
   });
