@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite",
     "dev:host": "vite --host",
-    "build": "tsc -p tsconfig.build.json && vite build",
+    "build": "node ../scripts/tsc.mjs -p tsconfig.build.json && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../scripts/tsc.mjs --noEmit",
     "i18n:generate": "node scripts/i18n-generate.mjs",
     "test": "npm run typecheck && vitest run",
     "lint": "eslint ."
