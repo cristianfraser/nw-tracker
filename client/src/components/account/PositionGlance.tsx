@@ -126,6 +126,15 @@ function directionClass(direction: PositionGlancePeriodDto["direction"]): string
 }
 
 /** Today's price in a pill outline of its colour: green above the average cost, red below, text when equal. */
+/**
+ * The price pill's box while its price is pending: same border, padding and line height with the
+ * border transparent, so the row it sits on has its loaded height (a plain blank is a text line,
+ * shorter than the pill: the row grew when the price landed).
+ */
+export function PendingPricePill() {
+  return <span className={cn("mono", styles.pricePill, styles.pricePillPending)}>{BLANK}</span>;
+}
+
 export function PricePill({
   price,
   priceVsCost,
@@ -205,7 +214,7 @@ export function PositionGlanceTitle({
               <PricePill price={glance.quote.price} priceVsCost={glance.price_vs_cost} /> {sessionLabel(glance)}
             </>
           ) : (
-            BLANK
+            <PendingPricePill />
           )}
         </span>
       </div>

@@ -172,14 +172,6 @@ export interface GroupGlanceDto {
   unit: DisplayUnitCode;
   value: Money;
   day: PositionGlancePeriodDto;
-  /** Direct children holding something today. */
-  positions_held: number;
-  /** Direct children sold out. */
-  positions_sold: number;
-  /** Lifetime aportes of the group. */
-  deposits: Money | null;
-  total_pl: Money | null;
-  total_pct: number | null;
   /**
    * Summed over the group's member accounts on the last day any held something (today while one
    * does), the basket composition's rule; null only when the deposited figure cannot be computed.

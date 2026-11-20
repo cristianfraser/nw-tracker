@@ -1,6 +1,6 @@
-/* The investment group page's glance pieces (GroupGlance.tsx): the title's sub-line, the sold
-   line under the map, the strip's two halves and the children table — a row list, one line per
-   row while it fits, name / value / mes / total when its frame is narrow (container query). */
+/* The investment group page's glance pieces (GroupGlance.tsx): the strip's two halves and the
+   children table — a row list, one line per row while it fits, name / value / mes / total when
+   its frame is narrow (container query). */
 
 .positive {
   color: var(--positive);
@@ -8,16 +8,6 @@
 
 .negative {
   color: var(--negative);
-}
-
-.sub {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 0.45em;
-  margin-top: 3px;
-  font-size: var(--font-size-card-meta);
-  color: var(--muted);
 }
 
 .stripComposition,
@@ -109,21 +99,34 @@
   border: 0;
   background: none;
   color: var(--muted);
-  font-size: 0.7rem;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  transition: transform 120ms ease;
 }
 
-.caretOpen {
-  transform: rotate(90deg);
+/* The sidebar's chevron (points down: open), turned −90° while closed, as there. */
+.caret svg {
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.caretOpen svg {
+  transform: none;
 }
 
 .dot {
+  position: relative;
   flex: none;
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
+}
+
+/* A pending row (no colour yet): the square's place, empty. */
+.dotPending {
+  display: inline-block;
   background: var(--surface2);
+  border-radius: 1.5px;
 }
 
 .name {

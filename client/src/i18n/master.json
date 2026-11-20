@@ -3830,30 +3830,6 @@
   },
   "groupPage": {
     "investmentGlance": {
-      "positionsOne": {
-        "en": "{{count}} position",
-        "es": "{{count}} posición"
-      },
-      "positionsMany": {
-        "en": "{{count}} positions",
-        "es": "{{count}} posiciones"
-      },
-      "soldOne": {
-        "en": "{{count}} sold",
-        "es": "{{count}} vendida"
-      },
-      "soldMany": {
-        "en": "{{count}} sold",
-        "es": "{{count}} vendidas"
-      },
-      "deposits": {
-        "en": "contributions",
-        "es": "aportes"
-      },
-      "total": {
-        "en": "total",
-        "es": "total"
-      },
       "tableLabel": {
         "en": "Positions of {{name}}",
         "es": "Posiciones de {{name}}"

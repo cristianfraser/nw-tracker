@@ -87,6 +87,11 @@
   color: var(--negative);
 }
 
+/* Pending: the pill's box, no outline (PendingPricePill). */
+.pricePillPending {
+  border-color: transparent;
+}
+
 /* ---- Rail ---- */
 
 .rail {

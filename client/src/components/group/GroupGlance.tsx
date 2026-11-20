@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { ChevronIcon } from "../ui/ChevronIcon";
+import { ColorMarker } from "../ui/ColorMarker";
 import { Link } from "react-router-dom";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
@@ -28,9 +30,8 @@ function SignedMoney({ money }: { money: Money | null }) {
 }
 
 /**
- * The investment group page's title line: the group's name, today's value and the day's P/L;
- * under it, small and muted, «N posiciones, M vendidas · aportes $X · total ±Y (±Z%)» (server
- * `group_glance`). `glance` undefined = pending: the nav's name, blank figures.
+ * The investment group page's title line: the group's name, today's value and the day's P/L
+ * (server `group_glance`). `glance` undefined = pending: the nav's name, blank figures.
  */
 export function GroupGlanceTitle({
   glance,
@@ -41,64 +42,13 @@ export function GroupGlanceTitle({
   fallbackTitle: string;
   loading?: boolean;
 }) {
-  const { t } = useTranslation();
   return (
     <GlanceTitleLine
       title={glance?.title ?? fallbackTitle}
       value={glance?.value ?? null}
       day={glance?.day ?? null}
       loading={loading}
-    >
-      <div className={loadableClass(loading, styles.sub)}>
-        {glance ? (
-          <>
-            <span>
-              {t(
-                glance.positions_held === 1
-                  ? "groupPage.investmentGlance.positionsOne"
-                  : "groupPage.investmentGlance.positionsMany",
-                { count: glance.positions_held }
-              )}
-              {glance.positions_sold > 0
-                ? `, ${t(
-                    glance.positions_sold === 1
-                      ? "groupPage.investmentGlance.soldOne"
-                      : "groupPage.investmentGlance.soldMany",
-                    { count: glance.positions_sold }
-                  )}`
-                : null}
-            </span>
-            {glance.deposits ? (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>
-                  {t("groupPage.investmentGlance.deposits")} <span className="mono">{formatMoney(glance.deposits)}</span>
-                </span>
-              </>
-            ) : null}
-            {glance.total_pl ? (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>
-                  {t("groupPage.investmentGlance.total")}{" "}
-                  {/* The time-weighted % can carry the other sign than the money P/L (timing of the
-                      deposits), so beside the amount it reads as a contradiction: hover only, as on
-                      the table's rows. */}
-                  <span
-                    className={cn("mono", toneClass(glance.total_pl.value))}
-                    title={glance.total_pct != null ? formatSignedPct(glance.total_pct) : undefined}
-                  >
-                    {formatSignedMoney(glance.total_pl)}
-                  </span>
-                </span>
-              </>
-            ) : null}
-          </>
-        ) : (
-          BLANK
-        )}
-      </div>
-    </GlanceTitleLine>
+    />
   );
 }
 
@@ -189,12 +139,12 @@ function GlanceRow({
             })}
             onClick={caret.onToggle}
           >
-            ▸
+            <ChevronIcon />
           </button>
         ) : (
           <span className={styles.caretSpace} />
         )}
-        <i className={styles.dot} style={{ background: color }} />
+        <ColorMarker color={color} className={styles.dot} />
         <Link to={row.route_path} className={styles.name}>
           {label}
         </Link>
@@ -241,7 +191,7 @@ function PendingRow({ label, total = false }: { label: string; total?: boolean }
     <div role="row" className={cn(styles.row, total && styles.totalRow)}>
       <span role="cell" className={styles.nameCell}>
         <span className={styles.caretSpace} />
-        <i className={styles.dot} />
+        <span className={cn(styles.dot, styles.dotPending)} />
         <span className={styles.name}>{label || BLANK}</span>
       </span>
       <span role="cell" className={styles.sparkCell} />

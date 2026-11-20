@@ -12,6 +12,7 @@ import {
   PendingCompositionGroup,
   PendingSparklineGroup,
   PeriodsGroup,
+  PendingPricePill,
   PricePill,
 } from "../account/PositionGlance";
 import { pctOf } from "../account/positionGlanceLayout";
@@ -100,7 +101,9 @@ function PendingMembersGroup({ rows }: { rows: number }) {
         {Array.from({ length: rows }, (_, i) => (
           <div key={i} className={styles.member}>
             <span className={styles.memberName}>{BLANK}</span>
-            <span className={styles.memberSub}>{BLANK}</span>
+            <span className={styles.memberSub}>
+              <PendingPricePill />
+            </span>
           </div>
         ))}
       </div>

@@ -174,8 +174,8 @@ describe("group_glance on the nav-context payload", () => {
     expect(ctx.basket_glance).toBeNull();
     expect(g.rows.map((r) => r.slug)).toEqual([`${PREFIX}_s1`, `${PREFIX}_s2`, `${PREFIX}_s3`]);
     expect(g.rows.map((r) => r.held)).toEqual([true, true, false]);
-    expect(g.positions_held).toBe(2);
-    expect(g.positions_sold).toBe(1);
+    expect(g.rows.filter((r) => r.held)).toHaveLength(2);
+    expect(g.rows.filter((r) => !r.held)).toHaveLength(1);
     // The grouped block's synthetic line ids (-720 − the bucket's plan index).
     expect(g.rows.map((r) => r.chart_line_account_id).every((id) => id != null && id <= -720)).toBe(true);
     const [s1, s2, s3] = g.rows;
@@ -199,7 +199,7 @@ describe("group_glance on the nav-context payload", () => {
     expect(g.value.value).toBe(card.value.parent);
     expect(g.total).toMatchObject({ kind: "group", slug: SLUG, share: 1, chart_line_account_id: null });
     expect(g.total.total_pl?.value ?? null).toBe(card.parent.month.delta_total);
-    expect(g.deposits?.value ?? null).toBe(card.parent.month.deposits);
+    expect(g.total.deposits?.value ?? null).toBe(card.parent.month.deposits);
     for (const k of ["day", "month", "year"] as const) {
       expect(g.periods[k].pl?.value ?? null).toBe(card.parent[k].delta_period);
       expect(g.periods[k].pct).toBe(card.parent_pct[k].value);
@@ -232,7 +232,7 @@ describe("group_glance on the nav-context payload", () => {
 
   it("gives a sold-out group its composition on the last day it held something", async () => {
     const g = (await buildDashboardNavContext("clp", `${PREFIX}_s3`)).group_glance!;
-    expect(g.positions_held).toBe(0);
+    expect(g.rows.filter((r) => r.held)).toHaveLength(0);
     const c = g.composition!;
     // C sold on day 15, the 110.000 withdrawn on day 14: the caja's last day holding it.
     expect(c).toMatchObject({ as_of: day(15), is_today: false });

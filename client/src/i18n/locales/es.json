@@ -1187,12 +1187,6 @@
   },
   "groupPage": {
     "investmentGlance": {
-      "positionsOne": "{{count}} posición",
-      "positionsMany": "{{count}} posiciones",
-      "soldOne": "{{count}} vendida",
-      "soldMany": "{{count}} vendidas",
-      "deposits": "aportes",
-      "total": "total",
       "tableLabel": "Posiciones de {{name}}",
       "expand": "Mostrar los miembros de {{name}}",
       "collapse": "Ocultar los miembros de {{name}}",

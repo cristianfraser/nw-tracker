@@ -1,4 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { ChevronIcon } from "../ui/ChevronIcon";
+import { ColorMarker } from "../ui/ColorMarker";
 import {
   useCallback,
   useEffect,
@@ -21,10 +23,8 @@ import {
   type SidebarNavMarker,
   type SidebarNavNode,
 } from "../../sidebarNavTree";
-import { useChartStyle } from "../charts/chartStyle";
 // The hand-drawn marks, imported directly: a lazy load painted the flat marks first on every page
 // load and swapped them when its chunk arrived (the sketch code ships with the first load anyway).
-import SketchMarker from "../charts/SketchMarker";
 import { VISIBLE_PANEL_SUBROUTES } from "../../pages/panel/panelSubroutes";
 import { DEMO_TOUR_ENABLED, startDemoTour } from "./DemoTour";
 import { DASHBOARD_PATH, DEMO_BUILD } from "../../dashboardPath";
@@ -50,38 +50,17 @@ function writeCollapsedIds(ids: Set<string>) {
   localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...ids]));
 }
 
-function ChevronIcon() {
-  return (
-    <svg className={styles.chevron} width="11" height="11" viewBox="0 0 12 12" aria-hidden>
-      <path
-        d="M3 4.5 6 7.5l3-3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 /**
  * A row's mark (a group's colour square, the expenses triangle): flat in the plain chart style,
  * hand-drawn in the others (the box legend's square, the triangle in the same hand).
  */
 function RowMarker({ marker, swap }: { marker: SidebarNavMarker; swap: boolean }) {
-  const sketched = useChartStyle() !== "plain";
   return (
-    <span className={cn(styles.marker, swap && styles.markerSwap)} aria-hidden>
-      {sketched ? (
-        <SketchMarker color={marker.color} shape={marker.shape} className={styles.markerSketch} />
-      ) : (
-        <span
-          className={cn(styles.markerFlat, marker.shape === "triangle-down" && styles.markerFlatTriangle)}
-          style={{ backgroundColor: marker.color }}
-        />
-      )}
-    </span>
+    <ColorMarker
+      color={marker.color}
+      shape={marker.shape}
+      className={cn(styles.marker, swap && styles.markerSwap)}
+    />
   );
 }
 
@@ -153,7 +132,7 @@ function SidebarNavItem({
             aria-expanded={!isCollapsed}
             onClick={toggle}
           >
-            <ChevronIcon />
+            <ChevronIcon className={styles.chevron} />
           </button>
         ) : null}
         <NavLink

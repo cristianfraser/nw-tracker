@@ -15,8 +15,8 @@ layout before any payload. Never a slug list in the client.
 
 ## Layout (desktop, 12 columns; one column below 880)
 
-1. **Title line**: name, value, día P/L (amount and %). Sub-line, small muted: «N posiciones, M vendidas
-   · aportes $X · total ±Y (±Z%)».
+1. **Title line**: name, value, día P/L (amount and %). No sub-line (removed 2026-11-20; the
+   table's total row carries aportes and total).
 2. **Band**: «Valorización y aportes» (the group valuation chart, compact D/M/A + range controls, no
    legend, total + aportes lines — the basket page's `GroupValuationChart` use) on 7 columns | the value
    treemap (`ValueMapPanel`, always the map, its own día/mes/año row; no Composición/Mapa switch) on 5,
@@ -80,11 +80,6 @@ export interface GroupGlanceDto {
   unit: DisplayUnitCode;
   value: Money;
   day: PositionGlancePeriodDto;
-  positions_held: number;       // direct children holding something today
-  positions_sold: number;       // direct children sold out
-  deposits: Money | null;       // lifetime aportes of the group
-  total_pl: Money | null;
-  total_pct: number | null;
   composition: PositionGlanceDto["composition"];
   periods: { day: PositionGlancePeriodDto; month: PositionGlancePeriodDto; year: PositionGlancePeriodDto };
   /** The total row (the group itself). */
