@@ -60,9 +60,9 @@ vi.mock("./bcentralApi.js", async (importOriginal) => {
 // This file mutates fx_daily + live_market_quotes for controlled fixtures; snapshot both and
 // restore in afterAll so it doesn't poison other files sharing the DB.
 // No request leaves the test: every Yahoo call is mocked above.
-globalThis.fetch = (async (u: unknown) => {
+vi.stubGlobal("fetch", (async (u: unknown) => {
   throw new Error(`network in test: ${String(u)}`);
-}) as typeof fetch;
+}) as typeof fetch);
 const restoreTables = snapshotTables(["fx_daily", "fx_rates", "live_market_quotes"]);
 afterAll(() => restoreTables());
 
