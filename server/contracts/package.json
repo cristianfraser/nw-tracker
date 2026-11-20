@@ -23,7 +23,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../../scripts/tsc.mjs --noEmit",
     "schema": "tsx scripts/write-json-schema.ts",
     "test": "vitest run"
   },

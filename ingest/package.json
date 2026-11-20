@@ -9,7 +9,7 @@
   },
   "scripts": {
     "fetch:santander": "tsx src/main.ts santander",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../scripts/tsc.mjs --noEmit",
     "fetch": "tsx src/main.ts",
     "fetch:racional": "tsx src/main.ts racional",
     "fetch:afp-uno": "tsx src/afpUno/fetchMain.ts",

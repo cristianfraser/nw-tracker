@@ -12,7 +12,8 @@
   ],
   "devDependencies": {
     "patch-package": "^8.0.1",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "typescript-7": "npm:typescript@7.0.2"
   },
   "scripts": {
     "typecheck": "npm run typecheck -w nw-tracker-contracts && npm run typecheck -w nw-tracker-server && npm run typecheck -w nw-tracker-client && npm run typecheck -w nw-tracker-ingest && npm run check:conventions",
@@ -72,6 +73,8 @@
     "fetch:lider-boletas": "npm run fetch:lider-boletas -w nw-tracker-ingest --",
     "import:grocery-receipts": "npm run import:grocery-receipts -w nw-tracker-ingest --",
     "fetch:lider-statements": "npm run fetch:lider-statements -w nw-tracker-ingest --",
+    "check:pre-push": "node scripts/pre-push-check.mjs < /dev/null",
+    "prepare": "node scripts/install-git-hooks.mjs",
     "postinstall": "patch-package"
   }
 }

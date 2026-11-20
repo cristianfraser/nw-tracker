@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "serve": "tsx src/index.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node ../scripts/tsc.mjs -p tsconfig.build.json",
     "start": "node dist/src/index.js",
     "migrate": "tsx -e \"import './src/db.ts'\"",
     "backfill:generic-transfer-unique": "tsx -e \"import { backfillGenericTransferUniquePurchases } from './src/ccExpenseGenericTransferBackfill.ts'; console.log(backfillGenericTransferUniquePurchases())\"",
@@ -51,8 +51,10 @@
     "probe:bcentral-series": "tsx scripts/probe-bcentral-series.ts",
     "sync:equity-eod": "tsx scripts/sync-equity-eod.ts",
     "prune:future-month-end-valuations": "tsx scripts/prune-future-month-end-valuations.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && NW_TRACKER_TEST_DB=nw-tracker.test.db vitest run",
+    "typecheck": "node ../scripts/tsc.mjs --noEmit",
+    "test": "node ../scripts/run-parallel.mjs \"typecheck=npm run typecheck\" \"vitest=npm run test:vitest\"",
+    "test:vitest": "NW_TRACKER_TEST_DB=nw-tracker.test.db vitest run",
+    "test:related": "NW_TRACKER_TEST_DB=nw-tracker.test.db vitest related --run",
     "profile:dashboard": "tsx scripts/profile-dashboard.ts",
     "db:verify-backup": "tsx scripts/verify-db-backup.ts",
     "match:app-store-notes": "tsx scripts/match-app-store-notes.ts"
