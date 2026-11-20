@@ -2,7 +2,7 @@
  * Runs once per Vitest worker before test files (after `db` is initialized).
  * `NW_TRACKER_TEST_DB` must be set before any import of `db` (see `vitest.config.ts` + `npm run test`).
  */
-import { afterAll, beforeAll, beforeEach, expect } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, vi } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { ensureVitestCreditCardFixtures } from "./test/vitestDbSeed.js";
@@ -24,8 +24,32 @@ ensureVitestInstrumentFixtures();
  * page's reads used to hide.
  */
 beforeAll(async () => {
-  await import("./cards/lineWrites.js");
+  const { CARD_LINE_WRITE_FRAME } = await import("./cards/lineWrites.js");
+  const { registerCardLineWriteFrame } = await import("./cards/lineWriteSession.js");
+  // Re-registered every file: in the shared project (`isolate: false`, vitest.config.ts) the
+  // module loaded once per fork, and an earlier file may have swapped in a spy frame.
+  registerCardLineWriteFrame(CARD_LINE_WRITE_FRAME);
   registerExpenseLinkSync(() => undefined);
+});
+
+/**
+ * Per-file reset for the shared project, where files of one fork share the process and its loaded
+ * modules (AGENTS.md «Server Vitest (SQLite)»): the environment is put back as this file found it,
+ * and fake timers, spies and stubbed globals/env are undone. This setup file itself runs again
+ * before every file, so the snapshot below is taken per file.
+ */
+const envOnArrival = { ...process.env };
+/** A file that assigns `globalThis.fetch` instead of `vi.stubGlobal` would hand its stub to the next file. */
+const fetchOnArrival = globalThis.fetch;
+
+afterAll(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  globalThis.fetch = fetchOnArrival;
+  for (const key of Object.keys(process.env)) if (!(key in envOnArrival)) delete process.env[key];
+  for (const [key, value] of Object.entries(envOnArrival)) if (process.env[key] !== value) process.env[key] = value;
 });
 
 /**

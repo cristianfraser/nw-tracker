@@ -1,6 +1,6 @@
 # Faster local tests — plan
 
-## Status (2026-11-20): done, branch `worktree-test-speed`
+## Status (2026-11-20): done, branch `worktree-test-speed` (step 6, `isolate: false`, below)
 
 Before/after timings come from the home server (4 cores / 8 threads, otherwise idle), plus the
 laptop (10 cores: 4 performance, 6 efficiency) once no other session was running tests. Every
@@ -21,7 +21,7 @@ What the measurements showed:
 - Serial time was mostly per-file overhead. The tests inside the files summed to only 224 s of
   the 1 220 s; the other ~1 000 s (about 1,7 s per file) went to starting a fresh process and
   loading modules and setup. Parallel forks spread that cost over the cores. `isolate: false`
-  would remove it, and it is the next lever (see «Not doing»).
+  removes it (step 6).
 - Above the physical core count, forks only stretch single tests. At 6 or 8 forks on the
   server, three tests that take ~4 s serially there passed Vitest's 5 s limit. They were made
   fast (one of them was real waste in the deposits reconciliation), and the default is now one
@@ -153,13 +153,47 @@ file (which becomes the floor). The step 0 per-file list says whether one file n
 
 ## Not doing
 
-- `isolate: false` (reuse loaded modules across files): the server keeps module-level state
-  (`ccCardRegistry` read on import, `initServerConfig` once, the cache registry). Revisit only
-  if step 2's numbers leave module loading as the main cost, and only with written reset rules.
-  **Measured afterwards:** they do. About 1,7 s of each file's time is process start plus module
-  load, against 0,4 s of tests, so this is the next lever. It is its own change.
 - bun, oxlint, oxfmt, Blacksmith, CI caches, merge queue, cross-machine shards: no hosted CI,
   native better-sqlite3, deploy built on `npm ci`.
+
+## Step 6 — reuse each fork's process and modules (`isolate: false`) — done
+
+Measured before: 224 s of the serial 1 220 s were inside test files; ~1,7 s per file went to a
+fresh process, module load and setup. `server/vitest.config.ts` now reuses each fork's process
+(root `poolOptions.forks.isolate: false`) and runs two projects:
+
+- **`shared`** (566 files): keeps the module graph across files, so modules load once per fork.
+- **`isolated`** (the 14 files whose source calls `vi.mock` / `vi.doMock`, found by scanning, no
+  list): drops the graph and mocks before each file, in the same process. Without it the first
+  trial failed 13 files: 11 mocking files plus 3 that received another file's mock
+  (`No "buildDashboardAccountRow" export is defined on the "./dashboardAccounts.js" mock`).
+
+Reset rules (`src/vitest.setup.ts`, which Vitest re-runs before every file; written in AGENTS.md
+«Server Vitest (SQLite)»): `process.env` restored to what the file found, fake timers, spies,
+stubbed globals/env undone, the card-line write frame and the expense-link no-op re-registered;
+caches were already cleared before every test. Two leaks turned up on the server that the laptop
+runs had missed (which files share a fork depends on timing):
+
+- `liveMarketQuotesSync.test.ts` assigned `globalThis.fetch` to a throwing stub at top level; the
+  next file of the fork (`routes/inputErrors.test.ts`, 48 tests over 4 of 5 seeds) got «network
+  in test». Now `vi.stubGlobal`, and the setup puts `fetch` back after every file. Reproduced with
+  the two files in one fork (3 of 4 seeds red before, 4 of 4 green after).
+- A once-per-process flag (seed 102): `ensureVitestCreditCardFixtures` skipped itself after the
+  fork's first file, so a card master another file had left was never linked into Pasivos and
+  `creditCardNav.test.ts` read 3 members against 4 masters. The flag is gone (the function was
+  idempotent anyway).
+
+The module-level state the earlier plan worried about does not bite:
+`initServerConfig` is never called by tests, and `ccCardRegistry` reads `NW_TRACKER_CC_CARDS`,
+which is the same for every file.
+
+| | Before (step 2) | After |
+|---|---|---|
+| Server suite, home server (4 forks) | 486 / 405 s | 93–106 s (5 seeds green, after both fixes) |
+| `npm run test` (server), home server | 429 s | 93 s |
+| Server suite, laptop (10 forks) | 72–80 s | 18–20 s (5 seeds, laptop load ~13) |
+| Server suite, laptop, 4 forks | 95 s | 17–21 s (5 seeds) |
+| Server suite, laptop, 1 fork (all files through one process) | ~900 s | 47–48 s (3 seeds) |
 
 ## Order and commits
 

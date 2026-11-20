@@ -4,17 +4,12 @@ import { seedLiabilitiesTree } from "../seedLiabilitiesTree.js";
 /** Isolated master account for Vitest (not used by real imports). */
 export const VITEST_SANTANDER_CC_MASTER_NOTES = "credit_card_master|santander|vitest-fixture";
 
-let vitestCreditCardFixturesApplied = false;
-
 /**
  * Idempotent fixtures for Vitest: one Santander CC master so `importCcStatementsMerge` and similar
  * tests have a stable account without relying on `nw-tracker.db`.
  */
 export function ensureVitestCreditCardFixtures(): void {
   if (!process.env.NW_TRACKER_TEST_DB?.trim()) {
-    return;
-  }
-  if (vitestCreditCardFixturesApplied) {
     return;
   }
 
@@ -55,8 +50,9 @@ export function ensureVitestCreditCardFixtures(): void {
     ).run(accountId);
   }
 
+  // Every call, not once per process: files of a fork share this module (vitest.config.ts,
+  // project `shared`), and a card master an earlier file left must be linked again here.
   seedLiabilitiesTree();
-  vitestCreditCardFixturesApplied = true;
 }
 
 export function getVitestSantanderCcMasterAccountId(): number | null {
