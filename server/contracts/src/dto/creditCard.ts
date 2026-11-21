@@ -2,7 +2,7 @@ import type { DTO_SCHEMA_VERSIONS } from "./schemaVersions.js";
 import type { AccountMortgageLedgerResponse } from "./mortgage.js";
 
 import type { DataOrigin, DisplayUnitCode } from "./core.js";
-import type { CcCuotaPurchaseKind, ExpenseLinkLabel, Money, PaymentReceipt } from "./flows.js";
+import type { CcCuotaPurchaseKind, ExpenseLinkLabel, Money, PaymentReceipt, ShownName, ShownNameDetail } from "./flows.js";
 
 export interface CcBillingDetailMonthDto {
   billing_month: string;
@@ -210,9 +210,9 @@ export interface CcInstallmentPurchaseComputed {
   purchase_notes?: string;
   /** The receipt link its expense lines show. */
   payment_receipt?: PaymentReceipt;
-  /** The names its expense lines show: merchant, processor, link label. */
-  display_merchant?: string;
-  merchant_processor?: string;
+  /** The name its expense lines show (the plan's label when it has none), and the bank's text behind it (ⓘ only). */
+  name: ShownName;
+  name_detail?: ShownNameDetail;
   link_label?: ExpenseLinkLabel;
 }
 

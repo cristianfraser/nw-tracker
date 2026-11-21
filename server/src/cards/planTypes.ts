@@ -3,7 +3,7 @@
  * shows it (`creditCardInstallments.ts`). Leaf types: the ledger reads them without importing the
  * page builder.
  */
-import type { ExpenseLinkLabel, PaymentReceipt } from "nw-tracker-contracts/dto/flows";
+import type { ExpenseLinkLabel, PaymentReceipt, ShownName, ShownNameDetail } from "nw-tracker-contracts/dto/flows";
 import type { DataOrigin } from "../dataOrigin.js";
 
 export type CcInstallmentPurchaseRow = {
@@ -74,9 +74,12 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   expense_purchase_key?: string;
   purchase_notes?: string;
   payment_receipt?: PaymentReceipt;
-  /** The names its expense lines show (`expenseLineDisplayNames`): merchant, processor, link label. */
-  display_merchant?: string;
-  merchant_processor?: string;
+  /**
+   * The name its expense lines show and the bank's text behind it (`withPurchaseExpenseLinks`,
+   * `expenseShownName.ts`); the plan's label when it has no line. Set on every plan the card page sends.
+   */
+  name?: ShownName;
+  name_detail?: ShownNameDetail;
   link_label?: ExpenseLinkLabel;
   /** How this purchase entered the system. */
   origin: DataOrigin;

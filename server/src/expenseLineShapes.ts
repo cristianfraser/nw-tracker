@@ -12,7 +12,8 @@ import { lineAmount } from "./lineMoney.js";
  * The line this step reads: a finished line, wire or server-side (the server's carries the
  * builder fields beside its money). Its sign is its money's (`lineAmount`), the same in every unit.
  */
-export type ShapeLine = Omit<FlowCcExpenseLineRow, "amount" | "converted" | "value_clp"> & { amount?: Money };
+/** The fields the shape rules read: a line before the wire seam names it (`name` is the wire's). */
+export type ShapeLine = Omit<FlowCcExpenseLineRow, "amount" | "converted" | "value_clp" | "name" | "name_detail" | "refund_of"> & { amount?: Money };
 
 /**
  * The gastos rules a line's shape is read from, passed in by the pipeline (`flowsExpenses.ts`):

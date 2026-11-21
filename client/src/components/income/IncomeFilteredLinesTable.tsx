@@ -2,10 +2,10 @@ import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useTranslation } from "../../i18n";
+import { shownNameText, useTranslation } from "../../i18n";
 import { formatIncomeMoney } from "../../incomeAggregates";
 import type { DisplayUnit } from "../../queries/keys";
-import type { FlowFilteredCheckingIncomeLine, IncomeAutoFilterReason } from "../../types";
+import type { FlowFilteredCheckingIncomeLine, IncomeAutoFilterReason, ShownName } from "../../types";
 import { useForceIncludeIncomeMovementMutation } from "../../queries/mutations";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { loadableClass } from "../ui/Loadable";
@@ -32,7 +32,7 @@ export function IncomeFilteredLinesTable({
   const forceInclude = useForceIncludeIncomeMovementMutation();
   const [includeTarget, setIncludeTarget] = useState<{
     movement_id: number;
-    description: string;
+    name: ShownName;
     received_on: string;
   } | null>(null);
 
@@ -61,7 +61,7 @@ export function IncomeFilteredLinesTable({
                 {formatIncomeMoney(row.amount, displayUnit)}
               </td>
               <td>
-                {row.description}
+                {shownNameText(row.name)}
                 <TransferCounterpartyLine counterparty={row.transfer_counterparty} />
               </td>
               <td>
@@ -75,7 +75,7 @@ export function IncomeFilteredLinesTable({
                     onClick={() =>
                       setIncludeTarget({
                         movement_id: row.movement_id,
-                        description: row.description,
+                        name: row.name,
                         received_on: row.received_on,
                       })
                     }
@@ -96,7 +96,7 @@ export function IncomeFilteredLinesTable({
           includeTarget
             ? t("income.includeConfirmMessage", {
                 date: includeTarget.received_on,
-                description: includeTarget.description,
+                description: shownNameText(includeTarget.name),
               })
             : ""
         }

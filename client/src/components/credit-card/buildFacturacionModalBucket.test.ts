@@ -4,7 +4,7 @@ import { buildFacturacionModalBucket } from "./buildFacturacionModalBucket";
 import type { FlowCcExpenseLineRow } from "../../types";
 
 function line(
-  overrides: Partial<FlowCcExpenseLineRow> & Pick<FlowCcExpenseLineRow, "merchant"> & Partial<Pick<FlowCcExpenseLineRow, "amount" | "converted" | "value_clp">>
+  overrides: Partial<FlowCcExpenseLineRow> & Pick<FlowCcExpenseLineRow, "name"> & Partial<Pick<FlowCcExpenseLineRow, "amount" | "converted" | "value_clp">>
 ): FlowCcExpenseLineRow {
   return {
     source: "cc",
@@ -36,18 +36,18 @@ function line(
 describe("buildFacturacionModalBucket", () => {
   it("files the lines the server marks as financing and as abonos", () => {
     const bucket = buildFacturacionModalBucket([
-      line({ statement_line_id: 1, merchant: "JUMBO", ...clpMoney(50_000) }),
-      line({ statement_line_id: 2, merchant: "INTERESES ROTATIVOS", ...clpMoney(12_000), is_financing_cost: true }),
-      line({ statement_line_id: 3, merchant: "PAGO", ...clpMoney(-100_000), abono: true }),
+      line({ statement_line_id: 1, name: { kind: "text", text: "JUMBO" }, ...clpMoney(50_000) }),
+      line({ statement_line_id: 2, name: { kind: "text", text: "INTERESES ROTATIVOS" }, ...clpMoney(12_000), is_financing_cost: true }),
+      line({ statement_line_id: 3, name: { kind: "text", text: "PAGO" }, ...clpMoney(-100_000), abono: true }),
     ]);
-    expect(bucket.gastos.map((l) => l.merchant)).toEqual(["JUMBO"]);
-    expect(bucket.costeFinanciero.map((l) => l.merchant)).toEqual(["INTERESES ROTATIVOS"]);
-    expect(bucket.abonos.map((l) => l.merchant)).toEqual(["PAGO"]);
+    expect(bucket.gastos.map((l) => (l.name.kind === "text" ? l.name.text : null))).toEqual(["JUMBO"]);
+    expect(bucket.costeFinanciero.map((l) => (l.name.kind === "text" ? l.name.text : null))).toEqual(["INTERESES ROTATIVOS"]);
+    expect(bucket.abonos.map((l) => (l.name.kind === "text" ? l.name.text : null))).toEqual(["PAGO"]);
   });
 
   it("never reads the merchant: an unmarked charge is a gasto", () => {
     const bucket = buildFacturacionModalBucket([
-      line({ statement_line_id: 4, merchant: "Servicio Administracion", ...clpMoney(2_990) }),
+      line({ statement_line_id: 4, name: { kind: "text", text: "Servicio Administracion" }, ...clpMoney(2_990) }),
     ]);
     expect(bucket.gastos).toHaveLength(1);
     expect(bucket.costeFinanciero).toHaveLength(0);

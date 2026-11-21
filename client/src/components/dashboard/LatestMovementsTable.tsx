@@ -82,8 +82,8 @@ function IncomeMovementRow({ on, income }: { on: string; income: LatestIncomeMov
         <ExpenseVendorLabel
           // The server's name for the credit («Transf. de <payer>»), the bank's description in the ⓘ card.
           source={{
-            merchant: income.description,
-            display_merchant: income.display_merchant,
+            name: income.name,
+            name_detail: income.name_detail,
             link_label: income.link_label,
             transfer_counterparty: income.transfer_counterparty,
           }}
@@ -147,7 +147,7 @@ function CardPaymentRow({
           ariaLabel=""
         />
       }
-      vendor={<ExpenseVendorLabel source={{ merchant: name }} note={null} className={expenseListVendorClassName} />}
+      vendor={<ExpenseVendorLabel source={{ name: { kind: "text", text: name } }} note={null} className={expenseListVendorClassName} />}
       amount={<MoneyAmount money={payment} />}
       moreAriaLabel={t("expenses.creditCard.lineRow.moreAria", { merchant: name })}
       panel={

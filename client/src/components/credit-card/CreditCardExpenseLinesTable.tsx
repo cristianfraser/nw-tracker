@@ -3,7 +3,7 @@ import { chileTodayYmd } from "../../calendarMonth";
 import { Fragment, type ReactNode, useCallback, useMemo, useState } from "react";
 import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
-import { useTranslation } from "../../i18n";
+import { shownNameText, useTranslation } from "../../i18n";
 import { expenseLineRowKey, useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
 import { formatLineAmount, lineAmountParts, parseNumberInput } from "../../format";
 import { formatCardBillingPesos } from "../../formatNative";
@@ -24,7 +24,6 @@ import {
   ExpenseRowMoreButton,
   ExpenseVendorLabel,
   ExpenseVendorPanelLink,
-  expenseVendorName,
   Joined,
   useExpenseVendorLinkLabel,
 } from "./ExpenseVendorLabel";
@@ -303,7 +302,7 @@ function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
         open={confirming}
         title={t("accountDetail.creditCard.facturacionDeleteConfirmTitle")}
         message={t("accountDetail.creditCard.facturacionDeleteConfirmBody", {
-          merchant: line.merchant ?? "—",
+          merchant: shownNameText(line.name),
           amount: formatLineAmount(line, displayUnit),
         })}
         confirmLabel={t("accountDetail.creditCard.facturacionDeleteConfirmAction")}
@@ -374,7 +373,7 @@ function UndoAnnulmentButton({ line, annulId }: { line: FlowCcExpenseLineRow; an
       <ConfirmDialog
         open={confirming}
         title={t("expenses.creditCard.lineRow.annulled.undoConfirmTitle")}
-        message={t("expenses.creditCard.lineRow.annulled.undoConfirmBody", { merchant: expenseVendorName(line) })}
+        message={t("expenses.creditCard.lineRow.annulled.undoConfirmBody", { merchant: shownNameText(line.name) })}
         confirmLabel={t("expenses.creditCard.lineRow.annulled.undo")}
         cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
         confirmDisabled={undo.isPending}
@@ -476,7 +475,7 @@ function PlanCuotasControls({ line }: { line: FlowCcExpenseLineRow }) {
       <ConfirmDialog
         open={confirming}
         title={t("expenses.creditCard.lineRow.planRemoveConfirmTitle")}
-        message={t("expenses.creditCard.lineRow.planRemoveConfirmBody", { merchant: expenseVendorName(line) })}
+        message={t("expenses.creditCard.lineRow.planRemoveConfirmBody", { merchant: shownNameText(line.name) })}
         confirmLabel={t("expenses.creditCard.lineRow.planRemove")}
         cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
         confirmDisabled={busy}
@@ -557,7 +556,7 @@ function ExpenseLineRow({
     canAnnul ||
     canUndoAnnul ||
     canDelete;
-  const merchant = expenseVendorName(ln);
+  const merchant = shownNameText(ln.name);
 
   return (
     <div

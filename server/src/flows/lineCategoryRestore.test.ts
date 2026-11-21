@@ -1,3 +1,4 @@
+import { wireLineBankText } from "../expenseShownName.js";
 import { parsedStatements } from "../test/parsedStatementRecords.js";
 import { assignFlowExpenseLineCategory } from "../expenseAssignmentWrites.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -145,7 +146,7 @@ describe("line categories across a statement re-import", () => {
 
     const payload = buildFlowsExpensesPayload();
     const hit = payload.lines.find((ln) => ln.statement_line_id === line.id);
-    if (hit && normalizeCcExpenseMerchantKey(hit.merchant) === merchantKey) {
+    if (hit && normalizeCcExpenseMerchantKey(wireLineBankText(hit)) === merchantKey) {
       expect(hit.category_slug).toBe("fun");
     }
   });

@@ -6,7 +6,7 @@ import { api } from "../../api";
 import { assignableCcExpenseCategories, ccExpenseCategoryPathLabel } from "../../ccExpenseCategories";
 import { isCcExpenseTotalsExcludedSlug } from "../../ccExpenseLineBuckets";
 import { currencyFormatInfo, formatMoney, formatNumberInput, parseNumberInput } from "../../format";
-import { useTranslation } from "../../i18n";
+import { shownNameText, useTranslation } from "../../i18n";
 import { useSaveExpenseLinePiecesMutation } from "../../queries/hooks";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Modal } from "../ui/Modal";
@@ -117,7 +117,7 @@ export function ExpenseLinePiecesDialog({
     <Modal
       open={open}
       onClose={onClose}
-      title={t("expenses.creditCard.pieces.title", { merchant: data?.merchant ?? line?.merchant ?? "" })}
+      title={t("expenses.creditCard.pieces.title", { merchant: line ? shownNameText(line.name) : "" })}
       closeAriaLabel={t("common.close")}
     >
       {shownError instanceof Error ? <p className="error">{shownError.message}</p> : null}

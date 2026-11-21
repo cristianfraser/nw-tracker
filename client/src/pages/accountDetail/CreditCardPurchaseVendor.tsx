@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { Button } from "@crfrsr/ui";
 import type { CcInstallmentPurchaseComputed } from "../../types";
-import { useTranslation } from "../../i18n";
+import { shownNameText, useTranslation } from "../../i18n";
 import { ExpensePurchaseNoteInput } from "../../components/credit-card/ExpensePurchaseNoteInput";
 import {
   ExpenseRowMoreButton,
   ExpenseVendorLabel,
   ExpenseVendorPanelLink,
-  expenseVendorName,
   useExpenseVendorLinkLabel,
   type ExpenseVendorSource,
 } from "../../components/credit-card/ExpenseVendorLabel";
@@ -15,9 +14,8 @@ import styles from "./CreditCardPurchaseVendor.module.css";
 
 export function purchaseVendorSource(p: CcInstallmentPurchaseComputed): ExpenseVendorSource {
   return {
-    merchant: p.label,
-    display_merchant: p.display_merchant,
-    merchant_processor: p.merchant_processor,
+    name: p.name,
+    name_detail: p.name_detail,
     link_label: p.link_label,
     payment_receipt: p.payment_receipt,
   };
@@ -52,7 +50,7 @@ export function CreditCardPurchaseVendor({
         <ExpenseVendorLabel source={source} note={purchase.purchase_notes} className={styles.label} />
         <ExpenseRowMoreButton
           expanded={expanded}
-          ariaLabel={t("expenses.creditCard.lineRow.moreAria", { merchant: expenseVendorName(source) })}
+          ariaLabel={t("expenses.creditCard.lineRow.moreAria", { merchant: shownNameText(source.name) })}
           onClick={() => setExpanded((v) => !v)}
         />
       </div>

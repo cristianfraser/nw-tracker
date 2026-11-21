@@ -1,7 +1,7 @@
 import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { Link } from "react-router-dom";
 import { Button } from "@crfrsr/ui";
-import { ccExpenseCategoryLabel, useTranslation } from "../../i18n";
+import { ccExpenseCategoryLabel, shownNameText, useTranslation } from "../../i18n";
 import { formatIncomeMoney } from "../../incomeAggregates";
 import type { DisplayUnit } from "../../queries/keys";
 import type { FlowCheckingIncomeLine } from "../../types";
@@ -47,7 +47,7 @@ export function IncomeRefundLinesTable({
             <td className="mono">{row.received_on}</td>
             <td className="mono">{formatIncomeMoney(row.amount, displayUnit)}</td>
             <td>
-              {row.description}
+              {shownNameText(row.name)}
               <TransferCounterpartyLine counterparty={row.transfer_counterparty} />
             </td>
             <td>

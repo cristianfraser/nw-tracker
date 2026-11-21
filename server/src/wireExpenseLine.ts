@@ -3,13 +3,20 @@
  * `converted` (its value in the requested display unit, `lineMoney.ts`) and `value_clp` (its pesos,
  * the facturado's frame); the builders' peso and dollar fields (`amount_clp`, `amount_usd`,
  * `amount_usd_at_expense`, `clp_rate_source`) and the internal `values` stay inside the server.
+ * The line's names go out as its one shown name (`name`, `expenseShownName.ts`) plus the bank's text
+ * for the ⓘ card (`name_detail`); the pipeline's name fields (`merchant`, `display_merchant`,
+ * `payment_name`, `merchant_processor`, the refunded purchase's) stay inside the server too.
  * Every route that sends lines sends them through this. Typed structurally (no import of the server
  * line type) so the line builders can use it without an import cycle.
  */
 import type { FlowCcExpenseLineRow as WireExpenseLine, LineUnitValue } from "nw-tracker-contracts/dto/flows";
+import { shownNameFields, type ShownNameSource } from "./expenseShownName.js";
 import { lineAmount, lineConvertedForWire, linePesos } from "./lineMoney.js";
 
-type ServerLine = {
+type ServerLine = ShownNameSource & {
+  source: string;
+  purchase_key: string;
+  refund_of?: ShownNameSource & Record<string, unknown>;
   amount_clp: number;
   amount_usd?: number | null;
   amount_usd_at_expense?: number | null;
@@ -24,8 +31,31 @@ export function toWireExpenseLine(l: ServerLine, unit: string): WireExpenseLine 
   lineAmount(l); // throws on a line the «line money» step has not seen
   const converted = lineConvertedForWire(l, unit);
   const value_clp = linePesos(l);
-  const { amount_clp: _c, amount_usd: _u, amount_usd_at_expense: _e, clp_rate_source: _r, values: _v, ...wire } = l;
-  return { ...wire, converted, value_clp } as unknown as WireExpenseLine;
+  const {
+    amount_clp: _c,
+    amount_usd: _u,
+    amount_usd_at_expense: _e,
+    clp_rate_source: _r,
+    values: _v,
+    merchant,
+    display_merchant: _dm,
+    payment_name: _pn,
+    merchant_processor: _mp,
+    refund_of,
+    ...wire
+  } = l;
+  const names = shownNameFields(l, `expense line ${l.purchase_key}`, refund_of);
+  const refund = refund_of
+    ? (({ merchant: _rm, display_merchant: _rdm, payment_name: _rpn, merchant_processor: _rmp, ...rest }) => rest)(refund_of)
+    : undefined;
+  return {
+    ...wire,
+    ...names,
+    ...(l.source === "manual" && merchant != null ? { manual_description: merchant } : {}),
+    ...(refund ? { refund_of: refund } : {}),
+    converted,
+    value_clp,
+  } as unknown as WireExpenseLine;
 }
 
 export function toWireExpenseLines(lines: readonly ServerLine[], unit: string): WireExpenseLine[] {

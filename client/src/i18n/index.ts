@@ -1,7 +1,7 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { readInitialLanguage } from "../languagePreference";
-import type { DepositFlowCategory, FlowsPlBucketSlug } from "../types";
+import type { DepositFlowCategory, FlowsPlBucketSlug, ShownName, ShownNameBase } from "../types";
 import en from "./locales/en.json";
 import es from "./locales/es.json";
 
@@ -26,6 +26,28 @@ if (typeof document !== "undefined") {
 export default i18n;
 
 export { Trans, useTranslation } from "react-i18next";
+
+function shownNameBaseText(name: ShownNameBase): string {
+  switch (name.kind) {
+    case "text":
+      return name.text;
+    case "pays_card":
+      return i18n.t("expenses.creditCard.paymentName.paysCard", { brand: name.card_brand, last4: name.card_last4 });
+    case "paid_by_card":
+      return i18n.t("expenses.creditCard.paymentName.paidByCard", { brand: name.card_brand, last4: name.card_last4 });
+    case "paid_from_account":
+      return i18n.t("expenses.creditCard.paymentName.paidFromAccount", { account: name.account_name });
+  }
+}
+
+/**
+ * The words of the one name a row shows (the server's `name`): its text, a card payment's name
+ * («Pago Lider ·0101»), or a refund under its purchase's name («Reembolso · …»). Read at render time.
+ */
+export function shownNameText(name: ShownName): string {
+  if (name.kind === "refund_of") return i18n.t("expenses.creditCard.lineRow.refundOf", { name: shownNameBaseText(name.purchase) });
+  return shownNameBaseText(name);
+}
 
 export function ccExpenseCategoryLabel(slug: string): string {
   const key = `expenses.creditCard.categories.${slug}`;

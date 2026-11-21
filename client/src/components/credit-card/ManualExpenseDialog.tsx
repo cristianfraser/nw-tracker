@@ -46,7 +46,7 @@ export function ManualExpenseDialog({
     // A new expense starts in the first core currency the server lists, unless one was picked.
     setCurrency(expense?.amount.currency ?? "");
     setCategorySlug(expense?.category_slug ?? "");
-    const merchant = expense?.merchant ?? "";
+    const merchant = expense?.manual_description ?? "";
     // The demo takes a description from its list only; another one has to be picked again.
     setDescription(
       DEMO_EDITS_LIMITED && !(DEMO_MANUAL_EXPENSE_DESCRIPTIONS as readonly string[]).includes(merchant) ? "" : merchant

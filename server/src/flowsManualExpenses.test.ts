@@ -44,7 +44,8 @@ describe("flowsManualExpenses", () => {
     const line = payload.lines.find((ln) => ln.source === "manual" && ln.statement_line_id === id);
     expect(line).toBeDefined();
     expect(line?.category_slug).toBe("supermarket");
-    expect(line?.merchant).toBe("Market");
+    expect(line?.name).toEqual({ kind: "text", text: "Market" });
+    expect(line?.manual_description).toBe("Market");
     expect(line?.expense_month).toBe("2099-03");
     expect(line?.value_clp).toBe(123_456);
     const inUsd = buildFlowsExpensesPayload("usd").lines.find((ln) => ln.source === "manual" && ln.statement_line_id === id);

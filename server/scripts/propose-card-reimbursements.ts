@@ -21,6 +21,7 @@
  *   options: --from=YYYY-MM-DD (default 2024-01-01) --max-amount=<clp> (default 1000000)
  *            --exclude-ids=1,2 --movement-ids=1,2 --window-days=<n> (default 21)
  */
+import { wireLineBankText } from "../src/expenseShownName.js";
 import { db } from "../src/db.js";
 import { isAdditionalCardChargeLine } from "../src/additionalCardReimbursements.js";
 import {
@@ -119,7 +120,7 @@ try {
     const chargeLines = payload.lines.filter(isAdditionalCardChargeLine);
     const charges: ReimbursementChargeInput[] = chargeLines.map((l) => {
       const date = l.purchase_on ?? l.occurred_on;
-      return { id: l.statement_line_id, date, amount_clp: l.value_clp, merchant: l.merchant };
+      return { id: l.statement_line_id, date, amount_clp: l.value_clp, merchant: wireLineBankText(l) };
     });
     const notas = charges.filter((c) => c.amount_clp < 0);
 

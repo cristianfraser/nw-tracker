@@ -2,10 +2,10 @@ import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useTranslation } from "../../i18n";
+import { shownNameText, useTranslation } from "../../i18n";
 import { formatIncomeMoney } from "../../incomeAggregates";
 import type { DisplayUnit } from "../../queries/keys";
-import type { FlowExcludedCheckingIncomeLine } from "../../types";
+import type { FlowExcludedCheckingIncomeLine, ShownName } from "../../types";
 import { useRestoreIncomeMovementMutation } from "../../queries/mutations";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { loadableClass } from "../ui/Loadable";
@@ -25,7 +25,7 @@ export function IncomeExcludedLinesTable({
   const restoreIncomeMovement = useRestoreIncomeMovementMutation();
   const [restoreTarget, setRestoreTarget] = useState<{
     movement_id: number;
-    description: string;
+    name: ShownName;
     received_on: string;
   } | null>(null);
 
@@ -54,7 +54,7 @@ export function IncomeExcludedLinesTable({
                 {formatIncomeMoney(row.amount, displayUnit)}
               </td>
               <td>
-                {row.description}
+                {shownNameText(row.name)}
                 <TransferCounterpartyLine counterparty={row.transfer_counterparty} />
               </td>
               <td>
@@ -68,7 +68,7 @@ export function IncomeExcludedLinesTable({
                     onClick={() =>
                       setRestoreTarget({
                         movement_id: row.movement_id,
-                        description: row.description,
+                        name: row.name,
                         received_on: row.received_on,
                       })
                     }
@@ -89,7 +89,7 @@ export function IncomeExcludedLinesTable({
           restoreTarget
             ? t("income.restoreConfirmMessage", {
                 date: restoreTarget.received_on,
-                description: restoreTarget.description,
+                description: shownNameText(restoreTarget.name),
               })
             : ""
         }

@@ -1,3 +1,4 @@
+import { wireLineBankText } from "./expenseShownName.js";
 import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { randomUUID } from "node:crypto";
@@ -449,10 +450,10 @@ describe("flowsExpenses", () => {
   it("annuls APPLE purchase when a matching NOTA DE CREDITO appears later", () => {
     const payload = buildFlowsExpensesPayload();
     const apple = payload.lines.find(
-      (ln) => ln.merchant === "APPLE.COM CL" && ln.nota_credito_role === "annulled_purchase"
+      (ln) => wireLineBankText(ln) === "APPLE.COM CL" && ln.nota_credito_role === "annulled_purchase"
     );
     const nota = payload.lines.find(
-      (ln) => ln.merchant === "NOTA DE CREDITO" && ln.nota_credito_role === "matched_nota"
+      (ln) => wireLineBankText(ln) === "NOTA DE CREDITO" && ln.nota_credito_role === "matched_nota"
     );
     if (!apple || !nota) return;
 
@@ -522,7 +523,7 @@ describe("flowsExpenses", () => {
     const inst = payload.lines.find(
       (ln) =>
         ln.installment_flag === 1 &&
-        ln.merchant?.includes("ROCA") &&
+        wireLineBankText(ln)?.includes("ROCA") &&
         ln.nro_cuota_current != null &&
         ln.nro_cuota_current >= 2
     );

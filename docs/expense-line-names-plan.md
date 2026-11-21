@@ -69,15 +69,17 @@ name when a payment name or refund wording replaced it. `processor` is the prefi
   internal name fields and `merchant` from the wire.
 - **Card plans:** `withPurchaseExpenseLinks` copies `name` + `name_detail` from the plan's line
   (`lineShownName`), not the raw fields.
-- **Flows rows:** `withDisplayNotes` becomes `withShownNames`. Every row with a note goes through
-  `checkingMovementDisplayNames`, with no shortcut for «already plain text». Its catalog pass is the
-  point. `name: ShownName | null` (null = a movement with no note); `name_detail` when it differs.
+- **Flows rows:** `withDisplayNotes` becomes `withShownNames`. A bank note (an import key, or a
+  mail-paired movement) goes through `checkingMovementDisplayNames`. A note the user typed is its own
+  name: the catalog cleans bank text («COMPRA …» clutter), and running it over the user's words would
+  rewrite them. `name: ShownName | null` (null = a movement with no note), and `name_detail` (the stored
+  note) when the name differs. Either way the client reads only `name`.
   `note` stays on the row, because the flow editors (`AccountUnitsFlowForm`, `AccountBookMovementsForm`)
   edit the stored note. The display list stops reading it. The `q` filter searches `name` text + note.
-- **Income lines:** each checking income line gets `name` + `name_detail` from
-  `checkingMovementDisplayNames(description, account, counterparty)`. `description` stays, because the
-  exclude / include API keys on it (see the tables' targets). Display reads `name`. Manual income:
-  `name` = its source, else its note.
+- **Income lines:** each checking income line gets `name` + `name_detail` in `GET /api/income`
+  (`checkingMovementShownName(description, account, counterparty)`). `description` leaves the wire:
+  the tables only displayed it, and every mutation keys on `movement_id`. Manual income keeps its own
+  `source` / `note` columns. They are the user's fields, not a bank pair, so they get no `name`.
 - **Latest movements:** income rows carry `name` / `name_detail` / `link_label`. `display_merchant` and
   `description` leave the DTO.
 - **Checking statement:** `vendor` becomes `{name, name_detail?, link_label?, transfer_counterparty?}`.
@@ -92,6 +94,8 @@ name when a payment name or refund wording replaced it. `processor` is the prefi
   `CreditCardPurchaseVendor`) uses `shownNameText(line.name)`.
 - `ManualExpenseDialog` prefills from a structured `manual_description` on manual lines. It is the
   form's own stored value, not a display name.
+- The line-pieces response (`ExpenseLinePiecesDto`) drops `merchant`. The dialog titles with the
+  line's `name`.
 - `FlowsTable` / `FlowRows`: the row's text = `shownNameText(row.name)`, its title = `name_detail`'s bank
   text.
 - Income tables and `LatestMovementsTable`: `shownNameText(row.name)`.

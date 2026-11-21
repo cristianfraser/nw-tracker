@@ -82,15 +82,31 @@ import type { ExpenseGenericUniqueMerchantRow as S_ExpenseGenericUniqueMerchantR
 import type { IngestRunStatus as S_IngestRunStatus } from "../ingestRuns.js";
 import type { JobWaitView as S_JobWaitView, JobView as S_JobView } from "../jobQueueView.js";
 import type { JobStatus as S_JobStatus } from "../jobQueuePolicy.js";
+import type { ShownNameFields as S_ShownNameFields } from "../expenseShownName.js";
 
 type Fits<S extends D, D> = [S, D];
 
 /** An expense line as `toWireExpenseLine` sends it: the builder fields stripped, its money set. */
 type S_WireExpenseLine = Omit<
   S_FlowCcExpenseLineRow,
-  "amount_clp" | "amount_usd" | "amount_usd_at_expense" | "clp_rate_source" | "amount" | "values"
+  | "amount_clp"
+  | "amount_usd"
+  | "amount_usd_at_expense"
+  | "clp_rate_source"
+  | "amount"
+  | "values"
+  | "merchant"
+  | "display_merchant"
+  | "payment_name"
+  | "merchant_processor"
+  | "refund_of"
 > &
-  Required<Pick<S_FlowCcExpenseLineRow, "amount">> & { converted: Dto.LineConverted | null; value_clp: number };
+  Required<Pick<S_FlowCcExpenseLineRow, "amount">> & {
+    converted: Dto.LineConverted | null;
+    value_clp: number;
+    manual_description?: string;
+    refund_of?: Omit<NonNullable<S_FlowCcExpenseLineRow["refund_of"]>, "merchant" | "display_merchant" | "payment_name">;
+  } & S_ShownNameFields;
 
 /**
  * Not listed: `GroceryReceiptRow` (the server reads `source` as a plain string; the stored values
@@ -107,7 +123,7 @@ export type ServerDtosFitContracts = [
   Fits<S_UpcomingPaymentKind, Dto.UpcomingPaymentKind>,
   Fits<S_UpcomingPaymentsBlock, Dto.UpcomingPaymentsDto>,
   Fits<S_CcCuotaPurchaseKind, Dto.CcCuotaPurchaseKind>,
-  Fits<S_CcInstallmentPurchaseComputed, Dto.CcInstallmentPurchaseComputed>,
+  Fits<S_CcInstallmentPurchaseComputed & Required<Pick<S_CcInstallmentPurchaseComputed, "name">>, Dto.CcInstallmentPurchaseComputed>,
   Fits<S_CcCuotaProgressCuota, Dto.CcCuotaProgressCuota>,
   Fits<S_CcCuotaProgress, Dto.CcCuotaProgress>,
   Fits<S_CcInstallmentMonthBreakdown, Dto.CcInstallmentMonthBreakdown>,
@@ -205,11 +221,11 @@ export type ServerDtosFitContracts = [
   Fits<S_BigGroupUsage, Dto.BigGroupUsage>,
   Fits<S_AdditionalCardsPeriodRow, Dto.AdditionalCardsPeriodRow>,
   Fits<S_AdditionalCardsSummary, Dto.AdditionalCardsSummary>,
-  Fits<S_FlowCheckingIncomeLine, Dto.FlowCheckingIncomeLine>,
+  Fits<Omit<S_FlowCheckingIncomeLine, "description"> & S_ShownNameFields, Dto.FlowCheckingIncomeLine>,
   Fits<S_IncomeAutoFilterReason, Dto.IncomeAutoFilterReason>,
-  Fits<S_FlowFilteredCheckingIncomeLine, Dto.FlowFilteredCheckingIncomeLine>,
+  Fits<Omit<S_FlowFilteredCheckingIncomeLine, "description"> & S_ShownNameFields, Dto.FlowFilteredCheckingIncomeLine>,
   Fits<S_FlowManualIncomeLine, Dto.FlowManualIncomeLine>,
-  Fits<S_FlowExcludedCheckingIncomeLine, Dto.FlowExcludedCheckingIncomeLine>,
+  Fits<Omit<S_FlowExcludedCheckingIncomeLine, "description"> & S_ShownNameFields, Dto.FlowExcludedCheckingIncomeLine>,
   Fits<S_PayslipCheckName, Dto.PayslipCheckName>,
   Fits<S_PayslipCheck, Dto.PayslipCheck>,
   Fits<S_PayslipChecksRow, Dto.PayslipChecksRow>,

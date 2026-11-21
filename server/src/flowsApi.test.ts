@@ -28,7 +28,7 @@ function flowRow(over: Partial<FlowsApiRow>): FlowsApiRow {
     counter_currency: null,
     occurred_on: "2026-01-15",
     note: null,
-    display_note: null,
+    name: null,
     units_delta: null,
     counter_units_delta: null,
     flow_kind: null,
@@ -335,9 +335,12 @@ describe("what a bank movement's flows row shows", () => {
     try {
       const rows = buildAccountFlows(accountId, { q: "VITESTDN" }, 1, 50)!.rows;
       const byId = new Map(rows.map((r) => [r.id, r]));
-      expect(byId.get(plainId)!.display_note).toBe("Transf. a Cuenta de Otro Banco VITESTDN");
-      expect(byId.get(paidId)!.display_note).toBe("Transf. de Juana Perez");
-      expect(byId.get(humanId)!.display_note).toBeNull();
+      expect(byId.get(plainId)!.name).toEqual({ kind: "text", text: "Transf. a Cuenta de Otro Banco VITESTDN" });
+      expect(byId.get(plainId)!.name_detail?.bank_text).toMatch(/^import:cartola-partial\|/);
+      expect(byId.get(paidId)!.name).toEqual({ kind: "text", text: "Transf. de Juana Perez" });
+      // A note the user typed is the name as typed, with nothing behind it.
+      expect(byId.get(humanId)!.name).toEqual({ kind: "text", text: "Fintual · VITESTDN human note" });
+      expect(byId.get(humanId)!.name_detail).toBeUndefined();
       // The shown name is searchable too.
       expect(buildAccountFlows(accountId, { q: "Juana Perez" }, 1, 50)!.rows.map((r) => r.id)).toContain(paidId);
     } finally {

@@ -50,6 +50,7 @@ import {
 } from "./expenseNameText.js";
 import { repairMojibake } from "./textRepair.js";
 import { cleanBankMerchant, splitProcessorPrefix } from "./bankMerchantName.js";
+import { shownNameFields, type ShownNameFields } from "./expenseShownName.js";
 import { linkKeyForName } from "./expenseCategoryRules.js";
 
 export { cleanBankMerchant, splitProcessorPrefix };
@@ -603,6 +604,25 @@ export function checkingMovementDisplayNames(
     { source: "checking", merchant: description, account_id: accountId, payment_receipt: undefined, transfer_counterparty: counterparty },
     ctx
   );
+}
+
+/**
+ * A checking movement's shown name outside the expense lines (an income credit, a flows row, a
+ * statement row): `checkingMovementDisplayNames` through the one name rule (`expenseShownName.ts`),
+ * with the link label beside it.
+ */
+export function checkingMovementShownName(
+  description: string,
+  accountId: number,
+  counterparty: TransferCounterpartyDto | undefined,
+  ctx: DisplayNameContext,
+  what: string
+): ShownNameFields & { link_label?: ExpenseLinkLabel } {
+  const names = checkingMovementDisplayNames(description, accountId, counterparty, ctx);
+  return {
+    ...shownNameFields({ merchant: description, ...names }, what),
+    ...(names.link_label ? { link_label: names.link_label } : {}),
+  };
 }
 
 /** Every line with the names it shows (last step of the expense lines). */

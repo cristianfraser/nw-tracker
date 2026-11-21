@@ -35,7 +35,6 @@ export type ExpenseLinePiecesDto = {
   /** The line as it reads without pieces, in `currency`. */
   line_amount: number;
   line_date: string;
-  merchant: string;
   category_slug: string;
   pieces: ExpenseLinePieceDto[];
 };
@@ -86,7 +85,6 @@ export function getExpenseLinePieces(source: ExpenseLinePieceSource, lineId: num
     currency: native.currency,
     line_amount: native.value,
     line_date: line.purchase_on ?? line.occurred_on,
-    merchant: line.merchant ?? "",
     category_slug: line.category_slug,
     pieces: storedPieces(source, lineId),
   };

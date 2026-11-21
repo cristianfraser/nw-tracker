@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "../../cn";
-import i18n, { useTranslation } from "../../i18n";
-import type { ExpenseLinePaymentName, FlowCcExpenseLineRow } from "../../types";
+import { shownNameText, useTranslation } from "../../i18n";
+import type { FlowCcExpenseLineRow } from "../../types";
 import { HoverPopover } from "../ui/HoverPopover";
 import { InfoIcon } from "../icons/InfoIcon";
 import { MoreIcon } from "../icons/MoreIcon";
@@ -10,28 +10,26 @@ import { transferCounterpartyDetailLines } from "../flows/TransferCounterpartyLi
 import styles from "./ExpenseVendorLabel.module.css";
 
 /**
- * What a vendor label reads: the bank's merchant, the names the server derived from it and the
- * links behind it. An expense line carries all of it; a card plan the fields its lines carry.
+ * What a vendor label reads: the one name the server built (`name`), the bank's text behind it for
+ * the ⓘ card (`name_detail`) and the links behind it. An expense line carries all of it; a card plan
+ * the fields its lines carry.
  */
-export type ExpenseVendorSource = {
-  merchant: string | null;
-} & Partial<
-  Pick<
-    FlowCcExpenseLineRow,
-    | "display_merchant"
-    | "payment_name"
-    | "merchant_processor"
-    | "link_label"
-    | "payment_receipt"
-    | "transfer_counterparty"
-    | "expense_deposit_links"
-    | "line_role"
-    | "nro_cuota_total"
-    | "annulled"
-    | "annulment"
-    | "refund_of"
-  >
->;
+export type ExpenseVendorSource = Pick<FlowCcExpenseLineRow, "name"> &
+  Partial<
+    Pick<
+      FlowCcExpenseLineRow,
+      | "name_detail"
+      | "link_label"
+      | "payment_receipt"
+      | "transfer_counterparty"
+      | "expense_deposit_links"
+      | "line_role"
+      | "nro_cuota_total"
+      | "annulled"
+      | "annulment"
+      | "refund_of"
+    >
+  >;
 
 export type ExpenseVendorLinkLabel = { parts: string[]; inline: boolean };
 
@@ -77,15 +75,11 @@ function InfoBlock({ lines }: { lines: readonly string[] }) {
 export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
   const { t } = useTranslation();
   const blocks: ReactNode[] = [];
-  if ((source.display_merchant != null || source.payment_name != null) && source.merchant) {
-    // A payment's name replaces the merchant: the store's name and the bank's text go here.
-    const bank =
-      source.payment_name != null && source.display_merchant != null && source.display_merchant !== source.merchant
-        ? [source.display_merchant, source.merchant]
-        : [source.merchant];
-    if (source.merchant_processor) {
-      bank.push(t("expenses.creditCard.lineRow.viaProcessor", { processor: source.merchant_processor }));
-    }
+  const detail = source.name_detail;
+  if (detail) {
+    // The row shows another name: the store's name (when a payment's or refund's took its place) and the bank's text go here.
+    const bank = detail.store_name != null ? [detail.store_name, detail.bank_text] : [detail.bank_text];
+    if (detail.processor) bank.push(t("expenses.creditCard.lineRow.viaProcessor", { processor: detail.processor }));
     blocks.push(<InfoBlock key="bank" lines={bank} />);
   }
   if (source.line_role === "installment_purchase_total") {
@@ -179,32 +173,6 @@ export function useExpenseVendorLinkLabel(source: ExpenseVendorSource): ExpenseV
   return null;
 }
 
-/** A card payment's name («Pago Lider ·0101», «Pago con tarjeta Santander ·0781», «Pago desde …»). */
-export function expensePaymentName(p: ExpenseLinePaymentName): string {
-  switch (p.kind) {
-    case "pays_card":
-      return i18n.t("expenses.creditCard.paymentName.paysCard", { brand: p.card_brand, last4: p.card_last4 });
-    case "paid_by_card":
-      return i18n.t("expenses.creditCard.paymentName.paidByCard", { brand: p.card_brand, last4: p.card_last4 });
-    case "paid_from_account":
-      return i18n.t("expenses.creditCard.paymentName.paidFromAccount", { account: p.account_name });
-  }
-}
-
-/** The name a row shows for its source: a card payment's name, else the server's display name, else the bank's. */
-export function expenseVendorName(source: ExpenseVendorSource): string {
-  if (source.payment_name) return expensePaymentName(source.payment_name);
-  const refunded = source.refund_of;
-  if (refunded) {
-    // A refund reads as the purchase it refunds, under the purchase's own name.
-    const purchase = refunded.payment_name
-      ? expensePaymentName(refunded.payment_name)
-      : (refunded.display_merchant ?? refunded.merchant ?? "—");
-    return i18n.t("expenses.creditCard.lineRow.refundOf", { name: purchase });
-  }
-  return source.display_merchant ?? source.merchant ?? "—";
-}
-
 /** `merchant · note · link ⓘ` — the vendor cell of an expense row and of a card plan. */
 export function ExpenseVendorLabel({
   source,
@@ -225,7 +193,7 @@ export function ExpenseVendorLabel({
   const Root = inline ? "span" : "div";
   return (
     <Root className={cn(styles.vendor, inline && styles.inline, className)}>
-      <span className={styles.merchant}>{expenseVendorName(source)}</span>
+      <span className={styles.merchant}>{shownNameText(source.name)}</span>
       {trimmedNote ? (
         <>
           <Sep />

@@ -54,6 +54,7 @@ import {
 import { buildFlowsCheckingIncomePayload, flowsCheckingIncomeListsInUnit } from "../flowsCheckingInflows.js";
 import { markCheckingExpenseRefund, unmarkCheckingExpenseRefund } from "../checkingExpenseRefunds.js";
 import { transferCounterpartiesByMovementSide, withTransferCounterparties } from "../bankTransferNotices.js";
+import { checkingMovementShownName, loadDisplayNameContext } from "../expenseDisplayNames.js";
 import {
   CHECKING_INCOME_KINDS,
   type CheckingIncomeKind,
@@ -147,15 +148,29 @@ app.get("/api/income", (req, res) => {
   const payload = buildFlowsCheckingIncomePayload();
   const inUnit = flowsCheckingIncomeListsInUnit(payload, unit);
   const counterparties = transferCounterpartiesByMovementSide();
+  const nameCtx = loadDisplayNameContext([]);
+  // Each credit with its payer (a transfer mail) and the one name it shows.
+  const named = <L extends { movement_id: number; account_id: number; description: string }>(lines: L[]) =>
+    withTransferCounterparties(lines, counterparties).map(({ description, ...l }) => {
+      const { link_label: _link, ...names } = checkingMovementShownName(
+        description,
+        l.account_id,
+        l.transfer_counterparty,
+        nameCtx,
+        `income credit ${l.movement_id}`
+      );
+      // The bank's description goes out only as the name's provenance (`name_detail`).
+      return { ...l, ...names };
+    });
   res.json({
     ...payload,
     unit,
-    lines: withTransferCounterparties(inUnit.lines, counterparties),
+    lines: named(inUnit.lines),
     manual: inUnit.manual,
     work_earnings: inUnit.work_earnings,
-    excluded_lines: withTransferCounterparties(inUnit.excluded_lines, counterparties),
-    filtered_lines: withTransferCounterparties(inUnit.filtered_lines, counterparties),
-    refund_lines: withTransferCounterparties(inUnit.refund_lines, counterparties),
+    excluded_lines: named(inUnit.excluded_lines),
+    filtered_lines: named(inUnit.filtered_lines),
+    refund_lines: named(inUnit.refund_lines),
     payroll_breakdown: buildPayrollBreakdown(unit),
     payslip_checks: buildPayslipChecks(),
     // The page's month rows, day points and total, from the overview's own income rule.

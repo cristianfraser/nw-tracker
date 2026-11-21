@@ -1,3 +1,4 @@
+import { wireLineBankText } from "./expenseShownName.js";
 import { FLOW_CATEGORY_ROWS_SQL, fixtureCardLine } from "./test/flowFixtures.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { clearExpenseCategoryRule } from "./expenseCategoryRules.js";
@@ -563,7 +564,7 @@ function createMerchantPropagationFixture(tag: string): {
     const payload = buildFlowsExpensesPayload();
     const allowed = new Set(listCreditCardMasterAccountIds());
     const line = payload.lines.find(
-      (ln) => ln.value_clp > 0 && ln.statement_line_id > 0 && !!ln.merchant && allowed.has(ln.account_id)
+      (ln) => ln.value_clp > 0 && ln.statement_line_id > 0 && !!wireLineBankText(ln) && allowed.has(ln.account_id)
     );
     if (!line) return;
 

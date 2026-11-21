@@ -266,11 +266,38 @@ export interface LineConverted {
   rate_source: LineRateSource;
 }
 
-/** See `FlowCcExpenseLineRow.payment_name`. `card_brand` is the issuer's short brand («Lider», «Santander»). */
+/**
+ * A card payment named by what it paid (server `expensePaymentNames.ts`): a charge or cuota plan that
+ * paid another card's facturado (`pays_card`), the payment line on the card a facturado payment paid
+ * (`paid_by_card`), a card payment whose money came from a bank account (`paid_from_account`).
+ * `card_brand` is the issuer's short brand («Lider», «Santander»).
+ */
 export type ExpenseLinePaymentName =
   | { kind: "pays_card"; card_brand: string; card_last4: string }
   | { kind: "paid_by_card"; card_brand: string; card_last4: string }
   | { kind: "paid_from_account"; account_name: string };
+
+/** A shown name that is not a refund's: a name as text, or a card payment's (worded by the client). */
+export type ShownNameBase = { kind: "text"; text: string } | ExpenseLinePaymentName;
+
+/**
+ * The one name a row shows (server `expenseShownName.ts`): the catalog's, counterparty's, cartola
+ * transfer's, payslip's or receipt payee's name, else the bank's text (`text`); a card payment named
+ * by what it paid; or a refund under its purchase's own name (`refund_of`). The client words it with
+ * `shownNameText` and never picks another field.
+ */
+export type ShownName = ShownNameBase | { kind: "refund_of"; purchase: ShownNameBase };
+
+/**
+ * Provenance for the ⓘ card, present only when the shown name is not the bank's text: the text as the
+ * bank prints it, the store's name when a payment name or refund wording took its place, and the
+ * payment processor whose prefix the cleaner dropped («Mercado Pago», «PayU»…).
+ */
+export interface ShownNameDetail {
+  bank_text: string;
+  store_name?: string;
+  processor?: string;
+}
 
 export interface TransferCounterparty {
   direction: "out" | "in" | "own";
@@ -397,7 +424,12 @@ export interface FlowCcExpenseLineRow {
    * was paid), whatever the display unit: the facturación and month modals' section totals.
    */
   value_clp: number; // convention-ok: a card line's pesos as the facturado counts them (peso documents)
-  merchant: string | null;
+  /** The name the row shows (see `ShownName`). */
+  name: ShownName;
+  /** The bank's text behind `name`, for the ⓘ card only. */
+  name_detail?: ShownNameDetail;
+  /** A manual expense's own description, as its edit form prefills it (manual lines only). */
+  manual_description?: string;
   merchant_key: string;
   installment_flag: number;
   nro_cuota_current: number | null;
@@ -418,18 +450,6 @@ export interface FlowCcExpenseLineRow {
   origin_label: string;
   /** Where the line came from, as data: the row draws an icon per kind with the account in a tooltip. */
   origin: ExpenseLineOrigin;
-  /** The merchant as the row shows it, when it differs from the bank's `merchant` (server-built). */
-  display_merchant?: string;
-  /**
-   * The line is a card payment, named by what it paid (server-built from the payment records, never
-   * the bank's text; the client words it): a charge or cuota plan that paid another card's facturado
-   * (`pays_card`), the payment line on the card a facturado payment paid (`paid_by_card`), or a card
-   * payment line whose money came from a bank account (`paid_from_account`). Replaces the shown
-   * merchant; the bank's text stays in `merchant`.
-   */
-  payment_name?: ExpenseLinePaymentName;
-  /** The payment processor whose prefix `display_merchant` dropped («Mercado Pago», «PayU»…). */
-  merchant_processor?: string;
   /** The short label of what the line is linked to (receipt payee, app, transfer counterparty). */
   link_label?: ExpenseLinkLabel;
   /** A cut branch that could be several places: the user picks one (`key`: the folded name). */
@@ -476,16 +496,13 @@ export interface FlowCcExpenseLineRow {
   annulment?: { annulled_purchase_id: number; purchase_date: string };
   /**
    * A refund whose purchase structured state names (the credit of a plan the bank prepaid, an
-   * annulment, a nota de crédito paired with its purchase): the purchase as its line finally reads —
-   * its names and receipt, so the refund shows as that purchase's. Absent on every other line.
+   * annulment, a nota de crédito paired with its purchase): the purchase's day, link label and
+   * receipt (its name is in the refund's `name`). Absent on every other line.
    */
   refund_of?: {
     line_id: number;
     purchase_key: string;
     purchase_date: string;
-    merchant: string | null;
-    display_merchant?: string;
-    payment_name?: ExpenseLinePaymentName;
     link_label?: ExpenseLinkLabel;
     payment_receipt?: PaymentReceipt;
   };
@@ -535,7 +552,6 @@ export interface ExpenseLinePieces {
   /** The line as it reads without pieces, in `currency`. */
   line_amount: number;
   line_date: string;
-  merchant: string;
   category_slug: string;
   pieces: ExpenseLinePiece[];
 }
@@ -827,7 +843,10 @@ export interface FlowCheckingIncomeLine {
   account_label: string;
   received_on: string;
   amount: number | null;
-  description: string;
+  /** The name the row shows (the expense lines' name rule over `description`). */
+  name: ShownName;
+  /** The bank's text behind `name`, for the ⓘ card only. */
+  name_detail?: ShownNameDetail;
   source: "checking";
   transfer_counterparty?: TransferCounterparty;
 }
@@ -839,7 +858,10 @@ export interface FlowExcludedCheckingIncomeLine {
   received_on: string;
   /** In the payload's unit (null with no rate on file). */
   amount: number | null;
-  description: string;
+  /** The name the row shows (the expense lines' name rule over `description`). */
+  name: ShownName;
+  /** The bank's text behind `name`, for the ⓘ card only. */
+  name_detail?: ShownNameDetail;
   note: string | null;
   transfer_counterparty?: TransferCounterparty;
 }
@@ -858,7 +880,10 @@ export interface FlowFilteredCheckingIncomeLine {
   received_on: string;
   /** In the payload's unit (null with no rate on file). */
   amount: number | null;
-  description: string;
+  /** The name the row shows (the expense lines' name rule over `description`). */
+  name: ShownName;
+  /** The bank's text behind `name`, for the ⓘ card only. */
+  name_detail?: ShownNameDetail;
   filter_reason: IncomeAutoFilterReason;
   transfer_counterparty?: TransferCounterparty;
 }
@@ -1237,16 +1262,16 @@ export interface LatestIncomeMovement {
   source: "checking" | "manual";
   /** Checking account label; null for manual income. */
   account_label: string | null;
-  /** Bank description (checking) or the manual entry's source / note. */
-  description: string;
+  /** The name the row shows (checking: through the expense lines' name rule; manual: its source, else its note). */
+  name: ShownName;
+  /** The bank's text behind `name`, for the ⓘ card only. */
+  name_detail?: ShownNameDetail;
   /** The credit in its own currency: a dollar checking account's in dollars, any other in pesos. */
   amount: Money;
   /** Its value in the requested display unit (another currency at the day's rate; null with no rate). */
   converted: LineConverted | null;
   income_kind: IncomeKind | null;
   transfer_counterparty?: TransferCounterparty;
-  /** The name the row shows when it is not the description: «Transf. de <payer>» (`checkingMovementDisplayNames`). */
-  display_merchant?: string;
   /** The payer's short label when the shown name does not already carry it. */
   link_label?: ExpenseLinkLabel;
 }

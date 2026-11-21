@@ -24,6 +24,7 @@
  *   npx tsx scripts/report-expense-link-labels.ts --detail=gesmob  (every movement of the transfers whose
  *                                                                   counterparty name or RUT contains the text)
  */
+import { wireLineBankText } from "../src/expenseShownName.js";
 import { db } from "../src/db.js";
 import { loadPaymentProcessorReceipts } from "../src/paymentProcessorReceipts.js";
 import { deriveMerchantChargeLinks } from "../src/merchantExpenseNotes.js";
@@ -214,7 +215,7 @@ type Merchant = { source: string; merchant: string; count: number; pesos: number
 const merchants = new Map<string, Merchant>();
 for (const l of lines) {
   if (l.source !== "cc" && l.source !== "checking") continue;
-  const merchant = (l.merchant ?? "").trim();
+  const merchant = (wireLineBankText(l) ?? "").trim();
   if (!merchant) continue;
   const key = `${l.source}|${merchant}`;
   const day = l.purchase_on ?? l.occurred_on;

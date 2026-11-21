@@ -2,9 +2,9 @@ import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useTranslation } from "../../i18n";
+import { shownNameText, useTranslation } from "../../i18n";
 import type { DisplayUnit } from "../../queries/keys";
-import type { IncomeKind } from "../../types";
+import type { IncomeKind, ShownName } from "../../types";
 import type { IncomeDisplayRow } from "../../incomeAggregates";
 import {
   formatIncomeMoney,
@@ -39,7 +39,7 @@ export function IncomeAllLinesTable({
   const rentPlaces = useIncomeRentPlaces();
   const [excludeTarget, setExcludeTarget] = useState<{
     movement_id: number;
-    description: string;
+    name: ShownName;
     received_on: string;
   } | null>(null);
 
@@ -95,7 +95,7 @@ export function IncomeAllLinesTable({
                     {formatIncomeMoney(row.amount, displayUnit)}
                   </td>
                   <td>
-                    {row.description}
+                    {shownNameText(row.name)}
                     {row.kind === "checking" ? <TransferCounterpartyLine counterparty={row.transfer_counterparty} /> : null}
                   </td>
                   <td>
@@ -162,7 +162,7 @@ export function IncomeAllLinesTable({
                       onClick={() =>
                         setExcludeTarget({
                           movement_id: row.movement_id,
-                          description: row.description,
+                          name: row.name,
                           received_on: row.received_on,
                         })
                       }
@@ -197,7 +197,7 @@ export function IncomeAllLinesTable({
           excludeTarget
             ? t("income.excludeConfirmMessage", {
                 date: excludeTarget.received_on,
-                description: excludeTarget.description,
+                description: shownNameText(excludeTarget.name),
               })
             : ""
         }

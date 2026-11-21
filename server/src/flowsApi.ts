@@ -25,6 +25,8 @@ import { checkingMovementKey, checkingSpendingMovementKeys } from "./checkingSpe
 import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
 import { checkingMovementDisplayNames, loadDisplayNameContext, type DisplayNameContext } from "./expenseDisplayNames.js";
 import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
+import { shownNameFields, shownNameSearchText, textShownName } from "./expenseShownName.js";
+import type { ShownName, ShownNameDetail } from "nw-tracker-contracts/dto/flows";
 
 // Mirrors client `isPersonalCapitalFlowType` in `depositFlowKind.ts`
 const PERSONAL_FLOW_TYPES = new Set<string>([
@@ -47,11 +49,12 @@ export type FlowsApiRow = AccountMovementApiRow & {
   /** The target's bucket on an internal transfer; null otherwise. */
   counterpart_bucket_slug: string | null;
   /**
-   * What the row shows in place of `note` (which stays the stored provenance, the tooltip): a bank
-   * movement's «Transf. a <label>» / «Transf. de <label>» when a mail names the counterparty, else
-   * its bank description without the import key. Null when the note itself is the text.
+   * The name the row shows (`withShownNames`); `note` stays the stored text the editors edit. Null
+   * when the movement has no note.
    */
-  display_note: string | null;
+  name: ShownName | null;
+  /** The stored note behind `name` (the row's tooltip), when it is not the name. */
+  name_detail?: ShownNameDetail;
 };
 
 /** Dropdown option for the portfolio-bucket filter; label resolution mirrors the sidebar. */
@@ -130,15 +133,15 @@ function assembleFlowRows(
   accountEntries: readonly { account_id: number; name: string; bucket_slug: string | null }[],
   movementsByAccount: Map<number, AccountMovementApiRow[]>
 ): FlowsApiRow[] {
-  return withDisplayNotes(assembleFlowRowsRaw(accountEntries, movementsByAccount));
+  return withShownNames(assembleFlowRowsRaw(accountEntries, movementsByAccount));
 }
 
 function assembleFlowRowsRaw(
   accountEntries: readonly { account_id: number; name: string; bucket_slug: string | null }[],
   movementsByAccount: Map<number, AccountMovementApiRow[]>
-): Omit<FlowsApiRow, "display_note">[] {
+): RawFlowsApiRow[] {
   const onPage = new Map(accountEntries.map((e) => [e.account_id, e]));
-  const rows: Omit<FlowsApiRow, "display_note">[] = [];
+  const rows: RawFlowsApiRow[] = [];
   for (const entry of accountEntries) {
     const movements = movementsByAccount.get(entry.account_id) ?? [];
     for (const m of movements) {
@@ -176,22 +179,30 @@ function assembleFlowRowsRaw(
   return rows;
 }
 
+type RawFlowsApiRow = Omit<FlowsApiRow, "name" | "name_detail">;
+
 /**
- * Each row's `display_note`: the name a checking expense line shows (`checkingMovementDisplayNames`)
- * for a movement whose note is an import key or whose mail names its counterparty.
+ * Each row's shown name. A bank movement's note (an import key in front of the bank's text, or a
+ * movement a transfer mail names) goes through the expense lines' name rule
+ * (`checkingMovementDisplayNames`: «Transf a <label>» / «Transf. de <label>», the catalog's name, the
+ * bank's text without the key), with the stored note as its provenance; a note the user typed is
+ * the name as typed — the catalog cleans bank text, not the user's words.
  */
-function withDisplayNotes(rows: Omit<FlowsApiRow, "display_note">[]): FlowsApiRow[] {
+function withShownNames(rows: RawFlowsApiRow[]): FlowsApiRow[] {
   const counterparties = transferCounterpartiesByMovementSide();
   let ctx: DisplayNameContext | null = null;
   return rows.map((r) => {
+    const note = r.note?.trim() || null;
+    if (note == null) return { ...r, name: null };
     const counterparty =
       counterparties.get(`${r.id}|${r.account_id}`) ??
       (r.counterpart_account_id != null ? counterparties.get(`${r.id}|${r.counterpart_account_id}`) : undefined);
-    const description = cartolaDescriptionFromNote(r.note);
-    if (!counterparty && description === (r.note ?? "").trim()) return { ...r, display_note: null };
+    const description = cartolaDescriptionFromNote(note);
+    if (!counterparty && description === note) return { ...r, name: textShownName(note) };
     ctx ??= loadDisplayNameContext([]);
     const names = checkingMovementDisplayNames(description, r.account_id, counterparty, ctx);
-    return { ...r, display_note: names.display_merchant ?? description };
+    const { name } = shownNameFields({ merchant: description, ...names }, `movement ${r.id}`);
+    return { ...r, name, name_detail: { bank_text: note } };
   });
 }
 
@@ -249,7 +260,7 @@ export function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): Fl
     }
     if (filters.q) {
       const q = filters.q.toLowerCase();
-      const haystack = [r.note, r.display_note, r.account_name, r.counterpart_account_name, r.flow_type_label]
+      const haystack = [r.note, r.name ? shownNameSearchText(r.name) : null, r.account_name, r.counterpart_account_name, r.flow_type_label]
         .filter(Boolean)
         .join("\n")
         .toLowerCase();

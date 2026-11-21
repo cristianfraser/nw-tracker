@@ -32,7 +32,8 @@ import { cardPaymentEvidence, latestCardPayment, loadCardPaymentTransfers, type 
 import { isPaymentLine } from "./expensePaymentNames.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
-import { checkingMovementDisplayNames, loadDisplayNameContext } from "./expenseDisplayNames.js";
+import { checkingMovementShownName, loadDisplayNameContext } from "./expenseDisplayNames.js";
+import { textShownName } from "./expenseShownName.js";
 import { listCcExpenseBigGroups } from "./ccExpenseBigGroups.js";
 import { isInstallmentCuotaZeroLine, listCcExpenseCategories } from "./ccExpenseCategories.js";
 import { isPreTaxExpenseLine, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
@@ -110,12 +111,12 @@ function incomeMoneyIn(
   return { amount: m.amount, converted: lineConvertedForWire({ ...m, occurred_on: receivedOn }, unit) };
 }
 
-/** A checking credit's payer as the mail names it and the name the row shows (`checkingMovementDisplayNames`). */
+/** A checking credit's payer as the mail names it and the name the row shows (`checkingMovementShownName`). */
 export type IncomeCreditNames = (
   movementId: number,
   accountId: number,
   description: string
-) => Pick<LatestIncomeMovement, "transfer_counterparty" | "display_merchant" | "link_label">;
+) => Pick<LatestIncomeMovement, "transfer_counterparty" | "name" | "name_detail" | "link_label">;
 
 function incomeMovements(
   income: FlowsOverviewIncome,
@@ -133,10 +134,9 @@ function incomeMovements(
         key,
         source: "checking",
         account_label: l.account_label,
-        description: l.description,
         ...incomeMoneyIn(l.amount_clp, l.amount_usd, foreignAccountIds.has(l.account_id), key, l.received_on, unit, l.native),
         income_kind: income.income_kind_by_movement_id[l.movement_id] ?? null,
-        ...(names ? names(l.movement_id, l.account_id, l.description) : {}),
+        ...(names ? names(l.movement_id, l.account_id, l.description) : { name: textShownName(l.description) }),
       },
     });
   }
@@ -148,13 +148,20 @@ function incomeMovements(
         key: `manual:${m.id}`,
         source: "manual",
         account_label: null,
-        description: m.source ?? m.note ?? "",
+        name: textShownName(manualIncomeName(m)),
         ...incomeMoneyIn(m.amount_clp, m.amount_usd, false, `manual:${m.id}`, m.received_on, unit),
         income_kind: null,
       },
     });
   }
   return out;
+}
+
+/** A hand-entered income's name: its source, else its note (an entry has one or the other). */
+function manualIncomeName(m: { id: number; source: string | null; note: string | null }): string {
+  const name = m.source?.trim() || m.note?.trim();
+  if (!name) throw new Error(`manual income ${m.id} has neither a source nor a note`);
+  return name;
 }
 
 export function latestMovementRows(
@@ -212,11 +219,9 @@ function checkingCreditNames(): IncomeCreditNames {
   const ctx = loadDisplayNameContext([]);
   return (movementId, accountId, description) => {
     const counterparty = counterparties.get(`${movementId}|${accountId}`);
-    const names = checkingMovementDisplayNames(description, accountId, counterparty, ctx);
     return {
       ...(counterparty ? { transfer_counterparty: counterparty } : {}),
-      ...(names.display_merchant ? { display_merchant: names.display_merchant } : {}),
-      ...(names.link_label ? { link_label: names.link_label } : {}),
+      ...checkingMovementShownName(description, accountId, counterparty, ctx, `income credit ${movementId}`),
     };
   };
 }

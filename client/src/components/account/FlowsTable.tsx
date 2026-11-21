@@ -1,6 +1,6 @@
 import { Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
-import { useTranslation } from "../../i18n";
+import { shownNameText, useTranslation } from "../../i18n";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
 import { formatInstrumentUnits, formatMoney } from "../../format";
@@ -301,8 +301,8 @@ export function FlowsTable(props: FlowsTableProps) {
     accounts: flowAccountsCell(showAccountColumn ? "group" : "account", row),
     amount: formatMovementAmount(row),
     units: showUnitsColumn ? formatFlowUnits(row, unitsKind) : null,
-    note: (row.display_note ?? row.note)?.trim() || null,
-    noteTitle: row.display_note != null && row.note?.trim() ? row.note : null,
+    note: row.name ? shownNameText(row.name) : null,
+    noteTitle: row.name_detail?.bank_text ?? null,
   }));
 
   const emptyText = hasActiveFilter

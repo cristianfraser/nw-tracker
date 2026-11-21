@@ -7,7 +7,7 @@ import type {
 } from "./accounts.js";
 import type { PeriodReturnsPayload } from "./performance.js";
 import type { FxCoverage, DisplayUnitCode, UnitsKind } from "./core.js";
-import type { Money } from "./flows.js";
+import type { Money, ShownName, ShownNameDetail } from "./flows.js";
 import type { UpcomingPaymentsDto } from "./creditCard.js";
 import type {
   DashboardAccountRow,
@@ -424,9 +424,12 @@ export type FlowsApiRow = {
   counter_amount: number | null;
   counter_currency: string | null;
   occurred_on: string;
+  /** The stored note, as the movement editors edit it; never shown by the list. */
   note: string | null;
-  /** What the row shows in place of `note` (a bank movement's «Transf a …» or bank description); null = the note. */
-  display_note: string | null;
+  /** The name the row shows (the expense lines' name rule over the note); null when the movement has no note. */
+  name: ShownName | null;
+  /** The stored text behind `name`, for the row's tooltip only. */
+  name_detail?: ShownNameDetail;
   units_delta: number | null;
   /** A fund switch's to-leg units; null on every other row. */
   counter_units_delta: number | null;

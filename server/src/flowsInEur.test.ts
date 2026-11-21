@@ -52,6 +52,9 @@ afterAll(() => {
 describe("an expense line in EUR", () => {
   it("a peso line: its pesos at the day's EUR/CLP mid", () => {
     const line = {
+      source: "cc",
+      purchase_key: "vitest-eur",
+      merchant: "VITEST EUR",
       purchase_on: "2099-03-15",
       occurred_on: "2099-03-15",
       ...lineMoneyFromBuilderFields({ amount_clp: 12_345, amount_usd_at_expense: 13 }),
@@ -64,6 +67,9 @@ describe("an expense line in EUR", () => {
 
   it("a card's dollar line paid at its facturación's rate: those pesos, the rate source kept", () => {
     const line = {
+      source: "cc",
+      purchase_key: "vitest-eur",
+      merchant: "VITEST EUR",
       purchase_on: "2099-03-15",
       occurred_on: "2099-03-15",
       ...lineMoneyFromBuilderFields({ amount_clp: 95_000, amount_usd: 100, amount_usd_at_expense: 100, clp_rate_source: "paid" }),
@@ -75,6 +81,9 @@ describe("an expense line in EUR", () => {
 
   it("goes over the wire with `converted` in the requested unit and its pesos", () => {
     const line = {
+      source: "cc",
+      purchase_key: "vitest-eur",
+      merchant: "VITEST EUR",
       purchase_on: "2099-03-15",
       occurred_on: "2099-03-15",
       amount_clp: 95_000,

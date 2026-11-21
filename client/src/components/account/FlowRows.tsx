@@ -13,7 +13,7 @@ export type FlowRowItem = {
   amount: string;
   /** Units moved («12,4 acciones»): their own column on a units list (`unitsColumn`), else drawn small after the amount. */
   units: string | null;
-  /** The text shown (the server's `display_note`, else the note). */
+  /** The text shown (the server's `name`, worded). */
   note: string | null;
   /** The stored note, in the tooltip, when it is not the text shown. */
   noteTitle: string | null;
