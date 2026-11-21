@@ -108,9 +108,9 @@ name when a payment name or refund wording replaced it. `processor` is the prefi
 
 ## Coordination
 
-- The checking-page work (statement DTO, `cartolaTransferParty`, the `accountFlowRows` split) is not
-  committed yet. This branch rebases on it once it is committed, and then changes
-  `CheckingStatementVendorDto`.
+- The checking-page work (statement DTO, `checkingTransferParty`, the `accountFlowRows` split) landed
+  as 8203d237; this branch is rebased on it and `CheckingStatementVendorDto` carries `name` /
+  `name_detail` (`checkingMovementShownName`).
 - expenses-page-redesign is at mockups (no code changes). This change touches `ExpenseVendorLabel`,
   `CreditCardExpenseLinesTable` and the dialogs. The redesign should build on `name` / `shownNameText`.
 

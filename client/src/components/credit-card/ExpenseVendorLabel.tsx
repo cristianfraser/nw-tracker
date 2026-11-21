@@ -31,6 +31,9 @@ export type ExpenseVendorSource = Pick<FlowCcExpenseLineRow, "name"> &
     >
   >;
 
+/** What the ⓘ card and the link label read: everything about a source but its name. */
+export type ExpenseVendorLinks = Omit<ExpenseVendorSource, "name">;
+
 export type ExpenseVendorLinkLabel = { parts: string[]; inline: boolean };
 
 export function Sep() {
@@ -72,7 +75,7 @@ function InfoBlock({ lines }: { lines: readonly string[] }) {
  * cuota count on its full-price row, and what the source is linked to (transfer counterparty,
  * payment receipt, deposit), in full.
  */
-export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
+export function useExpenseVendorInfo(source: ExpenseVendorLinks): ReactNode[] {
   const { t } = useTranslation();
   const blocks: ReactNode[] = [];
   const detail = source.name_detail;
@@ -147,7 +150,7 @@ export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
  * The short label of what the source is linked to, as parts the row separates — «Streat Burger
  * (Isidora)», «Lisboa» + «3 nights», «DAME» + «2026-09-12», «← Ana Perez» — or the deposit it pairs with; null when it has none.
  */
-export function useExpenseVendorLinkLabel(source: ExpenseVendorSource): ExpenseVendorLinkLabel | null {
+export function useExpenseVendorLinkLabel(source: ExpenseVendorLinks): ExpenseVendorLinkLabel | null {
   const { t } = useTranslation();
   const l = source.link_label ?? source.refund_of?.link_label;
   if (l) {

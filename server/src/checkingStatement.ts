@@ -37,7 +37,8 @@ import { loadCartolaImportsByMonth } from "./checkingCartolaMonthSummary.js";
 import { cachedFlowsIncome } from "./flowsOverview.js";
 import { kindSlugForAccount } from "./portfolioGroupTree.js";
 import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
-import { checkingMovementDisplayNames, checkingTransferParty, loadDisplayNameContext } from "./expenseDisplayNames.js";
+import { checkingMovementShownName, checkingTransferParty, loadDisplayNameContext } from "./expenseDisplayNames.js";
+import { shownNameSearchText } from "./expenseShownName.js";
 import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
 import { listMovementRowsForAccount, signedClpDeltaForAccountMovement } from "./movementTransfer.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -135,12 +136,8 @@ function loadLedger(accountId: number): Ledger {
     if (!transfer) {
       const merchant = cartolaDescriptionFromNote(r.note);
       const counterparty = counterparties.get(`${r.id}|${accountId}`);
-      const names = checkingMovementDisplayNames(merchant, accountId, counterparty, nameContext);
       vendor = {
-        merchant,
-        ...(names.display_merchant ? { display_merchant: names.display_merchant } : {}),
-        ...(names.merchant_processor ? { merchant_processor: names.merchant_processor } : {}),
-        ...(names.link_label ? { link_label: names.link_label } : {}),
+        ...checkingMovementShownName(merchant, accountId, counterparty, nameContext, `movement ${r.id}`),
         ...(counterparty ? { transfer_counterparty: counterparty } : {}),
       };
       const found = checkingTransferParty({ merchant, transfer_counterparty: counterparty }, nameContext);
@@ -149,8 +146,8 @@ function loadLedger(accountId: number): Ledger {
     rows.push({
       on: r.occurred_on > today ? today : r.occurred_on,
       haystack: [
-        vendor?.display_merchant,
-        vendor?.merchant,
+        vendor ? shownNameSearchText(vendor.name) : null,
+        vendor?.name_detail?.bank_text,
         vendor?.link_label?.text,
         vendor?.transfer_counterparty?.name,
         party?.label,

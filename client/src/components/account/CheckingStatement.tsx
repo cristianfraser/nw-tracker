@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { cn } from "../../cn";
-import { useTranslation } from "../../i18n";
+import { shownNameText, useTranslation } from "../../i18n";
 import { currencyFormatInfo, formatGroupedDecimal, formatMoney } from "../../format";
 import { formatDayWeekdayLabel, formatMonthShortLabel, formatYearMonthLabel } from "../../formatDateLabel";
 import { useCheckingStatement } from "../../queries/hooks";
 import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { loadableClass } from "../ui/Loadable";
 import {
-  expenseVendorName,
   Joined,
   useExpenseVendorInfo,
   useExpenseVendorLinkLabel,
+  type ExpenseVendorLinks,
 } from "../credit-card/ExpenseVendorLabel";
 import { HoverPopover } from "../ui/HoverPopover";
 import { InfoIcon } from "../icons/InfoIcon";
@@ -142,13 +142,16 @@ function rowTypeLabel(row: CheckingStatementRowDto, t: (key: string) => string):
   return t(row.amount > 0 ? "accountDetail.checking.statement.type.deposit" : "accountDetail.checking.statement.type.withdrawal");
 }
 
+/** A row that is not a bank movement (a transfer between own accounts) has nothing for the ⓘ card. */
+const NO_VENDOR: ExpenseVendorLinks = {};
+
 /**
  * A row's ⓘ card: the bank's own text and the transfer mail behind it (a bank movement), and the day
  * the bank posted it when that is not the movement's day. Null when there is nothing to add.
  */
 function RowInfo({ row }: { row: CheckingStatementRowDto }) {
   const { t } = useTranslation();
-  const blocks = useExpenseVendorInfo(row.vendor ?? { merchant: null });
+  const blocks = useExpenseVendorInfo(row.vendor ?? NO_VENDOR);
   if (row.posted_on) {
     blocks.push(
       <div key="posted" className="muted">
@@ -172,7 +175,7 @@ function RowInfo({ row }: { row: CheckingStatementRowDto }) {
  */
 function RowText({ row }: { row: CheckingStatementRowDto }) {
   const { t } = useTranslation();
-  const linkLabel = useExpenseVendorLinkLabel(row.vendor ?? { merchant: null });
+  const linkLabel = useExpenseVendorLinkLabel(row.vendor ?? NO_VENDOR);
   const type = rowTypeLabel(row, t);
   const party = row.counterpart
     ? { direction: row.counterpart.direction, label: row.counterpart.name, own: true }
@@ -190,7 +193,7 @@ function RowText({ row }: { row: CheckingStatementRowDto }) {
       ) : row.vendor ? (
         <>
           {type ? <span className={styles.dot}>{"\u00b7"}</span> : null}
-          <span className={styles.text}>{expenseVendorName(row.vendor)}</span>
+          <span className={styles.text}>{shownNameText(row.vendor.name)}</span>
           {linkLabel?.inline ? (
             <>
               <span className={styles.dot}>{"\u00b7"}</span>

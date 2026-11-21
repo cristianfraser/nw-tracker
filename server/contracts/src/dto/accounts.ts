@@ -3,7 +3,7 @@ import type { AccountCcInstallmentsResponse } from "./creditCard.js";
 import type { DashboardAccountRow, TimeseriesBlock } from "./dashboard.js";
 import type { AccountDepositInflowsResponse, AccountMortgageLedgerResponse, DeptoMortgageSheetRow } from "./mortgage.js";
 import type { PeriodReturnsPayload } from "./performance.js";
-import type { ExpenseLinkLabel, Money, TransferCounterparty } from "./flows.js";
+import type { ExpenseLinkLabel, Money, ShownName, ShownNameDetail, TransferCounterparty } from "./flows.js";
 
 import type { BookLedgerEditSchema, MovementCreateSchema } from "./ledgerSchemas.js";
 
@@ -465,11 +465,10 @@ export type CheckingStatementRowKind = "income" | "card_payment" | "own_transfer
 /** The statement's filter chips (`kind` query parameter). */
 export type CheckingStatementKindFilter = "income" | "card_payment" | "own_transfer" | "other" | "fee";
 
-/** What `ExpenseVendorLabel` reads for a checking movement (the expense line's name fields). */
+/** What `ExpenseVendorLabel` reads for a checking movement: its shown name, the bank text behind it, its links. */
 export interface CheckingStatementVendorDto {
-  merchant: string;
-  display_merchant?: string;
-  merchant_processor?: string;
+  name: ShownName;
+  name_detail?: ShownNameDetail;
   link_label?: ExpenseLinkLabel;
   transfer_counterparty?: TransferCounterparty;
 }
