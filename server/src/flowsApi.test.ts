@@ -335,7 +335,7 @@ describe("what a bank movement's flows row shows", () => {
     try {
       const rows = buildAccountFlows(accountId, { q: "VITESTDN" }, 1, 50)!.rows;
       const byId = new Map(rows.map((r) => [r.id, r]));
-      expect(byId.get(plainId)!.display_note).toBe("Traspaso a Cuenta de Otro Banco VITESTDN");
+      expect(byId.get(plainId)!.display_note).toBe("Transf. a Cuenta de Otro Banco VITESTDN");
       expect(byId.get(paidId)!.display_note).toBe("Transf. de Juana Perez");
       expect(byId.get(humanId)!.display_note).toBeNull();
       // The shown name is searchable too.

@@ -25,6 +25,25 @@ export function rutDigitsWithoutVerifier(rut: string): string {
 }
 
 /**
+ * Whether text is a RUT whose verifier matches its digits (module 11): «12.345.678-5» → true,
+ * «12.345.678-9» → false. Tells a RUT a document prints from any other number (an account, a
+ * document number), which carries no verifier of its own.
+ */
+export function rutVerifierHolds(raw: string | null | undefined): boolean {
+  const n = normalizeRut(raw);
+  if (!/^\d{6,9}[\dK]$/.test(n)) return false;
+  let sum = 0;
+  let weight = 2;
+  for (let i = n.length - 2; i >= 0; i--) {
+    sum += Number(n[i]) * weight;
+    weight = weight === 7 ? 2 : weight + 1;
+  }
+  const rest = 11 - (sum % 11);
+  const verifier = rest === 11 ? "0" : rest === 10 ? "K" : String(rest);
+  return n.endsWith(verifier);
+}
+
+/**
  * A bank account number for comparison: digits only, no leading zeros — the bank prints
  * «001234567890» or «0-070-08-12345-6», an MT103 «1234567890».
  */

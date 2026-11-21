@@ -976,7 +976,45 @@
       "ledgerAnchorClear": "Remove anchor",
       "ledgerAnchorSaved": "Anchor saved.",
       "ledgerAnchorCleared": "Anchor removed.",
-      "ledgerAnchorNoCartola": "No statement with a final balance — no automatic anchor."
+      "ledgerAnchorNoCartola": "No statement with a final balance — no automatic anchor.",
+      "glance": {
+        "range": {
+          "90d": "90d",
+          "1y": "1y",
+          "5y": "5y",
+          "total": "all"
+        },
+        "stripAria": "Daily balance"
+      },
+      "statement": {
+        "search": "Search movement or amount",
+        "kind": {
+          "all": "all",
+          "income": "income",
+          "card_payment": "cards",
+          "own_transfer": "my accounts",
+          "other": "third parties",
+          "fee": "fees"
+        },
+        "hideOwn": "hide transfers between my accounts",
+        "hidden": "{{count}} hidden · net {{net}}",
+        "open": "in progress",
+        "matches": "Matches the bank statement",
+        "differs": "Differs from the bank statement by {{difference}}",
+        "noStatement": "no statement",
+        "postedOn": "Posted by the bank on {{date}}",
+        "forwardPosted": "already in the balance",
+        "opening": "account opening balance",
+        "adjust": "adjust",
+        "more": "keep reading",
+        "none": "No movement matches.",
+        "addMovement": "Add movement",
+        "type": {
+          "deposit": "Deposit",
+          "withdrawal": "Withdrawal",
+          "cardPayment": "Card payment"
+        }
+      }
     },
     "creditCard": {
       "lastFacturado": "Last billed",
@@ -1257,6 +1295,15 @@
     "paginationPageOf": "Page {{page}} of {{total}}"
   },
   "common": {
+    "weekdayShort": {
+      "0": "Sun",
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat"
+    },
     "loading": "Loading…",
     "loadFailed": "Failed to load",
     "loadFailedTables": "Failed to load the tables",

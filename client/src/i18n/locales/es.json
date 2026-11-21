@@ -976,7 +976,45 @@
       "ledgerAnchorClear": "Quitar ancla",
       "ledgerAnchorSaved": "Ancla guardada.",
       "ledgerAnchorCleared": "Ancla eliminada.",
-      "ledgerAnchorNoCartola": "Sin cartola con saldo final — no hay ancla automática."
+      "ledgerAnchorNoCartola": "Sin cartola con saldo final — no hay ancla automática.",
+      "glance": {
+        "range": {
+          "90d": "90d",
+          "1y": "1a",
+          "5y": "5a",
+          "total": "total"
+        },
+        "stripAria": "Saldo diario"
+      },
+      "statement": {
+        "search": "Buscar movimiento o monto",
+        "kind": {
+          "all": "todo",
+          "income": "ingresos",
+          "card_payment": "tarjetas",
+          "own_transfer": "mis cuentas",
+          "other": "terceros",
+          "fee": "comisiones"
+        },
+        "hideOwn": "ocultar traspasos entre mis cuentas",
+        "hidden": "{{count}} ocultos · neto {{net}}",
+        "open": "en curso",
+        "matches": "Cuadra con la cartola",
+        "differs": "Difiere de la cartola en {{difference}}",
+        "noStatement": "sin cartola",
+        "postedOn": "Contabilizado por el banco el {{date}}",
+        "forwardPosted": "ya en el saldo",
+        "opening": "saldo inicial de la cuenta",
+        "adjust": "ajustar",
+        "more": "seguir leyendo",
+        "none": "Ningún movimiento coincide.",
+        "addMovement": "Agregar movimiento",
+        "type": {
+          "deposit": "Depósito",
+          "withdrawal": "Retiro",
+          "cardPayment": "Pago tarjeta"
+        }
+      }
     },
     "creditCard": {
       "lastFacturado": "Último facturado",
@@ -1257,6 +1295,15 @@
     "paginationPageOf": "Pág. {{page}} de {{total}}"
   },
   "common": {
+    "weekdayShort": {
+      "0": "dom",
+      "1": "lun",
+      "2": "mar",
+      "3": "mié",
+      "4": "jue",
+      "5": "vie",
+      "6": "sáb"
+    },
     "loading": "Cargando…",
     "loadFailed": "Error al cargar",
     "loadFailedTables": "Error al cargar las tablas",

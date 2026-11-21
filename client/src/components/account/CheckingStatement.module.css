@@ -1,0 +1,519 @@
+/* The checking page's statement (CheckingStatement.tsx): a sticky head (balance strip, filters) over
+   the months; every row is [date | what | amount | balance after]. One rendering at every width: a
+   container query moves the date above the text on a narrow list. */
+.statement {
+  container: checking-statement / inline-size;
+  /* Where sticky things stop: under the fixed market ticker (its height plus its border). */
+  --pin-top: calc(var(--market-ticker-height) + 1px);
+  font-size: var(--font-size-ui);
+}
+
+.head {
+  position: sticky;
+  top: var(--pin-top);
+  z-index: 2;
+  padding-bottom: 6px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.stripFrame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 14px;
+  align-items: start;
+}
+
+.strip {
+  min-height: 92px;
+}
+
+.plot {
+  position: relative;
+  height: 72px;
+  cursor: crosshair;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+.band {
+  fill: var(--surface);
+}
+
+.monthRule {
+  stroke: var(--hairline);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.6;
+}
+
+.zero {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.endDot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.hover {
+  position: absolute;
+  top: -2px;
+  padding: 1px 6px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.monthLabels {
+  position: relative;
+  height: 18px;
+}
+
+.monthLabel {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  padding: 0 2px;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.monthLabel:hover,
+.monthLabelActive {
+  color: var(--text);
+}
+
+.monthLabelActive {
+  font-weight: 600;
+}
+
+.ranges,
+.kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.chip {
+  padding: 1px 7px;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  color: var(--text);
+}
+
+.chipOn {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 4px;
+}
+
+.search {
+  flex: 0 1 16rem;
+  min-width: 10rem;
+  padding: 3px 8px;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.months {
+  min-height: 12rem;
+}
+
+.month {
+  margin-top: 18px;
+}
+
+/* [what grows | amount | balance]: the month head lines its figures up with the rows' columns. */
+.monthHead,
+.row {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) 8.5rem 8.5rem;
+  column-gap: 14px;
+  align-items: baseline;
+}
+
+.monthHead {
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) 8.5rem 15rem;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+  /* Sticks under the head inside its own month: the next month's header pushes it up. */
+  position: sticky;
+  top: calc(var(--pin-top) + var(--statement-head-h, 0px));
+  z-index: 1;
+  background: var(--bg);
+}
+
+.monthName {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.matches {
+  margin-left: 8px;
+  color: var(--positive);
+  font-weight: 400;
+}
+
+.differs {
+  margin-left: 8px;
+  color: var(--negative);
+  font-weight: 400;
+}
+
+.status {
+  margin-left: 8px;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.flows {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.change {
+  text-align: right;
+  font-weight: 600;
+}
+
+.span {
+  text-align: right;
+  font-weight: 600;
+}
+
+.from {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.row {
+  padding: 3px 0;
+}
+
+.row:hover {
+  background: var(--surface);
+}
+
+/* A day's rows, one block: a hairline between days and a bar beside the day's rows, in the gap
+   between the date and the text. */
+.day + .day {
+  border-top: 1px solid color-mix(in srgb, var(--hairline) 45%, transparent);
+}
+
+/* The day's own line: a narrow list only (a wide one dates the day's first row). */
+.dayHead {
+  display: none;
+}
+
+.dayRows {
+  position: relative;
+}
+
+.dayRows::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: calc(4.5rem + 6px);
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  pointer-events: none;
+  transition: background-color 120ms ease;
+}
+
+/* The day under the pointer: its bar lights up. */
+.day:hover .dayRows::before {
+  background: var(--accent);
+}
+
+.date {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+
+/* The row's type on a line of its own: a narrow list only (a wide one shows it before the target). */
+.typeTop {
+  display: none;
+}
+
+.what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text {
+  color: var(--text);
+}
+
+.type {
+  color: var(--text);
+}
+
+.arrow {
+  margin: 0 5px 0 6px;
+  color: var(--accent);
+}
+
+/* Someone outside the client's accounts: plain text; an own account (`.counterpart`) is accent. */
+.party {
+  color: var(--text);
+}
+
+.dot {
+  margin: 0 6px;
+  color: var(--muted);
+}
+
+.info {
+  margin-left: 6px;
+  color: var(--muted);
+  vertical-align: middle;
+}
+
+.counterpart {
+  color: var(--accent);
+}
+
+.tag,
+.linkLabel {
+  margin-left: 8px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.amount,
+.balance {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.balance {
+  color: var(--muted);
+}
+
+.in {
+  color: var(--positive);
+}
+
+.salary .type,
+.salary .party,
+.salary .text {
+  font-weight: 600;
+}
+
+.salary .amount {
+  font-weight: 600;
+}
+
+
+.hiddenRow .what {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.openingRow {
+  margin-top: 18px;
+  border-top: 1px solid var(--hairline);
+  color: var(--muted);
+}
+
+.adjust {
+  margin-left: 8px;
+  padding: 0;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.more {
+  display: block;
+  margin: 18px auto 0;
+  padding: 4px 12px;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* A narrow list (a phone): the day («30 vie») once above its rows; each row two lines, the type
+   with the balance after it (smaller), then the target with the amount. */
+@container checking-statement (max-width: 40rem) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "type balance"
+      "what amount";
+    column-gap: 8px;
+    row-gap: 0;
+    padding: 4px 0;
+  }
+
+
+
+  /* The type is the row's quiet label, the size of the balance beside it. */
+  .typeTop {
+    display: block;
+    grid-area: type;
+    font-size: 0.72rem;
+    color: var(--muted);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The type has its own line: none before the target. */
+  .what > .type,
+  .what > .dot,
+  .what > .arrow:first-child {
+    margin-left: 0;
+  }
+
+  .what > .type,
+  .what > .dot {
+    display: none;
+  }
+
+  .row .what {
+    grid-area: what;
+  }
+
+  .row .amount {
+    grid-area: amount;
+    font-size: 0.82rem;
+  }
+
+  .row .balance {
+    grid-area: balance;
+    align-self: center;
+    font-size: 0.72rem;
+  }
+
+  .monthHead .span {
+    font-size: 0.82rem;
+  }
+
+  .monthLabel:nth-child(even) {
+    display: none;
+  }
+
+  /* The day on its own line at the left edge, then its rows beside the bar. */
+  .dayHead {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .dayIcon {
+    flex: none;
+  }
+
+  .dayRows {
+    padding-left: 10px;
+  }
+
+  .dayRows::before {
+    left: 0;
+  }
+
+  .row .date {
+    display: none;
+  }
+
+  .monthHead {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .monthHead .flows,
+  .monthHead .change {
+    display: none;
+  }
+
+  .stripFrame {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* A narrow list (a phone): the head scrolls away (it would take a third of the screen); the
+     month headers stick under the ticker. */
+  .head {
+    position: static;
+  }
+
+  .monthHead {
+    top: var(--pin-top);
+  }
+
+  .toggle {
+    margin-left: 0;
+  }
+}

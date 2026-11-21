@@ -15,10 +15,11 @@
 .layout-main {
   grid-column: 2;
   min-width: 0;
-  /* Anything wider than the content scrolls inside the main column instead of pushing the
-     sidebar off the viewport. Nothing should: a table that does not fit shows its cards
-     (`useTableFit`, tables.css `.table-wrap--cards`). */
-  overflow: auto;
+  /* Anything wider than the content is clipped instead of pushing the sidebar off the viewport.
+     Nothing should be: a table that does not fit shows its cards (`useTableFit`, tables.css
+     `.table-wrap--cards`). `clip`, not `auto`/`hidden`: the column is not a scroll container (the
+     document scrolls), so `position: sticky` inside a page sticks to the viewport. */
+  overflow-x: clip;
   display: flex;
   flex-direction: column;
   background-color: var(--bg);

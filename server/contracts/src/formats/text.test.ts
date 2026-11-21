@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readCaseFile } from "./caseFile.js";
 import { collapseSpaces, decodeHtmlEntities, foldAccents, foldUpper } from "./text.js";
 import { isWebPasteCutOf, normalizeMerchantText, stripBciTerminalSuffix } from "./merchant.js";
-import { normalizeAccountNumber, normalizeCheckDigitId, normalizeRut, rutDigitsWithoutVerifier } from "./identifiers.js";
+import { normalizeAccountNumber, normalizeCheckDigitId, normalizeRut, rutDigitsWithoutVerifier, rutVerifierHolds } from "./identifiers.js";
 
 describe("accent folding (shared case table)", () => {
   const cases = readCaseFile<{ raw: string; fold: string; upper: string }[]>("textFoldCases.json");
@@ -38,7 +38,9 @@ describe("merchant text (shared case table)", () => {
 
 describe("identifiers (shared case table)", () => {
   type C = { raw: string; expect: string | null };
-  const cases = readCaseFile<Record<"rut" | "rutDigits" | "accountNumber" | "checkDigitId", C[]>>("identifierCases.json");
+  const cases = readCaseFile<Record<"rut" | "rutDigits" | "accountNumber" | "checkDigitId", C[]> & { rutVerifier: { raw: string; expect: boolean }[] }>(
+    "identifierCases.json"
+  );
   it.each(cases.rut)("RUT «$raw» → $expect", (c) => expect(normalizeRut(c.raw)).toBe(c.expect));
   it.each(cases.rutDigits)("RUT digits «$raw» → $expect", (c) => {
     if (c.expect === null) expect(() => rutDigitsWithoutVerifier(c.raw)).toThrow(/Not a RUT/);
@@ -46,4 +48,5 @@ describe("identifiers (shared case table)", () => {
   });
   it.each(cases.accountNumber)("account «$raw» → $expect", (c) => expect(normalizeAccountNumber(c.raw)).toBe(c.expect));
   it.each(cases.checkDigitId)("check-digit id «$raw» → $expect", (c) => expect(normalizeCheckDigitId(c.raw)).toBe(c.expect));
+  it.each(cases.rutVerifier)("RUT verifier «$raw» → $expect", (c) => expect(rutVerifierHolds(c.raw)).toBe(c.expect));
 });

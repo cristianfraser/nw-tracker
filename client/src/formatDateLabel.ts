@@ -44,6 +44,18 @@ const MONTHS_SHORT_EN = [
   "Dec",
 ] as const;
 
+/**
+ * `2026-10-30` → `30 vie` / `30 Fri`: a day under its month's heading (the checking statement's rows
+ * on a phone), the month and year already said above it. The weekday is the calendar date's (UTC
+ * arithmetic, no timezone shift).
+ */
+export function formatDayWeekdayLabel(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd.trim());
+  if (!m) throw new Error(`formatDayWeekdayLabel: not an ISO date: ${ymd}`);
+  const weekday = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getUTCDay();
+  return `${Number(m[3])} ${i18n.t(`common.weekdayShort.${weekday}`)}`;
+}
+
 function monthShort(month1: number): string {
   const months = i18n.language === "en" ? MONTHS_SHORT_EN : MONTHS_SHORT_ES;
   return months[month1 - 1]!;

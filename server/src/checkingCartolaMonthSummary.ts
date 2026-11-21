@@ -54,7 +54,7 @@ type CartolaImportRow = {
  * The account's cartola imports by period month (DESDE-boundary phantom months skipped), or null
  * when the account is not a movement-balance cash account.
  */
-function loadCartolaImportsByMonth(accountId: number): Map<string, CartolaImportRow> | null {
+export function loadCartolaImportsByMonth(accountId: number): Map<string, CartolaImportRow> | null {
   const cat = db
     .prepare(
       `SELECT g.slug AS bucket_slug FROM accounts a

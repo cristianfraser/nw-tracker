@@ -13,6 +13,7 @@ import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { withPurchaseExpenseLinks } from "./ccPurchaseExpenseLinks.js";
 import { buildCcGlanceForAccount } from "./ccGlance.js";
 import { buildPositionGlanceForAccount } from "./positionGlance.js";
+import { buildCheckingGlanceForAccount } from "./checkingStatement.js";
 import {
   isDeptoMortgagePaymentCuota,
 } from "./deptoDividendosLedger.js";
@@ -285,6 +286,9 @@ export async function buildAccountDetailBundle(
     row: dashboard_account_row,
   });
 
+  // The checking page's head (`checkingStatement.ts`): today's balance, its moves, the balance strip.
+  const checking_glance = buildCheckingGlanceForAccount(accountId);
+
   return {
     summary,
     ts,
@@ -292,6 +296,7 @@ export async function buildAccountDetailBundle(
     mortgageLedger,
     ccLedger,
     checkingCartolaMonths,
+    checking_glance,
     monthly_performance,
     period_returns,
     dashboard_account_row,

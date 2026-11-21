@@ -1,5 +1,6 @@
 import { dbStateMemo } from "./dbStateMemo.js";
 import { accountChartInactive } from "./accountChartInactive.js";
+import { accountBucketKindSlug } from "./accountBucket.js";
 import { getAccountColorRgb, resolvePortfolioGroupColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { db } from "./db.js";
 export type { NavTreeNodeDto } from "./navTreeTypes.js";
@@ -102,7 +103,7 @@ function buildNode(
   group: GroupRow,
   itemsByGroup: Map<number, ItemRow[]>,
   groupsById: Map<number, GroupRow>,
-  accountMeta: Map<number, { name: string; color_rgb: string }>,
+  accountMeta: Map<number, { name: string; color_rgb: string; kind_slug: string | null }>,
   expenseMeta: Map<number, { label: string; slug: string }>,
   linkedCardSlugsByHost: Map<string, string[]>,
   options: NavTreeBuildOptions = {}
@@ -152,7 +153,9 @@ function buildNode(
         api_group: null,
         api_subgroup: null,
         group_kind: "bucket",
-        kind_slug: null,
+        // The account's own kind (`cuenta_corriente`, `credit_card`, …): an account page picks its
+        // layout from it before the page's bundle is in (`placeholderCategorySlug`).
+        kind_slug: meta?.kind_slug ?? null,
         dashboard_bucket_slug: null,
         exclude_from_parent_total: false,
         investment_glance: false,
@@ -249,16 +252,21 @@ function loadMetaMaps(items: ItemRow[]) {
     if (item.expense_account_id != null) expenseIds.add(item.expense_account_id);
   }
 
-  const accountMeta = new Map<number, { name: string; color_rgb: string }>();
+  const accountMeta = new Map<number, { name: string; color_rgb: string; kind_slug: string | null }>();
   if (accountIds.size > 0) {
     const ph = [...accountIds].map(() => "?").join(",");
     const rows = db
-      .prepare(`SELECT id, name, color_rgb FROM accounts WHERE id IN (${ph})`)
-      .all(...accountIds) as { id: number; name: string; color_rgb: string | null }[];
+      .prepare(
+        `SELECT a.id, a.name, a.color_rgb, g.slug AS bucket_slug
+         FROM accounts a LEFT JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE a.id IN (${ph})`
+      )
+      .all(...accountIds) as { id: number; name: string; color_rgb: string | null; bucket_slug: string | null }[];
     for (const r of rows) {
       accountMeta.set(r.id, {
         name: r.name,
         color_rgb: r.color_rgb ?? getAccountColorRgb(r.id),
+        kind_slug: r.bucket_slug ? accountBucketKindSlug(r.bucket_slug) : null,
       });
     }
   }

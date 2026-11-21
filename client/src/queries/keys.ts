@@ -171,6 +171,12 @@ export const queryKeys = {
    */
   accountFlows: (id: string, scope: AccountFlowsScope, filtersKey: string) =>
     withEntity(["accountFlows", id, scope, filtersKey] as const, 3),
+  /**
+   * A checking page's statement (paged months). Under the `accountFlows` prefix, so every write that
+   * refreshes an account's flows (`resources.accountFlows` / `accountMovements`) refreshes it too.
+   */
+  checkingStatement: (id: string, filtersKey: string) =>
+    withEntity(["accountFlows", id, "checking_statement", filtersKey] as const, 3),
   movementMirrorCandidates: () => ["movementMirrorCandidates"] as const,
   projections: (unit: string, overridesKey: string) => ["projections", unit, overridesKey] as const,
   wealthPercentile: (unit: DisplayUnit) => ["wealth-percentile", unit] as const,

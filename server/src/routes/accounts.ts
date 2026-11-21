@@ -22,6 +22,8 @@ import { cachedAccountDetailBundle } from "../accountDetailBundle.js";
 import { HeavyWork, timeHeavy, timeHeavyAsync } from "../heavyWork.js";
 import { clearCheckingLedgerAnchor, upsertCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { getCheckingCartolaMonths } from "../checkingCartolaMonthSummary.js";
+import { buildCheckingStatement, CHECKING_PAGE_KIND_SLUGS } from "../checkingStatement.js";
+import { kindSlugForAccount } from "../portfolioGroupTree.js";
 import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
 import { isPositiveInteger } from "../requestValidation.js";
@@ -318,6 +320,48 @@ app.get("/api/accounts/:id/performance-monthly", (req, res) => {
     return;
   }
   res.json(payload);
+});
+
+/** A checking page account's statement: whole months, newest first, each row with the balance after it (`checkingStatement.ts`). */
+app.get("/api/accounts/:id/checking-statement", (req, res) => {
+  const id = accountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const kind = kindSlugForAccount(id);
+  if (kind == null || !CHECKING_PAGE_KIND_SLUGS.has(kind)) {
+    res.status(400).json({ error: "account is not a cuenta corriente or cuenta vista" });
+    return;
+  }
+  const before = req.query.before;
+  if (before !== undefined && (typeof before !== "string" || !/^\d{4}-\d{2}$/.test(before))) {
+    res.status(400).json({ error: "before must be YYYY-MM" });
+    return;
+  }
+  const kindFilter = queryChoice(
+    req,
+    res,
+    "kind",
+    ["all", "income", "card_payment", "own_transfer", "other", "fee"] as const,
+    "all"
+  );
+  if (kindFilter == null) return;
+  const q = req.query.q;
+  if (q !== undefined && typeof q !== "string") {
+    res.status(400).json({ error: "q must be a string" });
+    return;
+  }
+  const hideOwn = queryChoice(req, res, "hide_own", ["0", "1"] as const, "0");
+  if (hideOwn == null) return;
+  res.json(
+    buildCheckingStatement(id, {
+      before: before as string | undefined,
+      kind: kindFilter === "all" ? undefined : kindFilter,
+      q: q || undefined,
+      hideOwn: hideOwn === "1",
+    })
+  );
 });
 
 /** Cuenta corriente: per-cartola month totals from `checking_cartola_imports` + movements. */

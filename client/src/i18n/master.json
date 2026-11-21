@@ -3238,6 +3238,128 @@
       "ledgerAnchorNoCartola": {
         "en": "No statement with a final balance — no automatic anchor.",
         "es": "Sin cartola con saldo final — no hay ancla automática."
+      },
+      "glance": {
+        "range": {
+          "90d": {
+            "en": "90d",
+            "es": "90d"
+          },
+          "1y": {
+            "en": "1y",
+            "es": "1a"
+          },
+          "5y": {
+            "en": "5y",
+            "es": "5a"
+          },
+          "total": {
+            "en": "all",
+            "es": "total"
+          }
+        },
+        "stripAria": {
+          "en": "Daily balance",
+          "es": "Saldo diario"
+        }
+      },
+      "statement": {
+        "search": {
+          "en": "Search movement or amount",
+          "es": "Buscar movimiento o monto"
+        },
+        "kind": {
+          "all": {
+            "en": "all",
+            "es": "todo"
+          },
+          "income": {
+            "en": "income",
+            "es": "ingresos"
+          },
+          "card_payment": {
+            "en": "cards",
+            "es": "tarjetas"
+          },
+          "own_transfer": {
+            "en": "my accounts",
+            "es": "mis cuentas"
+          },
+          "other": {
+            "en": "third parties",
+            "es": "terceros"
+          },
+          "fee": {
+            "en": "fees",
+            "es": "comisiones"
+          }
+        },
+        "hideOwn": {
+          "en": "hide transfers between my accounts",
+          "es": "ocultar traspasos entre mis cuentas"
+        },
+        "hidden": {
+          "en": "{{count}} hidden · net {{net}}",
+          "es": "{{count}} ocultos · neto {{net}}"
+        },
+        "open": {
+          "en": "in progress",
+          "es": "en curso"
+        },
+        "matches": {
+          "en": "Matches the bank statement",
+          "es": "Cuadra con la cartola"
+        },
+        "differs": {
+          "en": "Differs from the bank statement by {{difference}}",
+          "es": "Difiere de la cartola en {{difference}}"
+        },
+        "noStatement": {
+          "en": "no statement",
+          "es": "sin cartola"
+        },
+        "postedOn": {
+          "en": "Posted by the bank on {{date}}",
+          "es": "Contabilizado por el banco el {{date}}"
+        },
+        "forwardPosted": {
+          "en": "already in the balance",
+          "es": "ya en el saldo"
+        },
+        "opening": {
+          "en": "account opening balance",
+          "es": "saldo inicial de la cuenta"
+        },
+        "adjust": {
+          "en": "adjust",
+          "es": "ajustar"
+        },
+        "more": {
+          "en": "keep reading",
+          "es": "seguir leyendo"
+        },
+        "none": {
+          "en": "No movement matches.",
+          "es": "Ningún movimiento coincide."
+        },
+        "addMovement": {
+          "en": "Add movement",
+          "es": "Agregar movimiento"
+        },
+        "type": {
+          "deposit": {
+            "en": "Deposit",
+            "es": "Depósito"
+          },
+          "withdrawal": {
+            "en": "Withdrawal",
+            "es": "Retiro"
+          },
+          "cardPayment": {
+            "en": "Card payment",
+            "es": "Pago tarjeta"
+          }
+        }
       }
     },
     "creditCard": {
@@ -4065,6 +4187,36 @@
     }
   },
   "common": {
+    "weekdayShort": {
+      "0": {
+        "en": "Sun",
+        "es": "dom"
+      },
+      "1": {
+        "en": "Mon",
+        "es": "lun"
+      },
+      "2": {
+        "en": "Tue",
+        "es": "mar"
+      },
+      "3": {
+        "en": "Wed",
+        "es": "mié"
+      },
+      "4": {
+        "en": "Thu",
+        "es": "jue"
+      },
+      "5": {
+        "en": "Fri",
+        "es": "vie"
+      },
+      "6": {
+        "en": "Sat",
+        "es": "sáb"
+      }
+    },
     "loading": {
       "en": "Loading…",
       "es": "Cargando…"

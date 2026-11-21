@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { api } from "../api";
 import {
@@ -968,6 +968,27 @@ export function useAccountFlows(
     enabled: enabled && Boolean(id),
     ...behavior,
     placeholderData: scope === "panel" ? behavior.placeholderData : undefined,
+  });
+}
+
+export type CheckingStatementFilters = {
+  kind?: import("../types").CheckingStatementKindFilter;
+  q?: string;
+  hideOwn?: boolean;
+};
+
+/** A checking page's statement, newest months first; `fetchNextPage` reads the next older months. */
+export function useCheckingStatement(accountId: number, filters: CheckingStatementFilters, enabled = true) {
+  const filtersKey = JSON.stringify([filters.kind ?? "", filters.q ?? "", filters.hideOwn === true]);
+  const queryKey = queryKeys.checkingStatement(String(accountId), filtersKey);
+  return useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam }) => api.checkingStatement(accountId, { ...filters, before: pageParam ?? undefined }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next_before,
+    enabled: enabled && accountId > 0,
+    staleTime: DISPLAY_UNIT_STALE_MS,
+    placeholderData: keepPreviousDataSameEntity(queryKey, 3),
   });
 }
 

@@ -3,6 +3,10 @@ import {
   appStoreLabel,
   brandsFromPayees,
   cardMerchantsByAccount,
+  cartolaTransferParty,
+  cartolaRefundParty,
+  cartolaTraspasoParty,
+  checkingTransferParty,
   cleanBankMerchant,
   counterpartyLabel,
   counterpartyNamesFromRows,
@@ -390,7 +394,7 @@ describe("expenseLineDisplayNames", () => {
     });
   });
 
-  it("a checking transfer reads «Transf a <label>», label not repeated", () => {
+  it("a checking transfer reads «Transf. a <label>», label not repeated", () => {
     const names = expenseLineDisplayNames(
       {
         source: "checking",
@@ -403,7 +407,7 @@ describe("expenseLineDisplayNames", () => {
       },
       ctx
     );
-    expect(names.display_merchant).toBe("Transf a Ana Perez");
+    expect(names.display_merchant).toBe("Transf. a Ana Perez");
     expect(names.link_label).toEqual({ arrow: "→", text: "Ana Perez", nights: null, inline: false });
     expect(names.category_link).toEqual({ kind: "recipient", key: "N:ANA MARIA PEREZ SOTO", label: "Ana Perez", specific_default: true });
   });
@@ -501,5 +505,120 @@ describe("a refund paired with its purchase is no other merchant", () => {
     expect(withReceipt("MP *MERCADO").display_merchant).toBe("Mercadolibre (Chile)");
     expect(withReceipt("MERCADOPAGO *TIENDAUNO").display_merchant).toBe("TIENDAUNO");
     expect(withReceipt("MP *MERCADOPAGO NT", true).display_merchant).toBe("MERCADOPAGO NT");
+  });
+});
+
+describe("a cartola's own transfer lines", () => {
+  const ctx: DisplayNameContext = { catalog, counterparties: new Map(), brands: [], cardMerchantsByAccount: new Map() };
+  const shown = (merchant: string) =>
+    expenseLineDisplayNames({ source: "checking", merchant, account_id: 1 }, ctx).display_merchant ?? merchant;
+
+  it("are named like a transfer mail's line, through the mail's counterparty label", () => {
+    expect(shown("0184662884 TRANSF A PEDRO PRUEBA SOTO")).toBe("Transf. a Pedro Prueba");
+    expect(shown("Transf. a ANA PRUEBA")).toBe("Transf. a Ana Prueba");
+    expect(shown("0081172919 TRANSF. JUAN PABLO PRUEBA SOTO")).toBe("Transf. de Juan Prueba");
+    expect(shown("Transf de PEREZ SOTO")).toBe("Transf. de Perez Soto");
+    expect(shown("0938340005 Transf. COMERCIAL PRUEBA S A")).toBe("Transf. de Comercial Prueba");
+    // The same label a mail naming that counterparty gives.
+    const mail = counterpartyLabel({ name: "JUAN PABLO PRUEBA SOTO", rut: null }, catalog, new Map());
+    expect(shown("TRANSF. JUAN PABLO PRUEBA SOTO")).toBe(`Transf. de ${mail}`);
+  });
+
+  it("drop a document number glued into the name; generic or unreadable lines are no transfer party", () => {
+    expect(cartolaTransferParty("Transf. MARIA PRUEBA 6000277 SOTO")).toEqual({ direction: "in", name: "MARIA PRUEBA SOTO", rut: null });
+    // A leading number whose verifier fails is no RUT.
+    expect(cartolaTransferParty("0123456789 Transf. DIEGO PRUEBA")).toEqual({ direction: "in", name: "DIEGO PRUEBA", rut: null });
+    expect(cartolaTransferParty("Transf. Internet a otro Bancos")).toBeNull();
+    expect(cartolaTransferParty("Transf.Internet a 3o mismo Bco")).toBeNull();
+    expect(cartolaTransferParty("0081172943 TRANSF. C")).toBeNull();
+    expect(cartolaTransferParty("Giro Nacional VD")).toBeNull();
+  });
+
+  it("reads the counterparty's RUT the cartola prints first, so any spelling gets the RUT's name", () => {
+    expect(cartolaTransferParty("0123456785 TRANSF. PRUEBA SOTO ANA MARIA")).toEqual({
+      direction: "in",
+      name: "PRUEBA SOTO ANA MARIA",
+      rut: "123456785",
+    });
+    const byRut: DisplayNameContext = {
+      catalog: vendorCatalogFromEntries([seed("rut", "12345678-5", "Ana Prueba")]),
+      counterparties: new Map(),
+      brands: [],
+      cardMerchantsByAccount: new Map(),
+    };
+    const names = (merchant: string) =>
+      expenseLineDisplayNames({ source: "checking", merchant, account_id: 1 }, byRut).display_merchant;
+    // Surname first and cut, or given names first: one name, the catalog's for the RUT.
+    expect(names("0123456785 TRANSF. PRUEBA SOTO ANA MAR")).toBe("Transf. de Ana Prueba");
+    expect(names("0123456785 TRANSF A ANA MARIA PRUEBA SOTO")).toBe("Transf. a Ana Prueba");
+    // A transfer mail that names no RUT: the RUT the cartola line prints names it.
+    expect(
+      expenseLineDisplayNames(
+        {
+          source: "checking",
+          merchant: "00123456785 Transf. ANA MAR",
+          account_id: 1,
+          transfer_counterparty: {
+            direction: "in",
+            name: "ANA MARIA PRUEBA SOTO",
+            rut: null,
+            bank: null,
+            account_type: null,
+            account_number: null,
+            email: null,
+            comment: null,
+            sent_at_chile: "2026-01-02 10:00",
+          },
+        },
+        byRut
+      ).display_merchant
+    ).toBe("Transf. de Ana Prueba");
+    // The name the RUT's transfer mails go by, when the catalog has none.
+    const fromMails: DisplayNameContext = { ...byRut, catalog, counterparties: new Map([["123456785", "Anita Prueba"]]) };
+    expect(expenseLineDisplayNames({ source: "checking", merchant: "0123456785 TRANSF. PRUEBA SOTO ANA", account_id: 1 }, fromMails).display_merchant).toBe(
+      "Transf. de Anita Prueba"
+    );
+  });
+
+  it("word a cartola's «Traspaso a / de» like the transfers, keeping what it names as printed", () => {
+    expect(shown("Traspaso a Cuenta de Otro Banco")).toBe("Transf. a Cuenta de Otro Banco");
+    expect(shown("Traspaso a Cuenta de Otro Banc")).toBe("Transf. a Cuenta de Otro Banc");
+    expect(shown("Traspaso de Cuenta Vista")).toBe("Transf. de Cuenta Vista");
+    expect(cartolaTraspasoParty("Traspaso a Cuenta de Otro Banco")).toEqual({ direction: "out", label: "Cuenta de Otro Banco" });
+    expect(cartolaTraspasoParty("Traspaso AFP Modelo")).toBeNull();
+  });
+
+  it("hand the same party to every reader: a mail's, the cartola's printed one, a «Traspaso a»", () => {
+    const party = (merchant: string) => checkingTransferParty({ merchant, transfer_counterparty: undefined }, ctx);
+    expect(party("0184662884 TRANSF A PEDRO PRUEBA SOTO")).toEqual({ direction: "out", label: "Pedro Prueba" });
+    expect(party("Traspaso a Cuenta de Otro Banco")).toEqual({ direction: "out", label: "Cuenta de Otro Banco" });
+    expect(party("Giro Nacional VD")).toBeNull();
+    // A merchant the catalog knows is no transfer party.
+    expect(party("JUMBO BILBAO")).toBeNull();
+  });
+
+  it("name a cartola refund («DEVOLUCION X») by who paid it back, through the RUT the cartola prints", () => {
+    expect(cartolaRefundParty("0123456785 DEVOLUCION CLINICA PRUE")).toEqual({ name: "CLINICA PRUE", rut: "123456785" });
+    expect(cartolaRefundParty("Giro Nacional VD")).toBeNull();
+    const byRut: DisplayNameContext = {
+      catalog: vendorCatalogFromEntries([seed("rut", "12345678-5", "Clínica Prueba")]),
+      counterparties: new Map(),
+      brands: [],
+      cardMerchantsByAccount: new Map(),
+    };
+    const line = { source: "checking" as const, merchant: "0123456785 DEVOLUCION CLINICA PRUE", account_id: 1 };
+    // The name cut, the RUT whole: the catalog's name for the RUT.
+    expect(expenseLineDisplayNames(line, byRut).display_merchant).toBe("Devolución Clínica Prueba");
+    expect(checkingTransferParty({ merchant: line.merchant, transfer_counterparty: undefined }, byRut)).toEqual({
+      direction: "in",
+      label: "Clínica Prueba",
+      refund: true,
+    });
+    // No name for the RUT: the printed name, title-cased.
+    expect(shown("0123456785 DEVOLUCION CLINICA PRUE")).toBe("Devolución Clinica Prue");
+  });
+
+  it("is a checking rule only: a card merchant is never read as a transfer", () => {
+    expect(expenseLineDisplayNames({ source: "cc", merchant: "TRANSF A PEDRO PRUEBA", account_id: 1 }, ctx).display_merchant).toBeUndefined();
   });
 });

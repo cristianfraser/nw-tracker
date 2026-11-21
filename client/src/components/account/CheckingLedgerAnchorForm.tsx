@@ -43,7 +43,8 @@ export function CheckingLedgerAnchorForm({
   }, [ledgerAnchor, cartolaDerivedAnchor]);
 
   const invalidate = async () => {
-    await invalidateResources(queryClient, resources.accountPage(accountId, displayUnit));
+    // The anchor moves every balance of the statement too (`resources.accountFlows` covers it).
+    await invalidateResources(queryClient, resources.accountPage(accountId, displayUnit), resources.accountFlows());
   };
 
   const saveMutation = useMutation({

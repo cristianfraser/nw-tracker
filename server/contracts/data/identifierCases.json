@@ -68,5 +68,42 @@
       "raw": "123456-k",
       "expect": "123456K"
     }
+  ],
+  "rutVerifier": [
+    {
+      "raw": "12.345.678-5",
+      "expect": true
+    },
+    {
+      "raw": "11.111.111-1",
+      "expect": true
+    },
+    {
+      "raw": "6000000-k",
+      "expect": true,
+      "note": "a K verifier, lower case"
+    },
+    {
+      "raw": "0123456785",
+      "expect": true,
+      "note": "a cartola's leading number: the RUT with a zero in front"
+    },
+    {
+      "raw": "12.345.678-9",
+      "expect": false
+    },
+    {
+      "raw": "7.000.000-K",
+      "expect": false
+    },
+    {
+      "raw": "1234",
+      "expect": false,
+      "note": "too short to be a RUT"
+    },
+    {
+      "raw": "",
+      "expect": false
+    }
   ]
 }

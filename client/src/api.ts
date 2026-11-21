@@ -284,6 +284,21 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  /** A checking page's statement page (`server/src/checkingStatement.ts`). */
+  checkingStatement: (
+    id: string | number,
+    opts: { before?: string; kind?: import("./types").CheckingStatementKindFilter; q?: string; hideOwn?: boolean }
+  ) => {
+    const qu = new URLSearchParams();
+    if (opts.before) qu.set("before", opts.before);
+    if (opts.kind) qu.set("kind", opts.kind);
+    if (opts.q) qu.set("q", opts.q);
+    if (opts.hideOwn) qu.set("hide_own", "1");
+    const qs = qu.toString();
+    return j<import("./types").CheckingStatementResponse>(
+      `/api/accounts/${id}/checking-statement${qs ? `?${qs}` : ""}`
+    );
+  },
   accountImportSpecs: (id: string | number) =>
     j<{
       account_id: number;

@@ -48,7 +48,7 @@ export type FlowsApiRow = AccountMovementApiRow & {
   counterpart_bucket_slug: string | null;
   /**
    * What the row shows in place of `note` (which stays the stored provenance, the tooltip): a bank
-   * movement's «Transf a <label>» / «Transf. de <label>» when a mail names the counterparty, else
+   * movement's «Transf. a <label>» / «Transf. de <label>» when a mail names the counterparty, else
    * its bank description without the import key. Null when the note itself is the text.
    */
   display_note: string | null;
@@ -363,21 +363,26 @@ function lookupAccountName(accountId: number): string | null {
   return row?.name ?? null;
 }
 
+/** Every movement of one account as the flows list shows it (display names included); null when there is no such account. */
+export function accountFlowRows(accountId: number): FlowsApiRow[] | null {
+  const name = lookupAccountName(accountId);
+  if (name == null) return null;
+  const movements = listAccountMovementsForApi(accountId);
+  const bucketByAccount = bucketSlugByAccountIds([accountId]);
+  return assembleFlowRows(
+    [{ account_id: accountId, name, bucket_slug: bucketByAccount.get(accountId) ?? null }],
+    new Map([[accountId, movements]])
+  );
+}
+
 export function buildAccountFlows(
   accountId: number,
   filters: FlowsFilters,
   page: number,
   pageSize: number
 ): FlowsPageResponse | null {
-  const name = lookupAccountName(accountId);
-  if (name == null) return null;
-
-  const movements = listAccountMovementsForApi(accountId);
-  const bucketByAccount = bucketSlugByAccountIds([accountId]);
-  const allRows = assembleFlowRows(
-    [{ account_id: accountId, name, bucket_slug: bucketByAccount.get(accountId) ?? null }],
-    new Map([[accountId, movements]])
-  );
+  const allRows = accountFlowRows(accountId);
+  if (allRows == null) return null;
   const filter_options = buildFilterOptions(allRows, false);
   const filtered = applyFlowFilters(allRows, filters);
   return { ...paginate(filtered, page, pageSize), filter_options };

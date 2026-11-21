@@ -69,6 +69,7 @@ import { runCurrencyReferences314 } from "./migrationHooks/currencyReferences314
 import { runVendorCatalog325 } from "./migrationHooks/vendorCatalog325.js";
 import { runVendorCatalog331 } from "./migrationHooks/vendorCatalog331.js";
 import { runVendorCatalog335 } from "./migrationHooks/vendorCatalog335.js";
+import { runVendorCatalog363 } from "./migrationHooks/vendorCatalog363.js";
 import { runCcListingIssuer326 } from "./migrationHooks/ccListingIssuer326.js";
 import { runPlantedChargeLines328 } from "./migrationHooks/ccPlantedCharges328.js";
 import { runExpenseAmountCurrency316 } from "./migrationHooks/expenseAmountCurrency316.js";
@@ -426,6 +427,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "334_cc_plan_prepayments.sql": runMarkInputChangeTriggers334,
   "335_vendor_catalog_parque_arauco_stores.sql": runVendorCatalog335,
   "361_broker_instruments.sql": runBrokerInstruments361,
+  "363_vendor_catalog_checking_names.sql": runVendorCatalog363,
 };
 
 /**

@@ -1,3 +1,4 @@
+import { CheckingAccountDetailPage } from "./accountDetail/CheckingAccountDetailPage";
 import { CreditCardAccountDetailPage } from "./accountDetail/CreditCardAccountDetailPage";
 import { PositionAccountDetailPage } from "./accountDetail/PositionAccountDetailPage";
 import { StandardAccountDetailPage } from "./accountDetail/StandardAccountDetailPage";
@@ -7,6 +8,9 @@ import {
   useRememberPositionGlanceShape,
 } from "../components/account/PositionGlance";
 import { isCreditCardAccountNavNode } from "../portfolioNavFromApi";
+
+/** The account kinds whose page is the checking page (server `CHECKING_PAGE_KIND_SLUGS`). */
+const CHECKING_PAGE_CATEGORY_SLUGS: ReadonlySet<string> = new Set(["cuenta_corriente", "cuenta_vista"]);
 
 export function AccountDetailPage() {
   const data = useAccountDetailPageData();
@@ -28,6 +32,10 @@ export function AccountDetailPage() {
     data.summary.category_slug === "credit_card" || isCreditCardAccountNavNode(data.navSelf);
   if (isCreditCard) {
     return <CreditCardAccountDetailPage data={data} />;
+  }
+  // A cuenta corriente / cuenta vista: its category is known from the placeholder, so the page mounts at first paint.
+  if (CHECKING_PAGE_CATEGORY_SLUGS.has(data.summary.category_slug ?? "")) {
+    return <CheckingAccountDetailPage data={data} />;
   }
   const isPosition = data.positionGlance != null || (data.positionGlance === undefined && pendingShape != null);
   if (isPosition) {

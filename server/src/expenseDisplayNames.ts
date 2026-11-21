@@ -5,7 +5,7 @@
  * full link detail stays on `payment_receipt` / `transfer_counterparty` for the ⓘ card.
  *
  * Merchant (`display_merchant`, set when it differs from `merchant`):
- *   - a checking transfer whose mail names its counterparty: «Transf a <label>» / «Transf. de <label>»
+ *   - a checking transfer whose mail names its counterparty: «Transf. a <label>» / «Transf. de <label>»
  *     (the bank's own wording is cut — «Transf a INMOBILIARIA Y CONSTR» — or names nobody)
  *   - else the bank's clutter dropped (BCI's « (T)», the PDF's glued «COMPRAS P.A.T.» column,
  *     «, SANTIAGO», an account number or the old «Agustinas » branch at the start), the payment
@@ -30,7 +30,7 @@
  *     first surname, title-cased
  *   - `inline`: false when the shown merchant already contains the label (no repeating it on the row)
  */
-import { addDaysIso, normalizeRut, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH, daysBetweenIso } from "nw-tracker-contracts";
+import { addDaysIso, normalizeRut, rutVerifierHolds, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH, daysBetweenIso } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import type { CategoryRuleLinkDto, ExpenseLinkLabel, FlowCcExpenseLineRow } from "./expenseLineTypes.js";
 
@@ -218,6 +218,106 @@ export function counterpartyLabel(
   return shortPersonName(titleCaseName(known));
 }
 
+/** A checking movement's name from its party: «Devolución X» for a refund, else the transfer's wording. */
+function partyLineName(party: TransferParty): string {
+  return party.refund ? `Devolución ${party.label}` : transferLineName(party.direction, party.label);
+}
+
+/** A checking transfer's name, from its counterparty's label: the one wording for a mail and a cartola line. */
+function transferLineName(direction: "in" | "out", label: string): string {
+  return direction === "out" ? `Transf. a ${label}` : `Transf. de ${label}`;
+}
+
+/**
+ * The counterparty a cartola's own transfer line prints, for a line no transfer mail names:
+ * «Transf a X» / «Transf. a X» / «TRANSF A X» going out, «Transf de X» / «Transf. X» / «TRANSF. X»
+ * coming in. The number the cartola prints before it is the counterparty's RUT when its verifier
+ * holds («0123456785 TRANSF. …» → 12.345.678-5). Its label is then the mail's rule
+ * (`counterpartyLabel`): the catalog's name for the RUT, the name the RUT's mails go by, else the
+ * printed name. Words with digits (a document number glued in) are dropped. Null for anything
+ * else: a generic «Transf. Internet a otro Bancos», or a name too cut to read (fewer than three
+ * letters).
+ */
+export function cartolaTransferParty(raw: string): { direction: "in" | "out"; name: string; rut: string | null } | null {
+  const m = /^(?:(\S*\d\S*)\s+)?transf(?:\.\s*|\s+)(?:(a|de)\s+)?(.+)$/i.exec(
+    raw.trim().replace(/^Agustinas\s+/i, "")
+  );
+  if (!m) return null;
+  const name = m[3]!
+    .split(/\s+/)
+    .filter((w) => !/\d/.test(w))
+    .join(" ")
+    .trim();
+  if (/^internet\b/i.test(name) || name.replace(/[^\p{L}]/gu, "").length < 3) return null;
+  return { direction: m[2]?.toLowerCase() === "a" ? "out" : "in", name, rut: cartolaPrintedRut(raw) };
+}
+
+/**
+ * A cartola's «Traspaso a X» / «Traspaso de X»: X is no person (an account kind, a product), so it is
+ * the transfer's party as printed («Cuenta de Otro Banco»). Null for any other line.
+ */
+export function cartolaTraspasoParty(cleaned: string): TransferParty | null {
+  const m = /^traspaso\s+(a|de)\s+(.+)$/i.exec(cleaned.trim());
+  return m ? { direction: m[1]!.toLowerCase() === "a" ? "out" : "in", label: m[2]!.trim() } : null;
+}
+
+/** Who a checking movement's money went to or came from, and its short label. */
+export type TransferParty = {
+  direction: "in" | "out";
+  label: string;
+  /** A refund the party paid back («DEVOLUCION X»), not a transfer. */
+  refund?: true;
+};
+
+/**
+ * The party of a checking movement, the one rule every list names transfers by: the counterparty a
+ * transfer mail names (labelled with the RUT the cartola prints when the mail has none), else, for a
+ * line the vendor catalog does not know, the counterparty the cartola's own transfer line prints
+ * («TRANSF. X», «Transf a X»), else what a «Traspaso a X» names. Null for anything else (a cash
+ * withdrawal, a fee, a known merchant) and for a transfer between the client's own products.
+ * Display only: rules keep matching the bank's text.
+ */
+export function checkingTransferParty(
+  line: Pick<FlowCcExpenseLineRow, "merchant" | "transfer_counterparty">,
+  ctx: DisplayNameContext
+): TransferParty | null {
+  const raw = line.merchant ?? "";
+  const cp = line.transfer_counterparty;
+  if (cp) {
+    if (cp.direction === "own") return null;
+    const printedRut = !cp.rut ? cartolaPrintedRut(raw) : null;
+    const label = counterpartyLabel(printedRut ? { ...cp, rut: printedRut } : cp, ctx.catalog, ctx.counterparties);
+    return label ? { direction: cp.direction, label } : null;
+  }
+  if (!raw) return null;
+  const { name, listed } = catalogMerchant(raw, ctx.catalog);
+  if (listed != null) return null;
+  const printed = cartolaTransferParty(raw);
+  const label = printed ? counterpartyLabel(printed, ctx.catalog, ctx.counterparties) : null;
+  if (printed && label) return { direction: printed.direction, label };
+  const refund = cartolaRefundParty(raw);
+  const refundLabel = refund ? counterpartyLabel(refund, ctx.catalog, ctx.counterparties) : null;
+  if (refund && refundLabel) return { direction: "in", label: refundLabel, refund: true };
+  return cartolaTraspasoParty(name);
+}
+
+/**
+ * Who paid back a cartola's «DEVOLUCION X» credit (a refund, not a transfer): X as printed, often cut
+ * («CLINICA ALE»), with the RUT the cartola prints before it. Null for any other line.
+ */
+export function cartolaRefundParty(raw: string): { name: string; rut: string | null } | null {
+  const m = /^(?:Agustinas\s+)?(?:\S*\d\S*\s+)?devoluci[oó]n\s+(.+)$/i.exec(raw.trim());
+  if (!m) return null;
+  const name = m[1]!.trim();
+  return name.replace(/[^\p{L}]/gu, "").length < 3 ? null : { name, rut: cartolaPrintedRut(raw) };
+}
+
+/** The counterparty's RUT a cartola line prints before «Transf» / «Devolución», when its verifier holds; else null. */
+export function cartolaPrintedRut(raw: string): string | null {
+  const m = /^(?:Agustinas\s+)?(\S*\d\S*)\s+(?:transf|devoluci[oó]n)\b/i.exec(raw.trim());
+  return m && rutVerifierHolds(m[1]) ? normalizeRut(m[1]) : null;
+}
+
 function contains(haystack: string, needle: string): boolean {
   const h = foldVendorName(haystack);
   const n = foldVendorName(needle);
@@ -393,14 +493,17 @@ export function expenseLineDisplayNames(
   const out: ExpenseDisplayNames = {};
   const raw = line.merchant ?? "";
   const cp = line.transfer_counterparty;
-  const cpLabel = cp ? counterpartyLabel(cp, ctx.catalog, ctx.counterparties) : null;
+  // A mail that names no RUT is labelled by the RUT the cartola line prints, when it prints one.
+  const printedRut = line.source === "checking" && cp && !cp.rut ? cartolaPrintedRut(raw) : null;
+  const cpLabel = cp ? counterpartyLabel(printedRut ? { ...cp, rut: printedRut } : cp, ctx.catalog, ctx.counterparties) : null;
 
   let shown = raw;
   // The catalog's name for the line's own merchant (null when it does not know it).
   let ownListed: string | null = null;
   let ownBrand: string | null = null;
-  if (line.source === "checking" && cp && cpLabel && cp.direction !== "own") {
-    shown = cp.direction === "out" ? `Transf a ${cpLabel}` : `Transf. de ${cpLabel}`;
+  const party = line.source === "checking" ? checkingTransferParty(line, ctx) : null;
+  if (line.source === "checking" && cp && party) {
+    shown = partyLineName(party);
   } else if (line.source === "payslip" && raw) {
     shown = payslipLineName(raw);
   } else if (raw) {
@@ -414,7 +517,8 @@ export function expenseLineDisplayNames(
       known = store ? catalogMerchant(store, ctx.catalog).listed : null;
     }
     ownListed = known;
-    shown = known ?? name;
+    // A cartola transfer no mail names: its printed counterparty, through the mail's label rule.
+    shown = known ?? (party ? partyLineName(party) : name);
     if (processor) out.merchant_processor = processor;
     if (choices) out.branch_choices = choices;
     // A shop's or processor's receipt names the merchant the bank's name hides.
@@ -486,7 +590,7 @@ export function expenseLineDisplayNames(
 
 /**
  * A checking movement's names outside the expense lines (an income credit, a flows row): the same
- * rule as a checking expense line — «Transf a <label>» / «Transf. de <label>» when a mail names the
+ * rule as a checking expense line — «Transf. a <label>» / «Transf. de <label>» when a mail names the
  * counterparty, else the bank's description through the catalog.
  */
 export function checkingMovementDisplayNames(

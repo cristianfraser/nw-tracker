@@ -3,7 +3,7 @@ import type { AccountCcInstallmentsResponse } from "./creditCard.js";
 import type { DashboardAccountRow, TimeseriesBlock } from "./dashboard.js";
 import type { AccountDepositInflowsResponse, AccountMortgageLedgerResponse, DeptoMortgageSheetRow } from "./mortgage.js";
 import type { PeriodReturnsPayload } from "./performance.js";
-import type { Money } from "./flows.js";
+import type { ExpenseLinkLabel, Money, TransferCounterparty } from "./flows.js";
 
 import type { BookLedgerEditSchema, MovementCreateSchema } from "./ledgerSchemas.js";
 
@@ -164,6 +164,8 @@ export interface AccountDetailBundleResponse {
    * client placeholder bundle may leave it out (read absent as «not loaded»).
    */
   position_glance?: PositionGlanceDto | null;
+  /** A cuenta corriente / cuenta vista page's head (server `checkingStatement.ts`); null on every other account. Optional like `position_glance`. */
+  checking_glance?: CheckingGlanceDto | null;
 }
 
 /** «up» above zero, «down» below, «flat» at zero (or no figure). */
@@ -422,6 +424,118 @@ export interface CartolaDerivedAnchorDto {
   period_month: string;
   occurred_on: string;
   amount_clp: number; // convention-ok: a checking cartola's printed pesos
+}
+
+/**
+ * The checking account page's head (server `checkingStatement.ts`, built with the detail bundle for
+ * a cuenta corriente / cuenta vista): today's balance and the balance strip. Every
+ * amount is in the account's own currency (`currency`): a checking ledger is a document in its coin,
+ * not a display-unit figure.
+ */
+export interface CheckingGlanceDto {
+  currency: string;
+  /** Today's balance (the ledger's display read: a row the bank dates after today already counts). */
+  balance: number;
+  as_of: string;
+  strips: CheckingBalanceStripDto[];
+}
+
+export type CheckingStripRange = "90d" | "1y" | "5y" | "total";
+
+/** The end-of-day balance over one range, as a step line: a point on the range's first day and on every day it changed. */
+export interface CheckingBalanceStripDto {
+  range: CheckingStripRange;
+  from: string;
+  to: string;
+  /** The lowest and highest end-of-day balance in the range. */
+  low: number;
+  high: number;
+  /** Where zero sits, 0..1 from the bottom (0 when no day is negative). */
+  zero_y: number;
+  points: { date: string; balance: number; x: number; y: number }[];
+  /** The calendar months the range touches, oldest first, with their span on the x axis (0..1). */
+  months: { period_month: string; x0: number; x1: number }[];
+  /** Which month bands carry a label: every month, or only January (a year label). */
+  label_every: "month" | "year";
+}
+
+/** What a statement row is, from structured state only (never the description text). */
+export type CheckingStatementRowKind = "income" | "card_payment" | "own_transfer" | "fee" | "other";
+
+/** The statement's filter chips (`kind` query parameter). */
+export type CheckingStatementKindFilter = "income" | "card_payment" | "own_transfer" | "other" | "fee";
+
+/** What `ExpenseVendorLabel` reads for a checking movement (the expense line's name fields). */
+export interface CheckingStatementVendorDto {
+  merchant: string;
+  display_merchant?: string;
+  merchant_processor?: string;
+  link_label?: ExpenseLinkLabel;
+  transfer_counterparty?: TransferCounterparty;
+}
+
+export interface CheckingStatementRowDto {
+  movement_id: number;
+  occurred_on: string;
+  /** The day the bank filed it on this account, when different from `occurred_on`. */
+  posted_on: string | null;
+  /** Dated after today by the bank; today's balance already counts it (listed under today's month). */
+  forward_posted: boolean;
+  kind: CheckingStatementRowKind;
+  /** An income credit's kind (`salary`, `rent`, …); null on any other row. */
+  income_kind: string | null;
+  /**
+   * A bank movement's names, as an expense row shows them (server `expenseLineDisplayNames`): the
+   * bank's text, the catalog's / counterparty's name, the link label, the transfer notice behind it.
+   * Null on a transfer between own accounts, named by its account.
+   */
+  vendor: CheckingStatementVendorDto | null;
+  /** The movement type's label (`flow_type_label`), shown beside a transfer's account. */
+  type_label: string;
+  /** The other account of a transfer between own accounts, and whether the money came from it or went to it. */
+  counterpart: { account_id: number; name: string; direction: "in" | "out" } | null;
+  /**
+   * Who a bank movement's money went to or came from (server `checkingTransferParty`: a transfer
+   * mail's counterparty, the cartola's printed one, a «Traspaso a X»); null when it names none (a
+   * cash withdrawal, a fee, a known merchant) and on a transfer between own accounts.
+   */
+  party: { direction: "in" | "out"; label: string } | null;
+  /** Signed: into the account positive. */
+  amount: number;
+  /** The balance after this row (rows run newest first; the next row's balance + this amount). */
+  balance_after: number;
+}
+
+export type CheckingMonthReconciliation =
+  | { status: "matches" }
+  | { status: "differs"; difference: number }
+  | { status: "no_statement" }
+  | { status: "open" };
+
+export interface CheckingStatementMonthDto {
+  period_month: string;
+  opening_balance: number;
+  closing_balance: number;
+  money_in: number;
+  money_out: number;
+  /** The month's cartola against the ledger at month-end by the bank's posting day; `open` for the current month. */
+  reconciliation: CheckingMonthReconciliation;
+  /** Rows newest first, after the request's filters. */
+  rows: CheckingStatementRowDto[];
+  /** The month's rows the filters left out (count and net); null when none were. */
+  hidden: { count: number; net: number } | null;
+}
+
+/** `GET /api/accounts/:id/checking-statement?before=YYYY-MM&kind=&q=&hide_own=1` */
+export interface CheckingStatementResponse {
+  account_id: number;
+  currency: string;
+  /** Newest first; months with no row left after the filters are skipped. */
+  months: CheckingStatementMonthDto[];
+  /** The `before` of the next older page; null at the start of history. */
+  next_before: string | null;
+  /** The opening balance the ledger starts from (its anchor), on the page that reaches the start; null otherwise. */
+  opening: { occurred_on: string; amount: number } | null;
 }
 
 export interface CheckingCartolaMonthsResponse {

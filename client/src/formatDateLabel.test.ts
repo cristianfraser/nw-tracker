@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import i18n from "./i18n";
 import {
   formatDateTimeLabel,
+  formatDayWeekdayLabel,
   formatMonthYearShortLabel,
   formatYearMonthLabel,
 } from "./formatDateLabel";
@@ -75,5 +76,17 @@ describe("formatDateTimeLabel", () => {
   it("renders local-time ISO date + HH:MM, language-independent", () => {
     const d = new Date(2026, 6, 9, 14, 5); // local time
     expect(formatDateTimeLabel(d)).toBe("2026-07-09 14:05");
+  });
+});
+
+describe("formatDayWeekdayLabel", () => {
+  it("names the day and its weekday, in the UI language", async () => {
+    await i18n.changeLanguage("es");
+    expect(formatDayWeekdayLabel("2026-10-30")).toBe("30 vie");
+    expect(formatDayWeekdayLabel("2026-11-01")).toBe("1 dom");
+    expect(formatDayWeekdayLabel("2024-02-29")).toBe("29 jue");
+    await i18n.changeLanguage("en");
+    expect(formatDayWeekdayLabel("2026-10-30")).toBe("30 Fri");
+    await i18n.changeLanguage("es");
   });
 });
