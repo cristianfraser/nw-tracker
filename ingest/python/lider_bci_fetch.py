@@ -252,8 +252,8 @@ def main() -> None:
 
             rut_val = rut_in.input_value()
             pass_len = len(pass_in.input_value())
-            submit = page.locator(SEL_SUBMIT).first
-            enabled = submit.is_enabled()
+            submit_btn = page.locator(SEL_SUBMIT).first
+            enabled = submit_btn.is_enabled()
             token_after = page.locator(SEL_TOKEN).first.input_value()
             result.update(rut_ok=normalize_rut(rut_val) == normalize_rut(rut),
                           pass_ok=pass_len == len(password), submit_enabled=enabled,
@@ -267,7 +267,7 @@ def main() -> None:
                 log("form-only: form ready, not submitting")
                 return
 
-            submit.click()
+            submit_btn.click()
             try:
                 page.wait_for_url(lambda u: "/login" not in u, timeout=60_000)
             except Exception:
@@ -348,9 +348,11 @@ def main() -> None:
 
     staged: dict[str, Any] = {}
 
+    # No network_idle: the site's analytics never go quiet, so every idle wait ran to its 30 s
+    # timeout (~1,5 min between Turnstile «Success!» and the form). run() waits for what it needs.
     with StealthySession(headless=args.headless, solve_cloudflare=True,
-                         user_data_dir=str(PROFILE_DIR), network_idle=True) as session:
-        session.fetch(LOGIN_URL, page_action=action, solve_cloudflare=True, network_idle=True)
+                         user_data_dir=str(PROFILE_DIR)) as session:
+        session.fetch(LOGIN_URL, page_action=action, solve_cloudflare=True)
 
     if result.get("turnstile_failed"):
         TURNSTILE_LATCH_PATH.write_text(json.dumps({
