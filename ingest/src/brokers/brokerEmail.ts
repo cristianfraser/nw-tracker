@@ -216,7 +216,8 @@ function fintualTradeFromSubject(m: RegExpExecArray, snippet: string): Partial<B
  * Racional's snippet: "Acciones compradas 24.74186066 Precio promedio US$54.41 Monto comprado
  * US$1346.17". The Margin-era template renders BOTH table column headers before each value
  * ("Acciones compradas Acciones vendidas 8.45850913 … Monto comprado Monto vendido US$4345.96")
- * — the subject («Invertiste en …») is what says the single value is the buy column.
+ * — the subject («Invertiste en …» / «Vendiste …») is what says whether the single value is the
+ * buy or the sale column. The sale mail uses the same template (first seen 2026-11-23).
  */
 const RE_RACIONAL_BODY =
   /Acciones\s+compradas\s+(?:Acciones\s+vendidas\s+)?([\d.,]+)\s+Precio\s+promedio\s+US\$\s*([\d.,]+)\s+Monto\s+comprado\s+(?:Monto\s+vendido\s+)?US\$\s*([\d.,]+)/i;
@@ -409,23 +410,34 @@ const FINTUAL_MATCHERS: Matcher[] = [
   { kind: "statement", is_transaction: false, re: /^(Cartola mensual|Confirmaci[óo]n de transacciones)/i },
 ];
 
+/** A Racional trade mail's fill from the body (US-formatted, unlike sibling subjects). */
+function racionalTradeFromBody(m: RegExpExecArray, snippet: string): Partial<BrokerEmailEvent> {
+  const body = RE_RACIONAL_BODY.exec(snippet);
+  return {
+    ticker: m[1]!.toUpperCase(),
+    units: body ? decimalString(body[1]!) : null,
+    price: body ? parseUsNumber(body[2]!) : null,
+    amount: body ? parseUsNumber(body[3]!) : null,
+    currency: "usd",
+  };
+}
+
 const RACIONAL_MATCHERS: Matcher[] = [
   {
     // "Invertiste en Silver Trust ETF iShares (SLV)" — units/price/amount live in the body.
     kind: "buy",
     is_transaction: true,
     re: /^Invertiste en .+?\(([A-Z][A-Z0-9.]{0,9})\)/i,
-    read: (m, snippet) => {
-      const body = RE_RACIONAL_BODY.exec(snippet);
-      // The body is US-formatted even though the subjects of sibling e-mails are Chilean.
-      return {
-        ticker: m[1]!.toUpperCase(),
-        units: body ? decimalString(body[1]!) : null,
-        price: body ? parseUsNumber(body[2]!) : null,
-        amount: body ? parseUsNumber(body[3]!) : null,
-        currency: "usd",
-      };
-    },
+    read: racionalTradeFromBody,
+  },
+  {
+    // "Vendiste Silver Trust ETF iShares (SLV)" (first seen 2026-11-23): «Tu orden de venta de …
+    // Acciones vendidas 3.5 Precio promedio US$40.1 … Monto vendido US$140». The
+    // proceeds land in Racional USD; the mail states no settlement day, the trade day is booked.
+    kind: "sell",
+    is_transaction: true,
+    re: /^Vendiste .+?\(([A-Z][A-Z0-9.]{0,9})\)/i,
+    read: racionalTradeFromBody,
   },
   {
     // "Recibiste USD $2,75 en dividendos de SOXX" — the template since 2026-09-18 carries an

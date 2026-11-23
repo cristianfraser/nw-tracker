@@ -210,6 +210,29 @@ describe("brokerEmail", () => {
     expect(buy.units).toBe("24.74186066");
   });
 
+  it("reads a sale from the shared trade template (the sold column's values)", () => {
+    const sell = classifyBrokerEmail({
+      sender: RACIONAL,
+      subject: "Vendiste Vitest Silver Trust (VITSLV)",
+      snippet:
+        "Tu orden de venta de Vitest Silver Trust (VITSLV) Acciones compradas Acciones vendidas 3.5 " +
+        "Precio promedio US$40.1 Monto comprado Monto vendido US$140 Comisión transacción US$0 " +
+        "Horario Extendido Mercado",
+      date: "2026-11-23T19:51:48Z",
+    });
+    expect(sell).toMatchObject({
+      broker: "racional",
+      kind: "sell",
+      is_transaction: true,
+      is_complete: true,
+      ticker: "VITSLV",
+      amount: 140,
+      price: 40.1,
+      currency: "usd",
+    });
+    expect(sell.units).toBe("3.5");
+  });
+
   it("reads a split notice's share counts before and after", () => {
     const split = classifyBrokerEmail({
       sender: RACIONAL,

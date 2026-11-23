@@ -195,6 +195,65 @@ describe("planRacionalEmailMovements", () => {
     }
   });
 
+  it("books a sale from the held position into Racional USD on the trade day", () => {
+    const ymd = safeYmd();
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
+    const holder = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key, equity_ticker)
+           VALUES (?, 'vitest VTSEL', 'vitest:racional-sell', 'vitest:racional-sell|VTSEL', 'VTSEL')`
+        )
+        .run(group.id).lastInsertRowid
+    );
+    const sell = (ticker: string, messageId: string) =>
+      brokerNotification({
+        kind: "sell",
+        subject: `Vendiste Vitest Sell ETF (${ticker})`,
+        occurred_at: `${ymd}T19:51:48.000Z`,
+        message_id: messageId,
+        ticker,
+        units: "3.5",
+        price: 40.1,
+        amount: 140,
+        currency: "usd",
+      });
+    try {
+      const [planned] = planRacionalEmailMovements([sell("VTSEL", "<vitest-sell@test>")]);
+      expect(planned).toMatchObject({
+        kind: "sell",
+        occurred_on: ymd,
+        from_account_id: holder,
+        to_account_id: racionalUsd.id,
+        amount: 140,
+        currency: "usd",
+        units_delta: "3.5",
+        flow_kind: "stock_sell",
+        duplicate_of: null,
+        requires_manual: null,
+      });
+
+      // A same-day transfer of those legs and dollars (the crawl's booking) is the same sale.
+      const existing = Number(
+        db
+          .prepare(
+            `INSERT INTO movements (occurred_on, from_account_id, to_account_id, amount, currency, units_delta, flow_kind, note)
+             VALUES (?, ?, ?, 140, 'usd', '3.5', 'stock_sell', 'vitest racional sell')`
+          )
+          .run(ymd, holder, racionalUsd.id).lastInsertRowid
+      );
+      expect(planRacionalEmailMovements([sell("VTSEL", "<vitest-sell@test>")])[0]!.duplicate_of).toBe(existing);
+
+      // No position holds the ticker: nothing to sell from, for a person.
+      expect(planRacionalEmailMovements([sell("VTNONE", "<vitest-sell-none@test>")])[0]!.requires_manual).toMatch(
+        /cannot tell which position sold VTNONE/
+      );
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE from_account_id = ? OR to_account_id = ?`).run(holder, holder);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(holder);
+    }
+  });
+
   it("books a deposit on the month's last business day like any other", () => {
     // Find a month-end whose next business day lands in the following month.
     let d = "2099-01-31";

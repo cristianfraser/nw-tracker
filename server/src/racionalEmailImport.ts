@@ -2,7 +2,7 @@
  * Racional movements from its notifications (`broker.notifications`, read from Racional's
  * e-mails by ingest) — the incremental path that needs no browser.
  *
- * Three mail kinds become ledger rows (all others report only):
+ * Four mail kinds become ledger rows (all others report only):
  * - «Tu depósito de CLP $X está listo para invertir» → checking → Racional CLP transfer. The
  *   mail is Racional confirming the money ARRIVED, so unlike an inbound wire there is no
  *   promised-but-missing risk; the bank's own listing of the debit is absorbed later by the
@@ -16,6 +16,10 @@
  *   `createPanelAccount` path the panel uses (bare-ticker name, sibling bucket), so
  *   `accounts.equity_ticker` resolution, nav seeding and EOD/live-quote sync enrolment all
  *   happen exactly as for a hand-created position.
+ * - «Vendiste <name> (TICKER)» (first seen 2026-11-23) → equity → Racional USD transfer with
+ *   `units_delta` and `stock_sell`, on the trade day. Racional pays the dollars a day later (T+1)
+ *   and the mail names no settlement day; the ledger has no receivable, so the proceeds count as
+ *   Racional USD from the trade. Only a position the ledger already holds is sold from.
  * Dividends are deliberately NOT booked from mail. «Recibiste USD $X en dividendos de TICKER»
  * (template since 2026-09-18) states the GROSS dividend, while Racional credits the net after
  * the 15% US withholding and the body carries no amount — booking the subject figure left
@@ -34,7 +38,12 @@ import { accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { insertMovement } from "./movementWrites.js";
-import { brokerAdapter, planDepositFromMail, racionalCashAccountId } from "./brokerAdapter.js";
+import {
+  brokerAdapter,
+  planDepositFromMail,
+  racionalCashAccountId,
+  racionalEquityAccountId,
+} from "./brokerAdapter.js";
 import type { BrokerNotification } from "nw-tracker-contracts";
 import { notificationChileYmd } from "./brokerNotifications.js";
 
@@ -46,7 +55,7 @@ const AMOUNT_TOLERANCE = 0.005;
 
 export type RacionalEmailPlannedMovement = {
   source: BrokerNotification;
-  kind: "deposit" | "conversion" | "buy";
+  kind: "deposit" | "conversion" | "buy" | "sell";
   occurred_on: string;
   amount: number;
   currency: "clp" | "usd"; // convention-ok: Racional holds broker cash in pesos and dollars only
@@ -273,7 +282,61 @@ function planBuy(event: BrokerNotification): RacionalEmailPlannedMovement {
   return base;
 }
 
-/** Plan the writable Racional notifications (mail order — deposit → conversion → buy). */
+function planSell(event: BrokerNotification): RacionalEmailPlannedMovement {
+  const occurredOn = mailChileYmd(event);
+  const base: RacionalEmailPlannedMovement = {
+    source: event,
+    kind: "sell",
+    occurred_on: occurredOn,
+    amount: event.amount ?? 0,
+    currency: "usd",
+    counter_amount: null,
+    counter_currency: null,
+    from_account_id: null,
+    to_account_id: null,
+    units_delta: event.units,
+    flow_kind: "stock_sell",
+    note: `Racional e-mail: venta ${event.units ?? "?"} ${event.ticker ?? "?"} (${occurredOn})`,
+    create_account: null,
+    duplicate_of: null,
+    requires_manual: null,
+  };
+  if (!event.ticker) return { ...base, requires_manual: "sell mail carries no ticker" };
+  if (event.amount == null || !(event.amount > 0) || !event.units) {
+    return { ...base, requires_manual: "sell mail carries no amount/units (body not parsed)" };
+  }
+  if (event.price != null && event.price > 0) {
+    const implied = Number(event.units) * event.price;
+    if (Math.abs(implied - event.amount) > Math.max(1, event.amount * 0.01)) {
+      return {
+        ...base,
+        requires_manual:
+          `units × price = ${implied.toFixed(2)} disagrees with amount ${event.amount.toFixed(2)}`,
+      };
+    }
+  }
+  const racionalUsd = tryRacionalCashAccountId("usd");
+  if (racionalUsd == null) return { ...base, requires_manual: "Racional USD account not found" };
+  base.to_account_id = racionalUsd;
+  let holder: number;
+  try {
+    holder = racionalEquityAccountId(event.ticker);
+  } catch (e) {
+    return { ...base, requires_manual: `cannot tell which position sold ${event.ticker}: ${(e as Error).message}` };
+  }
+  base.from_account_id = holder;
+  const dup = sameDayDuplicateId({
+    occurred_on: occurredOn,
+    from_account_id: holder,
+    to_account_id: racionalUsd,
+    currency: "usd",
+    amount: event.amount,
+  });
+  if (dup != null) return { ...base, duplicate_of: dup };
+  return base;
+}
+
+/** Plan the writable Racional notifications (mail order — deposit → conversion → buy / sell). */
 export function planRacionalEmailMovements(
   events: readonly BrokerNotification[]
 ): RacionalEmailPlannedMovement[] {
@@ -283,6 +346,7 @@ export function planRacionalEmailMovements(
     if (e.kind === "deposit") out.push(planDeposit(e));
     else if (e.kind === "wallet_funded") out.push(planConversion(e));
     else if (e.kind === "buy") out.push(planBuy(e));
+    else if (e.kind === "sell") out.push(planSell(e));
     // A dividend mail is a nudge for the browser crawl (its subject amount is gross — see the
     // module comment); portfolio_buy (CLP portafolio) is unmapped here.
   }
