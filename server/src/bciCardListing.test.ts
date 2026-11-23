@@ -105,7 +105,7 @@ describe("the Lider BCI card's unbilled listing", () => {
     // The lender's receipt planted the cuota's charge before the bank listed it.
     expect(applyMortgagePaymentReceipt(receipt(), "<vitest-bci-listing@example.test>").card_line).toBe("planted");
 
-    const first = applyListing(listing([listingCard(LAST4, lines(), null, "bci")], balances(0, "2026-11-12T03:00:00.000Z")), `${REF}-1.json`);
+    const first = applyListing(listing([listingCard(LAST4, lines(), null, "bci")], balances(0, `${TODAY}T14:00:00.000Z`)), `${REF}-1.json`);
     const card = first.accounts[0]!;
     expect(card.account_id).toBe(cardId);
     expect(card).toMatchObject({ lines_parsed: 3, inserted: 1, feed_close: null, mirror: null });
@@ -166,7 +166,7 @@ describe("the Lider BCI card's unbilled listing", () => {
     expect(owed.close_iso).toBeNull();
     const ref = `${REF}-cupo.json`;
     const applied = applyListing(
-      listing([listingCard(LAST4, lines(), null, "bci")], balances(owed.clp.total, "2026-11-12T04:00:00.000Z")),
+      listing([listingCard(LAST4, lines(), null, "bci")], balances(owed.clp.total, `${TODAY}T15:00:00.000Z`)),
       ref
     );
     expect(applied.bank_cupo).toMatchObject({ status: "recorded", snapshots: 2 });

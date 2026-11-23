@@ -400,7 +400,16 @@ describe("watchlistStatsForRow composite", () => {
       rates_chart_title: null,
       source: "builtin",
     };
-    const stats = watchlistStatsForRow(row);
+    // The generated closes end on the day the test DB was made: read the row as of the evening
+    // of the last close both holdings share, not today's wall clock.
+    const { last } = db
+      .prepare(
+        `SELECT MIN(last) AS last FROM (
+           SELECT MAX(trade_date) AS last FROM equity_daily WHERE ticker IN ('SPY', 'AAPL') GROUP BY ticker
+         )`
+      )
+      .get() as { last: string };
+    const stats = watchlistStatsForRow(row, new Date(`${last}T23:00:00Z`));
     expect(stats.value).not.toBeNull();
     expect(stats.value_currency).toBe("clp");
     expect(stats.changes).not.toBeNull();
