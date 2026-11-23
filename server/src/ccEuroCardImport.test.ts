@@ -31,6 +31,13 @@ const TODAY = chileCalendarTodayYmd();
 const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
+/** The last day of the day's calendar month. */
+const monthEndOf = (ymd: string) => addDays(`${monthAfter(ymd)}-01`, -1);
+const monthAfter = (ymd: string) => {
+  const [y, m] = ymd.split("-").map(Number) as [number, number];
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+};
+
 /** The same day one calendar month earlier (clamped to that month's last day). */
 const monthBefore = (ymd: string) => {
   const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
@@ -39,9 +46,10 @@ const monthBefore = (ymd: string) => {
 };
 
 // A statement's facturación is its close's calendar month, so the two closes sit one calendar month
-// apart: a fixed day count (50 and 20 days back) puts both in one month on some days of the year
-// (today − 50 = the 1st of a 31-day month).
-const CLOSE_2 = addDays(TODAY, -20);
+// apart. The later close is last month's last day: a month-end anchor on or after it, before today,
+// and its next cycle still open (a fixed day count back from today misses one or the other on some
+// days of the month).
+const CLOSE_2 = addDays(`${TODAY.slice(0, 7)}-01`, -1);
 const CLOSE_1 = monthBefore(CLOSE_2);
 const PAYMENT_DAY = addDays(CLOSE_1, 10);
 
@@ -100,7 +108,7 @@ function statement(opts: {
       monto_facturado: opts.facturado,
       deuda_total: opts.saldoAnterior - opts.paid + opts.facturado,
       next_period_from: ddmm(addDays(opts.close, 1)),
-      next_period_to: ddmm(addDays(opts.close, 30)),
+      next_period_to: ddmm(monthEndOf(addDays(opts.close, 1))),
     },
     lines: opts.lines,
   };
@@ -267,8 +275,8 @@ describe("the open cycle of a euro card", () => {
       `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key)
        VALUES (?, ?, ?, ?, 'eur', 0, ?)`
     );
-    ins.run(bucketId, ddmm(addDays(CLOSE_2, 5)), "CAFE VITEST", 40, "vitest-euronova|open|0");
-    ins.run(bucketId, ddmm(addDays(CLOSE_2, 6)), "NOTA DE CREDITO", -10, "vitest-euronova|open|1");
+    ins.run(bucketId, ddmm(addDays(CLOSE_2, 1)), "CAFE VITEST", 40, "vitest-euronova|open|0");
+    ins.run(bucketId, ddmm(addDays(CLOSE_2, 1)), "NOTA DE CREDITO", -10, "vitest-euronova|open|1");
     clearAggregationCache();
   });
 
