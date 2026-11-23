@@ -113,23 +113,34 @@
    replaced measuring the list after every render (`useWrapWhenOverflowing`), which switched the
    rows to one line and back on every refetch and made Firefox show the page's scrollbar. An
    account page's list with the units column needs that column more (VEA on the 2026-11-19 test
-   data: 69 px + a gap; the note keeps its 8rem minimum): 50rem. */
+   data: 69 px + a gap; the note keeps its 8rem minimum): 50rem.
+
+   One container name for every kind: each frame states its breakpoint as its font-size and the
+   query reads `1em`, which a container query resolves against the container. Never a list of
+   containers (`@container a (…), b (…)`): Safari drops the whole rule, the rows stay on one line
+   on a phone and widen the page. The list sets its own font-size, so the frame's reaches no text. */
+.frameWide,
+.frameNarrow,
+.frameUnits {
+  container: flow-rows / inline-size;
+}
+
 .frameWide {
-  container: flow-rows-wide / inline-size;
+  font-size: 58rem;
 }
 
 .frameNarrow {
-  container: flow-rows-narrow / inline-size;
+  font-size: 44rem;
 }
 
 /* An account page's list with the units column: the narrow list plus that column. */
 .frameUnits {
-  container: flow-rows-units / inline-size;
+  font-size: 50rem;
 }
 
 /* Wrapped: three lines — the date and the type with the amount on the right; the accounts; the
    note, which wraps in full. No header: the rows read without it. */
-@container flow-rows-wide (max-width: 58rem), flow-rows-narrow (max-width: 44rem), flow-rows-units (max-width: 50rem) {
+@container flow-rows (max-width: 1em) {
   .list {
     display: block;
   }

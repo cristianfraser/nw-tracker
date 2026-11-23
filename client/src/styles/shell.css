@@ -15,11 +15,9 @@
 .layout-main {
   grid-column: 2;
   min-width: 0;
-  /* Anything wider than the content is clipped instead of pushing the sidebar off the viewport.
-     Nothing should be: a table that does not fit shows its cards (`useTableFit`, tables.css
-     `.table-wrap--cards`). `clip`, not `auto`/`hidden`: the column is not a scroll container (the
-     document scrolls), so `position: sticky` inside a page sticks to the viewport. */
-  overflow-x: clip;
+  /* No scroll box: the document is the only scroller. Nothing in the content may be wider than
+     it (a table that does not fit shows its cards, `useTableFit`; a row list wraps by container
+     query), and a page that scrolls sideways is the error showing, not something to hide. */
   display: flex;
   flex-direction: column;
   background-color: var(--bg);

@@ -106,19 +106,29 @@
    («YTD $228.523 (13,65%)»), up to 64 px more (measured: «(−12,34%)» at the totals' size), so both
    moved by that with their margins kept (58 → 62rem, 46 → 50rem). It replaced measuring the list
    after every render (`useWrapWhenOverflowing`), which switched the rows to one line and back on
-   every refetch and made Firefox show the page's scrollbar. */
+   every refetch and made Firefox show the page's scrollbar.
+
+   One container name for both kinds: each frame states its breakpoint as its font-size and the
+   query reads `1em`, which a container query resolves against the container. Never a list of
+   containers (`@container a (…), b (…)`): Safari drops the whole rule, the rows stay on one line
+   on a phone and widen the page. The list sets its own font-size, so the frame's reaches no text. */
+.frameWide,
+.frameNarrow {
+  container: perf-rows / inline-size;
+}
+
 .frameWide {
-  container: perf-rows-wide / inline-size;
+  font-size: 62rem;
 }
 
 .frameNarrow {
-  container: perf-rows-narrow / inline-size;
+  font-size: 50rem;
 }
 
 /* Wrapped: three lines — the period; the closing with the result beside it and the year so far
    (`ytd`) on the right; the flows and the all-time total (`cum`) on the right. On a phone the
    result takes the right of the closing's line and the totals move down (below). */
-@container perf-rows-wide (max-width: 62rem), perf-rows-narrow (max-width: 50rem) {
+@container perf-rows (max-width: 1em) {
   .list {
     display: block;
   }

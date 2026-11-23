@@ -183,6 +183,8 @@
 
 .chart-panel-title-row > .surface-controls {
   flex-shrink: 0;
+  /* On a phone the selects can be wider than the row: they wrap under each other instead. */
+  max-width: 100%;
 }
 
 .chart-grid__col .chart-box {
