@@ -17,7 +17,7 @@
   },
   "scripts": {
     "typecheck": "npm run typecheck -w nw-tracker-contracts && npm run typecheck -w nw-tracker-server && npm run typecheck -w nw-tracker-client && npm run typecheck -w nw-tracker-ingest && npm run check:conventions",
-    "check:conventions": "node scripts/check-conventions.mjs && node scripts/check-deps.mjs",
+    "check:conventions": "node scripts/check-conventions.mjs && node scripts/check-deps.mjs && node scripts/check-persisted-payloads.mjs",
     "dev:server": "npm run dev -w nw-tracker-server",
     "dev:client": "npm run dev -w nw-tracker-client",
     "dev:client:host": "npm run dev -w nw-tracker-client -- --host",

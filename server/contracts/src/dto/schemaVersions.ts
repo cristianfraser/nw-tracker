@@ -2,7 +2,9 @@
  * `schema_version` of each payload the client keeps in localStorage (docs/untangle-plan.md F8).
  * The server stamps it on the payload, the client stores and reads a payload under the version it
  * was built for and drops any other (`client/src/queries/persistedPayloadCache.ts`). Bump one when
- * the shape the client reads from it changes.
+ * the shape the client reads from it changes, including through a shared type (an expense row):
+ * `npm run check:conventions` fails when a saved payload's type changed under the same version
+ * (`scripts/check-persisted-payloads.mjs`); after a bump, record it with that script's `--write`.
  */
 export const DTO_SCHEMA_VERSIONS = {
   /**
@@ -27,9 +29,10 @@ export const DTO_SCHEMA_VERSIONS = {
   /**
    * `GET /api/dashboard/latest-movements` («Últimos movimientos»: expense lines and income, by the
    * day each happened); v2: rows carry `amount` (native currency) + `values` per unit; v3: `values`
-   * replaced by `converted` in the requested unit (and an expense line's `value_clp`).
+   * replaced by `converted` in the requested unit (and an expense line's `value_clp`); v4: expense
+   * and income rows carry the server's one shown `name` (`ShownName`) in place of the merchant fields.
    */
-  latest_movements: 3,
+  latest_movements: 4,
   /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`. */
   flows_overview: 2,
 } as const;

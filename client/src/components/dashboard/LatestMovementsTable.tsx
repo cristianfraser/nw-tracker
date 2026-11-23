@@ -32,10 +32,10 @@ function isLatestMovements(v: unknown): v is LatestMovementsResponse {
     rows.every((r) => {
       if (r == null || typeof r !== "object" || typeof r.on !== "string") return false;
       if (r.kind === "expense") {
-        return r.line != null && typeof r.line.purchase_key === "string" && r.line.amount != null && Number.isFinite(r.line.amount.value) && r.line.converted !== undefined && typeof r.line.value_clp === "number";
+        return r.line != null && r.line.name != null && typeof r.line.purchase_key === "string" && r.line.amount != null && Number.isFinite(r.line.amount.value) && r.line.converted !== undefined && typeof r.line.value_clp === "number";
       }
       if (r.kind === "income") {
-        return r.income != null && typeof r.income.key === "string" && r.income.amount != null && Number.isFinite(r.income.amount.value) && r.income.converted !== undefined;
+        return r.income != null && r.income.name != null && typeof r.income.key === "string" && r.income.amount != null && Number.isFinite(r.income.amount.value) && r.income.converted !== undefined;
       }
       if (r.kind === "card_payment") {
         return r.payment != null && typeof r.payment.key === "string" && r.payment.amount != null && Number.isFinite(r.payment.amount.value) && r.payment.converted !== undefined && Array.isArray(r.payment.lines);

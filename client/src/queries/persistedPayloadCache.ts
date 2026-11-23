@@ -21,7 +21,8 @@ const PREFIX = "nw:cache:";
  * which rows a card's «at a glance» block has (CreditCardGlance.tsx), no amounts.
  * `position_glance_shape`: that an account's page is the unit-position page (a stock, coin or fund),
  * and which optional rows its glance has (PositionGlance.tsx), no amounts; it replaced the stock
- * page's `equity_glance_shape` (swept at boot as an unknown name).
+ * page's `equity_glance_shape` (swept at boot as an unknown name). A change to one of these types
+ * fails `scripts/check-persisted-payloads.mjs` until its version is bumped, like the DTO ones.
  */
 const CLIENT_SCHEMA_VERSIONS = { group_shell: 3, cc_glance_shape: 1, position_glance_shape: 1 } as const;
 

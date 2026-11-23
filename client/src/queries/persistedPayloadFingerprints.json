@@ -1,0 +1,34 @@
+{
+  "cc_glance_shape": {
+    "version": 1,
+    "hash": "8153bde3171df618"
+  },
+  "flows_overview": {
+    "version": 2,
+    "hash": "b876b3282acff25b"
+  },
+  "group_shell": {
+    "version": 3,
+    "hash": "be86fa9a179b94a5"
+  },
+  "latest_movements": {
+    "version": 4,
+    "hash": "d0a53c058354ebdf"
+  },
+  "nav_strip": {
+    "version": 20,
+    "hash": "3e3c5c7ef4a10c55"
+  },
+  "position_glance_shape": {
+    "version": 1,
+    "hash": "ecbf552452195f4b"
+  },
+  "sidebar_nav": {
+    "version": 8,
+    "hash": "07810bdb3cc7fef8"
+  },
+  "upcoming_payments": {
+    "version": 7,
+    "hash": "db947e5af0bc614e"
+  }
+}
