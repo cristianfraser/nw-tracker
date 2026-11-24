@@ -1,4 +1,4 @@
-import { currencySymbol, formatCompactMoney, formatGroupedDecimal, formatMoney, formatPct } from "../../format";
+import { currencySymbolParts, formatCompactMoney, formatGroupedDecimal, formatMoney, formatPct } from "../../format";
 import { formatYearMonthLabel, formatMonthShortLabel } from "../../formatDateLabel";
 
 /**
@@ -45,7 +45,8 @@ export function pct0(share: number): string {
 
 /** An axis figure in short notation without its symbol («500k», «1M»): the page names the unit. */
 export function axisCompact(n: number, unit: string): string {
-  return formatCompactMoney(n, unit).replace(currencySymbol(unit, "bare"), "");
+  const { before, after } = currencySymbolParts(unit, "bare");
+  return formatCompactMoney(n, unit).replace(before, "").replace(after, "");
 }
 
 /** Years with one decimal, whole years bare: 12.34 → «12,3», 30 → «30». */

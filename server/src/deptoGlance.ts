@@ -70,7 +70,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { isDeptoPieCuota, isDeptoPrepagoCuota } from "./deptoDividendosLedger.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
-import { currencySmallestCoin } from "./displayUnits.js";
+import { currencyMinorDigits, currencySmallestCoin } from "./displayUnits.js";
 import {
   chartPartsOf,
   REAL_ESTATE_CHART_KINDS,
@@ -190,7 +190,7 @@ export function buildDeptoGlanceForAccount(accountId: number, input: DeptoGlance
       hero_loan: requireNumber(last.valor_neto_loan, "net equity"),
       hero: unit === loanCurrency ? null : currentValue,
       strip: {
-        day: row.delta_day ?? 0,
+        day: row.delta_day ?? null,
         month: requireNumber(row.delta_month, "month P/L"),
         year: requireNumber(row.delta_year, "year P/L"),
         total: requireNumber(row.delta_total, "total P/L"),
@@ -205,7 +205,7 @@ export function buildDeptoGlanceForAccount(accountId: number, input: DeptoGlance
     hero_loan: requireNumber(last.credito_restante_loan, "loan balance"),
     hero: unit === loanCurrency ? null : currentValue,
     strip: {
-      day: row.delta_day ?? 0,
+      day: row.delta_day ?? null,
       month: requireNumber(row.delta_month, "month financing cost"),
       year: requireNumber(row.delta_year, "year financing cost"),
       total: requireNumber(row.delta_total, "total financing cost"),
@@ -259,10 +259,15 @@ function buildProperty(
       paymentCurrency: ledger[0]!.payment_currency,
     }),
   };
-  const count = db
+  return { value, pl, cost: propertyCostBand(propertyId, unit, asOf), movement_count: accountMovementCount(accountId) };
+}
+
+/** Movements on the account, transfer legs included (the folded «movimientos (N)» list). */
+function accountMovementCount(accountId: number): number {
+  const r = db
     .prepare(`SELECT COUNT(*) AS c FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`)
     .get(accountId, accountId, accountId) as { c: number };
-  return { value, pl, cost: propertyCostBand(propertyId, unit, asOf), movement_count: count.c };
+  return r.c;
 }
 
 /** The property's month-end chart points in `unit` (the last one today), from its valuation series. */
@@ -548,16 +553,9 @@ function buildMortgage(
   const pie = pieRows[0]!;
   const nextScenario = (mortgageLedger.payment_scenarios ?? []).find((s) => s.is_next_payment) ?? null;
 
-  const benchmark = getBenchmark(DEPTO_DEFAULT_PREPAY_BENCHMARK);
-  if (!benchmark) throw new Error(`depto glance: no '${DEPTO_DEFAULT_PREPAY_BENCHMARK}' benchmark`);
-  const prepayments = deptoPrepayBlock(computeMortgagePrepaymentComparison({ accountId, benchmark, unit }));
-
-  const payments = deptoPaymentsList({
-    loanRows,
-    pie,
-    next: nextScenario,
-    prepayments,
-  });
+  // The prepaid-vs-invested block is not built here: it reads a benchmark series, and a stale one
+  // must fail only its column (`GET /api/accounts/:id/depto-prepayments`), never the whole page.
+  const payments = deptoPaymentsList({ loanRows, pie, next: nextScenario });
 
   const years = [...(perf!.yearly ?? [])]
     .sort((a, b) => a.as_of_date.localeCompare(b.as_of_date))
@@ -570,7 +568,8 @@ function buildMortgage(
   return {
     payments,
     balance,
-    projection: nextScenario == null ? null : deptoProjection({ loanRows, next: nextScenario, unit, asOf }),
+    projection: nextScenario == null ? null : deptoProjection({ ledger, next: nextScenario, unit, asOf }),
+    movement_count: accountMovementCount(accountId),
   };
 }
 
@@ -579,9 +578,8 @@ export function deptoPaymentsList(args: {
   loanRows: readonly DeptoMortgageSheetRow[];
   pie: DeptoMortgageSheetRow;
   next: NonNullable<AccountMortgageLedgerResponse["payment_scenarios"]>[number] | null;
-  prepayments: DeptoPrepayBlockDto | null;
 }) {
-  const { loanRows, pie, next, prepayments } = args;
+  const { loanRows, pie, next } = args;
   if (loanRows.length === 0) throw new Error("depto glance: the loan has no payment");
   const regular = loanRows.filter((r) => !isDeptoPrepagoCuota(r.cuota));
   const scaleBasis = Math.max(0, ...regular.map((r) => requireNumber(r.pago_loan, `cuota ${r.cuota} in the loan currency`)));
@@ -688,7 +686,6 @@ export function deptoPaymentsList(args: {
     rows: rows.reverse(),
     bar_scale_loan: scale,
     default_benchmark: DEPTO_DEFAULT_PREPAY_BENCHMARK,
-    prepayments,
   };
 }
 
@@ -744,7 +741,7 @@ export function deptoPrepayBlock(c: MortgagePrepaymentComparison | null): DeptoP
   };
 }
 
-/** `GET /api/accounts/:id/depto-prepayments`: the payments list's block for another benchmark. */
+/** `GET /api/accounts/:id/depto-prepayments`: the payments list's prepaid-vs-invested block for a benchmark. */
 export function deptoPrepayBlockForBenchmark(accountId: number, benchmarkSlug: string, unit: TsUnit): DeptoPrepayBlockDto | null {
   const benchmark = getBenchmark(benchmarkSlug);
   if (!benchmark) return null;
@@ -844,18 +841,21 @@ export function projectPayoff(args: {
 
 /** The payoff projection, its three blocks and the term strip with the usual pace in it. */
 export function deptoProjection(args: {
-  loanRows: readonly DeptoMortgageSheetRow[];
+  /** The whole ledger, pie first: the row before a loan's first cuota is the pie's. */
+  ledger: readonly DeptoMortgageSheetRow[];
   next: NonNullable<AccountMortgageLedgerResponse["payment_scenarios"]>[number];
   unit: TsUnit;
   asOf: string;
 }): DeptoProjectionDto | null {
-  const { loanRows, next, unit, asOf } = args;
+  const { ledger, next, unit, asOf } = args;
+  if (!ledger[0] || !isDeptoPieCuota(ledger[0].cuota)) throw new Error("depto glance: the ledger does not open with the pie");
+  const loanRows = ledger.slice(1);
   const regularIdx = loanRows.map((r, i) => (isDeptoPrepagoCuota(r.cuota) ? -1 : i)).filter((i) => i >= 0);
   if (regularIdx.length === 0) return null;
   const lastIdx = regularIdx[regularIdx.length - 1]!;
   const lastCuota = loanRows[lastIdx]!;
-  const before = lastIdx > 0 ? loanRows[lastIdx - 1]!.credito_restante_loan : null;
-  if (before == null) return null;
+  // `ledger[lastIdx]` is the row before `loanRows[lastIdx]` (the pie for the first one).
+  const before = requireNumber(ledger[lastIdx]!.credito_restante_loan, `the balance before cuota ${lastCuota.cuota}`);
   const rate = requireNumber(lastCuota.interes_loan, `cuota ${lastCuota.cuota}'s interest`) / before;
   const balance = requireNumber(loanRows[loanRows.length - 1]!.credito_restante_loan, "today's balance");
   const lastNumber = numericCuota(lastCuota.cuota);
@@ -878,9 +878,17 @@ export function deptoProjection(args: {
   const usualPaymentLoan = Math.min(pace, balance) + balance * rate + insurance;
   const payRate = storedPairRate(loanCurrency, lastCuota.payment_currency, next.occurred_on);
   if (payRate == null) throw new Error(`depto glance: no ${loanCurrency}→${lastCuota.payment_currency} rate on or before ${next.occurred_on}`);
+  const payCoin = 10 ** currencyMinorDigits(lastCuota.payment_currency);
   type Term = DeptoProjectionDto["terms"][number];
+  const minimumYears = MORTGAGE_MINIMUM_TERM_CUOTAS / 12;
   const terms: Term[] = [
-    { term: 30, years: 30, payment_loan: next.min_payment_loan, payment_pay: next.min_payment_pay, highlighted: false },
+    {
+      term: minimumYears as DeptoTermKey,
+      years: minimumYears,
+      payment_loan: next.min_payment_loan,
+      payment_pay: next.min_payment_pay,
+      highlighted: false,
+    },
     ...next.scenarios.map(
       (c): Term => ({
         term: c.term as DeptoTermKey,
@@ -895,7 +903,7 @@ export function deptoProjection(args: {
     term: "usual",
     years: usual.years,
     payment_loan: usualPaymentLoan,
-    payment_pay: Math.round(usualPaymentLoan * payRate.mid),
+    payment_pay: Math.round(usualPaymentLoan * payRate.mid * payCoin) / payCoin,
     highlighted: true,
   };
   const at = terms.findIndex((t) => t.years == null || t.years < usual.years);

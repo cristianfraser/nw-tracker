@@ -1116,6 +1116,8 @@
       "cuotas": "payment {{list}}",
       "expensesLink": "expenses",
       "movements": "movements ({{count}})",
+      "prepayLoadFailed": "The comparison could not be loaded.",
+      "prepayCoveredFrom": "Σ from {{date}}: {{covered}} of {{total}} payments",
       "paymentsTitle": "Payments",
       "colPaid": "paid",
       "colAmortization": "principal",

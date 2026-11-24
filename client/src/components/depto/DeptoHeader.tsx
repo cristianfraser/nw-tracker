@@ -34,7 +34,7 @@ export function DeptoHeader({
   const { t } = useTranslation();
   const header = glance?.header;
   const unit = glance?.unit;
-  const cells: { key: string; label: string; value: number | undefined; pct: number | null | undefined }[] = [
+  const cells: { key: string; label: string; value: number | null | undefined; pct: number | null | undefined }[] = [
     { key: "day", label: t("accountDetail.depto.day"), value: header?.strip.day, pct: null },
     { key: "month", label: t("accountDetail.depto.month"), value: header?.strip.month, pct: null },
     { key: "year", label: t("accountDetail.depto.year"), value: header?.strip.year, pct: header?.strip.year_pct },

@@ -302,9 +302,10 @@ describe("the property and mortgage pages on one ledger", () => {
     expect(p.totals.bar.segments.reduce((s, x) => s + x.share, 0)).toBeCloseTo(1, 12);
     expect(p.rows.find((r) => r.kind === "prepago")!.bar).toEqual({ segments: [{ part: "prepago", share: 1 }], clipped: true });
     expect(p.next).toMatchObject({ cuota: "5" });
-    // Every payment amortized something above the minimum: each has a cell, the bundle's block is the endpoint's.
-    expect(Object.keys(p.prepayments!.rows).sort()).toEqual(["1", "2", "3", "4", "prepago 1"]);
-    expect(p.prepayments).toEqual(deptoPrepayBlockForBenchmark(loan, p.default_benchmark, "clp"));
+    // Every payment amortized something above the minimum: each row has a cell in the endpoint's block.
+    const prepay = deptoPrepayBlockForBenchmark(loan, p.default_benchmark, "clp")!;
+    expect(Object.keys(prepay.rows).sort()).toEqual(p.rows.map((r) => r.key).sort());
+    expect(prepay.totals.covered_payments).toBe(p.rows.length);
 
     const b = g.mortgage.balance;
     expect(b.points.map((x) => x.kind)).toEqual(["start", "cuota", "cuota", "prepago", "cuota", "cuota"]);

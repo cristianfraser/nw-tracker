@@ -6,7 +6,7 @@ import { AccountFlowsSection } from "../../components/account/AccountFlowsSectio
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { MortgagePaymentForm } from "../../components/account/MortgagePaymentForm";
 import { DeptoHeader } from "../../components/depto/DeptoHeader";
-import { DeptoPropertyBands } from "../../components/depto/DeptoPropertyGlance";
+import { DeptoMovementsToggle, DeptoPropertyBands } from "../../components/depto/DeptoPropertyGlance";
 import { DeptoBalanceBand, DeptoProjection } from "../../components/depto/DeptoMortgageGlance";
 import { DeptoPaymentsList } from "../../components/depto/DeptoPaymentsList";
 import { Modal } from "../../components/ui/Modal";
@@ -32,8 +32,9 @@ export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }
   const [flowsOpen, setFlowsOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const unit = glance?.unit ?? displayUnit;
-  const loanCurrency = glance?.loan_currency ?? "";
-  const payCurrency = glance?.payment_currency ?? "";
+  // Undefined while the bundle is pending: the bands render their frames and format nothing.
+  const loanCurrency = glance?.loan_currency;
+  const payCurrency = glance?.payment_currency;
   const paymentCreate = summary.mortgage_payment_create ?? null;
   const property = glance?.kind === "property" ? glance.property : undefined;
   const mortgage = glance?.kind === "mortgage" ? glance.mortgage : undefined;
@@ -68,7 +69,7 @@ export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }
             loanCurrency={loanCurrency}
             loading={loading}
           />
-          {mortgage?.projection ? (
+          {mortgage?.projection && loanCurrency && payCurrency ? (
             <DeptoProjection
               balance={mortgage.balance}
               projection={mortgage.projection}
@@ -80,7 +81,7 @@ export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }
           <PageGridTile id="depto-payments">
             <h2>{t("accountDetail.depto.paymentsTitle")}</h2>
             <div className={loadableClass(loading)} aria-busy={loading || undefined}>
-              {mortgage ? (
+              {mortgage && loanCurrency && payCurrency ? (
                 <DeptoPaymentsList
                   accountId={summary.account_id}
                   payments={mortgage.payments}
@@ -101,6 +102,18 @@ export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }
             >
               <MortgagePaymentForm accountId={summary.account_id} displayUnit={displayUnit} schema={paymentCreate} />
             </Modal>
+          ) : null}
+          {mortgage ? (
+            <PageGridTile id="depto-movements">
+              <DeptoMovementsToggle count={mortgage.movement_count} onToggle={() => setFlowsOpen((v) => !v)} />
+            </PageGridTile>
+          ) : null}
+          {flowsOpen ? (
+            <AccountFlowsSection
+              addMovementsForm={addMovementsForm}
+              accountId={summary.account_id}
+              unitsKind={summary.units_kind}
+            />
           ) : null}
         </>
       ) : (

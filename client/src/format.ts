@@ -127,10 +127,20 @@ export function currencyFormatInfo(code: string): CurrencyFormatInfo {
   return { symbol: CURRENCY_SYMBOLS[code] ?? `${iso} `, minorDigits, displayDigits: minorDigits, symbolAfter: false };
 }
 
+/**
+ * What goes before and after a figure in `code`, from its row: «$» before, or « UF» after (a
+ * non-breaking space, so a line never splits the unit from its figure). `bare` drops a letter
+ * qualifier on `$` ({@link currencySymbol}); a symbol written after the figure has none.
+ */
+export function currencySymbolParts(code: string, variant: CurrencySymbolVariant = "full"): { before: string; after: string } {
+  const info = currencyFormatInfo(code);
+  return info.symbolAfter ? { before: "", after: `\u00A0${info.symbol}` } : { before: currencySymbol(code, variant), after: "" };
+}
+
 /** `digits` (already formatted, unsigned) with `code`'s symbol on its side: «$1.234», «1.234,00 UF». */
 function withCurrencySymbol(digits: string, code: string): string {
-  const info = currencyFormatInfo(code);
-  return info.symbolAfter ? `${digits}\u00A0${info.symbol}` : `${currencySymbol(code)}${digits}`;
+  const { before, after } = currencySymbolParts(code);
+  return `${before}${digits}${after}`;
 }
 
 /** `code`'s symbol: `full` as written (`US$`, `€`), `bare` without a letter qualifier on `$` (`$`). */
@@ -195,12 +205,12 @@ export function formatCurrencyFine(n: number, code: string, opts?: MoneyFormatOp
 
 /** Whole pesos: `$` + grouped thousands (e.g. `$9x.xxx.xxx`; negative `($1.234)`). */
 export function formatClp(n: number): string {
-  return formatCurrency(n, "clp");
+  return formatMoney({ value: n, currency: "clp" }); // convention-ok: the named peso formatter, for figures pesos by nature (formatNative.ts)
 }
 
 /** Whole USD: `US$` + grouped thousands (e.g. `US$1xx.xxx`; negative `(US$1.234)`). */
 export function formatUsd(n: number): string {
-  return formatCurrency(n, "usd");
+  return formatMoney({ value: n, currency: "usd" }, { digits: 0 }); // convention-ok: the named dollar formatter, for figures dollars by nature (formatNative.ts)
 }
 
 /**
@@ -223,9 +233,9 @@ export function formatCompactMoney(n: number, unit: CurrencyDisplayUnit): string
   if (!Number.isFinite(n)) return "—";
   const rounded = Math.round(n);
   const abs = Math.abs(rounded);
-  const sym = currencySymbol(unit, "bare");
+  const { before, after } = currencySymbolParts(unit, "bare");
   const { mantissa, suffix, frac } = compactMagnitude(abs);
-  const body = `${sym}${normalizeIntlNum(numFmt(0, frac).format(mantissa))}${suffix}`;
+  const body = `${before}${normalizeIntlNum(numFmt(0, frac).format(mantissa))}${suffix}${after}`;
   return rounded < 0 ? `(${body})` : body;
 }
 
@@ -298,7 +308,8 @@ export function formatCcExpenseLineAmount(amountClp: number, amountUsd: number |
  * Negatives in parentheses.
  */
 export function formatMoney(m: { value: number; currency: string }, opts?: MoneyFormatOptions): string {
-  if (m.currency === "clp" && opts?.digits == null) return formatClp(m.value); // convention-ok: pesos print through the whole-peso formatter, which rounds before taking the sign
+  // A whole-unit figure rounds before it takes its sign (−0,4 is «$0», not «($0)»).
+  if (moneyFractionDigits(m.currency, opts)[1] === 0) return formatCurrency(m.value, m.currency);
   return formatCurrencyFine(m.value, m.currency, opts);
 }
 
@@ -330,7 +341,7 @@ export function formatLineAmount(
 
 /** USD with cents — still prefixed `US$`; negatives `(US$1,234.56)`. */
 export function formatUsdFine(n: number): string {
-  return formatCurrencyFine(n, "usd");
+  return formatMoney({ value: n, currency: "usd" }); // convention-ok: the named dollar formatter, for figures dollars by nature (formatNative.ts)
 }
 
 /** Percent (value already ×100) with fixed decimals in the active separator convention (e.g. `12,34%`). */
@@ -354,20 +365,20 @@ export function accountingCurrencyNumberFlowParts(
 } {
   const rounded = Math.round(n);
   const abs = Math.abs(rounded);
-  const symbol = currencySymbol(unit, variant);
+  const { before, after } = currencySymbolParts(unit, variant);
   if (rounded < 0) {
     return {
       value: abs,
-      prefix: `(${symbol}`,
-      suffix: ")",
+      prefix: `(${before}`,
+      suffix: `${after})`,
       locales: numberLocale,
       format: NUMBER_FLOW_INT_FORMAT,
     };
   }
   return {
     value: abs,
-    prefix: symbol,
-    suffix: "",
+    prefix: before,
+    suffix: after,
     locales: numberLocale,
     format: NUMBER_FLOW_INT_FORMAT,
   };
@@ -430,7 +441,7 @@ export function adaptiveAccountingNumberFlowParts(
   const factor = 10 ** fd;
   const rounded = Math.round(n * factor) / factor;
   const abs = Math.abs(rounded);
-  const symbol = currencySymbol(code, variant);
+  const { before, after } = currencySymbolParts(code, variant);
   // Adaptive (min 0) trims trailing decimal zeros (55,00 → 55; 42,40 → 42,4);
   // fixed keeps them so sibling rows align.
   const format = {
@@ -439,9 +450,9 @@ export function adaptiveAccountingNumberFlowParts(
     signDisplay: "never",
   } as const;
   if (rounded < 0) {
-    return { value: abs, prefix: `(${symbol}`, suffix: ")", locales: numberLocale, format };
+    return { value: abs, prefix: `(${before}`, suffix: `${after})`, locales: numberLocale, format };
   }
-  return { value: abs, prefix: symbol, suffix: "", locales: numberLocale, format };
+  return { value: abs, prefix: before, suffix: after, locales: numberLocale, format };
 }
 
 /** Plain percent for NumberFlow (no sign) — direction via ▲/▼; suffix `%`. */

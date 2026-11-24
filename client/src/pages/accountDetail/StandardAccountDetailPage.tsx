@@ -301,7 +301,6 @@ export function StandardAccountDetailPage({ data }: Props) {
               <PageGridTile id="detail">
                 <AccountDetalleSurface
                   data={data}
-                 
                   isCuotaLedgerAccount={isCuotaLedgerAccount}
                 />
               </PageGridTile>

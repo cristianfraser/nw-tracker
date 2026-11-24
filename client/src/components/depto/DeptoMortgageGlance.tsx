@@ -26,7 +26,7 @@ export function DeptoBalanceBand({
   balance: DeptoBalanceBandDto | undefined;
   asOf: string | undefined;
   unit: string;
-  loanCurrency: string;
+  loanCurrency: string | undefined;
   loading: boolean;
 }) {
   const { t } = useTranslation();
@@ -34,11 +34,11 @@ export function DeptoBalanceBand({
     <PageGridTile id="depto-balance" className={cn("page-grid", styles.scope, styles.bands)}>
       <div className={loadableClass(loading, styles.bandChart)}>
         <ChartBox ariaLabel={t("accountDetail.depto.balanceChart")}>
-          {(cw, ch) => (balance && asOf ? <BalanceChart balance={balance} asOf={asOf} loanCurrency={loanCurrency} w={cw} h={ch} /> : null)}
+          {(cw, ch) => (balance && asOf && loanCurrency ? <BalanceChart balance={balance} asOf={asOf} loanCurrency={loanCurrency} w={cw} h={ch} /> : null)}
         </ChartBox>
       </div>
       <div className={loadableClass(loading, styles.bandRail)}>
-        {balance ? (
+        {balance && loanCurrency ? (
           <>
             <div className={styles.grp}>
               <div className={styles.paidBar}>

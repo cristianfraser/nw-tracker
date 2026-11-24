@@ -121,21 +121,32 @@ export function DeptoPaymentsList({
   const benchmarks = useBenchmarks();
   const options = (benchmarks.data?.benchmarks ?? []).filter((o) => o.slug !== "mortgage");
   const selected = options.some((o) => o.slug === benchmark) ? benchmark : payments.default_benchmark;
-  const isDefault = selected === payments.default_benchmark;
-  const other = useDeptoPrepayments(accountId, selected, unit, !isDefault);
-  const fetched = other.data != null && other.data.benchmark === selected && other.data.unit === unit ? other.data : null;
-  const block: DeptoPrepayBlockDto | null = isDefault ? payments.prepayments : fetched;
-  // Another benchmark's block in flight: the prepay column dims (the rest of the list stays).
-  const prepayLoading = !isDefault && (other.isPending || other.isPlaceholderData) && other.error == null;
-  // The other benchmark's block failed and nothing is held: say so (the cells show «—»).
-  const prepayError = isDefault ? null : queryLoadError(other);
+  // Never in the bundle: a stale benchmark series fails this column only.
+  const prepay = useDeptoPrepayments(accountId, selected, unit, true);
+  const block: DeptoPrepayBlockDto | null =
+    prepay.data != null && prepay.data.benchmark === selected && prepay.data.unit === unit ? prepay.data : null;
+  // The block in flight: the prepay column dims (the rest of the list stays).
+  const prepayLoading = (prepay.isPending || prepay.isPlaceholderData) && prepay.error == null;
+  // The block failed and nothing is held: say so (the cells show «—»).
+  const prepayFailed = queryLoadError(prepay) != null;
+  // A benchmark whose history starts after the first payment leaves the earlier ones out of Σ.
+  const partial = block != null && block.totals.covered_payments < Object.keys(block.rows).length ? block.totals : null;
 
   const rows = expanded ? payments.rows : payments.rows.slice(0, COLLAPSED_ROWS);
   const totals = payments.totals;
   const next = payments.next;
   const prepayClass = prepayLoading ? "loadable is-loading" : undefined;
-  const irr = (pct: number | null, color: string) =>
-    pct == null ? <b /> : <b style={{ color }} title={t("periodReturns.irrTitle")}>{formatPct(pct * 100, 1)}</b>;
+  const irr = (pct: number | null, color: string, annualized: boolean) =>
+    pct == null ? (
+      <b />
+    ) : (
+      <b
+        style={{ color }}
+        title={`${t(annualized ? "periodReturns.irrAnnual" : "periodReturns.irr", { pct: formatPct(pct * 100, 1) })} · ${t("periodReturns.irrTitle")}`}
+      >
+        {formatPct(pct * 100, 1)}
+      </b>
+    );
 
   return (
     <div className={cn(styles.scope, styles.payWrap)}>
@@ -222,8 +233,8 @@ export function DeptoPaymentsList({
               irr={
                 block ? (
                   <span className={styles.irr}>
-                    {irr(block.totals.prepaid_irr_pct, "var(--depto-prepaid)")}
-                    {irr(block.totals.invested_irr_pct, "var(--depto-invested)")}
+                    {irr(block.totals.prepaid_irr_pct, "var(--depto-prepaid)", block.totals.irr_annualized)}
+                    {irr(block.totals.invested_irr_pct, "var(--depto-invested)", block.totals.irr_annualized)}
                   </span>
                 ) : null
               }
@@ -245,7 +256,16 @@ export function DeptoPaymentsList({
         ))}
       </div>
       <div className={styles.foot}>
-        {prepayError ? <span className="error">{prepayError instanceof Error ? prepayError.message : String(prepayError)}</span> : null}
+        {prepayFailed ? <span className="error">{t("accountDetail.depto.prepayLoadFailed")}</span> : null}
+        {partial && partial.covered_from ? (
+          <span className="mono">
+            {t("accountDetail.depto.prepayCoveredFrom", {
+              date: partial.covered_from,
+              covered: partial.covered_payments,
+              total: Object.keys(block!.rows).length,
+            })}
+          </span>
+        ) : null}
         {payments.rows.length > COLLAPSED_ROWS ? (
           <button type="button" className={styles.lnk} onClick={() => setExpanded((v) => !v)}>
             {t("accountDetail.depto.paymentsCount", { count: expanded ? COLLAPSED_ROWS : payments.rows.length })}

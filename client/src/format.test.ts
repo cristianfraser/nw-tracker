@@ -399,5 +399,8 @@ describe("formats by currency code", () => {
     expect(formatCurrencyFine(1234.0049, "zzx")).toBe("1.234,00\u00A0ZX");
     expect(formatCurrencyFine(-3.5, "zzx")).toBe("(3,50\u00A0ZX)");
     expect(formatCurrency(1234.4, "zzx")).toBe("1.234\u00A0ZX");
+    expect(formatCompactMoney(-2_500_000, "zzx")).toBe("(2,5M\u00A0ZX)");
+    expect(accountingCurrencyNumberFlowParts(-12, "zzx")).toMatchObject({ prefix: "(", suffix: "\u00A0ZX)" });
+    expect(adaptiveAccountingNumberFlowParts(42.4, "zzx")).toMatchObject({ prefix: "", suffix: "\u00A0ZX" });
   });
 });

@@ -1116,6 +1116,8 @@
       "cuotas": "cuota {{list}}",
       "expensesLink": "gastos",
       "movements": "movimientos ({{count}})",
+      "prepayLoadFailed": "No se pudo cargar la comparación.",
+      "prepayCoveredFrom": "Σ desde {{date}}: {{covered}} de {{total}} pagos",
       "paymentsTitle": "Dividendos",
       "colPaid": "pago",
       "colAmortization": "amortización",

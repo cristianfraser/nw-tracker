@@ -3699,6 +3699,11 @@
       "cuotas": { "en": "payment {{list}}", "es": "cuota {{list}}" },
       "expensesLink": { "en": "expenses", "es": "gastos" },
       "movements": { "en": "movements ({{count}})", "es": "movimientos ({{count}})" },
+      "prepayLoadFailed": { "en": "The comparison could not be loaded.", "es": "No se pudo cargar la comparación." },
+      "prepayCoveredFrom": {
+        "en": "Σ from {{date}}: {{covered}} of {{total}} payments",
+        "es": "Σ desde {{date}}: {{covered}} de {{total}} pagos"
+      },
       "paymentsTitle": { "en": "Payments", "es": "Dividendos" },
       "colPaid": { "en": "paid", "es": "pago" },
       "colAmortization": { "en": "principal", "es": "amortización" },

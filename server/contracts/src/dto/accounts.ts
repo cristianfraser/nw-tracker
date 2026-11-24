@@ -571,7 +571,8 @@ export interface DeptoGlanceHeaderDto {
    * row's deltas, negative = cost). `year_pct` / `total_pct` only on the property (total on
    * deposits), null on the mortgage.
    */
-  strip: { day: number; month: number; year: number; total: number; year_pct: number | null; total_pct: number | null };
+  /** `day` null: the dashboard row has no day figure. */
+  strip: { day: number | null; month: number; year: number; total: number; year_pct: number | null; total_pct: number | null };
 }
 
 /** One month-end of the property's value chart (the last point is today), all in `unit`. */
@@ -724,8 +725,9 @@ export interface DeptoPrepayCellDto {
 
 /**
  * Prepaid vs invested for one benchmark (`mortgagePrepaymentComparison.ts`): the payments list's
- * per-row cells by row `key`, and the Σ row's. The bundle carries the default benchmark's;
- * `GET /api/accounts/:id/depto-prepayments?benchmark=&unit=` serves the same block for another.
+ * per-row cells by row `key`, and the Σ row's, from
+ * `GET /api/accounts/:id/depto-prepayments?benchmark=&unit=` (never in the bundle: a stale benchmark
+ * fails only this column).
  */
 export interface DeptoPrepayBlockDto {
   benchmark: string;
@@ -804,9 +806,8 @@ export interface DeptoPaymentsListDto {
   rows: DeptoPaymentRowDto[];
   /** The bar scale: a nice ceiling of the largest regular cuota paid (a larger prepago is cut, «› scale»). */
   bar_scale_loan: number;
-  /** The benchmark the bundle's block was built for (the selector's default). */
+  /** The benchmark selector's default. */
   default_benchmark: string;
-  prepayments: DeptoPrepayBlockDto | null;
 }
 
 /** One step of the balance chart (loan currency). */
@@ -865,6 +866,8 @@ export interface DeptoMortgageGlanceDto {
   balance: DeptoBalanceBandDto;
   /** Null when the loan has no regular cuota yet (no rate to project with). */
   projection: DeptoProjectionDto | null;
+  /** Movements on the account (the folded «movimientos (N)» list). */
+  movement_count: number;
 }
 
 interface DeptoGlanceBase {

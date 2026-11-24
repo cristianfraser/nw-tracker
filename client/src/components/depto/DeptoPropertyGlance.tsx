@@ -36,7 +36,7 @@ export function DeptoPropertyBands({
 }: {
   glance: DeptoPropertyGlanceDto | undefined;
   unit: string;
-  loanCurrency: string;
+  loanCurrency: string | undefined;
   loading: boolean;
   onToggleMovements: () => void;
 }) {
@@ -48,11 +48,11 @@ export function DeptoPropertyBands({
       {/* value */}
       <div className={loadableClass(loading, styles.bandChart)}>
         <ChartBox ariaLabel={t("accountDetail.depto.valueChart")}>
-          {(cw, ch) => (glance ? <ValueChart value={glance.value} unit={unit} loanCurrency={loanCurrency} w={cw} h={ch} /> : null)}
+          {(cw, ch) => (glance && loanCurrency ? <ValueChart value={glance.value} unit={unit} loanCurrency={loanCurrency} w={cw} h={ch} /> : null)}
         </ChartBox>
       </div>
       <div className={loadableClass(loading, styles.bandRail)}>
-        {glance ? <ValueRail glance={glance} unit={unit} loanCurrency={loanCurrency} /> : <PendingGroups lines={[2, 4]} />}
+        {glance && loanCurrency ? <ValueRail glance={glance} unit={unit} loanCurrency={loanCurrency} /> : <PendingGroups lines={[2, 4]} />}
       </div>
 
       {/* P/L */}
@@ -70,7 +70,7 @@ export function DeptoPropertyBands({
         </ChartBox>
       </div>
       <div className={loadableClass(loading, styles.bandRail)}>
-        {glance ? <PlRail glance={glance} unit={unit} loanCurrency={loanCurrency} /> : <PendingGroups lines={[3, 3]} />}
+        {glance && loanCurrency ? <PlRail glance={glance} unit={unit} loanCurrency={loanCurrency} /> : <PendingGroups lines={[3, 3]} />}
       </div>
 
       {/* cost of living: absent when no tracked place names this property */}
@@ -263,6 +263,11 @@ function CostRail({ cost, unit }: { cost: DeptoCostBandDto; unit: string }) {
 
 /** «movimientos (N)»: opens the account's movements under the bands. */
 function MovementsGroup({ count, onToggle }: { count: number; onToggle: () => void }) {
+  return <DeptoMovementsToggle count={count} onToggle={onToggle} />;
+}
+
+/** The «movimientos (N)» link (the property's rail, the mortgage page under its payments). */
+export function DeptoMovementsToggle({ count, onToggle }: { count: number; onToggle: () => void }) {
   const { t } = useTranslation();
   return (
     <div className={styles.grp}>
