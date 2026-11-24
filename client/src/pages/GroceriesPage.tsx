@@ -433,7 +433,7 @@ export function GroceriesPage() {
       key: "total",
       header: t("groceries.history.colTotal"),
       ...num,
-      cell: (r) => formatReceiptPesos(r.total_clp - r.discount_clp),
+      cell: (r) => formatReceiptPesos(r.line_total_clp),
     },
   ];
   /**
@@ -456,7 +456,7 @@ export function GroceriesPage() {
           </>
         ) : null}
         {" · "}
-        {t("groceries.history.colTotal")} {formatReceiptPesos(r.total_clp - r.discount_clp)}
+        {t("groceries.history.colTotal")} {formatReceiptPesos(r.line_total_clp)}
       </span>
     </div>
   );
@@ -586,7 +586,7 @@ export function GroceriesPage() {
             ) : (
               <span className={cn(styles.printed, "muted")}>{item.description}</span>
             )}
-            <span className={styles.amount}>{formatReceiptPesos(item.total_clp - item.discount_clp)}</span>
+            <span className={styles.amount}>{formatReceiptPesos(item.line_total_clp)}</span>
             <span className={styles.sub}>
               {item.qty}
               {item.qty_unit === "kg" ? " kg" : ""} × {formatReceiptPesos(item.unit_price_clp)}

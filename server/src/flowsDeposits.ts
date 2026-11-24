@@ -430,8 +430,35 @@ export type FlowDepositsUnitPayload = {
   pre_tax_total: number;
   post_tax_total: number;
   fx_conversion_warnings: FxConversionWarning[];
-  by_category: Record<DepositFlowCategory, { rows: FlowDepositUnitRow[]; total: number }>;
+  by_category: Record<DepositFlowCategory, FlowDepositCategoryBlock>;
 };
+
+/** One category's deposits as the page lists them: by calendar month, newest first. */
+export type FlowDepositCategoryBlock = {
+  total: number;
+  months: { month: string; total: number; rows: FlowDepositUnitRow[] }[];
+};
+
+/** Rows grouped by their `YYYY-MM`, newest month first, each month's rows newest first. */
+function depositMonths(
+  rows: readonly FlowDepositRow[],
+  wire: (r: FlowDepositRow) => FlowDepositUnitRow
+): FlowDepositCategoryBlock["months"] {
+  const byMonth = new Map<string, FlowDepositRow[]>();
+  for (const r of rows) {
+    const month = r.occurred_on.slice(0, 7);
+    const list = byMonth.get(month);
+    if (list) list.push(r);
+    else byMonth.set(month, [r]);
+  }
+  return [...byMonth.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([month, rs]) => ({
+      month,
+      total: rs.reduce((s, r) => s + r.amount, 0),
+      rows: [...rs].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on)).map(wire),
+    }));
+}
 
 /**
  * The /flows/deposits page in one display unit: {@link flowDepositRowsInUnit}'s rows, their
@@ -451,7 +478,7 @@ export function buildFlowsDepositsResponse(
   const by_category = {} as FlowDepositsUnitPayload["by_category"];
   for (const cat of DEPOSIT_FLOW_CATEGORIES) {
     const catRows = rows.filter((r) => r.category === cat);
-    by_category[cat] = { rows: catRows.map(wire), total: sum(catRows) };
+    by_category[cat] = { total: sum(catRows), months: depositMonths(catRows, wire) };
   }
   const preTax = rows.filter(isPreTaxDepositRow);
   const postTax = rows.filter((r) => !isPreTaxDepositRow(r));

@@ -6,70 +6,21 @@ import { RealEstateAddPlaceModal } from "../components/real-estate/RealEstateAdd
 import { RealEstatePlaceDfl2Modal } from "../components/real-estate/RealEstatePlaceDfl2Modal";
 import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEstateAssignPurchaseModal";
 import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
-import { Table } from "../components/ui/Table";
+import { RealEstateBillMonthList } from "../components/real-estate/RealEstateBillMonthList";
 import { loadableClass } from "../components/ui/Loadable";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { monthYearSurfacePeriod } from "../surfaceDisplayPrefs";
 import { clipMonthsThenRollup } from "../timeRange";
 import { rollupChartPointsByYear } from "../flowsDisplay";
-import { formatGroupedDecimal, formatGroupedDecimalTrimmed, formatMoney, formatNumberInput, parseNumberInput } from "../format";
+import { formatGroupedDecimal, formatMoney } from "../format";
 import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
-import { expenseKindLabel, useTranslation } from "../i18n";
-import { formatYearMonthLabel } from "../formatDateLabel";
+import { useTranslation } from "../i18n";
 import { useRealEstateExpenses } from "../queries/hooks";
-import {
-  useDeleteRealEstateExpenseEntryMutation,
-  useUnmatchRealEstateExpenseMutation,
-  useUpdateRealEstateBillMonthMutation,
-  useUpdateRealEstateConsumptionMutation,
-  useUpdateRealEstateMonthsCoveredMutation,
-} from "../queries/mutations";
 import type { RealEstateBillSlot } from "../types";
-import { Button, Input } from "@crfrsr/ui";
+import { Button } from "@crfrsr/ui";
 import { queryLoadError } from "../queries/pageShapeReady";
 import { DEMO_EDITS_LIMITED } from "../demoEdits";
-
-/** Kinds where a kWh / m³ reading makes sense (edit affordance shown). */
-const CONSUMPTION_KINDS = new Set(["electricidad", "gas", "kwh"]);
-
-function formatAmountCell(slot: RealEstateBillSlot): string {
-  if (slot.kind === "kwh") {
-    return slot.kwh != null ? formatGroupedDecimalTrimmed(slot.kwh) : "—";
-  }
-  if (slot.display_amount <= 0 && slot.expected_amount <= 0) return "—";
-  if (slot.link) return formatMoney({ value: slot.link.amount, currency: slot.link.currency });
-  return formatMoney({ value: slot.expected_amount, currency: slot.currency });
-}
-
-function consumptionLabel(slot: RealEstateBillSlot): string | null {
-  if (slot.kind === "kwh") return null; // the reading IS the amount cell
-  const parts: string[] = [];
-  if (slot.kwh != null) parts.push(`${formatGroupedDecimalTrimmed(slot.kwh)} kWh`);
-  if (slot.m3 != null) parts.push(`${formatGroupedDecimalTrimmed(slot.m3)} m³`);
-  return parts.length > 0 ? parts.join(" · ") : null;
-}
-
-/** Real payment date when it falls outside the billed month (late/skipped payments). */
-function paidDateForSlot(slot: RealEstateBillSlot): string | null {
-  const paid = slot.expense_entry_id == null ? slot.spent_on : (slot.link?.purchase_on ?? null);
-  if (!paid) return null;
-  return paid.slice(0, 7) === slot.bill_month ? null : paid;
-}
-
-function linkedPurchaseLabel(slot: RealEstateBillSlot, t: (key: string) => string): string {
-  if (slot.expense_entry_id == null) return t("expenses.realEstate.fromLedgerHint");
-  if (!slot.link) return t("expenses.realEstate.unlinked");
-  const parts = [
-    slot.link.merchant ?? "—",
-    slot.link.purchase_on ?? "",
-    slot.link.origin_label,
-    slot.link.source === "checking"
-      ? t("expenses.creditCard.sourceChecking")
-      : t("expenses.creditCard.sourceCreditCard"),
-  ].filter(Boolean);
-  return parts.join(" · ");
-}
 
 /** Gastos de arriendo / departamento (`/flows/expenses/real_estate`). */
 export function RealEstateExpensesPage() {
@@ -94,70 +45,9 @@ export function RealEstateExpensesPage() {
   const [assignPlace, setAssignPlace] = useState<{ slug: string; label: string } | null>(null);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
   const [dfl2PlaceSlug, setDfl2PlaceSlug] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{
-    id: number;
-    kwh: string;
-    m3: string;
-    error: string | null;
-  } | null>(null);
-  const [editingBillMonth, setEditingBillMonth] = useState<{
-    id: number;
-    value: string;
-    initialValue: string;
-    monthsCovered: number;
-    initialMonthsCovered: number;
-    error: string | null;
-  } | null>(null);
   const { data, error: queryError } = useRealEstateExpenses();
   const error = queryLoadError({ data, error: queryError });
-  const unmatchMutation = useUnmatchRealEstateExpenseMutation();
-  const consumptionMutation = useUpdateRealEstateConsumptionMutation();
-  const billMonthMutation = useUpdateRealEstateBillMonthMutation();
-  const monthsCoveredMutation = useUpdateRealEstateMonthsCoveredMutation();
-  const deleteEntryMutation = useDeleteRealEstateExpenseEntryMutation();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
-
-  const saveConsumption = async () => {
-    if (!editing) return;
-    const kwh = parseNumberInput(editing.kwh);
-    const m3 = parseNumberInput(editing.m3);
-    for (const input of [kwh, m3]) {
-      if (!input.ok) {
-        setEditing({ ...editing, error: input.message });
-        return;
-      }
-    }
-    await consumptionMutation.mutateAsync({
-      expense_entry_id: editing.id,
-      kwh: kwh.ok ? kwh.value : null,
-      m3: m3.ok ? m3.value : null,
-    });
-    setEditing(null);
-  };
-
-  const saveBillMonth = async () => {
-    if (!editingBillMonth) return;
-    try {
-      if (editingBillMonth.value !== editingBillMonth.initialValue) {
-        await billMonthMutation.mutateAsync({
-          expense_entry_id: editingBillMonth.id,
-          bill_month: editingBillMonth.value,
-        });
-      }
-      if (editingBillMonth.monthsCovered !== editingBillMonth.initialMonthsCovered) {
-        await monthsCoveredMutation.mutateAsync({
-          expense_entry_id: editingBillMonth.id,
-          months_covered: editingBillMonth.monthsCovered,
-        });
-      }
-      setEditingBillMonth(null);
-    } catch (e) {
-      setEditingBillMonth({
-        ...editingBillMonth,
-        error: e instanceof Error ? e.message : t("common.loadFailed"),
-      });
-    }
-  };
 
   const places = useMemo(() => data?.places ?? [], [data]);
   const placeLabels = useMemo(() => new Map(places.map((p) => [p.slug, p.label])), [places]);
@@ -188,7 +78,7 @@ export function RealEstateExpensesPage() {
     if (!data) return [];
     const accounts = places
       .map((p) => data.by_account[p.slug])
-      .filter((a) => a != null && a.slots.length > 0);
+      .filter((a) => a != null && a.months.length > 0);
     const filtered = accountSlug
       ? accounts.filter((a) => a.account_slug === accountSlug)
       : accounts;
@@ -278,272 +168,7 @@ export function RealEstateExpensesPage() {
                 </p>
               ) : null;
             })()}
-            <Table
-              tableStyle={{ fontSize: "var(--font-size-prose)" }}
-              header={
-                <thead>
-                  <tr>
-                    <th>{t("expenses.colDate")}</th>
-                    <th>{t("expenses.colKind")}</th>
-                    <th>{t("expenses.colAmount")}</th>
-                    <th>{t("expenses.realEstate.colLinkedPurchase")}</th>
-                    <th>{t("expenses.realEstate.colActions")}</th>
-                  </tr>
-                </thead>
-              }
-            >
-              {acc.slots.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="muted">
-                    {t("expenses.emptyAccount")}
-                  </td>
-                </tr>
-              ) : (
-                acc.slots.map((slot) => (
-                  <tr key={slot.expense_entry_id ?? `${slot.kind}|${slot.spent_on}`}>
-                    <td className="mono">
-                      {editingBillMonth != null && editingBillMonth.id === slot.expense_entry_id ? (
-                        <span
-                          style={{
-                            display: "flex",
-                            gap: "0.35rem",
-                            alignItems: "center",
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <span style={{ width: "10rem" }}>
-                            <Input
-                              type="month"
-                              value={editingBillMonth.value}
-                              onChange={(e) =>
-                                setEditingBillMonth({
-                                  ...editingBillMonth,
-                                  value: e.target.value,
-                                  error: null,
-                                })
-                              }
-                            />
-                          </span>
-                          <label style={{ display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
-                            <span className="muted">{t("expenses.realEstate.monthsCoveredLabel")}</span>
-                            <select
-                              value={editingBillMonth.monthsCovered}
-                              onChange={(e) =>
-                                setEditingBillMonth({
-                                  ...editingBillMonth,
-                                  monthsCovered: Number(e.target.value),
-                                  error: null,
-                                })
-                              }
-                            >
-                              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                                <option key={n} value={n}>
-                                  {n}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <Button
-                            disabled={billMonthMutation.isPending || monthsCoveredMutation.isPending}
-                            onClick={() => void saveBillMonth()}
-                          >
-                            {t("common.save")}
-                          </Button>
-                          <Button variant="secondary"
-                            onClick={() => setEditingBillMonth(null)}
-                          >
-                            {t("common.cancel")}
-                          </Button>
-                          {editingBillMonth.error ? (
-                            <span className="error" style={{ fontSize: "var(--font-size-card-label)" }}>
-                              {editingBillMonth.error}
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : slot.expense_entry_id != null ? (
-                        <Button variant="secondary"
-                          title={t("expenses.realEstate.billMonthEditAction")}
-                          onClick={() =>
-                            setEditingBillMonth({
-                              id: slot.expense_entry_id!,
-                              value: slot.bill_month,
-                              initialValue: slot.bill_month,
-                              monthsCovered: slot.months_covered,
-                              initialMonthsCovered: slot.months_covered,
-                              error: null,
-                            })
-                          }
-                        >
-                          {slot.bill_month}
-                        </Button>
-                      ) : (
-                        slot.bill_month
-                      )}
-                      {slot.months_covered > 1 ? (
-                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
-                          {t("expenses.realEstate.coversHint", {
-                            from: formatYearMonthLabel(slot.covers_from),
-                            to: formatYearMonthLabel(slot.bill_month),
-                          })}
-                        </span>
-                      ) : null}
-                      {paidDateForSlot(slot) ? (
-                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
-                          {t("expenses.realEstate.paidOnHint", { date: paidDateForSlot(slot) })}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td>{expenseKindLabel(slot.kind)}</td>
-                    <td className="mono">
-                      {formatAmountCell(slot)}
-                      {slot.mortgage_parts ? (
-                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
-                          {t("expenses.realEstate.mortgagePartsHint", {
-                            amortization: formatMoney({ value: slot.mortgage_parts.amortization, currency: slot.currency }),
-                            extra: formatMoney({ value: slot.mortgage_parts.extra_amortization, currency: slot.currency }),
-                            carrying: formatMoney({ value: slot.mortgage_parts.carrying, currency: slot.currency }),
-                          })}
-                        </span>
-                      ) : null}
-                      {slot.link &&
-                      slot.expected_amount > 0 &&
-                      slot.link.amount !== slot.expected_amount ? (
-                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
-                          {t("expenses.realEstate.expectedHint", {
-                            amount: formatMoney({ value: slot.expected_amount, currency: slot.currency }),
-                          })}
-                        </span>
-                      ) : null}
-                      {editing != null && editing.id === slot.expense_entry_id ? (
-                        <span
-                          style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexWrap: "wrap" }}
-                        >
-                          {slot.kind !== "gas" ? (
-                            <span style={{ width: "6rem" }}>
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={editing.kwh}
-                                placeholder="kWh"
-                                onChange={(e) =>
-                                  setEditing({ ...editing, kwh: e.target.value, error: null })
-                                }
-                              />
-                            </span>
-                          ) : null}
-                          {slot.kind === "gas" ? (
-                            <span style={{ width: "6rem" }}>
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={editing.m3}
-                                placeholder="m³"
-                                onChange={(e) =>
-                                  setEditing({ ...editing, m3: e.target.value, error: null })
-                                }
-                              />
-                            </span>
-                          ) : null}
-                          <Button
-                            disabled={consumptionMutation.isPending}
-                            onClick={() => void saveConsumption()}
-                          >
-                            {t("common.save")}
-                          </Button>
-                          <Button variant="secondary" onClick={() => setEditing(null)}>
-                            {t("common.cancel")}
-                          </Button>
-                          {editing.error ? (
-                            <span className="error" style={{ fontSize: "var(--font-size-card-label)" }}>
-                              {editing.error}
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : (
-                        consumptionLabel(slot) && (
-                          <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
-                            {consumptionLabel(slot)}
-                          </span>
-                        )
-                      )}
-                    </td>
-                    <td
-                      className={slot.link || slot.broken_link ? undefined : "muted"}
-                      style={{ fontSize: slot.link ? "0.85rem" : undefined }}
-                    >
-                      {slot.kind === "kwh" ? "—" : linkedPurchaseLabel(slot, t)}
-                      {slot.broken_link ? (
-                        <span
-                          style={{ display: "block", fontSize: "var(--font-size-card-label)", color: "var(--negative)" }}
-                          title={slot.broken_link.purchase_key}
-                        >
-                          {slot.broken_link.problem === "missing_purchase"
-                            ? t("expenses.realEstate.brokenLinkMissing")
-                            : t("expenses.realEstate.brokenLinkOutsideWindow")}
-                        </span>
-                      ) : null}
-                      {slot.link ? (
-                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
-                          {slot.link.link_source === "auto"
-                            ? t("expenses.realEstate.linkSourceAuto")
-                            : t("expenses.realEstate.linkSourceManual")}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td>
-                      {slot.expense_entry_id == null ? (
-                        "—"
-                      ) : (
-                        <span style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
-                          {slot.can_link ? (
-                            slot.link || slot.broken_link ? (
-                              <Button variant="secondary"
-                                disabled={unmatchMutation.isPending}
-                                onClick={() =>
-                                  void unmatchMutation.mutateAsync(slot.expense_entry_id!)
-                                }
-                              >
-                                {t("expenses.realEstate.unlinkAction")}
-                              </Button>
-                            ) : (
-                              <Button variant="secondary"
-                                onClick={() => setLinkSlot(slot)}
-                              >
-                                {t("expenses.realEstate.linkAction")}
-                              </Button>
-                            )
-                          ) : null}
-                          {CONSUMPTION_KINDS.has(slot.kind) ? (
-                            <Button variant="secondary"
-                              onClick={() =>
-                                setEditing({
-                                  id: slot.expense_entry_id!,
-                                  kwh: slot.kwh != null ? formatNumberInput(slot.kwh) : "",
-                                  m3: slot.m3 != null ? formatNumberInput(slot.m3) : "",
-                                  error: null,
-                                })
-                              }
-                            >
-                              {t("expenses.realEstate.consumptionEditAction")}
-                            </Button>
-                          ) : null}
-                          <Button variant="secondary"
-                            disabled={deleteEntryMutation.isPending}
-                            onClick={() => {
-                              if (window.confirm(t("expenses.realEstate.deleteEntryConfirm"))) {
-                                void deleteEntryMutation.mutateAsync(slot.expense_entry_id!);
-                              }
-                            }}
-                          >
-                            {t("expenses.realEstate.deleteEntryAction")}
-                          </Button>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </Table>
+            <RealEstateBillMonthList block={acc} onLink={setLinkSlot} />
           </PageGridTile>
         ))}
         {sections.length === 0 && !loading ? (

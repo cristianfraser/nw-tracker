@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useFlowsDeposits } from "../queries/hooks";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { DepositsByCategoryChart } from "../components/charts/DepositsByCategoryChart";
-import { Table } from "../components/ui/Table";
+import { DepositMonthList } from "../components/flows/DepositMonthList";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
@@ -114,7 +114,6 @@ export function DepositsPage() {
         // Tables include full history (the chart's Rango only scopes the chart + its
         // companion total); the section subtotal is the server's.
         const block = data ? data.by_category[cat] : null;
-        const blockRows = block ? block.rows : [];
         const blockTotal = block ? block.total : 0;
         return (
           <PageGridTile key={cat} id={`deposits-${cat}`}>
@@ -124,50 +123,7 @@ export function DepositsPage() {
                 {formatFlowMoney(blockTotal, displayUnit)}
               </span>
             </h3>
-            <Table
-              tableStyle={{ fontSize: "var(--font-size-prose)" }}
-              collapsedVisibleRows={15}
-              showMoreLabel={t("notifications.showMore")}
-              showLessLabel={t("table.showLess")}
-              wrapClassName={loadableClass(loading)}
-              header={
-                <thead>
-                  <tr>
-                    <th>{t("deposits.colDate")}</th>
-                    <th>{t("deposits.colCategory")}</th>
-                    <th>{t("deposits.colAccount")}</th>
-                    <th>{t("deposits.colAmount")}</th>
-                  </tr>
-                </thead>
-              }
-            >
-              {blockRows.length === 0 && !loading ? (
-                <tr>
-                  <td colSpan={4} className="muted">
-                    {t("deposits.emptyCategory")}
-                  </td>
-                </tr>
-              ) : (
-                blockRows.map((r, idx) => {
-                  const amount = r.amount;
-                  return (
-                    <tr key={`${r.account_id}-${r.occurred_on}-${idx}`}>
-                      <td className="mono">{r.occurred_on}</td>
-                      <td>{depositFlowCategoryLabel(r.category)}</td>
-                      <td>
-                        <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
-                        {r.mortgage_carrying ? (
-                          <span className="muted" style={{ marginLeft: "0.4rem", fontSize: "var(--font-size-prose-sm)" }}>
-                            {t("deposits.mortgageCarryingTag")}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="mono">{formatFlowMoney(amount, displayUnit)}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </Table>
+            <DepositMonthList block={block} displayUnit={displayUnit} loading={loading} />
           </PageGridTile>
         );
       })}

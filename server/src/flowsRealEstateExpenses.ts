@@ -82,7 +82,8 @@ export type RealEstateBillSlot = {
 export type RealEstateExpenseAccountBlock = {
   account_slug: string;
   label: string;
-  slots: RealEstateBillSlot[];
+  /** The place's bills by billed month, newest first; a month's total counts what was paid. */
+  months: { bill_month: string; total: number; slots: RealEstateBillSlot[] }[];
   total: number;
   currency: string;
 };
@@ -656,6 +657,23 @@ function ensureAutoLinks(
   return existing;
 }
 
+/** A place's bills by billed month, newest first; each month's total is Σ `display_amount`. */
+function slotsByBillMonth(slots: readonly RealEstateBillSlot[]): RealEstateExpenseAccountBlock["months"] {
+  const byMonth = new Map<string, RealEstateBillSlot[]>();
+  for (const sl of slots) {
+    const list = byMonth.get(sl.bill_month);
+    if (list) list.push(sl);
+    else byMonth.set(sl.bill_month, [sl]);
+  }
+  return [...byMonth.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([bill_month, ss]) => ({
+      bill_month,
+      total: ss.reduce((s, sl) => s + sl.display_amount, 0),
+      slots: ss,
+    }));
+}
+
 export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
   const places = listRealEstatePlaces();
   const expectations = listRealEstateExpectations();
@@ -669,7 +687,7 @@ export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
     by_account[place.slug] = {
       account_slug: place.slug,
       label: place.label,
-      slots: accountSlots,
+      months: slotsByBillMonth(accountSlots),
       total: accountSlots.reduce((s, sl) => s + sl.display_amount, 0),
       currency: PLACE_BILL_CURRENCY,
     };
