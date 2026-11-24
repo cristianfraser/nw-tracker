@@ -105,6 +105,13 @@ describe("cardRefundCandidates", () => {
     expect(isLinkableCardRefund(broken)).toBe(true);
   });
 
+  it("marks a link to a purchase on another card as broken (a re-homed statement)", () => {
+    const moved = withLineMoney([...lines, line({ statement_line_id: 50, purchase_on: "2026-05-18", amount_clp: 40_000, account_id: 77, flow_id: 1050 })]);
+    const broken = withCardRefundLinks(moved, new Map([[1009, 1050]]), () => null).find((l) => l.statement_line_id === 9)!;
+    expect(broken.refund_link_broken).toBe(true);
+    expect(broken.refund_of).toBeUndefined();
+  });
+
   it("offers a purchase broken into pieces at its whole amount, under the line its pieces leave", () => {
     const pieces = withLineMoney([
       line({ statement_line_id: 40, purchase_on: "2026-05-15", amount_clp: 8_000, flow_id: 1040, piece_seq: 1 }),

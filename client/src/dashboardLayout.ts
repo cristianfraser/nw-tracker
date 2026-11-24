@@ -13,7 +13,7 @@
  * beside the rail (4 wide, x 8),
  * then the other charts in two equal columns (6 wide), then the wide tables, the export row and
  * the accounts tree across all 12. Tiers `s` and `m` are one stack in the big desktop's reading
- * order (`L` by y, then x, with the net-worth chart kept under the cards); on `s` the tiles side by side on the big desktop share a row, half
+ * order (the main column's band, the rail, then the rest by y and x); on `s` the tiles side by side on the big desktop share a row, half
  * the columns each (`SMALL_PAIRS`).
  */
 export type DashboardTileId =
@@ -58,19 +58,20 @@ const stack = (order: readonly DashboardTileId[], cols: number, heights: Partial
 };
 
 /**
- * Below the big desktop the tiles stack in the big desktop's reading order (top to bottom, then
- * left to right: `L` sorted by y, then x — asserted by the test), so the rail's tiles keep their
- * place near the top instead of falling below the tables. One exception: the net-worth chart
- * stays right under the cards, as it is in the main column.
+ * Below the big desktop the tiles stack in the big desktop's reading order, which is also the
+ * page's DOM order (so focus and screen readers follow what is drawn): the main column's band
+ * (cards, net-worth chart, Rentabilidad), then the rail, then the tiles below the band top to
+ * bottom, left to right (asserted by the test). The rail therefore sits near the top instead of
+ * after the tables.
  */
 const READING_ORDER: readonly DashboardTileId[] = [
   "title",
   "strip",
   "net-worth-chart",
+  "returns",
   "flows-periods",
   "cc-upcoming",
   "latest-movements",
-  "returns",
   "flows-chart",
   "perf-combo",
   "allocation",
@@ -99,13 +100,15 @@ const NOMINAL_HEIGHTS: Partial<Record<DashboardTileId, number>> = {
 
 /**
  * Small desktop: tiles that share a row, half the width each (the second takes the first's row) —
- * the tiles that sit side by side on the big desktop. Each pair is adjacent in the reading order.
+ * the tiles that sit side by side on the big desktop. Each pair is adjacent in the reading order,
+ * and both tiles of a pair render together (a pair is never left with an empty half): the flows
+ * chart takes the whole row when the Δ by class chart is not shown (`DashboardFlowsChart` `alone`),
+ * and allocation and detalle are both below the fold (`GroupInfoBase` `fold` drops them together).
  * Not here: «Flujos» and «Próximos pagos», which share one wrapper below the net-worth chart that
  * sets them in one row at any width where both fit, the periods at their own width (page-grid.css
  * `.dashboard-flows-pair`), so they pair on a wide phone too and stack in the rail.
  */
 const SMALL_PAIRS: readonly (readonly [DashboardTileId, DashboardTileId])[] = [
-  ["latest-movements", "returns"],
   ["flows-chart", "perf-combo"],
   ["allocation", "detail"],
 ];

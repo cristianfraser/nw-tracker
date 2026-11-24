@@ -21,7 +21,6 @@ import {
   splittableMortgageLinkOf,
   REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
 } from "./expenseDepositLinks.js";
-import type { CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
 import type {
   FlowCcExpenseCategoryChartPoint,
   FlowCcExpenseChartPoint,
@@ -326,39 +325,3 @@ export type BigGroupUsage = {
   total: number;
   purchase_count: number;
 };
-
-/**
- * The big groups that hold spend, per installment mode (2026-10-28): Σ of the lines (in the unit) that
- * count toward gasto del mes in the mode, purchases counted by (account, purchase key), sorted by
- * label. The Expenses page's «Grandes gastos» section and its chart filter pick it; they used to
- * sum the lines on the client.
- */
-export function bigGroupUsageByMode(
-  lines: readonly GastosLine[],
-  catalog: readonly Pick<CcExpenseBigGroupRow, "slug" | "label">[],
-  unit: GastosUnit
-): Record<CcInstallmentGastosMode, BigGroupUsage[]> {
-  const labelBySlug = new Map(catalog.map((g) => [g.slug, g.label]));
-  const usageFor = (mode: CcInstallmentGastosMode): BigGroupUsage[] => {
-    const totals = new Map<string, number>();
-    const purchases = new Map<string, Set<string>>();
-    for (const ln of lines) {
-      const slug = ln.big_group_slug;
-      if (!slug || !countsTowardGastosMes(ln, mode)) continue;
-      totals.set(slug, (totals.get(slug) ?? 0) + expenseLineGastosAmount(ln, unit));
-      const set = purchases.get(slug) ?? new Set<string>();
-      set.add(`${ln.account_id}|${ln.purchase_key}`);
-      purchases.set(slug, set);
-    }
-    const label = (slug: string) => labelBySlug.get(slug) ?? slug;
-    return [...totals.keys()]
-      .sort((a, b) => label(a).localeCompare(label(b), "es"))
-      .map((slug) => ({
-        slug,
-        label: label(slug),
-        total: roundToCurrency(totals.get(slug) ?? 0, unit),
-        purchase_count: purchases.get(slug)?.size ?? 0,
-      }));
-  };
-  return { split: usageFor("split"), total: usageFor("total") };
-}

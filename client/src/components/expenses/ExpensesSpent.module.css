@@ -673,3 +673,11 @@ button.axisMonth:hover,
     display: none;
   }
 }
+
+/* The chart's basis, beside its title: quiet, and it gives way first on a narrow row. */
+.basis {
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  opacity: 0.8;
+  margin-right: auto;
+}

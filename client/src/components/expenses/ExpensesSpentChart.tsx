@@ -139,6 +139,8 @@ export function ExpensesSpentChart({
     <div className={`${styles.chartFrame} ${loadableClass(loading)}`}>
       <div className={`chart-panel-title-row ${styles.titleRow}`}>
         <h3 className="muted">{t("expenses.spent.chartTitle")}</h3>
+        {/* The basis: the Flows overview and the card pages total by month billed. */}
+        <span className={styles.basis}>{t("expenses.spent.basis")}</span>
         <span className={styles.toggleGroup}>
           {EXPENSES_SPENT_RANGES.map((r) => (
             <button
