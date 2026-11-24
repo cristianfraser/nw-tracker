@@ -40,13 +40,33 @@ function onKeyActivate(e: KeyboardEvent, run: () => void) {
   }
 }
 
-/** Gross pay as one bar: net pay, then each deduction group. */
-function GrossBar({ values, className }: { values: PayrollBreakdownValues; className?: string }) {
+/** Net pay's colour: the income kind the payslip pays (a severance reads as severance, as in the month bars). */
+function netColor(earningType: PayrollEarningType | undefined): string {
+  return earningType === "severance" ? incomeKindColor("severance") : PAYROLL_STACK[0]!.color;
+}
+
+/** Gross pay as one bar: net pay (in its payslip's kind colour), then each deduction group. */
+function GrossBar({
+  values,
+  earningType,
+  className,
+}: {
+  values: PayrollBreakdownValues;
+  /** A single payslip's type; a year's bar adds up both and keeps net pay's own colour. */
+  earningType?: PayrollEarningType;
+  className?: string;
+}) {
   return (
     <span className={cn(styles.bar, className)} aria-hidden>
       {values.gross > 0
         ? PAYROLL_STACK.filter((s) => values[s.field] > 0).map((s) => (
-            <i key={s.field} style={{ width: `${(values[s.field] / values.gross) * 100}%`, background: s.color }} />
+            <i
+              key={s.field}
+              style={{
+                width: `${(values[s.field] / values.gross) * 100}%`,
+                background: s.field === "net" ? netColor(earningType) : s.color,
+              }}
+            />
           ))
         : null}
     </span>
@@ -177,7 +197,7 @@ export function PayslipList({
           </div>
           <div className={styles.receiptFoot}>
             <span>
-              <i className={styles.dot} style={{ background: PAYROLL_STACK[0]!.color }} />
+              <i className={styles.dot} style={{ background: netColor(row.earning_type) }} />
               {fieldLabel("net")}
             </span>
             <span className={cn("mono", styles.strong)}>{money(values.net)}</span>
@@ -339,7 +359,7 @@ export function PayslipList({
                         {row.employer_name}
                       </span>
                       <span className={cn("mono muted", styles.num, styles.pGross)}>{money(values.gross)}</span>
-                      <GrossBar values={values} className={styles.pBar} />
+                      <GrossBar values={values} earningType={row.earning_type} className={styles.pBar} />
                       <span className={cn("mono", styles.num, styles.strong, styles.pNet)}>{money(values.net)}</span>
                       <span className={cn(styles.small, styles.pCheck, styles.nowrap)}>{checkStatus(c)}</span>
                       <ChevronIcon className={styles.chevron} />
