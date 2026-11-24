@@ -106,6 +106,7 @@ export function spentDayOfLine(
     GastosLine,
     | "source"
     | "account_id"
+    | "billing_account_id"
     | "line_role"
     | "occurred_on"
     | "purchase_on"
@@ -125,7 +126,7 @@ export function spentDayOfLine(
   if (!gastosSumMonthForLine(ln, mode)) return null;
   if (ln.line_role === "installment_cuota") {
     if (ln.source !== "cc") throw new Error(`a ${ln.source} line is an installment cuota`);
-    return ctx.closeOf(ln.account_id, ln.billing_month);
+    return ctx.closeOf(ln.billing_account_id ?? ln.account_id, ln.billing_month);
   }
   return movementOn(ln, ctx.today);
 }
@@ -144,18 +145,23 @@ type SpentEntry<L> = {
   stacks: Array<readonly [string, number]>;
   /** Whether the line is listed: it counts toward gastos and is not in an excluded big group. */
   listed: boolean;
+  /** Whether the line counts toward gasto del mes in the mode (whatever the excluded big groups). */
+  counts: boolean;
+  /** Spent after today: only with `includeFuture` (a big group's membership, never a total). */
+  future: boolean;
 };
 
 function spentEntries<L extends GastosLine>(
   lines: readonly L[],
   opts: SpentOptions,
-  ctx: SpentDayContext
+  ctx: SpentDayContext,
+  includeFuture = false
 ): SpentEntry<L>[] {
   const out: SpentEntry<L>[] = [];
   lines.forEach((ln, index) => {
     if (!opts.includePreTax && isPreTaxExpenseLine(ln)) return;
     const day = spentDayOfLine(ln, opts.mode, ctx);
-    if (day == null || day > ctx.today) return;
+    if (day == null || (day > ctx.today && !includeFuture)) return;
     const share = gastosShareOfLine(ln, opts.mode, opts.unit);
     if (share.kind !== "spend") return;
     const excluded = ln.big_group_slug != null && opts.excludedBigGroups.has(ln.big_group_slug);
@@ -172,6 +178,8 @@ function spentEntries<L extends GastosLine>(
       real: share.real,
       stacks: excluded ? [] : stacks,
       listed,
+      counts: share.stacks.length > 0,
+      future: day > ctx.today,
     });
   });
   return out;
@@ -455,12 +463,13 @@ function optionsKey(opts: SpentOptions): string {
   return `${opts.unit}|${opts.mode}|${opts.level}|${opts.includePreTax ? 1 : 0}|${[...opts.excludedBigGroups].sort().join(",")}`;
 }
 
-/** `GET /api/flows/expenses/spent`, cached beside the expense lines. */
 /**
  * The big groups that hold spend in the mode, by the page's own rule (each line on its spending day,
- * nothing after today, a mortgage payment's carrying and never its amortization): Σ what each line
- * adds to gasto del mes, excluded from the chart or not; purchases counted once by (card, purchase
- * key); sorted by label.
+ * a mortgage payment's carrying and never its amortization): a group is listed for every line that
+ * counts toward gasto del mes in the mode («no cuenta», internal transfers and the like never), so
+ * a group whose only purchase bills its first cuota at the next close is listed (at 0) with its
+ * controls; its total is Σ what those lines add through today, excluded from the chart or not;
+ * purchases counted once by (card, purchase key); sorted by label.
  */
 export function spentBigGroupUsage(
   lines: readonly GastosLine[],
@@ -471,10 +480,10 @@ export function spentBigGroupUsage(
   const labelBySlug = new Map(catalog.map((g) => [g.slug, g.label]));
   const totals = new Map<string, number>();
   const purchases = new Map<string, Set<string>>();
-  for (const e of spentEntries(lines, opts, ctx)) {
+  for (const e of spentEntries(lines, opts, ctx, true)) {
     const slug = e.line.big_group_slug;
-    if (!slug) continue;
-    totals.set(slug, (totals.get(slug) ?? 0) + e.gastosAnyGroup);
+    if (!slug || !e.counts) continue;
+    totals.set(slug, (totals.get(slug) ?? 0) + (e.future ? 0 : e.gastosAnyGroup));
     const set = purchases.get(slug) ?? new Set<string>();
     set.add(`${e.line.account_id}|${e.line.purchase_key}`);
     purchases.set(slug, set);
@@ -508,6 +517,7 @@ export function buildExpensesSpentResponse(
   };
 }
 
+/** `GET /api/flows/expenses/spent`, cached beside the expense lines. */
 export function cachedExpensesSpentPayload(opts: SpentOptions, range: ExpensesSpentRange): FlowsExpensesSpentResponse {
   syncFlowsInputsWithLiveUsdRates();
   const today = chileCalendarTodayYmd();

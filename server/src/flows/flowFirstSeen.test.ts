@@ -87,6 +87,15 @@ describe("flow_first_seen", () => {
     expect(firstSeen(line!.flow_id)).toBe("2020-03-04");
   });
 
+  it("a re-import of a line with no first-seen day (on file before migration 310) gives it none", () => {
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("o")]));
+    db.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(lines(accountId)[0]!.flow_id);
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("o2")]));
+    const [line] = lines(accountId);
+    expect(line!.parser_row_id).toBe("o2");
+    expect(firstSeen(line!.flow_id)).toBeNull();
+  });
+
   it("a flow merge keeps the earlier day of the two", () => {
     importCcStatementsWipeAndReload(accountId, parsedStatements([record("m1", "VITEST FS ONE", 1000), record("m2", "VITEST FS TWO", 2000)]));
     const [one, two] = lines(accountId);

@@ -82,6 +82,10 @@ describe("spentDayOfLine", () => {
     expect(dayOf({ ...cuota, occurred_on: "2026-04-10" })).toBe("2026-03-20");
     expect(dayOf({ ...cuota, occurred_on: "2026-03-31" })).toBe("2026-03-20");
     expect(dayOf({ ...cuota, occurred_on: "2026-03-20" }, "total")).toBeNull();
+    // A financed purchase's slice closes with the card that financed it.
+    const byCard: SpentDayContext = { today: TODAY, closeOf: (account, m) => `${m}-${account === 200 ? "22" : "20"}` };
+    const slice = withLineMoney([line({ ...cuota, account_id: 100, billing_account_id: 200 })])[0]!;
+    expect(spentDayOfLine(slice, "split", byCard)).toBe("2026-03-22");
   });
 
   it("puts a card credit on the day it reached the ledger, never its printed date", () => {
@@ -112,11 +116,14 @@ describe("a cuota a future close bills", () => {
 });
 
 describe("spentBigGroupUsage", () => {
-  it("counts what the page counts: nothing after today, a mortgage payment's carrying, excluded groups too", () => {
+  it("counts what the page counts: nothing after today, a mortgage payment's carrying, excluded groups too, never «no cuenta»", () => {
     const lines = withLineMoney([
       line({ statement_line_id: 1, purchase_on: "2026-03-02", amount_clp: 10_000, big_group_slug: "trip", purchase_key: "line-pr:a" }),
-      // After today: not spent yet.
-      line({ statement_line_id: 2, purchase_on: "2026-03-20", amount_clp: 99_000, big_group_slug: "trip", purchase_key: "line-pr:b" }),
+      // Not spend: neither its pesos nor a purchase.
+      line({ statement_line_id: 4, purchase_on: "2026-03-03", amount_clp: 55_000, category_slug: "no_cuenta", big_group_slug: "trip", purchase_key: "line-pr:d" }),
+      line({ statement_line_id: 5, purchase_on: "2026-03-03", amount_clp: 7_000, category_slug: "no_cuenta", big_group_slug: "gift", purchase_key: "line-pr:e" }),
+      // After today (a cuota the next close bills): the group is listed, its pesos not spent yet.
+      line({ statement_line_id: 2, line_role: "installment_cuota", installment_flag: 1, nro_cuota_current: 1, nro_cuota_total: 3, billing_month: "2026-04", occurred_on: "2026-04-20", amount_clp: 99_000, big_group_slug: "sofa", purchase_key: "installment-h:b" }),
       line({
         statement_line_id: 3,
         purchase_on: "2026-03-04",
@@ -132,9 +139,12 @@ describe("spentBigGroupUsage", () => {
     const usage = spentBigGroupUsage(lines, { ...OPTS, excludedBigGroups: new Set(["trip"]) }, [
       { slug: "trip", label: "Trip" },
       { slug: "house", label: "House" },
+      { slug: "sofa", label: "Sofa" },
+      { slug: "gift", label: "Gift" },
     ], CTX);
     expect(usage).toEqual([
       { slug: "house", label: "House", total: 340_000, purchase_count: 1 },
+      { slug: "sofa", label: "Sofa", total: 0, purchase_count: 1 },
       { slug: "trip", label: "Trip", total: 10_000, purchase_count: 1 },
     ]);
   });

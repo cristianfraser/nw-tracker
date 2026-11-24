@@ -101,6 +101,8 @@ function makeProjectedLine(
     statementLineId: number;
     amountClp: number;
     month: string;
+    /** The financing card, whose facturación `month` is. */
+    billingAccountId: number;
     cuotaCurrent: number;
     cuotaTotal: number;
     categorySlug: string;
@@ -133,6 +135,7 @@ function makeProjectedLine(
     statement_line_id: overrides.statementLineId,
     expense_month: overrides.month,
     billing_month: overrides.month,
+    billing_account_id: overrides.billingAccountId,
     purchase_month: overrides.month,
     occurred_on: occurredOn,
     purchase_on: occurredOn,
@@ -208,8 +211,17 @@ export function applyCcFacturadoFinancingProjection(
 
     if (financedIdx.length === 0 || financingCuotaIdx.length === 0) continue;
 
-    // Distinct cuota billing months (the schedule), sorted.
+    // Distinct cuota billing months (the schedule), sorted, each with the financing card billing it.
     const months = [...new Set(financingCuotaIdx.map((i) => lines[i]!.billing_month))].sort();
+    const billingCardOf = new Map<string, number>();
+    for (const i of financingCuotaIdx) {
+      const { billing_month: m, account_id: card } = lines[i]!;
+      const seen = billingCardOf.get(m);
+      if (seen != null && seen !== card) {
+        throw new Error(`financing link ${link.id}: cuotas of ${m} billed by cards ${seen} and ${card}`);
+      }
+      billingCardOf.set(m, card);
+    }
     const n = months.length;
     const totalCuotas = financingCuotaIdx.reduce((s, i) => s + lines[i]!.amount_clp, 0);
     // Interest = what the cuotas add on top of the facturado they paid; up to one peso per cuota
@@ -278,6 +290,7 @@ export function applyCcFacturadoFinancingProjection(
               statementLineId: nextSyntheticId--,
               amountClp: payment,
               month: m,
+              billingAccountId: billingCardOf.get(m)!,
               cuotaCurrent: k + 1,
               cuotaTotal: n,
               categorySlug: BILLS_CC_EXPENSE_SLUG,
@@ -322,6 +335,7 @@ export function applyCcFacturadoFinancingProjection(
             statementLineId: nextSyntheticId--,
             amountClp: slices[k]!,
             month: m,
+            billingAccountId: billingCardOf.get(m)!,
             cuotaCurrent: k + 1,
             cuotaTotal: n,
             categorySlug: src.category_slug,
@@ -347,6 +361,7 @@ export function applyCcFacturadoFinancingProjection(
             statementLineId: nextSyntheticId--,
             amountClp: gapSlices[k]!,
             month: m,
+            billingAccountId: billingCardOf.get(m)!,
             cuotaCurrent: k + 1,
             cuotaTotal: n,
             categorySlug: BILLS_CC_EXPENSE_SLUG,

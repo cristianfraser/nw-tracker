@@ -54,8 +54,6 @@ export function listedAsLatestMovement(
   return true;
 }
 
-export { movementOn };
-
 /**
  * An income credit's money: a foreign checking account's credit is in its currency (its pesos and
  * dollars at the day's rate; a dollar one's dollars its own), any other in pesos (its dollars at

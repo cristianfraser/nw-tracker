@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { FlowsOverviewIncome } from "./flowsOverview.js";
-import { latestMovementRows, movementOn } from "./latestMovements.js";
+import { latestMovementRows } from "./latestMovements.js";
+import { movementOn } from "./expenseLineDay.js";
 import { lineMoneyFromBuilderFields } from "./lineMoney.js";
 
 /** A finished line: its money as the «line money» step writes it. */

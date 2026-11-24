@@ -182,6 +182,15 @@ describe("ccFacturadoFinancingProjection", () => {
     expect(gapLines.every((l) => l.installment_total_clp == null)).toBe(true);
   });
 
+  it("projected slices are billed by the financing card, each under its own financed card", () => {
+    const { lines, links } = buildScenario();
+    const projected = applyCcFacturadoFinancingProjection(lines, links, FACTURADO).filter(
+      (l) => l.gastos_scope === "split_only" && l.line_role === "installment_cuota"
+    );
+    expect(projected.length).toBeGreaterThan(0);
+    expect(projected.every((l) => l.account_id === 100 && l.billing_account_id === 200)).toBe(true);
+  });
+
   it("total mode: facturado in June, financing suppressed", () => {
     const { lines, links } = buildScenario();
     const out = applyCcFacturadoFinancingProjection(lines, links, FACTURADO);

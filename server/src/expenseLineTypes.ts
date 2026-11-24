@@ -112,6 +112,12 @@ export type FlowCcExpenseLineRow = {
 
   billing_month: string;
 
+  /**
+   * The card whose facturación `billing_month` is, when not the line's own: a financed purchase's
+   * «Por cuota» slice is billed by the card that financed it (`ccFacturadoFinancingProjectionLines`).
+   */
+  billing_account_id?: number;
+
   /** CC lines: on a web-paste / card-feed statement — the only lines the facturación modal can delete. */
 
   web_paste?: boolean;

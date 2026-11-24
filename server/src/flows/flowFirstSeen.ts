@@ -27,6 +27,11 @@ export function keepEarlierFlowFirstSeen(flowId: number, day: string, dbHandle: 
     .run(flowId, day);
 }
 
+/** Removes the flow's first-seen day when it is `day` (what an insert on that day recorded). */
+export function dropFlowFirstSeenRecordedOn(flowId: number, day: string, dbHandle: Database = db): void {
+  dbHandle.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ? AND first_seen_on = ?`).run(flowId, day);
+}
+
 /**
  * Moves `from`'s first-seen day onto `to`, keeping the earlier of the two (before `from` is
  * deleted; its row would cascade away).
