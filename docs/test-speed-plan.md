@@ -147,7 +147,8 @@ file (which becomes the floor). The step 0 per-file list says whether one file n
     parallel;
   - `npm run check:conventions` (1 s, whole repo — keeps the deps baseline honest).
   - No format or lint step: the repo has neither (no Prettier, no lint script).
-- Budget: under 9 s warm; the hook fails if a step exceeds it, so it stays cheap.
+- Budget: under 30 s (9 s until 2026-11-24, which several Claude sessions working at once pushed a
+  warm run past with nothing wrong); the hook fails if a step exceeds it, so it stays cheap.
   It does not run the test suite.
 - AGENTS.md: `--no-verify` is not allowed for agents.
 

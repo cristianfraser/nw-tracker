@@ -8,7 +8,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BUDGET_MS = 9000;
+// 30 s: measured 6.3 s under a test run on the laptop, but several Claude sessions working at
+// once push a warm run of all four workspaces past 17 s with nothing wrong.
+const BUDGET_MS = 30000;
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ZERO = /^0+$/;
 const WORKSPACES = ["server/contracts", "server", "client", "ingest"];
