@@ -1599,7 +1599,7 @@
       "colLinkedMerchant": "Comercio",
       "colLinkedDate": "Fecha compra",
       "colLinkedOrigin": "Origen",
-      "colActions": "Acciones",
+      "billActions": "Acciones de {{kind}}, {{month}}",
       "unlinked": "Sin vincular",
       "brokenLinkMissing": "La compra vinculada ya no aparece — desvincula o elimina la fila",
       "brokenLinkOutsideWindow": "La compra vinculada quedó fuera de la ventana de meses de esta cuenta",

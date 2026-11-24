@@ -1599,7 +1599,7 @@
       "colLinkedMerchant": "Merchant",
       "colLinkedDate": "Purchase date",
       "colLinkedOrigin": "Origin",
-      "colActions": "Actions",
+      "billActions": "Actions for {{kind}}, {{month}}",
       "unlinked": "Unlinked",
       "brokenLinkMissing": "The linked purchase is no longer found — unlink or delete the row",
       "brokenLinkOutsideWindow": "The linked purchase falls outside this bill's month window",

@@ -200,6 +200,9 @@
 
 .linked {
   grid-area: linked;
+  /* Wraps: the purchase date and the card or account are part of what it says. */
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: var(--font-size-prose-sm);
 }

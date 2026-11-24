@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
 import { formatGroupedDecimalTrimmed, formatMoney, formatNumberInput, parseNumberInput } from "../../format";
@@ -118,6 +118,7 @@ function RealEstateBillRow({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const panelId = useId();
   const [editing, setEditing] = useState<Editing | null>(null);
   const unmatchMutation = useUnmatchRealEstateExpenseMutation();
   const consumptionMutation = useUpdateRealEstateConsumptionMutation();
@@ -215,7 +216,7 @@ function RealEstateBillRow({
   return (
     <div className={styles.row}>
       <span className={styles.kind}>{expenseKindLabel(slot.kind)}</span>
-      <span className={cn(styles.linked, styles.ellipsis, slot.link && styles.linkedLinked)}>
+      <span className={cn(styles.linked, slot.link && styles.linkedLinked)}>
         {linkedPurchaseLabel(slot, t)}
       </span>
       <span className={cn("mono", styles.num, styles.amount)}>{formatAmountCell(slot)}</span>
@@ -225,7 +226,11 @@ function RealEstateBillRow({
             expanded={open}
             needsAction={slot.broken_link != null}
             needsActionTitle={brokenText ?? undefined}
-            ariaLabel={t("expenses.realEstate.colActions")}
+            ariaLabel={t("expenses.realEstate.billActions", {
+              kind: expenseKindLabel(slot.kind),
+              month: formatYearMonthLabel(slot.bill_month),
+            })}
+            controls={open ? panelId : undefined}
             onClick={() => {
               setOpen((o) => !o);
               setEditing(null);
@@ -241,7 +246,7 @@ function RealEstateBillRow({
         ))}
       </span>
       {open && entryId != null ? (
-        <div className={styles.panel}>
+        <div id={panelId} className={styles.panel}>
           <div className={styles.panelActions}>
             {slot.can_link ? (
               slot.link || slot.broken_link ? (

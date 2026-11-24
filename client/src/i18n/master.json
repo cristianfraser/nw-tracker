@@ -5172,9 +5172,9 @@
         "en": "Origin",
         "es": "Origen"
       },
-      "colActions": {
-        "en": "Actions",
-        "es": "Acciones"
+      "billActions": {
+        "en": "Actions for {{kind}}, {{month}}",
+        "es": "Acciones de {{kind}}, {{month}}"
       },
       "unlinked": {
         "en": "Unlinked",
