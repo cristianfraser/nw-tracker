@@ -26,7 +26,7 @@
   display: grid;
   grid-template-columns:
     minmax(7rem, 1.1fr) minmax(4rem, 1fr) max-content minmax(6rem, 0.9fr)
-    max-content max-content max-content max-content;
+    max-content max-content max-content max-content max-content;
   column-gap: 1.25rem;
   font-size: var(--font-size-ui);
 }
@@ -162,6 +162,20 @@ a.name:hover {
   stroke: var(--accent);
 }
 
+/* The 0 % line of the performance sparkline (shared scale). */
+.spark .sparkZero {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.45;
+}
+
+/* The sparkline column's Rendimiento | Saldo toggle (the surface controls' text buttons). */
+.sparkToggle {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
 .soldRow .spark polyline {
   stroke: var(--muted);
   opacity: 0.6;
@@ -232,6 +246,7 @@ a.name:hover {
 
   .sparkCell,
   .shareCell,
+  .day,
   .year,
   .deposits {
     display: none;

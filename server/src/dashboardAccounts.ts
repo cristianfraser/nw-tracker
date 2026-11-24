@@ -52,7 +52,7 @@ import { getLiabilitiesNavRootNode, getNavChartGroupNodeBySlug, getNetWorthNavGr
 import { findBySlug, navContextScope, valueMapSubtree } from "./navContextScope.js";
 import { buildBasketGlance } from "./basketGlance.js";
 import { buildGroupGlance } from "./groupGlance.js";
-import { groupDailyPctPoints } from "./dailyPctSeries.js";
+import { accountDailyPctPoints, groupDailyPctPoints } from "./dailyPctSeries.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
@@ -644,6 +644,19 @@ async function buildDashboardNavContextInner(unit: TsUnit, rootSlug: string) {
           chartNode: requireChartNode(getNavChartGroupNodeBySlug(rootSlug), rootSlug),
           rows: nav.accounts,
           cardMetricsBySlug: nav.card_metrics_by_slug,
+          dailyPctFor: (scope) => {
+            if (scope.kind === "group") return groupDailyPctPoints(scope.slug, unit);
+            const row = nav.accounts.find((a) => a.account_id === scope.accountId);
+            if (!row) throw new Error(`Group glance ${rootSlug}: account ${scope.accountId} has no dashboard row`);
+            const importKey =
+              (db.prepare(`SELECT import_key FROM accounts WHERE id = ?`).get(scope.accountId) as
+                | { import_key: string | null }
+                | undefined)?.import_key ?? null;
+            return accountDailyPctPoints(
+              { account_id: row.account_id, name: row.name, bucket_slug: row.bucket_slug, import_key: importKey },
+              unit
+            );
+          },
         })
       : null;
   return {

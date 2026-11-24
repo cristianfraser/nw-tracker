@@ -149,6 +149,7 @@ export interface GroupGlanceRowDto {
   /** value ÷ the group's value (0..1); 1 on the total row; 0 when sold out. */
   share: number;
   /** The card's chained %s (a child: `row_pct`; the total row: `parent_pct`; an account: its row's `pct_*`). */
+  day_pct: number | null;
   month_pct: number | null;
   year_pct: number | null;
   /** Lifetime P/L (the card's `delta_total`, the row's `delta_total`). */
@@ -161,6 +162,12 @@ export interface GroupGlanceRowDto {
   held: boolean;
   /** One year ending today, own scale: up to ~60 points, x/y in 0..1 (x by calendar day from today−364). */
   spark: { x: number; y: number }[];
+  /**
+   * The same year as performance: the row's daily returns (the ones its % cells compound) chained
+   * from its first held day in the window, on the table's shared scale (`perf_zero_y` is 0 %); no
+   * point before it first held something or after it sold out.
+   */
+  perf_spark: { x: number; y: number }[];
   /**
    * One level under a child row: a basket's member accounts, any other child group's own rows (its
    * sub-groups and accounts, as its page lists them, without members of their own); empty for an
@@ -186,6 +193,8 @@ export interface GroupGlanceDto {
   total: GroupGlanceRowDto;
   /** Children: held ones heaviest first, then sold-out ones (by total P/L magnitude). */
   rows: GroupGlanceRowDto[];
+  /** Where 0 % sits on the shared performance scale of every row's `perf_spark` (0..1, from the bottom). */
+  perf_zero_y: number;
 }
 
 /** One member account of a basket, as the breakdown block lists it. */

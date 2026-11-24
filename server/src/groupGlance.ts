@@ -28,6 +28,7 @@ import { currencySmallestCoin } from "./displayUnits.js";
 import { buildNavChartBucketPlan, navChartBucketNavNodes, shouldAggregateNavCharts } from "./groupChartBuckets.js";
 import type { NavTreeNodeDto } from "./navTreeTypes.js";
 import { nodeNetsLinkedCards, nodeValueSeriesOnGrid, type NodeValueMember } from "./nodeValue.js";
+import type { DailyPctPoint } from "./dailyPctSeries.js";
 import { sampleIndices } from "./positionGlance.js";
 import type { CurrencyCode } from "./rates.js";
 
@@ -46,6 +47,7 @@ export type GroupGlanceAccountRow = {
   exclude_from_group_totals?: number | null;
   deposits: number | null;
   delta_total?: number | null;
+  pct_day?: number | null;
   pct_month?: number | null;
   pct_year?: number | null;
   pct_total?: number | null;
@@ -64,6 +66,11 @@ export type GroupGlanceInputs = {
   rows: readonly GroupGlanceAccountRow[];
   /** The payload's card metrics (the group's and every child group's). */
   cardMetricsBySlug: Readonly<Record<string, NavCardMetricsDto>>;
+  /**
+   * A row's full-history daily returns (the series its % cells compound: `pg:<slug>` for a group,
+   * `account:<id>` for an account); null for a scope with none.
+   */
+  dailyPctFor: (scope: { kind: "group"; slug: string } | { kind: "account"; accountId: number }) => readonly DailyPctPoint[] | null;
   now?: Date;
 };
 
@@ -114,6 +121,66 @@ export function groupGlanceSpark(values: readonly (number | null)[]): { x: numbe
   }));
 }
 
+/**
+ * A row's performance on the grid: its daily returns chained from its first held day in the
+ * window (0 there) through the day after its last (the sale's own return), null outside; a day
+ * with no return is flat. `values` is the row's value on the grid, `held` decides by `eps`.
+ */
+export function groupGlancePerfOnGrid(
+  grid: readonly string[],
+  values: readonly (number | null)[],
+  points: readonly DailyPctPoint[] | null,
+  eps: number
+): (number | null)[] {
+  const out: (number | null)[] = grid.map(() => null);
+  const held = values.map((v) => v != null && Math.abs(v) > eps);
+  const first = held.indexOf(true);
+  if (first < 0 || !points) return out;
+  const lastHeld = held.lastIndexOf(true);
+  const end = lastHeld < grid.length - 1 ? lastHeld + 1 : lastHeld;
+  const pctByDay = new Map(points.map((p) => [p.as_of_date, p.pct]));
+  let factor = 1;
+  for (let i = first; i <= end; i++) {
+    if (i > first) {
+      const r = pctByDay.get(grid[i]!);
+      if (r != null && Number.isFinite(r)) factor *= 1 + r;
+    }
+    out[i] = factor - 1;
+  }
+  return out;
+}
+
+/**
+ * Performance sparklines on one scale: every row's chained return (index-aligned with the grid)
+ * mapped into 0..1 between the lowest and highest return of any row, 0 % always inside; sampled
+ * like {@link groupGlanceSpark}. Returns the points per row and where 0 % sits.
+ */
+export function groupGlancePerfSparks(
+  series: readonly (readonly (number | null)[])[]
+): { sparks: { x: number; y: number }[][]; zeroY: number } {
+  let lo = 0;
+  let hi = 0;
+  for (const s of series)
+    for (const v of s)
+      if (v != null && Number.isFinite(v)) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+  const yOf = (v: number) => (hi > lo ? (v - lo) / (hi - lo) : 0.5);
+  const sparks = series.map((values) => {
+    const known: { i: number; v: number }[] = [];
+    values.forEach((v, i) => {
+      if (v != null && Number.isFinite(v)) known.push({ i, v });
+    });
+    const last = values.length - 1;
+    return sampleIndices(known.length, GROUP_GLANCE_SPARK_MAX_POINTS).map((k) => {
+      const p = known[k]!;
+      return { x: last > 0 ? p.i / last : 1, y: yOf(p.v) };
+    });
+  });
+  return { sparks, zeroY: yOf(0) };
+}
+
 /** Held ones heaviest first (then label), then sold-out ones by total P/L magnitude (then label). */
 export function sortGroupGlanceRows(rows: GroupGlanceRowDto[]): GroupGlanceRowDto[] {
   const absPl = (r: GroupGlanceRowDto) => Math.abs(r.total_pl?.value ?? 0);
@@ -162,19 +229,28 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
   const shareOf = (v: number, held: boolean) => (held && groupValue > 0 && v > 0 ? v / groupValue : 0);
 
   const grid = sparkGrid(today);
-  const sparkFor = (accountIds: readonly number[], netsLinkedCards: boolean) => {
+  // Each row's chained return on the grid, scaled together once every row is built.
+  const perfByRow = new Map<GroupGlanceRowDto, (number | null)[]>();
+  type Scope = Parameters<GroupGlanceInputs["dailyPctFor"]>[0];
+  const sparksFor = (accountIds: readonly number[], netsLinkedCards: boolean, scope: Scope) => {
     const members: NodeValueMember[] = [...new Set(accountIds)].map((id) => ({
       account_id: id,
       exclude_from_group_totals: requireRow(id).exclude_from_group_totals ?? undefined,
     }));
-    return groupGlanceSpark(nodeValueSeriesOnGrid(members, grid, unit, { netsLinkedCards }));
+    const values = nodeValueSeriesOnGrid(members, grid, unit, { netsLinkedCards });
+    return { spark: groupGlanceSpark(values), perf: groupGlancePerfOnGrid(grid, values, inp.dailyPctFor(scope), eps) };
+  };
+  const withPerf = (row: GroupGlanceRowDto, perf: (number | null)[]): GroupGlanceRowDto => {
+    perfByRow.set(row, perf);
+    return row;
   };
 
   const accountRow = (id: number, chartLineAccountId: number | null, color: string | null): GroupGlanceRowDto => {
     const r = requireRow(id);
     const value = presentValue(finiteOrNull(r.current_value), r.fx_missing === true, `account ${id}`);
     const held = Math.abs(value) > eps;
-    return {
+    const { spark, perf } = sparksFor([id], false, { kind: "account", accountId: id });
+    return withPerf({
       kind: "account",
       slug: null,
       account_id: id,
@@ -185,15 +261,17 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       color_rgb: color,
       value: money(value),
       share: shareOf(value, held),
+      day_pct: finiteOrNull(r.pct_day),
       month_pct: finiteOrNull(r.pct_month),
       year_pct: finiteOrNull(r.pct_year),
       total_pl: moneyOrNull(r.delta_total),
       total_pct: finiteOrNull(r.pct_total),
       deposits: moneyOrNull(r.deposits),
       held,
-      spark: sparkFor([id], false),
+      spark,
+      perf_spark: [],
       members: [],
-    };
+    }, perf);
   };
 
   /**
@@ -214,7 +292,11 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
               .map((id) => accountRow(id, null, colorOfAccountIn(node, id)))
           )
         : rowsUnder(node, false);
-    return {
+    const { spark, perf } = sparksFor(leafAccountIds(node), nodeNetsLinkedCards(node.slug), {
+      kind: "group",
+      slug: node.slug,
+    });
+    return withPerf({
       kind: "group",
       slug: node.slug,
       account_id: null,
@@ -225,15 +307,17 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       color_rgb: node.color_rgb,
       value: money(value),
       share: shareOf(value, held),
+      day_pct: finiteOrNull(c.row_pct.day.value),
       month_pct: finiteOrNull(c.row_pct.month.value),
       year_pct: finiteOrNull(c.row_pct.year.value),
       total_pl: moneyOrNull(c.child.month.delta_total),
       total_pct: finiteOrNull(c.row_pct.total.value),
       deposits: moneyOrNull(c.child.month.deposits),
       held,
-      spark: sparkFor(leafAccountIds(node), nodeNetsLinkedCards(node.slug)),
+      spark,
+      perf_spark: [],
       members,
-    };
+    }, perf);
   };
 
   /**
@@ -295,7 +379,11 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
   const periods = { day: period("day"), month: period("month"), year: period("year") };
 
   const groupHeld = Math.abs(groupValue) > eps;
-  const total: GroupGlanceRowDto = {
+  const totalSparks = sparksFor(leafAccountIds(inp.chartNode), nodeNetsLinkedCards(inp.slug), {
+    kind: "group",
+    slug: inp.slug,
+  });
+  const total: GroupGlanceRowDto = withPerf({
     kind: "group",
     slug: inp.slug,
     account_id: null,
@@ -306,15 +394,24 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     color_rgb: inp.chartNode.color_rgb,
     value: money(groupValue),
     share: 1,
+    day_pct: finiteOrNull(card.parent_pct.day.value),
     month_pct: finiteOrNull(card.parent_pct.month.value),
     year_pct: finiteOrNull(card.parent_pct.year.value),
     total_pl: moneyOrNull(card.parent.month.delta_total),
     total_pct: finiteOrNull(card.parent_pct.total.value),
     deposits: moneyOrNull(card.parent.month.deposits),
     held: groupHeld,
-    spark: sparkFor(leafAccountIds(inp.chartNode), nodeNetsLinkedCards(inp.slug)),
+    spark: totalSparks.spark,
+    perf_spark: [],
     members: [],
-  };
+  }, totalSparks.perf);
+
+  // Every row's performance line on one scale, so the rows compare.
+  const allRows = [total, ...rows.flatMap((r) => [r, ...r.members])];
+  const perf = groupGlancePerfSparks(allRows.map((r) => perfByRow.get(r)!));
+  allRows.forEach((r, i) => {
+    r.perf_spark = perf.sparks[i]!;
+  });
 
   return {
     slug: inp.slug,
@@ -326,6 +423,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     periods,
     total,
     rows,
+    perf_zero_y: perf.zeroY,
   };
 }
 

@@ -1264,10 +1264,16 @@
       "col": {
         "value": "value",
         "share": "weight",
+        "day": "day",
         "month": "month",
         "year": "year",
         "total": "total",
         "deposits": "contributions"
+      },
+      "sparkMode": {
+        "label": "Sparkline",
+        "perf": "Performance",
+        "balance": "Balance"
       },
       "positionsChartTitle": "Value by position",
       "percentToggle": "%",

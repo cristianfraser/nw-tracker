@@ -3958,6 +3958,10 @@
           "en": "weight",
           "es": "peso"
         },
+        "day": {
+          "en": "day",
+          "es": "día"
+        },
         "month": {
           "en": "month",
           "es": "mes"
@@ -3973,6 +3977,20 @@
         "deposits": {
           "en": "contributions",
           "es": "aportes"
+        }
+      },
+      "sparkMode": {
+        "label": {
+          "en": "Sparkline",
+          "es": "Mini gráfico"
+        },
+        "perf": {
+          "en": "Performance",
+          "es": "Rendimiento"
+        },
+        "balance": {
+          "en": "Balance",
+          "es": "Saldo"
         }
       },
       "positionsChartTitle": {

@@ -89,16 +89,53 @@ export function GroupGlanceStrip({ glance }: { glance: GroupGlanceDto | undefine
 const SPARK_W = 120;
 const SPARK_H = 20;
 
-/** A row's one-year sparkline on its own scale (server points, x/y in 0..1). */
-function Spark({ points, className }: { points: readonly { x: number; y: number }[]; className?: string }) {
+/** Height 0..1 from the bottom → the spark's SVG y (1px inset top and bottom). */
+function sparkY(y: number): string {
+  return ((1 - y) * (SPARK_H - 2) + 1).toFixed(1);
+}
+
+/**
+ * A row's one-year sparkline (server points, x/y in 0..1): the balance on the row's own scale, or
+ * the chained return on the table's shared scale with a dashed 0 % line at `zeroY`.
+ */
+function Spark({
+  points,
+  zeroY,
+  className,
+}: {
+  points: readonly { x: number; y: number }[];
+  zeroY?: number;
+  className?: string;
+}) {
   if (points.length < 2) return <span className={styles.spark} />;
-  const d = points.map((p) => `${(p.x * SPARK_W).toFixed(1)},${((1 - p.y) * (SPARK_H - 2) + 1).toFixed(1)}`).join(" ");
+  const d = points.map((p) => `${(p.x * SPARK_W).toFixed(1)},${sparkY(p.y)}`).join(" ");
   return (
     <svg className={cn(styles.spark, className)} viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} preserveAspectRatio="none" aria-hidden="true">
+      {zeroY != null ? (
+        <line
+          className={styles.sparkZero}
+          x1={0}
+          x2={SPARK_W}
+          y1={sparkY(zeroY)}
+          y2={sparkY(zeroY)}
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : null}
       <polyline points={d} vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
+
+type SparkMode = "perf" | "balance";
+const SPARK_MODES: readonly SparkMode[] = ["perf", "balance"];
+const SPARK_MODE_LS_KEY = "nw-tracker.groupGlance.spark";
+
+function parseSparkMode(raw: string | null): SparkMode {
+  return raw === "balance" ? "balance" : "perf";
+}
+
+/** What the sparklines draw: the chained return on the shared scale, or the row's balance. */
+type SparkView = { mode: "perf"; zeroY: number } | { mode: "balance" };
 
 const GLANCE_OPEN_LS_PREFIX = "nw-tracker.groupGlance.open.";
 
@@ -132,16 +169,18 @@ function rowKey(row: Pick<GroupGlanceRowDto, "kind" | "slug" | "account_id">): s
   return row.kind === "group" ? `g:${row.slug}` : `a:${row.account_id}`;
 }
 
-/** One line of the table: dot + name | sparkline | valor | peso | mes | año | total | aportes. */
+/** One line of the table: dot + name | sparkline | valor | peso | día | mes | año | total | aportes. */
 function GlanceRow({
   row,
   color,
   variant,
+  sparkView,
   caret,
 }: {
   row: GroupGlanceRowDto;
   color: string;
   variant: "total" | "child" | "member";
+  sparkView: SparkView;
   caret?: { open: boolean; onToggle: () => void };
 }) {
   const { t } = useTranslation();
@@ -179,7 +218,11 @@ function GlanceRow({
         </Link>
       </span>
       <span role="cell" className={styles.sparkCell}>
-        <Spark points={row.spark} className={variant === "total" ? undefined : styles.sparkChild} />
+        <Spark
+          points={sparkView.mode === "perf" ? row.perf_spark : row.spark}
+          zeroY={sparkView.mode === "perf" ? sparkView.zeroY : undefined}
+          className={variant === "total" ? undefined : styles.sparkChild}
+        />
       </span>
       <span role="cell" className={cn("mono", styles.num, styles.value)}>
         {formatMoney(row.value)}
@@ -193,6 +236,9 @@ function GlanceRow({
             <span className={cn("mono", styles.sharePct)}>{formatPct(row.share * 100, 2)}</span>
           </>
         )}
+      </span>
+      <span role="cell" className={cn("mono", styles.num, styles.day, toneClass(row.day_pct))}>
+        {!sold && row.day_pct != null ? formatSignedPct(row.day_pct) : "—"}
       </span>
       <span role="cell" className={cn("mono", styles.num, styles.month, toneClass(row.month_pct))}>
         {!sold && row.month_pct != null ? formatSignedPct(row.month_pct) : "—"}
@@ -228,6 +274,7 @@ function PendingRow({ label, total = false }: { label: string; total?: boolean }
         {BLANK}
       </span>
       <span role="cell" className={styles.shareCell} />
+      <span role="cell" className={cn(styles.num, styles.day)} />
       <span role="cell" className={cn(styles.num, styles.month)} />
       <span role="cell" className={cn(styles.num, styles.year)} />
       <span role="cell" className={cn(styles.num, styles.total)} />
@@ -239,7 +286,9 @@ function PendingRow({ label, total = false }: { label: string; total?: boolean }
 /**
  * The children table (server `group_glance`): the group's own row first, a hairline, then one
  * row per child heaviest first, a child group opening one level (its rows indented under a caret;
- * `openByDefault`, toggles kept per page), sold-out children last and muted. One row list at every width: a container query keeps
+ * `openByDefault`, toggles kept per page), sold-out children last and muted. The sparkline column
+ * draws each row's chained return on one shared scale (default) or its balance, one choice kept for
+ * every group page. One row list at every width: a container query keeps
  * name, value, mes and total when narrow (no horizontal scroll). Each dot takes the child's chart
  * colour (`colorFor`, the page's group colour maps), so dot, band and bar match.
  */
@@ -275,17 +324,49 @@ export function GroupGlanceTable({
     setChoices({ key: storageKey, open: next });
     if (glance) writePref(storageKey, JSON.stringify(next));
   };
+  // One choice for every group page.
+  const [sparkMode, setSparkModeState] = useState<SparkMode>(() => parseSparkMode(readPref(SPARK_MODE_LS_KEY)));
+  const setSparkMode = (mode: SparkMode) => {
+    setSparkModeState(mode);
+    writePref(SPARK_MODE_LS_KEY, mode);
+  };
+  const sparkView: SparkView | undefined = glance
+    ? sparkMode === "perf"
+      ? { mode: "perf", zeroY: glance.perf_zero_y }
+      : { mode: "balance" }
+    : undefined;
   return (
     <div className={loadableClass(loading, styles.frame)}>
       <div role="table" className={styles.table} aria-label={t("groupPage.investmentGlance.tableLabel", { name: title })}>
         <div role="row" className={cn(styles.row, styles.headRow)}>
           <span role="columnheader" className={styles.nameCell} />
-          <span role="columnheader" className={styles.sparkCell} />
+          <span role="columnheader" className={styles.sparkCell}>
+            <span
+              className={cn("surface-controls__set", styles.sparkToggle)}
+              role="group"
+              aria-label={t("groupPage.investmentGlance.sparkMode.label")}
+            >
+              {SPARK_MODES.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={mode === sparkMode ? "is-on" : undefined}
+                  aria-pressed={mode === sparkMode}
+                  onClick={() => setSparkMode(mode)}
+                >
+                  {t(`groupPage.investmentGlance.sparkMode.${mode}`)}
+                </button>
+              ))}
+            </span>
+          </span>
           <span role="columnheader" className={cn(styles.num, styles.value)}>
             {t("groupPage.investmentGlance.col.value")}
           </span>
           <span role="columnheader" className={styles.shareCell}>
             {t("groupPage.investmentGlance.col.share")}
+          </span>
+          <span role="columnheader" className={cn(styles.num, styles.day)}>
+            {t("groupPage.investmentGlance.col.day")}
           </span>
           <span role="columnheader" className={cn(styles.num, styles.month)}>
             {t("groupPage.investmentGlance.col.month")}
@@ -300,9 +381,9 @@ export function GroupGlanceTable({
             {t("groupPage.investmentGlance.col.deposits")}
           </span>
         </div>
-        {glance ? (
+        {glance && sparkView ? (
           <>
-            <GlanceRow row={glance.total} color={totalColor} variant="total" />
+            <GlanceRow row={glance.total} color={totalColor} variant="total" sparkView={sparkView} />
             {glance.rows.map((row) => {
               const key = rowKey(row);
               const color = colorFor(row);
@@ -314,11 +395,12 @@ export function GroupGlanceTable({
                     row={row}
                     color={color}
                     variant="child"
+                    sparkView={sparkView}
                     caret={hasMembers ? { open, onToggle: () => toggle(key, open) } : undefined}
                   />
                   {hasMembers && open
                     ? row.members.map((m) => (
-                        <GlanceRow key={rowKey(m)} row={m} color={color} variant="member" />
+                        <GlanceRow key={rowKey(m)} row={m} color={color} variant="member" sparkView={sparkView} />
                       ))
                     : null}
                 </div>

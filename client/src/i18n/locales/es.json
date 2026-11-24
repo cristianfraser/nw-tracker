@@ -1264,10 +1264,16 @@
       "col": {
         "value": "valor",
         "share": "peso",
+        "day": "día",
         "month": "mes",
         "year": "año",
         "total": "total",
         "deposits": "aportes"
+      },
+      "sparkMode": {
+        "label": "Mini gráfico",
+        "perf": "Rendimiento",
+        "balance": "Saldo"
       },
       "positionsChartTitle": "Valor por posición",
       "percentToggle": "%",

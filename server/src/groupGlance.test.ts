@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { buildDashboardNavContext } from "./dashboardAccounts.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { groupGlanceSpark, GROUP_GLANCE_SPARK_MAX_POINTS } from "./groupGlance.js";
+import {
+  groupGlancePerfOnGrid,
+  groupGlancePerfSparks,
+  groupGlanceSpark,
+  GROUP_GLANCE_SPARK_MAX_POINTS,
+} from "./groupGlance.js";
 import { reloadMarketSymbols } from "./marketSymbols.js";
 import { getSidebarNavPayload } from "./navTree.js";
 import { declareTestInstrument } from "./test/instrumentFixtures.js";
@@ -153,6 +158,41 @@ afterAll(() => {
   reloadMarketSymbols();
 });
 
+describe("groupGlancePerfOnGrid / groupGlancePerfSparks", () => {
+  const grid = ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06"];
+  const pts = (pcts: (number | null)[]) => grid.map((d, i) => ({ as_of_date: d, pct: pcts[i] ?? null }));
+
+  it("chains the daily returns from the first held day, through the sale's own day, flat on a missing return", () => {
+    // Bought on day 2 (a deposit-day jump is not a return), sold on day 5.
+    const values = [0, 100, 300, 330, 0, 0];
+    const perf = groupGlancePerfOnGrid(grid, values, pts([null, 0.5, 0.1, null, -0.2, null]), 0.5);
+    expect(perf[0]).toBeNull();
+    expect(perf[1]).toBe(0);
+    expect(perf[2]).toBeCloseTo(0.1, 12);
+    expect(perf[3]).toBeCloseTo(0.1, 12);
+    expect(perf[4]).toBeCloseTo(1.1 * 0.8 - 1, 12);
+    expect(perf[5]).toBeNull();
+  });
+
+  it("draws nothing for a row that never held anything in the window or has no returns", () => {
+    expect(groupGlancePerfOnGrid(grid, [0, 0, 0, 0, 0, 0], pts([0.1]), 0.5).every((v) => v == null)).toBe(true);
+    expect(groupGlancePerfOnGrid(grid, [1, 1, 1, 1, 1, 1], null, 0.5).every((v) => v == null)).toBe(true);
+  });
+
+  it("puts every row on one scale that holds 0 %", () => {
+    const { sparks, zeroY } = groupGlancePerfSparks([
+      [0, 0.1, 0.3],
+      [null, 0, -0.1],
+    ]);
+    expect(zeroY).toBeCloseTo(0.1 / 0.4, 12);
+    expect(sparks[0]!.map((p) => p.y)).toEqual([zeroY, expect.closeTo(0.5, 12), 1]);
+    expect(sparks[1]!.map((p) => p.x)).toEqual([0.5, 1]);
+    expect(sparks[1]![1]!.y).toBe(0);
+    // All flat: 0 % in the middle.
+    expect(groupGlancePerfSparks([[0, 0]]).zeroY).toBe(0.5);
+  });
+});
+
 describe("investment_glance on nav nodes", () => {
   it("marks the groups at or under Inversiones except baskets, and nothing else", () => {
     const nw = getSidebarNavPayload().net_worth;
@@ -209,6 +249,7 @@ describe("group_glance on the nav-context payload", () => {
       expect(g.periods[k].pct).toBe(card.parent_pct[k].value);
     }
     expect(g.day).toEqual(g.periods.day);
+    expect(g.total.day_pct).toBe(card.parent_pct.day.value);
     const s2Card = ctx.card_metrics_by_slug[`${PREFIX}_s2`];
     if (s2Card) expect(g.rows[1]!.month_pct).toBe(s2Card.row_pct.month.value);
   });
@@ -232,6 +273,17 @@ describe("group_glance on the nav-context payload", () => {
       }
     }
     expect(g.total.spark[g.total.spark.length - 1]!.x).toBe(1);
+    // The performance lines: held rows draw one ending today, all on the table's one scale.
+    expect(g.perf_zero_y).toBeGreaterThanOrEqual(0);
+    expect(g.perf_zero_y).toBeLessThanOrEqual(1);
+    for (const r of [g.total, ...g.rows.filter((x) => x.held)]) {
+      expect(r.perf_spark.length).toBeGreaterThan(1);
+      expect(r.perf_spark[r.perf_spark.length - 1]!.x).toBe(1);
+      for (const p of r.perf_spark) {
+        expect(p.y).toBeGreaterThanOrEqual(0);
+        expect(p.y).toBeLessThanOrEqual(1);
+      }
+    }
   });
 
   it("gives a sold-out group its composition on the last day it held something", async () => {
