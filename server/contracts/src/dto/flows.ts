@@ -793,7 +793,7 @@ export interface FlowsExpensesFinancingCandidatesResponse {
  * The Expenses page's ranges for the month-to-date chart and its day strip (`GET
  * /api/flows/expenses/spent?range=`): N days ending today, or every day since the first spend.
  */
-export const EXPENSES_SPENT_RANGES = ["90d", "6m", "1y", "5y", "total"] as const;
+export const EXPENSES_SPENT_RANGES = ["90d", "1y", "5y", "total"] as const;
 export type ExpensesSpentRange = (typeof EXPENSES_SPENT_RANGES)[number];
 
 /** One day of spend on the Expenses page, with its heat level (0 = nothing, 1–4 by quartile). */

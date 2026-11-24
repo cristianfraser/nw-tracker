@@ -51,7 +51,7 @@ import { movementOn } from "./expenseLineDay.js";
 /** Months the page shows in its matrix, calendar and month stepper (through the current one). */
 export const SPENT_MONTHS = 6;
 
-const RANGE_DAYS: Record<ExpensesSpentRange, number> = { "90d": 90, "6m": 183, "1y": 366, "5y": 1827, total: 0 };
+const RANGE_DAYS: Record<ExpensesSpentRange, number> = { "90d": 90, "1y": 366, "5y": 1827, total: 0 };
 
 /** A request the spent endpoints cannot serve (400). */
 export class ExpensesSpentRequestError extends Error {}
@@ -211,7 +211,7 @@ function* daysFrom(fromYmd: string, throughYmd: string): Generator<string> {
 }
 
 export function parseSpentRange(raw: unknown): ExpensesSpentRange {
-  const r = String(raw ?? "6m");
+  const r = String(raw ?? "1y");
   if (!(EXPENSES_SPENT_RANGES as readonly string[]).includes(r)) {
     throw new ExpensesSpentRequestError(`range must be one of ${EXPENSES_SPENT_RANGES.join(", ")}, got ${r}`);
   }

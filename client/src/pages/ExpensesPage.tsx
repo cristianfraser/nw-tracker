@@ -26,7 +26,7 @@ import { loadableClass } from "../components/ui/Loadable";
 import { EXPENSES_SPENT_RANGES, type ExpensesSpentRange, type FlowCcExpenseLineRow } from "../types";
 
 function asSpentRange(r: string): ExpensesSpentRange {
-  return (EXPENSES_SPENT_RANGES as readonly string[]).includes(r) ? (r as ExpensesSpentRange) : "6m";
+  return (EXPENSES_SPENT_RANGES as readonly string[]).includes(r) ? (r as ExpensesSpentRange) : "1y";
 }
 
 /** What the list shows: a month, or one day of it; optionally one category. */
@@ -43,7 +43,7 @@ export function ExpensesPage() {
   const { displayUnit } = useDisplayPreferences();
   const [manualOpen, setManualOpen] = useState(false);
   const [manualLine, setManualLine] = useState<FlowCcExpenseLineRow | null>(null);
-  const chartPrefs = useSurfacePrefs("flows.expenses.spent", "day", "6m");
+  const chartPrefs = useSurfacePrefs("flows.expenses.spent", "day", "1y");
   const range = asSpentRange(chartPrefs.range);
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
   const { categoryLevel, setCategoryLevel } = useCcExpenseCategoryLevel();

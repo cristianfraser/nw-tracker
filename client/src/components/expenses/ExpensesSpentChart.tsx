@@ -12,7 +12,6 @@ const H = 210;
 
 const RANGE_LABEL_KEYS: Record<ExpensesSpentRange, string> = {
   "90d": "surfaceControls.shortRange.90d",
-  "6m": "dashboard.range.6m",
   "1y": "surfaceControls.shortRange.1y",
   "5y": "surfaceControls.shortRange.5y",
   total: "surfaceControls.shortRange.total",

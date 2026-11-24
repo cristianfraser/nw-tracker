@@ -200,7 +200,7 @@ async function requestPathPayloads(): Promise<Map<string, string>> {
     out.set(`nav_snapshot|${unit}`, JSON.stringify(await buildDashboardNavSnapshot(unit)));
     out.set(`nav_context|${unit}`, JSON.stringify(await buildDashboardNavContext(unit, "net_worth")));
     out.set(`overview|${unit}`, JSON.stringify(getDashboardOverviewBlock(unit)));
-    out.set(`spent|${unit}`, JSON.stringify(cachedExpensesSpentPayload({ unit: unit, mode: "split", level: "category", excludedBigGroups: new Set(), includePreTax: false }, "6m")));
+    out.set(`spent|${unit}`, JSON.stringify(cachedExpensesSpentPayload({ unit: unit, mode: "split", level: "category", excludedBigGroups: new Set(), includePreTax: false }, "1y")));
   }
   out.set("expenses", JSON.stringify(cachedExpenseLists()));
   return out;
@@ -241,7 +241,7 @@ describe("request-path caches", () => {
     // The cached expense payloads are the uncached builds.
     expect(first.get("expenses")).toBe(JSON.stringify(uncachedExpenseLists()));
     expect(first.get("spent|clp")).toBe(
-      JSON.stringify(buildExpensesSpentResponse(buildFlowsExpenseLines(), { unit: "clp", mode: "split", level: "category", excludedBigGroups: new Set(), includePreTax: false }, "6m", chileCalendarTodayYmd()))
+      JSON.stringify(buildExpensesSpentResponse(buildFlowsExpenseLines(), { unit: "clp", mode: "split", level: "category", excludedBigGroups: new Set(), includePreTax: false }, "1y", chileCalendarTodayYmd()))
     );
 
     const accountId = (
