@@ -24,20 +24,27 @@ export type ProductPickerValue = { text: string; productId: number | null };
 export const EMPTY_PRODUCT_PICK: ProductPickerValue = { text: "", productId: null };
 
 /**
- * What the picker names: the picked product, else the product whose name is exactly the typed
- * text (the server dedupes exact names on create, so assigning to it is what create would do),
- * else a new product's name. Accents and case are NOT folded here: «Limon» and «Limón» may both
- * be products, and each must be reachable.
+ * What the picker names: the picked product (while it is still in the catalog), else the product
+ * whose name is exactly the typed text, else the one product whose name folds to it («leche
+ * entera» is «Leche entera»: typing in lower case must not create a near-duplicate, and the server
+ * dedupes exact names only), else a new product's name. Null when the text is empty, or when
+ * several products fold to it and none is exact (only a pick from the list says which).
  */
 export function productPickTarget(
   products: readonly GroceryProductRow[],
   value: ProductPickerValue
 ): { productId: number } | { newName: string } | null {
-  if (value.productId != null) return { productId: value.productId };
+  if (value.productId != null && products.some((p) => p.id === value.productId)) {
+    return { productId: value.productId };
+  }
   const name = value.text.trim();
   if (name === "") return null;
   const exact = products.find((p) => p.name === name);
-  return exact ? { productId: exact.id } : { newName: name };
+  if (exact) return { productId: exact.id };
+  const folded = foldSearch(name);
+  const alike = products.filter((p) => foldSearch(p.name) === folded);
+  if (alike.length === 1) return { productId: alike[0]!.id };
+  return alike.length === 0 ? { newName: name } : null;
 }
 
 /**
@@ -62,6 +69,8 @@ export function ProductPicker({
   // react-aria reports a pick as a selection AND as the field's new text, in either order, within
   // one event (so `value` is the same stale prop in both): the ref carries the pick across them.
   const pickRef = useRef<{ id: number; name: string } | null>(null);
+  // A reset by the page (after an assign) ends the pick: the same name typed again is just text.
+  if (value.text === "" && value.productId == null) pickRef.current = null;
   const options = useMemo(() => {
     const wanted = foldSearch(value.text);
     const matches = wanted === "" ? products : products.filter((p) => foldSearch(p.name).includes(wanted));
@@ -77,7 +86,7 @@ export function ProductPicker({
       inputValue={value.text}
       onInputChange={(text) => {
         const pick = pickRef.current;
-        if (pick && text === pick.name) {
+        if (pick && text === pick.name && products.some((p) => p.id === pick.id)) {
           onChange({ text, productId: pick.id });
           return;
         }
