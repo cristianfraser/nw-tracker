@@ -2084,6 +2084,8 @@
   },
   "groceries": {
     "title": "Groceries",
+    "showAll": "Show all {{count}}",
+    "countAndLast": "{{count}}× · last {{date}}",
     "cleaning": {
       "title": "Unclassified names",
       "colName": "Printed name",
@@ -2093,14 +2095,16 @@
       "colLastPrice": "Last price",
       "colSuggestions": "Suggestions",
       "assignSelected": "Assign {{count}} selected to",
-      "existingProduct": "Existing product…",
-      "newProductPlaceholder": "New product name",
+      "pickerPlaceholder": "Search or name a new product",
+      "createOption": "Create «{{name}}»",
       "assign": "Assign",
       "create": "Create + assign",
       "allClassified": "Everything is classified.",
       "assignedResult": "{{stamped}} purchase(s) classified."
     },
     "products": {
+      "search": "Search products",
+      "noMatch": "No product matches.",
       "title": "Products",
       "colProduct": "Product",
       "colAliases": "Names",
@@ -2110,7 +2114,6 @@
       "none": "No products yet — classify names above."
     },
     "history": {
-      "title": "Price history",
       "priceEffective": "Effective price",
       "priceList": "List price",
       "filterBranch": "Branch",
@@ -2123,7 +2126,7 @@
       "colEffective": "Effective",
       "colTotal": "Total",
       "colDiscount": "Discount",
-      "pickProduct": "Pick a product to see its price history.",
+      "allPurchases": "All {{count}} purchases",
       "priceNormalized": "Per {{unit}}",
       "colNormalized": "$/{{unit}}",
       "filterBrand": "Brand",
@@ -2131,6 +2134,8 @@
       "mixedPackages": "Package sizes differ across purchases — only the per-{{unit}} price is comparable."
     },
     "receipts": {
+      "classified": "{{classified}}/{{total}} classified",
+      "itemUnclassified": "unclassified",
       "title": "Receipts",
       "colDate": "Date",
       "colBranch": "Branch",

@@ -1,0 +1,194 @@
+/* Groceries: the phone cards of its four tables are compact two-line rows — what the row is and
+   its amount, then one quiet line — instead of a label/value card per row. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.1rem 0.75rem;
+  align-items: baseline;
+  padding: 0.2rem 0;
+  min-width: 0;
+}
+
+.amount {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--font-size-prose);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.sub {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+  overflow-wrap: anywhere;
+}
+
+/* An unclassified name's row: the tick and the name are one label. */
+.rowTick .sub {
+  padding-left: 1.6rem;
+}
+
+.tick {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  min-width: 0;
+  cursor: pointer;
+}
+
+/* A receipt's printed text, as printed. */
+.printed {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--font-size-prose);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.itemName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A link button holding a name: it wraps instead of widening its row (the button itself never
+   wraps its text). */
+.name {
+  display: inline;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  white-space: normal;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.chevron {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.3rem;
+  transform: rotate(-90deg);
+  transition: transform 0.12s ease;
+}
+
+.chevronOpen {
+  transform: none;
+}
+
+.count {
+  font-weight: 400;
+}
+
+.receiptHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  align-items: baseline;
+  min-width: 0;
+}
+
+/* An open product's detail and an open receipt's items, under their row. */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.35rem 0 0.6rem 0.75rem;
+  border-left: 2px solid var(--accent-dim);
+  white-space: normal;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  min-width: 0;
+}
+
+/* The chart is as wide as the detail and never sets its width: while the window narrows, the
+   drawn chart still has its previous pixel width, and inside a table that would widen the row
+   and flip the table to its cards (`useTableFit`). */
+.chart {
+  width: 100%;
+  height: 220px;
+  contain: inline-size;
+}
+
+.items {
+  max-width: 36rem;
+  padding: 0.2rem 0 0.4rem 0.75rem;
+  border-left: 2px solid var(--border);
+  white-space: normal;
+}
+
+.search {
+  max-width: 22rem;
+  margin-bottom: 0.5rem;
+}
+
+/* The workbench: list, «show all», the result note and the assign bar. The bar is last in the
+   markup (see below) and first on the desktop. */
+.cleaning {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.cleaning > :global(.crfrsr-btn) {
+  align-self: flex-start;
+}
+
+.assignBar {
+  order: -2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 0.5rem;
+}
+
+.assignNote {
+  order: -1;
+  margin: 0 0 0.5rem;
+}
+
+/* On a phone the bar shows only while names are ticked, stuck to the bottom of the screen, so
+   it is at hand anywhere in a long list. */
+@media (max-width: 879px) {
+  .assignBar {
+    order: 0;
+    position: sticky;
+    /* Above the fixed display-prefs dock at the bottom of the screen. */
+    bottom: calc(var(--display-prefs-stack-height) + 0.5rem + env(safe-area-inset-bottom, 0px));
+    z-index: 2;
+    margin: 0.5rem 0 0;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 -6px 18px color-mix(in srgb, #000 45%, transparent);
+  }
+
+  .assignBar > span {
+    flex: 1 0 100%;
+    color: var(--muted);
+    font-size: var(--font-size-caption);
+  }
+
+  .assignBarIdle {
+    display: none;
+  }
+
+  .search {
+    max-width: none;
+    font-size: 16px;
+  }
+}
+
+/* A labelled select inside the detail (filters, the settings' merge target) never widens it. */
+.detail label {
+  min-width: 0;
+  max-width: 100%;
+}

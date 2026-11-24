@@ -1,0 +1,57 @@
+.picker {
+  flex: 1 1 14rem;
+  min-width: 0;
+  max-width: 22rem;
+}
+
+.input {
+  min-width: 0;
+}
+
+/* As wide as the field (react-aria publishes the trigger's width), never wider than the page. */
+.popover {
+  width: var(--trigger-width);
+  max-width: calc(100vw - 1.5rem);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 45%, transparent);
+  font-size: var(--font-size-ui);
+  overflow: hidden;
+}
+
+.list {
+  max-height: min(16rem, 40vh);
+  overflow-y: auto;
+  outline: none;
+}
+
+.option {
+  padding: 0.4rem 0.6rem;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  outline: none;
+}
+
+.option[data-focused],
+.option[data-hovered] {
+  background: var(--surface2);
+}
+
+.create {
+  color: var(--accent);
+  border-top: 1px solid var(--border);
+}
+
+/* iOS Safari zooms the page when a focused field's text is under 16px. */
+@media (max-width: 879px) {
+  .picker {
+    flex-basis: 8rem;
+    max-width: none;
+  }
+
+  .input {
+    font-size: 16px;
+  }
+}

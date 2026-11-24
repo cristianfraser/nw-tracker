@@ -2084,6 +2084,8 @@
   },
   "groceries": {
     "title": "Supermercado",
+    "showAll": "Ver todo ({{count}})",
+    "countAndLast": "{{count}}× · última {{date}}",
     "cleaning": {
       "title": "Nombres sin clasificar",
       "colName": "Nombre impreso",
@@ -2093,14 +2095,16 @@
       "colLastPrice": "Último precio",
       "colSuggestions": "Sugerencias",
       "assignSelected": "Asignar {{count}} seleccionadas a",
-      "existingProduct": "Producto existente…",
-      "newProductPlaceholder": "Nombre del producto nuevo",
+      "pickerPlaceholder": "Busca o nombra un producto nuevo",
+      "createOption": "Crear «{{name}}»",
       "assign": "Asignar",
       "create": "Crear + asignar",
       "allClassified": "Todo está clasificado.",
       "assignedResult": "{{stamped}} compra(s) clasificadas."
     },
     "products": {
+      "search": "Buscar productos",
+      "noMatch": "Ningún producto coincide.",
       "title": "Productos",
       "colProduct": "Producto",
       "colAliases": "Nombres",
@@ -2110,7 +2114,6 @@
       "none": "Aún no hay productos — clasifica nombres arriba."
     },
     "history": {
-      "title": "Historial de precios",
       "priceEffective": "Precio efectivo",
       "priceList": "Precio de lista",
       "filterBranch": "Sucursal",
@@ -2123,7 +2126,7 @@
       "colEffective": "Efectivo",
       "colTotal": "Total",
       "colDiscount": "Descuento",
-      "pickProduct": "Elige un producto para ver su historial de precios.",
+      "allPurchases": "Las {{count}} compras",
       "priceNormalized": "Por {{unit}}",
       "colNormalized": "$/{{unit}}",
       "filterBrand": "Marca",
@@ -2131,6 +2134,8 @@
       "mixedPackages": "Los formatos difieren entre compras — solo el precio por {{unit}} es comparable."
     },
     "receipts": {
+      "classified": "{{classified}}/{{total}} clasificados",
+      "itemUnclassified": "sin clasificar",
       "title": "Boletas",
       "colDate": "Fecha",
       "colBranch": "Sucursal",

@@ -6848,6 +6848,14 @@
       "en": "Groceries",
       "es": "Supermercado"
     },
+    "showAll": {
+      "en": "Show all {{count}}",
+      "es": "Ver todo ({{count}})"
+    },
+    "countAndLast": {
+      "en": "{{count}}× · last {{date}}",
+      "es": "{{count}}× · última {{date}}"
+    },
     "cleaning": {
       "title": {
         "en": "Unclassified names",
@@ -6881,13 +6889,13 @@
         "en": "Assign {{count}} selected to",
         "es": "Asignar {{count}} seleccionadas a"
       },
-      "existingProduct": {
-        "en": "Existing product…",
-        "es": "Producto existente…"
+      "pickerPlaceholder": {
+        "en": "Search or name a new product",
+        "es": "Busca o nombra un producto nuevo"
       },
-      "newProductPlaceholder": {
-        "en": "New product name",
-        "es": "Nombre del producto nuevo"
+      "createOption": {
+        "en": "Create «{{name}}»",
+        "es": "Crear «{{name}}»"
       },
       "assign": {
         "en": "Assign",
@@ -6907,6 +6915,14 @@
       }
     },
     "products": {
+      "search": {
+        "en": "Search products",
+        "es": "Buscar productos"
+      },
+      "noMatch": {
+        "en": "No product matches.",
+        "es": "Ningún producto coincide."
+      },
       "title": {
         "en": "Products",
         "es": "Productos"
@@ -6937,10 +6953,6 @@
       }
     },
     "history": {
-      "title": {
-        "en": "Price history",
-        "es": "Historial de precios"
-      },
       "priceEffective": {
         "en": "Effective price",
         "es": "Precio efectivo"
@@ -6989,9 +7001,9 @@
         "en": "Discount",
         "es": "Descuento"
       },
-      "pickProduct": {
-        "en": "Pick a product to see its price history.",
-        "es": "Elige un producto para ver su historial de precios."
+      "allPurchases": {
+        "en": "All {{count}} purchases",
+        "es": "Las {{count}} compras"
       },
       "priceNormalized": {
         "en": "Per {{unit}}",
@@ -7015,6 +7027,14 @@
       }
     },
     "receipts": {
+      "classified": {
+        "en": "{{classified}}/{{total}} classified",
+        "es": "{{classified}}/{{total}} clasificados"
+      },
+      "itemUnclassified": {
+        "en": "unclassified",
+        "es": "sin clasificar"
+      },
       "title": {
         "en": "Receipts",
         "es": "Boletas"
