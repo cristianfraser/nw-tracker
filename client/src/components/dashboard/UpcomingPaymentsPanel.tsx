@@ -8,7 +8,7 @@ import { dayOfMonthLabelParts, formatYearMonthLabel } from "../../formatDateLabe
 import type { CcUpcomingPaymentRowDto, Money, UpcomingPaymentDetailDto, UpcomingPaymentItemDto, UpcomingPaymentsDto } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
 import { hasSchemaVersion, persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
-import { dashboardTileOrder, dashboardTileSmallSpan } from "../../dashboardLayout";
+import { dashboardTileOrder } from "../../dashboardLayout";
 import { loadableClass } from "../ui/Loadable";
 import styles from "./DashboardFlowsSummary.module.css";
 
@@ -230,7 +230,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
   const allMonths = data?.months ?? [];
   const months = expanded ? allMonths : allMonths.slice(0, COLLAPSED_MONTHS);
   return (
-    <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")} smallSpan={dashboardTileSmallSpan("cc-upcoming")}>
+    <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")}>
       <h2>{t("dashboard.ccUpcoming.title")}</h2>
       {data != null && allMonths.length === 0 ? <p className="muted">{t("dashboard.ccUpcoming.empty")}</p> : null}
       <div className={loadableClass(loading || data == null, "cards cards--list", styles.upcoming)}>

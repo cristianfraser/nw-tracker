@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useContext } from "react";
+import { useEffect, useMemo, useContext, type CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   MonthlyPerformanceComboChart,
@@ -59,7 +59,7 @@ import {
   useDashboardAboutPreview,
   useDashboardFold,
 } from "../dashboardFold";
-import { dashboardTileOrder, dashboardTileWide } from "../dashboardLayout";
+import { dashboardTileOrder, dashboardTileSmallSpan, dashboardTileWide } from "../dashboardLayout";
 import type { TimeseriesBlock } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
@@ -509,7 +509,7 @@ export function DashboardPage() {
   // Below the cards, the main chart and the rail: two equal columns on the big desktop.
   const dashboardPairedCharts = (
     <>
-      <DashboardFlowsChart displayUnit={displayUnit} />
+      <DashboardFlowsChart displayUnit={displayUnit} alone={retirementBrokerageForCharts.length === 0} />
 
       {retirementBrokerageForCharts.length > 0 ? (
         <>
@@ -517,6 +517,7 @@ export function DashboardPage() {
             id="perf-combo"
             order={dashboardTileOrder("perf-combo")}
             wide={dashboardTileWide("perf-combo")}
+            smallSpan={dashboardTileSmallSpan("perf-combo")}
             className="chart-grid chart-grid--full-line"
           >
             <MonthlyPerformanceComboChart
@@ -624,7 +625,8 @@ export function DashboardPage() {
       <PageGridTile
         id="allocation"
         order={dashboardTileOrder("allocation")}
-            wide={dashboardTileWide("allocation")}
+        wide={dashboardTileWide("allocation")}
+        smallSpan={dashboardTileSmallSpan("allocation")}
         className="chart-grid chart-grid--full-line"
       >
         {valueMapShown ? (
@@ -692,13 +694,20 @@ export function DashboardPage() {
         pairs: dashboardPairedCharts,
         rail: (
           <>
-            <DashboardFlowsPeriods displayUnit={displayUnit} />
-            <UpcomingPaymentsPanel data={data?.upcomingPayments ?? null} loading={contentLoading} />
+            {/* One row whenever both fit, «Próximos pagos» taking what the periods leave (page-grid.css `.dashboard-flows-pair`); stacked in the rail. */}
+            <div
+              className="page-tile dashboard-flows-pair"
+              style={{ "--tile-order": dashboardTileOrder("flows-periods") } as CSSProperties}
+            >
+              <DashboardFlowsPeriods displayUnit={displayUnit} />
+              <UpcomingPaymentsPanel data={data?.upcomingPayments ?? null} loading={contentLoading} />
+            </div>
             <LatestMovementsTable />
           </>
         ),
         tileOrder: dashboardTileOrder,
         tileWide: dashboardTileWide,
+        tileSmallSpan: dashboardTileSmallSpan,
         fold,
       }}
       accountsTree={

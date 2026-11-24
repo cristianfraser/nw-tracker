@@ -12,7 +12,9 @@
  * Tier `l` (≥1440): a top band of the main column (8 wide, x 0: cards, net-worth chart, returns)
  * beside the rail (4 wide, x 8),
  * then the other charts in two equal columns (6 wide), then the wide tables, the export row and
- * the accounts tree across all 12. Tiers `s` and `m` are one stack in `y` order.
+ * the accounts tree across all 12. Tiers `s` and `m` are one stack in the big desktop's reading
+ * order (`L` by y, then x, with the net-worth chart kept under the cards); on `s` the tiles side by side on the big desktop share a row, half
+ * the columns each (`SMALL_PAIRS`).
  */
 export type DashboardTileId =
   | "title"
@@ -55,19 +57,25 @@ const stack = (order: readonly DashboardTileId[], cols: number, heights: Partial
   return out as Record<DashboardTileId, TileRect>;
 };
 
+/**
+ * Below the big desktop the tiles stack in the big desktop's reading order (top to bottom, then
+ * left to right: `L` sorted by y, then x — asserted by the test), so the rail's tiles keep their
+ * place near the top instead of falling below the tables. One exception: the net-worth chart
+ * stays right under the cards, as it is in the main column.
+ */
 const READING_ORDER: readonly DashboardTileId[] = [
   "title",
   "strip",
   "net-worth-chart",
-  "returns",
   "flows-periods",
   "cc-upcoming",
+  "latest-movements",
+  "returns",
   "flows-chart",
   "perf-combo",
   "allocation",
   "detail",
   "wealth-flows",
-  "latest-movements",
   "export",
   "accounts",
 ];
@@ -89,8 +97,18 @@ const NOMINAL_HEIGHTS: Partial<Record<DashboardTileId, number>> = {
   accounts: 8,
 };
 
-/** Small desktop: tiles that share a row, half the width each (the second takes the first's row). */
-const SMALL_PAIRS: readonly (readonly [DashboardTileId, DashboardTileId])[] = [["flows-periods", "cc-upcoming"]];
+/**
+ * Small desktop: tiles that share a row, half the width each (the second takes the first's row) —
+ * the tiles that sit side by side on the big desktop. Each pair is adjacent in the reading order.
+ * Not here: «Flujos» and «Próximos pagos», which share one wrapper below the net-worth chart that
+ * sets them in one row at any width where both fit, the periods at their own width (page-grid.css
+ * `.dashboard-flows-pair`), so they pair on a wide phone too and stack in the rail.
+ */
+const SMALL_PAIRS: readonly (readonly [DashboardTileId, DashboardTileId])[] = [
+  ["latest-movements", "returns"],
+  ["flows-chart", "perf-combo"],
+  ["allocation", "detail"],
+];
 
 const pairUp = (rects: Record<DashboardTileId, TileRect>, cols: number) => {
   const out = { ...rects };
@@ -114,9 +132,9 @@ const L: Record<DashboardTileId, TileRect> = {
   strip: { x: 0, y: 1, w: 8, h: 8 },
   "net-worth-chart": { x: 0, y: 9, w: 8, h: 15 },
   returns: { x: 0, y: 24, w: 8, h: 6 },
-  "flows-periods": { x: 8, y: 1, w: 4, h: 9 },
-  "cc-upcoming": { x: 8, y: 10, w: 4, h: 6 },
-  "latest-movements": { x: 8, y: 16, w: 4, h: 14 },
+  "flows-periods": { x: 8, y: 1, w: 4, h: 5 },
+  "cc-upcoming": { x: 8, y: 6, w: 4, h: 3 },
+  "latest-movements": { x: 8, y: 9, w: 4, h: 21 },
   "flows-chart": { x: 0, y: 30, w: 6, h: 10 },
   "perf-combo": { x: 6, y: 30, w: 6, h: 10 },
   allocation: { x: 0, y: 40, w: 6, h: 14 },
