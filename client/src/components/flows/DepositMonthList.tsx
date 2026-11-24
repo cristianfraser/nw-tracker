@@ -59,7 +59,8 @@ export function DepositMonthList({
               {m.rows.map((r, idx) => (
                 <div key={`${r.account_id}-${r.occurred_on}-${idx}`} className={styles.row}>
                   <span className={cn("mono", styles.day)} title={r.occurred_on}>
-                    {r.occurred_on.slice(8, 10)}
+                    <span aria-hidden="true">{r.occurred_on.slice(8, 10)}</span>
+                    <span className="visually-hidden">{r.occurred_on}</span>
                   </span>
                   <span className={styles.account}>
                     <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
