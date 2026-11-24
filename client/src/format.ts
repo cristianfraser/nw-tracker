@@ -350,6 +350,20 @@ export function formatPct(n: number | null | undefined, frac = 2): string {
   return `${normalizeIntlNum(numFmt(frac, frac).format(n))}%`;
 }
 
+/**
+ * A return in a tight cell (the watchlist heat grid): signed, one decimal below 100 %, whole from
+ * 100 %, and above 1.000 % the multiple it ended at («×108» for +10.654 %).
+ */
+export function formatPctCompact(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  if (n >= 1000) return `×${formatGroupedDecimal(1 + n / 100, 0)}`;
+  const frac = Math.abs(n) >= 100 ? 0 : 1;
+  const text = formatPct(Math.abs(n), frac);
+  // A change that rounds to zero reads unsigned, whichever side of zero it fell on.
+  if (text === formatPct(0, frac)) return text;
+  return `${n > 0 ? "+" : "-"}${text}`;
+}
+
 /** Props for {@link https://number-flow.barvian.me/ NumberFlow} currency (no `+`/`-` digit; negatives via parens). */
 export function accountingCurrencyNumberFlowParts(
   n: number,

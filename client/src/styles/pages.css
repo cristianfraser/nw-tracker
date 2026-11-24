@@ -93,50 +93,151 @@ h2.flow-section-title {
 
 .watchlist-table__fetch-error {
   display: block;
-  min-width: 16rem;
-  max-width: 28rem;
+  max-width: 24rem;
   font-size: var(--font-size-card-label);
   color: var(--negative);
   white-space: normal;
 }
 
+/* The heat grid: symbol and price, then the nine return windows as tinted cells (green up, red
+   down, stronger the bigger the move, log-scaled by HeatCell's --heat). The table is as narrow
+   as its figures; it fits the content from 880 px. On a phone it is the one table allowed to
+   scroll inside its own box (client-ui «UI tables»): the nine windows stay on one line and
+   scroll under the pinned checkbox and symbol, and the page itself never scrolls sideways. */
 .watchlist-table-wrap {
   width: 100%;
+  container: watchlist-heat / inline-size;
 }
 
 .watchlist-table {
   table-layout: auto;
   width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: var(--font-size-card-meta);
+}
+
+.watchlist-table th,
+.watchlist-table td {
+  border-bottom: none;
+  padding: 0.3rem 0.4rem;
+  white-space: nowrap;
+}
+
+.watchlist-table th {
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .watchlist-table__marquee {
-  width: auto;
-  white-space: nowrap;
-  padding-right: 0.75rem;
+  width: 1.5rem;
+  padding-inline: 0 0.25rem;
 }
 
 .watchlist-table__symbol {
-  width: auto;
-  min-width: 8rem;
+  width: 100%;
 }
 
 .watchlist-table__symbol--sub {
-  padding-left: 1.75rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
 }
 
-.watchlist-table__num {
-  width: auto;
-  min-width: 4.25rem;
+.watchlist-table__price {
   text-align: right;
+  padding-right: 0.75rem;
+}
+
+th.watchlist-heat__head {
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.watchlist-heat__cell {
+  min-width: 3.4rem;
+  text-align: center;
+  font-family: var(--font-mono);
+  border-radius: 3px;
+  color: var(--text);
+}
+
+.watchlist-heat__cell--up {
+  background: color-mix(in srgb, var(--positive) calc(14% + 56% * var(--heat)), transparent);
+}
+
+.watchlist-heat__cell--down {
+  background: color-mix(in srgb, var(--negative) calc(14% + 56% * var(--heat)), transparent);
+}
+
+.watchlist-heat__cell--flat,
+.watchlist-heat__cell--none {
+  background: var(--surface);
+  color: var(--muted);
 }
 
 .watchlist-table__actions {
-  width: 6rem;
+  width: 1.75rem;
+  padding-inline: 0.25rem 0;
 }
 
-.watchlist-table th.watchlist-table__num,
-.watchlist-table td.watchlist-table__num {
-  text-align: right;
+.watchlist-table__remove {
+  padding-inline: 0.35rem;
+  color: var(--muted);
+}
+
+/* The small desktop (880 px: ~41rem of content) fits the grid with tighter cells. */
+@container watchlist-heat (max-width: 48rem) {
+  .watchlist-table {
+    font-size: var(--font-size-card-meta-sm);
+  }
+
+  .watchlist-table th,
+  .watchlist-table td {
+    padding-inline: 0.2rem;
+  }
+
+  .watchlist-heat__cell {
+    min-width: 0;
+  }
+
+  /* A long label («Risky Norris (intradía)») wraps instead of widening the grid. */
+  .watchlist-table__symbol {
+    white-space: normal;
+  }
+}
+
+@container watchlist-heat (max-width: 40rem) {
+  .watchlist-table-wrap .table-wrap {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .watchlist-table {
+    width: max-content;
+  }
+
+  /* The checkbox and the symbol stay in view while the windows scroll under them. */
+  .watchlist-table__marquee,
+  .watchlist-table__symbol {
+    position: sticky;
+    z-index: 1;
+    background: var(--bg);
+    /* Covers the 2px between cells, so no tint shows through beside the pinned cells. */
+    box-shadow: 2px 0 0 var(--bg);
+  }
+
+  .watchlist-table__marquee {
+    left: 0;
+  }
+
+  .watchlist-table__symbol {
+    /* Past the checkbox cell and the 2px between cells. */
+    left: calc(1.5rem + 2px);
+    width: auto;
+    max-width: 8rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 .watchlist-table td.watchlist-table__num .delta {
