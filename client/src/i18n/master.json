@@ -4432,9 +4432,21 @@
     }
   },
   "income": {
-    "empty": {
-      "en": "No bank-statement income or manual entries.",
-      "es": "Sin ingresos de cartola ni entradas manuales."
+    "clearKind": {
+      "en": "Clear type",
+      "es": "Quitar tipo"
+    },
+    "payslipNote": {
+      "en": "Payslip {{period}} · gross {{gross}} − {{deductions}}",
+      "es": "Liquidación {{period}} · bruto {{gross}} − {{deductions}}"
+    },
+    "payslipOpen": {
+      "en": "receipt",
+      "es": "recibo"
+    },
+    "sideListCount": {
+      "en": "{{count}} lines",
+      "es": "{{count}} líneas"
     },
     "emptyMonths": {
       "en": "No income in any month.",
@@ -4456,9 +4468,9 @@
       "en": "Monthly summary",
       "es": "Resumen mensual"
     },
-    "sectionAllLines": {
-      "en": "Line detail",
-      "es": "Detalle por línea"
+    "sectionYearly": {
+      "en": "Yearly summary",
+      "es": "Resumen anual"
     },
     "colIncomeKind": {
       "en": "Type",
@@ -4493,38 +4505,6 @@
     "rentOptionDfl2": {
       "en": "Rent · {{place}} (DFL-2)",
       "es": "Arriendo · {{place}} (DFL-2)"
-    },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colPayrollPeriod": {
-      "en": "payslip {{month}}",
-      "es": "líq. {{month}}"
-    },
-    "colAmount": {
-      "en": "Amount",
-      "es": "Monto"
-    },
-    "colDescription": {
-      "en": "Description",
-      "es": "Descripción"
-    },
-    "colAccount": {
-      "en": "Account",
-      "es": "Cuenta"
-    },
-    "colNote": {
-      "en": "Note",
-      "es": "Nota"
-    },
-    "colOrigin": {
-      "en": "Origin",
-      "es": "Origen"
-    },
-    "colActions": {
-      "en": "Actions",
-      "es": "Acciones"
     },
     "excludeLine": {
       "en": "Exclude",
@@ -4582,10 +4562,6 @@
       "en": "No automatically filtered lines.",
       "es": "Sin líneas filtradas automáticamente."
     },
-    "colFilterReason": {
-      "en": "Reason",
-      "es": "Motivo"
-    },
     "includeLine": {
       "en": "Include",
       "es": "Incluir"
@@ -4636,10 +4612,6 @@
       "en": "Cumulative",
       "es": "Acumulado"
     },
-    "originChecking": {
-      "en": "Bank statement",
-      "es": "Cartola"
-    },
     "originManual": {
       "en": "Manual",
       "es": "Manual"
@@ -4664,22 +4636,10 @@
       "en": "Back to income",
       "es": "Volver a ingresos"
     },
-    "colRefundCategory": {
-      "en": "Expense category",
-      "es": "Categoría de gasto"
-    },
     "payroll": {
       "chartTitle": {
         "en": "Gross vs net pay",
         "es": "Bruto vs líquido"
-      },
-      "tableTitle": {
-        "en": "Gross pay, deductions and net pay",
-        "es": "Bruto, descuentos y líquido"
-      },
-      "colPeriod": {
-        "en": "Period",
-        "es": "Período"
       },
       "fields": {
         "gross": {
@@ -4778,6 +4738,18 @@
     }
   },
   "workEarnings": {
+    "receiptEarnings": {
+      "en": "Earnings",
+      "es": "Haberes"
+    },
+    "payslipCount": {
+      "en": "{{count}} payslips",
+      "es": "{{count}} liq."
+    },
+    "checksPendingShort": {
+      "en": "pending",
+      "es": "pendiente"
+    },
     "sectionTitle": {
       "en": "Payslips",
       "es": "Liquidaciones de sueldo"
@@ -4785,14 +4757,6 @@
     "empty": {
       "en": "No payslips imported. Run the payroll parse and import.",
       "es": "Sin liquidaciones importadas. Ejecuta parse e import de payroll."
-    },
-    "colPeriod": {
-      "en": "Period",
-      "es": "Período"
-    },
-    "colEmployer": {
-      "en": "Employer",
-      "es": "Empleador"
     },
     "colBase": {
       "en": "Base salary",
@@ -4809,18 +4773,6 @@
     "colMovilizacion": {
       "en": "Transport allowance",
       "es": "Movilización"
-    },
-    "colBruto": {
-      "en": "Gross",
-      "es": "Bruto"
-    },
-    "colDescuentos": {
-      "en": "Deductions",
-      "es": "Descuentos"
-    },
-    "colLiquido": {
-      "en": "Net pay",
-      "es": "Líquido"
     },
     "colType": {
       "en": "Type",
@@ -4847,10 +4799,6 @@
         "en": "manual",
         "es": "manual"
       }
-    },
-    "colChecks": {
-      "en": "Checks",
-      "es": "Revisión"
     },
     "checksOk": {
       "en": "OK",
@@ -6874,6 +6822,14 @@
       "en": "Groceries",
       "es": "Supermercado"
     },
+    "showAll": {
+      "en": "Show all {{count}}",
+      "es": "Ver todo ({{count}})"
+    },
+    "countAndLast": {
+      "en": "{{count}}× · last {{date}}",
+      "es": "{{count}}× · última {{date}}"
+    },
     "cleaning": {
       "title": {
         "en": "Unclassified names",
@@ -6907,13 +6863,13 @@
         "en": "Assign {{count}} selected to",
         "es": "Asignar {{count}} seleccionadas a"
       },
-      "existingProduct": {
-        "en": "Existing product…",
-        "es": "Producto existente…"
+      "pickerPlaceholder": {
+        "en": "Search or name a new product",
+        "es": "Busca o nombra un producto nuevo"
       },
-      "newProductPlaceholder": {
-        "en": "New product name",
-        "es": "Nombre del producto nuevo"
+      "createOption": {
+        "en": "Create «{{name}}»",
+        "es": "Crear «{{name}}»"
       },
       "assign": {
         "en": "Assign",
@@ -6933,6 +6889,14 @@
       }
     },
     "products": {
+      "search": {
+        "en": "Search products",
+        "es": "Buscar productos"
+      },
+      "noMatch": {
+        "en": "No product matches.",
+        "es": "Ningún producto coincide."
+      },
       "title": {
         "en": "Products",
         "es": "Productos"
@@ -6963,10 +6927,6 @@
       }
     },
     "history": {
-      "title": {
-        "en": "Price history",
-        "es": "Historial de precios"
-      },
       "priceEffective": {
         "en": "Effective price",
         "es": "Precio efectivo"
@@ -7015,9 +6975,9 @@
         "en": "Discount",
         "es": "Descuento"
       },
-      "pickProduct": {
-        "en": "Pick a product to see its price history.",
-        "es": "Elige un producto para ver su historial de precios."
+      "allPurchases": {
+        "en": "All {{count}} purchases",
+        "es": "Las {{count}} compras"
       },
       "priceNormalized": {
         "en": "Per {{unit}}",
@@ -7041,6 +7001,14 @@
       }
     },
     "receipts": {
+      "classified": {
+        "en": "{{classified}}/{{total}} classified",
+        "es": "{{classified}}/{{total}} clasificados"
+      },
+      "itemUnclassified": {
+        "en": "unclassified",
+        "es": "sin clasificar"
+      },
       "title": {
         "en": "Receipts",
         "es": "Boletas"

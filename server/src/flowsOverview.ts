@@ -324,12 +324,15 @@ function workEarningSalaryAmount(row: FlowsOverviewIncome["work_earnings"][numbe
   );
 }
 
+/** Which record an income leg is: a checking credit, a manual entry, or a dollar wire's payslip. */
+type IncomeEntryRef = { source: "checking" | "manual" | "work_earning"; id: number; received_on: string };
+
 /** Every income leg as (bucket key, kind, amount), keyed by `keyOf` of its date / month. */
 function eachIncomeEntry(
   income: FlowsOverviewIncome,
   unit: GastosUnit,
   grain: "month" | "day",
-  visit: (key: string, kind: IncomeKindBucket, amount: number) => void
+  visit: (key: string, kind: IncomeKindBucket, amount: number, ref: IncomeEntryRef) => void
 ): void {
   for (const line of income.lines) {
     const kind = incomeKindForMovement(income, line.movement_id);
@@ -345,19 +348,28 @@ function eachIncomeEntry(
       key = payrollMonth ?? periodMonthFromYmd(line.received_on);
     }
     if (!key) continue;
-    visit(key, kindBucket(kind), incomeLineAmount(line, unit, `checking income movement ${line.movement_id}`));
+    visit(key, kindBucket(kind), incomeLineAmount(line, unit, `checking income movement ${line.movement_id}`), {
+      source: "checking",
+      id: line.movement_id,
+      received_on: line.received_on.slice(0, 10),
+    });
   }
   for (const line of income.manual) {
     const key = grain === "day" ? line.received_on.slice(0, 10) : periodMonthFromYmd(line.received_on);
     if (!key) continue;
-    visit(key, "other", incomeLineAmount(line, unit, `manual income entry ${line.id}`));
+    visit(key, "other", incomeLineAmount(line, unit, `manual income entry ${line.id}`), {
+      source: "manual",
+      id: line.id,
+      received_on: line.received_on.slice(0, 10),
+    });
   }
   for (const row of usdSyntheticSalaryRows(income)) {
     const key =
       grain === "day"
         ? (row.wire_received_on ?? monthEndUtcYmd(row.period_month)).slice(0, 10)
         : row.period_month;
-    visit(key, "salary", workEarningSalaryAmount(row, unit, (row.wire_received_on ?? monthEndUtcYmd(row.period_month)).slice(0, 10)));
+    const day = (row.wire_received_on ?? monthEndUtcYmd(row.period_month)).slice(0, 10);
+    visit(key, "salary", workEarningSalaryAmount(row, unit, day), { source: "work_earning", id: row.id, received_on: day });
   }
 }
 
@@ -420,7 +432,12 @@ export type FlowsIncomeMonthRow = {
   total: number;
   line_count: number;
   cumulative: number;
+  /** The month's legs, newest first: what `line_count` counts and the kinds sum. */
+  lines: FlowsIncomeMonthLine[];
 };
+
+/** One income leg of a month row: the record it is, its kind, and its amount in the aggregates' unit. */
+export type FlowsIncomeMonthLine = IncomeEntryRef & { income_kind: IncomeKindBucket; amount: number };
 
 /** One income chart point (a month-end or a day). */
 export type FlowsIncomeChartPoint = {
@@ -452,6 +469,15 @@ export function buildFlowsIncomeAggregates(
   todayYmd: string = chileCalendarTodayYmd()
 ): FlowsIncomeAggregates {
   const byMonth = incomeKindTotals(income, unit, "month");
+  const linesByMonth = new Map<string, FlowsIncomeMonthLine[]>();
+  eachIncomeEntry(income, unit, "month", (key, income_kind, amount, ref) => {
+    const list = linesByMonth.get(key) ?? [];
+    list.push({ ...ref, income_kind, amount: roundToCurrency(amount, unit) });
+    linesByMonth.set(key, list);
+  });
+  for (const list of linesByMonth.values()) {
+    list.sort((a, b) => b.received_on.localeCompare(a.received_on) || b.id - a.id);
+  }
   const monthsAsc = [...byMonth.keys()].sort(ymCompare);
   const months: FlowsIncomeMonthRow[] = [];
   let running = 0;
@@ -470,6 +496,7 @@ export function buildFlowsIncomeAggregates(
       total,
       line_count: b.line_count,
       cumulative: roundToCurrency(running, unit),
+      lines: linesByMonth.get(ym) ?? [],
     });
   }
   const total = running;
@@ -491,6 +518,7 @@ export function buildFlowsIncomeAggregates(
         total: 0,
         line_count: 0,
         cumulative: roundToCurrency(running, unit),
+        lines: [],
       });
     }
   }

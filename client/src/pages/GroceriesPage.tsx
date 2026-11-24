@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input } from "@crfrsr/ui";
+import { ChevronIcon } from "../components/ui/ChevronIcon";
 import { CartesianGrid, Line, XAxis, YAxis } from "recharts";
 import { api } from "../api";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { AppLineChart } from "../components/charts/AppLineChart";
 import { buildNiceYAxis, minMaxForKeys } from "../components/charts/chartLayout";
 import { ProductConfigPanel } from "../components/groceries/ProductConfigPanel";
+import { ProductPicker, productNamed } from "../components/groceries/ProductPicker";
+import { cn } from "../cn";
 import { Pill } from "../components/ui/Pill";
 import { ColumnTable, type TableColumn } from "../components/ui/ColumnTable";
 import { formatReceiptPesos } from "../formatNative";
+import styles from "./GroceriesPage.module.css";
 import type {
   GroceriesSummary,
   GroceryBrandRow,
@@ -32,14 +36,29 @@ function isoDay(dt: string | null): string {
   return (dt ?? "").slice(0, 10);
 }
 
+/** Accents and case dropped, so «limon» finds «Limón». */
+function foldSearch(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+}
+
+/** Rows a long list shows before its «show all» button. */
+const COLLAPSED_ROWS = 10;
+/** Purchases an open product lists before its «all purchases» button. */
+const COLLAPSED_HISTORY_ROWS = 5;
+
 /** Grocery receipts + product catalog (`/flows/expenses/groceries`). */
 export function GroceriesPage() {
   const { t } = useTranslation();
   const [summary, setSummary] = useState<GroceriesSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [assignProductId, setAssignProductId] = useState<string>("");
-  const [newProductName, setNewProductName] = useState("");
+  /** The picker's text: an existing product's name, or the name of a product to create. */
+  const [pickerText, setPickerText] = useState("");
+  const [showAllUnclassified, setShowAllUnclassified] = useState(false);
+  const [showAllReceipts, setShowAllReceipts] = useState(false);
+  const [productQuery, setProductQuery] = useState("");
+  const [showConfig, setShowConfig] = useState(false);
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [assignBusy, setAssignBusy] = useState(false);
   const [assignNote, setAssignNote] = useState<string | null>(null);
 
@@ -55,6 +74,9 @@ export function GroceriesPage() {
 
   const [openReceiptId, setOpenReceiptId] = useState<number | null>(null);
   const [receiptItems, setReceiptItems] = useState<Record<number, GroceryReceiptItemRow[]>>({});
+
+  const historyProductIdRef = useRef(historyProductId);
+  historyProductIdRef.current = historyProductId;
 
   const reload = useCallback(() => {
     api
@@ -95,7 +117,7 @@ export function GroceriesPage() {
         });
         setAssignNote(t("groceries.cleaning.assignedResult", { stamped: res.stamped }));
         setSelected(new Set());
-        setNewProductName("");
+        setPickerText("");
         reload();
         if (historyProductId === res.product_id) {
           api.groceriesProductHistory(res.product_id).then((h) => setHistoryRows(h.rows));
@@ -109,10 +131,17 @@ export function GroceriesPage() {
     [historyProductId, reload, t]
   );
 
+  /** Opens a product's price history under its row; the open product's own name closes it. */
   const openHistory = useCallback((productId: number) => {
-    setHistoryProductId(productId);
     setHistoryRows(null);
     setProductDetail(null);
+    setShowConfig(false);
+    setShowAllHistory(false);
+    if (historyProductIdRef.current === productId) {
+      setHistoryProductId(null);
+      return;
+    }
+    setHistoryProductId(productId);
     setBranchFilter("");
     setCityFilter("");
     setBrandFilter("");
@@ -171,11 +200,6 @@ export function GroceriesPage() {
   const selectedGroups = useMemo(
     () => (summary?.unclassified ?? []).filter((g) => selected.has(groupKey(g))),
     [selected, summary]
-  );
-
-  const historyProduct = useMemo(
-    () => summary?.products.find((p) => p.id === historyProductId) ?? null,
-    [historyProductId, summary]
   );
 
   const historyBranches = useMemo(
@@ -250,6 +274,7 @@ export function GroceriesPage() {
       <Button
         key={s.product_id}
         variant="link"
+        className={styles.name}
         onClick={() => runClassify({ targets: [g], product_id: s.product_id })}
         disabled={assignBusy}
         title={s.via}
@@ -261,25 +286,13 @@ export function GroceriesPage() {
     <input type="checkbox" checked={selected.has(groupKey(g))} onChange={() => toggleSelected(groupKey(g))} />
   );
   const cleaningColumns: TableColumn<UnclassifiedGroup>[] = [
-    // On the card the checkbox sits in the title, beside the name.
-    { key: "select", header: "", cell: groupCheckbox, desktopOnly: true },
-    {
-      key: "name",
-      header: t("groceries.cleaning.colName"),
-      cell: (g) => g.description,
-      title: (g) => (
-        <span style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          {groupCheckbox(g)}
-          {g.description}
-        </span>
-      ),
-    },
+    { key: "select", header: "", cell: groupCheckbox },
+    { key: "name", header: t("groceries.cleaning.colName"), cell: (g) => g.description },
     {
       key: "barcode",
       header: t("groceries.cleaning.colBarcode"),
       className: "muted",
       cell: (g) => g.barcode ?? "—",
-      desktopOnly: true,
     },
     {
       key: "occurrences",
@@ -296,33 +309,45 @@ export function GroceriesPage() {
       className: "num",
       cell: (g) => formatReceiptPesos(g.last_unit_price_clp),
     },
-    {
-      key: "suggestions",
-      header: t("groceries.cleaning.colSuggestions"),
-      cell: suggestionButtons,
-      card: (g) => (g.suggestions.length > 0 ? suggestionButtons(g) : null),
-    },
+    { key: "suggestions", header: t("groceries.cleaning.colSuggestions"), cell: suggestionButtons },
   ];
+  /** The card of an unclassified name: tick + name + last price, then count, day and suggestions. */
+  const cleaningCard = (g: UnclassifiedGroup) => (
+    <div className={cn(styles.row, styles.rowTick)}>
+      <label className={styles.tick}>
+        {groupCheckbox(g)}
+        <span className={styles.printed}>{g.description}</span>
+      </label>
+      <span className={styles.amount}>{formatReceiptPesos(g.last_unit_price_clp)}</span>
+      <span className={styles.sub}>
+        {t("groceries.countAndLast", { count: g.occurrences, date: isoDay(g.last_seen) })}
+        {g.suggestions.length > 0 ? <> · → {suggestionButtons(g)}</> : null}
+      </span>
+    </div>
+  );
 
   type ProductRow = GroceriesSummary["products"][number];
+  const productButton = (p: ProductRow) => (
+    <Button
+      variant="link"
+      className={styles.name}
+      onClick={() => openHistory(p.id)}
+      aria-expanded={p.id === historyProductId}
+    >
+      {p.name}
+      <ChevronIcon className={cn(styles.chevron, p.id === historyProductId && styles.chevronOpen)} />
+    </Button>
+  );
+  const productLastPrice = (p: ProductRow) =>
+    p.last_effective_unit_price_clp != null ? formatReceiptPesos(p.last_effective_unit_price_clp) : "—";
   const productColumns: TableColumn<ProductRow>[] = [
-    {
-      key: "product",
-      header: t("groceries.products.colProduct"),
-      cell: (p) => (
-        <Button variant="link" onClick={() => openHistory(p.id)}>
-          {p.name}
-        </Button>
-      ),
-      title: true,
-    },
+    { key: "product", header: t("groceries.products.colProduct"), cell: productButton },
     {
       key: "aliases",
       header: t("groceries.products.colAliases"),
       headerClassName: "num",
       className: "num",
       cell: (p) => p.alias_count,
-      desktopOnly: true,
     },
     {
       key: "purchases",
@@ -341,21 +366,26 @@ export function GroceriesPage() {
       header: t("groceries.products.colLastPrice"),
       headerClassName: "num",
       className: "num",
-      cell: (p) =>
-        p.last_effective_unit_price_clp != null ? formatReceiptPesos(p.last_effective_unit_price_clp) : "—",
+      cell: productLastPrice,
     },
   ];
+  /** A product's card: name + last price, then purchases and the last day. */
+  const productCard = (p: ProductRow) => (
+    <div className={styles.row}>
+      {productButton(p)}
+      <span className={styles.amount}>{productLastPrice(p)}</span>
+      <span className={styles.sub}>
+        {t("groceries.countAndLast", { count: p.purchase_count, date: isoDay(p.last_purchased_at) })}
+      </span>
+    </div>
+  );
 
   const num = { headerClassName: "num", className: "num" };
+  const historyQty = (r: ProductHistoryRow) => `${r.qty}${r.qty_unit === "kg" ? " kg" : ""}`;
   const historyColumns: TableColumn<ProductHistoryRow>[] = [
-    { key: "date", header: t("groceries.history.colDate"), cell: (r) => isoMinute(r.purchased_at), title: true },
+    { key: "date", header: t("groceries.history.colDate"), cell: (r) => isoMinute(r.purchased_at) },
     { key: "branch", header: t("groceries.history.colBranch"), cell: (r) => r.branch },
-    {
-      key: "qty",
-      header: t("groceries.history.colQty"),
-      ...num,
-      cell: (r) => `${r.qty}${r.qty_unit === "kg" ? " kg" : ""}`,
-    },
+    { key: "qty", header: t("groceries.history.colQty"), ...num, cell: historyQty },
     {
       key: "unitPrice",
       header: t("groceries.history.colUnitPrice"),
@@ -367,8 +397,6 @@ export function GroceriesPage() {
       header: t("groceries.history.colDiscount"),
       ...num,
       cell: (r) => (r.discount_clp > 0 ? formatReceiptPesos(-r.discount_clp) : "—"),
-      // The card leaves the row out when there was no discount.
-      card: (r) => (r.discount_clp > 0 ? formatReceiptPesos(-r.discount_clp) : null),
     },
     {
       key: "effective",
@@ -388,10 +416,6 @@ export function GroceriesPage() {
               ) : (
                 <span className="muted">{t("groceries.history.noContent")}</span>
               ),
-            card: (r) =>
-              r.normalized_unit_price_clp != null
-                ? formatReceiptPesos(r.normalized_unit_price_clp)
-                : t("groceries.history.noContent"),
           } satisfies TableColumn<ProductHistoryRow>,
         ]
       : []),
@@ -402,66 +426,195 @@ export function GroceriesPage() {
       cell: (r) => formatReceiptPesos(r.total_clp - r.discount_clp),
     },
   ];
+  /**
+   * A purchase's card: day + the effective price, then branch, quantity × list price, the
+   * discount when there was one and the per-unit price when the product has one.
+   */
+  const historyCard = (r: ProductHistoryRow) => (
+    <div className={styles.row}>
+      <span className="mono">{isoMinute(r.purchased_at)}</span>
+      <span className={styles.amount}>{formatReceiptPesos(r.effective_unit_price_clp)}</span>
+      <span className={styles.sub}>
+        {r.branch} · {historyQty(r)} × {formatReceiptPesos(r.unit_price_clp)}
+        {r.discount_clp > 0 ? ` (${formatReceiptPesos(-r.discount_clp)})` : ""}
+        {normalizedAvailable ? (
+          <>
+            {" · "}
+            {r.normalized_unit_price_clp != null
+              ? `${formatReceiptPesos(r.normalized_unit_price_clp)}/${baseUnitLabel}`
+              : t("groceries.history.noContent")}
+          </>
+        ) : null}
+      </span>
+    </div>
+  );
+  // Newest first: the list is cut to the latest purchases until asked for all.
+  const historyNewestFirst = [...filteredHistory].reverse();
+  const historyShown = showAllHistory ? historyNewestFirst : historyNewestFirst.slice(0, COLLAPSED_HISTORY_ROWS);
+
+  /** The open product's detail, drawn under its row: price mode + filters, chart, purchases, settings. */
+  const productHistory = (p: ProductRow) =>
+    p.id !== historyProductId || historyRows == null ? null : (
+      <div className={styles.detail}>
+        <div className={styles.controls}>
+          {normalizedOnly ? (
+            <span className="muted">{t("groceries.history.mixedPackages", { unit: baseUnitLabel })}</span>
+          ) : (
+            <select
+              value={effectivePriceMode}
+              onChange={(e) => setPriceMode(e.target.value as "effective" | "list" | "normalized")}
+            >
+              <option value="effective">{t("groceries.history.priceEffective")}</option>
+              <option value="list">{t("groceries.history.priceList")}</option>
+              {normalizedAvailable ? (
+                <option value="normalized">{t("groceries.history.priceNormalized", { unit: baseUnitLabel })}</option>
+              ) : null}
+            </select>
+          )}
+          {historyBrands.length > 0 ? (
+            <label>
+              {t("groceries.history.filterBrand")}{" "}
+              <select value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
+                <option value="">{t("groceries.history.all")}</option>
+                {historyBrands.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label>
+            {t("groceries.history.filterBranch")}{" "}
+            <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+              <option value="">{t("groceries.history.all")}</option>
+              {historyBranches.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </label>
+          {historyCities.length > 1 ? (
+            <label>
+              {t("groceries.history.filterCity")}{" "}
+              <select value={cityFilter} onChange={(e) => setCityFilter(e.target.value)}>
+                <option value="">{t("groceries.history.all")}</option>
+                {historyCities.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {productDetail ? (
+            <Button variant="link" onClick={() => setShowConfig((v) => !v)} aria-expanded={showConfig}>
+              {t("groceries.config.title")}
+              <ChevronIcon className={cn(styles.chevron, showConfig && styles.chevronOpen)} />
+            </Button>
+          ) : null}
+        </div>
+        {showConfig && productDetail ? (
+          <ProductConfigPanel
+            detail={productDetail}
+            products={summary?.products ?? []}
+            brands={brands}
+            onChanged={refreshProductConfig}
+          />
+        ) : null}
+        {chartData.length > 1 ? (
+          <div className={styles.chart}>
+            <AppLineChart
+              data={chartData}
+              tooltip={{
+                formatValue: (v) => formatReceiptPesos(Number(v)),
+                formatLabel: (l) => String(l),
+              }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="date" tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={24} />
+              <YAxis
+                tick={{ fill: "var(--muted)", fontSize: 10 }}
+                width={52}
+                tickFormatter={(v: number) => formatReceiptPesos(v)}
+                domain={yScale.domain}
+                ticks={yScale.ticks}
+              />
+              <Line type="monotone" dataKey="price" stroke="var(--accent, #2f81f7)" strokeWidth={2} dot />
+            </AppLineChart>
+          </div>
+        ) : null}
+        <ColumnTable
+          rows={historyShown}
+          columns={historyColumns}
+          card={historyCard}
+          rowKey={(r, i) => `${r.purchased_at}-${i}`}
+          tableClassName="data-table"
+        />
+        {historyNewestFirst.length > COLLAPSED_HISTORY_ROWS ? (
+          <Button variant="ghost" onClick={() => setShowAllHistory((v) => !v)}>
+            {showAllHistory
+              ? t("table.showLess")
+              : t("groceries.history.allPurchases", { count: historyNewestFirst.length })}
+          </Button>
+        ) : null}
+      </div>
+    );
 
   type ReceiptRow = GroceriesSummary["receipts"][number];
-  /** An open receipt's items (once fetched); null while closed. */
+  /** An open receipt's items (once fetched); null while closed. One list for the row and the card. */
   const receiptItemsList = (r: ReceiptRow) =>
     openReceiptId === r.id && receiptItems[r.id] ? (
-      <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+      <div className={styles.items}>
         {receiptItems[r.id]!.map((item) => (
-          <li key={item.id}>
-            {item.product_name ?? item.description}
-            {item.product_name ? <span className="muted"> · {item.description}</span> : null} — {item.qty}
-            {item.qty_unit === "kg" ? " kg" : ""} × {formatReceiptPesos(item.unit_price_clp)}
-            {item.discount_clp > 0 ? ` (${formatReceiptPesos(-item.discount_clp)})` : ""} ={" "}
-            {formatReceiptPesos(item.total_clp - item.discount_clp)}
-          </li>
+          <div key={item.id} className={styles.row}>
+            {item.product_name != null ? (
+              <span className={styles.itemName}>{item.product_name}</span>
+            ) : (
+              <span className={cn(styles.printed, "muted")}>{item.description}</span>
+            )}
+            <span className={styles.amount}>{formatReceiptPesos(item.total_clp - item.discount_clp)}</span>
+            <span className={styles.sub}>
+              {item.qty}
+              {item.qty_unit === "kg" ? " kg" : ""} × {formatReceiptPesos(item.unit_price_clp)}
+              {item.discount_clp > 0 ? ` (${formatReceiptPesos(-item.discount_clp)})` : ""} ·{" "}
+              {item.product_name != null ? (
+                <span className={styles.printed}>{item.description}</span>
+              ) : (
+                t("groceries.receipts.itemUnclassified")
+              )}
+            </span>
+          </div>
         ))}
-      </ul>
+      </div>
+    ) : null;
+  const sourcePill = (r: ReceiptRow) => <Pill size="small" label={t(`groceries.receipts.source.${r.source}`)} />;
+  // A card-paid receipt at a store no map names yet: flagged, no card line of its own until
+  // the bank's line for the same day and amount pairs it.
+  const pendingBranchPill = (r: ReceiptRow) =>
+    r.card_line_status === "pending_branch" ? (
+      <Pill
+        size="small"
+        label={t("groceries.receipts.cardLine.pendingBranch")}
+        title={t("groceries.receipts.cardLine.pendingBranchHint")}
+      />
     ) : null;
   const receiptColumns: TableColumn<ReceiptRow>[] = [
-    {
-      key: "date",
-      header: t("groceries.receipts.colDate"),
-      cell: (r) => isoMinute(r.purchased_at),
-      // The card's title carries the branch too.
-      title: (r) => `${isoMinute(r.purchased_at)} · ${r.branch}`,
-    },
-    { key: "branch", header: t("groceries.receipts.colBranch"), cell: (r) => r.branch, desktopOnly: true },
-    {
-      key: "city",
-      header: t("groceries.receipts.colCity"),
-      className: "muted",
-      cell: (r) => r.city ?? "—",
-      desktopOnly: true,
-    },
-    {
-      key: "source",
-      header: t("groceries.receipts.colSource"),
-      // Provenance of the document that owns the row (e-mail PDF, hand-saved PDF, photo).
-      cell: (r) => <Pill size="small" label={t(`groceries.receipts.source.${r.source}`)} />,
-    },
+    { key: "date", header: t("groceries.receipts.colDate"), cell: (r) => isoMinute(r.purchased_at) },
+    { key: "branch", header: t("groceries.receipts.colBranch"), cell: (r) => r.branch },
+    { key: "city", header: t("groceries.receipts.colCity"), className: "muted", cell: (r) => r.city ?? "—" },
+    // Provenance of the document that owns the row (e-mail PDF, hand-saved PDF, photo).
+    { key: "source", header: t("groceries.receipts.colSource"), cell: sourcePill },
     { key: "total", header: t("groceries.receipts.colTotal"), ...num, cell: (r) => formatReceiptPesos(r.total_clp) },
     {
       key: "cardPaid",
       header: t("groceries.receipts.colCardPaid"),
       ...num,
-      // A card-paid receipt at a store no map names yet: flagged, no card line of its own until
-      // the bank's line for the same day and amount pairs it.
       cell: (r) =>
         r.card_paid_clp > 0 ? (
           <>
-            {formatReceiptPesos(r.card_paid_clp)}
-            {r.card_line_status === "pending_branch" ? (
-              <>
-                {" "}
-                <Pill
-                  size="small"
-                  label={t("groceries.receipts.cardLine.pendingBranch")}
-                  title={t("groceries.receipts.cardLine.pendingBranchHint")}
-                />
-              </>
-            ) : null}
+            {formatReceiptPesos(r.card_paid_clp)} {pendingBranchPill(r)}
           </>
         ) : (
           "—"
@@ -477,12 +630,63 @@ export function GroceriesPage() {
       key: "toggle",
       header: "",
       cell: (r) => (
-        <Button variant="link" onClick={() => toggleReceipt(r.id)}>
+        <Button variant="link" onClick={() => toggleReceipt(r.id)} aria-expanded={openReceiptId === r.id}>
           {openReceiptId === r.id ? t("groceries.receipts.hideItems") : t("groceries.receipts.showItems")}
         </Button>
       ),
     },
   ];
+  /**
+   * A receipt's card: day (opens the items) + source + total, then branch and classified count;
+   * the card-paid amount only when it is not the total.
+   */
+  const receiptCard = (r: ReceiptRow) => (
+    <div className={styles.row}>
+      <span className={styles.receiptHead}>
+        <Button
+          variant="link"
+          className={cn(styles.name, "mono")}
+          onClick={() => toggleReceipt(r.id)}
+          aria-expanded={openReceiptId === r.id}
+          aria-label={`${isoMinute(r.purchased_at)} · ${
+            openReceiptId === r.id ? t("groceries.receipts.hideItems") : t("groceries.receipts.showItems")
+          }`}
+        >
+          {isoMinute(r.purchased_at)}
+          <ChevronIcon className={cn(styles.chevron, openReceiptId === r.id && styles.chevronOpen)} />
+        </Button>
+        {sourcePill(r)}
+      </span>
+      <span className={styles.amount}>{formatReceiptPesos(r.total_clp)}</span>
+      <span className={styles.sub}>
+        {r.branch} · {t("groceries.receipts.classified", { classified: r.classified_count, total: r.item_count })}
+        {r.card_paid_clp !== r.total_clp ? (
+          <>
+            {" · "}
+            {t("groceries.receipts.colCardPaid")} {r.card_paid_clp > 0 ? formatReceiptPesos(r.card_paid_clp) : "—"}
+          </>
+        ) : null}{" "}
+        {pendingBranchPill(r)}
+      </span>
+    </div>
+  );
+
+  const unclassified = summary?.unclassified ?? [];
+  const unclassifiedShown = showAllUnclassified ? unclassified : unclassified.slice(0, COLLAPSED_ROWS);
+  const receipts = summary?.receipts ?? [];
+  const receiptsShown = showAllReceipts ? receipts : receipts.slice(0, COLLAPSED_ROWS);
+  const products = summary?.products ?? [];
+  const wantedProduct = foldSearch(productQuery);
+  const productsShown =
+    wantedProduct === "" ? products : products.filter((p) => foldSearch(p.name).includes(wantedProduct));
+
+  // The picker's text names the target: an existing product, else a product to create.
+  const pickedProduct = productNamed(products, pickerText);
+  const pickerName = pickerText.trim();
+  const assignSelected = () =>
+    pickedProduct
+      ? runClassify({ targets: selectedGroups, product_id: pickedProduct.id })
+      : runClassify({ targets: selectedGroups, new_product_name: pickerName });
 
   return (
     <div className="page-grid">
@@ -490,180 +694,66 @@ export function GroceriesPage() {
 
       {/* ── Cleaning workbench ─────────────────────────────────────────────── */}
       <PageGridTile id="cleaning">
-        <h3>{t("groceries.cleaning.title")}</h3>
-        {summary && summary.unclassified.length === 0 ? (
-          <p className="muted">{t("groceries.cleaning.allClassified")}</p>
+        <h3>
+          {t("groceries.cleaning.title")}
+          {unclassified.length > 0 ? <span className={styles.count}> · {unclassified.length}</span> : null}
+        </h3>
+        {summary && unclassified.length === 0 ? (
+          <p className="muted">{assignNote ?? t("groceries.cleaning.allClassified")}</p>
         ) : (
-          <>
-            <div
-              style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}
-            >
-              <span>{t("groceries.cleaning.assignSelected", { count: selected.size })}</span>
-              <select
-                value={assignProductId}
-                onChange={(e) => setAssignProductId(e.target.value)}
-                disabled={assignBusy}
-              >
-                <option value="">{t("groceries.cleaning.existingProduct")}</option>
-                {(summary?.products ?? []).map((p) => (
-                  <option key={p.id} value={String(p.id)}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                onClick={() =>
-                  runClassify({ targets: selectedGroups, product_id: Number(assignProductId) })
-                }
-                disabled={assignBusy || selected.size === 0 || !assignProductId}
-              >
-                {t("groceries.cleaning.assign")}
-              </Button>
-              <Input
-                value={newProductName}
-                onChange={(e) => setNewProductName(e.target.value)}
-                placeholder={t("groceries.cleaning.newProductPlaceholder")}
-                disabled={assignBusy}
-              />
-              <Button
-                onClick={() =>
-                  runClassify({ targets: selectedGroups, new_product_name: newProductName.trim() })
-                }
-                disabled={assignBusy || selected.size === 0 || newProductName.trim() === ""}
-              >
-                {t("groceries.cleaning.create")}
-              </Button>
-              {assignNote ? <span className="muted">{assignNote}</span> : null}
-            </div>
+          <div className={styles.cleaning}>
             <ColumnTable
-              rows={summary?.unclassified ?? []}
+              rows={unclassifiedShown}
               columns={cleaningColumns}
+              card={cleaningCard}
               rowKey={groupKey}
-              cardLayout="flat"
               tableClassName="data-table"
             />
-          </>
+            {unclassified.length > COLLAPSED_ROWS ? (
+              <Button variant="ghost" onClick={() => setShowAllUnclassified((v) => !v)}>
+                {showAllUnclassified ? t("table.showLess") : t("groceries.showAll", { count: unclassified.length })}
+              </Button>
+            ) : null}
+            {assignNote ? <p className={cn("muted", styles.assignNote)}>{assignNote}</p> : null}
+            {/* Last in the markup so it can stick to the bottom of a phone screen while names are
+                ticked; above the list on the desktop (CSS order). */}
+            <div className={cn(styles.assignBar, selected.size === 0 && styles.assignBarIdle)}>
+              <span>{t("groceries.cleaning.assignSelected", { count: selected.size })}</span>
+              <ProductPicker products={products} value={pickerText} onChange={setPickerText} disabled={assignBusy} />
+              <Button onClick={assignSelected} disabled={assignBusy || selected.size === 0 || pickerName === ""}>
+                {pickedProduct || pickerName === "" ? t("groceries.cleaning.assign") : t("groceries.cleaning.create")}
+              </Button>
+            </div>
+          </div>
         )}
       </PageGridTile>
 
-      {/* ── Products + price history ───────────────────────────────────────── */}
+      {/* ── Products, each opening its price history under its row ─────────── */}
       <PageGridTile id="products">
-        <h3>{t("groceries.products.title")}</h3>
-        {summary && summary.products.length === 0 ? (
+        <h3>
+          {t("groceries.products.title")}
+          {products.length > 0 ? <span className={styles.count}> · {products.length}</span> : null}
+        </h3>
+        {summary && products.length === 0 ? (
           <p className="muted">{t("groceries.products.none")}</p>
         ) : (
-          <ColumnTable
-            rows={summary?.products ?? []}
-            columns={productColumns}
-            rowKey={(p) => p.id}
-            rowProps={(p) => ({ className: p.id === historyProductId ? "row--selected" : undefined })}
-            cardLayout="flat"
-            tableClassName="data-table"
-          />
-        )}
-
-        <h4>
-          {t("groceries.history.title")}
-          {historyProduct ? ` — ${historyProduct.name}` : ""}
-        </h4>
-        {historyProductId == null ? (
-          <p className="muted">{t("groceries.history.pickProduct")}</p>
-        ) : historyRows == null ? null : (
           <>
-            {productDetail ? (
-              <ProductConfigPanel
-                detail={productDetail}
-                products={summary?.products ?? []}
-                brands={brands}
-                onChanged={refreshProductConfig}
-              />
-            ) : null}
-            <div
-              style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}
-            >
-              {normalizedOnly ? (
-                <span className="muted">
-                  {t("groceries.history.mixedPackages", { unit: baseUnitLabel })}
-                </span>
-              ) : (
-                <select
-                  value={effectivePriceMode}
-                  onChange={(e) => setPriceMode(e.target.value as "effective" | "list" | "normalized")}
-                >
-                  <option value="effective">{t("groceries.history.priceEffective")}</option>
-                  <option value="list">{t("groceries.history.priceList")}</option>
-                  {normalizedAvailable ? (
-                    <option value="normalized">
-                      {t("groceries.history.priceNormalized", { unit: baseUnitLabel })}
-                    </option>
-                  ) : null}
-                </select>
-              )}
-              {historyBrands.length > 0 ? (
-                <label>
-                  {t("groceries.history.filterBrand")}{" "}
-                  <select value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)}>
-                    <option value="">{t("groceries.history.all")}</option>
-                    {historyBrands.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <label>
-                {t("groceries.history.filterBranch")}{" "}
-                <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
-                  <option value="">{t("groceries.history.all")}</option>
-                  {historyBranches.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {historyCities.length > 1 ? (
-                <label>
-                  {t("groceries.history.filterCity")}{" "}
-                  <select value={cityFilter} onChange={(e) => setCityFilter(e.target.value)}>
-                    <option value="">{t("groceries.history.all")}</option>
-                    {historyCities.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-            </div>
-            {chartData.length > 1 ? (
-              <div style={{ width: "100%", height: 240 }}>
-                <AppLineChart
-                  data={chartData}
-                  tooltip={{
-                    formatValue: (v) => formatReceiptPesos(Number(v)),
-                    formatLabel: (l) => String(l),
-                  }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={24} />
-                  <YAxis
-                    tick={{ fill: "var(--muted)", fontSize: 10 }}
-                    width={52}
-                    tickFormatter={(v: number) => formatReceiptPesos(v)}
-                    domain={yScale.domain}
-                    ticks={yScale.ticks}
-                  />
-                  <Line type="monotone" dataKey="price" stroke="var(--accent, #2f81f7)" strokeWidth={2} dot />
-                </AppLineChart>
-              </div>
-            ) : null}
+            <Input
+              className={styles.search}
+              type="search"
+              value={productQuery}
+              onChange={(e) => setProductQuery(e.target.value)}
+              placeholder={t("groceries.products.search")}
+              aria-label={t("groceries.products.search")}
+            />
             <ColumnTable
-              rows={filteredHistory}
-              columns={historyColumns}
-              rowKey={(r, i) => `${r.purchased_at}-${i}`}
-              cardLayout="flat"
+              rows={productsShown}
+              columns={productColumns}
+              card={productCard}
+              rowKey={(p) => p.id}
+              rowProps={(p) => ({ className: p.id === historyProductId ? "row--selected" : undefined })}
+              rowExpansion={productHistory}
+              emptyLabel={summary ? t("groceries.products.noMatch") : undefined}
               tableClassName="data-table"
             />
           </>
@@ -672,18 +762,28 @@ export function GroceriesPage() {
 
       {/* ── Receipts ───────────────────────────────────────────────────────── */}
       <PageGridTile id="receipts">
-        <h3>{t("groceries.receipts.title")}</h3>
-        {summary && summary.receipts.length === 0 ? (
+        <h3>
+          {t("groceries.receipts.title")}
+          {receipts.length > 0 ? <span className={styles.count}> · {receipts.length}</span> : null}
+        </h3>
+        {summary && receipts.length === 0 ? (
           <p className="muted">{t("groceries.receipts.none")}</p>
         ) : (
-          <ColumnTable
-            rows={summary?.receipts ?? []}
-            columns={receiptColumns}
-            rowKey={(r) => r.id}
-            rowExpansion={receiptItemsList}
-            cardLayout="flat"
-            tableClassName="data-table"
-          />
+          <>
+            <ColumnTable
+              rows={receiptsShown}
+              columns={receiptColumns}
+              card={receiptCard}
+              rowKey={(r) => r.id}
+              rowExpansion={receiptItemsList}
+              tableClassName="data-table"
+            />
+            {receipts.length > COLLAPSED_ROWS ? (
+              <Button variant="ghost" onClick={() => setShowAllReceipts((v) => !v)}>
+                {showAllReceipts ? t("table.showLess") : t("groceries.showAll", { count: receipts.length })}
+              </Button>
+            ) : null}
+          </>
         )}
       </PageGridTile>
     </div>

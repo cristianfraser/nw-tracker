@@ -1014,6 +1014,8 @@ export interface FlowsIncomeResponse {
   payslip_checks: PayslipChecksRow[];
   /** The page's month rows, day points and total in the requested unit (server-built, the overview's income rule). */
   aggregates: FlowsIncomeAggregates;
+  /** The sum of each side list in the payload's unit (lines with no rate on file left out). */
+  list_totals: { refund_lines: number; filtered_lines: number; excluded_lines: number };
 }
 
 export interface FlowsIncomeAggregates {
@@ -1175,6 +1177,21 @@ export interface FlowIncomeMonthRow {
   total: number;
   line_count: number;
   cumulative: number;
+  /** The month's income legs, newest first (what `line_count` counts). */
+  lines: FlowIncomeMonthLine[];
+}
+
+/**
+ * One income leg of a month: a checking credit (`lines`), a manual entry (`manual`) or a dollar
+ * wire with no bank movement (`work_earnings`), with its kind and its amount in the payload's unit.
+ */
+export interface FlowIncomeMonthLine {
+  source: "checking" | "manual" | "work_earning";
+  /** The movement id, the manual entry's id or the payslip's id, by `source`. */
+  id: number;
+  received_on: string;
+  income_kind: IncomeKind;
+  amount: number;
 }
 
 export interface FlowIncomeChartPoint {
