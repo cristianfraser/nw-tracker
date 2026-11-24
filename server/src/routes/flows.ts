@@ -171,8 +171,16 @@ app.get("/api/income", (req, res) => {
       // The bank's description goes out only as the name's provenance (`name_detail`).
       return { ...l, ...names };
     });
-  const listTotal = (lines: readonly { amount: number | null }[]) =>
-    roundToCurrency(lines.reduce((sum, l) => sum + (l.amount ?? 0), 0), unit);
+  // A line with no rate on file shows «—»; the heading says how many its sum leaves out.
+  const listTotal = (lines: readonly { amount: number | null }[]) => {
+    let amount = 0;
+    let unpriced = 0;
+    for (const l of lines) {
+      if (l.amount == null) unpriced += 1;
+      else amount += l.amount;
+    }
+    return { amount: roundToCurrency(amount, unit), unpriced };
+  };
   res.json({
     ...payload,
     unit,

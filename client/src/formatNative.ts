@@ -34,6 +34,9 @@ export const formatCartolaPesos = (n: number): string => formatClp(n); // conven
 /** A peso checking debit paired with a card payment. */
 export const formatCheckingPesos = (n: number): string => formatClp(n); // convention-ok: the checking account is a peso ledger
 
+/** A liquidación's printed earnings lines (base salary, gratificación, colación, movilización). */
+export const formatPayslipPesos = (n: number): string => formatClp(n); // convention-ok: a liquidación prints its lines in pesos
+
 /** A grocery receipt's printed pesos. */
 export const formatReceiptPesos = (n: number): string => formatClp(n); // convention-ok: a grocery receipt prints pesos
 

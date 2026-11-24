@@ -142,7 +142,13 @@
 
 /* ---- an income line: date, kind, name, account, amount, action ---- */
 .lines {
-  grid-template-columns: max-content max-content minmax(0, 1fr) max-content max-content max-content;
+  /* The kind slot holds a pill, a category or a filter's reason: it may shrink and wrap. */
+  grid-template-columns: max-content minmax(0, max-content) minmax(0, 1fr) max-content max-content max-content;
+}
+
+.lKind {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .lines > .row {
@@ -161,6 +167,12 @@
   justify-content: space-between;
   gap: 0.1rem 1rem;
   color: var(--muted);
+}
+
+/* Free text (a note) of any length: it wraps, even inside a long word. */
+.lNote > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .linkButton {
@@ -292,7 +304,8 @@
     grid-template-columns: minmax(0, 1fr) max-content max-content 0.75rem;
     grid-template-areas:
       "period total count chev"
-      "bar bar bar bar";
+      "bar bar bar bar"
+      "parts parts parts parts";
   }
 
   .months .mPeriod {
@@ -304,7 +317,7 @@
   }
 
   .months .mParts {
-    display: none;
+    grid-area: parts;
   }
 
   .months .mTotal {
@@ -320,7 +333,7 @@
   }
 
   .lines > .row {
-    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
     grid-template-areas:
       "date date amount"
       "name name name"

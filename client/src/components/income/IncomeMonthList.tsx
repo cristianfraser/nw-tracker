@@ -92,6 +92,7 @@ export function IncomeMonthList({
   }
 
   const money = (v: number) => formatFlowMoney(v, displayUnit);
+  const lineCount = (count: number) => t(count === 1 ? "income.sideListCountOne" : "income.sideListCount", { count });
   const toggle = (key: string) =>
     setOpenKeys((prev) => {
       const next = new Set(prev);
@@ -192,6 +193,16 @@ export function IncomeMonthList({
       const key = grain === "year" ? row.period_month.slice(0, 4) : row.period_month;
       const opens = row.line_count > 0;
       const open = opens && openKeys.has(key);
+      const period = flowPeriodLabel(row.period_month, grain);
+      // The row's figures carry no labels of their own, so its accessible name says what each is.
+      const rowLabel = t("income.rowLabel", {
+        period,
+        total: money(row.total),
+        parts: INCOME_KIND_SERIES.filter((s) => row[s.kind] !== 0)
+          .map((s) => `${t(`income.chart.${s.kind}`)} ${money(row[s.kind])}`)
+          .join(", "),
+        lines: lineCount(row.line_count),
+      });
       const yearMonths =
         open && grain === "year"
           ? (months ?? []).filter((m) => m.period_month.startsWith(key) && m.line_count > 0).reverse()
@@ -205,17 +216,19 @@ export function IncomeMonthList({
                   role: "button",
                   tabIndex: 0,
                   "aria-expanded": open,
+                  "aria-label": rowLabel,
                   onClick: () => toggle(key),
                   onKeyDown: (e: KeyboardEvent) => onKeyActivate(e, () => toggle(key)),
                 }
               : null)}
           >
-            <span className={styles.mPeriod}>{flowPeriodLabel(row.period_month, grain)}</span>
+            <span className={styles.mPeriod}>{period}</span>
             <KindBar row={row} scale={scale} className={styles.mBar} />
             <span className={cn(styles.parts, styles.mParts, styles.small)}>
               {INCOME_KIND_SERIES.filter((s) => row[s.kind] !== 0).map((s) => (
                 <span key={s.kind} className={styles.nowrap} title={t(`income.chart.${s.kind}`)}>
                   <i className={styles.dot} style={{ background: s.color }} />
+                  <span className="visually-hidden">{t(`income.chart.${s.kind}`)} </span>
                   <span className="mono">{money(row[s.kind])}</span>
                 </span>
               ))}
@@ -225,7 +238,14 @@ export function IncomeMonthList({
               className={cn("muted", styles.num, styles.small, styles.mCount)}
               title={t("expenses.creditCard.colLineCount")}
             >
-              {row.line_count > 0 ? row.line_count : ""}
+              {row.line_count > 0 ? (
+                <>
+                  <span aria-hidden>{row.line_count}</span>
+                  <span className="visually-hidden">{lineCount(row.line_count)}</span>
+                </>
+              ) : (
+                ""
+              )}
             </span>
             {opens ? <ChevronIcon className={styles.chevron} /> : <span />}
           </div>

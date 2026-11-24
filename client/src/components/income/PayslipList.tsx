@@ -3,6 +3,7 @@ import { useTranslation } from "../../i18n";
 import { formatFlowMoney } from "../../flowsDisplay";
 import { formatPct } from "../../format";
 import { formatYearMonthLabel } from "../../formatDateLabel";
+import { formatPayslipPesos } from "../../formatNative";
 import { formatIncomeMoney } from "../../incomeAggregates";
 import type { DisplayUnit } from "../../queries/keys";
 import type {
@@ -45,29 +46,38 @@ function netColor(earningType: PayrollEarningType | undefined): string {
   return earningType === "severance" ? incomeKindColor("severance") : PAYROLL_STACK[0]!.color;
 }
 
-/** Gross pay as one bar: net pay (in its payslip's kind colour), then each deduction group. */
+/**
+ * Gross pay as one bar: net pay, then each deduction group. Net pay is drawn in the colour of the
+ * income it is: a payslip's own type, or for a year the salary part then the severance part
+ * (`netSeverance`, the server's).
+ */
 function GrossBar({
   values,
   earningType,
+  netSeverance = 0,
   className,
 }: {
   values: PayrollBreakdownValues;
-  /** A single payslip's type; a year's bar adds up both and keeps net pay's own colour. */
+  /** A single payslip's type. */
   earningType?: PayrollEarningType;
+  /** A year's net pay paid by severance payslips. */
+  netSeverance?: number;
   className?: string;
 }) {
+  const width = (v: number) => `${(v / values.gross) * 100}%`;
   return (
     <span className={cn(styles.bar, className)} aria-hidden>
       {values.gross > 0
-        ? PAYROLL_STACK.filter((s) => values[s.field] > 0).map((s) => (
-            <i
-              key={s.field}
-              style={{
-                width: `${(values[s.field] / values.gross) * 100}%`,
-                background: s.field === "net" ? netColor(earningType) : s.color,
-              }}
-            />
-          ))
+        ? PAYROLL_STACK.filter((s) => values[s.field] > 0).flatMap((s) =>
+            s.field !== "net"
+              ? [<i key={s.field} style={{ width: width(values[s.field]), background: s.color }} />]
+              : earningType
+                ? [<i key="net" style={{ width: width(values.net), background: netColor(earningType) }} />]
+                : [
+                    <i key="net" style={{ width: width(values.net - netSeverance), background: netColor("salary") }} />,
+                    <i key="net-severance" style={{ width: width(netSeverance), background: netColor("severance") }} />,
+                  ]
+          )
         : null}
     </span>
   );
@@ -126,7 +136,11 @@ export function PayslipList({
     setPeriod("month");
     setPayslipPage(focusPage);
     setOpenKeys((prev) => new Set(prev).add(`p${focus.payslipId}`));
-    const frame = requestAnimationFrame(() => focusRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }));
+    // Focus moves to the payslip too, so a keyboard or screen-reader user lands where the page went.
+    const frame = requestAnimationFrame(() => {
+      focusRef.current?.focus({ preventScroll: true });
+      focusRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
     return () => cancelAnimationFrame(frame);
     // Only a new request (seq) re-runs this; the page is derived from it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,20 +154,31 @@ export function PayslipList({
       if (!next.delete(key)) next.add(key);
       return next;
     });
-  const rowProps = (key: string, open: boolean) => ({
+  // The row's figures carry no labels of their own, so its accessible name says what each is.
+  const rowProps = (key: string, open: boolean, label: string) => ({
     role: "button",
     tabIndex: 0,
     "aria-expanded": open,
+    "aria-label": label,
     onClick: () => toggle(key),
     onKeyDown: (e: KeyboardEvent) => onKeyActivate(e, () => toggle(key)),
   });
 
-  function checkStatus(c: PayslipChecksRow | undefined): ReactNode {
-    if (!c) return <span className="muted">—</span>;
-    if (c.pending) return <span className="muted">{t("workEarnings.checksPendingShort")}</span>;
-    if (c.differences.length === 0) return <span className={styles.ok}>{t("workEarnings.checksOk")}</span>;
-    return <span className={styles.bad}>{t("workEarnings.checksDifferences", { count: c.differences.length })}</span>;
+  function checkText(c: PayslipChecksRow | undefined): string {
+    if (!c) return "—";
+    if (c.pending) return t("workEarnings.checksPendingShort");
+    if (c.differences.length === 0) return t("workEarnings.checksOk");
+    const count = c.differences.length;
+    return t(count === 1 ? "workEarnings.checksDifferencesOne" : "workEarnings.checksDifferences", { count });
   }
+
+  function checkStatus(c: PayslipChecksRow | undefined): ReactNode {
+    const cls = !c || c.pending ? "muted" : c.differences.length === 0 ? styles.ok : styles.bad;
+    return <span className={cls}>{checkText(c)}</span>;
+  }
+
+  const payslipCount = (count: number) =>
+    t(count === 1 ? "workEarnings.payslipCountOne" : "workEarnings.payslipCount", { count });
 
   function deductionPairs(values: PayrollBreakdownValues, withShare: boolean): ReactNode {
     return PAYROLL_DEDUCTIONS.filter((s) => values[s.field] !== 0).map((s) => (
@@ -184,7 +209,8 @@ export function PayslipList({
           <div className={styles.pairs}>
             <span className={styles.pairsHead}>{t("workEarnings.receiptEarnings")}</span>
             {EARNING_LINES.filter(([field]) => row[field]).map(([field, label]) => (
-              <FragmentPair key={field} label={t(label)} value={formatFlowMoney(row[field] ?? 0, displayUnit)} muted />
+              // The liquidación's own printed lines, in its pesos whatever the display unit.
+              <FragmentPair key={field} label={t(label)} value={formatPayslipPesos(row[field] ?? 0)} muted />
             ))}
             <span className={styles.pairsTotal}>{fieldLabel("gross")}</span>
             <span className={cn("mono", styles.num, styles.pairsTotal)}>{money(values.gross)}</span>
@@ -283,13 +309,26 @@ export function PayslipList({
                 const v = y.values;
                 return (
                   <Fragment key={key}>
-                    <div className={cn(styles.row, styles.opens, open && styles.open)} {...rowProps(key, open)}>
+                    <div
+                      className={cn(styles.row, styles.opens, open && styles.open)}
+                      {...rowProps(
+                        key,
+                        open,
+                        t("workEarnings.yearRowLabel", {
+                          period: y.period,
+                          count: payslipCount(y.payslips),
+                          gross: money(v.gross),
+                          net: money(v.net),
+                          share: v.gross > 0 ? formatPct((v.deductions / v.gross) * 100, 1) : "—",
+                        })
+                      )}
+                    >
                       <span className={styles.pPeriod}>{y.period}</span>
                       <span className={cn("muted", styles.small, styles.pEmployer, styles.nowrap)}>
-                        {t("workEarnings.payslipCount", { count: y.payslips })}
+                        {payslipCount(y.payslips)}
                       </span>
                       <span className={cn("mono muted", styles.num, styles.pGross)}>{money(v.gross)}</span>
-                      <GrossBar values={v} className={styles.pBar} />
+                      <GrossBar values={v} netSeverance={y.net_severance} className={styles.pBar} />
                       <span className={cn("mono", styles.num, styles.strong, styles.pNet)}>{money(v.net)}</span>
                       <span className={cn("mono muted", styles.num, styles.small, styles.pCheck)}>
                         {v.gross > 0 ? formatPct((-v.deductions / v.gross) * 100, 1) : ""}
@@ -303,10 +342,25 @@ export function PayslipList({
                             <FragmentPair label={fieldLabel("gross")} value={money(v.gross)} />
                             {deductionPairs(v, true)}
                             <span className={styles.pairsTotal}>
-                              <i className={styles.dot} style={{ background: PAYROLL_STACK[0]!.color }} />
+                              <i className={styles.dot} style={{ background: netColor("salary") }} />
                               {fieldLabel("net")}
                             </span>
                             <span className={cn("mono", styles.num, styles.pairsTotal, styles.strong)}>{money(v.net)}</span>
+                            {y.net_severance !== 0 ? (
+                              <FragmentPair
+                                label={
+                                  <>
+                                    <i className={styles.dot} style={{ background: netColor("severance") }} />
+                                    {t("workEarnings.netSeverance")}
+                                  </>
+                                }
+                                value={money(y.net_severance)}
+                                muted
+                              />
+                            ) : null}
+                            {v.employer_retirement !== 0 ? (
+                              <FragmentPair label={fieldLabel("employer_retirement")} value={money(v.employer_retirement)} muted />
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -338,7 +392,18 @@ export function PayslipList({
                     <div
                       ref={focus?.payslipId === row.id ? focusRef : undefined}
                       className={cn(styles.row, styles.opens, open && styles.open)}
-                      {...rowProps(key, open)}
+                      {...rowProps(
+                        key,
+                        open,
+                        t("workEarnings.rowLabel", {
+                          period: row.pay_date ?? formatYearMonthLabel(row.period_month),
+                          employer: row.employer_name,
+                          type: t(`income.chart.${row.earning_type}`),
+                          gross: money(values.gross),
+                          net: money(values.net),
+                          check: checkText(c),
+                        })
+                      )}
                     >
                       {/* A US pay stub is one of several in its month: its pay date tells them apart. */}
                       <span className={styles.pPeriod}>{row.pay_date ?? formatYearMonthLabel(row.period_month)}</span>
@@ -375,10 +440,18 @@ export function PayslipList({
       {empty ? null : (
         <p className={cn(styles.legend, styles.small)}>
           {PAYROLL_STACK.filter((s) => years.some((y) => y.values[s.field] !== 0)).map((s) => (
-            <span key={s.field} className={styles.nowrap}>
-              <i className={styles.dot} style={{ background: s.color }} />
-              {fieldLabel(s.field)}
-            </span>
+            <Fragment key={s.field}>
+              <span className={styles.nowrap}>
+                <i className={styles.dot} style={{ background: s.color }} />
+                {fieldLabel(s.field)}
+              </span>
+              {s.field === "net" && years.some((y) => y.net_severance !== 0) ? (
+                <span className={styles.nowrap}>
+                  <i className={styles.dot} style={{ background: netColor("severance") }} />
+                  {t("workEarnings.netSeverance")}
+                </span>
+              ) : null}
+            </Fragment>
           ))}
         </p>
       )}

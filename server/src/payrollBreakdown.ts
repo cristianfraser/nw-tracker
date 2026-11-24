@@ -67,7 +67,13 @@ export type PayrollBreakdownPayslip = {
   values: PayrollBreakdownValues;
 };
 
-export type PayrollBreakdownRow = { period: string; payslips: number; values: PayrollBreakdownValues };
+export type PayrollBreakdownRow = {
+  period: string;
+  payslips: number;
+  values: PayrollBreakdownValues;
+  /** The part of `values.net` paid by severance payslips (the rest is salary). */
+  net_severance: number;
+};
 
 export type PayrollBreakdownPayload = {
   /** The display unit every value is in. */
@@ -256,9 +262,10 @@ export function buildPayrollBreakdown(unit: string = "clp"): PayrollBreakdownPay
     const rows = new Map<string, PayrollBreakdownRow>();
     for (const p of payslips) {
       const k = key(p);
-      const row = rows.get(k) ?? { period: k, payslips: 0, values: zero() };
+      const row = rows.get(k) ?? { period: k, payslips: 0, values: zero(), net_severance: 0 };
       row.payslips += 1;
       for (const f of PAYROLL_BREAKDOWN_FIELDS) row.values[f] += p.values[f];
+      if (p.earning_type === "severance") row.net_severance += p.values.net;
       rows.set(k, row);
     }
     return [...rows.values()].sort((a, b) => a.period.localeCompare(b.period));
