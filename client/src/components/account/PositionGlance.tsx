@@ -289,7 +289,7 @@ export type GlanceSparkline = {
 };
 
 /**
- * A line over the chosen range (its own compact range row, default a year, remembered under
+ * A line over the chosen range (its own range row, default a year, remembered under
  * `surfaceId`): the axis always spans the whole range, the history placed by day, faint outside
  * the held stretches; the dotted line is the cost, the dot today's point in `tone`.
  */
@@ -316,7 +316,7 @@ export function GlanceSparklineGroup({
   return (
     <Group>
       <div className={styles.quoteLine}>
-        <SurfaceControls range={prefs.range} onRangeChange={prefs.setRange} compact />
+        <SurfaceControls range={prefs.range} onRangeChange={prefs.setRange} />
       </div>
       <div className={styles.spark}>
         <svg viewBox={`0 0 ${SPARK_W} ${SPARK_H}`} preserveAspectRatio="none" role="img" aria-label={ariaLabel}>

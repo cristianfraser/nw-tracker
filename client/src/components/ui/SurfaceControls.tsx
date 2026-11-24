@@ -1,14 +1,28 @@
 import type { CSSProperties } from "react";
 import { useTranslation } from "../../i18n";
-import { parseTimeRange, TIME_RANGE_OPTIONS, type TimeRange } from "../../timeRange";
+import { TIME_RANGE_OPTIONS, type TimeRange } from "../../timeRange";
 import type { SurfaceCompositionView, SurfacePeriod } from "../../surfaceDisplayPrefs";
 
 const ALL_PERIODS: readonly SurfacePeriod[] = ["day", "month", "year"];
 
+const COMPOSITION_VIEWS: readonly SurfaceCompositionView[] = ["composition", "map"];
+
+const VIEW_LABEL_KEYS: Record<SurfaceCompositionView, string> = {
+  composition: "valueMap.viewComposition",
+  map: "valueMap.viewMap",
+};
+
+/** Full period names: the buttons' hover titles. */
 const PERIOD_LABEL_KEYS: Record<SurfacePeriod, string> = {
   day: "dashboard.daily",
   month: "dashboard.monthly",
   year: "dashboard.yearly",
+};
+
+const PERIOD_SHORT_KEYS: Record<SurfacePeriod, string> = {
+  day: "surfaceControls.short.day",
+  month: "surfaceControls.short.month",
+  year: "surfaceControls.short.year",
 };
 
 const RETURN_PERIOD_LABEL_KEYS: Record<SurfacePeriod, string> = {
@@ -29,28 +43,14 @@ export type SurfaceControlsProps = {
   periodOptions?: readonly SurfacePeriod[];
   range?: TimeRange;
   onRangeChange?: (r: TimeRange) => void;
-  /**
-   * Short text buttons instead of the labelled selects: «D M A» then the ranges of
-   * {@link COMPACT_RANGE_OPTIONS}, the current one underlined. Period and range only.
-   */
-  compact?: boolean;
   style?: CSSProperties;
 };
 
-/** The ranges the compact row offers (no 6m: the row stays short). */
-export const COMPACT_RANGE_OPTIONS: readonly TimeRange[] = ["30d", "60d", "90d", "1y", "3y", "5y", "10y", "total"];
-
-const PERIOD_SHORT_KEYS: Record<SurfacePeriod, string> = {
-  day: "surfaceControls.short.day",
-  month: "surfaceControls.short.month",
-  year: "surfaceControls.short.year",
-};
-
 /**
- * Compact per-surface Período/Rango control row (chart panel titles, table headings).
- * Renders only the pair(s) whose value + handler are provided: charts pass both, period
- * tables pass period only, the rates page passes range only. Labels reuse the global
- * toolbar keys — translate at render, never cache.
+ * Per-surface view / Período / Rango control row (chart panel titles, table headings): short
+ * text buttons, «D M A · 30d … total», the current one underlined. Renders only the set(s)
+ * whose value + handler are provided: charts pass period and range, period tables period
+ * only, the rates page range only. Labels translate at render, never cached.
  */
 export function SurfaceControls({
   view,
@@ -61,107 +61,61 @@ export function SurfaceControls({
   periodOptions = ALL_PERIODS,
   range,
   onRangeChange,
-  compact = false,
   style,
 }: SurfaceControlsProps) {
   const { t } = useTranslation();
 
-  if (compact) {
-    return (
-      <div className="surface-controls surface-controls--compact" style={style}>
-        {period != null && onPeriodChange ? (
-          <span
-            className="surface-controls__set"
-            role="group"
-            aria-label={t(periodKind === "return" ? "valueMap.periodLabel" : "dashboard.chartGranularityLabel")}
-          >
-            {periodOptions.map((p) => (
-              <button
-                key={p}
-                type="button"
-                className={p === period ? "is-on" : undefined}
-                aria-pressed={p === period}
-                title={periodKind === "return" ? undefined : t(PERIOD_LABEL_KEYS[p])}
-                onClick={() => onPeriodChange(p)}
-              >
-                {t((periodKind === "return" ? RETURN_PERIOD_LABEL_KEYS : PERIOD_SHORT_KEYS)[p])}
-              </button>
-            ))}
-          </span>
-        ) : null}
-        {range != null && onRangeChange ? (
-          <span className="surface-controls__set" role="group" aria-label={t("dashboard.rangeLabel")}>
-            {COMPACT_RANGE_OPTIONS.map((r) => (
-              <button
-                key={r}
-                type="button"
-                className={r === range ? "is-on" : undefined}
-                aria-pressed={r === range}
-                onClick={() => onRangeChange(r)}
-              >
-                {t(`surfaceControls.shortRange.${r}`)}
-              </button>
-            ))}
-          </span>
-        ) : null}
-      </div>
-    );
-  }
-
   return (
     <div className="surface-controls" style={style}>
       {view != null && onViewChange ? (
-        <label className="surface-controls__label">
-          <span className="muted">{t("valueMap.viewLabel")}</span>
-          <select
-            value={view}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "composition" || v === "map") onViewChange(v);
-            }}
-          >
-            <option value="composition">{t("valueMap.viewComposition")}</option>
-            <option value="map">{t("valueMap.viewMap")}</option>
-          </select>
-        </label>
+        <span className="surface-controls__set" role="group" aria-label={t("valueMap.viewLabel")}>
+          {COMPOSITION_VIEWS.map((v) => (
+            <button
+              key={v}
+              type="button"
+              className={v === view ? "is-on" : undefined}
+              aria-pressed={v === view}
+              onClick={() => onViewChange(v)}
+            >
+              {t(VIEW_LABEL_KEYS[v])}
+            </button>
+          ))}
+        </span>
       ) : null}
       {period != null && onPeriodChange ? (
-        <label className="surface-controls__label">
-          <span className="muted">
-            {t(periodKind === "return" ? "valueMap.periodLabel" : "dashboard.chartGranularityLabel")}
-          </span>
-          <select
-            value={period}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "day" || v === "month" || v === "year") onPeriodChange(v);
-            }}
-          >
-            {periodOptions.map((p) => (
-              <option key={p} value={p}>
-                {t((periodKind === "return" ? RETURN_PERIOD_LABEL_KEYS : PERIOD_LABEL_KEYS)[p])}
-              </option>
-            ))}
-          </select>
-        </label>
+        <span
+          className="surface-controls__set"
+          role="group"
+          aria-label={t(periodKind === "return" ? "valueMap.periodLabel" : "dashboard.chartGranularityLabel")}
+        >
+          {periodOptions.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={p === period ? "is-on" : undefined}
+              aria-pressed={p === period}
+              title={periodKind === "return" ? undefined : t(PERIOD_LABEL_KEYS[p])}
+              onClick={() => onPeriodChange(p)}
+            >
+              {t((periodKind === "return" ? RETURN_PERIOD_LABEL_KEYS : PERIOD_SHORT_KEYS)[p])}
+            </button>
+          ))}
+        </span>
       ) : null}
       {range != null && onRangeChange ? (
-        <label className="surface-controls__label">
-          <span className="muted">{t("dashboard.rangeLabel")}</span>
-          <select
-            value={range}
-            onChange={(e) => {
-              const v = parseTimeRange(e.target.value);
-              if (v != null) onRangeChange(v);
-            }}
-          >
-            {TIME_RANGE_OPTIONS.map((r) => (
-              <option key={r} value={r}>
-                {t(`dashboard.range.${r}`)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <span className="surface-controls__set" role="group" aria-label={t("dashboard.rangeLabel")}>
+          {TIME_RANGE_OPTIONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              className={r === range ? "is-on" : undefined}
+              aria-pressed={r === range}
+              onClick={() => onRangeChange(r)}
+            >
+              {t(`surfaceControls.shortRange.${r}`)}
+            </button>
+          ))}
+        </span>
       ) : null}
     </div>
   );

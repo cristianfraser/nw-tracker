@@ -38,11 +38,7 @@ function granularityOf(period: string): Granularity {
   return period === "day" ? "day" : period === "year" ? "year" : "month";
 }
 
-/**
- * `compactControls`: the charts' Período/Rango as a row of short text buttons («D M A · 30d … total»,
- * the stock page) instead of the two labelled selects.
- */
-export function useAccountChartSurfaces(data: AccountDetailPageData, { compactControls = false } = {}) {
+export function useAccountChartSurfaces(data: AccountDetailPageData) {
   const { summary, ts, displayUnit, valuationPrefs, perfPrefs, monthlyPerfRows, valuationBlockForChart } = data;
   const loading = data.contentLoading;
   const valuationIsDaily = valuationPrefs.period === "day";
@@ -97,7 +93,6 @@ export function useAccountChartSurfaces(data: AccountDetailPageData, { compactCo
           onPeriodChange={valuationPrefs.setPeriod}
           range={valuationPrefs.range}
           onRangeChange={valuationPrefs.setRange}
-          compact={compactControls}
         />
       ),
     },
@@ -112,7 +107,6 @@ export function useAccountChartSurfaces(data: AccountDetailPageData, { compactCo
           onPeriodChange={perfPrefs.setPeriod}
           range={perfPrefs.range}
           onRangeChange={perfPrefs.setRange}
-          compact={compactControls}
         />
       ),
     },

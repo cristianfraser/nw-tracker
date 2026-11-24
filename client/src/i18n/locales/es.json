@@ -296,17 +296,6 @@
     },
     "chartGranularityLabel": "Período:",
     "rangeLabel": "Rango:",
-    "range": {
-      "30d": "30d",
-      "60d": "60d",
-      "90d": "90d",
-      "6m": "6m",
-      "1y": "1a",
-      "3y": "3a",
-      "5y": "5a",
-      "10y": "10a",
-      "total": "Todo"
-    },
     "monthly": "Mensual",
     "yearly": "Anual",
     "daily": "Diario",

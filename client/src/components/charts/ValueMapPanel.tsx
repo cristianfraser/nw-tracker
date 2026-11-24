@@ -22,7 +22,6 @@ export function ValueMapPanel({
   bounds,
   unit,
   loading,
-  compact = false,
 }: {
   /** The composition chart's title: the map takes its place in the same panel ("" = untitled). */
   title: string;
@@ -36,8 +35,6 @@ export function ValueMapPanel({
   unit: DisplayUnit;
   /** The payload is pending or held prior data: the map dims (empty box when `root` is null). */
   loading?: boolean;
-  /** The compact text row (día mes año) instead of the labelled select. */
-  compact?: boolean;
 }) {
   const prefs = useSurfacePrefs(surfaceId, "day", "total");
   return (
@@ -50,7 +47,6 @@ export function ValueMapPanel({
           periodKind="return"
           period={prefs.period}
           onPeriodChange={prefs.setPeriod}
-          compact={compact}
         />
       }
       root={root}

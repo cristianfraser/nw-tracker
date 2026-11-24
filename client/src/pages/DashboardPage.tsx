@@ -63,6 +63,8 @@ import { dashboardAllocationStackSpans, dashboardTileSmallSpan, dashboardTileWid
 import type { TimeseriesBlock } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
+/** The home detalle table: month and year rows only. */
+const DASHBOARD_DETAIL_PERIODS = ["month", "year"] as const;
 
 /** Overview line dataKeys the daily payload can feed. */
 const DAILY_OVERVIEW_LINE_KEYS = new Set([
@@ -659,6 +661,7 @@ export function DashboardPage() {
       dashboard={{
         mainClassName: "page-dashboard",
         serverPaginatedMonthlyDetail: true,
+        detailPeriods: DASHBOARD_DETAIL_PERIODS,
         flowsTitleKey: "dashboard.wealthFlowsTitle",
         flowsExcludeSpending: true,
         pairs: dashboardPairedCharts,

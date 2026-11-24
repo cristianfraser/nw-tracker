@@ -50,7 +50,7 @@ export function PositionAccountDetailPage({
   const { summary, displayUnit, periodReturns, monthlyPerfRows, depositInflows } = data;
   const loading = data.contentLoading;
   const glance = data.positionGlance ?? undefined;
-  const surfaces = useAccountChartSurfaces(data, { compactControls: true });
+  const surfaces = useAccountChartSurfaces(data);
   const { form: addMovementsForm } = useAccountMovementForm(data);
   const showBookLedgerEdit = supportsBookLedgerEdit(summary.book_ledger_edit);
   // undefined = still loading (the table frames itself); null = the server states none.

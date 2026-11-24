@@ -367,7 +367,6 @@ export function GroupInfoPage() {
                 onPeriodChange={valuationPrefs.setPeriod}
                 range={valuationPrefs.range}
                 onRangeChange={valuationPrefs.setRange}
-                compact
               />
             }
             includeAccumulatedLines
@@ -394,7 +393,6 @@ export function GroupInfoPage() {
                   onPeriodChange={perfPrefs.setPeriod}
                   range={perfPrefs.range}
                   onRangeChange={perfPrefs.setRange}
-                  compact
                 />
               }
               barSeries={charts.groupPerfBarSeries}
@@ -438,7 +436,7 @@ export function GroupInfoPage() {
       .filter((c) => c.expense_account_id == null)
       .map((c) => resolveNavTreeLabel(c));
     const percentToggle = (
-      <span className="surface-controls surface-controls--compact">
+      <span className="surface-controls">
         <span className="surface-controls__set">
           <button
             type="button"
@@ -478,7 +476,6 @@ export function GroupInfoPage() {
                 onPeriodChange={valuationPrefs.setPeriod}
                 range={valuationPrefs.range}
                 onRangeChange={valuationPrefs.setRange}
-                compact
               />
             }
             includeAccumulatedLines
@@ -498,7 +495,6 @@ export function GroupInfoPage() {
             bounds={heldValueMap.bounds}
             unit={heldValueMap.unit}
             loading={valueMapLoading}
-            compact
           />
         }
         pairControls={
@@ -507,7 +503,6 @@ export function GroupInfoPage() {
             onPeriodChange={perfPrefs.setPeriod}
             range={perfPrefs.range}
             onRangeChange={perfPrefs.setRange}
-            compact
           />
         }
         positionsChart={

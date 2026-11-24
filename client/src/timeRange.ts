@@ -4,7 +4,7 @@ import { chileTodayYmd } from "./calendarMonth";
  * Chart range ("from now back"): governs how far back charts and the daily detalle
  * reach, independent of the D/M/Y granularity toggle. `total` = full history.
  */
-export const TIME_RANGE_OPTIONS = ["30d", "60d", "90d", "6m", "1y", "3y", "5y", "10y", "total"] as const;
+export const TIME_RANGE_OPTIONS = ["30d", "60d", "90d", "1y", "3y", "5y", "10y", "total"] as const;
 export type TimeRange = (typeof TIME_RANGE_OPTIONS)[number];
 
 export function parseTimeRange(raw: string | null): TimeRange | null {
@@ -17,7 +17,6 @@ const RANGE_DAYS: Record<TimeRange, number> = {
   "30d": 30,
   "60d": 60,
   "90d": 90,
-  "6m": 183,
   "1y": 366,
   "3y": 1096,
   "5y": 1827,

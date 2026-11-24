@@ -1,23 +1,18 @@
-/* Surface controls (Período / Rango / view selects beside a chart or table title) and other
-   inline control rows. See docs/layout-grid-plan.md §D. */
+/* Surface controls (view / Período / Rango beside a chart or table title) and other inline
+   control rows: short text buttons, the current one underlined. See docs/layout-grid-plan.md §D. */
 .surface-controls {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-md);
+  gap: var(--space-lg);
   flex-wrap: wrap;
-  font-size: var(--font-size-prose);
+  font-size: var(--font-size-card-meta);
 }
 
+/* A checkbox beside the buttons (the dashboard's P/L combo toggles). */
 .surface-controls__label {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2xs);
-}
-
-/* The compact row (SurfaceControls `compact`): short text buttons, the current one underlined. */
-.surface-controls--compact {
-  gap: var(--space-lg);
-  font-size: var(--font-size-card-meta);
 }
 
 .surface-controls__set {

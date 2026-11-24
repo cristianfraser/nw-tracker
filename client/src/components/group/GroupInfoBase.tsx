@@ -6,7 +6,7 @@ import {
 } from "../account/MonthlyPerfDetailTable";
 import { DailyPerfDetailTable } from "../account/DailyPerfDetailTable";
 import { useDailySeries } from "../../queries/hooks";
-import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
+import { useSurfacePrefs, type SurfacePeriod } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { Loadable } from "../ui/Loadable";
 import { PageGridTile } from "../layout/PageGridTile";
@@ -55,6 +55,8 @@ export type GroupInfoPortfolioStrip = {
   linkedCardNavChildren?: NavTreeNodeDto[];
 };
 
+const DETAIL_PERIODS_ALL: readonly SurfacePeriod[] = ["day", "month", "year"];
+
 type GroupInfoTileId = "returns" | "detail" | "wealth-flows" | "export" | "accounts";
 
 /** What only the home dashboard sets on the shared page body. */
@@ -65,6 +67,8 @@ export type GroupInfoDashboardOptions = {
    * whole consolidated-tables payload (dashboard net_worth; group pages stay client-paginated).
    */
   serverPaginatedMonthlyDetail: boolean;
+  /** The periods the detalle table offers (the dashboard: month and year, no daily rows). */
+  detailPeriods?: readonly SurfacePeriod[];
   /** i18n key of the flows table heading. */
   flowsTitleKey: string;
   /** The flows table leaves out the checking movements the Expenses page counts as spending. */
@@ -176,7 +180,9 @@ export function GroupInfoBase({
     "month",
     "total"
   );
-  const tablePeriod = detallePrefs.period;
+  const detailPeriods = dashboard?.detailPeriods ?? DETAIL_PERIODS_ALL;
+  // A stored period the page no longer offers reads as the surface default.
+  const tablePeriod = detailPeriods.includes(detallePrefs.period) ? detallePrefs.period : "month";
   // The tables always mount (each part has its own empty copy); a page with no group slug yet
   // (cold nav) shows their frames until it has one.
   const tablesEnabled = !hideConsolidatedTables;
@@ -348,7 +354,11 @@ export function GroupInfoBase({
                 : "groupPage.monthlyDetailTitle"
           )}
         </h2>
-        <SurfaceControls period={tablePeriod} onPeriodChange={detallePrefs.setPeriod} />
+        <SurfaceControls
+          period={tablePeriod}
+          onPeriodChange={detallePrefs.setPeriod}
+          periodOptions={detailPeriods}
+        />
       </div>
       {isDaily ? (
         queryLoadError(dailySeries) ? (
