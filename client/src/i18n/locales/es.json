@@ -314,8 +314,8 @@
     },
     "sections": {
       "overviewTitle": "Patrimonio neto",
-      "perfChartTitleMonthly": "Δ mensual por clase (inversiones)",
-      "perfChartTitleYearly": "Δ anual por clase (inversiones)",
+      "perfChartTitleMonthly": "PL inversiones",
+      "perfChartTitleYearly": "PL inversiones",
       "areaTotalToggle": "Total acumulado",
       "percentToggle": "%",
       "deltaRetirementMonthly": "Δ mensual retiro",
@@ -1375,7 +1375,7 @@
     "rangeTotalLabel": "en el rango",
     "overview": {
       "title": "Resumen",
-      "chartTitle": "Ingresos, gastos, depósitos y PL",
+      "chartTitle": "Flujos y PL",
       "chartEmpty": "Sin datos de flujos.",
       "income": "Ingresos",
       "expenses": "Gastos",

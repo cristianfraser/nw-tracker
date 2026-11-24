@@ -972,12 +972,12 @@
         "es": "Patrimonio neto"
       },
       "perfChartTitleMonthly": {
-        "en": "Monthly Δ by class (investments)",
-        "es": "Δ mensual por clase (inversiones)"
+        "en": "Investments P/L",
+        "es": "PL inversiones"
       },
       "perfChartTitleYearly": {
-        "en": "Annual Δ by class (investments)",
-        "es": "Δ anual por clase (inversiones)"
+        "en": "Investments P/L",
+        "es": "PL inversiones"
       },
       "areaTotalToggle": {
         "en": "All-time total",
@@ -4340,8 +4340,8 @@
         "es": "Resumen"
       },
       "chartTitle": {
-        "en": "Income, expenses, deposits, and P/L",
-        "es": "Ingresos, gastos, depósitos y PL"
+        "en": "Flows and P/L",
+        "es": "Flujos y PL"
       },
       "chartEmpty": {
         "en": "No flow data.",

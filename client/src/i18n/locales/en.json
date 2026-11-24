@@ -314,8 +314,8 @@
     },
     "sections": {
       "overviewTitle": "Net worth",
-      "perfChartTitleMonthly": "Monthly Δ by class (investments)",
-      "perfChartTitleYearly": "Annual Δ by class (investments)",
+      "perfChartTitleMonthly": "Investments P/L",
+      "perfChartTitleYearly": "Investments P/L",
       "areaTotalToggle": "All-time total",
       "percentToggle": "%",
       "deltaRetirementMonthly": "Monthly retirement Δ",
@@ -1375,7 +1375,7 @@
     "rangeTotalLabel": "in range",
     "overview": {
       "title": "Overview",
-      "chartTitle": "Income, expenses, deposits, and P/L",
+      "chartTitle": "Flows and P/L",
       "chartEmpty": "No flow data.",
       "income": "Income",
       "expenses": "Expenses",
