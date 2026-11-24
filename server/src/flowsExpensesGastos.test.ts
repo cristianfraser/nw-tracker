@@ -10,7 +10,6 @@ import { markCardRefunds, markFinancingCostLines, type FlowCcExpenseLineRow } fr
 import { enrichLinesWithNotaDeCreditoPairing } from "./ccNotaDeCreditoPairing.js";
 import {
   aggregateGastosFromLines as aggregateFinishedLines,
-  bigGroupUsageByMode as bigGroupUsageOfFinishedLines,
   countsTowardGastosMes,
   gastosMonthRows as gastosMonthRowsOfFinishedLines,
 } from "./flowsExpensesGastos.js";
@@ -25,10 +24,6 @@ const gastosMonthRows = (
   lines: FlowCcExpenseLineRow[],
   ...rest: Parameters<typeof gastosMonthRowsOfFinishedLines> extends [unknown, ...infer R] ? R : never
 ) => gastosMonthRowsOfFinishedLines(withLineMoney(lines), ...rest);
-const bigGroupUsageByMode = (
-  lines: FlowCcExpenseLineRow[],
-  ...rest: Parameters<typeof bigGroupUsageOfFinishedLines> extends [unknown, ...infer R] ? R : never
-) => bigGroupUsageOfFinishedLines(withLineMoney(lines), ...rest);
 
 /** A card line as the builder emits it: with the kind the importer stored for its statement line. */
 function withStoredKind<L extends FlowCcExpenseLineRow>(l: L): L {
@@ -456,33 +451,6 @@ describe("countsTowardGastosMes (shared case table)", () => {
     });
     expect(countsTowardGastosMes(line, "split")).toBe(c.split);
     expect(countsTowardGastosMes(line, "total")).toBe(c.total);
-  });
-});
-
-describe("bigGroupUsageByMode", () => {
-  it("sums the lines that count in each mode, counts purchases once, sorts by label", () => {
-    const purchase = (over: Partial<FlowCcExpenseLineRow>) =>
-      ccLine({ line_role: "purchase", installment_flag: 0, nro_cuota_current: null, category_slug: "travel", ...over });
-    const lines = [
-      purchase({ purchase_key: "a", amount_clp: 1000.4, big_group_slug: "trip" }),
-      purchase({ purchase_key: "a", amount_clp: 500, big_group_slug: "trip" }),
-      purchase({ purchase_key: "b", amount_clp: 700, big_group_slug: "trip", category_slug: "no_cuenta" }),
-      ccLine({ purchase_key: "c", amount_clp: 300, big_group_slug: "boda" }),
-      ccLine({ purchase_key: "c", line_role: "installment_purchase_total", installment_flag: 1, amount_clp: 900, big_group_slug: "boda" }),
-      purchase({ purchase_key: "d", amount_clp: 50 }),
-    ];
-    const usage = bigGroupUsageByMode(lines, [
-      { slug: "trip", label: "Viaje" },
-      { slug: "boda", label: "Boda" },
-    ], "clp");
-    expect(usage.split).toEqual([
-      { slug: "boda", label: "Boda", total: 300, purchase_count: 1 },
-      { slug: "trip", label: "Viaje", total: 1500, purchase_count: 1 },
-    ]);
-    expect(usage.total).toEqual([
-      { slug: "boda", label: "Boda", total: 900, purchase_count: 1 },
-      { slug: "trip", label: "Viaje", total: 1500, purchase_count: 1 },
-    ]);
   });
 });
 

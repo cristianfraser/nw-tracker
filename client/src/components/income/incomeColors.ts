@@ -26,7 +26,8 @@ export const PAYROLL_STACK: readonly { field: PayrollBreakdownField; color: stri
   { field: "voluntary_pension", color: "#60a5fa" },
   { field: "hsa", color: "#0ea5e9" },
   { field: "unemployment", color: "#818cf8" },
-  { field: "pension_commission", color: "#f59e0b" },
+  // Not amber: amber is severance, which a payslip's net pay can be.
+  { field: "pension_commission", color: "#f472b6" },
   { field: "health", color: "#14b8a6" },
   { field: "social_security_medicare", color: "#f97316" },
   { field: "income_tax", color: "#ef4444" },

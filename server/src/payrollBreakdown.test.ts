@@ -57,5 +57,7 @@ describe("payroll breakdown", () => {
     expect(b.unit).toBe("clp");
     expect(buildPayrollBreakdown("usd").months.find((m) => m.period === "2099-01")!.values.net).toBeGreaterThan(0);
     expect(b.years.find((y) => y.period === "2099")!.values.net).toBe(840_400);
+    // A salary payslip: none of the year's net pay is severance.
+    expect(b.years.find((y) => y.period === "2099")!.net_severance).toBe(0);
   });
 });

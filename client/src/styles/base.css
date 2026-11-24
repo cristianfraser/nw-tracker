@@ -141,15 +141,6 @@ h4 {
   color: var(--accent);
 }
 
-.messages-body-pre {
-  margin: 0;
-  font-family: inherit;
-  font-size: 0.82rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--muted);
-}
-
 .toggle-row {
   display: flex;
   align-items: center;
@@ -232,10 +223,4 @@ h4 {
 
 .demo-tour-target--positioned {
   position: relative;
-}
-
-/* A select is as wide as its longest option: it shrinks to its container instead of widening
-   the page (its text is cut; the open list still shows whole names). */
-select {
-  max-width: 100%;
 }

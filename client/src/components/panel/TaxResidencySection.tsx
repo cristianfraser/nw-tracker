@@ -10,6 +10,7 @@ import { invalidateResources, resources } from "../../queries/resources";
 import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import type { TaxJurisdiction, TaxResidencyPeriodDto } from "../../types";
+import styles from "./TaxResidencySection.module.css";
 
 const JURISDICTIONS: readonly TaxJurisdiction[] = ["cl", "us"];
 
@@ -81,14 +82,14 @@ export function TaxResidencySection() {
       ) : (
         <>
           <form
-            className="toggle-row"
+            className={styles.form}
             onSubmit={(e) => {
               e.preventDefault();
               declare.mutate();
             }}
           >
-            <label>
-              <span className="muted">{t("panelSettings.taxResidency.jurisdiction")} </span>
+            <label className={styles.field}>
+              <span className="muted">{t("panelSettings.taxResidency.jurisdiction")}</span>
               <select value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value as TaxJurisdiction)} disabled={busy}>
                 {JURISDICTIONS.map((j) => (
                   <option key={j} value={j}>
@@ -97,29 +98,31 @@ export function TaxResidencySection() {
                 ))}
               </select>
             </label>
-            <label>
-              <span className="muted">{t("panelSettings.taxResidency.from")} </span>
+            <label className={styles.field}>
+              <span className="muted">{t("panelSettings.taxResidency.from")}</span>
               <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required disabled={busy} />
             </label>
-            <label>
-              <span className="muted">{t("panelSettings.taxResidency.note")} </span>
+            <label className={`${styles.field} ${styles.noteField}`}>
+              <span className="muted">{t("panelSettings.taxResidency.note")}</span>
               <input type="text" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} disabled={busy} />
             </label>
-            <Button type="submit" disabled={busy || from === ""}>
-              {t("panelSettings.taxResidency.declare")}
-            </Button>
-            {latest ? (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => {
-                  if (window.confirm(t("panelSettings.taxResidency.deleteConfirm", { from: latest.from }))) remove.mutate(latest.id);
-                }}
-              >
-                {t("panelSettings.taxResidency.deleteLatest")}
+            <div className={styles.actions}>
+              <Button type="submit" disabled={busy || from === ""}>
+                {t("panelSettings.taxResidency.declare")}
               </Button>
-            ) : null}
+              {latest ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm(t("panelSettings.taxResidency.deleteConfirm", { from: latest.from }))) remove.mutate(latest.id);
+                  }}
+                >
+                  {t("panelSettings.taxResidency.deleteLatest")}
+                </Button>
+              ) : null}
+            </div>
           </form>
           {error ? <p className="error">{error}</p> : null}
         </>

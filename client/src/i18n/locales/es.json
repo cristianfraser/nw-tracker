@@ -525,18 +525,14 @@
     "groupAccountsCount": "({{count}} cuentas)"
   },
   "messages": {
-    "showMoreDetail": "Ver más…",
-    "detailModalClose": "Cerrar"
+    "readAt": "Leído {{when}}",
+    "unread": "Sin leer"
   },
   "notifications": {
     "unreadBadge": "{{count}} sin leer",
     "empty": "Sin notificaciones.",
     "showMore": "Mostrar más…",
-    "showLess": "Mostrar menos…",
-    "colDate": "Fecha",
-    "colTitle": "Título",
-    "colDetail": "Detalle",
-    "colRead": "Leído"
+    "showLess": "Mostrar menos…"
   },
   "importSync": {
     "syncLogTitle": "Registro de sync",
@@ -568,10 +564,6 @@
     "importedNo": "{{account}}: falta documento de {{month}}",
     "showMore": "Mostrar más…",
     "showLess": "Mostrar menos…",
-    "colDate": "Fecha",
-    "colTitle": "Título",
-    "colDetail": "Detalle",
-    "colRead": "Leído",
     "sync": {
       "lastSync": "Último sync: {{time}} ({{ago}})",
       "lastSyncNever": "Último sync: —",
@@ -1128,6 +1120,7 @@
       "prepagoNumber": "P{{n}}",
       "registerPayment": "Registrar pago",
       "paymentsCount": "{{count}} pagos",
+      "paymentsCollapse": "menos",
       "partAmortization": "amortización",
       "partExtra": "amortización extra",
       "partInterest": "interés",
@@ -1355,6 +1348,7 @@
       "chartEmpty": "Sin datos de flujos.",
       "income": "Ingresos",
       "expenses": "Gastos",
+      "expensesBasis": "Gastos por mes de compra; cuotas en el mes facturado",
       "savings": "Ahorro",
       "deposits": "Depósitos",
       "depositsPreTax": "AFP+AFC (cotizaciones)",
@@ -1404,6 +1398,9 @@
     }
   },
   "income": {
+    "rowLabel": "{{period}}: {{total}} ({{parts}}), {{lines}}",
+    "sideListUnpriced": "{{count}} sin tipo de cambio",
+    "sideListCountOne": "1 línea",
     "clearKind": "Quitar tipo",
     "payslipNote": "Liquidación {{period}} · bruto {{gross}} − {{deductions}}",
     "payslipOpen": "recibo",
@@ -1488,8 +1485,13 @@
     }
   },
   "workEarnings": {
+    "yearRowLabel": "{{period}}, {{count}}: líquido {{net}} de bruto {{gross}}, descuentos {{share}}",
+    "rowLabel": "{{period}}, {{employer}}, {{type}}: líquido {{net}} de bruto {{gross}}, revisión {{check}}",
+    "netSeverance": "Líquido (finiquito)",
+    "checksDifferencesOne": "1 diferencia",
+    "payslipCountOne": "1 liquidación",
     "receiptEarnings": "Haberes",
-    "payslipCount": "{{count}} liq.",
+    "payslipCount": "{{count}} liquidaciones",
     "checksPendingShort": "pendiente",
     "sectionTitle": "Liquidaciones de sueldo",
     "empty": "Sin liquidaciones importadas. Ejecuta parse e import de payroll.",
@@ -1506,7 +1508,7 @@
       "manual": "manual"
     },
     "checksOk": "OK",
-    "checksDifferences": "{{count}} diferencia(s)",
+    "checksDifferences": "{{count}} diferencias",
     "checkDetail": "{{check}}: esperado {{expected}}, liquidación {{printed}}",
     "rebuilt": "reconstruida",
     "checks": {
@@ -1571,6 +1573,7 @@
   "expenses": {
     "spent": {
       "chartTitle": "Acumulado del mes, por categoría",
+      "basis": "Por el día en que se hizo cada gasto",
       "chartAria": "Gasto acumulado de cada mes, día a día, por categoría",
       "stripAria": "Gasto de cada día",
       "allCategories": "todas",
@@ -2108,6 +2111,7 @@
       "assignedResult": "{{stamped}} compra(s) clasificadas."
     },
     "products": {
+      "aliasCount": "nombres: {{count}}",
       "search": "Buscar productos",
       "noMatch": "Ningún producto coincide.",
       "title": "Productos",

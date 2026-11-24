@@ -1014,8 +1014,14 @@ export interface FlowsIncomeResponse {
   payslip_checks: PayslipChecksRow[];
   /** The page's month rows, day points and total in the requested unit (server-built, the overview's income rule). */
   aggregates: FlowsIncomeAggregates;
-  /** The sum of each side list in the payload's unit (lines with no rate on file left out). */
-  list_totals: { refund_lines: number; filtered_lines: number; excluded_lines: number };
+  /** Each side list's sum in the payload's unit, and how many of its lines that sum leaves out (no rate on file). */
+  list_totals: Record<"refund_lines" | "filtered_lines" | "excluded_lines", IncomeSideListTotal>;
+}
+
+export interface IncomeSideListTotal {
+  amount: number;
+  /** Lines with no rate on file for their day: listed with «—», not in `amount`. */
+  unpriced: number;
 }
 
 export interface FlowsIncomeAggregates {
@@ -1099,6 +1105,8 @@ export interface PayrollBreakdownRow {
   period: string;
   payslips: number;
   values: PayrollBreakdownValues;
+  /** The part of `values.net` paid by severance payslips (the rest is salary). */
+  net_severance: number;
 }
 export interface PayrollBreakdownPayload {
   /** The display unit every value is in (the request's). */

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { PageGridTile } from "../../components/layout/PageGridTile";
-import { MessagesTable } from "../../components/messages/MessagesTable";
+import { MessageList } from "../../components/messages/MessageList";
 import { AvailableDocumentsTable } from "../../components/sync/AvailableDocumentsTable";
 import { GenericUniqueMerchantsPanel } from "../../components/sync/GenericUniqueMerchantsPanel";
 import { IngestRunsPanel } from "../../components/sync/IngestRunsPanel";
@@ -84,16 +84,12 @@ export function ImportSyncPage() {
           {t("importSync.syncLogTitle")}
         </h2>
         <SyncLogStatusPanel status={syncStatus} loading={syncStatusPending} />
-        <MessagesTable
+        <MessageList
           rows={logs}
           showReadAt={false}
           emptyLabel={t("importSync.logsEmpty")}
           showMoreLabel={t("importSync.showMore")}
           showLessLabel={t("importSync.showLess")}
-          colDate={t("importSync.colDate")}
-          colTitle={t("importSync.colTitle")}
-          colDetail={t("importSync.colDetail")}
-          colRead={t("importSync.colRead")}
           loading={logsPending}
         />
       </PageGridTile>

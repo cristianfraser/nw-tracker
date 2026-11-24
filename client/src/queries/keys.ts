@@ -191,6 +191,8 @@ export const queryKeys = {
   benchmarks: () => ["benchmarks"] as const,
   deptoPrepayments: (accountId: number, benchmark: string, unit: DisplayUnit) =>
     ["deptoPrepayments", accountId, benchmark, unit] as const,
+  /** Every benchmark's and unit's prepaid-vs-invested block of one mortgage. */
+  deptoPrepaymentsOf: (accountId: number) => ["deptoPrepayments", accountId] as const,
   benchmarkComparison: (scope: string, benchmark: string, unit: DisplayUnit) =>
     ["benchmarkComparison", scope, benchmark, unit] as const,
   taxReturn: (taxYear: number | null) => ["tax-return", taxYear] as const,

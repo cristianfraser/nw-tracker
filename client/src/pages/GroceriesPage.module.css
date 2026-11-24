@@ -126,8 +126,8 @@
   margin-bottom: 0.5rem;
 }
 
-/* The workbench: list, «show all», the result note and the assign bar. The bar is last in the
-   markup (see below) and first on the desktop. */
+/* The workbench: the assign bar and its result note (above the list on the desktop, below it
+   on a phone, where the bar sticks), the list and «show all». */
 .cleaning {
   display: flex;
   flex-direction: column;
@@ -140,7 +140,6 @@
 }
 
 .assignBar {
-  order: -2;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -150,7 +149,6 @@
 }
 
 .assignNote {
-  order: -1;
   margin: 0 0 0.5rem;
 }
 
@@ -158,7 +156,6 @@
    it is at hand anywhere in a long list. */
 @media (max-width: 879px) {
   .assignBar {
-    order: 0;
     position: sticky;
     /* Above the fixed display-prefs dock at the bottom of the screen. */
     bottom: calc(var(--display-prefs-stack-height) + 0.5rem + env(safe-area-inset-bottom, 0px));
@@ -187,8 +184,15 @@
   }
 }
 
-/* A labelled select inside the detail (filters, the settings' merge target) never widens it. */
+/* A select is as wide as its longest option: inside the detail (filters, the settings' merge
+   target, a product name per option) it shrinks to the row instead of widening the page; its
+   text is cut, the open list still shows whole names. Scoped here: a global rule would let an
+   auto-width table cell squash its select instead of the table switching to its cards. */
 .detail label {
   min-width: 0;
+  max-width: 100%;
+}
+
+.detail select {
   max-width: 100%;
 }

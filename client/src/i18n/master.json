@@ -1656,13 +1656,13 @@
     }
   },
   "messages": {
-    "showMoreDetail": {
-      "en": "See more…",
-      "es": "Ver más…"
+    "readAt": {
+      "en": "Read {{when}}",
+      "es": "Leído {{when}}"
     },
-    "detailModalClose": {
-      "en": "Close",
-      "es": "Cerrar"
+    "unread": {
+      "en": "Unread",
+      "es": "Sin leer"
     }
   },
   "notifications": {
@@ -1681,22 +1681,6 @@
     "showLess": {
       "en": "Show less…",
       "es": "Mostrar menos…"
-    },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colTitle": {
-      "en": "Title",
-      "es": "Título"
-    },
-    "colDetail": {
-      "en": "Detail",
-      "es": "Detalle"
-    },
-    "colRead": {
-      "en": "Read",
-      "es": "Leído"
     }
   },
   "importSync": {
@@ -1809,22 +1793,6 @@
     "showLess": {
       "en": "Show less…",
       "es": "Mostrar menos…"
-    },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colTitle": {
-      "en": "Title",
-      "es": "Título"
-    },
-    "colDetail": {
-      "en": "Detail",
-      "es": "Detalle"
-    },
-    "colRead": {
-      "en": "Read",
-      "es": "Leído"
     },
     "sync": {
       "lastSync": {
@@ -3714,6 +3682,7 @@
       "prepagoNumber": { "en": "P{{n}}", "es": "P{{n}}" },
       "registerPayment": { "en": "Record payment", "es": "Registrar pago" },
       "paymentsCount": { "en": "{{count}} payments", "es": "{{count}} pagos" },
+      "paymentsCollapse": { "en": "fewer", "es": "menos" },
       "partAmortization": { "en": "principal", "es": "amortización" },
       "partExtra": { "en": "extra principal", "es": "amortización extra" },
       "partInterest": { "en": "interest", "es": "interés" },
@@ -4289,6 +4258,10 @@
         "en": "Expenses",
         "es": "Gastos"
       },
+      "expensesBasis": {
+        "en": "Expenses by month of purchase; cuotas in the month billed",
+        "es": "Gastos por mes de compra; cuotas en el mes facturado"
+      },
       "savings": {
         "en": "Savings",
         "es": "Ahorro"
@@ -4464,6 +4437,18 @@
     }
   },
   "income": {
+    "rowLabel": {
+      "en": "{{period}}: {{total}} ({{parts}}), {{lines}}",
+      "es": "{{period}}: {{total}} ({{parts}}), {{lines}}"
+    },
+    "sideListUnpriced": {
+      "en": "{{count}} without a rate",
+      "es": "{{count}} sin tipo de cambio"
+    },
+    "sideListCountOne": {
+      "en": "1 line",
+      "es": "1 línea"
+    },
     "clearKind": {
       "en": "Clear type",
       "es": "Quitar tipo"
@@ -4770,13 +4755,33 @@
     }
   },
   "workEarnings": {
+    "yearRowLabel": {
+      "en": "{{period}}, {{count}}: net pay {{net}} of gross {{gross}}, deductions {{share}}",
+      "es": "{{period}}, {{count}}: líquido {{net}} de bruto {{gross}}, descuentos {{share}}"
+    },
+    "rowLabel": {
+      "en": "{{period}}, {{employer}}, {{type}}: net pay {{net}} of gross {{gross}}, check {{check}}",
+      "es": "{{period}}, {{employer}}, {{type}}: líquido {{net}} de bruto {{gross}}, revisión {{check}}"
+    },
+    "netSeverance": {
+      "en": "Net pay (severance)",
+      "es": "Líquido (finiquito)"
+    },
+    "checksDifferencesOne": {
+      "en": "1 difference",
+      "es": "1 diferencia"
+    },
+    "payslipCountOne": {
+      "en": "1 payslip",
+      "es": "1 liquidación"
+    },
     "receiptEarnings": {
       "en": "Earnings",
       "es": "Haberes"
     },
     "payslipCount": {
       "en": "{{count}} payslips",
-      "es": "{{count}} liq."
+      "es": "{{count}} liquidaciones"
     },
     "checksPendingShort": {
       "en": "pending",
@@ -4837,8 +4842,8 @@
       "es": "OK"
     },
     "checksDifferences": {
-      "en": "{{count}} difference(s)",
-      "es": "{{count}} diferencia(s)"
+      "en": "{{count}} differences",
+      "es": "{{count}} diferencias"
     },
     "checkDetail": {
       "en": "{{check}}: expected {{expected}}, payslip {{printed}}",
@@ -5068,6 +5073,10 @@
       "chartTitle": {
         "en": "Month to date, by category",
         "es": "Acumulado del mes, por categoría"
+      },
+      "basis": {
+        "en": "By the day each expense was spent",
+        "es": "Por el día en que se hizo cada gasto"
       },
       "chartAria": {
         "en": "Each month's spend to date, day by day, by category",
@@ -6893,6 +6902,10 @@
       }
     },
     "products": {
+      "aliasCount": {
+        "en": "names: {{count}}",
+        "es": "nombres: {{count}}"
+      },
       "search": {
         "en": "Search products",
         "es": "Buscar productos"

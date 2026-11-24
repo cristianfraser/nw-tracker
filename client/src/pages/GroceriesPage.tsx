@@ -8,7 +8,14 @@ import { PageGridTile } from "../components/layout/PageGridTile";
 import { AppLineChart } from "../components/charts/AppLineChart";
 import { buildNiceYAxis, minMaxForKeys } from "../components/charts/chartLayout";
 import { ProductConfigPanel } from "../components/groceries/ProductConfigPanel";
-import { ProductPicker, productNamed } from "../components/groceries/ProductPicker";
+import {
+  EMPTY_PRODUCT_PICK,
+  ProductPicker,
+  foldSearch,
+  productPickTarget,
+  type ProductPickerValue,
+} from "../components/groceries/ProductPicker";
+import { useIsNarrowViewport } from "../useIsNarrowViewport";
 import { cn } from "../cn";
 import { Pill } from "../components/ui/Pill";
 import { ColumnTable, type TableColumn } from "../components/ui/ColumnTable";
@@ -36,11 +43,6 @@ function isoDay(dt: string | null): string {
   return (dt ?? "").slice(0, 10);
 }
 
-/** Accents and case dropped, so «limon» finds «Limón». */
-function foldSearch(text: string): string {
-  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
-}
-
 /** Rows a long list shows before its «show all» button. */
 const COLLAPSED_ROWS = 10;
 /** Purchases an open product lists before its «all purchases» button. */
@@ -52,8 +54,11 @@ export function GroceriesPage() {
   const [summary, setSummary] = useState<GroceriesSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  /** The picker's text: an existing product's name, or the name of a product to create. */
-  const [pickerText, setPickerText] = useState("");
+  /** The assign target: a picked product, or typed text naming one (or a new one). */
+  const [pick, setPick] = useState<ProductPickerValue>(EMPTY_PRODUCT_PICK);
+  // On a phone the assign bar sticks to the bottom of the screen, so it comes after the list;
+  // on the desktop it is above it, in reading (and tab) order.
+  const narrow = useIsNarrowViewport();
   const [showAllUnclassified, setShowAllUnclassified] = useState(false);
   const [showAllReceipts, setShowAllReceipts] = useState(false);
   const [productQuery, setProductQuery] = useState("");
@@ -117,7 +122,7 @@ export function GroceriesPage() {
         });
         setAssignNote(t("groceries.cleaning.assignedResult", { stamped: res.stamped }));
         setSelected(new Set());
-        setPickerText("");
+        setPick(EMPTY_PRODUCT_PICK);
         reload();
         if (historyProductId === res.product_id) {
           api.groceriesProductHistory(res.product_id).then((h) => setHistoryRows(h.rows));
@@ -311,7 +316,10 @@ export function GroceriesPage() {
     },
     { key: "suggestions", header: t("groceries.cleaning.colSuggestions"), cell: suggestionButtons },
   ];
-  /** The card of an unclassified name: tick + name + last price, then count, day and suggestions. */
+  /**
+   * The card of an unclassified name: tick + name + last price, then barcode (names group by
+   * barcode, so two with the same text tell apart by it), count, day and suggestions.
+   */
   const cleaningCard = (g: UnclassifiedGroup) => (
     <div className={cn(styles.row, styles.rowTick)}>
       <label className={styles.tick}>
@@ -320,6 +328,7 @@ export function GroceriesPage() {
       </label>
       <span className={styles.amount}>{formatReceiptPesos(g.last_unit_price_clp)}</span>
       <span className={styles.sub}>
+        {g.barcode ? <span className="mono">{g.barcode} · </span> : null}
         {t("groceries.countAndLast", { count: g.occurrences, date: isoDay(g.last_seen) })}
         {g.suggestions.length > 0 ? <> · → {suggestionButtons(g)}</> : null}
       </span>
@@ -369,13 +378,14 @@ export function GroceriesPage() {
       cell: productLastPrice,
     },
   ];
-  /** A product's card: name + last price, then purchases and the last day. */
+  /** A product's card: name + last price, then purchases, the last day and its printed names. */
   const productCard = (p: ProductRow) => (
     <div className={styles.row}>
       {productButton(p)}
       <span className={styles.amount}>{productLastPrice(p)}</span>
       <span className={styles.sub}>
-        {t("groceries.countAndLast", { count: p.purchase_count, date: isoDay(p.last_purchased_at) })}
+        {t("groceries.countAndLast", { count: p.purchase_count, date: isoDay(p.last_purchased_at) })} ·{" "}
+        {t("groceries.products.aliasCount", { count: p.alias_count })}
       </span>
     </div>
   );
@@ -428,7 +438,7 @@ export function GroceriesPage() {
   ];
   /**
    * A purchase's card: day + the effective price, then branch, quantity × list price, the
-   * discount when there was one and the per-unit price when the product has one.
+   * discount when there was one, the per-unit price when the product has one and the line total.
    */
   const historyCard = (r: ProductHistoryRow) => (
     <div className={styles.row}>
@@ -445,6 +455,8 @@ export function GroceriesPage() {
               : t("groceries.history.noContent")}
           </>
         ) : null}
+        {" · "}
+        {t("groceries.history.colTotal")} {formatReceiptPesos(r.total_clp - r.discount_clp)}
       </span>
     </div>
   );
@@ -637,8 +649,8 @@ export function GroceriesPage() {
     },
   ];
   /**
-   * A receipt's card: day (opens the items) + source + total, then branch and classified count;
-   * the card-paid amount only when it is not the total.
+   * A receipt's card: day (opens the items) + source + total, then branch, city and classified
+   * count; the card-paid amount only when it is not the total.
    */
   const receiptCard = (r: ReceiptRow) => (
     <div className={styles.row}>
@@ -659,7 +671,8 @@ export function GroceriesPage() {
       </span>
       <span className={styles.amount}>{formatReceiptPesos(r.total_clp)}</span>
       <span className={styles.sub}>
-        {r.branch} · {t("groceries.receipts.classified", { classified: r.classified_count, total: r.item_count })}
+        {r.branch}
+        {r.city ? ` · ${r.city}` : ""} · {t("groceries.receipts.classified", { classified: r.classified_count, total: r.item_count })}
         {r.card_paid_clp !== r.total_clp ? (
           <>
             {" · "}
@@ -680,13 +693,23 @@ export function GroceriesPage() {
   const productsShown =
     wantedProduct === "" ? products : products.filter((p) => foldSearch(p.name).includes(wantedProduct));
 
-  // The picker's text names the target: an existing product, else a product to create.
-  const pickedProduct = productNamed(products, pickerText);
-  const pickerName = pickerText.trim();
-  const assignSelected = () =>
-    pickedProduct
-      ? runClassify({ targets: selectedGroups, product_id: pickedProduct.id })
-      : runClassify({ targets: selectedGroups, new_product_name: pickerName });
+  const target = productPickTarget(products, pick);
+  const assignSelected = () => {
+    if (target == null) return;
+    void ("productId" in target
+      ? runClassify({ targets: selectedGroups, product_id: target.productId })
+      : runClassify({ targets: selectedGroups, new_product_name: target.newName }));
+  };
+  const assignBar = (
+    <div className={cn(styles.assignBar, selected.size === 0 && styles.assignBarIdle)}>
+      <span>{t("groceries.cleaning.assignSelected", { count: selected.size })}</span>
+      <ProductPicker products={products} value={pick} onChange={setPick} disabled={assignBusy} />
+      <Button onClick={assignSelected} disabled={assignBusy || selected.size === 0 || target == null}>
+        {target != null && "newName" in target ? t("groceries.cleaning.create") : t("groceries.cleaning.assign")}
+      </Button>
+    </div>
+  );
+  const assignNoteLine = assignNote ? <p className={cn("muted", styles.assignNote)}>{assignNote}</p> : null;
 
   return (
     <div className="page-grid">
@@ -702,6 +725,12 @@ export function GroceriesPage() {
           <p className="muted">{assignNote ?? t("groceries.cleaning.allClassified")}</p>
         ) : (
           <div className={styles.cleaning}>
+            {narrow ? null : (
+              <>
+                {assignBar}
+                {assignNoteLine}
+              </>
+            )}
             <ColumnTable
               rows={unclassifiedShown}
               columns={cleaningColumns}
@@ -714,16 +743,13 @@ export function GroceriesPage() {
                 {showAllUnclassified ? t("table.showLess") : t("groceries.showAll", { count: unclassified.length })}
               </Button>
             ) : null}
-            {assignNote ? <p className={cn("muted", styles.assignNote)}>{assignNote}</p> : null}
-            {/* Last in the markup so it can stick to the bottom of a phone screen while names are
-                ticked; above the list on the desktop (CSS order). */}
-            <div className={cn(styles.assignBar, selected.size === 0 && styles.assignBarIdle)}>
-              <span>{t("groceries.cleaning.assignSelected", { count: selected.size })}</span>
-              <ProductPicker products={products} value={pickerText} onChange={setPickerText} disabled={assignBusy} />
-              <Button onClick={assignSelected} disabled={assignBusy || selected.size === 0 || pickerName === ""}>
-                {pickedProduct || pickerName === "" ? t("groceries.cleaning.assign") : t("groceries.cleaning.create")}
-              </Button>
-            </div>
+            {narrow ? (
+              <>
+                {assignNoteLine}
+                {/* After the list, so it sticks to the bottom of the screen while names are ticked. */}
+                {assignBar}
+              </>
+            ) : null}
           </div>
         )}
       </PageGridTile>

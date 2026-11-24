@@ -6,7 +6,7 @@ import { ccExpenseCategoryLabel, shownNameText, useTranslation } from "../../i18
 import { formatFlowMoney } from "../../flowsDisplay";
 import { formatIncomeMoney } from "../../incomeAggregates";
 import type { DisplayUnit } from "../../queries/keys";
-import type { FlowsIncomeResponse, ShownName, TransferCounterparty } from "../../types";
+import type { FlowsIncomeResponse, IncomeSideListTotal, ShownName, TransferCounterparty } from "../../types";
 import {
   useForceIncludeIncomeMovementMutation,
   useIncomeRefundMutation,
@@ -48,17 +48,21 @@ function SideSection<L extends SideLine>({
   displayUnit,
   loading,
   detail,
+  note,
   action,
 }: {
   title: string;
   hint?: string;
   emptyLabel: string;
   rows: readonly L[];
-  total: number;
+  /** The server's sum and how many lines it leaves out (no rate on file). */
+  total: IncomeSideListTotal;
   displayUnit: DisplayUnit;
   loading?: boolean;
-  /** What stands in the kind column: the refund's category, the filter's reason, the note. */
+  /** What stands in the kind column: the refund's category, the filter's reason. */
   detail: (row: L) => ReactNode;
+  /** A line of its own under the row (an excluded line's note). */
+  note?: (row: L) => ReactNode;
   action: (row: L) => ReactNode;
 }) {
   const { t } = useTranslation();
@@ -70,7 +74,9 @@ function SideSection<L extends SideLine>({
         <ChevronIcon className={styles.chevron} />
         <h3 className={styles.sectionTitle}>{title}</h3>
         <span className={loadableClass(loading, styles.small, styles.nowrap)}>
-          {t("income.sideListCount", { count: rows.length })} · <span className="mono">{formatFlowMoney(total, displayUnit)}</span>
+          {t(rows.length === 1 ? "income.sideListCountOne" : "income.sideListCount", { count: rows.length })} ·{" "}
+          <span className="mono">{formatFlowMoney(total.amount, displayUnit)}</span>
+          {total.unpriced > 0 ? <> · {t("income.sideListUnpriced", { count: total.unpriced })}</> : null}
         </span>
       </button>
       {open ? (
@@ -96,6 +102,7 @@ function SideSection<L extends SideLine>({
                       account={<Link to={`/account/${row.account_id}`}>{row.account_label}</Link>}
                       amount={formatIncomeMoney(row.amount, displayUnit)}
                       action={action(row)}
+                      note={note?.(row)}
                     />
                   ))}
                 </div>
@@ -127,7 +134,8 @@ export function IncomeSideLists({
   const restore = useRestoreIncomeMovementMutation();
   const [includeTarget, setIncludeTarget] = useState<Target | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<Target | null>(null);
-  const totals = data?.list_totals ?? { refund_lines: 0, filtered_lines: 0, excluded_lines: 0 };
+  const none: IncomeSideListTotal = { amount: 0, unpriced: 0 };
+  const totals = data?.list_totals ?? { refund_lines: none, filtered_lines: none, excluded_lines: none };
   const target = (row: SideLine): Target => ({ movement_id: row.movement_id, name: row.name, received_on: row.received_on });
   const confirmText = (key: string, tgt: Target | null) =>
     tgt ? t(key, { date: tgt.received_on, description: shownNameText(tgt.name) }) : "";
@@ -176,7 +184,9 @@ export function IncomeSideLists({
         total={totals.excluded_lines}
         displayUnit={displayUnit}
         loading={loading}
-        detail={(row) => (row.note ? <span className={cn("muted", styles.small)}>{row.note}</span> : null)}
+        detail={() => null}
+        // Free text of any length: on a line of its own, where it can wrap.
+        note={(row) => (row.note ? <span>{row.note}</span> : null)}
         action={(row) =>
           DEMO_EDITS_LIMITED ? null : (
             <Button variant="secondary" size="sm" disabled={restore.isPending} onClick={() => setRestoreTarget(target(row))}>

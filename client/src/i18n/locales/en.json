@@ -525,18 +525,14 @@
     "groupAccountsCount": "({{count}} accounts)"
   },
   "messages": {
-    "showMoreDetail": "See more…",
-    "detailModalClose": "Close"
+    "readAt": "Read {{when}}",
+    "unread": "Unread"
   },
   "notifications": {
     "unreadBadge": "{{count}} unread",
     "empty": "No notifications.",
     "showMore": "Show more…",
-    "showLess": "Show less…",
-    "colDate": "Date",
-    "colTitle": "Title",
-    "colDetail": "Detail",
-    "colRead": "Read"
+    "showLess": "Show less…"
   },
   "importSync": {
     "syncLogTitle": "Sync log",
@@ -568,10 +564,6 @@
     "importedNo": "{{account}}: {{month}} document missing",
     "showMore": "Show more…",
     "showLess": "Show less…",
-    "colDate": "Date",
-    "colTitle": "Title",
-    "colDetail": "Detail",
-    "colRead": "Read",
     "sync": {
       "lastSync": "Last sync: {{time}} ({{ago}})",
       "lastSyncNever": "Last sync: —",
@@ -1128,6 +1120,7 @@
       "prepagoNumber": "P{{n}}",
       "registerPayment": "Record payment",
       "paymentsCount": "{{count}} payments",
+      "paymentsCollapse": "fewer",
       "partAmortization": "principal",
       "partExtra": "extra principal",
       "partInterest": "interest",
@@ -1355,6 +1348,7 @@
       "chartEmpty": "No flow data.",
       "income": "Income",
       "expenses": "Expenses",
+      "expensesBasis": "Expenses by month of purchase; cuotas in the month billed",
       "savings": "Savings",
       "deposits": "Deposits",
       "depositsPreTax": "AFP+AFC (contributions)",
@@ -1404,6 +1398,9 @@
     }
   },
   "income": {
+    "rowLabel": "{{period}}: {{total}} ({{parts}}), {{lines}}",
+    "sideListUnpriced": "{{count}} without a rate",
+    "sideListCountOne": "1 line",
     "clearKind": "Clear type",
     "payslipNote": "Payslip {{period}} · gross {{gross}} − {{deductions}}",
     "payslipOpen": "receipt",
@@ -1488,6 +1485,11 @@
     }
   },
   "workEarnings": {
+    "yearRowLabel": "{{period}}, {{count}}: net pay {{net}} of gross {{gross}}, deductions {{share}}",
+    "rowLabel": "{{period}}, {{employer}}, {{type}}: net pay {{net}} of gross {{gross}}, check {{check}}",
+    "netSeverance": "Net pay (severance)",
+    "checksDifferencesOne": "1 difference",
+    "payslipCountOne": "1 payslip",
     "receiptEarnings": "Earnings",
     "payslipCount": "{{count}} payslips",
     "checksPendingShort": "pending",
@@ -1506,7 +1508,7 @@
       "manual": "manual"
     },
     "checksOk": "OK",
-    "checksDifferences": "{{count}} difference(s)",
+    "checksDifferences": "{{count}} differences",
     "checkDetail": "{{check}}: expected {{expected}}, payslip {{printed}}",
     "rebuilt": "rebuilt",
     "checks": {
@@ -1571,6 +1573,7 @@
   "expenses": {
     "spent": {
       "chartTitle": "Month to date, by category",
+      "basis": "By the day each expense was spent",
       "chartAria": "Each month's spend to date, day by day, by category",
       "stripAria": "Each day's spend",
       "allCategories": "all",
@@ -2108,6 +2111,7 @@
       "assignedResult": "{{stamped}} purchase(s) classified."
     },
     "products": {
+      "aliasCount": "names: {{count}}",
       "search": "Search products",
       "noMatch": "No product matches.",
       "title": "Products",

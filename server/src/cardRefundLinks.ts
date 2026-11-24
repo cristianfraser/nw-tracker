@@ -10,7 +10,8 @@
  * A link names flows, and both ends hold their flow (migration 366), so a re-import that rewrites
  * a line row keeps it. A purchase a cuota plan later took over (the line stays on file, superseded:
  * `oneShotLinesSupersededByPlans`) is read as that plan's whole price. A link whose purchase no line
- * stands for any more is shown on the refund as broken (`refund_link_broken`), for the user to undo.
+ * stands for any more, or one on another card, is shown on the refund as broken (`refund_link_broken`),
+ * for the user to undo.
  */
 import { db } from "./db.js";
 import { findLines, oneShotLinesSupersededByPlans } from "./cards/purchases.js";
@@ -195,7 +196,9 @@ export function withCardRefundLinks(
     if (purchaseFlow != null) {
       const plan = byFlow.has(purchaseFlow) ? null : supersedingPlan(purchaseFlow);
       const purchase = byFlow.get(purchaseFlow) ?? (plan != null ? planTotals.get(plan) : undefined);
-      if (!purchase) return { ...l, refund_link_broken: true as const };
+      // The purchase must be the refund's own card's (`withRefundLinks` names it by card and line):
+      // a statement re-homed onto another master leaves the link for the user to undo.
+      if (!purchase || purchase.account_id !== l.account_id) return { ...l, refund_link_broken: true as const };
       const next = { ...l, refund_of_line_id: purchase.statement_line_id };
       linked.add(next);
       return next;

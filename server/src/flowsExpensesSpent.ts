@@ -21,22 +21,23 @@ import type {
   ExpensesSpentRange,
   FlowsExpensesSpentLinesResponse,
   FlowsExpensesSpentResponse,
+  Money,
 } from "nw-tracker-contracts/dto/flows";
 import { EXPENSES_SPENT_RANGES } from "nw-tracker-contracts/dto/flows";
 import { addCalendarMonths } from "nw-tracker-contracts";
 import { cacheKeyFlowsInputs } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
-import { listCcExpenseBigGroups } from "./ccExpenseBigGroups.js";
+import { listCcExpenseBigGroups, type CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
 import { listCcExpenseCategories, type CcExpenseCategoryRow } from "./ccExpenseCategories.js";
 import { gastosSumMonthForLine, type CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { roundToCurrency } from "./displayUnits.js";
 import { isPreTaxExpenseLine } from "./flowsExpenses.js";
 import {
-  bigGroupUsageByMode,
   chartCategorySlugsAtLevel,
   gastosShareOfLine,
   linesAtCategoryLevel,
+  type BigGroupUsage,
   type CcExpenseCategoryLevel,
   type GastosLine,
   type GastosUnit,
@@ -44,6 +45,8 @@ import {
 import { cachedFlowsExpenseLines, syncFlowsInputsWithLiveUsdRates } from "./flowsMortgageCarrying.js";
 import { toWireExpenseLines } from "./wireExpenseLine.js";
 import { REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG } from "./expenseDepositLinks.js";
+import { closeDateForBillingMonth } from "./cards/facturacion.js";
+import { movementOn } from "./expenseLineDay.js";
 
 /** Months the page shows in its matrix, calendar and month stepper (through the current one). */
 export const SPENT_MONTHS = 6;
@@ -62,13 +65,47 @@ export type SpentOptions = {
 };
 
 /**
+ * What placing a line on its day reads beyond the line: Chile today (a credit's arrival rule) and
+ * the close day of a card's facturación (`closeDateForBillingMonth`: the statement's, else the
+ * feed's, the announced or the estimated close).
+ */
+export type SpentDayContext = {
+  today: string;
+  closeOf: (accountId: number, billingMonth: string) => string;
+};
+
+/** The context from the database, each facturación's close read once per build. */
+export function spentDayContextFromDb(today: string): SpentDayContext {
+  const closes = new Map<string, string>();
+  return {
+    today,
+    closeOf: (accountId, billingMonth) => {
+      const key = `${accountId}|${billingMonth}`;
+      let close = closes.get(key);
+      if (close == null) {
+        close = closeDateForBillingMonth(accountId, billingMonth).close_iso;
+        closes.set(key, close);
+      }
+      return close;
+    },
+  };
+}
+
+/**
  * The day a line was spent in the mode, or null when it does not count in the mode's months
  * (`gastosSumMonthForLine`: scope and line role) or is an annulled purchase or its nota.
+ * - A cuota («split») on the close day of the facturación that bills it (`billing_month`): every
+ *   cuota line names it, whatever its `occurred_on` means (a pay-by, a ledger month-end, a
+ *   statement date). A cuota a future close bills is not spent yet.
+ * - A card credit on the day it reached the ledger (`movementOn`, the «Últimos movimientos» rule),
+ *   never its printed date, which banks often set to the purchase's day.
+ * - Everything else on its purchase day (a checking movement's own day).
  */
 export function spentDayOfLine(
   ln: Pick<
     GastosLine,
     | "source"
+    | "account_id"
     | "line_role"
     | "occurred_on"
     | "purchase_on"
@@ -77,13 +114,20 @@ export function spentDayOfLine(
     | "purchase_month"
     | "gastos_scope"
     | "nota_credito_role"
-  >,
-  mode: CcInstallmentGastosMode
+    | "first_seen_on"
+    | "posting_on"
+    | "annulment"
+  > & { amount?: Money },
+  mode: CcInstallmentGastosMode,
+  ctx: SpentDayContext
 ): string | null {
   if (ln.nota_credito_role === "annulled_purchase" || ln.nota_credito_role === "matched_nota") return null;
   if (!gastosSumMonthForLine(ln, mode)) return null;
-  if (ln.line_role === "installment_cuota") return ln.occurred_on;
-  return ln.purchase_on ?? ln.occurred_on;
+  if (ln.line_role === "installment_cuota") {
+    if (ln.source !== "cc") throw new Error(`a ${ln.source} line is an installment cuota`);
+    return ctx.closeOf(ln.account_id, ln.billing_month);
+  }
+  return movementOn(ln, ctx.today);
 }
 
 /** One line placed on its day, with what it adds there. */
@@ -94,6 +138,8 @@ type SpentEntry<L> = {
   day: string;
   /** Gasto-del-mes share (0 for a line that is spend but does not count, or is in an excluded big group). */
   gastos: number;
+  /** The same share whatever the excluded big groups (a big group's own usage counts it). */
+  gastosAnyGroup: number;
   real: number;
   stacks: Array<readonly [string, number]>;
   /** Whether the line is listed: it counts toward gastos and is not in an excluded big group. */
@@ -103,13 +149,13 @@ type SpentEntry<L> = {
 function spentEntries<L extends GastosLine>(
   lines: readonly L[],
   opts: SpentOptions,
-  todayYmd: string
+  ctx: SpentDayContext
 ): SpentEntry<L>[] {
   const out: SpentEntry<L>[] = [];
   lines.forEach((ln, index) => {
     if (!opts.includePreTax && isPreTaxExpenseLine(ln)) return;
-    const day = spentDayOfLine(ln, opts.mode);
-    if (day == null || day > todayYmd) return;
+    const day = spentDayOfLine(ln, opts.mode, ctx);
+    if (day == null || day > ctx.today) return;
     const share = gastosShareOfLine(ln, opts.mode, opts.unit);
     if (share.kind !== "spend") return;
     const excluded = ln.big_group_slug != null && opts.excludedBigGroups.has(ln.big_group_slug);
@@ -122,6 +168,7 @@ function spentEntries<L extends GastosLine>(
       index,
       day,
       gastos: excluded ? 0 : share.gastos,
+      gastosAnyGroup: share.gastos,
       real: share.real,
       stacks: excluded ? [] : stacks,
       listed,
@@ -169,10 +216,11 @@ export function buildExpensesSpentPayload(
   categories: readonly Pick<CcExpenseCategoryRow, "slug" | "parent_slug">[],
   opts: SpentOptions,
   range: ExpensesSpentRange,
-  todayYmd: string
+  todayYmd: string,
+  ctx: SpentDayContext = spentDayContextFromDb(todayYmd)
 ): Omit<FlowsExpensesSpentResponse, "big_group_usage"> {
   const round = (v: number) => roundToCurrency(v, opts.unit);
-  const entries = spentEntries(linesAtCategoryLevel(lines, categories, opts.level), opts, todayYmd);
+  const entries = spentEntries(linesAtCategoryLevel(lines, categories, opts.level), opts, ctx);
   const allSlugs = chartCategorySlugsAtLevel(categories, opts.level);
   const slugIndex = new Map(allSlugs.map((s, i) => [s, i]));
 
@@ -332,7 +380,8 @@ export function selectSpentLines<L extends GastosLine>(
   categories: readonly Pick<CcExpenseCategoryRow, "slug" | "parent_slug">[],
   opts: SpentOptions,
   sel: SpentLinesSelection,
-  todayYmd: string
+  todayYmd: string,
+  ctx: SpentDayContext = spentDayContextFromDb(todayYmd)
 ): { total: number; days: Array<{ day: string; total: number; lines: L[] }> } {
   if (sel.day != null && !sel.day.startsWith(sel.month)) {
     throw new ExpensesSpentRequestError(`day ${sel.day} is not in month ${sel.month}`);
@@ -341,7 +390,7 @@ export function selectSpentLines<L extends GastosLine>(
   const folded = linesAtCategoryLevel(lines, categories, opts.level);
   const byDay = new Map<string, { total: number; lines: L[] }>();
   let total = 0;
-  const entries = spentEntries(folded, opts, todayYmd);
+  const entries = spentEntries(folded, opts, ctx);
   entries.forEach((e) => {
     if (!e.listed || !e.day.startsWith(sel.month)) return;
     if (sel.day != null && e.day !== sel.day) return;
@@ -408,6 +457,40 @@ function optionsKey(opts: SpentOptions): string {
 
 /** `GET /api/flows/expenses/spent`, cached beside the expense lines. */
 /**
+ * The big groups that hold spend in the mode, by the page's own rule (each line on its spending day,
+ * nothing after today, a mortgage payment's carrying and never its amortization): Σ what each line
+ * adds to gasto del mes, excluded from the chart or not; purchases counted once by (card, purchase
+ * key); sorted by label.
+ */
+export function spentBigGroupUsage(
+  lines: readonly GastosLine[],
+  opts: SpentOptions,
+  catalog: readonly Pick<CcExpenseBigGroupRow, "slug" | "label">[],
+  ctx: SpentDayContext
+): BigGroupUsage[] {
+  const labelBySlug = new Map(catalog.map((g) => [g.slug, g.label]));
+  const totals = new Map<string, number>();
+  const purchases = new Map<string, Set<string>>();
+  for (const e of spentEntries(lines, opts, ctx)) {
+    const slug = e.line.big_group_slug;
+    if (!slug) continue;
+    totals.set(slug, (totals.get(slug) ?? 0) + e.gastosAnyGroup);
+    const set = purchases.get(slug) ?? new Set<string>();
+    set.add(`${e.line.account_id}|${e.line.purchase_key}`);
+    purchases.set(slug, set);
+  }
+  const label = (slug: string) => labelBySlug.get(slug) ?? slug;
+  return [...totals.keys()]
+    .sort((a, b) => label(a).localeCompare(label(b), "es"))
+    .map((slug) => ({
+      slug,
+      label: label(slug),
+      total: roundToCurrency(totals.get(slug)!, opts.unit),
+      purchase_count: purchases.get(slug)!.size,
+    }));
+}
+
+/**
  * `GET /api/flows/expenses/spent` from the finished expense lines: spending from net pay, so the
  * payslip deductions ({@link isPreTaxExpenseLine}) are left out unless `includePreTax`.
  */
@@ -418,9 +501,10 @@ export function buildExpensesSpentResponse(
   today: string
 ): FlowsExpensesSpentResponse {
   const lines = opts.includePreTax ? allLines : allLines.filter((l) => !isPreTaxExpenseLine(l));
+  const ctx = spentDayContextFromDb(today);
   return {
-    ...buildExpensesSpentPayload(lines, listCcExpenseCategories(), opts, range, today),
-    big_group_usage: bigGroupUsageByMode(lines, listCcExpenseBigGroups(), opts.unit)[opts.mode],
+    ...buildExpensesSpentPayload(lines, listCcExpenseCategories(), opts, range, today, ctx),
+    big_group_usage: spentBigGroupUsage(lines, opts, listCcExpenseBigGroups(), ctx),
   };
 }
 
