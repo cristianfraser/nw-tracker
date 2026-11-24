@@ -1528,10 +1528,6 @@
     "chartTitle": "Aportes por categoría",
     "chartEmpty": "Sin depósitos en este período.",
     "chartTotal": "Total",
-    "colDate": "Fecha",
-    "colCategory": "Categoría",
-    "colAccount": "Cuenta",
-    "colAmount": "Monto",
     "emptyCategory": "Sin depósitos en esta categoría.",
     "mortgageCarryingTag": "Intereses y seguros del dividendo (gasto)"
   },
@@ -1597,7 +1593,6 @@
       "dfl2Save": "Guardar",
       "dfl2Action": "DFL-2…",
       "dfl2Summary": "DFL-2: {{m2}} m², recepción {{year}}; contribuciones a la mitad hasta {{through}}.",
-      "colLinkedPurchase": "Gasto vinculado",
       "colLinkedMerchant": "Comercio",
       "colLinkedDate": "Fecha compra",
       "colLinkedOrigin": "Origen",
@@ -1645,8 +1640,6 @@
       "coversHint": "cubre {{from}} – {{to}}",
       "monthsCoveredLabel": "Meses que cubre"
     },
-    "colDate": "Fecha",
-    "colKind": "Tipo",
     "colAmount": "Monto",
     "groups": {
       "real_estate": "Inmuebles"

@@ -129,6 +129,14 @@ describe("real-estate chart scopes", () => {
   });
   afterAll(cleanup);
 
+  it("a place's bills are listed by billed month, newest first, each month with its total", () => {
+    const late = buildRealEstateExpensesPayload().by_account.vitest_chart_late!;
+    expect(late.months.map((m) => m.bill_month)).toEqual(["2019-07", "2019-05"]);
+    expect(late.months.map((m) => m.total)).toEqual([15_000, 220_000]);
+    expect(late.months[1]!.slots.map((sl) => sl.kind).sort()).toEqual(["gas", "rent"]);
+    expect(late.total).toBe(235_000);
+  });
+
   it("a place's scope runs from its first to its last bill, every point summing its series", () => {
     const payload = buildRealEstateExpensesPayload();
     const early = payload.chart_scopes.vitest_chart_early!;

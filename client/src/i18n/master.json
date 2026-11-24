@@ -4912,22 +4912,6 @@
       "en": "Total",
       "es": "Total"
     },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colCategory": {
-      "en": "Category",
-      "es": "Categoría"
-    },
-    "colAccount": {
-      "en": "Account",
-      "es": "Cuenta"
-    },
-    "colAmount": {
-      "en": "Amount",
-      "es": "Monto"
-    },
     "emptyCategory": {
       "en": "No deposits in this category.",
       "es": "Sin depósitos en esta categoría."
@@ -5167,10 +5151,6 @@
         "en": "DFL-2: {{m2}} m², reception {{year}}; contribuciones halved through {{through}}.",
         "es": "DFL-2: {{m2}} m², recepción {{year}}; contribuciones a la mitad hasta {{through}}."
       },
-      "colLinkedPurchase": {
-        "en": "Linked expense",
-        "es": "Gasto vinculado"
-      },
       "colLinkedMerchant": {
         "en": "Merchant",
         "es": "Comercio"
@@ -5355,14 +5335,6 @@
         "en": "Months covered",
         "es": "Meses que cubre"
       }
-    },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colKind": {
-      "en": "Type",
-      "es": "Tipo"
     },
     "colAmount": {
       "en": "Amount",
