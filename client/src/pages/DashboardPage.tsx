@@ -30,7 +30,7 @@ import {
   useSidebarNav,
 } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { allocationBucketColor, desaturateStroke } from "../chartColors";
+import { allocationBucketColor } from "../chartColors";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../dashboardTimeseriesYearly";
 import { useTranslation } from "../i18n";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
@@ -84,7 +84,7 @@ const DAILY_OVERVIEW_POINT_FIELD: Record<string, string> = {
 type ComboRow = Record<string, string | number | null>;
 
 /**
- * The P/L combo's yearly rows: class Δs, Σ Δ and deposits sum over the year's months in range,
+ * The P/L combo's yearly rows: class Δs and Σ Δ sum over the year's months in range,
  * YTD is that Σ Δ, the all-time level is sampled at year-end. `rollupChartPointsByYear` cannot
  * express the YTD: neither a flow nor a year-end level once the first year is cut at the Rango.
  */
@@ -92,9 +92,6 @@ const COMBINED_PERF_YEARLY = {
   sumKeys: [
     "delta_retirement",
     "delta_brokerage",
-    "deposits_retirement",
-    "deposits_brokerage",
-    "deposits_inversiones",
   ],
   ytdKey: "ytd_combined",
   accumKey: "accumulated_earnings",
@@ -532,7 +529,7 @@ export function DashboardPage() {
               timeRange={combosPrefs.range}
               controls={perfControls}
               barSeries={perfPctView ? [
-                // Each class's own return, side by side (no stack, no deposit bars).
+                // Each class's own return, side by side (no stack).
                 { dataKey: "pct_retirement", name: pctRetirementName, color: retirementColor },
                 { dataKey: "pct_brokerage", name: pctBrokerageName, color: brokerageColor },
               ] : [
@@ -551,23 +548,6 @@ export function DashboardPage() {
                     : t("dashboard.sections.deltaBrokerageMonthly"),
                   color: brokerageColor,
                   stackId: "pl",
-                },
-                // Deposits stack beside the P/L one, each class in its own hue, less saturated.
-                {
-                  dataKey: "deposits_retirement",
-                  name: isYearly
-                    ? t("dashboard.sections.depositsRetirementYearly")
-                    : t("dashboard.sections.depositsRetirementMonthly"),
-                  color: desaturateStroke(retirementColor),
-                  stackId: "deposits",
-                },
-                {
-                  dataKey: "deposits_brokerage",
-                  name: isYearly
-                    ? t("dashboard.sections.depositsBrokerageYearly")
-                    : t("dashboard.sections.depositsBrokerageMonthly"),
-                  color: desaturateStroke(brokerageColor),
-                  stackId: "deposits",
                 },
               ]}
               // The YTD area always shows; «Total acumulado» adds the all-time P/L as a line.
@@ -590,7 +570,6 @@ export function DashboardPage() {
                       },
                     ]
                   : []),
-                // The deposits line has no % counterpart: hidden in the % view.
                 { dataKey: "pct_combined", name: pctCombinedName, stroke: "#38bdf8" },
               ] : [
                 ...(perfArea.area === "total"
@@ -608,13 +587,6 @@ export function DashboardPage() {
                   dataKey: "delta_combined",
                   name: isYearly ? t("dashboard.combinedAnnualDelta") : t("dashboard.combinedMonthlyDelta"),
                   stroke: "#38bdf8",
-                },
-                {
-                  dataKey: "deposits_inversiones",
-                  name: isYearly
-                    ? t("dashboard.combinedAnnualDeposits")
-                    : t("dashboard.combinedMonthlyDeposits"),
-                  stroke: "#a78bfa",
                 },
               ]}
               loading={combosLoading}

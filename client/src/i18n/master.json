@@ -1010,12 +1010,12 @@
         "es": "Patrimonio neto"
       },
       "perfChartTitleMonthly": {
-        "en": "Monthly Δ and deposits by class (investments)",
-        "es": "Δ mensual y depósitos por clase (inversiones)"
+        "en": "Monthly Δ by class (investments)",
+        "es": "Δ mensual por clase (inversiones)"
       },
       "perfChartTitleYearly": {
-        "en": "Annual Δ and deposits by class (investments)",
-        "es": "Δ anual y depósitos por clase (inversiones)"
+        "en": "Annual Δ by class (investments)",
+        "es": "Δ anual por clase (inversiones)"
       },
       "areaTotalToggle": {
         "en": "All-time total",
@@ -1040,22 +1040,6 @@
       "deltaBrokerageYearly": {
         "en": "Annual brokerage Δ",
         "es": "Δ anual brokerage"
-      },
-      "depositsRetirementMonthly": {
-        "en": "Month's retirement deposits",
-        "es": "Depósitos del mes retiro"
-      },
-      "depositsRetirementYearly": {
-        "en": "Year's retirement deposits",
-        "es": "Depósitos del año retiro"
-      },
-      "depositsBrokerageMonthly": {
-        "en": "Month's brokerage deposits",
-        "es": "Depósitos del mes brokerage"
-      },
-      "depositsBrokerageYearly": {
-        "en": "Year's brokerage deposits",
-        "es": "Depósitos del año brokerage"
       },
       "ytdCombined": {
         "en": "YTD (investments)",
@@ -1117,14 +1101,6 @@
     "combinedAnnualDelta": {
       "en": "Σ annual Δ",
       "es": "Σ Δ anual"
-    },
-    "combinedMonthlyDeposits": {
-      "en": "Σ month's deposits",
-      "es": "Σ depósitos del mes"
-    },
-    "combinedAnnualDeposits": {
-      "en": "Σ year's deposits",
-      "es": "Σ depósitos del año"
     },
     "cardBreakdown": {
       "totalDeposited": {
