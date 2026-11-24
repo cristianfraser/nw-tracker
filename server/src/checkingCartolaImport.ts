@@ -4,7 +4,6 @@ import {
   deleteAccountMovements,
   deleteAccountMovementsByNote,
   insertBankPesoMovement,
-  setMovementNote,
 } from "./movementWrites.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
@@ -70,31 +69,6 @@ function countExistingCartolaMovementsForMonth(
     )
     .get(accountId, `import:cartola|${periodMonth}|%`) as { c: number };
   return Number(row.c) || 0;
-}
-
-/** Rewrite movement note prefixes after `checking_cartola_imports.period_month` is corrected. */
-export function rewriteCartolaMovementNotesPeriodMonth(
-  accountId: number,
-  oldPeriodMonth: string,
-  newPeriodMonth: string,
-  dbHandle: Database = db
-): number {
-  if (oldPeriodMonth === newPeriodMonth) return 0;
-  const fromPrefix = `import:cartola|${oldPeriodMonth}|`;
-  const toPrefix = `import:cartola|${newPeriodMonth}|`;
-  const rows = dbHandle
-    .prepare(
-      `SELECT id, note FROM movements
-       WHERE account_id = ? AND note LIKE ?`
-    )
-    .all(accountId, `${fromPrefix}%`) as { id: number; note: string }[];
-  let changed = 0;
-  for (const r of rows) {
-    if (!r.note.startsWith(fromPrefix)) continue;
-    setMovementNote(r.id, toPrefix + r.note.slice(fromPrefix.length), dbHandle);
-    changed += 1;
-  }
-  return changed;
 }
 
 function cartolaSourceFileBasename(sourceFile: string): string {

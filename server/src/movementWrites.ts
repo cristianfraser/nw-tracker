@@ -170,11 +170,6 @@ export function deleteAccountMovements(accountId: number, dbHandle: Database = d
   return dbHandle.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId).changes;
 }
 
-/** Rewrites a row's note (a cartola month renamed). */
-export function setMovementNote(movementId: number, note: string | null, dbHandle: Database = db): void {
-  dbHandle.prepare(`UPDATE movements SET note = ? WHERE id = ?`).run(note, movementId);
-}
-
 /** Sets the units a row moves (a ledger row re-priced from its document). */
 export function setMovementUnits(movementId: number, unitsDelta: number | null, dbHandle: Database = db): void {
   dbHandle.prepare(`UPDATE movements SET units_delta = ? WHERE id = ?`).run(unitsDelta, movementId);

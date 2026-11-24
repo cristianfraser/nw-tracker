@@ -11,7 +11,7 @@ import type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
 export type { MortgagePaymentInput } from "./mortgagePaymentTypes.js";
 
 /** Calibrated from recent Depto cuotas: desgravamen_clp ≈ balance_before_clp × rate. */
-export const DESGRAVAMEN_CLP_PER_CLP_BALANCE = 0.00003961;
+const DESGRAVAMEN_CLP_PER_CLP_BALANCE = 0.00003961;
 
 const PAYMENT_RECONCILE_TOLERANCE_CLP = 1;
 

@@ -6,7 +6,6 @@ import {
   isPhantomBoundaryMonthImport,
   prunePhantomBoundaryMonthCartolaImports,
   pruneStaleCartolaMonthImportsForSourceFile,
-  rewriteCartolaMovementNotesPeriodMonth,
   shouldBackfillCartolaSaldoRef,
   updateCheckingCartolaImportSaldos,
 } from "./checkingCartolaImport.js";
@@ -75,34 +74,6 @@ describe("checkingCartolaImport", () => {
     } finally {
       db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(accountId, periodMonth);
     }
-  });
-
-  it("rewriteCartolaMovementNotesPeriodMonth updates note prefixes", () => {
-    const accountId = testCheckingAccountId();
-    if (accountId == null) return;
-
-    const oldMonth = "2099-01";
-    const newMonth = "2099-02";
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note LIKE ?`).run(
-      accountId,
-      `import:cartola|2099-%`
-    );
-    db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-       VALUES (?, 100, 'clp', '2099-01-15', ?, NULL)`
-    ).run(accountId, `import:cartola|${oldMonth}|Agustinas|Test|on:2099-01-15|amt:100|idx:0`);
-
-    const changed = rewriteCartolaMovementNotesPeriodMonth(accountId, oldMonth, newMonth);
-    expect(changed).toBe(1);
-    const row = db
-      .prepare(`SELECT note FROM movements WHERE account_id = ? AND note LIKE ?`)
-      .get(accountId, `import:cartola|${newMonth}|%`) as { note: string };
-    expect(row.note).toContain(`import:cartola|${newMonth}|`);
-
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note LIKE ?`).run(
-      accountId,
-      `import:cartola|2099-%`
-    );
   });
 
   it("refuses to register a cartola month when saldo changed but no movements parsed", () => {

@@ -56,7 +56,7 @@ export type LiderCardFeedFile = {
 export const LIDER_ISSUER = "bci";
 
 /** `dd/mm/yyyy` → `YYYY-MM-DD`. Throws on any other shape and on a day the calendar lacks. */
-export function liderDateToIso(fecha: string): string {
+function liderDateToIso(fecha: string): string {
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(fecha ?? "").trim());
   const [d, mo, y] = m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [0, 0, 0];
   const probe = new Date(Date.UTC(y, mo - 1, d));
