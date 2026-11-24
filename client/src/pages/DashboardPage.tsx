@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useContext, type CSSProperties } from "react";
+import { useEffect, useMemo, useContext } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   MonthlyPerformanceComboChart,
@@ -59,7 +59,7 @@ import {
   useDashboardAboutPreview,
   useDashboardFold,
 } from "../dashboardFold";
-import { dashboardTileOrder, dashboardTileSmallSpan, dashboardTileWide } from "../dashboardLayout";
+import { dashboardAllocationStackSpans, dashboardTileSmallSpan, dashboardTileWideSpan } from "../dashboardLayout";
 import type { TimeseriesBlock } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
@@ -458,7 +458,6 @@ export function DashboardPage() {
     <>
       <PageGridTile
         id="net-worth-chart"
-        order={dashboardTileOrder("net-worth-chart")}
         className="chart-grid chart-grid--full-width-stack"
       >
         <LineChartPanel
@@ -515,8 +514,7 @@ export function DashboardPage() {
         <>
           <PageGridTile
             id="perf-combo"
-            order={dashboardTileOrder("perf-combo")}
-            wide={dashboardTileWide("perf-combo")}
+            wideSpan={dashboardTileWideSpan("perf-combo")}
             smallSpan={dashboardTileSmallSpan("perf-combo")}
             className="chart-grid chart-grid--full-line"
           >
@@ -621,53 +619,50 @@ export function DashboardPage() {
           </PageGridTile>
         </>
       ) : null}
-
-      <PageGridTile
-        id="allocation"
-        order={dashboardTileOrder("allocation")}
-        wide={dashboardTileWide("allocation")}
-        smallSpan={dashboardTileSmallSpan("allocation")}
-        className="chart-grid chart-grid--full-line"
-      >
-        {valueMapShown ? (
-          <ValueMapPanel
-            title={t("dashboard.allocation.title")}
-            surfaceId="home.map"
-            view={compositionView.view}
-            onViewChange={compositionView.setView}
-            root={heldValueMap.root}
-            bounds={heldValueMap.bounds}
-            unit={heldValueMap.unit}
-            loading={contentLoading}
-          />
-        ) : (
-          <ProportionalAreaChart
-            title={t("dashboard.allocation.title")}
-            block={allocationBlock}
-            xAxisGranularity={
-              allocationIsDaily && allocationBlock
-                ? "day"
-                : allocationPrefs.period === "year"
-                  ? "year"
-                  : "month"
-            }
-            timeRange={allocationPrefs.range}
-            controls={
-              <SurfaceControls
-                view={compositionView.view}
-                onViewChange={compositionView.setView}
-                period={allocationPrefs.period}
-                onPeriodChange={allocationPrefs.setPeriod}
-                range={allocationPrefs.range}
-                onRangeChange={allocationPrefs.setRange}
-              />
-            }
-            colorFor={(line) => allocationBucketColor(line.dataKey, line.color_rgb)}
-            loading={allocationLoading}
-          />
-        )}
-      </PageGridTile>
     </>
+  );
+
+  // From 880 one column with Rentabilidad under it, beside the detalle table (GroupInfoBase).
+  const dashboardAllocation = (
+    <PageGridTile id="allocation" className="chart-grid chart-grid--full-line">
+      {valueMapShown ? (
+        <ValueMapPanel
+          title={t("dashboard.allocation.title")}
+          surfaceId="home.map"
+          view={compositionView.view}
+          onViewChange={compositionView.setView}
+          root={heldValueMap.root}
+          bounds={heldValueMap.bounds}
+          unit={heldValueMap.unit}
+          loading={contentLoading}
+        />
+      ) : (
+        <ProportionalAreaChart
+          title={t("dashboard.allocation.title")}
+          block={allocationBlock}
+          xAxisGranularity={
+            allocationIsDaily && allocationBlock
+              ? "day"
+              : allocationPrefs.period === "year"
+                ? "year"
+                : "month"
+          }
+          timeRange={allocationPrefs.range}
+          controls={
+            <SurfaceControls
+              view={compositionView.view}
+              onViewChange={compositionView.setView}
+              period={allocationPrefs.period}
+              onPeriodChange={allocationPrefs.setPeriod}
+              range={allocationPrefs.range}
+              onRangeChange={allocationPrefs.setRange}
+            />
+          }
+          colorFor={(line) => allocationBucketColor(line.dataKey, line.color_rgb)}
+          loading={allocationLoading}
+        />
+      )}
+    </PageGridTile>
   );
 
   return (
@@ -695,18 +690,16 @@ export function DashboardPage() {
         rail: (
           <>
             {/* One row whenever both fit, «Próximos pagos» taking what the periods leave (page-grid.css `.dashboard-flows-pair`); stacked in the rail. */}
-            <div
-              className="page-tile dashboard-flows-pair"
-              style={{ "--tile-order": dashboardTileOrder("flows-periods") } as CSSProperties}
-            >
+            <div className="page-tile dashboard-flows-pair">
               <DashboardFlowsPeriods displayUnit={displayUnit} />
               <UpcomingPaymentsPanel data={data?.upcomingPayments ?? null} loading={contentLoading} />
             </div>
             <LatestMovementsTable />
           </>
         ),
-        tileOrder: dashboardTileOrder,
-        tileWide: dashboardTileWide,
+        allocation: dashboardAllocation,
+        allocationStackSpans: dashboardAllocationStackSpans(),
+        tileWideSpan: dashboardTileWideSpan,
         tileSmallSpan: dashboardTileSmallSpan,
         fold,
       }}

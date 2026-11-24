@@ -3,7 +3,7 @@ import { useStructuralValue } from "../../useStructuralValue";
 import { HeadingLink } from "../ui/HeadingLink";
 import { FlowsOverviewChart } from "../charts/lazyCharts";
 import { PageGridTile } from "../layout/PageGridTile";
-import { dashboardTileOrder, dashboardTileSmallSpan, dashboardTileWide } from "../../dashboardLayout";
+import { dashboardTileSmallSpan, dashboardTileWideSpan } from "../../dashboardLayout";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
 import { formatFlowMoney } from "../../flowsDisplay";
@@ -114,7 +114,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
   ] as const;
 
   return (
-    <PageGridTile id="flows-periods" order={dashboardTileOrder("flows-periods")}>
+    <PageGridTile id="flows-periods">
       <h2>
         <HeadingLink to="/flows">{t("dashboard.flows.title")}</HeadingLink>
       </h2>
@@ -209,8 +209,7 @@ export function DashboardFlowsChart({
   return (
     <PageGridTile
       id="flows-chart"
-      order={dashboardTileOrder("flows-chart")}
-      wide={alone ? { order: dashboardTileWide("flows-chart")!.order, span: 12 } : dashboardTileWide("flows-chart")}
+      wideSpan={alone ? 12 : dashboardTileWideSpan("flows-chart")}
       smallSpan={alone ? undefined : dashboardTileSmallSpan("flows-chart")}
       className="chart-grid chart-grid--full-line"
     >

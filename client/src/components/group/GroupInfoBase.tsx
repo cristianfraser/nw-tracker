@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { FlowsPanel } from "../account/FlowsPanel";
 import {
   MONTHLY_PERF_DETAIL_PAGE_SIZE,
@@ -77,10 +77,15 @@ export type GroupInfoDashboardOptions = {
   rail: ReactNode;
   /** Tiles after the band of the main column and the rail (the other charts). */
   pairs: ReactNode;
-  /** A tile's place in the one-stack reading order (dashboardLayout.ts). */
-  tileOrder: (id: GroupInfoTileId) => number;
-  /** Big desktop: a tile's order and span below the band (dashboardLayout.ts). */
-  tileWide: (id: GroupInfoTileId) => { order: number; span: number } | undefined;
+  /**
+   * The allocation tile: from 880 one column with Rentabilidad under it (`ALLOCATION_STACK`),
+   * beside the detalle table; below 880 the two stack in that order.
+   */
+  allocation: ReactNode;
+  /** The allocation stack's spans below the band on the big desktop and on the small desktop. */
+  allocationStackSpans: { wide: number; small: number };
+  /** Big desktop: a tile's span below the band (dashboardLayout.ts). */
+  tileWideSpan: (id: GroupInfoTileId) => number | undefined;
   /** Small desktop: a tile's column span when it shares its row (dashboardLayout.ts). */
   tileSmallSpan: (id: GroupInfoTileId) => number | undefined;
   /**
@@ -159,8 +164,7 @@ export function GroupInfoBase({
   const flowsExcludeSpending = dashboard?.flowsExcludeSpending ?? false;
   const rail = dashboard?.rail;
   const pairs = dashboard?.pairs;
-  const tileOrder = dashboard?.tileOrder;
-  const tileWide = dashboard?.tileWide;
+  const tileWideSpan = dashboard?.tileWideSpan;
   const tileSmallSpan = dashboard?.tileSmallSpan;
   const fold: DashboardFold = dashboard?.fold ?? "full";
   const { t } = useTranslation();
@@ -298,19 +302,19 @@ export function GroupInfoBase({
     </Loadable>
   ) : null;
   const exportTile = exportSlot ? (
-    <PageGridTile id="export" className="page-tile--end" order={tileOrder?.("export")} wide={tileWide?.("export")}>
+    <PageGridTile id="export" className="page-tile--end" wideSpan={tileWideSpan?.("export")}>
       {exportSlot}
     </PageGridTile>
   ) : null;
   const accountsTile = accountsTree ? (
-    <PageGridTile id="accounts" order={tileOrder?.("accounts")} wide={tileWide?.("accounts")}>
+    <PageGridTile id="accounts" wideSpan={tileWideSpan?.("accounts")}>
       {accountsTree}
     </PageGridTile>
   ) : null;
 
   // undefined = still loading (frame, dimmed — also before the nav names the group); null = the
-  // server sends none. With a rail (the dashboard) the table sits in the main stack right under
-  // the charts, untitled: the net-worth chart above it names what it measures.
+  // server sends none. With a rail (the dashboard) the table sits right under the allocation tile,
+  // untitled, in one column with it (`ALLOCATION_STACK`, dashboardLayout.ts).
   const returnsGroupSlug = portfolio?.groupSlug ?? "";
   const returnsBody =
     tablesEnabled && shownPeriodReturns !== null ? (
@@ -327,12 +331,7 @@ export function GroupInfoBase({
       </>
     ) : null;
   const returnsTile = returnsBody ? (
-    <PageGridTile
-      id="returns"
-      order={tileOrder?.("returns")}
-      wide={tileWide?.("returns")}
-      smallSpan={tileSmallSpan?.("returns")}
-    >
+    <PageGridTile id="returns" wideSpan={tileWideSpan?.("returns")} smallSpan={tileSmallSpan?.("returns")}>
       {returnsBody}
     </PageGridTile>
   ) : null;
@@ -441,10 +440,23 @@ export function GroupInfoBase({
             <div className="page-main">
               {strip}
               {charts}
-              {belowFold(returnsTile)}
             </div>
             <div className="page-rail">{rail}</div>
             {belowFold(pairs)}
+            {belowFold(
+              <div
+                className="page-tile page-tile--wide page-tile--small-span dashboard-tile-stack"
+                style={
+                  {
+                    "--tile-span-l": dashboard!.allocationStackSpans.wide,
+                    "--tile-span-s": dashboard!.allocationStackSpans.small,
+                  } as CSSProperties
+                }
+              >
+                {dashboard!.allocation}
+                {returnsTile}
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -458,14 +470,13 @@ export function GroupInfoBase({
           <BelowFoldHiddenContext.Provider value={fold === "hidden"}>
             <PageGridTile
               id="detail"
-              order={tileOrder?.("detail")}
-              wide={tileWide?.("detail")}
+              wideSpan={tileWideSpan?.("detail")}
               smallSpan={tileSmallSpan?.("detail")}
             >
               {detailBody}
             </PageGridTile>
 
-            <PageGridTile id="wealth-flows" order={tileOrder?.("wealth-flows")} wide={tileWide?.("wealth-flows")}>
+            <PageGridTile id="wealth-flows" wideSpan={tileWideSpan?.("wealth-flows")}>
               {flowsBody}
             </PageGridTile>
           </BelowFoldHiddenContext.Provider>

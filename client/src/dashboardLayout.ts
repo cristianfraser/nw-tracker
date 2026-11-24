@@ -4,17 +4,18 @@
  * Every section of the home page is a tile with a stable id and, per tier, a rectangle in
  * grid units: `x` / `w` in columns of the content region (12 on both desktop tiers, 4 on a
  * phone), `y` / `h` in row units (`--row-unit`, 24px, the gutter between rows). The static CSS
- * renders `w` (and on the big-desktop tier `x`) through `PageGridTile`; `y` and `h` are the
- * reading order and the nominal height a future react-grid-layout step would start from — its
- * `Responsive` props are `GRID` below, verbatim. Rows are measured, never fixed: an auto-height
- * table stretches its rows, so `h` is a nominal value for the library step, not a constraint.
+ * renders `w` through `PageGridTile`; `y` and `h` are the nominal reading order and height a
+ * future react-grid-layout step would start from — its `Responsive` props are `GRID` below,
+ * verbatim. Rows are measured, never fixed: an auto-height table stretches its rows, so `h` is a
+ * nominal value for the library step, not a constraint.
  *
- * Tier `l` (≥1440): a top band of the main column (8 wide, x 0: cards, net-worth chart, returns)
- * beside the rail (4 wide, x 8),
- * then the other charts in two equal columns (6 wide), then the wide tables, the export row and
- * the accounts tree across all 12. Tiers `s` and `m` are one stack in the big desktop's reading
- * order (the main column's band, the rail, then the rest by y and x); on `s` the tiles side by side on the big desktop share a row, half
- * the columns each (`SMALL_PAIRS`).
+ * Nothing reorders tiles: the page draws them in DOM order at every width (focus and screen
+ * readers follow what is drawn), and this table describes that order. Tier `l` (≥1440): a top
+ * band of the main column (8 wide, x 0: cards, net-worth chart) beside the rail (4 wide, x 8),
+ * then the flows chart | Δ by class, then the allocation column (allocation over Rentabilidad,
+ * one stack) beside the detalle table, then the wide tables, the export row and the accounts
+ * tree across all 12. Tier `s` (880–1439) is one stack in that order with the same two side by
+ * side rows, half the columns each; tier `m` is one stack in the same order.
  */
 export type DashboardTileId =
   | "title"
@@ -58,23 +59,22 @@ const stack = (order: readonly DashboardTileId[], cols: number, heights: Partial
 };
 
 /**
- * Below the big desktop the tiles stack in the big desktop's reading order, which is also the
- * page's DOM order (so focus and screen readers follow what is drawn): the main column's band
- * (cards, net-worth chart, Rentabilidad), then the rail, then the tiles below the band top to
- * bottom, left to right (asserted by the test). The rail therefore sits near the top instead of
- * after the tables.
+ * The page's DOM order (`GroupInfoBase` with the dashboard's `rail`, `pairs` and `allocation`),
+ * which is the stacked order below the big desktop: the main column's band (cards, net-worth
+ * chart), the rail, then the tiles below the band — a stack (allocation over Rentabilidad) before
+ * the tile beside it. The rail therefore sits right under the chart instead of after the tables.
  */
-const READING_ORDER: readonly DashboardTileId[] = [
+export const DASHBOARD_READING_ORDER: readonly DashboardTileId[] = [
   "title",
   "strip",
   "net-worth-chart",
-  "returns",
   "flows-periods",
   "cc-upcoming",
   "latest-movements",
   "flows-chart",
   "perf-combo",
   "allocation",
+  "returns",
   "detail",
   "wealth-flows",
   "export",
@@ -102,71 +102,94 @@ const NOMINAL_HEIGHTS: Partial<Record<DashboardTileId, number>> = {
  * Small desktop: tiles that share a row, half the width each (the second takes the first's row) —
  * the tiles that sit side by side on the big desktop. Each pair is adjacent in the reading order,
  * and both tiles of a pair render together (a pair is never left with an empty half): the flows
- * chart takes the whole row when the Δ by class chart is not shown (`DashboardFlowsChart` `alone`),
- * and allocation and detalle are both below the fold (`GroupInfoBase` `fold` drops them together).
+ * chart takes the whole row when the Δ by class chart is not shown (`DashboardFlowsChart` `alone`).
  * Not here: «Flujos» and «Próximos pagos», which share one wrapper below the net-worth chart that
  * sets them in one row at any width where both fit, the periods at their own width (page-grid.css
  * `.dashboard-flows-pair`), so they pair on a wide phone too and stack in the rail.
  */
-const SMALL_PAIRS: readonly (readonly [DashboardTileId, DashboardTileId])[] = [
-  ["flows-chart", "perf-combo"],
-  ["allocation", "detail"],
-];
+const SMALL_PAIRS: readonly (readonly [DashboardTileId, DashboardTileId])[] = [["flows-chart", "perf-combo"]];
 
-const pairUp = (rects: Record<DashboardTileId, TileRect>, cols: number) => {
+/**
+ * From 880: tiles stacked in one half-width column (`.dashboard-tile-stack`, its own column of
+ * rows, so a tall neighbour never opens whitespace between them) beside the next tile in the
+ * reading order. Allocation and detalle are both below the fold (`GroupInfoBase` `fold` drops
+ * them together), so the column never stands beside an empty half; Rentabilidad is left out
+ * when the server sends no returns, and the stack is then allocation alone.
+ */
+export const ALLOCATION_STACK: readonly DashboardTileId[] = ["allocation", "returns"];
+const ALLOCATION_STACK_BESIDE: DashboardTileId = "detail";
+
+const halves = (rects: Record<DashboardTileId, TileRect>, cols: number) => {
   const out = { ...rects };
+  const half = cols / 2;
   for (const [a, b] of SMALL_PAIRS) {
-    const half = cols / 2;
     out[a] = { ...out[a], w: half };
     out[b] = { ...out[b], x: half, y: out[a].y, w: half };
   }
+  const top = out[ALLOCATION_STACK[0]].y;
+  for (const id of ALLOCATION_STACK) out[id] = { ...out[id], w: half };
+  out[ALLOCATION_STACK_BESIDE] = {
+    ...out[ALLOCATION_STACK_BESIDE],
+    x: half,
+    y: top,
+    w: half,
+    h: ALLOCATION_STACK.reduce((sum, id) => sum + out[id].h, 0),
+  };
   return out;
 };
 
-const S = pairUp(stack(READING_ORDER, 12, NOMINAL_HEIGHTS), 12);
-const M = stack(READING_ORDER, 4, NOMINAL_HEIGHTS);
+const S = halves(stack(DASHBOARD_READING_ORDER, 12, NOMINAL_HEIGHTS), 12);
+const M = stack(DASHBOARD_READING_ORDER, 4, NOMINAL_HEIGHTS);
 
 /**
- * Big desktop: a top band of the main column (x 0, w 8: cards, net-worth chart, returns) beside
- * the rail (x 8, w 4); below it tiles in two equal columns (w 6) or across all 12.
+ * Big desktop: a top band of the main column (x 0, w 8: cards, net-worth chart) beside the rail
+ * (x 8, w 4); below it tiles in two equal columns (w 6, the allocation stack one of them) or
+ * across all 12.
  */
 const L: Record<DashboardTileId, TileRect> = {
   title: { x: 0, y: 0, w: 12, h: 1 },
   strip: { x: 0, y: 1, w: 8, h: 8 },
   "net-worth-chart": { x: 0, y: 9, w: 8, h: 15 },
-  returns: { x: 0, y: 24, w: 8, h: 6 },
   "flows-periods": { x: 8, y: 1, w: 4, h: 5 },
   "cc-upcoming": { x: 8, y: 6, w: 4, h: 3 },
   "latest-movements": { x: 8, y: 9, w: 4, h: 21 },
   "flows-chart": { x: 0, y: 30, w: 6, h: 10 },
   "perf-combo": { x: 6, y: 30, w: 6, h: 10 },
   allocation: { x: 0, y: 40, w: 6, h: 14 },
-  detail: { x: 6, y: 40, w: 6, h: 14 },
-  "wealth-flows": { x: 0, y: 54, w: 12, h: 12 },
-  export: { x: 0, y: 66, w: 12, h: 1 },
-  accounts: { x: 0, y: 67, w: 12, h: 10 },
+  returns: { x: 0, y: 54, w: 6, h: 6 },
+  detail: { x: 6, y: 40, w: 6, h: 20 },
+  "wealth-flows": { x: 0, y: 60, w: 12, h: 12 },
+  export: { x: 0, y: 72, w: 12, h: 1 },
+  accounts: { x: 0, y: 73, w: 12, h: 10 },
 };
 
 export const DASHBOARD_LAYOUT: Record<DashboardTileId, TileLayout> = Object.fromEntries(
-  READING_ORDER.map((id) => [id, { l: L[id], s: S[id], m: M[id] }])
+  DASHBOARD_READING_ORDER.map((id) => [id, { l: L[id], s: S[id], m: M[id] }])
 ) as Record<DashboardTileId, TileLayout>;
 
-/** A tile's place in the reading order below the big desktop (`PageGridTile`'s `order`). */
-export function dashboardTileOrder(id: DashboardTileId): number {
-  return READING_ORDER.indexOf(id);
-}
+const inStack = (id: DashboardTileId) => ALLOCATION_STACK.includes(id);
 
-/** Small desktop: the columns a tile spans when it shares its row (`PageGridTile`'s `smallSpan`). */
+/**
+ * Small desktop: the columns a tile spans when it shares its row (`PageGridTile`'s `smallSpan`).
+ * A stacked tile spans its stack, which takes this span itself (`dashboardAllocationStackSpans`).
+ */
 export function dashboardTileSmallSpan(id: DashboardTileId): number | undefined {
   const w = DASHBOARD_LAYOUT[id].s.w;
-  return w < GRID.cols.s ? w : undefined;
+  return w < GRID.cols.s && !inStack(id) ? w : undefined;
 }
 
 /**
- * A tile below the big-desktop band: its order and column span there (`PageGridTile`'s `wide`).
- * The band's own tiles (main column, rail) are placed by their stack and get none.
+ * A tile below the big-desktop band: its column span there (`PageGridTile`'s `wideSpan`). The
+ * band's own tiles (main column, rail) are placed by their stack and get none; so are the
+ * allocation stack's, whose stack takes the span.
  */
-export function dashboardTileWide(id: DashboardTileId): { order: number; span: number } | undefined {
+export function dashboardTileWideSpan(id: DashboardTileId): number | undefined {
   const r = DASHBOARD_LAYOUT[id].l;
-  return r.w === 6 || (r.w === 12 && r.y > 0) ? { order: r.y, span: r.w } : undefined;
+  return !inStack(id) && (r.w === 6 || (r.w === 12 && r.y > 0)) ? r.w : undefined;
+}
+
+/** The allocation stack's spans: below the band on the big desktop, and on the small desktop. */
+export function dashboardAllocationStackSpans(): { wide: number; small: number } {
+  const first = DASHBOARD_LAYOUT[ALLOCATION_STACK[0]];
+  return { wide: first.l.w, small: first.s.w };
 }

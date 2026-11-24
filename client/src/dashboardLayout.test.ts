@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  ALLOCATION_STACK,
   DASHBOARD_LAYOUT,
+  DASHBOARD_READING_ORDER,
   GRID,
-  dashboardTileOrder,
+  dashboardAllocationStackSpans,
   dashboardTileSmallSpan,
+  dashboardTileWideSpan,
   type DashboardTileId,
   type TileRect,
 } from "./dashboardLayout";
@@ -15,43 +18,61 @@ function overlaps(a: TileRect, b: TileRect): boolean {
 }
 
 describe("dashboard layout", () => {
-  it("lists every tile once, in the one-stack reading order", () => {
-    // The render order below 1440 is the reading order, which follows both stacked tiers' `y`.
-    expect(ids.map((id) => dashboardTileOrder(id))).toEqual(ids.map((_, i) => i));
-    for (const tier of ["s", "m"] as const) {
-      const ys = ids.map((id) => DASHBOARD_LAYOUT[id][tier].y);
-      expect(ys, tier).toEqual([...ys].sort((a, b) => a - b));
+  it("lists every tile once; the phone stacks them in the reading order", () => {
+    expect(ids).toEqual(DASHBOARD_READING_ORDER);
+    expect(new Set(ids).size).toBe(ids.length);
+    const ys = ids.map((id) => DASHBOARD_LAYOUT[id].m.y);
+    expect(ys).toEqual([...ys].sort((a, b) => a - b));
+  });
+
+  it("reads both desktop tiers column by column: the main band, the rail, then each row's columns", () => {
+    // Big desktop: `.page-main`, `.page-rail`, then below the band each row left to right, the
+    // stack's tiles (allocation over Rentabilidad) before the tile beside it; the small desktop
+    // has no band, only the rows.
+    for (const tier of ["l", "s"] as const) {
+      const group = (r: TileRect) =>
+        tier === "s" ? 0 : r.y === 0 ? 0 : r.x === 0 && r.w === 8 ? 1 : r.x === 8 && r.w === 4 ? 2 : 3;
+      const rowTop = (id: DashboardTileId) =>
+        DASHBOARD_LAYOUT[ALLOCATION_STACK.includes(id) ? ALLOCATION_STACK[0] : id][tier].y;
+      const drawn = [...ids].sort((a, b) => {
+        const ra = DASHBOARD_LAYOUT[a][tier];
+        const rb = DASHBOARD_LAYOUT[b][tier];
+        return group(ra) - group(rb) || rowTop(a) - rowTop(b) || ra.x - rb.x || ra.y - rb.y;
+      });
+      expect(drawn, tier).toEqual(DASHBOARD_READING_ORDER);
     }
   });
 
-  it("stacks in the big desktop's reading order: the main band, the rail, then the rest", () => {
-    // The page's DOM order (GroupInfoBase: `.page-main`, `.page-rail`, then the tiles below).
-    const stack = (r: TileRect) => (r.y === 0 ? 0 : r.x === 0 && r.w === 8 ? 1 : r.x === 8 && r.w === 4 ? 2 : 3);
-    const byBigDesktop = [...ids].sort((a, b) => {
-      const ra = DASHBOARD_LAYOUT[a].l;
-      const rb = DASHBOARD_LAYOUT[b].l;
-      return stack(ra) - stack(rb) || ra.y - rb.y || ra.x - rb.x;
-    });
-    expect([...ids].sort((a, b) => dashboardTileOrder(a) - dashboardTileOrder(b))).toEqual(byBigDesktop);
+  it("puts Rentabilidad right under the allocation tile on every tier", () => {
+    const [top, below] = ALLOCATION_STACK;
+    expect([top, below]).toEqual(["allocation", "returns"]);
+    for (const tier of ["l", "s", "m"] as const) {
+      const a = DASHBOARD_LAYOUT[top][tier];
+      const r = DASHBOARD_LAYOUT[below][tier];
+      expect({ x: r.x, w: r.w, y: r.y }, tier).toEqual({ x: a.x, w: a.w, y: a.y + a.h });
+    }
   });
 
-  it("spans the whole content width on the phone, and on the small desktop but for half-width pairs", () => {
+  it("spans the whole content width on the phone, and on the small desktop but for half-width rows", () => {
+    const stackSpans = dashboardAllocationStackSpans();
+    expect(stackSpans).toEqual({ wide: 6, small: GRID.cols.s / 2 });
     for (const id of ids) {
       expect(DASHBOARD_LAYOUT[id].m).toMatchObject({ x: 0, w: GRID.cols.m });
       const r = DASHBOARD_LAYOUT[id].s;
       if (r.w === GRID.cols.s) {
         expect(r.x, id).toBe(0);
+        expect(dashboardTileSmallSpan(id), id).toBeUndefined();
         continue;
       }
       expect(r.w, id).toBe(GRID.cols.s / 2);
-      const partner = ids.find((o) => o !== id && DASHBOARD_LAYOUT[o].s.y === r.y);
+      // Something fills the other half of its rows: a pair partner, or the stack beside it.
+      const partner = ids.find((o) => o !== id && DASHBOARD_LAYOUT[o].s.w === r.w && DASHBOARD_LAYOUT[o].s.x !== r.x && overlaps(DASHBOARD_LAYOUT[o].s, { ...r, x: DASHBOARD_LAYOUT[o].s.x }));
       expect(partner, id).toBeDefined();
-      expect(DASHBOARD_LAYOUT[partner!].s.x + r.x, id).toBe(GRID.cols.s / 2);
-      expect(dashboardTileSmallSpan(id)).toBe(GRID.cols.s / 2);
+      expect(dashboardTileSmallSpan(id), id).toBe(ALLOCATION_STACK.includes(id) ? undefined : GRID.cols.s / 2);
     }
   });
 
-  it("puts every big-desktop tile in the top band, the chart pairs or across all columns, without overlap", () => {
+  it("puts every big-desktop tile in the top band, a half-width column or across all columns, without overlap", () => {
     for (const id of ids) {
       const r = DASHBOARD_LAYOUT[id].l;
       const placement =
@@ -60,21 +81,23 @@ describe("dashboard layout", () => {
           : r.x === 8 && r.w === 4
             ? "rail"
             : (r.x === 0 || r.x === 6) && r.w === 6
-              ? "pair"
+              ? "half"
               : r.x === 0 && r.w === 12
                 ? "wide"
                 : null;
       expect(placement, id).not.toBeNull();
-      expect((DASHBOARD_LAYOUT[id].l.x === 8)).toBe(placement === "rail");
+      expect(dashboardTileWideSpan(id), id).toBe(
+        (placement === "half" && !ALLOCATION_STACK.includes(id)) || (placement === "wide" && id !== "title") ? r.w : undefined
+      );
     }
     for (const a of ids) for (const b of ids) if (a < b) expect(overlaps(DASHBOARD_LAYOUT[a].l, DASHBOARD_LAYOUT[b].l), `${a} / ${b}`).toBe(false);
     const bandEnd = Math.max(...ids.filter((id) => DASHBOARD_LAYOUT[id].l.w < 6 || DASHBOARD_LAYOUT[id].l.w === 8).map((id) => DASHBOARD_LAYOUT[id].l.y + DASHBOARD_LAYOUT[id].l.h));
-    // Below the band every row is full: a pair shares its row, a 12-wide tile has it alone.
+    // Below the band a half-width column always has a neighbour in its rows.
     for (const id of ids) {
       const r = DASHBOARD_LAYOUT[id].l;
       if (r.w === 6) {
         expect(r.y, id).toBeGreaterThanOrEqual(bandEnd);
-        const partner = ids.find((o) => o !== id && DASHBOARD_LAYOUT[o].l.w === 6 && DASHBOARD_LAYOUT[o].l.y === r.y);
+        const partner = ids.find((o) => o !== id && DASHBOARD_LAYOUT[o].l.w === 6 && DASHBOARD_LAYOUT[o].l.x !== r.x && overlaps(DASHBOARD_LAYOUT[o].l, { ...r, x: DASHBOARD_LAYOUT[o].l.x }));
         expect(partner, id).toBeDefined();
       }
       if (r.w === 12 && id !== "title") expect(r.y, id).toBeGreaterThanOrEqual(bandEnd);

@@ -217,18 +217,26 @@ y9  | net-worth-chart      | cc-upcoming (mobile-card rendering)
     | detail (w12) -------------------- |
     | wealth-flows (w12) -------------- |
 ```
+(The v1 sketch. As built, 2026-11-24: the main band is `strip`, `net-worth-chart`; the rail is
+`flows-periods` + `cc-upcoming`, `latest-movements`; below both, `flows-chart` | `perf-combo`,
+then the allocation stack — `allocation` over `returns`, one w6 column of its own rows
+(`ALLOCATION_STACK`, `.dashboard-tile-stack`) — | `detail`, then `wealth-flows`, `export`,
+`accounts` across 12.)
 The wide tables span 12 below the rail. Rail tiles are `container-type: inline-size`;
 `@container (max-width: 40rem)` switches their parallel tables to the mobile rendering
 (`!important`, mirroring `tables.css:93-122`). See reviewer note 1 on shared rows.
 
-**S (12):** the big desktop's reading order, which is the DOM order: the main band (`title`,
-`strip`, `net-worth-chart`, `returns`), the rail (`flows-periods` + `cc-upcoming` in one wrapper,
-one row whenever both fit at any width, the periods at their own width; `latest-movements`), then
-`flows-chart` | `perf-combo`, `allocation` | `detail`, `wealth-flows`, `export`, `accounts` —
-`a | b` = one row, w6 each (`SMALL_PAIRS`); every other tile w12. (Updated 2026-11-24; the
-first version kept the pre-rail order, which pushed the rail tiles below the tables.)
+**S (12):** the DOM order (`DASHBOARD_READING_ORDER`; nothing sets CSS `order`, so the drawn
+order is the DOM order at every width): the main band (`title`, `strip`, `net-worth-chart`), the
+rail (`flows-periods` + `cc-upcoming` in one wrapper, one row whenever both fit at any width, the
+periods at their own width; `latest-movements`), then `flows-chart` | `perf-combo` (one row, w6
+each, `SMALL_PAIRS`), the allocation stack (`allocation` over `returns`, one w6 column) |
+`detail`, `wealth-flows`, `export`, `accounts` w12. (Updated 2026-11-24: Rentabilidad sits right
+under the allocation map on every tier; before, it followed the net-worth chart and pushed the
+rail's panels down on a phone.)
 
-**M (4):** same order, every tile w4; cards and period boxes 1-up (2-up ≥36rem container).
+**M (4):** same order, every tile w4 (`allocation`, `returns`, `detail` stacked); cards and
+period boxes 1-up (2-up ≥36rem container).
 
 **Group pages (GroupInfoPage, LiabilitiesGroupPage), S and L alike — no rail in v1:**
 ```
@@ -292,7 +300,7 @@ s: TileRect; m: TileRect}`, `DASHBOARD_LAYOUT: Record<TileId, TileLayout>`, plus
 [24,24], s: [16,16], m: [16,16]}, containerPadding: [0,0], compactType: "vertical" }` —
 exactly react-grid-layout's `Responsive` props. `h` is in 24 px rows with the gutter as row
 margin (item height = h·24 + (h−1)·g): L examples `strip {0,1,8,8}`, `net-worth-chart
-{0,9,8,10}`, `flows-periods {8,1,4,9}`, `returns {0,…,12,6}`.
+{0,9,8,10}`, `flows-periods {8,1,4,9}`, `returns {0,54,6,6}` (under `allocation {0,40,6,14}`).
 
 A `PageGridTile` component (`components/layout/PageGridTile.tsx`) renders `<section
 data-tile={id} class="page-tile" style={{'--l-x':…,'--l-y':…,'--l-w':…,'--l-h':…,'--s-w':…,'--m-w':…}}>`;
