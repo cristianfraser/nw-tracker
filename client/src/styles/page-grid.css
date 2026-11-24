@@ -98,8 +98,13 @@
   }
 
   /* The rail is one column of full-width tiles, not a subgrid: it is the size container the
-     rail tables query, and size containment makes `subgrid` compute to `none` anyway. */
+     rail tables query, and size containment makes `subgrid` compute to `none` anyway. It is a
+     container on both axes, so its content adds nothing to the row's height: the row is as tall
+     as the main stack (cards and net-worth chart), the rail stretches to it, and its last tile
+     («Últimos movimientos», `.dashboard-rail-fill`) takes what the others leave and scrolls. */
   .page-rail {
+    align-self: stretch;
+    grid-template-rows: auto minmax(0, 1fr);
     grid-column: 9 / -1;
     /* No gutter between the stacks: the rail reaches back to the main stack's edge, the
        way cards touch inside a strip. */
@@ -110,8 +115,24 @@
        reserves no strip for it on this tier: the rail starts below it and its bottom border. */
     padding-top: calc(var(--market-ticker-height) + 1px + var(--space-xs));
     grid-template-columns: minmax(0, 1fr);
-    container-type: inline-size;
+    container-type: size;
     container-name: rail;
+  }
+
+  .page-rail>.dashboard-rail-fill {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+  }
+
+  /* The heading stays put; the rows and «show more» scroll under it. Never shorter than a few
+     rows, should the main stack ever be shorter than the rail's other tiles. */
+  .dashboard-rail-fill__scroll {
+    flex: 1 1 0;
+    min-height: 12rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   /* Below the band of the main stack and the rail, the dashboard's tiles take the span of its

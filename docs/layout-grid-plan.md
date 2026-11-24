@@ -221,7 +221,8 @@ y9  | net-worth-chart      | cc-upcoming (mobile-card rendering)
 `flows-periods` + `cc-upcoming`, `latest-movements`; below both, `flows-chart` | `perf-combo`,
 then the allocation stack — `allocation` over `returns`, one w6 column of its own rows
 (`ALLOCATION_STACK`, `.dashboard-tile-stack`) — | `detail`, then `wealth-flows`, `export`,
-`accounts` across 12.)
+`accounts` across 12. The rail is a size container on both axes, as tall as the main stack;
+`latest-movements` fills the rest of it and its rows scroll, so it ends with the net-worth chart.)
 The wide tables span 12 below the rail. Rail tiles are `container-type: inline-size`;
 `@container (max-width: 40rem)` switches their parallel tables to the mobile rendering
 (`!important`, mirroring `tables.css:93-122`). See reviewer note 1 on shared rows.

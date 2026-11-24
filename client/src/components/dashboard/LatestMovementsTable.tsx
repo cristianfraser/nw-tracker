@@ -194,7 +194,7 @@ export function LatestMovementsTable() {
   });
 
   return (
-    <PageGridTile id="latest-movements">
+    <PageGridTile id="latest-movements" className="dashboard-rail-fill">
       <h2>
         <HeadingLink to="/flows/expenses">{t("dashboard.latestMovements.title")}</HeadingLink>
       </h2>
@@ -203,7 +203,7 @@ export function LatestMovementsTable() {
           {loadError instanceof Error ? loadError.message : t("common.loadFailedTables")}
         </p>
       ) : (
-        <>
+        <div className="dashboard-rail-fill__scroll">
           <CreditCardExpenseLinesTable
             items={items}
             categories={data?.categories ?? []}
@@ -218,7 +218,7 @@ export function LatestMovementsTable() {
           <Button variant="ghost" onClick={() => undefined}>
             {t("dashboard.latestMovements.showMore")}
           </Button>
-        </>
+        </div>
       )}
     </PageGridTile>
   );
