@@ -39,7 +39,7 @@ import {
   buildPlaceholderNavStripDash,
   chartShapeFromLoadedDashboardBundle,
 } from "../placeholders/dashboardPagePlaceholders";
-import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
+import { enrichNavTreeWithAllAccounts, netWorthTreeWithLiabilitiesSubtree } from "../navAccountsTreeEnrich";
 import { DASHBOARD_COLD_STRIP } from "../coldPageShape";
 import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
@@ -360,10 +360,13 @@ export function DashboardPage() {
 
   const accountsTreeRoot = useMemo(
     () =>
-      netWorthNav
-        ? enrichNavTreeWithAllAccounts(netWorthNav, shapeAccounts ?? navShell?.accounts ?? [])
+      netWorthNav && sidebarNav
+        ? enrichNavTreeWithAllAccounts(
+            netWorthTreeWithLiabilitiesSubtree(netWorthNav, sidebarNav.main),
+            shapeAccounts ?? navShell?.accounts ?? []
+          )
         : null,
-    [netWorthNav, shapeAccounts, navShell?.accounts]
+    [netWorthNav, sidebarNav, shapeAccounts, navShell?.accounts]
   );
 
   if (err) {

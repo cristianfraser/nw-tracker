@@ -77,3 +77,25 @@ export function enrichNavTreeWithAllAccounts(
   }
   return tree;
 }
+
+/**
+ * The sidebar's net-worth tree carries a childless Pasivos stub (the sidebar draws Pasivos from its
+ * own block); the accounts tree shows the Pasivos subtree the server sends in `main`. A stub with no
+ * matching root in `main` is a mismatch between the two server blocks, and throws.
+ */
+export function netWorthTreeWithLiabilitiesSubtree(
+  netWorth: NavTreeNodeDto,
+  main: readonly NavTreeNodeDto[]
+): NavTreeNodeDto {
+  const visit = (node: NavTreeNodeDto): NavTreeNodeDto => {
+    if (node.group_kind === "liability_group" && node.account_id == null && node.children.length === 0) {
+      const subtree = main.find((n) => n.slug === node.slug);
+      if (!subtree) {
+        throw new Error(`The sidebar nav has no «${node.slug}» root for the net-worth tree's Pasivos stub`);
+      }
+      return subtree;
+    }
+    return { ...node, children: node.children.map(visit) };
+  };
+  return visit(netWorth);
+}
