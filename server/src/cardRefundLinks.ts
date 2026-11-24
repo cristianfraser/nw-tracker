@@ -32,14 +32,14 @@ function lineDay(l: Pick<Line, "purchase_on" | "occurred_on">): string {
   return l.purchase_on ?? l.occurred_on;
 }
 
-/** Letters and digits of a merchant, upper case: «GLASS LIDER.CL» → «GLASSLIDERCL». */
+/** Letters and digits of a merchant, upper case: «HOME STORE.CL (T)» → «HOMESTORECLT». */
 function merchantStem(l: Pick<Line, "merchant_key">): string {
   return (l.merchant_key ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 /**
  * Same merchant: one stem holds the other (the bank cuts names, and a store's section prefixes its
- * own: «GLASS LIDER.CL» is Lider's), at five letters at least.
+ * own: «GARDEN ACME.CL» is Acme's), at five letters at least.
  */
 function sameMerchant(a: Line, b: Line): boolean {
   const x = merchantStem(a);
