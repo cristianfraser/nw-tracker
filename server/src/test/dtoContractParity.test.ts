@@ -100,12 +100,14 @@ type S_WireExpenseLine = Omit<
   | "payment_name"
   | "merchant_processor"
   | "refund_of"
+  | "refund_suggestion"
 > &
   Required<Pick<S_FlowCcExpenseLineRow, "amount">> & {
     converted: Dto.LineConverted | null;
     value_clp: number;
     manual_description?: string;
     refund_of?: Omit<NonNullable<S_FlowCcExpenseLineRow["refund_of"]>, "merchant" | "display_merchant" | "payment_name">;
+    refund_suggestion?: { line_id: number; purchase_date: string; amount: Dto.Money; name: Dto.ShownName };
   } & S_ShownNameFields;
 
 /**

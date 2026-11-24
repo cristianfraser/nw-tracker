@@ -10,7 +10,7 @@ import {
 import { syncCardToCardPaymentTransfers } from "../cardToCardPayments.js";
 import { assertDemoManualExpenseDescription } from "../demoWritePolicy.js";
 import express from "express";
-import { writeHandler } from "../inputError.js";
+import { InputError, writeHandler } from "../inputError.js";
 import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "../expenseLinkSync.js";
 import { buildPayrollBreakdown } from "../payrollBreakdown.js";
 import { buildPayslipChecks } from "../payslipChecks.js";
@@ -34,6 +34,7 @@ import { buildFlowsIncomeAggregates, buildFlowsOverviewPayload } from "../flowsO
 import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
 import { listPropertyAccounts } from "../accountRoles.js";
 import { assignFlowExpenseLineCategory } from "../expenseAssignmentWrites.js";
+import { cardRefundCandidatesResponse, linkCardRefund, unlinkCardRefund } from "../cardRefundLinkWrites.js";
 import {
   getExpenseLinePieces,
   replaceExpenseLinePieces,
@@ -772,6 +773,46 @@ app.delete("/api/flows/expenses/big-groups/:slug", writeHandler((req, res) => {
     return;
   }
   deleteCcExpenseBigGroup(slug);
+  res.status(204).send();
+}));
+
+function positiveIntParam(name: string, raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new InputError(`${name} must be a positive integer, got ${String(raw)}`);
+  return n;
+}
+
+app.get("/api/flows/expenses/refund-candidates", writeHandler((req, res) => {
+  const unit = requestDisplayUnit(req.query, { surface: "/api/flows/expenses/refund-candidates" });
+  res.json(
+    cardRefundCandidatesResponse(
+      positiveIntParam("account_id", req.query.account_id),
+      positiveIntParam("line_id", req.query.line_id),
+      unit
+    )
+  );
+}));
+
+app.put("/api/flows/expenses/refund-links", writeHandler((req, res) => {
+  const body = req.body as { account_id?: unknown; line_id?: unknown; purchase_line_id?: unknown };
+  const purchaseLineId = Number(body.purchase_line_id);
+  if (!Number.isInteger(purchaseLineId) || purchaseLineId === 0) {
+    throw new InputError(`purchase_line_id must be a non-zero integer, got ${String(body.purchase_line_id)}`);
+  }
+  res.json(
+    linkCardRefund({
+      accountId: positiveIntParam("account_id", body.account_id),
+      lineId: positiveIntParam("line_id", body.line_id),
+      purchaseLineId,
+    })
+  );
+}));
+
+app.delete("/api/flows/expenses/refund-links", writeHandler((req, res) => {
+  unlinkCardRefund({
+    accountId: positiveIntParam("account_id", req.query.account_id),
+    lineId: positiveIntParam("line_id", req.query.line_id),
+  });
   res.status(204).send();
 }));
 

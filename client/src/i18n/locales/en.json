@@ -1777,6 +1777,17 @@
         "paidFromAccount": "Payment from {{account}}"
       },
       "lineRow": {
+        "refund": {
+          "label": "Refund of",
+          "suggestion": "Refund of this purchase?",
+          "confirm": "Confirm",
+          "pick": "Find the purchase…",
+          "other": "Another purchase…",
+          "close": "Close",
+          "unlink": "Unlink",
+          "pickAria": "Purchases this credit may refund",
+          "empty": "No purchase on this card fits: same currency, at least the credit, up to 120 days before."
+        },
         "refundOf": "Refund · {{name}}",
         "refundOfPurchase": "Refund of the purchase of {{date}}",
         "annulled": {

@@ -4,7 +4,7 @@ import { withExpenseLineShapes } from "./expenseLineShapes.js";
 import { withLineMoney } from "./lineMoney.js";
 import { isGastosRefundLine } from "./flowsExpensesGastos.js";
 
-const RULES = { isGastosRefundLine };
+const RULES = { isGastosRefundLine, isLinkableCardRefund: () => false };
 
 function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   return {

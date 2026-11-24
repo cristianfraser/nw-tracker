@@ -31,7 +31,8 @@ export const DTO_SCHEMA_VERSIONS = {
    * day each happened); v2: rows carry `amount` (native currency) + `values` per unit; v3: `values`
    * replaced by `converted` in the requested unit (and an expense line's `value_clp`); v4: expense
    * and income rows carry the server's one shown `name` (`ShownName`) in place of the merchant fields;
-   * v5: expense rows drop `period_month`, `counts_toward_gastos` and `month_modal_sections`.
+   * v5: expense rows drop `period_month`, `counts_toward_gastos` and `month_modal_sections`, and a card
+   * credit may carry `refund_suggestion`, `can_link_refund` and `refund_of.manual`.
    */
   latest_movements: 5,
   /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`. */

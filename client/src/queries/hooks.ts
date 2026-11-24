@@ -730,6 +730,15 @@ export function useFlowsExpensesSummary(unit: DisplayUnit) {
   });
 }
 
+/** The purchases a card credit may refund, fetched while its picker is open. */
+export function useCardRefundCandidates(unit: DisplayUnit, accountId: number, lineId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.cardRefundCandidates(unit, accountId, lineId),
+    queryFn: () => api.cardRefundCandidates(unit, accountId, lineId),
+    enabled,
+  });
+}
+
 /** The financing manager's pickers: financed cards with their facturaciones, and the plans. */
 export function useFlowsExpensesFinancingCandidates(unit: DisplayUnit, enabled: boolean) {
   return useQuery({
@@ -825,6 +834,8 @@ export {
   useSaveExpenseLinePiecesMutation,
   useSaveManualExpenseMutation,
   useDeleteManualExpenseMutation,
+  useLinkCardRefundMutation,
+  useUnlinkCardRefundMutation,
 } from "./mutations";
 
 export function useAccountMonthlyPerformance(id: string | undefined, unit: DisplayUnit) {

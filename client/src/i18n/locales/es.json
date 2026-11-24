@@ -1777,6 +1777,17 @@
         "paidFromAccount": "Pago desde {{account}}"
       },
       "lineRow": {
+        "refund": {
+          "label": "Reembolso de",
+          "suggestion": "¿Reembolso de esta compra?",
+          "confirm": "Confirmar",
+          "pick": "Buscar la compra…",
+          "other": "Otra compra…",
+          "close": "Cerrar",
+          "unlink": "Quitar",
+          "pickAria": "Compras que este abono puede reembolsar",
+          "empty": "Ninguna compra de esta tarjeta calza: misma moneda, al menos el abono, hasta 120 días antes."
+        },
         "refundOf": "Reembolso · {{name}}",
         "refundOfPurchase": "Reembolso de la compra del {{date}}",
         "annulled": {

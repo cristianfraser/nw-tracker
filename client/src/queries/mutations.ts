@@ -785,3 +785,27 @@ export function useDeleteManualExpenseMutation() {
     },
   });
 }
+
+/**
+ * A card credit names the purchase it refunds, or names none again: the refund's name, its
+ * category (it takes the purchase's while «sin categoría») and every total built on the lines move.
+ */
+export function useLinkCardRefundMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { account_id: number; line_id: number; purchase_line_id: number }) => api.linkCardRefund(vars),
+    onSettled: () => {
+      void invalidateResources(queryClient, resources.expenseLines());
+    },
+  });
+}
+
+export function useUnlinkCardRefundMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { account_id: number; line_id: number }) => api.unlinkCardRefund(vars.account_id, vars.line_id),
+    onSettled: () => {
+      void invalidateResources(queryClient, resources.expenseLines());
+    },
+  });
+}

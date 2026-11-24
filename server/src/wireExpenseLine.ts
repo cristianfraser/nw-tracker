@@ -17,6 +17,7 @@ type ServerLine = ShownNameSource & {
   source: string;
   purchase_key: string;
   refund_of?: ShownNameSource & Record<string, unknown>;
+  refund_suggestion?: ShownNameSource & { line_id: number; purchase_date: string; amount: { value: number; currency: string } };
   amount_clp: number;
   amount_usd?: number | null;
   amount_usd_at_expense?: number | null;
@@ -42,6 +43,7 @@ export function toWireExpenseLine(l: ServerLine, unit: string): WireExpenseLine 
     payment_name: _pn,
     merchant_processor: _mp,
     refund_of,
+    refund_suggestion,
     ...wire
   } = l;
   const names = shownNameFields(l, `expense line ${l.purchase_key}`, refund_of);
@@ -53,6 +55,16 @@ export function toWireExpenseLine(l: ServerLine, unit: string): WireExpenseLine 
     ...names,
     ...(l.source === "manual" && merchant != null ? { manual_description: merchant } : {}),
     ...(refund ? { refund_of: refund } : {}),
+    ...(refund_suggestion
+      ? {
+          refund_suggestion: {
+            line_id: refund_suggestion.line_id,
+            purchase_date: refund_suggestion.purchase_date,
+            amount: refund_suggestion.amount,
+            name: shownNameFields(refund_suggestion, `expense line ${l.purchase_key} (suggested purchase)`).name,
+          },
+        }
+      : {}),
     converted,
     value_clp,
   } as unknown as WireExpenseLine;

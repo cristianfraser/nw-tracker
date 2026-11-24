@@ -764,6 +764,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** The purchases a card credit may refund (the row's «Reembolso de…»). */
+  cardRefundCandidates: (unit: DisplayUnit, accountId: number, lineId: number) =>
+    j<import("./types").CardRefundCandidatesResponse>(
+      `/api/flows/expenses/refund-candidates?${new URLSearchParams({ unit, account_id: String(accountId), line_id: String(lineId) })}`
+    ),
+  linkCardRefund: (body: { account_id: number; line_id: number; purchase_line_id: number }) =>
+    j<{ ok: true }>("/api/flows/expenses/refund-links", { method: "PUT", body: JSON.stringify(body) }),
+  unlinkCardRefund: (accountId: number, lineId: number) =>
+    j<void>(
+      `/api/flows/expenses/refund-links?${new URLSearchParams({ account_id: String(accountId), line_id: String(lineId) })}`,
+      { method: "DELETE" }
+    ),
   putCcExpensePurchaseBigGroup: (body: { purchase_key: string; group_slug: string | null }) =>
     j<{ purchase_key: string; group_slug: string | null }>(
       "/api/flows/expenses/purchase-big-group",

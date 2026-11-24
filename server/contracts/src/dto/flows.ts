@@ -505,7 +505,14 @@ export interface FlowCcExpenseLineRow {
     purchase_date: string;
     link_label?: ExpenseLinkLabel;
     payment_receipt?: PaymentReceipt;
+    /** The user named the purchase (the row's «Reembolso de…»): the row may undo it. */
+    manual?: true;
   };
+  /**
+   * A card credit with no purchase named whose only same-merchant candidate is this purchase: the
+   * row offers it for one confirm (server `cardRefundLinks.ts`).
+   */
+  refund_suggestion?: { line_id: number; purchase_date: string; amount: Money; name: ShownName };
   /** A card line the bank charged as financing (section 3), as the card's P/L counts it. */
   is_financing_cost?: true;
   /** Deducted from a payslip before the pay reached the account: the Expenses page shows it only when asked. */
@@ -532,6 +539,8 @@ export interface FlowCcExpenseLineRow {
   can_edit_installment?: boolean;
   /** The row may break it into pieces. */
   can_edit_pieces?: boolean;
+  /** The row may name the purchase this card credit refunds, or undo the name. */
+  can_link_refund?: boolean;
 }
 
 /** A card or checking purchase line and its pieces (`GET /api/flows/expenses/line-pieces`). */
@@ -698,6 +707,28 @@ export interface FlowsExpenseLinesResponse {
   page?: FlowsExpenseLinesPage;
   categories: CcExpenseCategoryDto[];
   big_groups: CcExpenseBigGroupDto[];
+}
+
+/** One purchase a card credit may refund (`GET /api/flows/expenses/refund-candidates`). */
+export interface CardRefundCandidate {
+  line_id: number;
+  purchase_date: string;
+  amount: Money;
+  converted: LineConverted | null;
+  name: ShownName;
+  category_slug: string;
+  /** Under the credit's own merchant (listed first). */
+  merchant_match: boolean;
+}
+
+/**
+ * `GET /api/flows/expenses/refund-candidates?unit=&account_id=&line_id=`: the purchases a card credit
+ * may refund — the same card, the credit's currency, worth at least the credit, bought up to 120 days
+ * before it; the merchant's own first, then the newest (server `cardRefundLinks.ts`).
+ */
+export interface CardRefundCandidatesResponse {
+  unit: DisplayUnitCode;
+  candidates: CardRefundCandidate[];
 }
 
 /** One page of a paged expense-lines list. */

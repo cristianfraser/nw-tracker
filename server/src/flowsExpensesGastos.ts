@@ -52,7 +52,7 @@ export type GastosUnit = string;
  * A finished expense line as the gastos views read it: wire or server-side (the server's carries
  * the builder fields beside its money). Its value in a unit is `values[unit]` (`lineValueIn`).
  */
-export type GastosLine = Omit<WireExpenseLine, "amount" | "converted" | "value_clp" | "name" | "name_detail" | "refund_of"> & {
+export type GastosLine = Omit<WireExpenseLine, "amount" | "converted" | "value_clp" | "name" | "name_detail" | "refund_of" | "refund_suggestion"> & {
   amount?: Money;
   values?: Record<string, LineUnitValue>;
 };

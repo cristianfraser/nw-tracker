@@ -12,7 +12,7 @@ import { lineAmount } from "./lineMoney.js";
  * builder fields beside its money). Its sign is its money's (`lineAmount`), the same in every unit.
  */
 /** The fields the shape rules read: a line before the wire seam names it (`name` is the wire's). */
-export type ShapeLine = Omit<FlowCcExpenseLineRow, "amount" | "converted" | "value_clp" | "name" | "name_detail" | "refund_of"> & { amount?: Money };
+export type ShapeLine = Omit<FlowCcExpenseLineRow, "amount" | "converted" | "value_clp" | "name" | "name_detail" | "refund_of" | "refund_suggestion"> & { amount?: Money };
 
 /**
  * The gastos rules a line's shape is read from, passed in by the pipeline (`flowsExpenses.ts`):
@@ -20,6 +20,8 @@ export type ShapeLine = Omit<FlowCcExpenseLineRow, "amount" | "converted" | "val
  */
 export type ExpenseLineShapeRules = {
   isGastosRefundLine: (line: ShapeLine) => boolean;
+  /** A card credit the user can name (or un-name) the purchase of (`cardRefundLinks.ts`). */
+  isLinkableCardRefund: (line: ShapeLine) => boolean;
 };
 
 function isNotaCreditoExcludedLine(line: ShapeLine): boolean {
@@ -67,6 +69,7 @@ export function withExpenseLineShapes<L extends ShapeLine>(
       // decision 2026-11-08, the pre-F12 rule).
       can_make_installment:
         isPlainCardPurchase(line) && (line.cuota_purchase_kind != null || line.web_paste === true),
+      can_link_refund: rules.isLinkableCardRefund(line),
       can_edit_installment:
         line.source === "cc" && line.installment_source === "manual" && line.installment_purchase_id != null,
       can_edit_pieces:

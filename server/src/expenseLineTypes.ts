@@ -301,7 +301,23 @@ export type FlowCcExpenseLineRow = {
     payment_name?: ExpenseLinePaymentName;
     link_label?: ExpenseLinkLabel;
     payment_receipt?: PaymentReceiptDto;
+    /** The user named the purchase (`card_refund_links`): the row may undo it. */
+    manual?: true;
   };
+  /**
+   * The one purchase a card credit with no purchase most likely refunds (`cardRefundLinks.ts`: the
+   * only candidate whose merchant is the credit's): the row offers it for one confirm.
+   */
+  refund_suggestion?: {
+    line_id: number;
+    purchase_date: string;
+    amount: Money;
+    merchant: string | null;
+    display_merchant?: string;
+    payment_name?: ExpenseLinePaymentName;
+  };
+  /** The row may name the purchase this card credit refunds, or undo the name (server line shapes). */
+  can_link_refund?: boolean;
   /**
    * A card line the bank charged as the cost of financing (section 3: intereses, comisiones,
    * impuestos, administración) — the lines the card's P/L counts ({@link markFinancingCostLines}).

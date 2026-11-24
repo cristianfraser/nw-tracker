@@ -36,7 +36,11 @@ import {
   useUpdateCcPurchaseCuotasMutation,
   useMakeStatementLineInstallmentMutation,
   usePostVendorBranchChoiceMutation,
+  useCardRefundCandidates,
+  useLinkCardRefundMutation,
+  useUnlinkCardRefundMutation,
 } from "../../queries/hooks";
+import { queryLoadError, queryShowsLoading } from "../../queries/pageShapeReady";
 import styles from "./CreditCardExpenseLinesTable.module.css";
 
 function lineCategorySlug(line: FlowCcExpenseLineRow): string {
@@ -488,6 +492,102 @@ function PlanCuotasControls({ line }: { line: FlowCcExpenseLineRow }) {
   );
 }
 
+/**
+ * A card credit's «Reembolso de…» (`cardRefundLinks.ts` on the server): the one same-merchant
+ * purchase the server suggests, for one confirm; else a picker of the purchases it may refund; a
+ * credit the user linked shows its purchase's day and may be unlinked. The server decides what it
+ * may do (`can_link_refund`).
+ */
+function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
+  const [open, setOpen] = useState(false);
+  const link = useLinkCardRefundMutation();
+  const unlink = useUnlinkCardRefundMutation();
+  const candidates = useCardRefundCandidates(displayUnit, line.account_id, line.statement_line_id, open);
+  const busy = link.isPending || unlink.isPending;
+  const onError = (err: unknown) => window.alert(err instanceof Error ? err.message : String(err));
+  const linkTo = (purchaseLineId: number) =>
+    link.mutate(
+      { account_id: line.account_id, line_id: line.statement_line_id, purchase_line_id: purchaseLineId },
+      { onSuccess: () => setOpen(false), onError }
+    );
+
+  if (line.refund_of?.manual) {
+    return (
+      <div className={styles.panelBigGroup}>
+        <span className="muted">{t("expenses.creditCard.lineRow.refund.label")}</span>
+        <span className="mono muted">{line.refund_of.purchase_date}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => unlink.mutate({ account_id: line.account_id, line_id: line.statement_line_id }, { onError })}
+        >
+          {t("expenses.creditCard.lineRow.refund.unlink")}
+        </Button>
+      </div>
+    );
+  }
+
+  const suggestion = line.refund_suggestion;
+  const loadError = queryLoadError(candidates);
+  return (
+    <div className={styles.refundLink}>
+      {!open ? (
+        <div className={styles.panelBigGroup}>
+          {suggestion ? (
+            <>
+              <span className="muted">{t("expenses.creditCard.lineRow.refund.suggestion")}</span>
+              <span>{shownNameText(suggestion.name)}</span>
+              <span className="mono muted">{suggestion.purchase_date}</span>
+              <span className="mono">
+                <MoneyAmount money={{ amount: suggestion.amount, converted: null }} />
+              </span>
+              <Button size="sm" disabled={busy} onClick={() => linkTo(suggestion.line_id)}>
+                {t("expenses.creditCard.lineRow.refund.confirm")}
+              </Button>
+            </>
+          ) : null}
+          <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+            {suggestion ? t("expenses.creditCard.lineRow.refund.other") : t("expenses.creditCard.lineRow.refund.pick")}
+          </Button>
+        </div>
+      ) : (
+        <div className={loadableClass(queryShowsLoading(candidates))}>
+          {loadError ? (
+            <p className="error">{loadError instanceof Error ? loadError.message : t("common.loadFailed")}</p>
+          ) : candidates.data && candidates.data.candidates.length === 0 ? (
+            <p className="muted">{t("expenses.creditCard.lineRow.refund.empty")}</p>
+          ) : (
+            <div role="list" aria-label={t("expenses.creditCard.lineRow.refund.pickAria")} className={styles.refundCandidates}>
+              {(candidates.data?.candidates ?? []).map((c) => (
+                <button
+                  key={c.line_id}
+                  type="button"
+                  role="listitem"
+                  className={cn(styles.refundCandidate, c.merchant_match && styles.refundCandidateMatch)}
+                  disabled={busy}
+                  onClick={() => linkTo(c.line_id)}
+                >
+                  <span className="mono muted">{c.purchase_date}</span>
+                  <span className={styles.refundCandidateName}>{shownNameText(c.name)}</span>
+                  <span className="mono">
+                    <MoneyAmount money={c} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            {t("expenses.creditCard.lineRow.refund.close")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExpenseLineRow({
   line: ln,
   categories,
@@ -546,7 +646,9 @@ function ExpenseLineRow({
     ln.statement_line_id > 0 ? ln.statement_line_id : ln.category_statement_line_id ?? undefined;
   // The demo leaves branch picks closed (they write a catalog row every visitor would see).
   const branchChoices = DEMO_EDITS_LIMITED ? null : ln.branch_choices;
-  const needsAction = ln.cuota_purchase_kind != null || branchChoices != null;
+  const canLinkRefund = !DEMO_EDITS_LIMITED && ln.can_link_refund === true;
+  // A suggested purchase waits on one confirm.
+  const needsAction = ln.cuota_purchase_kind != null || branchChoices != null || (canLinkRefund && ln.refund_suggestion != null);
   // A big group shows on the row once set; until then its picker lives in the row's extras.
   const canBigGroup = showBigGroupControls && Boolean(ln.purchase_key) && !fixedCategory;
   const bigGroupOnRow = canBigGroup && ln.big_group_slug != null;
@@ -563,6 +665,7 @@ function ExpenseLineRow({
     canEditInstallment ||
     canAnnul ||
     canUndoAnnul ||
+    canLinkRefund ||
     canDelete;
   const merchant = shownNameText(ln.name);
 
@@ -674,6 +777,7 @@ function ExpenseLineRow({
               />
             </div>
           ) : null}
+          {canLinkRefund ? <RefundLinkControl line={ln} /> : null}
           {canAnnul ? <AnnulPurchaseControl line={ln} /> : null}
           {canEditPieces || canEditManual || canDelete || canUndoAnnul ? (
             <div className={styles.panelActions}>

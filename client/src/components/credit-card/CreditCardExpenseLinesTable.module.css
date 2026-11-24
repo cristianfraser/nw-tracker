@@ -321,3 +321,49 @@
   white-space: nowrap;
   cursor: pointer;
 }
+
+/* A card credit's «Reembolso de…»: the suggestion or the picker of purchases it may refund. */
+.refundLink {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.refundCandidates {
+  display: grid;
+  gap: 1px;
+  margin-bottom: 0.35rem;
+}
+
+.refundCandidate {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.25rem 0.4rem;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--font-size-card-label);
+  text-align: left;
+  cursor: pointer;
+}
+
+.refundCandidate:hover,
+.refundCandidate:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+
+/* Under the credit's own merchant: listed first, in the text colour. */
+.refundCandidateMatch {
+  color: var(--text);
+}
+
+.refundCandidateName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -133,6 +133,7 @@ import { annulledPurchaseLineId, annulledPurchaseRowsForAccount } from "./ccAnnu
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { withExpenseLineShapes } from "./expenseLineShapes.js";
 import { isGastosRefundLine } from "./gastosMesCounting.js";
+import { isLinkableCardRefund, withCardRefundLinks } from "./cardRefundLinks.js";
 
 export { listCreditCardMasterAccountIds };
 
@@ -872,7 +873,8 @@ const asRows = <T,>(f: (lines: T[]) => unknown) => (lines: readonly FlowCcExpens
  *   the categories are final (`ccPlanPrepaymentLines.ts`);
  * - the subscription category before the specific rules (which drop the bank-name marker);
  * - the facturado-financing projection on the categorized lines, the financing-cost stamp last
- *   (it drops the internal kind marker).
+ *   (it drops the internal kind marker);
+ * - the card refunds the user linked to a purchase once the lines have their flows and money.
  */
 export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "plan prepayment lines", run: dropPlanPrepaymentLines },
@@ -901,10 +903,11 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "financing cost lines", run: asRows(markFinancingCostLines) },
   { name: "flow ids", run: (lines) => withExpenseLineFlowIds(lines) },
   { name: "line money", run: asRows(withLineMoney) },
+  { name: "card refund links", run: (lines) => withCardRefundLinks(lines) },
   {
     name: "line shapes",
     run: (lines) =>
-      withExpenseLineShapes(lines, { isGastosRefundLine }),
+      withExpenseLineShapes(lines, { isGastosRefundLine, isLinkableCardRefund }),
   },
 ];
 

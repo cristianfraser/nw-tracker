@@ -132,6 +132,9 @@ export const queryKeys = {
   /** The Expenses page's catalogs and summaries (categories, big groups, additional cards). */
   flowsExpensesSummaryAll: () => ["flowsExpenses", "summary"] as const,
   flowsExpensesSummary: (unit: DisplayUnit) => ["flowsExpenses", "summary", unit] as const,
+  /** The purchases one card credit may refund (under `flowsExpenses()`: a line write refetches it). */
+  cardRefundCandidates: (unit: DisplayUnit, accountId: number, lineId: number) =>
+    ["flowsExpenses", "refundCandidates", unit, accountId, lineId] as const,
   /** The financing manager's pickers; under `flowsExpenses()`, so every line write refreshes them. */
   flowsExpensesFinancingCandidates: (unit: DisplayUnit) =>
     ["flowsExpenses", "financingCandidates", unit] as const,
