@@ -17,6 +17,7 @@ import {
   formatNumberInput,
   formatPct,
   formatPctCompact,
+  formatPctCompactParts,
   formatUsd,
   formatUsdFine,
   minAdaptiveUsdFractionDigits,
@@ -105,6 +106,15 @@ describe("formatPctCompact", () => {
     expect(formatPctCompact(10654.2)).toBe("×108");
     expect(formatPctCompact(-0.01)).toBe("0,0%");
     expect(formatPctCompact(null)).toBe("—");
+  });
+
+  it("decides each step on the rounded figure", () => {
+    expect(formatPctCompact(99.96)).toBe("+100%");
+    expect(formatPctCompact(99.94)).toBe("+99,9%");
+    expect(formatPctCompact(999.6)).toBe("×11");
+    expect(formatPctCompact(999.4)).toBe("+999%");
+    expect(formatPctCompactParts(-0.04)).toEqual({ text: "0,0%", sign: 0 });
+    expect(formatPctCompactParts(-0.06)).toEqual({ text: "-0,1%", sign: -1 });
   });
 });
 

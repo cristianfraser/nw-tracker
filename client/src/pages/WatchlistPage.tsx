@@ -10,7 +10,7 @@ import {
   formatCurrencyFine,
   formatGroupedDecimal,
   formatPct,
-  formatPctCompact,
+  formatPctCompactParts,
 } from "../format";
 import { useTranslation } from "../i18n";
 import {
@@ -51,9 +51,12 @@ function formatPriceRow(
 function FetchErrorNote({ error }: { error: NonNullable<WatchlistRow["fetch_error"]> }) {
   const { t } = useTranslation();
   const label = error.stage === "live" ? t("watchlist.fetchErrorLive") : t("watchlist.fetchErrorHistory");
+  const detail = `${error.message} (${error.failed_at.slice(0, 16).replace("T", " ")} UTC)`;
   return (
-    <span className="watchlist-table__fetch-error" role="note">
-      {label}: {error.message} ({error.failed_at.slice(0, 16).replace("T", " ")} UTC)
+    <span className="watchlist-table__fetch-error" role="note" title={`${label}: ${detail}`}>
+      {label}
+      {/* On a phone only the label shows (the pinned column stays narrow); the title keeps it all. */}
+      <span className="watchlist-table__fetch-error-detail">: {detail}</span>
     </span>
   );
 }
@@ -143,9 +146,9 @@ function HeatCell({ value }: { value: number | null }) {
   if (value == null || !Number.isFinite(value)) {
     return <td className="watchlist-heat__cell watchlist-heat__cell--none">—</td>;
   }
-  const text = formatPctCompact(value);
   // Tinted by the figure shown: a change that rounds to 0,0 % is flat, whichever its sign.
-  const direction = text.startsWith("-") ? "down" : text.startsWith("+") || value >= 1000 ? "up" : "flat";
+  const { text, sign } = formatPctCompactParts(value);
+  const direction = sign > 0 ? "up" : sign < 0 ? "down" : "flat";
   return (
     <td
       className={`watchlist-heat__cell watchlist-heat__cell--${direction}`}
@@ -192,8 +195,10 @@ function watchlistTr({
     >
       <td className="watchlist-table__marquee">{marquee ?? null}</td>
       <td className={symbolClassName ?? "watchlist-table__symbol mono"}>
-        {symbol}
-        {row.fetch_error ? <FetchErrorNote error={row.fetch_error} /> : null}
+        <span className="watchlist-table__symbol-text">
+          {symbol}
+          {row.fetch_error ? <FetchErrorNote error={row.fetch_error} /> : null}
+        </span>
       </td>
       <td className="watchlist-table__price mono">{formatPriceRow(row)}</td>
       <HeatCell value={changes?.day_pct ?? null} />
@@ -293,6 +298,7 @@ function WatchlistTable({
             actions: showActions ? (
               <Button
                 variant="ghost"
+                size="icon"
                 className="watchlist-table__remove"
                 disabled={deleteRow.isPending}
                 aria-label={t("watchlist.removeTicker")}
