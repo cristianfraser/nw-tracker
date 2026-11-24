@@ -126,6 +126,12 @@
   grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
 }
 
+/* A long unbroken account name wraps instead of running under the figures. */
+.plName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* Wide: the month and YTD cells sit in the row's columns; their inline labels are hidden. */
 .plMeta {
   display: contents;
