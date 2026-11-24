@@ -1,12 +1,17 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type CSSProperties } from "react";
 import { queryShowsLoading } from "../queries/pageShapeReady";
 import { Link } from "react-router-dom";
 import { PageGridTile } from "../components/layout/PageGridTile";
-import { DeltaMetricFlow } from "../components/dashboard/DeltaMetricFlow";
 import { loadableClass } from "../components/ui/Loadable";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { currencyFormatInfo, formatCurrencyFine, formatGroupedDecimal, formatPct } from "../format";
+import {
+  currencyFormatInfo,
+  formatCurrencyFine,
+  formatGroupedDecimal,
+  formatPct,
+  formatPctCompactParts,
+} from "../format";
 import { useTranslation } from "../i18n";
 import {
   useAddWatchlistTicker,
@@ -46,9 +51,12 @@ function formatPriceRow(
 function FetchErrorNote({ error }: { error: NonNullable<WatchlistRow["fetch_error"]> }) {
   const { t } = useTranslation();
   const label = error.stage === "live" ? t("watchlist.fetchErrorLive") : t("watchlist.fetchErrorHistory");
+  const detail = `${error.message} (${error.failed_at.slice(0, 16).replace("T", " ")} UTC)`;
   return (
-    <span className="watchlist-table__fetch-error" role="note">
-      {label}: {error.message} ({error.failed_at.slice(0, 16).replace("T", " ")} UTC)
+    <span className="watchlist-table__fetch-error" role="note" title={`${label}: ${detail}`}>
+      {label}
+      {/* On a phone only the label shows (the pinned column stays narrow); the title keeps it all. */}
+      <span className="watchlist-table__fetch-error-detail">: {detail}</span>
     </span>
   );
 }
@@ -125,13 +133,30 @@ function AddSymbolCombobox() {
   );
 }
 
-function PctCell({ value }: { value: number | null }) {
+/**
+ * How strong a return's tint is, 0–1: log-scaled so a 10-year +10.000 % does not wash out a
+ * day's +2 % (full at ±100 %).
+ */
+function heatLevel(pct: number): number {
+  return Math.min(1, Math.log10(1 + Math.abs(pct)) / 2);
+}
+
+/** One window of the heat grid: the return, compact, on a tint by its sign and size. */
+function HeatCell({ value }: { value: number | null }) {
+  if (value == null || !Number.isFinite(value)) {
+    return <td className="watchlist-heat__cell watchlist-heat__cell--none">—</td>;
+  }
+  // Tinted by the figure shown: a change that rounds to 0,0 % is flat, whichever its sign.
+  const { text, sign } = formatPctCompactParts(value);
+  const direction = sign > 0 ? "up" : sign < 0 ? "down" : "flat";
   return (
-    <DeltaMetricFlow
-      delta={value}
-      deltaFormat="percent"
-      fractionDigits={2}
-    />
+    <td
+      className={`watchlist-heat__cell watchlist-heat__cell--${direction}`}
+      style={{ "--heat": heatLevel(value).toFixed(3) } as CSSProperties}
+      title={formatPct(value, 2)}
+    >
+      {text}
+    </td>
   );
 }
 
@@ -170,37 +195,21 @@ function watchlistTr({
     >
       <td className="watchlist-table__marquee">{marquee ?? null}</td>
       <td className={symbolClassName ?? "watchlist-table__symbol mono"}>
-        {symbol}
-        {row.fetch_error ? <FetchErrorNote error={row.fetch_error} /> : null}
+        <span className="watchlist-table__symbol-text">
+          {symbol}
+          {row.fetch_error ? <FetchErrorNote error={row.fetch_error} /> : null}
+        </span>
       </td>
-      <td className="watchlist-table__num mono">{formatPriceRow(row)}</td>
-      <td className="watchlist-table__num">
-        <PctCell value={changes?.day_pct ?? null} />
-      </td>
-      <td className="watchlist-table__num">
-        <PctCell value={changes?.week_pct ?? null} />
-      </td>
-      <td className="watchlist-table__num">
-        <PctCell value={changes?.mtd_pct ?? null} />
-      </td>
-      <td className="watchlist-table__num">
-        <PctCell value={changes?.mom_pct ?? null} />
-      </td>
-      <td className="watchlist-table__num">
-        <PctCell value={changes?.ytd_pct ?? null} />
-      </td>
-      <td className="watchlist-table__num">
-        <PctCell value={changes?.yoy_pct ?? null} />
-      </td>
-      <td className="watchlist-table__num">
-        <PctCell value={changes?.y3_pct ?? null} />
-      </td>
-      <td className="watchlist-table__num">
-        <PctCell value={changes?.y5_pct ?? null} />
-      </td>
-      <td className="watchlist-table__num">
-        <PctCell value={changes?.y10_pct ?? null} />
-      </td>
+      <td className="watchlist-table__price mono">{formatPriceRow(row)}</td>
+      <HeatCell value={changes?.day_pct ?? null} />
+      <HeatCell value={changes?.week_pct ?? null} />
+      <HeatCell value={changes?.mtd_pct ?? null} />
+      <HeatCell value={changes?.mom_pct ?? null} />
+      <HeatCell value={changes?.ytd_pct ?? null} />
+      <HeatCell value={changes?.yoy_pct ?? null} />
+      <HeatCell value={changes?.y3_pct ?? null} />
+      <HeatCell value={changes?.y5_pct ?? null} />
+      <HeatCell value={changes?.y10_pct ?? null} />
       {showActionsColumn ? <td className="watchlist-table__actions">{actions ?? null}</td> : null}
     </tr>
   );
@@ -229,45 +238,53 @@ function WatchlistTable({
   return (
     <Table
       tableClassName="watchlist-table"
+      // The one table allowed to scroll inside its own box: on a phone the heat grid keeps its
+      // nine windows on one line and scrolls under a pinned symbol (client-ui «UI tables»).
       wrapClassName={loadableClass(loading, "watchlist-table-wrap")}
       header={
         <thead>
           <tr>
-            <th className="watchlist-table__marquee">{t("watchlist.colMarquee")}</th>
+            <th className="watchlist-table__marquee" title={t("watchlist.marqueeAria")}>
+              <span className="visually-hidden">{t("watchlist.colMarquee")}</span>
+            </th>
             <th className="watchlist-table__symbol" data-sort-key="symbol" data-sort-type="string">
               {t("watchlist.colSymbol")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="price" data-sort-type="number">
+            <th className="watchlist-table__price" data-sort-key="price" data-sort-type="number">
               {t("watchlist.colPrice")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="day" data-sort-type="number">
+            <th className="watchlist-heat__head" data-sort-key="day" data-sort-type="number">
               {t("watchlist.colDay")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="week" data-sort-type="number">
+            <th className="watchlist-heat__head" data-sort-key="week" data-sort-type="number">
               {t("watchlist.colWeek")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="mtd" data-sort-type="number">
+            <th className="watchlist-heat__head" data-sort-key="mtd" data-sort-type="number">
               {t("watchlist.colMtd")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="mom" data-sort-type="number">
+            <th className="watchlist-heat__head" data-sort-key="mom" data-sort-type="number">
               {t("watchlist.colMom")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="ytd" data-sort-type="number">
+            <th className="watchlist-heat__head" data-sort-key="ytd" data-sort-type="number">
               {t("watchlist.colYtd")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="yoy" data-sort-type="number">
+            <th className="watchlist-heat__head" data-sort-key="yoy" data-sort-type="number">
               {t("watchlist.colYoy")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="y3" data-sort-type="number">
+            <th className="watchlist-heat__head" data-sort-key="y3" data-sort-type="number">
               {t("watchlist.col3y")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="y5" data-sort-type="number">
+            <th className="watchlist-heat__head" data-sort-key="y5" data-sort-type="number">
               {t("watchlist.col5y")}
             </th>
-            <th className="watchlist-table__num" data-sort-key="y10" data-sort-type="number">
+            <th className="watchlist-heat__head" data-sort-key="y10" data-sort-type="number">
               {t("watchlist.col10y")}
             </th>
-            {showActions ? <th className="watchlist-table__actions">{t("watchlist.colActions")}</th> : null}
+            {showActions ? (
+              <th className="watchlist-table__actions">
+                <span className="visually-hidden">{t("watchlist.colActions")}</span>
+              </th>
+            ) : null}
           </tr>
         </thead>
       }
@@ -279,11 +296,16 @@ function WatchlistTable({
             symbol: symbolLabel(row, t),
             showActionsColumn: showActions,
             actions: showActions ? (
-              <Button variant="ghost"
+              <Button
+                variant="ghost"
+                size="icon"
+                className="watchlist-table__remove"
                 disabled={deleteRow.isPending}
+                aria-label={t("watchlist.removeTicker")}
+                title={t("watchlist.removeTicker")}
                 onClick={() => deleteRow.mutate(row.id)}
               >
-                {t("watchlist.removeTicker")}
+                ✕
               </Button>
             ) : undefined,
             marquee: (

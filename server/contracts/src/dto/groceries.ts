@@ -51,6 +51,8 @@ export type GroceryReceiptItemRow = {
   unit_price_clp: number; // convention-ok: a grocery receipt's printed pesos
   total_clp: number; // convention-ok: a grocery receipt's printed pesos
   discount_clp: number; // convention-ok: a grocery receipt's printed pesos
+  /** What the line cost: total − discount. */
+  line_total_clp: number; // convention-ok: a grocery receipt's printed pesos
   product_id: number | null;
   product_name: string | null;
   product_source: string | null;
@@ -68,6 +70,8 @@ export type ProductHistoryRow = {
   effective_unit_price_clp: number; // convention-ok: a grocery receipt's printed pesos
   total_clp: number; // convention-ok: a grocery receipt's printed pesos
   discount_clp: number; // convention-ok: a grocery receipt's printed pesos
+  /** What the line cost: total − discount. */
+  line_total_clp: number; // convention-ok: a grocery receipt's printed pesos
   brand_name: string | null;
   normalized_unit_price_clp: number | null; // convention-ok: a grocery receipt's printed pesos
 };

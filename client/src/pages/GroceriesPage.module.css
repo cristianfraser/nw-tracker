@@ -185,14 +185,15 @@
 }
 
 /* A select is as wide as its longest option: inside the detail (filters, the settings' merge
-   target, a product name per option) it shrinks to the row instead of widening the page; its
-   text is cut, the open list still shows whole names. Scoped here: a global rule would let an
-   auto-width table cell squash its select instead of the table switching to its cards. */
+   target, a product name per option) it shrinks to its row instead of widening the page; its
+   text is cut, the open list still shows whole names. Not inside a table cell (the alias table's
+   content unit): an auto-width cell would squash it instead of the table switching to its
+   cards. Page-scoped for the same reason: no global select rule. */
 .detail label {
   min-width: 0;
   max-width: 100%;
 }
 
-.detail select {
+.detail select:not(td select) {
   max-width: 100%;
 }

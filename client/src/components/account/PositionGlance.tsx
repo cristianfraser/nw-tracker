@@ -508,17 +508,21 @@ export function CompositionGroup({ composition }: { composition: NonNullable<Pos
             <b className={cn("mono", styles.stateBonus)}>{formatMoney(composition.state_bonus)}</b>
           </span>
         ) : null}
-        <span className={styles.spacer} />
-        {hasPrice ? (
-          <span className={styles.labelRight}>
-            <em>{t("accountDetail.positionGlance.price")}</em>
-            <b className={cn("mono", directionClass(composition.price_direction))}>{formatSignedMoney(composition.price)}</b>
-          </span>
-        ) : null}
-        {has("dividends") ? (
-          <span className={styles.labelRight}>
-            <em>{t("accountDetail.positionGlance.dividends")}</em>
-            <b className={cn("mono", styles.dividends)}>{formatSignedMoney(composition.dividends)}</b>
+        {/* The results, at the right: one unit, so they wrap together onto a line of their own. */}
+        {hasPrice || has("dividends") ? (
+          <span className={styles.results}>
+            {hasPrice ? (
+              <span className={styles.labelRight}>
+                <em>{t("accountDetail.positionGlance.price")}</em>
+                <b className={cn("mono", directionClass(composition.price_direction))}>{formatSignedMoney(composition.price)}</b>
+              </span>
+            ) : null}
+            {has("dividends") ? (
+              <span className={styles.labelRight}>
+                <em>{t("accountDetail.positionGlance.dividends")}</em>
+                <b className={cn("mono", styles.dividends)}>{formatSignedMoney(composition.dividends)}</b>
+              </span>
+            ) : null}
           </span>
         ) : null}
       </div>

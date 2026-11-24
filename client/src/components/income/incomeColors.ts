@@ -29,7 +29,8 @@ export const PAYROLL_STACK: readonly { field: PayrollBreakdownField; color: stri
   // Not amber: amber is severance, which a payslip's net pay can be.
   { field: "pension_commission", color: "#f472b6" },
   { field: "health", color: "#14b8a6" },
-  { field: "social_security_medicare", color: "#f97316" },
+  // Not orange: too close to severance's amber.
+  { field: "social_security_medicare", color: "#c026d3" },
   { field: "income_tax", color: "#ef4444" },
   { field: "other_deductions", color: "#64748b" },
 ];

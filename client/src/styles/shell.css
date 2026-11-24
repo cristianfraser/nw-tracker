@@ -26,8 +26,11 @@
 }
 
 /* The content region is the column grid every page's <main> spans; a page that opts in
-   (`.page-grid`) places its sections on these columns, any other page stays block flow. */
+   (`.page-grid`) places its sections on these columns, any other page stays block flow. It is the
+   `page-content` size container a tile queries to change its span by the content's width (it is a
+   plain grid, so containment costs no subgrid; the page grids below it are never containers). */
 .layout-main>.content {
+  container: page-content / inline-size;
   flex: 1;
   display: grid;
   grid-template-columns: repeat(var(--content-cols), minmax(0, 1fr));

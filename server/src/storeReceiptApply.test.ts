@@ -14,6 +14,7 @@ import {
 import {
   canonicalContent,
   groceryProductHistory,
+  listGroceryReceiptItems,
   deleteGroceryBrand,
   ensureGroceryBrand,
   mergeGroceryProducts,
@@ -315,6 +316,8 @@ describe("grocery product config", () => {
     const byDesc = new Map(history.rows.map((r) => [r.description, r]));
     expect(byDesc.get("CRACKELET X1")!.normalized_unit_price_clp).toBe(830);
     expect(byDesc.get("CRACKELET X3")!.normalized_unit_price_clp).toBe(830);
+    expect(byDesc.get("CRACKELET X3")!.line_total_clp).toBe(2490);
+    expect(listGroceryReceiptItems(receiptId).map((i) => i.line_total_clp)).toEqual([830, 2490]);
   });
 
   it("changing base-unit dimension clears alias contents; scale change keeps them", () => {

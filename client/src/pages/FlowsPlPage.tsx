@@ -1,9 +1,8 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { FlowsPlChart } from "../components/charts/FlowsPlChart";
 import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
-import { Table } from "../components/ui/Table";
+import { FlowsPlAccountRows } from "../components/flows/FlowsPlAccountRows";
 import { ColumnTable, type TableColumn } from "../components/ui/ColumnTable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
@@ -161,49 +160,7 @@ export function FlowsPlPage() {
                 {formatFlowMoney(block.total_cumulative, displayUnit)}
               </span>
             </h4>
-            <Table
-              tableStyle={{ fontSize: "var(--font-size-prose)" }}
-              wrapClassName={loadableClass(loading)}
-              header={
-                <thead>
-                  <tr>
-                    <th>{t("flows.pl.colAccount")}</th>
-                    <th>{t("flows.pl.colMonthPl")}</th>
-                    <th>{t("flows.pl.colYtd")}</th>
-                    <th>{t("flows.pl.colCumulative")}</th>
-                  </tr>
-                </thead>
-              }
-            >
-              {block.accounts.map((row) => (
-                <tr key={row.account_id}>
-                  <td>
-                    <Link to={`/account/${row.account_id}`}>{row.name}</Link>
-                  </td>
-                  <td className="mono">
-                    {formatFlowMoney(row.pl_month, displayUnit)}
-                  </td>
-                  <td className="mono">
-                    {formatFlowMoney(row.pl_ytd, displayUnit)}
-                  </td>
-                  <td className="mono">
-                    {formatFlowMoney(row.pl_cumulative, displayUnit)}
-                  </td>
-                </tr>
-              ))}
-              <tr>
-                <td style={{ fontWeight: 600 }}>{t("flows.pl.totalsLabel")}</td>
-                <td className="mono" style={{ fontWeight: 600 }}>
-                  {formatFlowMoney(block.total_month, displayUnit)}
-                </td>
-                <td className="mono" style={{ fontWeight: 600 }}>
-                  {formatFlowMoney(block.total_ytd, displayUnit)}
-                </td>
-                <td className="mono" style={{ fontWeight: 600 }}>
-                  {formatFlowMoney(block.total_cumulative, displayUnit)}
-                </td>
-              </tr>
-            </Table>
+            <FlowsPlAccountRows block={block} displayUnit={displayUnit} loading={loading} />
           </PageGridTile>
         ))}
       </PageGridTile>

@@ -239,12 +239,15 @@ export function ExpenseRowMoreButton({
   needsAction,
   ariaLabel,
   needsActionTitle,
+  controls,
   onClick,
 }: {
   expanded: boolean;
   needsAction?: boolean;
   ariaLabel: string;
   needsActionTitle?: string;
+  /** The id of the panel the button opens (`aria-controls`). */
+  controls?: string;
   onClick: () => void;
 }) {
   return (
@@ -252,6 +255,7 @@ export function ExpenseRowMoreButton({
       type="button"
       className={cn(styles.moreButton, expanded && styles.moreButtonOpen)}
       aria-expanded={expanded}
+      aria-controls={controls}
       aria-label={ariaLabel}
       title={needsAction ? needsActionTitle : undefined}
       onClick={onClick}

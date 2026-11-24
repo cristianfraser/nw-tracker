@@ -76,8 +76,11 @@ function SideSection<L extends SideLine>({
         <span className={loadableClass(loading, styles.small, styles.nowrap)}>
           {t(rows.length === 1 ? "income.sideListCountOne" : "income.sideListCount", { count: rows.length })} ·{" "}
           <span className="mono">{formatFlowMoney(total.amount, displayUnit)}</span>
-          {total.unpriced > 0 ? <> · {t("income.sideListUnpriced", { count: total.unpriced })}</> : null}
         </span>
+        {/* Its own span, so it wraps onto a line of its own on a phone. */}
+        {total.unpriced > 0 ? (
+          <span className={cn(styles.small, styles.bad)}>{t("income.sideListUnpriced", { count: total.unpriced })}</span>
+        ) : null}
       </button>
       {open ? (
         <div className={styles.sectionBody}>

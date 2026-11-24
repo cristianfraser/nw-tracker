@@ -16,6 +16,8 @@ import {
   formatGroupedDecimal,
   formatNumberInput,
   formatPct,
+  formatPctCompact,
+  formatPctCompactParts,
   formatUsd,
   formatUsdFine,
   minAdaptiveUsdFractionDigits,
@@ -93,6 +95,26 @@ describe("formatPct", () => {
   it("returns em dash for null and non-finite values", () => {
     expect(formatPct(null)).toBe("—");
     expect(formatPct(Number.NaN)).toBe("—");
+  });
+});
+
+describe("formatPctCompact", () => {
+  it("keeps one decimal below 100 %, none from 100 %, a multiple from 1.000 %", () => {
+    expect(formatPctCompact(4.21)).toBe("+4,2%");
+    expect(formatPctCompact(-22.16)).toBe("-22,2%");
+    expect(formatPctCompact(331.8)).toBe("+332%");
+    expect(formatPctCompact(10654.2)).toBe("×108");
+    expect(formatPctCompact(-0.01)).toBe("0,0%");
+    expect(formatPctCompact(null)).toBe("—");
+  });
+
+  it("decides each step on the rounded figure", () => {
+    expect(formatPctCompact(99.96)).toBe("+100%");
+    expect(formatPctCompact(99.94)).toBe("+99,9%");
+    expect(formatPctCompact(999.6)).toBe("×11");
+    expect(formatPctCompact(999.4)).toBe("+999%");
+    expect(formatPctCompactParts(-0.04)).toEqual({ text: "0,0%", sign: 0 });
+    expect(formatPctCompactParts(-0.06)).toEqual({ text: "-0,1%", sign: -1 });
   });
 });
 

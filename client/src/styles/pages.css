@@ -93,56 +93,192 @@ h2.flow-section-title {
 
 .watchlist-table__fetch-error {
   display: block;
-  min-width: 16rem;
-  max-width: 28rem;
+  max-width: 24rem;
   font-size: var(--font-size-card-label);
   color: var(--negative);
   white-space: normal;
 }
 
+/* The heat grid: symbol and price, then the nine return windows as tinted cells (green up, red
+   down, stronger the bigger the move, log-scaled by HeatCell's --heat). The table is as narrow
+   as its figures: the symbol wraps and, under 52rem of container (a desktop up to ~1060 px, a
+   tablet), the cells tighten, so it fits the content from 600 px of container up. Under 40rem
+   (a phone) it is the one table allowed to scroll inside its own box (client-ui «UI tables»):
+   the nine windows stay on one line and scroll under the pinned checkbox and symbol, and the
+   page itself never scrolls sideways.
+
+   Selectors carry `.watchlist-table` + a class so they beat the shared table rules
+   (`tr:hover td`, `.watchlist-table th/td`). */
 .watchlist-table-wrap {
   width: 100%;
+  container: watchlist-heat / inline-size;
+  /* The checkbox column's exact width (the pinned symbol sticks right after it on a phone) and
+     the most the pinned symbol takes there. */
+  --watchlist-marquee-w: 1.5rem;
+  --watchlist-symbol-w: 7rem;
 }
 
 .watchlist-table {
   table-layout: auto;
   width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: var(--font-size-card-meta);
 }
 
-.watchlist-table__marquee {
-  width: auto;
+.watchlist-table th,
+.watchlist-table td {
+  border-bottom: none;
+  padding: 0.3rem 0.4rem;
   white-space: nowrap;
+}
+
+.watchlist-table th {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.watchlist-table .watchlist-table__marquee {
+  box-sizing: border-box;
+  width: var(--watchlist-marquee-w);
+  min-width: var(--watchlist-marquee-w);
+  max-width: var(--watchlist-marquee-w);
+  padding-inline: 0;
+}
+
+.watchlist-table .watchlist-table__marquee input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}
+
+.watchlist-table .watchlist-table__symbol {
+  width: 100%;
+  white-space: normal;
+}
+
+.watchlist-table__symbol-text {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.watchlist-table .watchlist-table__symbol--sub {
+  padding-left: 1.25rem;
+  color: var(--muted);
+}
+
+.watchlist-table .watchlist-table__price {
+  text-align: right;
   padding-right: 0.75rem;
 }
 
-.watchlist-table__symbol {
-  width: auto;
-  min-width: 8rem;
+.watchlist-table th.watchlist-heat__head {
+  text-align: center;
+  font-family: var(--font-mono);
 }
 
-.watchlist-table__symbol--sub {
-  padding-left: 1.75rem;
+.watchlist-table .watchlist-heat__cell {
+  min-width: 3.4rem;
+  text-align: center;
+  font-family: var(--font-mono);
+  border-radius: 3px;
+  color: var(--text);
 }
 
-.watchlist-table__num {
-  width: auto;
-  min-width: 4.25rem;
-  text-align: right;
+.watchlist-table td.watchlist-heat__cell--up {
+  background: color-mix(in srgb, var(--positive) calc(14% + 56% * var(--heat)), transparent);
 }
 
-.watchlist-table__actions {
-  width: 6rem;
+.watchlist-table td.watchlist-heat__cell--down {
+  background: color-mix(in srgb, var(--negative) calc(14% + 56% * var(--heat)), transparent);
 }
 
-.watchlist-table th.watchlist-table__num,
-.watchlist-table td.watchlist-table__num {
-  text-align: right;
+.watchlist-table td.watchlist-heat__cell--flat,
+.watchlist-table td.watchlist-heat__cell--none {
+  background: var(--surface);
+  color: var(--muted);
 }
 
-.watchlist-table td.watchlist-table__num .delta {
-  display: inline-flex;
-  justify-content: flex-end;
-  width: 100%;
+.watchlist-table .watchlist-table__actions {
+  width: 1.5rem;
+  /* Room for the button's 4px focus ring inside the phone's scroll box. */
+  padding-block: 0;
+  padding-inline: 0.2rem 0.3rem;
+}
+
+.watchlist-table .watchlist-table__remove {
+  width: 1.25rem;
+  height: 1.25rem;
+  /* A block: no line box around it, so a manual row is as tall as an app row. */
+  display: flex;
+  color: var(--muted);
+}
+
+/* A narrow desktop (880–1060 px) and a tablet: tighter cells. */
+@container watchlist-heat (max-width: 52rem) {
+  .watchlist-table {
+    font-size: var(--font-size-card-meta-sm);
+  }
+
+  .watchlist-table th,
+  .watchlist-table td {
+    padding-inline: 0.2rem;
+  }
+
+  .watchlist-table .watchlist-table__price {
+    padding-right: 0.4rem;
+  }
+
+  .watchlist-table .watchlist-heat__cell {
+    min-width: 0;
+  }
+}
+
+@container watchlist-heat (max-width: 40rem) {
+  .watchlist-table-wrap .table-wrap {
+    /* Holds the visually-hidden header labels (absolute), which would otherwise escape the
+       box and widen the page. */
+    position: relative;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    /* Room for a focus ring on the last row; a control tabbed to lands right of the pinned
+       columns, not under them. */
+    padding-bottom: 4px;
+    scroll-padding-inline-start: calc(var(--watchlist-marquee-w) + var(--watchlist-symbol-w) + 10px);
+  }
+
+  .watchlist-table {
+    width: max-content;
+  }
+
+  /* The checkbox and the symbol stay in view while the windows scroll under them. */
+  .watchlist-table .watchlist-table__marquee,
+  .watchlist-table .watchlist-table__symbol {
+    position: sticky;
+    z-index: 1;
+    background: var(--bg);
+    /* Covers the 2px between cells, so no tint shows through beside the pinned cells. */
+    box-shadow: 2px 0 0 var(--bg);
+  }
+
+  .watchlist-table .watchlist-table__marquee {
+    left: 0;
+  }
+
+  .watchlist-table .watchlist-table__symbol {
+    /* Past the checkbox cell and the 2px between cells. */
+    left: calc(var(--watchlist-marquee-w) + 2px);
+    width: auto;
+  }
+
+  /* The pinned symbol never takes more than its share of the box: the label wraps inside it. */
+  .watchlist-table__symbol-text {
+    max-width: var(--watchlist-symbol-w);
+  }
+
+  .watchlist-table__fetch-error-detail {
+    display: none;
+  }
 }
 
 /* Wealth percentile «Datos país»: the user's own line among the p99/p90/p50 thresholds. */

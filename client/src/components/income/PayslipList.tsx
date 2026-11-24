@@ -4,6 +4,7 @@ import { formatFlowMoney } from "../../flowsDisplay";
 import { formatPct } from "../../format";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { formatPayslipPesos } from "../../formatNative";
+import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { formatIncomeMoney } from "../../incomeAggregates";
 import type { DisplayUnit } from "../../queries/keys";
 import type {
@@ -203,6 +204,8 @@ export function PayslipList({
   }
 
   function receipt(row: FlowWorkEarningRow, values: PayrollBreakdownValues, c: PayslipChecksRow | undefined): ReactNode {
+    // A liquidación's printed gross, shown under its printed lines (pesos, like them).
+    const printedGrossPesos = EARNING_LINES.some(([field]) => row[field]) ? row.total_haberes_clp : null;
     return (
       <div className={styles.sub}>
         <div className={styles.receipt}>
@@ -212,8 +215,21 @@ export function PayslipList({
               // The liquidación's own printed lines, in its pesos whatever the display unit.
               <FragmentPair key={field} label={t(label)} value={formatPayslipPesos(row[field] ?? 0)} muted />
             ))}
-            <span className={styles.pairsTotal}>{fieldLabel("gross")}</span>
-            <span className={cn("mono", styles.num, styles.pairsTotal)}>{money(values.gross)}</span>
+            {printedGrossPesos != null ? (
+              <>
+                {/* The printed lines add up to the printed gross, in the same pesos. */}
+                <span className={styles.pairsTotal}>{fieldLabel("gross")}</span>
+                <span className={cn("mono", styles.num, styles.pairsTotal)}>{formatPayslipPesos(printedGrossPesos)}</span>
+              </>
+            ) : null}
+            {printedGrossPesos == null || !isHomeCurrency(displayUnit) ? (
+              <>
+                <span className={printedGrossPesos == null ? styles.pairsTotal : "muted"}>{fieldLabel("gross")}</span>
+                <span className={cn("mono", styles.num, printedGrossPesos == null ? styles.pairsTotal : "muted")}>
+                  {money(values.gross)}
+                </span>
+              </>
+            ) : null}
           </div>
           <div className={styles.pairs}>
             <span className={styles.pairsHead}>{fieldLabel("deductions")}</span>
@@ -284,6 +300,20 @@ export function PayslipList({
   }
 
   const empty = rows.length === 0 && !loading;
+  // Net pay by kind (salary, then severance when any year has some), then each deduction group in use.
+  const legendItems = PAYROLL_STACK.flatMap((s) => {
+    if (s.field !== "net") {
+      return years.some((y) => y.values[s.field] !== 0) ? [{ key: s.field, color: s.color, label: fieldLabel(s.field) }] : [];
+    }
+    return [
+      ...(years.some((y) => y.values.net - y.net_severance !== 0)
+        ? [{ key: "net", color: netColor("salary"), label: fieldLabel("net") }]
+        : []),
+      ...(years.some((y) => y.net_severance !== 0)
+        ? [{ key: "net_severance", color: netColor("severance"), label: t("workEarnings.netSeverance") }]
+        : []),
+    ];
+  });
 
   return (
     <>
@@ -319,8 +349,11 @@ export function PayslipList({
                           count: payslipCount(y.payslips),
                           gross: money(v.gross),
                           net: money(v.net),
-                          share: v.gross > 0 ? formatPct((v.deductions / v.gross) * 100, 1) : "—",
-                        })
+                          share: v.gross > 0 ? formatPct((-v.deductions / v.gross) * 100, 1) : "—",
+                        }) +
+                          (y.net_severance !== 0
+                            ? t("workEarnings.yearRowSeverance", { amount: money(y.net_severance) })
+                            : "")
                       )}
                     >
                       <span className={styles.pPeriod}>{y.period}</span>
@@ -342,10 +375,25 @@ export function PayslipList({
                             <FragmentPair label={fieldLabel("gross")} value={money(v.gross)} />
                             {deductionPairs(v, true)}
                             <span className={styles.pairsTotal}>
-                              <i className={styles.dot} style={{ background: netColor("salary") }} />
+                              {/* With severance in the year the total is both kinds; its parts follow. */}
+                              {y.net_severance === 0 ? (
+                                <i className={styles.dot} style={{ background: netColor("salary") }} />
+                              ) : null}
                               {fieldLabel("net")}
                             </span>
                             <span className={cn("mono", styles.num, styles.pairsTotal, styles.strong)}>{money(v.net)}</span>
+                            {y.net_severance !== 0 && v.net !== y.net_severance ? (
+                              <FragmentPair
+                                label={
+                                  <>
+                                    <i className={styles.dot} style={{ background: netColor("salary") }} />
+                                    {t("workEarnings.netSalary")}
+                                  </>
+                                }
+                                value={money(v.net - y.net_severance)}
+                                muted
+                              />
+                            ) : null}
                             {y.net_severance !== 0 ? (
                               <FragmentPair
                                 label={
@@ -439,19 +487,11 @@ export function PayslipList({
       )}
       {empty ? null : (
         <p className={cn(styles.legend, styles.small)}>
-          {PAYROLL_STACK.filter((s) => years.some((y) => y.values[s.field] !== 0)).map((s) => (
-            <Fragment key={s.field}>
-              <span className={styles.nowrap}>
-                <i className={styles.dot} style={{ background: s.color }} />
-                {fieldLabel(s.field)}
-              </span>
-              {s.field === "net" && years.some((y) => y.net_severance !== 0) ? (
-                <span className={styles.nowrap}>
-                  <i className={styles.dot} style={{ background: netColor("severance") }} />
-                  {t("workEarnings.netSeverance")}
-                </span>
-              ) : null}
-            </Fragment>
+          {legendItems.map((item) => (
+            <span key={item.key} className={styles.nowrap}>
+              <i className={styles.dot} style={{ background: item.color }} />
+              {item.label}
+            </span>
           ))}
         </p>
       )}

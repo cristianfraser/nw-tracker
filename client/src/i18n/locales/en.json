@@ -1398,6 +1398,7 @@
     }
   },
   "income": {
+    "rowLabelNoParts": "{{period}}: {{total}}, {{lines}}",
     "rowLabel": "{{period}}: {{total}} ({{parts}}), {{lines}}",
     "sideListUnpriced": "{{count}} without a rate",
     "sideListCountOne": "1 line",
@@ -1485,6 +1486,8 @@
     }
   },
   "workEarnings": {
+    "yearRowSeverance": ", of which severance {{amount}}",
+    "netSalary": "Net pay (salary)",
     "yearRowLabel": "{{period}}, {{count}}: net pay {{net}} of gross {{gross}}, deductions {{share}}",
     "rowLabel": "{{period}}, {{employer}}, {{type}}: net pay {{net}} of gross {{gross}}, check {{check}}",
     "netSeverance": "Net pay (severance)",
@@ -1530,12 +1533,8 @@
     "chartTitle": "Contributions by category",
     "chartEmpty": "No deposits in this period.",
     "chartTotal": "Total",
-    "colDate": "Date",
-    "colCategory": "Category",
-    "colAccount": "Account",
-    "colAmount": "Amount",
     "emptyCategory": "No deposits in this category.",
-    "mortgageCarryingTag": "Mortgage interest + insurance (an expense)"
+    "mortgageCarryingTag": "Mortgage interest + insurance"
   },
   "depositsReconciliation": {
     "title": "Deposits reconciliation",
@@ -1600,11 +1599,10 @@
       "dfl2Save": "Save",
       "dfl2Action": "DFL-2…",
       "dfl2Summary": "DFL-2: {{m2}} m², reception {{year}}; contribuciones halved through {{through}}.",
-      "colLinkedPurchase": "Linked expense",
       "colLinkedMerchant": "Merchant",
       "colLinkedDate": "Purchase date",
       "colLinkedOrigin": "Origin",
-      "colActions": "Actions",
+      "billActions": "Actions for {{kind}}, {{month}}",
       "unlinked": "Unlinked",
       "brokenLinkMissing": "The linked purchase is no longer found — unlink or delete the row",
       "brokenLinkOutsideWindow": "The linked purchase falls outside this bill's month window",
@@ -1648,8 +1646,6 @@
       "coversHint": "covers {{from}} – {{to}}",
       "monthsCoveredLabel": "Months covered"
     },
-    "colDate": "Date",
-    "colKind": "Type",
     "colAmount": "Amount",
     "groups": {
       "real_estate": "Real estate"
@@ -1947,18 +1943,17 @@
     "rejectedTitle": "Rejected ({{n}})",
     "restore": "Restore",
     "selectAll": "Select all",
-    "selectPair": "Select pair",
+    "selectPair": "Select pair: {{pair}}",
+    "selectRoute": "Select every pair from {{route}}",
+    "pairName": "{{date}}, {{amount}}, {{from}} → {{to}}",
+    "routeName": "{{from}} → {{to}}",
+    "approvePair": "Approve: {{pair}}",
+    "rejectPair": "Reject: {{pair}}",
+    "useAlternativeFor": "Convert with this one: {{leg}}, instead of {{pair}}",
+    "units": "({{n}} units)",
     "convertSelected": "Convert selected ({{n}})",
     "approve": "Approve",
     "reject": "Reject",
-    "colDates": "Dates",
-    "colFrom": "From",
-    "colTo": "To",
-    "colAmount": "Amount",
-    "colNotes": "Notes",
-    "colFlags": "Flags",
-    "colActions": "Actions",
-    "colAlternatives": "Other candidates",
     "altOut": "Other withdrawal",
     "altIn": "Other deposit",
     "useAlternative": "Convert with this one",

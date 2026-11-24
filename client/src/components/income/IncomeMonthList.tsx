@@ -195,12 +195,13 @@ export function IncomeMonthList({
       const open = opens && openKeys.has(key);
       const period = flowPeriodLabel(row.period_month, grain);
       // The row's figures carry no labels of their own, so its accessible name says what each is.
-      const rowLabel = t("income.rowLabel", {
+      const parts = INCOME_KIND_SERIES.filter((s) => row[s.kind] !== 0)
+        .map((s) => `${t(`income.chart.${s.kind}`)} ${money(row[s.kind])}`)
+        .join(", ");
+      const rowLabel = t(parts ? "income.rowLabel" : "income.rowLabelNoParts", {
         period,
         total: money(row.total),
-        parts: INCOME_KIND_SERIES.filter((s) => row[s.kind] !== 0)
-          .map((s) => `${t(`income.chart.${s.kind}`)} ${money(row[s.kind])}`)
-          .join(", "),
+        parts,
         lines: lineCount(row.line_count),
       });
       const yearMonths =

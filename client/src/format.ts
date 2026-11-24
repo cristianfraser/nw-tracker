@@ -350,6 +350,30 @@ export function formatPct(n: number | null | undefined, frac = 2): string {
   return `${normalizeIntlNum(numFmt(frac, frac).format(n))}%`;
 }
 
+/**
+ * A return in a tight cell (the watchlist heat grid): signed, one decimal below 100 %, whole from
+ * 100 %, and from 1.000 % the multiple it ended at («×108» for +10.654 %). Every step is decided
+ * on the figure as rounded, so 99,96 % reads «+100%» and 999,6 % «×11». `sign` is the shown
+ * figure's: a change that rounds to zero is 0, whichever side of zero it fell on.
+ */
+export function formatPctCompactParts(n: number): { text: string; sign: -1 | 0 | 1 } {
+  if (!Number.isFinite(n)) throw new Error(`formatPctCompactParts: not a number (${n})`);
+  const abs = Math.abs(n);
+  if (n >= 999.5) return { text: `×${formatGroupedDecimal(1 + n / 100, 0)}`, sign: 1 };
+  const frac = abs >= 99.95 ? 0 : 1;
+  const scale = 10 ** frac;
+  const rounded = Math.round(abs * scale) / scale;
+  const text = formatPct(rounded, frac);
+  if (rounded === 0) return { text, sign: 0 };
+  return n > 0 ? { text: `+${text}`, sign: 1 } : { text: `-${text}`, sign: -1 };
+}
+
+/** {@link formatPctCompactParts}'s text; «—» for a missing return. */
+export function formatPctCompact(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return formatPctCompactParts(n).text;
+}
+
 /** Props for {@link https://number-flow.barvian.me/ NumberFlow} currency (no `+`/`-` digit; negatives via parens). */
 export function accountingCurrencyNumberFlowParts(
   n: number,

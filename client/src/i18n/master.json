@@ -4437,6 +4437,10 @@
     }
   },
   "income": {
+    "rowLabelNoParts": {
+      "en": "{{period}}: {{total}}, {{lines}}",
+      "es": "{{period}}: {{total}}, {{lines}}"
+    },
     "rowLabel": {
       "en": "{{period}}: {{total}} ({{parts}}), {{lines}}",
       "es": "{{period}}: {{total}} ({{parts}}), {{lines}}"
@@ -4755,6 +4759,14 @@
     }
   },
   "workEarnings": {
+    "yearRowSeverance": {
+      "en": ", of which severance {{amount}}",
+      "es": ", de ello finiquito {{amount}}"
+    },
+    "netSalary": {
+      "en": "Net pay (salary)",
+      "es": "Líquido (sueldo)"
+    },
     "yearRowLabel": {
       "en": "{{period}}, {{count}}: net pay {{net}} of gross {{gross}}, deductions {{share}}",
       "es": "{{period}}, {{count}}: líquido {{net}} de bruto {{gross}}, descuentos {{share}}"
@@ -4917,29 +4929,13 @@
       "en": "Total",
       "es": "Total"
     },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colCategory": {
-      "en": "Category",
-      "es": "Categoría"
-    },
-    "colAccount": {
-      "en": "Account",
-      "es": "Cuenta"
-    },
-    "colAmount": {
-      "en": "Amount",
-      "es": "Monto"
-    },
     "emptyCategory": {
       "en": "No deposits in this category.",
       "es": "Sin depósitos en esta categoría."
     },
     "mortgageCarryingTag": {
-      "en": "Mortgage interest + insurance (an expense)",
-      "es": "Intereses y seguros del dividendo (gasto)"
+      "en": "Mortgage interest + insurance",
+      "es": "Intereses y seguros del dividendo"
     }
   },
   "depositsReconciliation": {
@@ -5176,10 +5172,6 @@
         "en": "DFL-2: {{m2}} m², reception {{year}}; contribuciones halved through {{through}}.",
         "es": "DFL-2: {{m2}} m², recepción {{year}}; contribuciones a la mitad hasta {{through}}."
       },
-      "colLinkedPurchase": {
-        "en": "Linked expense",
-        "es": "Gasto vinculado"
-      },
       "colLinkedMerchant": {
         "en": "Merchant",
         "es": "Comercio"
@@ -5192,9 +5184,9 @@
         "en": "Origin",
         "es": "Origen"
       },
-      "colActions": {
-        "en": "Actions",
-        "es": "Acciones"
+      "billActions": {
+        "en": "Actions for {{kind}}, {{month}}",
+        "es": "Acciones de {{kind}}, {{month}}"
       },
       "unlinked": {
         "en": "Unlinked",
@@ -5364,14 +5356,6 @@
         "en": "Months covered",
         "es": "Meses que cubre"
       }
-    },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colKind": {
-      "en": "Type",
-      "es": "Tipo"
     },
     "colAmount": {
       "en": "Amount",
@@ -6352,8 +6336,36 @@
       "es": "Seleccionar todos"
     },
     "selectPair": {
-      "en": "Select pair",
-      "es": "Seleccionar par"
+      "en": "Select pair: {{pair}}",
+      "es": "Seleccionar par: {{pair}}"
+    },
+    "selectRoute": {
+      "en": "Select every pair from {{route}}",
+      "es": "Seleccionar todos los pares de {{route}}"
+    },
+    "pairName": {
+      "en": "{{date}}, {{amount}}, {{from}} → {{to}}",
+      "es": "{{date}}, {{amount}}, {{from}} → {{to}}"
+    },
+    "routeName": {
+      "en": "{{from}} → {{to}}",
+      "es": "{{from}} → {{to}}"
+    },
+    "approvePair": {
+      "en": "Approve: {{pair}}",
+      "es": "Aprobar: {{pair}}"
+    },
+    "rejectPair": {
+      "en": "Reject: {{pair}}",
+      "es": "Rechazar: {{pair}}"
+    },
+    "useAlternativeFor": {
+      "en": "Convert with this one: {{leg}}, instead of {{pair}}",
+      "es": "Convertir con este: {{leg}}, en vez de {{pair}}"
+    },
+    "units": {
+      "en": "({{n}} units)",
+      "es": "({{n}} cuotas)"
     },
     "convertSelected": {
       "en": "Convert selected ({{n}})",
@@ -6366,38 +6378,6 @@
     "reject": {
       "en": "Reject",
       "es": "Rechazar"
-    },
-    "colDates": {
-      "en": "Dates",
-      "es": "Fechas"
-    },
-    "colFrom": {
-      "en": "From",
-      "es": "Origen"
-    },
-    "colTo": {
-      "en": "To",
-      "es": "Destino"
-    },
-    "colAmount": {
-      "en": "Amount",
-      "es": "Monto"
-    },
-    "colNotes": {
-      "en": "Notes",
-      "es": "Notas"
-    },
-    "colFlags": {
-      "en": "Flags",
-      "es": "Avisos"
-    },
-    "colActions": {
-      "en": "Actions",
-      "es": "Acciones"
-    },
-    "colAlternatives": {
-      "en": "Other candidates",
-      "es": "Otros candidatos"
     },
     "altOut": {
       "en": "Other withdrawal",

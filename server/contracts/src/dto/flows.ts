@@ -1293,7 +1293,8 @@ export interface IncomeRentPlacesResponse {
 export interface RealEstateExpenseAccountBlock {
   account_slug: ExpenseApartmentSlug;
   label: string;
-  slots: RealEstateBillSlot[];
+  /** The place's bills by billed month, newest first; a month's total counts what was paid. */
+  months: { bill_month: string; total: number; slots: RealEstateBillSlot[] }[];
   total: number;
   /** The currency of the row's amounts: the one the place's bills are kept in. */
   currency: string;
@@ -1416,5 +1417,9 @@ export interface FlowsDepositsResponse {
   pre_tax_total: number;
   post_tax_total: number;
   fx_conversion_warnings?: FxConversionWarning[];
-  by_category: Record<DepositFlowCategory, { rows: FlowDepositRow[]; total: number }>;
+  /** Each category's deposits by calendar month (newest first), with the server's sums. */
+  by_category: Record<
+    DepositFlowCategory,
+    { total: number; months: { month: string; total: number; rows: FlowDepositRow[] }[] }
+  >;
 }

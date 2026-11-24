@@ -39,11 +39,21 @@ describe("buildFlowsDepositsResponse", () => {
       expect(Array.isArray(payload.fx_conversion_warnings)).toBe(true);
     });
 
-    it(`by_category totals match filtered rows (${unit})`, () => {
+    it(`by_category lists each category's rows by month, newest first, with their sums (${unit})`, () => {
       const payload = buildFlowsDepositsResponse(unit);
       for (const cat of Object.keys(payload.by_category) as (keyof typeof payload.by_category)[]) {
         const block = payload.by_category[cat];
-        expect(block.total).toBe(block.rows.reduce((s, r) => s + r.amount, 0));
+        const catRows = payload.rows.filter((r) => r.category === cat);
+        const listed = block.months.flatMap((m) => m.rows);
+        expect(listed).toHaveLength(catRows.length);
+        expect(block.total).toBeCloseTo(catRows.reduce((s, r) => s + r.amount, 0), 6);
+        const months = block.months.map((m) => m.month);
+        expect(months).toEqual([...months].sort().reverse());
+        for (const m of block.months) {
+          expect(m.rows.every((r) => r.occurred_on.slice(0, 7) === m.month)).toBe(true);
+          expect(m.total).toBeCloseTo(m.rows.reduce((s, r) => s + r.amount, 0), 6);
+        }
+        expect(block.total).toBeCloseTo(block.months.reduce((s, m) => s + m.total, 0), 6);
       }
     });
 

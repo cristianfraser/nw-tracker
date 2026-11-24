@@ -226,6 +226,8 @@ export type GroceryReceiptItemRow = {
   unit_price_clp: number;
   total_clp: number;
   discount_clp: number;
+  /** What the line cost: total − discount. */
+  line_total_clp: number;
   product_id: number | null;
   product_name: string | null;
   product_source: string | null;
@@ -235,7 +237,8 @@ export function listGroceryReceiptItems(receiptId: number): GroceryReceiptItemRo
   return db
     .prepare(
       `SELECT i.id, i.position, i.barcode, i.description, i.qty, i.qty_unit, i.unit_price_clp,
-              i.total_clp, i.discount_clp, i.product_id, p.name AS product_name, i.product_source
+              i.total_clp, i.discount_clp, i.total_clp - i.discount_clp AS line_total_clp,
+              i.product_id, p.name AS product_name, i.product_source
        FROM grocery_receipt_items i
        LEFT JOIN grocery_products p ON p.id = i.product_id
        WHERE i.receipt_id = ?
@@ -258,6 +261,8 @@ export type ProductHistoryRow = {
   effective_unit_price_clp: number;
   total_clp: number;
   discount_clp: number;
+  /** What the line cost: total − discount. */
+  line_total_clp: number;
   brand_name: string | null;
   /**
    * Effective price per the product's base unit ($/kg, $/L, $/m …); null when the row's alias
@@ -298,7 +303,7 @@ export function groceryProductHistory(productId: number): GroceryProductHistory 
     )
     .all(productId) as (Omit<
     ProductHistoryRow,
-    "effective_unit_price_clp" | "normalized_unit_price_clp"
+    "effective_unit_price_clp" | "normalized_unit_price_clp" | "line_total_clp"
   > & { alias_content: number | null })[];
   let kgSeen = false;
   const contents = new Set<number>();
@@ -312,11 +317,11 @@ export function groceryProductHistory(productId: number): GroceryProductHistory 
   }
   const heterogeneous = (kgSeen && rows.length > 0) || contents.size > 1;
   const mapped = rows.map(({ alias_content, ...r }) => {
+    const paid = r.total_clp - r.discount_clp;
     if (r.qty_unit === "kg") {
       // A weighed purchase has no fixed package: its "price" is what was paid for that weight,
       // and the per-kg rate exists ONLY through the product config (base_unit kg/g) — the
       // weight itself plays the content role, so no alias content is needed.
-      const paid = r.total_clp - r.discount_clp;
       const perKg = Math.round(paid / Number(r.qty));
       const normalized =
         baseUnit === "kg" ? perKg : baseUnit === "g" ? Math.round(perKg / 1000) : null;
@@ -324,13 +329,15 @@ export function groceryProductHistory(productId: number): GroceryProductHistory 
         ...r,
         unit_price_clp: r.total_clp,
         effective_unit_price_clp: paid,
+        line_total_clp: paid,
         normalized_unit_price_clp: normalized,
       };
     }
-    const effective = Math.round((r.total_clp - r.discount_clp) / Number(r.qty));
+    const effective = Math.round(paid / Number(r.qty));
     return {
       ...r,
       effective_unit_price_clp: effective,
+      line_total_clp: paid,
       normalized_unit_price_clp: normalizedUnitPrice(effective, baseUnit, alias_content),
     };
   });
