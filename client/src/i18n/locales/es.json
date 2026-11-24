@@ -1398,6 +1398,7 @@
     }
   },
   "income": {
+    "rowLabelNoParts": "{{period}}: {{total}}, {{lines}}",
     "rowLabel": "{{period}}: {{total}} ({{parts}}), {{lines}}",
     "sideListUnpriced": "{{count}} sin tipo de cambio",
     "sideListCountOne": "1 línea",
@@ -1485,6 +1486,8 @@
     }
   },
   "workEarnings": {
+    "yearRowSeverance": ", de ello finiquito {{amount}}",
+    "netSalary": "Líquido (sueldo)",
     "yearRowLabel": "{{period}}, {{count}}: líquido {{net}} de bruto {{gross}}, descuentos {{share}}",
     "rowLabel": "{{period}}, {{employer}}, {{type}}: líquido {{net}} de bruto {{gross}}, revisión {{check}}",
     "netSeverance": "Líquido (finiquito)",

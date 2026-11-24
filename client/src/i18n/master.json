@@ -4437,6 +4437,10 @@
     }
   },
   "income": {
+    "rowLabelNoParts": {
+      "en": "{{period}}: {{total}}, {{lines}}",
+      "es": "{{period}}: {{total}}, {{lines}}"
+    },
     "rowLabel": {
       "en": "{{period}}: {{total}} ({{parts}}), {{lines}}",
       "es": "{{period}}: {{total}} ({{parts}}), {{lines}}"
@@ -4755,6 +4759,14 @@
     }
   },
   "workEarnings": {
+    "yearRowSeverance": {
+      "en": ", of which severance {{amount}}",
+      "es": ", de ello finiquito {{amount}}"
+    },
+    "netSalary": {
+      "en": "Net pay (salary)",
+      "es": "Líquido (sueldo)"
+    },
     "yearRowLabel": {
       "en": "{{period}}, {{count}}: net pay {{net}} of gross {{gross}}, deductions {{share}}",
       "es": "{{period}}, {{count}}: líquido {{net}} de bruto {{gross}}, descuentos {{share}}"

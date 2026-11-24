@@ -21,7 +21,10 @@ import {
   resolvePeriodXAxis,
 } from "../charts/chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
-import { PAYROLL_STACK } from "./incomeColors";
+import { incomeKindColor, PAYROLL_STACK } from "./incomeColors";
+
+/** The chart series for the severance part of net pay (not a breakdown field). */
+const NET_SEVERANCE = "net_severance";
 
 const CHART_ANIM_MS = 90;
 
@@ -68,15 +71,34 @@ export function PayrollBreakdownSection({
   const compactAxis = useIsNarrowViewport();
   const chartPrefs = useSurfacePrefs("income.payroll.chart", "month", "3y");
   const chartGranularity = chartPrefs.period === "year" ? "year" : "month";
-  const label = (f: PayrollBreakdownField) => t(`income.payroll.fields.${f}`);
+  // A series is a breakdown field, or the severance part of net pay (drawn in severance's colour,
+  // as in the payslip list; `net` is then the salary part).
+  const label = (key: string) =>
+    key === NET_SEVERANCE ? t("workEarnings.netSeverance") : t(`income.payroll.fields.${key as PayrollBreakdownField}`);
   const used = useMemo(() => fieldsInUse(breakdown), [breakdown]);
-  const stack = useMemo(() => PAYROLL_STACK.filter((s) => used.has(s.field)), [used]);
+  const hasSeverance = useMemo(() => breakdown.years.some((y) => y.net_severance !== 0), [breakdown]);
+  const stack = useMemo(
+    () =>
+      PAYROLL_STACK.filter((s) => used.has(s.field)).flatMap((s): { key: string; color: string }[] =>
+        s.field === "net" && hasSeverance
+          ? [
+              { key: "net", color: s.color },
+              { key: NET_SEVERANCE, color: incomeKindColor("severance") },
+            ]
+          : [{ key: s.field, color: s.color }]
+      ),
+    [used, hasSeverance]
+  );
 
   const points = useMemo(() => {
     const rows = chartGranularity === "year" ? breakdown.years : breakdown.months;
     const all = rows.map((r) => {
       const point: Record<string, string | number> = { as_of_date: periodEndYmd(r.period) };
-      for (const s of stack) point[s.field] = pick(r, s.field, displayUnit);
+      for (const s of stack) {
+        if (s.key === NET_SEVERANCE) point[s.key] = r.net_severance;
+        else if (s.key === "net") point[s.key] = r.values.net - r.net_severance;
+        else point[s.key] = pick(r, s.key as PayrollBreakdownField, displayUnit);
+      }
       point.gross = pick(r, "gross", displayUnit);
       return point as { as_of_date: string } & Record<string, number | string>;
     });
@@ -84,7 +106,7 @@ export function PayrollBreakdownSection({
     const dense = densifyRecordsByCalendarPeriod(all as Record<string, string | number | null>[], {
       granularity: chartGranularity,
       dateKey: "as_of_date",
-      fillMissing: { zeroKeys: [...stack.map((s) => s.field), "gross"] },
+      fillMissing: { zeroKeys: [...stack.map((s) => s.key), "gross"] },
     }) as typeof all;
     return clipPointsToTimeRange(dense, chartPrefs.range);
   }, [breakdown, chartGranularity, chartPrefs.range, displayUnit, stack]);
@@ -123,7 +145,7 @@ export function PayrollBreakdownSection({
               tooltip={{
                 formatValue: (v) => formatFlowMoney(v, displayUnit),
                 formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
-                formatName: (entry) => label(String(entry.name ?? entry.dataKey ?? "") as PayrollBreakdownField),
+                formatName: (entry) => label(String(entry.name ?? entry.dataKey ?? "")),
                 cursor: true,
               }}
             >
@@ -141,14 +163,14 @@ export function PayrollBreakdownSection({
                 itemSorter={null}
                 wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
                 formatter={(value) => (
-                  <span style={{ color: "var(--muted, #94a3b8)" }}>{label(String(value) as PayrollBreakdownField)}</span>
+                  <span style={{ color: "var(--muted, #94a3b8)" }}>{label(String(value))}</span>
                 )}
               />
               {stack.map((s) => (
                 <Bar
-                  key={s.field}
-                  dataKey={s.field}
-                  name={s.field}
+                  key={s.key}
+                  dataKey={s.key}
+                  name={s.key}
                   fill={s.color}
                   stackId="payroll"
                   isAnimationActive

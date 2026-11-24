@@ -60,4 +60,21 @@ describe("payroll breakdown", () => {
     // A salary payslip: none of the year's net pay is severance.
     expect(b.years.find((y) => y.period === "2099")!.net_severance).toBe(0);
   });
+
+  it("carries the net pay of severance payslips as the period's net_severance", () => {
+    const severance: ClPayslip = {
+      ...PAYSLIP,
+      document: "vitest-payroll-breakdown/2099-02-finiquito.pdf",
+      period_month: "2099-02",
+      kind: "severance",
+    };
+    applyEmploymentPayslips(employmentPayslipsKind.payload.parse({ parser_version: "vitest", payslips: [PAYSLIP, severance] }));
+    const b = buildPayrollBreakdown();
+    expect(b.months.find((m) => m.period === "2099-01")!.net_severance).toBe(0);
+    expect(b.months.find((m) => m.period === "2099-02")!.net_severance).toBe(840_400);
+    const year = b.years.find((y) => y.period === "2099")!;
+    // Both payslips' net pay is in the year; only the finiquito's is severance.
+    expect(year.values.net).toBe(1_680_800);
+    expect(year.net_severance).toBe(840_400);
+  });
 });

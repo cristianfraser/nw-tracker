@@ -1398,6 +1398,7 @@
     }
   },
   "income": {
+    "rowLabelNoParts": "{{period}}: {{total}}, {{lines}}",
     "rowLabel": "{{period}}: {{total}} ({{parts}}), {{lines}}",
     "sideListUnpriced": "{{count}} without a rate",
     "sideListCountOne": "1 line",
@@ -1485,6 +1486,8 @@
     }
   },
   "workEarnings": {
+    "yearRowSeverance": ", of which severance {{amount}}",
+    "netSalary": "Net pay (salary)",
     "yearRowLabel": "{{period}}, {{count}}: net pay {{net}} of gross {{gross}}, deductions {{share}}",
     "rowLabel": "{{period}}, {{employer}}, {{type}}: net pay {{net}} of gross {{gross}}, check {{check}}",
     "netSeverance": "Net pay (severance)",

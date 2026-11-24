@@ -142,8 +142,9 @@
 
 /* ---- an income line: date, kind, name, account, amount, action ---- */
 .lines {
-  /* The kind slot holds a pill, a category or a filter's reason: it may shrink and wrap. */
-  grid-template-columns: max-content minmax(0, max-content) minmax(0, 1fr) max-content max-content max-content;
+  /* The kind slot holds a pill, a category or a filter's reason: capped, it wraps past 14rem. The
+     name keeps at least 8rem, and the account shrinks to its ellipsis before either. */
+  grid-template-columns: max-content fit-content(14rem) minmax(8rem, 1fr) minmax(0, max-content) max-content max-content;
 }
 
 .lKind {
@@ -253,6 +254,7 @@
 
 .sectionHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 0.5rem;
   width: 100%;
@@ -272,7 +274,8 @@
 
 .sectionTitle {
   flex: 1;
-  min-width: 0;
+  /* The title keeps its line; the count and sum wrap under it when they don't fit beside it. */
+  min-width: 8rem;
   margin: 0;
 }
 
@@ -333,7 +336,8 @@
   }
 
   .lines > .row {
-    grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
+    /* Kind and account share a line: each up to half of it, the account's ellipsis before the kind wraps. */
+    grid-template-columns: fit-content(50%) minmax(4rem, 1fr) max-content;
     grid-template-areas:
       "date date amount"
       "name name name"
