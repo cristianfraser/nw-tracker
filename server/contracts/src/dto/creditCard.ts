@@ -462,6 +462,89 @@ export type CcGlanceDto = {
   total_owed: number | null;
 };
 
+/** A dated event on a card's lane: the open facturación's close, or a pay-by. */
+export type CcGroupLaneEventDto = {
+  kind: "close" | "pay_by";
+  /** The facturación it belongs to (`YYYY-MM`). */
+  billing_month: string;
+  iso: string;
+  /** Calendar days from today (Chile); negative when a pay-by is overdue. */
+  days: number;
+  /** Where it sits on the lanes' shared date axis (0 = axis start, 1 = axis end). */
+  share: number;
+  /** In the billing currency: the bill so far (a close, an open bill's pay-by) or what it still owes. */
+  amount: number;
+  /** An open bill's pay-by: the amount is what it holds so far, not yet billed. */
+  estimate: boolean;
+};
+
+/** The next payment of a card or of the group. */
+export type CcGroupNextPaymentDto = {
+  account_id: number;
+  billing_month: string;
+  pay_by_iso: string;
+  days: number;
+  /** In the billing currency. */
+  amount: number;
+  /** The open bill's estimate (the last closed one is paid). */
+  estimate: boolean;
+};
+
+/** One card's lane on the credit-card group page. */
+export type CcGroupLaneCardDto = {
+  account_id: number;
+  name: string;
+  color_rgb: string;
+  /** What the card owes per currency, billing currency first (the card page's cupo used per side). */
+  owed: CcGlanceAmountDto[];
+  /** `owed` in the billing currency, other currencies at today's debt rate. */
+  owed_total: number;
+  /** The last closed facturación: its month and whether it is paid; null when none has closed. */
+  previous: { billing_month: string; paid: boolean } | null;
+  /** Plan cuotas not yet billed by a closed facturación (the cupo bar's cuota segments), billing currency. */
+  cuotas_ahead: number;
+  /** Billing currency cupo: used over the configured total; null without one. */
+  cupo: { used: number; total: number; used_share: number } | null;
+  next_payment: CcGroupNextPaymentDto;
+  /** Events inside the axis window, by date. */
+  events: CcGroupLaneEventDto[];
+};
+
+/** One pay month of «Upcoming payments»: what each card pays in it. */
+export type CcGroupUpcomingMonthDto = {
+  /** The month the payment falls due (`YYYY-MM`). */
+  month: string;
+  total: number;
+  /**
+   * `billed`: a closed facturación still owing; `open`: the open (or next-cycle) bill so far;
+   * `cuotas`: plan cuotas a later facturación will bill.
+   */
+  parts: { account_id: number; kind: "billed" | "open" | "cuotas"; amount: number }[];
+};
+
+/**
+ * `GET /api/portfolio-groups/:slug/cc-lanes` — the credit-card group page's lanes and its upcoming
+ * payments chart (server `ccGroupLanes.ts`), every figure from each card's glance. Amounts in the
+ * billing currency (card figures are not in the display unit).
+ */
+export type CcGroupLanesResponse = {
+  billing_currency: string;
+  today_iso: string;
+  /** The shared date axis: today to `end_iso`; `ticks` every two weeks from today. */
+  axis: { start_iso: string; end_iso: string; days: number; today_share: number; ticks: { iso: string; share: number }[] };
+  total: {
+    owed: CcGlanceAmountDto[];
+    owed_total: number;
+    cuotas_ahead: number;
+    /** Billing currency cupo over the cards; null when a card has none configured. */
+    cupo: { used: number; total: number; used_share: number } | null;
+    next_payment: CcGroupNextPaymentDto | null;
+  };
+  /** Cards by their next payment's date. */
+  cards: CcGroupLaneCardDto[];
+  upcoming_months: CcGroupUpcomingMonthDto[];
+};
+
 /** A card's cupo in one currency (`currency`: a `currencies` code); null when none is configured. */
 export type CcCupoEntry = { currency: string; value: number | null };
 

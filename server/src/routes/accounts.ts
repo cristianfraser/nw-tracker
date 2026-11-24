@@ -27,6 +27,7 @@ import { clearCheckingLedgerAnchor, upsertCheckingLedgerAnchor } from "../checki
 import { getCheckingCartolaMonths } from "../checkingCartolaMonthSummary.js";
 import { buildCheckingStatement, CHECKING_PAGE_KIND_SLUGS } from "../checkingStatement.js";
 import { kindSlugForAccount } from "../portfolioGroupTree.js";
+import { ccGroupLanesResponse } from "../ccGroupLanes.js";
 import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
 import { isPositiveInteger } from "../requestValidation.js";
@@ -270,6 +271,15 @@ app.get("/api/portfolio-groups/:slug/cc-ledger", (req, res) => {
     return;
   }
   res.json(timeHeavy(`${HeavyWork.ccGroupLedger} ${slug}`, () => creditCardGroupLedgerResponse(slug)));
+});
+
+app.get("/api/portfolio-groups/:slug/cc-lanes", (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  if (!slug || !isResolvablePortfolioGroupSlug(slug)) {
+    res.status(404).json({ error: "portfolio group not found" });
+    return;
+  }
+  res.json(timeHeavy(`${HeavyWork.ccGroupLanes} ${slug}`, () => ccGroupLanesResponse(slug)));
 });
 
 app.get("/api/portfolio-groups/:slug/mortgage-ledger", (req, res) => {

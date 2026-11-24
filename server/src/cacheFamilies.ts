@@ -164,6 +164,11 @@ export function cacheKeyCcLedgerGroup(slug: string): string {
   return `${CC_LEDGER_PREFIX}group|${slug}`;
 }
 
+/** The credit-card group page's lanes (`ccGroupLanes.ts`): built from each card's glance, so the ledger family. */
+export function cacheKeyCcLanesGroup(slug: string): string {
+  return `${CC_LEDGER_PREFIX}lanes|${slug}`;
+}
+
 export function cacheKeyDashboardPageBundle(unit: CacheUnit): string {
   return `${DASHBOARD_PAGE_BUNDLE_PREFIX}${unit}`;
 }

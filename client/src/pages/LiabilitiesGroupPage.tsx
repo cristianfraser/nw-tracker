@@ -6,6 +6,7 @@ import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { CoverageLineChart } from "../components/charts/lazyCharts";
 import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
 import { LiabilitiesCreditCardGroupSection } from "../components/liabilities/LiabilitiesCreditCardGroupSection";
+import { CreditCardGroupSection } from "../components/liabilities/CreditCardGroupSection";
 import { LiabilitiesMortgageGroupSection } from "../components/liabilities/LiabilitiesMortgageGroupSection";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
@@ -32,11 +33,12 @@ import { SurfaceControls } from "../components/ui/SurfaceControls";
 import {
   useAccountMonthlyPerformance,
   useDailySeries,
+  usePortfolioGroupCcLanes,
   usePortfolioGroupCcLedger,
   usePortfolioGroupMortgageLedger,
   useSidebarNav,
 } from "../queries/hooks";
-import { dailyPayloadPending, queryLoadError } from "../queries/pageShapeReady";
+import { dailyPayloadPending, queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 import { usePortfolioPageData } from "./usePortfolioPageData";
 import { DASHBOARD_PATH } from "../dashboardPath";
 import type { DisplayUnit } from "../queries/keys";
@@ -131,6 +133,11 @@ export function LiabilitiesGroupPage() {
   );
   // A section mounts while its ledger loads (empty ledger, dimmed); a failed fetch leaves it out.
   const ccLedgerPending = ccLedgerSlug != null && ccLedgerQueryPending;
+  // The credit-card group page is shaped like a card's page (`CreditCardGroupSection`): its lanes
+  // replace the asset-group strip and charts.
+  // Before the nav answers, the route says which page this is.
+  const isCreditCardPage = pageKind != null ? pageKind === "credit_card" : categoryFilter === "credit_card";
+  const ccLanesQuery = usePortfolioGroupCcLanes(portfolioGroup, shapeEnabled && isCreditCardPage);
 
   const tableAccountsForPerf = useMemo(
     () =>
@@ -196,13 +203,13 @@ export function LiabilitiesGroupPage() {
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
     timeRangeToDays(valuationPrefs.range),
-    valuationIsDaily && portfolioGroup !== ""
+    valuationIsDaily && portfolioGroup !== "" && !isCreditCardPage
   );
   const proportionalDailySeries = useDailySeries(
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
     timeRangeToDays(proportionalPrefs.range),
-    proportionalIsDaily && portfolioGroup !== ""
+    proportionalIsDaily && portfolioGroup !== "" && !isCreditCardPage
   );
   const valuationDailyPending = dailyPayloadPending(valuationIsDaily, dailySeries);
   const proportionalDailyPending = dailyPayloadPending(proportionalIsDaily, proportionalDailySeries);
@@ -274,7 +281,15 @@ export function LiabilitiesGroupPage() {
 
   const proportionalLoading = contentLoading || proportionalDailyPending;
 
-  const chartsSection = (
+  const chartsSection = isCreditCardPage ? (
+    <CreditCardGroupSection
+      portfolioGroup={portfolioGroup}
+      lanes={ccLanesQuery.data}
+      lanesLoading={queryShowsLoading(ccLanesQuery)}
+      ccLedger={ccLedger ?? emptyCcLedger(0)}
+      ccLedgerLoading={ccLedgerPending}
+    />
+  ) : (
     <>
       <PortfolioGroupChartsSection
         loading={contentLoading}
@@ -369,14 +384,6 @@ export function LiabilitiesGroupPage() {
           ))
         : null}
 
-      {pageKind === "credit_card" && (ccLedger || ccLedgerPending) ? (
-        <LiabilitiesCreditCardGroupSection
-          ccLedger={ccLedger ?? emptyCcLedger(0)}
-          portfolioGroup={portfolioGroup}
-          loading={ccLedgerPending}
-        />
-      ) : null}
-
       {pageKind === "mortgage" && mortgageLedgerSlug != null && shapeEnabled
         ? mortgageLoans.map((loan) => (
             <MortgageLoanSection
@@ -420,7 +427,7 @@ export function LiabilitiesGroupPage() {
       loading={contentLoading}
       hideConsolidatedTables
       portfolio={
-        navMatchNode && dashForStrip
+        navMatchNode && dashForStrip && !isCreditCardPage
           ? {
               navNode: navMatchNode,
               groupSlug: portfolioGroup,
@@ -432,7 +439,7 @@ export function LiabilitiesGroupPage() {
             }
           : null
       }
-      coldStripShape={GROUP_COLD_STRIP}
+      coldStripShape={isCreditCardPage ? undefined : GROUP_COLD_STRIP}
       charts={chartsSection}
       tableAccounts={tableAccountsForPerf}
       accountsTree={

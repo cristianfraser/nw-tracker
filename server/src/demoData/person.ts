@@ -450,6 +450,10 @@ const ONE_OFFS: OneOff[] = [
   { month: "2025-11", day: 7, label: "MAC STORE COSTANERA", category: "others", clp: 2_700_000, cuotas: 12 },
   { month: "2026-01", day: 7, label: "AMERICAN AIRLINES", category: "fun", clp: 2_000_000, cuotas: 12, card: "second" },
   { month: "2026-01", day: 21, label: "MARRIOTT NEW YORK", category: "fun", clp: null, usd: 3_400, card: "second" },
+  // Recent cuota plans, so the cards keep billing cuotas well into the next year.
+  { month: "2026-06", day: 12, label: "SAMSUNG STORE COSTANERA", category: "others", clp: 1_100_000, cuotas: 12 },
+  { month: "2026-09", day: 4, label: "FALABELLA TECNOLOGIA", category: "others", clp: 840_000, cuotas: 6, card: "second" },
+  { month: "2026-10", day: 15, label: "LATAM AIRLINES", category: "fun", clp: 1_350_000, cuotas: 10 },
 ];
 
 /**

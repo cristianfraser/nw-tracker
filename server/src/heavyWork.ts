@@ -13,6 +13,7 @@ export const HeavyWork = {
   dailyGroupSeries: "daily.group_series",
   dailyReferenceLines: "daily.reference_lines",
   ccGroupLedger: "cc.group_ledger",
+  ccGroupLanes: "cc.group_lanes",
   accountDetailBundle: "account.detail_bundle",
 } as const;
 

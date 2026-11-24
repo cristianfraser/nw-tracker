@@ -234,6 +234,10 @@ export const api = {
     j<import("./types").PortfolioGroupCcLedgerResponse>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/cc-ledger`
     ),
+  portfolioGroupCcLanes: (slug: string) =>
+    j<import("./types").CcGroupLanesResponse>(
+      `/api/portfolio-groups/${encodeURIComponent(slug)}/cc-lanes`
+    ),
   portfolioGroupMortgageLedger: (slug: string, loanAccountId: number | null) =>
     j<import("./types").PortfolioGroupMortgageLedgerResponse>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger${

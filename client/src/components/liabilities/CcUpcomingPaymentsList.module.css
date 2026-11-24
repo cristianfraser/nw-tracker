@@ -1,0 +1,105 @@
+/* «Upcoming payments» (CcUpcomingPaymentsList.tsx): a row per pay month — month | bar |
+   total, the cards' amounts on a line under the bar. Rows are subgrids, so bars start and end on
+   the same lines. Below 24rem of the frame the bar takes a line of its own under month and total. */
+.frame {
+  container: cc-upcoming / inline-size;
+}
+
+/* Beside «History» (from 880, two panels a row) the list is as tall as the chart: it adds nothing
+   to the row's height (size containment) and fills its panel, its rows scrolling under the
+   heading when they run over. On one column, or with no «History» beside it, it keeps its own
+   height and never scrolls. */
+@media (min-width: 880px) {
+  :global(.chart-grid:has(> [data-tile="cc-historial"])) .frame {
+    flex: 1 1 0;
+    min-height: 0;
+    contain: size;
+    overflow-y: auto;
+  }
+}
+
+.list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  column-gap: 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-ui);
+}
+
+.row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  row-gap: 0.25rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.row:first-child {
+  border-top: 0;
+}
+
+.month {
+  color: var(--muted);
+}
+
+.bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  min-width: 0;
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  min-width: 3px;
+}
+
+.total {
+  text-align: right;
+  font-weight: 600;
+}
+
+.parts {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.part {
+  white-space: nowrap;
+}
+
+.part .mono {
+  color: var(--text);
+}
+
+.swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.35rem;
+  border-radius: 2px;
+}
+
+@container cc-upcoming (max-width: 24rem) {
+  .list {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .parts {
+    grid-column: 1 / -1;
+  }
+}

@@ -60,11 +60,14 @@ export function CreditCardHistorialSurface({
   ccLedger,
   scope,
   loading,
+  className,
 }: {
   ccLedger: AccountCcInstallmentsResponse;
   scope: CcSurfaceScope;
   /** The host's ledger bundle is still a placeholder: dim the surface, never gate it away. */
   loading?: boolean;
+  /** Placement in the host's grid (the credit-card group page pairs it with another chart). */
+  className?: string;
 }) {
   const { t } = useTranslation();
   const heading = HEADINGS[scope.variant].historial;
@@ -101,7 +104,7 @@ export function CreditCardHistorialSurface({
   if (!hasHistorial && !loading) return null;
 
   return (
-    <PageGridTile id="cc-historial" className={loadableClass(loading)} aria-busy={loading || undefined}>
+    <PageGridTile id="cc-historial" className={loadableClass(loading, className)} aria-busy={loading || undefined}>
       <div className="chart-panel-title-row">
         <SurfaceHeading heading={heading}>{t("accountDetail.creditCard.historialTitle")}</SurfaceHeading>
         <SurfaceControls

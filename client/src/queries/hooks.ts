@@ -856,6 +856,16 @@ export function usePortfolioGroupCcLedger(slug: string | undefined, enabled = tr
   });
 }
 
+/** The credit-card group page's lanes and «Upcoming payments by month» (`ccGroupLanes.ts`). */
+export function usePortfolioGroupCcLanes(slug: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.portfolioGroupCcLanes(slug ?? ""),
+    queryFn: () => api.portfolioGroupCcLanes(slug!),
+    enabled: enabled && Boolean(slug),
+    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupCcLanes(slug ?? "")),
+  });
+}
+
 /** One loan's ledger on a mortgage group page; `loanAccountId` null asks for the group's one loan. */
 export function usePortfolioGroupMortgageLedger(
   slug: string | undefined,

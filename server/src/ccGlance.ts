@@ -313,10 +313,19 @@ export function buildCcGlanceForAccount(accountId: number, billingCurrency: stri
     remainderByMonth: installmentRemainderByFacturacionClp(accountId, owed.last_closed_billing_month, today),
     pendingCuotaPurchases: pendingCuotaPurchaseLines(accountId),
     cupos: getCreditCardAccountConfig(accountId).cupo,
-    toBillingCurrency: (qty, currency) => {
-      const v = convertCurrency(qty, currency, billingCurrency, today, { side: qty < 0 ? "asset" : "debt" });
-      if (v == null) throw new Error(`No ${currency.toUpperCase()}/${billingCurrency.toUpperCase()} rate for ${today}`);
-      return v;
-    },
+    toBillingCurrency: billingCurrencyConverter(today, billingCurrency),
   });
+}
+
+/**
+ * `qty` of `currency` in the billing currency at `today`'s debt-side rate (credit at the asset
+ * side): the one conversion the glance and the group lanes (`ccGroupLanes.ts`) total a card with.
+ */
+export function billingCurrencyConverter(today: string, billingCurrency: string): (qty: number, currency: string) => number {
+  return (qty, currency) => {
+    if (currency === billingCurrency) return qty;
+    const v = convertCurrency(qty, currency, billingCurrency, today, { side: qty < 0 ? "asset" : "debt" });
+    if (v == null) throw new Error(`No ${currency.toUpperCase()}/${billingCurrency.toUpperCase()} rate for ${today}`);
+    return v;
+  };
 }

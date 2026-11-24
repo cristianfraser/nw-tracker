@@ -4038,6 +4038,80 @@
       "en": "No accounts in this view yet.",
       "es": "Aún no hay cuentas en esta vista."
     },
+    "creditCardLanes": {
+      "colCard": {
+        "en": "Card",
+        "es": "Tarjeta"
+      },
+      "colOwed": {
+        "en": "Owed",
+        "es": "Deuda"
+      },
+      "colCupo": {
+        "en": "Credit line",
+        "es": "Cupo"
+      },
+      "total": {
+        "en": "Total · {{n}} cards",
+        "es": "Total · {{n}} tarjetas"
+      },
+      "totalOne": {
+        "en": "Total · 1 card",
+        "es": "Total · 1 tarjeta"
+      },
+      "nextPayment": {
+        "en": "Next payment",
+        "es": "Próximo pago"
+      },
+      "billedToPay": {
+        "en": "{{month}} billed, to pay",
+        "es": "{{month}} facturado, por pagar"
+      },
+      "paidMonth": {
+        "en": "{{month}} paid",
+        "es": "{{month}} pagado"
+      },
+      "inCuotas": {
+        "en": "in cuotas",
+        "es": "en cuotas"
+      },
+      "overdue": {
+        "en": "overdue",
+        "es": "vencido"
+      },
+      "estimateHint": {
+        "en": "The open bill so far: it can still change before it closes",
+        "es": "La facturación abierta hasta hoy: puede cambiar antes del cierre"
+      },
+      "cupoOf": {
+        "en": "of {{total}}",
+        "es": "de {{total}}"
+      },
+      "noCards": {
+        "en": "No card is billing.",
+        "es": "Ninguna tarjeta está facturando."
+      },
+      "upcomingTitle": {
+        "en": "Upcoming payments",
+        "es": "Próximos pagos"
+      },
+      "upcomingEmpty": {
+        "en": "Nothing due ahead.",
+        "es": "Nada por pagar."
+      },
+      "kindBilled": {
+        "en": "Billed, to pay",
+        "es": "Facturado, por pagar"
+      },
+      "kindOpen": {
+        "en": "Open bill so far",
+        "es": "Facturación abierta hasta hoy"
+      },
+      "kindCuotas": {
+        "en": "Cuotas ahead",
+        "es": "Cuotas por facturar"
+      }
+    },
     "pasivos": {
       "creditCardSectionTitle": {
         "en": "Credit cards",

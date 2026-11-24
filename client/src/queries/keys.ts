@@ -166,6 +166,9 @@ export const queryKeys = {
     withEntity(["accountMonthlyPerformance", id, unit] as const, 2),
   portfolioGroupCcLedger: (slug: string) =>
     withEntity(["portfolioGroupCcLedger", slug] as const, 2),
+  /** The credit-card group page's lanes and upcoming payments (billing currency, no unit). */
+  portfolioGroupCcLanes: (slug: string) =>
+    withEntity(["portfolioGroupCcLanes", slug] as const, 2),
   /** One loan's ledger on a mortgage group page (`loanAccountId` null: the group's one loan). */
   portfolioGroupMortgageLedger: (slug: string, loanAccountId: number | null) =>
     withEntity(["portfolioGroupMortgageLedger", slug, loanAccountId] as const, 3),
