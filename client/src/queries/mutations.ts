@@ -20,11 +20,17 @@ type WithLines = { lines: FlowCcExpenseLineRow[] };
 /** Any cached payload carrying the big-group catalog (the lines lists and the summary). */
 type WithBigGroups = { big_groups: CcExpenseBigGroupDto[] };
 
+/** The Expenses page's line lists: lines grouped by spending day (`GET /api/flows/expenses/spent/lines`). */
+type WithDayLines = { days: { lines: FlowCcExpenseLineRow[] }[] };
+
 /** Every cached lines list, whatever its unit or selector. */
 const LINE_QUERIES: QueryFilters = { queryKey: queryKeys.flowsExpensesLinesAll() };
+/** Every cached spent line list (lines by day). */
+const SPENT_LINE_QUERIES: QueryFilters = { queryKey: queryKeys.flowsExpensesSpentLinesAll() };
 /** The caches holding the big-group catalog. */
 const BIG_GROUP_CATALOG_QUERIES: readonly QueryFilters[] = [
   LINE_QUERIES,
+  SPENT_LINE_QUERIES,
   { queryKey: queryKeys.flowsExpensesSummaryAll() },
 ];
 
@@ -50,6 +56,40 @@ function setQueries<T>(queryClient: QueryClient, filters: readonly QueryFilters[
   for (const f of filters) {
     queryClient.setQueriesData<T>(f, (old) => (old == null ? old : update(old)));
   }
+}
+
+/** A change to a list of lines, applied to every cached list whatever its shape. */
+type LinesPatch = (lines: FlowCcExpenseLineRow[]) => FlowCcExpenseLineRow[];
+
+const patchFlat = (patch: LinesPatch) => (old: WithLines): WithLines => ({ ...old, lines: patch(old.lines) });
+const patchByDay = (patch: LinesPatch) => (old: WithDayLines): WithDayLines => ({
+  ...old,
+  days: old.days.map((d) => ({ ...d, lines: patch(d.lines) })),
+});
+
+/**
+ * An optimistic line patch on every cached list: the flat lists (a facturación, a big group …) and
+ * the Expenses page's lists by day. Returns the snapshot to restore on a failed write.
+ */
+async function patchLineLists(queryClient: QueryClient, patch: LinesPatch): Promise<QueriesSnapshot> {
+  const flat = await patchQueries<WithLines>(queryClient, [LINE_QUERIES], patchFlat(patch));
+  const byDay = await patchQueries<WithDayLines>(queryClient, [SPENT_LINE_QUERIES], patchByDay(patch));
+  return [...flat, ...byDay];
+}
+
+/** {@link patchLineLists} without the snapshot (the server's answer applied after the write). */
+function setLineLists(queryClient: QueryClient, patch: LinesPatch): void {
+  setQueries<WithLines>(queryClient, [LINE_QUERIES], patchFlat(patch));
+  setQueries<WithDayLines>(queryClient, [SPENT_LINE_QUERIES], patchByDay(patch));
+}
+
+/** Every line of every cached list (to find the edited line's anchor). */
+function cachedLines(queryClient: QueryClient): FlowCcExpenseLineRow[][] {
+  const flat = queryClient.getQueriesData<WithLines>(LINE_QUERIES).flatMap(([, d]) => (d ? [d.lines] : []));
+  const byDay = queryClient
+    .getQueriesData<WithDayLines>(SPENT_LINE_QUERIES)
+    .flatMap(([, d]) => (d ? d.days.map((day) => day.lines) : []));
+  return [...flat, ...byDay];
 }
 
 function restoreQueries(queryClient: QueryClient, previous: QueriesSnapshot | undefined): void {
@@ -80,9 +120,8 @@ function findCcExpenseCategoryPatchAnchorInCache(
   targetLineId: number,
   source: FlowCcExpenseLineSource
 ): FlowCcExpenseLineRow | undefined {
-  for (const [, data] of queryClient.getQueriesData<WithLines>(LINE_QUERIES)) {
-    if (!data) continue;
-    const anchor = findCcExpenseCategoryPatchAnchor(data.lines, targetLineId, source);
+  for (const lines of cachedLines(queryClient)) {
+    const anchor = findCcExpenseCategoryPatchAnchor(lines, targetLineId, source);
     if (anchor) return anchor;
   }
   return undefined;
@@ -154,29 +193,29 @@ export function usePatchCcExpenseLineCategoryMutation() {
       // One anchor for every list: a sibling line of the purchase may sit in a list the edited
       // line is not in.
       const anchor = findCcExpenseCategoryPatchAnchorInCache(queryClient, vars.lineId, vars.source);
-      const previous = await patchQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
-        applyCcExpenseLineCategoryPatch(old, vars, anchor)!
+      const previous = await patchLineLists(queryClient, (lines) =>
+        applyCcExpenseLineCategoryPatch({ lines }, vars, anchor)!.lines
       );
       return { previous, anchor };
     },
     onSuccess: (result, vars, context) => {
       const anchor = context?.anchor;
-      setQueries<WithLines>(queryClient, [LINE_QUERIES], (old) => {
+      setLineLists(queryClient, (lines) => {
         if (anchor && result.purchase_key) {
-          return applyCcExpenseLineCategoryPatchFromServer(old, {
+          return applyCcExpenseLineCategoryPatchFromServer({ lines }, {
             accountId: anchor.account_id,
             purchaseKey: result.purchase_key,
             category_slug: result.category_slug,
             unique: result.unique,
-          })!;
+          })!.lines;
         }
-        return applyCcExpenseLineCategoryPatch(old, {
+        return applyCcExpenseLineCategoryPatch({ lines }, {
           lineId: vars.lineId,
           source: vars.source,
           unique: result.unique,
           category_slug: result.category_slug,
           clear_category: vars.clear_category,
-        })!;
+        })!.lines;
       });
     },
     onError: (_err, _vars, context) => {
@@ -238,31 +277,30 @@ export function usePatchCcExpensePurchaseNoteMutation() {
     onMutate: async (vars) => {
       const purchaseKey = vars.purchase_key ?? "";
       if (purchaseKey) {
-        const previous = await patchQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
-          applyCcExpensePurchaseNotePatch(old, { ...vars, purchase_key: purchaseKey })!
+        const previous = await patchLineLists(queryClient, (lines) =>
+          applyCcExpensePurchaseNotePatch({ lines }, { ...vars, purchase_key: purchaseKey })!.lines
         );
         return { previous };
       }
       if (vars.statement_line_id != null && vars.statement_line_id > 0) {
-        const previous = await patchQueries<WithLines>(queryClient, [LINE_QUERIES], (old) => ({
-          ...old,
-          lines: old.lines.map((ln) =>
+        const previous = await patchLineLists(queryClient, (lines) =>
+          lines.map((ln) =>
             ln.account_id !== vars.account_id || ln.statement_line_id !== vars.statement_line_id
               ? ln
               : { ...ln, purchase_notes: vars.notes }
-          ),
-        }));
+          )
+        );
         return { previous };
       }
       return { previous: undefined };
     },
     onSuccess: (result) => {
-      setQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
-        applyCcExpensePurchaseNotePatch(old, {
+      setLineLists(queryClient, (lines) =>
+        applyCcExpensePurchaseNotePatch({ lines }, {
           account_id: result.account_id,
           purchase_key: result.purchase_key,
           notes: result.notes,
-        })!
+        })!.lines
       );
       // The card page's purchase tables show the same note (a plan's `expense_purchase_key`).
       queryClient.setQueriesData<AccountDetailBundleResponse>(
@@ -324,17 +362,17 @@ export function usePutCcExpensePurchaseBigGroupMutation() {
     mutationFn: (vars: PutCcExpensePurchaseBigGroupVars) =>
       api.putCcExpensePurchaseBigGroup(vars),
     onMutate: async (vars) => {
-      const previous = await patchQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
-        applyCcExpensePurchaseBigGroupPatch(old, vars)!
+      const previous = await patchLineLists(queryClient, (lines) =>
+        applyCcExpensePurchaseBigGroupPatch({ lines }, vars)!.lines
       );
       return { previous };
     },
     onSuccess: (result) => {
-      setQueries<WithLines>(queryClient, [LINE_QUERIES], (old) =>
-        applyCcExpensePurchaseBigGroupPatch(old, {
+      setLineLists(queryClient, (lines) =>
+        applyCcExpensePurchaseBigGroupPatch({ lines }, {
           purchase_key: result.purchase_key,
           group_slug: result.group_slug,
-        })!
+        })!.lines
       );
     },
     onSettled: () => {
@@ -743,6 +781,30 @@ export function useDeleteManualExpenseMutation() {
   return useMutation({
     mutationFn: (id: number) => api.deleteManualExpense(id),
     onSuccess: () => {
+      void invalidateResources(queryClient, resources.expenseLines());
+    },
+  });
+}
+
+/**
+ * A card credit names the purchase it refunds, or names none again: the refund's name, its
+ * category (it takes the purchase's while «sin categoría») and every total built on the lines move.
+ */
+export function useLinkCardRefundMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { account_id: number; line_id: number; purchase_line_id: number }) => api.linkCardRefund(vars),
+    onSettled: () => {
+      void invalidateResources(queryClient, resources.expenseLines());
+    },
+  });
+}
+
+export function useUnlinkCardRefundMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { account_id: number; line_id: number }) => api.unlinkCardRefund(vars.account_id, vars.line_id),
+    onSettled: () => {
       void invalidateResources(queryClient, resources.expenseLines());
     },
   });

@@ -15,7 +15,10 @@ import {
 import { buildFlowsCheckingIncomePayload, flowsCheckingIncomeListsInUnit } from "./flowsCheckingInflows.js";
 import { buildFlowsOverviewPayload, flowsOverviewTotals } from "./flowsOverview.js";
 import { buildPayrollBreakdown } from "./payrollBreakdown.js";
-import { buildFlowsExpensesGastosPayload } from "./flowsExpensesGastos.js";
+import { buildFlowsExpenseLines } from "./flowsExpenses.js";
+import { buildExpensesSpentResponse } from "./flowsExpensesSpent.js";
+import { gastosMonthRows } from "./flowsExpensesGastos.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildFlowsIncomeAggregates } from "./flowsOverview.js";
 import { upcomingMonthsInUnit, type UpcomingPaymentsMonth } from "./upcomingPayments.js";
 
@@ -217,22 +220,27 @@ describe("income, payroll and the flows overview in EUR", () => {
     expect(roundedTo(eur.total, 2)).toBe(true);
   });
 
-  it("the gastos month rows and big groups are euros rounded to the cent", () => {
-    const clp = buildFlowsExpensesGastosPayload("clp", new Set(), true);
-    const eur = buildFlowsExpensesGastosPayload("eur", new Set(), true);
-    const view = eur.views["split|category"]!;
-    expect(view.by_month.length).toBeGreaterThan(0);
-    for (const r of [...view.by_month, ...view.by_year]) {
+  it("the gastos month rows, the spent months and big groups are euros rounded to the cent", () => {
+    const lines = buildFlowsExpenseLines();
+    const eurRows = gastosMonthRows(lines, "split", "eur");
+    expect(eurRows.length).toBeGreaterThan(0);
+    for (const r of eurRows) {
       for (const v of [r.gastos_mes, r.gastos_real_mes, r.abonos_mes, r.gastos_acumulado, r.gastos_real_acumulado]) {
         expect(roundedTo(v, 2)).toBe(true);
       }
     }
-    expect(roundedTo(view.total, 2)).toBe(true);
-    const clpView = clp.views["split|category"]!;
-    expect(view.by_month.map((r) => r.period_month)).toEqual(clpView.by_month.map((r) => r.period_month));
+    expect(eurRows.map((r) => r.period_month)).toEqual(gastosMonthRows(lines, "split", "clp").map((r) => r.period_month));
+    const today = chileCalendarTodayYmd();
     for (const mode of ["split", "total"] as const) {
-      expect(eur.big_group_usage[mode].map((g) => g.slug)).toEqual(clp.big_group_usage[mode].map((g) => g.slug));
-      for (const g of eur.big_group_usage[mode]) expect(roundedTo(g.total, 2)).toBe(true);
+      const opts = (unit: string) => ({ unit, mode, level: "category" as const, excludedBigGroups: new Set<string>(), includePreTax: true });
+      const clp = buildExpensesSpentResponse(lines, opts("clp"), "1y", today);
+      const eur = buildExpensesSpentResponse(lines, opts("eur"), "1y", today);
+      for (const m of eur.months) {
+        for (const v of [m.total, m.total_real, ...m.cells.map((c) => c.value)]) expect(roundedTo(v, 2)).toBe(true);
+      }
+      for (const d of eur.chart) expect(roundedTo(d.total, 2)).toBe(true);
+      expect(eur.big_group_usage.map((g) => g.slug)).toEqual(clp.big_group_usage.map((g) => g.slug));
+      for (const g of eur.big_group_usage) expect(roundedTo(g.total, 2)).toBe(true);
     }
   });
 

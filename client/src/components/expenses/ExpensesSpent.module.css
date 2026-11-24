@@ -1,0 +1,675 @@
+/* The Expenses page by spending day (ExpensesPage.tsx and the components beside this file):
+   month-to-date chart with its day strip, category pills, calendar + line list, month matrix. */
+
+.mono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quiet text toggles («cuotas separadas · total»), the current one lifted. */
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  font-size: var(--font-size-ui);
+  color: var(--muted);
+}
+
+.toggleGroup {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.toggle {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--text);
+}
+
+.toggleOn {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+
+.titleRow h3 {
+  margin: 0;
+  font-weight: 400;
+  font-size: var(--font-size-ui);
+}
+
+/* ---- chart ---- */
+
+/* The plot leaves room on the right for the end label; strip and axis share its width. */
+/* The chart's frame: narrow ones (phones) drop the end label and the room it takes. */
+.chartFrame {
+  container-type: inline-size;
+}
+
+.plot {
+  padding-right: 7rem;
+}
+
+@container (max-width: 720px) {
+  .plot {
+    padding-right: 0;
+  }
+
+  .endLabel {
+    display: none;
+  }
+}
+
+.chartBox {
+  position: relative;
+  margin-top: 10px;
+}
+
+.chartSvg {
+  display: block;
+  width: 100%;
+  height: 210px;
+  overflow: visible;
+}
+
+.monthBand {
+  fill: var(--chart-band-fill);
+}
+
+.monthBandOn {
+  fill: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.hairline {
+  stroke: var(--hairline);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 2 3;
+}
+
+.topEdge {
+  fill: none;
+  stroke: var(--text);
+  stroke-opacity: 0.55;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* A year's average monthly gasto: a quiet dashed level, hoverable for its value. */
+.yearAverage {
+  stroke: var(--text);
+  stroke-opacity: 0.6;
+  stroke-width: 1.25;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+}
+
+.endLabel {
+  position: absolute;
+  transform: translate(8px, -50%);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.endLabel::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--text);
+  vertical-align: middle;
+}
+
+.axis {
+  position: relative;
+  height: 18px;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.axisMonth {
+  position: absolute;
+  top: 2px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+
+button.axisMonth {
+  cursor: pointer;
+}
+
+button.axisMonth:hover,
+.axisMonthOn {
+  color: var(--text);
+}
+
+.axisMonthOn {
+  font-weight: 600;
+}
+
+.strip {
+  display: block;
+  width: 100%;
+  height: 10px;
+  margin-top: 4px;
+}
+
+.stripCell {
+  cursor: pointer;
+}
+
+/* ---- pills ---- */
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-caption);
+  cursor: pointer;
+}
+
+.pill:hover {
+  border-color: var(--muted);
+}
+
+.pillOn {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.pillDim {
+  opacity: 0.45;
+}
+
+.dot {
+  flex: none;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.pillAmount {
+  color: var(--muted);
+}
+
+/* ---- calendar + list ---- */
+
+.calendarRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: stretch;
+}
+
+/* Beside the calendar the list takes the calendar's height and scrolls inside it (its header
+   stays); stacked under it (narrow) the list is whole and the page scrolls. */
+.listColumn {
+  position: relative;
+  min-height: 0;
+}
+
+.listPane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.listScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@container (max-width: 760px) {
+  .calendarRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .listPane {
+    position: static;
+  }
+
+  .listScroll {
+    overflow-y: visible;
+  }
+}
+
+.calendarTile {
+  container-type: inline-size;
+}
+
+.calendars {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.calTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+  font-size: var(--font-size-ui);
+  color: var(--muted);
+}
+
+.calTitleButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.calTitleOn {
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 4px;
+}
+
+.weekdays,
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.weekdays {
+  margin-bottom: 4px;
+  font-size: 0.66rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+.cell {
+  position: relative;
+  aspect-ratio: 1.25;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.66rem;
+  text-align: left;
+  vertical-align: top;
+  cursor: pointer;
+}
+
+/* A cell two days share (a sixth week folded up): two triangles on the diagonal, a hair apart;
+   the earlier day top-left, the later one bottom-right, each number in its own corner. */
+.cellSplit {
+  position: relative;
+  aspect-ratio: 1.25;
+}
+
+.cellSplit > .cell {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+}
+
+.halfTop {
+  clip-path: polygon(0 0, calc(100% - 3px) 0, 0 calc(100% - 3px));
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.halfBottom {
+  clip-path: polygon(100% 3px, 100% 100%, 3px 100%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+/* An outline would be clipped to the triangle: the picked half shows an inset edge instead. */
+.cellSplit > .cellOn {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--text);
+}
+
+/* Today's mark right under the half's number: below the top-left one (the cell's bottom edge is
+   clipped there), under the bottom-right one with the number lifted to make room. */
+.halfTop.cellToday::after {
+  bottom: auto;
+  top: calc(3px + 1.25em);
+  right: auto;
+  width: 1.3em;
+}
+
+.halfBottom.cellToday {
+  padding-bottom: 6px;
+}
+
+.halfBottom.cellToday::after {
+  left: auto;
+  width: 1.3em;
+}
+
+/* The older months (top row): dimmed, with half-height cells; full strength on hover or focus. */
+.calCompact {
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.calCompact:hover,
+.calCompact:focus-within {
+  opacity: 1;
+}
+
+.calCompact .cell,
+.calCompact .cellSplit {
+  aspect-ratio: 2.5;
+  padding-block: 1px;
+}
+
+.cell[data-level="1"] {
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  color: var(--text);
+}
+
+.cell[data-level="2"] {
+  background: color-mix(in srgb, var(--accent) 40%, var(--surface));
+  color: var(--text);
+}
+
+.cell[data-level="3"] {
+  background: color-mix(in srgb, var(--accent) 62%, var(--surface));
+  color: var(--text);
+}
+
+.cell[data-level="4"] {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.cellFuture {
+  border: 1px dashed var(--hairline);
+  background: none;
+  cursor: default;
+  opacity: 0.5;
+}
+
+.cellOn {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.cellToday::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 3px;
+  height: 1px;
+  background: currentColor;
+}
+
+/* The line list beside the calendar. */
+.listHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+  font-size: var(--font-size-ui);
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stepButton {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.stepButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.listTitle {
+  font-weight: 600;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 4px 1px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+}
+
+.chipX {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chipX:hover {
+  color: var(--text);
+}
+
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.listTotal {
+  margin-left: auto;
+  /* Ends over the rows' amounts: clear of the ⋯ column (1.75rem) and its gap, as the table's header. */
+  margin-right: calc(1.75rem + 0.6rem);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+
+
+/* ---- matrix ---- */
+
+.matrixWrap {
+  container-type: inline-size;
+}
+
+.matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-table);
+}
+
+.matrix th,
+.matrix td {
+  padding: 6px 8px 3px;
+  line-height: 1.2;
+  border-bottom: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.matrix th:first-child,
+.matrix td:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.matrix thead th {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.colButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.colButton:hover {
+  color: var(--text);
+}
+
+.colOn {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow: inset 1px 0 0 var(--accent), inset -1px 0 0 var(--accent);
+}
+
+/* The column's outline closes under its last row. */
+.matrix tbody tr:last-child td.colOn {
+  box-shadow: inset 1px 0 0 var(--accent), inset -1px 0 0 var(--accent), inset 0 -1px 0 var(--accent);
+}
+
+.matrix thead th.colOn {
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 1px 0 0 var(--accent), inset -1px 0 0 var(--accent), inset 0 1px 0 var(--accent);
+}
+
+.rowLabel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.rowDim td {
+  opacity: 0.4;
+}
+
+.cellButton {
+  /* The bar on top (one width and scale down the column), the number under it. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.barSlot {
+  flex: none;
+  /* The fill grows from the right, toward the number's start. */
+  display: flex;
+  justify-content: flex-end;
+  /* A short slot over the number's right end: the same width down the column, so one scale. */
+  width: min(100%, 72px);
+  height: 3px;
+  background: color-mix(in srgb, var(--hairline) 50%, transparent);
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+}
+
+.totalRow td {
+  font-weight: 600;
+}
+
+.quietRow td {
+  color: var(--muted);
+}
+
+/* Narrow: the three most recent months only. */
+/* Month columns by rank (ExpensesMonthMatrix `narrowClass`): ~200px of names + 120px a month. */
+@container (max-width: 439px) {
+  .hideRank1 {
+    display: none;
+  }
+}
+
+@container (max-width: 559px) {
+  .hideRank2 {
+    display: none;
+  }
+}
+
+@container (max-width: 679px) {
+  .hideRank3 {
+    display: none;
+  }
+}
+
+@container (max-width: 799px) {
+  .hideRank4 {
+    display: none;
+  }
+}
+
+@container (max-width: 919px) {
+  .hideRank5 {
+    display: none;
+  }
+}

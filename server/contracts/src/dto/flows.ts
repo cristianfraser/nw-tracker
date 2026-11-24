@@ -505,7 +505,14 @@ export interface FlowCcExpenseLineRow {
     purchase_date: string;
     link_label?: ExpenseLinkLabel;
     payment_receipt?: PaymentReceipt;
+    /** The user named the purchase (the row's «Reembolso de…»): the row may undo it. */
+    manual?: true;
   };
+  /**
+   * A card credit with no purchase named whose only same-merchant candidate is this purchase: the
+   * row offers it for one confirm (server `cardRefundLinks.ts`).
+   */
+  refund_suggestion?: { line_id: number; purchase_date: string; amount: Money; name: ShownName };
   /** A card line the bank charged as financing (section 3), as the card's P/L counts it. */
   is_financing_cost?: true;
   /** Deducted from a payslip before the pay reached the account: the Expenses page shows it only when asked. */
@@ -520,13 +527,7 @@ export interface FlowCcExpenseLineRow {
   /** The flow the line is (what an assignment hangs off; server `withExpenseLineFlowIds`). */
   flow_id?: number;
   // The line's shape (server `expenseLineShapes.ts`, the pipeline's last step): the client picks these.
-  /** The month the line is shown in (a plan's whole price: its purchase month; a cuota: its billing month). */
-  period_month?: string;
-  /** Whether it counts toward gasto del mes in each installment mode. */
-  counts_toward_gastos?: Record<"split" | "total", boolean>;
-  /** The month-modal sections that list it (in `period_month`), per installment mode. */
-  month_modal_sections?: Record<"split" | "total", ExpenseMonthModalSection[]>;
-  /** A payment or credit: the «Abonos» section of the month and facturación modals. */
+  /** A payment or credit: the «Abonos» section of the facturación modal. */
   abono?: boolean;
   /** A positive charge still «sin categoría» that counts: the pending-classification list. */
   pending_classification?: boolean;
@@ -538,10 +539,11 @@ export interface FlowCcExpenseLineRow {
   can_edit_installment?: boolean;
   /** The row may break it into pieces. */
   can_edit_pieces?: boolean;
+  /** The row may name the purchase this card credit refunds, or undo the name. */
+  can_link_refund?: boolean;
+  /** The purchase this card credit was linked to is no line any more: the row offers to undo the link. */
+  refund_link_broken?: true;
 }
-
-/** A section of the expenses month modal. */
-export type ExpenseMonthModalSection = "purchases" | "installments" | "abonos" | "excluded";
 
 /** A card or checking purchase line and its pieces (`GET /api/flows/expenses/line-pieces`). */
 export interface ExpenseLinePieces {
@@ -673,8 +675,6 @@ export interface DepositsReconciliationPayload {
 
 /**
  * Which expense lines `GET /api/flows/expenses/lines` returns. Exactly one selector per request:
- *  - `month`: every line shown in a month of the Expenses page (`period_month`), every modal
- *    section; the client splits the sections from each line's `month_modal_sections`.
  *  - `facturacion`: the lines a card's facturación lists (the rule `flowLinesForFacturacionMonth`
  *    held on the client: the card's lines whose `billing_month` is the facturación; a closed
  *    facturación lists its statements' own lines, an open or provisional one adds the ledger's
@@ -686,7 +686,6 @@ export interface DepositsReconciliationPayload {
  * off, they are left out, as the Expenses page's sections leave them out.
  */
 export type FlowsExpenseLinesSelector =
-  | { kind: "month"; period_month: string; include_pre_tax: boolean }
   | { kind: "facturacion"; account_id: number; billing_month: string }
   | { kind: "uncategorized"; include_pre_tax: boolean }
   | { kind: "deposit_matched"; include_pre_tax: boolean }
@@ -694,7 +693,7 @@ export type FlowsExpenseLinesSelector =
 
 /**
  * `GET /api/flows/expenses/lines?unit=&<selector>[&include_pre_tax=1]`, the selector being one of
- * `month=YYYY-MM`, `account_id=<id>&billing_month=YYYY-MM`, `list=uncategorized|deposit_matched`,
+ * `account_id=<id>&billing_month=YYYY-MM`, `list=uncategorized|deposit_matched`,
  * `big_group=<slug>`. Lines in the order the expense-line pipeline emits them; the client sorts.
  * Categories and big groups ride along for the pickers on each line.
  */
@@ -710,6 +709,28 @@ export interface FlowsExpenseLinesResponse {
   page?: FlowsExpenseLinesPage;
   categories: CcExpenseCategoryDto[];
   big_groups: CcExpenseBigGroupDto[];
+}
+
+/** One purchase a card credit may refund (`GET /api/flows/expenses/refund-candidates`). */
+export interface CardRefundCandidate {
+  line_id: number;
+  purchase_date: string;
+  amount: Money;
+  converted: LineConverted | null;
+  name: ShownName;
+  category_slug: string;
+  /** Under the credit's own merchant (listed first). */
+  merchant_match: boolean;
+}
+
+/**
+ * `GET /api/flows/expenses/refund-candidates?unit=&account_id=&line_id=`: the purchases a card credit
+ * may refund — the same card, the credit's currency, worth at least the credit, bought up to 120 days
+ * before it; the merchant's own first, then the newest (server `cardRefundLinks.ts`).
+ */
+export interface CardRefundCandidatesResponse {
+  unit: DisplayUnitCode;
+  candidates: CardRefundCandidate[];
 }
 
 /** One page of a paged expense-lines list. */
@@ -763,42 +784,119 @@ export interface FlowsExpensesFinancingCandidatesResponse {
   candidates: FinancingCandidateDto[];
 }
 
-/** One calendar year's average monthly gastos and the months it covers (YYYY-MM, inclusive). */
-export interface ExpenseYearMonthlyAverage {
+/**
+ * The Expenses page's ranges for the month-to-date chart and its day strip (`GET
+ * /api/flows/expenses/spent?range=`): N days ending today, or every day since the first spend.
+ */
+export const EXPENSES_SPENT_RANGES = ["90d", "6m", "1y", "5y", "total"] as const;
+export type ExpensesSpentRange = (typeof EXPENSES_SPENT_RANGES)[number];
+
+/** One day of spend on the Expenses page, with its heat level (0 = nothing, 1–4 by quartile). */
+export interface ExpensesSpentDay {
+  /** YYYY-MM-DD. */
+  day: string;
+  /** What the day spent, in the payload's unit (refunds net). */
+  total: number;
+  level: 0 | 1 | 2 | 3 | 4;
+}
+
+/** One day of the month-to-date chart: each category's spend so far this month, and their sum. */
+export interface ExpensesSpentChartDay {
+  day: string;
+  /** Month-to-date per category, aligned with `category_slugs`; resets on the 1st. */
+  stacks: number[];
+  /** Month-to-date gasto: what the month's total counts so far (a mortgage payment's carrying, never its amortization). */
+  total: number;
+}
+
+/** One cell of the month × category matrix, with its bar (0–1, one scale for the whole matrix). */
+export interface ExpensesSpentCell {
+  value: number;
+  bar: number;
+}
+
+/** One month of the Expenses page, by the day each expense was spent. */
+export interface ExpensesSpentMonth {
+  /** YYYY-MM. */
+  month: string;
+  /** Gasto del mes: what counts, excluded big groups left out. */
+  total: number;
+  /** Every spend line of the month, big groups and non-counting categories included. */
+  total_real: number;
+  line_count: number;
+  /** Per category (at the request's level), aligned with `category_slugs`, with bars. */
+  cells: ExpensesSpentCell[];
+  /** The month's own bar on the totals row (0–1 across the payload's months). */
+  total_bar: number;
+  /** Every calendar day of the month through today, heat levels over the payload's months. */
+  days: ExpensesSpentDay[];
+}
+
+/** A year's average monthly gasto over its complete months (YYYY-MM, inclusive). */
+export interface ExpensesSpentYearAverage {
+  year: string;
   from_ym: string;
   through_ym: string;
   avg: number;
 }
 
-/** One installment mode × category level of the Expenses page (server `flowsExpensesGastos.ts`). */
-export interface FlowsExpensesGastosView {
-  /** The chart's stack keys, in stack order. */
-  chart_category_slugs: string[];
-  /** Full-history headline, rounded to the unit's minor digits. */
-  total: number;
-  total_real: number;
-  /** Newest first, through the latest month with real spend in this mode. */
-  by_month: FlowCcExpenseMonthRow[];
-  /** The same rows rolled up to calendar years, newest first. */
-  by_year: FlowCcExpenseMonthRow[];
-  /** Monthly stacks, oldest first, through the chart's end month, excluded big groups left out. */
-  chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
-  /** The stacks with every big group (stable stack order). Absent = `chart_monthly_by_category`. */
-  chart_sort_monthly_by_category?: FlowCcExpenseCategoryChartPoint[];
-  /** Per-year average of the chart's monthly total, keyed by year (YYYY), over full history. */
-  year_averages: Record<string, ExpenseYearMonthlyAverage>;
-}
-
-/** `GET /api/flows/expenses/gastos?unit=&exclude_big_groups=&include_pre_tax=`. */
-export interface FlowsExpensesGastosResponse {
+/**
+ * `GET /api/flows/expenses/spent?unit=&mode=&level=&range=&exclude_big_groups=&include_pre_tax=`:
+ * the Expenses page by the day each expense was spent (server `flowsExpensesSpent.ts`). A card
+ * purchase counts on its purchase day, a cuota («split») on the day its statement billed it, a
+ * whole installment purchase («total») on its purchase day; nothing after today. Excluded big
+ * groups are left out of everything but `total_real`.
+ */
+export interface FlowsExpensesSpentResponse {
   unit: DisplayUnitCode;
-  /** Whether the payslip deductions (pre-tax expenses) are counted; off by default. */
+  mode: "split" | "total";
+  level: "category" | "subcategory";
   include_pre_tax: boolean;
   excluded_big_groups: string[];
-  /** Keyed `<split|total>|<category|subcategory>`. */
-  views: Record<string, FlowsExpensesGastosView>;
-  /** Big groups that hold spend, per installment mode (in the unit), sorted by label. */
-  big_group_usage: Record<"split" | "total", BigGroupUsage[]>;
+  range: ExpensesSpentRange;
+  /** Chile today (YYYY-MM-DD). */
+  today: string;
+  /** Stack order of the chart and the matrix rows (categories with no spend in the months dropped). */
+  category_slugs: string[];
+  /** Every day of the range through today, oldest first. */
+  chart: ExpensesSpentChartDay[];
+  /** The same days' own spend and heat levels (over the range), for the strip under the chart. */
+  day_strip: ExpensesSpentDay[];
+  /** The last months through the current one, oldest first. */
+  months: ExpensesSpentMonth[];
+  /**
+   * Per year the chart's days touch, the average monthly gasto over that year's complete months
+   * (from the first month with spend, through last month), oldest first; a year with no complete
+   * month is absent.
+   */
+  year_averages: ExpensesSpentYearAverage[];
+  /** Big groups that hold spend in the mode (every big group counted), sorted by label. */
+  big_group_usage: BigGroupUsage[];
+}
+
+/** One day of an Expenses line list, newest day first. */
+export interface ExpensesSpentLinesDay {
+  day: string;
+  /** What the day's listed lines count toward gastos, in the unit. */
+  total: number;
+  lines: FlowCcExpenseLineRow[];
+}
+
+/**
+ * `GET /api/flows/expenses/spent/lines?unit=&mode=&level=&month=[&day=][&category=]&exclude_big_groups=&include_pre_tax=`:
+ * the lines that count toward one month (or one day of it), optionally one category at the
+ * request's level, grouped by day, by the same rule as {@link FlowsExpensesSpentResponse}.
+ */
+export interface FlowsExpensesSpentLinesResponse {
+  unit: DisplayUnitCode;
+  month: string;
+  day: string | null;
+  category: string | null;
+  total: number;
+  line_count: number;
+  days: ExpensesSpentLinesDay[];
+  categories: CcExpenseCategoryDto[];
+  big_groups: CcExpenseBigGroupDto[];
 }
 
 /** One big group's spend in an installment mode (server `bigGroupUsageByMode`). */

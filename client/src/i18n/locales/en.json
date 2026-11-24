@@ -1586,6 +1586,21 @@
     "redemptionEmptyNeedsAttention": "Every redemption is linked or has no bank statement."
   },
   "expenses": {
+    "spent": {
+      "chartTitle": "Month to date, by category",
+      "chartAria": "Each month's spend to date, day by day, by category",
+      "stripAria": "Each day's spend",
+      "allCategories": "all",
+      "modeDay": "day",
+      "modeMonth": "month",
+      "lineCount": "{{count}} lines",
+      "clearCategory": "Clear the category filter",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "empty": "No expenses.",
+      "matrixTitle": "Month by month, by category",
+      "yearAverage": "{{year}} monthly average · {{value}}"
+    },
     "realEstate": {
       "dfl2Field": "DFL-2 «vivienda económica»",
       "dfl2Explain": "Up to 140 m² built, certified at the building's reception. Its rent is not declared in the F22 (up to two such places), and its contribuciones are halved for 20, 15 or 10 years from the reception by built area.",
@@ -1650,7 +1665,6 @@
       "real_estate": "Real estate"
     },
     "creditCard": {
-      "installmentModeLabel": "Installments",
       "installmentModeSplit": "Per installment",
       "installmentModeTotal": "Total",
       "financing": {
@@ -1675,14 +1689,11 @@
         "cuota_comercio": "The card feed lists this «cuota comercio» purchase at its full amount without the number of installments; its first installment bills at the next close.",
         "precio_contado": "The card feed lists this «precio contado» installment purchase at its full amount without the number of installments; its first installment bills at this close."
       },
-      "chartTitle": "Spend by category",
       "chartStyleLabel": "View",
       "chartStyleStacked": "Stacked bars",
       "chartStyleLine": "Lines",
-      "chartYearAverage": "Yearly average",
       "chartTotal": "Total",
       "chartShownTotal": "Shown total",
-      "chartEmpty": "No expenses in this period.",
       "selectRowAria": "Select {{merchant}}",
       "bulkFooterAria": "Actions on selected expenses",
       "bulkSelectedCount": "{{count}} selected",
@@ -1717,19 +1728,10 @@
       },
       "colMonthExpense": "Month spend",
       "colMonthExpenseReal": "Real total",
-      "colCumulative": "Cumulative",
       "colLineCount": "Lines",
-      "emptyMonths": "No statement lines imported.",
-      "currentMonthHint": "Current month",
-      "monthModalTitle": "Expenses {{month}}",
-      "monthModalClose": "Close",
       "monthModalEmpty": "No movements in this calendar month.",
       "modalSectionGastos": "Expenses",
-      "modalSectionPurchases": "Purchases",
-      "modalSectionInstallments": "Installments",
       "modalSectionAbonos": "Credits",
-      "modalSectionExcluded": "Excluded from spend",
-      "modalSectionExcludedHint": "Installment 0, installment-purchase totals (Per-installment mode), the Doesn't count / Deposits categories, and credit notes.",
       "modalSectionEmpty": "No movements.",
       "sourceCreditCard": "Credit card",
       "sourceChecking": "Checking account",
@@ -1748,7 +1750,6 @@
         "bulkPlaceholder": "Assign big group…",
         "bulkSelectAria": "Big group for the selected purchases",
         "chartFilterLabel": "Exclude from chart",
-        "chartFilterHint": "Chart without big groups marked as excluded; the table shows the full total.",
         "sectionTitle": "Big groups",
         "purchaseCount": "{{count}} purchases",
         "emptyGroup": "No purchases in this group.",
@@ -1758,7 +1759,6 @@
         "deleteConfirm": "Delete group “{{label}}”? It has {{count}} assigned purchase(s); remove them from the group before deleting.",
         "deleteBlockedHint": "Remove every purchase from the group before deleting it."
       },
-      "categoryLevelLabel": "Group by",
       "categoryLevelCategory": "Categories",
       "categoryLevelSubcategory": "Subcategories",
       "includePreTax": "Include pre-tax expenses",
@@ -1806,6 +1806,18 @@
         "paidFromAccount": "Payment from {{account}}"
       },
       "lineRow": {
+        "refund": {
+          "label": "Refund of",
+          "suggestion": "Refund of this purchase?",
+          "confirm": "Confirm",
+          "pick": "Find the purchase…",
+          "other": "Another purchase…",
+          "close": "Close",
+          "unlink": "Unlink",
+          "broken": "The purchase this refund was linked to is no longer listed.",
+          "pickAria": "Purchases this credit may refund",
+          "empty": "No purchase on this card fits: same currency, at least the credit, up to 120 days before."
+        },
         "refundOf": "Refund · {{name}}",
         "refundOfPurchase": "Refund of the purchase of {{date}}",
         "annulled": {

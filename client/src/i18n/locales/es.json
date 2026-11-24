@@ -1586,6 +1586,21 @@
     "redemptionEmptyNeedsAttention": "Todos los rescates están vinculados o sin cartola."
   },
   "expenses": {
+    "spent": {
+      "chartTitle": "Acumulado del mes, por categoría",
+      "chartAria": "Gasto acumulado de cada mes, día a día, por categoría",
+      "stripAria": "Gasto de cada día",
+      "allCategories": "todas",
+      "modeDay": "día",
+      "modeMonth": "mes",
+      "lineCount": "{{count}} líneas",
+      "clearCategory": "Quitar el filtro de categoría",
+      "prevMonth": "Mes anterior",
+      "nextMonth": "Mes siguiente",
+      "empty": "Sin gastos.",
+      "matrixTitle": "Mes a mes, por categoría",
+      "yearAverage": "Promedio mensual {{year}} · {{value}}"
+    },
     "realEstate": {
       "dfl2Field": "DFL-2 «vivienda económica»",
       "dfl2Explain": "Hasta 140 m² construidos, certificada en la recepción del edificio. Su arriendo no se declara en el F22 (hasta dos viviendas así) y sus contribuciones se rebajan a la mitad por 20, 15 o 10 años desde la recepción, según la superficie.",
@@ -1650,7 +1665,6 @@
       "real_estate": "Inmuebles"
     },
     "creditCard": {
-      "installmentModeLabel": "Cuotas",
       "installmentModeSplit": "Por cuota",
       "installmentModeTotal": "Total",
       "financing": {
@@ -1675,14 +1689,11 @@
         "cuota_comercio": "El feed de la tarjeta lista esta compra en «cuota comercio» por su monto total sin el número de cuotas; su primera cuota se factura en el cierre siguiente.",
         "precio_contado": "El feed de la tarjeta lista esta compra en cuotas «precio contado» por su monto total sin el número de cuotas; su primera cuota se factura en este cierre."
       },
-      "chartTitle": "Gasto por categoría",
       "chartStyleLabel": "Vista",
       "chartStyleStacked": "Barras apiladas",
       "chartStyleLine": "Líneas",
-      "chartYearAverage": "Promedio anual",
       "chartTotal": "Total",
       "chartShownTotal": "Total mostrado",
-      "chartEmpty": "Sin gastos en este período.",
       "selectRowAria": "Seleccionar {{merchant}}",
       "bulkFooterAria": "Acciones sobre gastos seleccionados",
       "bulkSelectedCount": "{{count}} seleccionados",
@@ -1717,19 +1728,10 @@
       },
       "colMonthExpense": "Gasto del mes",
       "colMonthExpenseReal": "Total real",
-      "colCumulative": "Acumulado",
       "colLineCount": "Líneas",
-      "emptyMonths": "Sin líneas de estado de cuenta importadas.",
-      "currentMonthHint": "Mes actual",
-      "monthModalTitle": "Gastos {{month}}",
-      "monthModalClose": "Cerrar",
       "monthModalEmpty": "Sin movimientos en este mes calendario.",
       "modalSectionGastos": "Gastos",
-      "modalSectionPurchases": "Compras",
-      "modalSectionInstallments": "Cuotas",
       "modalSectionAbonos": "Abonos",
-      "modalSectionExcluded": "Excluidos del gasto",
-      "modalSectionExcludedHint": "Cuota 0, total de compra en cuotas (modo Por cuota), categoría No cuenta / Depósitos, y notas de crédito.",
       "modalSectionEmpty": "Sin movimientos.",
       "sourceCreditCard": "Tarjeta",
       "sourceChecking": "Cuenta corriente",
@@ -1748,7 +1750,6 @@
         "bulkPlaceholder": "Asignar grupo grande…",
         "bulkSelectAria": "Grupo grande para las compras seleccionadas",
         "chartFilterLabel": "Excluir del gráfico",
-        "chartFilterHint": "Gráfico sin grupos grandes marcados como excluidos; la tabla muestra el total completo.",
         "sectionTitle": "Grupos grandes",
         "purchaseCount": "{{count}} compras",
         "emptyGroup": "Sin compras en este grupo.",
@@ -1758,7 +1759,6 @@
         "deleteConfirm": "¿Eliminar el grupo «{{label}}»? Tiene {{count}} compra(s) asignadas; quítalas del grupo antes de eliminar.",
         "deleteBlockedHint": "Quita todas las compras del grupo antes de eliminarlo."
       },
-      "categoryLevelLabel": "Agrupar por",
       "categoryLevelCategory": "Categorías",
       "categoryLevelSubcategory": "Subcategorías",
       "includePreTax": "Incluir gastos antes de impuestos",
@@ -1806,6 +1806,18 @@
         "paidFromAccount": "Pago desde {{account}}"
       },
       "lineRow": {
+        "refund": {
+          "label": "Reembolso de",
+          "suggestion": "¿Reembolso de esta compra?",
+          "confirm": "Confirmar",
+          "pick": "Buscar la compra…",
+          "other": "Otra compra…",
+          "close": "Cerrar",
+          "unlink": "Quitar",
+          "broken": "La compra de este reembolso ya no aparece.",
+          "pickAria": "Compras que este abono puede reembolsar",
+          "empty": "Ninguna compra de esta tarjeta calza: misma moneda, al menos el abono, hasta 120 días antes."
+        },
         "refundOf": "Reembolso · {{name}}",
         "refundOfPurchase": "Reembolso de la compra del {{date}}",
         "annulled": {

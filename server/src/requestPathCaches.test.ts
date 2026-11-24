@@ -22,8 +22,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardAccountRows, buildDashboardNavContext, buildDashboardNavSnapshot } from "./dashboardAccounts.js";
 import { db } from "./db.js";
 import { buildFlowsExpenseLines, buildFlowsExpensesPayload } from "./flowsExpenses.js";
-import { buildFlowsExpensesGastosPayload } from "./flowsExpensesGastos.js";
-import { cachedFlowsExpensesGastosPayload } from "./flowsMortgageCarrying.js";
+import { buildExpensesSpentResponse, cachedExpensesSpentPayload } from "./flowsExpensesSpent.js";
 import {
   cachedFlowsExpenseLinesList,
   cachedFlowsExpensesFinancingCandidates,
@@ -201,7 +200,7 @@ async function requestPathPayloads(): Promise<Map<string, string>> {
     out.set(`nav_snapshot|${unit}`, JSON.stringify(await buildDashboardNavSnapshot(unit)));
     out.set(`nav_context|${unit}`, JSON.stringify(await buildDashboardNavContext(unit, "net_worth")));
     out.set(`overview|${unit}`, JSON.stringify(getDashboardOverviewBlock(unit)));
-    out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set(), false)));
+    out.set(`spent|${unit}`, JSON.stringify(cachedExpensesSpentPayload({ unit: unit, mode: "split", level: "category", excludedBigGroups: new Set(), includePreTax: false }, "6m")));
   }
   out.set("expenses", JSON.stringify(cachedExpenseLists()));
   return out;
@@ -241,7 +240,9 @@ describe("request-path caches", () => {
     const first = await requestPathPayloads();
     // The cached expense payloads are the uncached builds.
     expect(first.get("expenses")).toBe(JSON.stringify(uncachedExpenseLists()));
-    expect(first.get("gastos|clp")).toBe(JSON.stringify(buildFlowsExpensesGastosPayload("clp", new Set(), false)));
+    expect(first.get("spent|clp")).toBe(
+      JSON.stringify(buildExpensesSpentResponse(buildFlowsExpenseLines(), { unit: "clp", mode: "split", level: "category", excludedBigGroups: new Set(), includePreTax: false }, "6m", chileCalendarTodayYmd()))
+    );
 
     const accountId = (
       db.prepare(`SELECT account_id AS id FROM movements WHERE account_id IS NOT NULL AND currency = 'clp' LIMIT 1`).get() as {

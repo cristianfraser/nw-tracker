@@ -11,7 +11,7 @@ import { postCloseLiveBalanceAdjustmentClp, normalizedPostCloseLines } from "./c
 import { ccFinancingCostClpByDate } from "./ccFinancingCostDaily.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { buildFlowsExpenseLines } from "./flowsExpenses.js";
-import { aggregateGastosFromLines } from "./flowsExpensesGastos.js";
+import { aggregateGastosFromLines, countsTowardGastosMes } from "./flowsExpensesGastos.js";
 import { flowLinesForFacturacionMonth } from "./flowsExpenseLineLists.js";
 import { latestMovementRows } from "./latestMovements.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
@@ -178,7 +178,7 @@ describe("annulled purchases: readers", () => {
       expect(purchase.annulled).toEqual({ annulled_purchase_id: annulledId, annulled_on: ANNULLED, basis: "manual" });
       expect(purchase.statement_line_id).toBe(annulledPurchaseLineId(annulledId, "purchase"));
       expect(purchase.flow_id).toBeGreaterThan(0);
-      expect(purchase.counts_toward_gastos).toEqual({ split: true, total: true });
+      expect({ split: countsTowardGastosMes(purchase, "split"), total: countsTowardGastosMes(purchase, "total") }).toEqual({ split: true, total: true });
       expect(purchase.annulment).toBeUndefined();
 
       expect(annulment.purchase_key).toBe(`annulled:${annulledId}`);
@@ -188,7 +188,7 @@ describe("annulled purchases: readers", () => {
       expect(annulment.card_refund).toBe(true);
       expect(annulment.amount).toEqual({ value: -80_000, currency: "clp" });
       expect(annulment.annulment).toEqual({ annulled_purchase_id: annulledId, purchase_date: PURCHASE });
-      expect(annulment.counts_toward_gastos).toEqual({ split: true, total: true });
+      expect({ split: countsTowardGastosMes(annulment, "split"), total: countsTowardGastosMes(annulment, "total") }).toEqual({ split: true, total: true });
       expect(annulment.can_delete).toBe(false);
       expect(annulment.can_edit_pieces).toBe(false);
 

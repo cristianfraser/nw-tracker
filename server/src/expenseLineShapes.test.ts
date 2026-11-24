@@ -2,10 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { withExpenseLineShapes } from "./expenseLineShapes.js";
 import { withLineMoney } from "./lineMoney.js";
-import { countsTowardGastosMes, isGastosRefundLine } from "./flowsExpensesGastos.js";
-import { isCcExpenseTotalsExcludedSlug, isInstallmentCuotaZeroLine } from "./ccExpenseCategories.js";
+import { isGastosRefundLine } from "./flowsExpensesGastos.js";
 
-const RULES = { countsTowardGastosMes, isGastosRefundLine, isCcExpenseTotalsExcludedSlug, isInstallmentCuotaZeroLine };
+const RULES = { isGastosRefundLine, isLinkableCardRefund: () => false };
 
 function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   return {
@@ -44,55 +43,15 @@ const shape = (partial: Partial<FlowCcExpenseLineRow>) => withExpenseLineShapes(
 const cuota = (partial: Partial<FlowCcExpenseLineRow>) =>
   shape({ line_role: "installment_cuota", installment_flag: 1, nro_cuota_current: 1, nro_cuota_total: 3, ...partial });
 
-describe("expense line shapes: month and modal sections", () => {
-  it("a plan's total is shown in its purchase month, a cuota in its billing month", () => {
-    expect(shape({ line_role: "installment_purchase_total", purchase_month: "2025-03" }).period_month).toBe("2025-03");
-    expect(cuota({ billing_month: "2025-06", expense_month: "2025-05" }).period_month).toBe("2025-06");
-    expect(shape({ expense_month: "2025-02" }).period_month).toBe("2025-02");
+describe("expense line shapes: abonos and pending classification", () => {
+  it("a credit that is no refund is an abono; a small unmatched nota and a refund are not", () => {
+    expect(shape({ amount_clp: -43_691, merchant: "NOTA DE CREDITO" }).abono).toBe(true);
+    expect(shape({ amount_clp: -9_999, nota_credito_role: "unmatched_nota" }).abono).toBe(false);
+    expect(shape({ amount_clp: -500, card_refund: true }).abono).toBe(false);
   });
 
-  it("a billed cuota lists under Cuotas per cuota, nowhere in Total", () => {
-    expect(cuota({}).month_modal_sections).toEqual({ split: ["installments"], total: [] });
-  });
-
-  it("a no_cuenta cuota and a cuota 0 list under Excluded", () => {
-    expect(cuota({ category_slug: "no_cuenta" }).month_modal_sections).toEqual({ split: ["excluded"], total: ["excluded"] });
-    expect(cuota({ nro_cuota_current: 0 }).month_modal_sections).toEqual({ split: ["excluded"], total: ["excluded"] });
-  });
-
-  it("a plan's total lists under Compras in Total and under Excluded per cuota", () => {
-    const total = shape({ line_role: "installment_purchase_total", installment_flag: 1, nro_cuota_total: 3 });
-    expect(total.month_modal_sections).toEqual({ split: ["excluded"], total: ["purchases"] });
-  });
-
-  it("an annulled plan's total lists under Compras and Excluded in Total", () => {
-    const total = shape({ line_role: "installment_purchase_total", nota_credito_role: "annulled_purchase" });
-    expect(total.month_modal_sections?.total).toEqual(["purchases", "excluded"]);
-  });
-
-  it("purchases in an excluded category list under Excluded, not Compras", () => {
-    expect(shape({ category_slug: "deposits" }).month_modal_sections).toEqual({ split: ["excluded"], total: ["excluded"] });
-  });
-
-  it("a credit that is no refund is an abono; a small unmatched nota is neither", () => {
-    const credit = shape({ amount_clp: -43_691, merchant: "NOTA DE CREDITO" });
-    expect(credit.abono).toBe(true);
-    expect(credit.month_modal_sections).toEqual({ split: ["abonos"], total: ["abonos"] });
-    const nota = shape({ amount_clp: -9_999, nota_credito_role: "unmatched_nota" });
-    expect(nota.abono).toBe(false);
-    expect(nota.month_modal_sections).toEqual({ split: [], total: [] });
-  });
-
-  it("a refund counts in Compras with its negative amount", () => {
-    const refund = shape({ amount_clp: -500, card_refund: true });
-    expect(refund.counts_toward_gastos).toEqual({ split: true, total: true });
-    expect(refund.month_modal_sections).toEqual({ split: ["purchases"], total: ["purchases"] });
-  });
-
-  it("a nota-annulled purchase is excluded and never pending classification", () => {
-    const annulled = shape({ category_slug: "unclassified", nota_credito_role: "annulled_purchase" });
-    expect(annulled.month_modal_sections).toEqual({ split: ["excluded"], total: ["excluded"] });
-    expect(annulled.pending_classification).toBe(false);
+  it("a nota-annulled purchase is never pending classification", () => {
+    expect(shape({ category_slug: "unclassified", nota_credito_role: "annulled_purchase" }).pending_classification).toBe(false);
     expect(shape({ category_slug: "unclassified" }).pending_classification).toBe(true);
   });
 });

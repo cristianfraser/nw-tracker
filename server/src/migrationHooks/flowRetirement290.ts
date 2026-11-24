@@ -15,10 +15,22 @@ const ID_KEY_PREFIX: Partial<Record<SourceSpec["table"], string>> = {
   expense_entries: "manual:",
 };
 
-function holdsSomethingSql(flow: string): string {
+/**
+ * What the delete triggers count as holding a flow, by the migration that installs them: 290 the
+ * holding tables and `flow_links`; 366 adds the card refund links (migration 365), whose either end
+ * keeps its flow (a refund linked to a purchase that a re-import rewrites must find it again).
+ */
+export type FlowHoldingRules = { refundLinks: boolean };
+
+const HOLDING_290: FlowHoldingRules = { refundLinks: false };
+
+function holdsSomethingSql(flow: string, rules: FlowHoldingRules): string {
   return [
     ...FLOW_HOLDING_TABLES.map((t) => `EXISTS (SELECT 1 FROM ${t} h WHERE h.flow_id = ${flow})`),
     `EXISTS (SELECT 1 FROM flow_links h WHERE h.flow_id = ${flow})`,
+    ...(rules.refundLinks
+      ? [`EXISTS (SELECT 1 FROM card_refund_links h WHERE h.flow_id = ${flow} OR h.purchase_flow_id = ${flow})`]
+      : []),
   ].join(" OR ");
 }
 
@@ -27,7 +39,7 @@ function holdsSomethingSql(flow: string): string {
  * with no evidence is deleted when bare (no key, nothing hanging off it) and retired otherwise,
  * remembering the document its last evidence named.
  */
-export function flowRetireDeleteTriggerSql(spec: SourceSpec): string {
+export function flowRetireDeleteTriggerSql(spec: SourceSpec, rules: FlowHoldingRules = HOLDING_290): string {
   const t = spec.table;
   const oldFlow = spec.hasFlowColumn
     ? `OLD.flow_id`
@@ -42,17 +54,17 @@ export function flowRetireDeleteTriggerSql(spec: SourceSpec): string {
   ${detach}
   UPDATE flows SET retired_on = date('now'), retired_source_table = '${t}',
       retired_document_key = (SELECT document_key FROM flow_evidence WHERE source_table = '${t}' AND source_row_id = OLD.id)
-    WHERE id = ${oldFlow} AND NOT ${otherEvidence} AND (legacy_key IS NOT NULL OR ${holdsSomethingSql("flows.id")});
+    WHERE id = ${oldFlow} AND NOT ${otherEvidence} AND (legacy_key IS NOT NULL OR ${holdsSomethingSql("flows.id", rules)});
   DELETE FROM flows WHERE id = ${oldFlow} AND retired_on IS NULL AND legacy_key IS NULL AND NOT ${otherEvidence}
-    AND NOT (${holdsSomethingSql("flows.id")});
+    AND NOT (${holdsSomethingSql("flows.id", rules)});
   DELETE FROM flow_evidence WHERE source_table = '${t}' AND source_row_id = OLD.id;
 END`;
 }
 
-export function installFlowRetireDeleteTriggers(dbi: DatabaseType): void {
+export function installFlowRetireDeleteTriggers(dbi: DatabaseType, rules: FlowHoldingRules = HOLDING_290): void {
   for (const spec of FLOW_SOURCES) {
     dbi.exec(`DROP TRIGGER IF EXISTS flow_${spec.table}_ad`);
-    dbi.exec(flowRetireDeleteTriggerSql(spec));
+    dbi.exec(flowRetireDeleteTriggerSql(spec, rules));
   }
 }
 
@@ -93,7 +105,7 @@ export function runFlowRetirement290(dbi: DatabaseType): void {
     .run().changes;
   const bare = count(
     dbi,
-    `SELECT COUNT(*) AS n FROM flows WHERE retired_on IS NOT NULL AND legacy_key IS NULL AND NOT (${holdsSomethingSql("flows.id")})`
+    `SELECT COUNT(*) AS n FROM flows WHERE retired_on IS NOT NULL AND legacy_key IS NULL AND NOT (${holdsSomethingSql("flows.id", HOLDING_290)})`
   );
   console.log(
     `migration 290: ${documentKeys} movement evidence row(s) keyed by their document; ${detached} id-named key(s) detached; ` +

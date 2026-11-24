@@ -104,6 +104,14 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
   return attachLiveInputs(parsed, parseLiveInputs(res.headers.get(LIVE_INPUTS_HEADER)));
 }
 
+/** The query both spent endpoints share (`range` only the page's). */
+function expensesSpentQuery(p: import("./types").ExpensesSpentParams): URLSearchParams {
+  const q = new URLSearchParams({ unit: p.unit, mode: p.mode, level: p.level, range: p.range });
+  if (p.includePreTax) q.set("include_pre_tax", "1");
+  if (p.excludedBigGroups.length > 0) q.set("exclude_big_groups", [...p.excludedBigGroups].sort().join(","));
+  return q;
+}
+
 export const api = {
   sidebarNav: () => j<import("./types").SidebarNavResponse>("/api/meta/sidebar-nav"),
   panelNetWorthTree: () =>
@@ -657,7 +665,7 @@ export const api = {
     }),
   deleteRealEstateExpenseEntry: (expenseEntryId: number) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
-  /** Expense lines of one selector (a month, a facturación, a list, a big group), in `unit`. */
+  /** Expense lines of one selector (a facturación, a list, a big group), in `unit`. */
   flowsExpenseLines: (
     unit: DisplayUnit,
     selector: import("./types").FlowsExpenseLinesSelector,
@@ -665,9 +673,6 @@ export const api = {
   ) => {
     const q = new URLSearchParams({ unit });
     switch (selector.kind) {
-      case "month":
-        q.set("month", selector.period_month);
-        break;
       case "facturacion":
         q.set("account_id", String(selector.account_id));
         q.set("billing_month", selector.billing_month);
@@ -695,14 +700,22 @@ export const api = {
     j<import("./types").FlowsExpensesFinancingCandidatesResponse>(
       `/api/flows/expenses/financing-candidates?unit=${encodeURIComponent(unit)}`
     ),
-  flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[], includePreTax: boolean) => {
-    const q = new URLSearchParams({ unit });
-    if (includePreTax) q.set("include_pre_tax", "1");
-    if (excludedBigGroups.length > 0) q.set("exclude_big_groups", [...excludedBigGroups].sort().join(","));
-    return j<import("./types").FlowsExpensesGastosResponse>(
-      `/api/flows/expenses/gastos?${q.toString()}`
-    );
+  /** The Expenses page by spending day (chart, day strip, months with calendar days and matrix cells). */
+  flowsExpensesSpent: (params: import("./types").ExpensesSpentParams) =>
+    j<import("./types").FlowsExpensesSpentResponse>(`/api/flows/expenses/spent?${expensesSpentQuery(params).toString()}`),
+  /** The lines that count toward a month (or a day of it, or one category) by spending day. */
+  flowsExpensesSpentLines: (
+    params: import("./types").ExpensesSpentParams,
+    sel: { month: string; day: string | null; category: string | null }
+  ) => {
+    const q = expensesSpentQuery(params);
+    q.delete("range");
+    q.set("month", sel.month);
+    if (sel.day) q.set("day", sel.day);
+    if (sel.category) q.set("category", sel.category);
+    return j<import("./types").FlowsExpensesSpentLinesResponse>(`/api/flows/expenses/spent/lines?${q.toString()}`);
   },
+
   assignCcExpenseLineCategory: (
     lineId: number,
     body: {
@@ -751,6 +764,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** The purchases a card credit may refund (the row's «Reembolso de…»). */
+  cardRefundCandidates: (unit: DisplayUnit, accountId: number, lineId: number) =>
+    j<import("./types").CardRefundCandidatesResponse>(
+      `/api/flows/expenses/refund-candidates?${new URLSearchParams({ unit, account_id: String(accountId), line_id: String(lineId) })}`
+    ),
+  linkCardRefund: (body: { account_id: number; line_id: number; purchase_line_id: number }) =>
+    j<{ ok: true }>("/api/flows/expenses/refund-links", { method: "PUT", body: JSON.stringify(body) }),
+  unlinkCardRefund: (accountId: number, lineId: number) =>
+    j<void>(
+      `/api/flows/expenses/refund-links?${new URLSearchParams({ account_id: String(accountId), line_id: String(lineId) })}`,
+      { method: "DELETE" }
+    ),
   putCcExpensePurchaseBigGroup: (body: { purchase_key: string; group_slug: string | null }) =>
     j<{ purchase_key: string; group_slug: string | null }>(
       "/api/flows/expenses/purchase-big-group",

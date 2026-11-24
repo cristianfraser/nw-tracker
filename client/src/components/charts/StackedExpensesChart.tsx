@@ -10,7 +10,6 @@ import { formatFlowMoney } from "../../flowsDisplay";
 import { currencyFormatInfo } from "../../format";
 import type { DisplayUnit } from "../../queries/keys";
 import { useTranslation } from "../../i18n";
-import type { ExpenseYearMonthlyAverage } from "../../types";
 import { EXPENSE_CHART_TOTAL_KEY, expenseCategoryChartPointTotal } from "../../expenseDepositLinks";
 import { AppComposedChart } from "./AppComposedChart";
 import { renderPeriodRefLine } from "./PeriodRefLine";
@@ -28,8 +27,6 @@ import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 const CHART_ANIM_MS = 90;
 const TOTAL_LINE_STROKE = "#e2e8f0";
-/** Row key carrying the year's average monthly gastos (tooltip only; drawn as segments). */
-const YEAR_AVERAGE_KEY = "__year_avg";
 /** Row key carrying the sum of the series the legend leaves shown (tooltip only). */
 const SHOWN_TOTAL_KEY = "__shown_total";
 
@@ -75,7 +72,6 @@ export function StackedExpensesChart({
   displayUnit,
   xAxisGranularity = "month",
   extendThroughYmd,
-  yearAverages,
   showTotalLine = true,
   loading,
 }: {
@@ -93,11 +89,6 @@ export function StackedExpensesChart({
   xAxisGranularity?: "month" | "year";
   /** Extend the axis with empty periods through this day (the Expenses page: today). */
   extendThroughYmd?: string;
-  /**
-   * Per-year average monthly gastos, drawn as one flat segment per year over its months on the
-   * axis (with a toggle). Null/absent = not offered (yearly chart, short Rango).
-   */
-  yearAverages?: Readonly<Record<string, ExpenseYearMonthlyAverage>> | null;
   /** Draw the Total line (and its legend entry). */
   showTotalLine?: boolean;
   loading?: boolean;
@@ -107,7 +98,6 @@ export function StackedExpensesChart({
   const styleRadioName = useId();
   const [chartStyle, setChartStyle] = useState<ExpenseChartStyle>("stacked_bar");
   const [hiddenLegendKeys, setHiddenLegendKeys] = useState<Set<string>>(() => new Set());
-  const [showYearAverages, setShowYearAverages] = useState(true);
 
   const toggleLegendKey = useCallback((key: string) => {
     setHiddenLegendKeys((prev) => {
@@ -126,7 +116,7 @@ export function StackedExpensesChart({
 
   /**
    * The total is taken before legend-hidden series are zeroed: hiding a legend entry changes
-   * the stack, never the Total line (or the year averages drawn against it).
+   * the stack, never the Total line.
    */
   const densePoints = useMemo(() => {
     const displayPoints = points.map((row) => {
@@ -148,42 +138,16 @@ export function StackedExpensesChart({
     ) as unknown as StackedExpenseChartRow[];
   }, [points, hiddenDataKeys, barKeys, xAxisGranularity, extendThroughYmd]);
 
-  /** One flat segment per year, over that year's plotted months inside its averaged span. */
-  const yearAverageSegments = useMemo(() => {
-    if (!yearAverages) return [];
-    const byYear = new Map<string, { avg: number; first: string; last: string }>();
-    for (const row of densePoints) {
-      const ym = row.as_of_date.slice(0, 7);
-      const year = ym.slice(0, 4);
-      const entry = yearAverages[year];
-      if (!entry || ym < entry.from_ym || ym > entry.through_ym) continue;
-      const seg = byYear.get(year);
-      if (seg) seg.last = row.as_of_date;
-      else byYear.set(year, { avg: entry.avg, first: row.as_of_date, last: row.as_of_date });
-    }
-    return [...byYear.entries()].map(([year, seg]) => ({ year, ...seg }));
-  }, [densePoints, yearAverages]);
-
   const showShownTotal = !showTotalLine || hiddenDataKeys.size > 0;
   const shownKeys = useMemo(() => barKeys.filter((k) => !hiddenDataKeys.has(k)), [barKeys, hiddenDataKeys]);
 
-  /**
-   * Chart rows: the dense points plus each month's year average while the line is shown, and the
-   * total of the shown series while it can differ from the Total line.
-   */
+  /** Chart rows: the dense points plus the total of the shown series while it can differ from the Total line. */
   const chartRows = useMemo(() => {
-    if (!showShownTotal && (!yearAverages || !showYearAverages)) return densePoints;
-    return densePoints.map((row) => {
-      const next: StackedExpenseChartRow = showShownTotal
-        ? { ...row, [SHOWN_TOTAL_KEY]: expenseCategoryChartPointTotal(row, shownKeys) }
-        : row;
-      if (!yearAverages || !showYearAverages) return next;
-      const ym = row.as_of_date.slice(0, 7);
-      const entry = yearAverages[ym.slice(0, 4)];
-      if (!entry || ym < entry.from_ym || ym > entry.through_ym) return next;
-      return { ...next, [YEAR_AVERAGE_KEY]: entry.avg };
-    });
-  }, [densePoints, showShownTotal, shownKeys, showYearAverages, yearAverages]);
+    if (!showShownTotal) return densePoints;
+    return densePoints.map(
+      (row): StackedExpenseChartRow => ({ ...row, [SHOWN_TOTAL_KEY]: expenseCategoryChartPointTotal(row, shownKeys) })
+    );
+  }, [densePoints, showShownTotal, shownKeys]);
 
   const dates = useMemo(() => extractSortedAsOfDates(densePoints), [densePoints]);
   const xAxis = useMemo(() => resolvePeriodXAxis(dates, xAxisGranularity), [dates, xAxisGranularity]);
@@ -271,16 +235,6 @@ export function StackedExpensesChart({
             />
             {t("expenses.creditCard.chartStyleLine")}
           </label>
-          {yearAverages ? (
-            <label className="radio-pill">
-              <input
-                type="checkbox"
-                checked={showYearAverages}
-                onChange={(e) => setShowYearAverages(e.target.checked)}
-              />
-              {t("expenses.creditCard.chartYearAverage")}
-            </label>
-          ) : null}
         </div>
       </div>
       <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")} style={{ height: 280 }}>
@@ -293,7 +247,6 @@ export function StackedExpensesChart({
             formatName: (entry) => {
               const key = String(entry.name ?? entry.dataKey ?? "");
               if (key === EXPENSE_CHART_TOTAL_KEY) return t("expenses.creditCard.chartTotal");
-              if (key === YEAR_AVERAGE_KEY) return t("expenses.creditCard.chartYearAverage");
               if (key === SHOWN_TOTAL_KEY) return t("expenses.creditCard.chartShownTotal");
               return labelByDataKey.get(key) ?? key;
             },
@@ -301,9 +254,6 @@ export function StackedExpensesChart({
               payload.filter((item) => {
                 const key = String(item.dataKey ?? "");
                 if (key === EXPENSE_CHART_TOTAL_KEY || key === SHOWN_TOTAL_KEY) return true;
-                if (key === YEAR_AVERAGE_KEY) {
-                  return typeof item.value === "number" && Number.isFinite(item.value);
-                }
                 if (hiddenDataKeys.has(key)) return false;
                 const v = item.value;
                 return typeof v === "number" && Number.isFinite(v) && v !== 0;
@@ -432,35 +382,6 @@ export function StackedExpensesChart({
               isAnimationActive={false}
             />
           ) : null}
-          {yearAverages && showYearAverages ? (
-            // Invisible series: puts the year average in the tooltip; the segments draw it.
-            <Line
-              type="linear"
-              dataKey={YEAR_AVERAGE_KEY}
-              name={YEAR_AVERAGE_KEY}
-              stroke={TOTAL_LINE_STROKE}
-              strokeOpacity={0}
-              dot={false}
-              activeDot={false}
-              legendType="none"
-              isAnimationActive={false}
-            />
-          ) : null}
-          {showYearAverages
-            ? yearAverageSegments.map((seg) => (
-                <ReferenceLine
-                  key={`year-avg-${seg.year}`}
-                  segment={[
-                    { x: seg.first, y: seg.avg },
-                    { x: seg.last, y: seg.avg },
-                  ]}
-                  stroke={TOTAL_LINE_STROKE}
-                  strokeWidth={1.5}
-                  strokeDasharray="6 4"
-                  strokeOpacity={0.85}
-                />
-              ))
-            : null}
         </AppComposedChart>
       </div>
     </section>

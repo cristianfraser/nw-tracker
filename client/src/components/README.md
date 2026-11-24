@@ -42,7 +42,7 @@ Tables and import UI used on account detail pages.
 
 Expenses tab tables for the Pasivos credit card group.
 
-- **GroupExpensesMonthTable**, **CreditCardExpenseLinesTable**, **CreditCardExpenseMonthModalSections** (expenses month modal: compras / cuotas / abonos / excluidos), **CreditCardFacturacionModalSections** (facturación modal: gastos / abonos), **CreditCardUnclassifiedExpensesTable**
+- **CreditCardExpenseLinesTable**, **CreditCardFacturacionModalSections** (facturación modal: gastos / abonos), **CreditCardUnclassifiedExpensesTable**
 
 ## `sync/` — sync / messages
 

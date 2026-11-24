@@ -7,7 +7,7 @@ import { getDashboardOverviewDaily } from "./dashboardOverviewDaily.js";
 import { db } from "./db.js";
 import { equityMarketKind, marketQuoteCurrency } from "./equityQuote.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
-import { cachedFlowsExpensesGastosPayload } from "./flowsMortgageCarrying.js";
+import { cachedExpensesSpentPayload } from "./flowsExpensesSpent.js";
 import {
   cachedFlowsExpenseLinesList,
   cachedFlowsExpensesFinancingCandidates,
@@ -108,7 +108,7 @@ async function snapshotPayloads(): Promise<Map<string, string>> {
   for (const unit of ["clp", "usd"] as const) {
     out.set(`bundle|${unit}`, JSON.stringify(await buildDashboardPageBundle(unit)));
     out.set(`flows|${unit}`, JSON.stringify(buildFlowsOverviewPayload(unit, "split", null)));
-    out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set(), false)));
+    out.set(`spent|${unit}`, JSON.stringify(cachedExpensesSpentPayload({ unit: unit, mode: "split", level: "category", excludedBigGroups: new Set(), includePreTax: false }, "6m")));
     out.set(`overview_daily|${unit}`, JSON.stringify(getDashboardOverviewDaily(unit, 0)));
     for (const slug of groups) {
       out.set(`daily|${slug}|${unit}`, JSON.stringify(resolveGroupDailySeries(slug, unit, 0)));
