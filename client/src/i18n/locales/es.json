@@ -1413,6 +1413,7 @@
     "chartTitle": "Ingresos por período",
     "chartEmpty": "Sin ingresos en este período.",
     "sectionMonthly": "Resumen mensual",
+    "sectionYearly": "Resumen anual",
     "colIncomeKind": "Tipo",
     "chart": {
       "salary": "Sueldo",

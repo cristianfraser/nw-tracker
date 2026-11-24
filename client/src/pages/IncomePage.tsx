@@ -112,7 +112,7 @@ export function IncomePage() {
 
       <PageGridTile id="monthly">
         <div className="chart-panel-title-row">
-          <h3>{t("income.sectionMonthly")}</h3>
+          <h3>{t(tableGranularity === "year" ? "income.sectionYearly" : "income.sectionMonthly")}</h3>
           <SurfaceControls
             period={tablePrefs.period}
             onPeriodChange={tablePrefs.setPeriod}

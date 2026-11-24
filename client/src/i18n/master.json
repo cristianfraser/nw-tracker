@@ -4500,6 +4500,10 @@
       "en": "Monthly summary",
       "es": "Resumen mensual"
     },
+    "sectionYearly": {
+      "en": "Yearly summary",
+      "es": "Resumen anual"
+    },
     "colIncomeKind": {
       "en": "Type",
       "es": "Tipo"

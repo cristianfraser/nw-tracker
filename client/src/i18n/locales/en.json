@@ -1413,6 +1413,7 @@
     "chartTitle": "Income by period",
     "chartEmpty": "No income in this period.",
     "sectionMonthly": "Monthly summary",
+    "sectionYearly": "Yearly summary",
     "colIncomeKind": "Type",
     "chart": {
       "salary": "Salary",
