@@ -10,7 +10,7 @@ import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
  * `requestPathCaches.test.ts` and `liveTickIncrementalRebuild.test.ts`.
  */
 vi.mock("./dashboardPagePayload.js", () => ({
-  buildDashboardPagePayload: vi.fn(async () => ({ inversiones_deposits_chart: { monthly: [] } })),
+  buildDashboardPagePayload: vi.fn(async () => ({})),
 }));
 vi.mock("./valuationTimeseries.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./valuationTimeseries.js")>()),

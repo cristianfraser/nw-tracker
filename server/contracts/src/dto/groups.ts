@@ -296,9 +296,8 @@ export interface DashboardPageBundleResponse {
 }
 
 /**
- * One period of the home «Δ mensual y depósitos por clase (inversiones)» combo, built on the
- * server (`inversionesPerfSeries.ts`): class P/L bars, Σ Δ, the YTD and all-time running P/L,
- * and the period's net deposits by class.
+ * One period of the home «Δ mensual por clase (inversiones)» combo, built on the server
+ * (`inversionesPerfSeries.ts`): class P/L bars, Σ Δ, the YTD and all-time running P/L.
  */
 export interface InversionesPerfPoint {
   as_of_date: string;
@@ -307,9 +306,6 @@ export interface InversionesPerfPoint {
   delta_combined: number;
   ytd_combined: number;
   accumulated_earnings: number;
-  deposits_retirement: number;
-  deposits_brokerage: number;
-  deposits_inversiones: number;
   /** Fractions (0.05 = 5%), null where the period has no return. Compounded by the server. */
   pct_retirement: number | null;
   pct_brokerage: number | null;

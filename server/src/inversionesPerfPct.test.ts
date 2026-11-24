@@ -29,7 +29,7 @@ describe("inversiones % view vs detalle and Rentabilidad", () => {
       const retM = byMonth(ret.consolidated_monthly);
       const brkM = byMonth(brk.consolidated_monthly);
 
-      const block = buildInversionesPerfMonthly(unit, []);
+      const block = buildInversionesPerfMonthly(unit);
       expect(block.points.length).toBeGreaterThan(3);
       for (const p of block.points) {
         const mk = monthKeyFromYmd(p.as_of_date);

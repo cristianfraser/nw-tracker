@@ -397,18 +397,6 @@ function aggregateDepositChartPointsBy<R extends Pick<FlowDepositRow, "occurred_
   return densifyMonthlyPoints(sorted, emptyPoint);
 }
 
-/** Retiro (the `inversiones` bucket) and brokerage net deposits per chart period, by class. */
-export function inversionesBrokerageDepositsSeries(
-  points: readonly FlowDepositChartPoint[]
-): { as_of_date: string; retirement: number; brokerage: number }[] {
-  return points.map((pt) => ({
-    as_of_date: pt.as_of_date,
-    retirement: pt.inversiones ?? 0,
-    brokerage: pt.brokerage ?? 0,
-  }));
-}
-
-
 // --- one display unit (`GET /api/flows/deposits?unit=`) ----------------------------------------
 
 /** A deposit row on the wire: `amount` in the payload's unit; `amount_clp` stays inside the server. */

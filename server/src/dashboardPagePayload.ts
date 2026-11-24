@@ -12,7 +12,7 @@ import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import { buildNavValueMapPayload } from "./navValueMap.js";
 import { buildDashboardNwBucketTotals, type DashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
-import { buildFlowsDepositsResponse, inversionesBrokerageDepositsSeries } from "./flowsDeposits.js";
+import { buildFlowsDepositsResponse } from "./flowsDeposits.js";
 import type { TsUnit } from "./rates.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
@@ -113,8 +113,6 @@ export async function buildDashboardPagePayload(unit: TsUnit) {
           })),
         accounts: dashboardAccountRowsDto(rowsBuilt),
         liabilities_breakdown: liabilitiesBreakdownInUnit(asOfToday, unit),
-        // Monthly only: the yearly combos roll it up after cutting the months at their Rango.
-        inversiones_deposits_chart: { monthly: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly) },
         ...(isHomeCurrency(unit) ? {} : { fx_conversion_warnings: depositsFlow.fx_conversion_warnings }),
       };
     });

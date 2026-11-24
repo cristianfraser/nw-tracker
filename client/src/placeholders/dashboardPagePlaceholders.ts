@@ -54,9 +54,6 @@ function zeroInversionesPerf(unit: DisplayUnit, monthEnds: string[]): Inversione
       delta_combined: 0,
       ytd_combined: 0,
       accumulated_earnings: 0,
-      deposits_retirement: 0,
-      deposits_brokerage: 0,
-      deposits_inversiones: 0,
       // No return is known while loading: a gap, not a zero.
       pct_retirement: null,
       pct_brokerage: null,

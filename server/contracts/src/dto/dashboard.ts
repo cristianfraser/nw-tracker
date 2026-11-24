@@ -233,25 +233,11 @@ export interface DashboardResponse {
     mortgage: number | null;
     credit_card: number | null;
   };
-  /**
-   * Retiro and brokerage net deposits per month, by class (flows chart aggregation), in the unit;
-   * the yearly combos roll them up after their Rango cut.
-   */
-  inversiones_deposits_chart?: {
-    monthly: InversionesDepositsPoint[];
-  };
   /** Home bucket cards (order + bucket) from `portfolio_groups`; Patrimonio neto hero is not included. */
   dashboard_layout?: DashboardLayoutCardRow[];
   /** True when deposit totals could not be converted (missing fx_daily). */
   fx_conversion_error?: boolean;
   fx_conversion_warnings?: FxConversionWarning[];
-}
-
-/** One period's net deposits into the two invested classes (display unit). */
-export interface InversionesDepositsPoint {
-  as_of_date: string;
-  retirement: number;
-  brokerage: number;
 }
 
 /** `data` = account valuation / flows (tail-clip trailing zeros). `reference` = totals, NW, liquidity overlays. */

@@ -73,13 +73,7 @@ describe("group monthly P/L series vs consolidated monthly table", () => {
       const brkByMonth = new Map(
         getGroupConsolidatedMonthlyRows("brokerage", unit).map((r) => [monthKeyFromYmd(r.as_of_date), r])
       );
-      // Synthetic deposits, month-end dated like the payload's series.
-      const deposits = rowsAsc.map((r, i) => ({
-        as_of_date: monthEndUtcYmd(monthKeyFromYmd(r.as_of_date)),
-        retirement: i,
-        brokerage: 2 * i,
-      }));
-      const block = buildInversionesPerfMonthly(unit, deposits);
+      const block = buildInversionesPerfMonthly(unit);
       expect(block.points.map((p) => p.as_of_date)).toEqual(rowsAsc.map((r) => r.as_of_date));
       const tol = unit === "usd" ? 0.011 : 1.01;
       block.points.forEach((pt, i) => {
@@ -91,9 +85,6 @@ describe("group monthly P/L series vs consolidated monthly table", () => {
         expect(Math.abs(pt.delta_retirement - num(retByMonth.get(mk)?.nominal_pl))).toBeLessThan(tol);
         expect(Math.abs(pt.delta_brokerage - num(brkByMonth.get(mk)?.nominal_pl))).toBeLessThan(tol);
         expect(Math.abs(pt.delta_retirement + pt.delta_brokerage - pt.delta_combined)).toBeLessThan(tol);
-        expect(pt.deposits_retirement).toBe(i);
-        expect(pt.deposits_brokerage).toBe(2 * i);
-        expect(pt.deposits_inversiones).toBe(3 * i);
       });
     }, 600_000);
 

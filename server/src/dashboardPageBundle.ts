@@ -47,11 +47,8 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
     attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit)
   );
   await nextMacrotask();
-  // The P/L + deposits combo, from the inversiones consolidation and the payload's deposits.
-  const depositsMonthly = dash.inversiones_deposits_chart.monthly;
-  const inversionesPerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
-    buildInversionesPerfMonthly(unit, depositsMonthly)
-  );
+  // The class P/L combo, from the inversiones consolidation.
+  const inversionesPerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () => buildInversionesPerfMonthly(unit));
   await nextMacrotask();
   const upcomingPayments = buildUpcomingPayments(undefined, unit);
 
