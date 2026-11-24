@@ -1,4 +1,12 @@
 /** Flows: deposits, income, work earnings, expenses (manual, CC, real estate). Split verbatim from index.ts; paths unchanged. */
+import {
+  cachedExpensesSpentLines,
+  cachedExpensesSpentPayload,
+  ExpensesSpentRequestError,
+  parseSpentLinesSelection,
+  parseSpentOptions,
+  parseSpentRange,
+} from "../flowsExpensesSpent.js";
 import { syncCardToCardPaymentTransfers } from "../cardToCardPayments.js";
 import { assertDemoManualExpenseDescription } from "../demoWritePolicy.js";
 import express from "express";
@@ -383,6 +391,32 @@ app.get("/api/flows/expenses/financing-candidates", (req, res) => {
       requestDisplayUnit(req.query, { surface: "/api/flows/expenses/financing-candidates" })
     )
   );
+});
+
+app.get("/api/flows/expenses/spent", (req, res) => {
+  const unit = requestDisplayUnit(req.query, { surface: "/api/flows/expenses/spent" });
+  try {
+    res.json(cachedExpensesSpentPayload(parseSpentOptions(req.query, unit), parseSpentRange(req.query.range)));
+  } catch (err) {
+    if (err instanceof ExpensesSpentRequestError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+});
+
+app.get("/api/flows/expenses/spent/lines", (req, res) => {
+  const unit = requestDisplayUnit(req.query, { surface: "/api/flows/expenses/spent/lines" });
+  try {
+    res.json(cachedExpensesSpentLines(parseSpentOptions(req.query, unit), parseSpentLinesSelection(req.query)));
+  } catch (err) {
+    if (err instanceof ExpensesSpentRequestError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 });
 
 app.get("/api/flows/expenses/gastos", (req, res) => {

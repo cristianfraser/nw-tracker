@@ -5139,6 +5139,60 @@
     }
   },
   "expenses": {
+    "spent": {
+      "chartTitle": {
+        "en": "Month to date, by category",
+        "es": "Acumulado del mes, por categoría"
+      },
+      "chartAria": {
+        "en": "Each month's spend to date, day by day, by category",
+        "es": "Gasto acumulado de cada mes, día a día, por categoría"
+      },
+      "stripAria": {
+        "en": "Each day's spend",
+        "es": "Gasto de cada día"
+      },
+      "allCategories": {
+        "en": "all",
+        "es": "todas"
+      },
+      "modeDay": {
+        "en": "day",
+        "es": "día"
+      },
+      "modeMonth": {
+        "en": "month",
+        "es": "mes"
+      },
+      "lineCount": {
+        "en": "{{count}} lines",
+        "es": "{{count}} líneas"
+      },
+      "clearCategory": {
+        "en": "Clear the category filter",
+        "es": "Quitar el filtro de categoría"
+      },
+      "prevMonth": {
+        "en": "Previous month",
+        "es": "Mes anterior"
+      },
+      "nextMonth": {
+        "en": "Next month",
+        "es": "Mes siguiente"
+      },
+      "empty": {
+        "en": "No expenses.",
+        "es": "Sin gastos."
+      },
+      "matrixTitle": {
+        "en": "Month by month, by category",
+        "es": "Mes a mes, por categoría"
+      },
+      "yearAverage": {
+        "en": "{{year}} monthly average · {{value}}",
+        "es": "Promedio mensual {{year}} · {{value}}"
+      }
+    },
     "realEstate": {
       "dfl2Field": {
         "en": "DFL-2 «vivienda económica»",
@@ -5380,10 +5434,6 @@
       }
     },
     "creditCard": {
-      "installmentModeLabel": {
-        "en": "Installments",
-        "es": "Cuotas"
-      },
       "installmentModeSplit": {
         "en": "Per installment",
         "es": "Por cuota"
@@ -5468,10 +5518,6 @@
           "es": "El feed de la tarjeta lista esta compra en cuotas «precio contado» por su monto total sin el número de cuotas; su primera cuota se factura en este cierre."
         }
       },
-      "chartTitle": {
-        "en": "Spend by category",
-        "es": "Gasto por categoría"
-      },
       "chartStyleLabel": {
         "en": "View",
         "es": "Vista"
@@ -5495,10 +5541,6 @@
       "chartShownTotal": {
         "en": "Shown total",
         "es": "Total mostrado"
-      },
-      "chartEmpty": {
-        "en": "No expenses in this period.",
-        "es": "Sin gastos en este período."
       },
       "selectRowAria": {
         "en": "Select {{merchant}}",
@@ -5630,29 +5672,9 @@
         "en": "Real total",
         "es": "Total real"
       },
-      "colCumulative": {
-        "en": "Cumulative",
-        "es": "Acumulado"
-      },
       "colLineCount": {
         "en": "Lines",
         "es": "Líneas"
-      },
-      "emptyMonths": {
-        "en": "No statement lines imported.",
-        "es": "Sin líneas de estado de cuenta importadas."
-      },
-      "currentMonthHint": {
-        "en": "Current month",
-        "es": "Mes actual"
-      },
-      "monthModalTitle": {
-        "en": "Expenses {{month}}",
-        "es": "Gastos {{month}}"
-      },
-      "monthModalClose": {
-        "en": "Close",
-        "es": "Cerrar"
       },
       "monthModalEmpty": {
         "en": "No movements in this calendar month.",
@@ -5662,25 +5684,9 @@
         "en": "Expenses",
         "es": "Gastos"
       },
-      "modalSectionPurchases": {
-        "en": "Purchases",
-        "es": "Compras"
-      },
-      "modalSectionInstallments": {
-        "en": "Installments",
-        "es": "Cuotas"
-      },
       "modalSectionAbonos": {
         "en": "Credits",
         "es": "Abonos"
-      },
-      "modalSectionExcluded": {
-        "en": "Excluded from spend",
-        "es": "Excluidos del gasto"
-      },
-      "modalSectionExcludedHint": {
-        "en": "Installment 0, installment-purchase totals (Per-installment mode), the Doesn't count / Deposits categories, and credit notes.",
-        "es": "Cuota 0, total de compra en cuotas (modo Por cuota), categoría No cuenta / Depósitos, y notas de crédito."
       },
       "modalSectionEmpty": {
         "en": "No movements.",
@@ -5751,10 +5757,6 @@
           "en": "Exclude from chart",
           "es": "Excluir del gráfico"
         },
-        "chartFilterHint": {
-          "en": "Chart without big groups marked as excluded; the table shows the full total.",
-          "es": "Gráfico sin grupos grandes marcados como excluidos; la tabla muestra el total completo."
-        },
         "sectionTitle": {
           "en": "Big groups",
           "es": "Grupos grandes"
@@ -5787,10 +5789,6 @@
           "en": "Remove every purchase from the group before deleting it.",
           "es": "Quita todas las compras del grupo antes de eliminarlo."
         }
-      },
-      "categoryLevelLabel": {
-        "en": "Group by",
-        "es": "Agrupar por"
       },
       "categoryLevelCategory": {
         "en": "Categories",

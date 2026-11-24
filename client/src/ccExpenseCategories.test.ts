@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   assignableCcExpenseCategories,
-  ccExpenseCategoriesAtLevel,
   ccExpenseCategoryPathLabel,
-  chartCcExpenseCategories,
 } from "./ccExpenseCategories";
-import type { FlowCcExpenseCategoryChartPoint } from "./types";
 import type { CcExpenseCategoryDto } from "./types";
 
 function cat(slug: string, sort_order: number, parent_slug: string | null = null): CcExpenseCategoryDto {
@@ -31,11 +28,6 @@ describe("subcategories", () => {
     expect(ccExpenseCategoryPathLabel(cat("taxes", 11, "bills"))).toBe("Cuentas y servicios › Impuestos");
     expect(ccExpenseCategoryPathLabel(cat("bills", 10))).toBe("Cuentas y servicios");
   });
-
-  it("the category level lists only the top-level categories", () => {
-    expect(ccExpenseCategoriesAtLevel(cats, "category").map((c) => c.slug)).toEqual(["transportation", "bills", "food"]);
-    expect(ccExpenseCategoriesAtLevel(cats, "subcategory")).toHaveLength(5);
-  });
 });
 
 describe("assignableCcExpenseCategories", () => {
@@ -60,33 +52,3 @@ describe("assignableCcExpenseCategories", () => {
   });
 });
 
-describe("chartCcExpenseCategories", () => {
-  it("orders by average monthly gasto desc; others penultimate; unclassified last", () => {
-    const categories = [
-      cat("food", 30),
-      cat("bills", 10),
-      cat("transportation", 40),
-      cat("others", 90),
-      cat("unclassified", 0),
-      cat("no_cuenta", 4),
-    ];
-    const points: FlowCcExpenseCategoryChartPoint[] = [
-      {
-        as_of_date: "2025-01-31",
-        food: 100,
-        bills: 500,
-        transportation: 50,
-        others: 10_000,
-      },
-      {
-        as_of_date: "2025-02-28",
-        food: 100,
-        bills: 300,
-        transportation: 50,
-        others: 10_000,
-      },
-    ];
-    const slugs = chartCcExpenseCategories(categories, points).map((c) => c.slug);
-    expect(slugs).toEqual(["bills", "food", "transportation", "others", "unclassified"]);
-  });
-});

@@ -801,6 +801,123 @@ export interface FlowsExpensesGastosResponse {
   big_group_usage: Record<"split" | "total", BigGroupUsage[]>;
 }
 
+/**
+ * The Expenses page's ranges for the month-to-date chart and its day strip (`GET
+ * /api/flows/expenses/spent?range=`): N days ending today, or every day since the first spend.
+ */
+export const EXPENSES_SPENT_RANGES = ["90d", "6m", "1y", "5y", "total"] as const;
+export type ExpensesSpentRange = (typeof EXPENSES_SPENT_RANGES)[number];
+
+/** One day of spend on the Expenses page, with its heat level (0 = nothing, 1–4 by quartile). */
+export interface ExpensesSpentDay {
+  /** YYYY-MM-DD. */
+  day: string;
+  /** What the day spent, in the payload's unit (refunds net). */
+  total: number;
+  level: 0 | 1 | 2 | 3 | 4;
+}
+
+/** One day of the month-to-date chart: each category's spend so far this month, and their sum. */
+export interface ExpensesSpentChartDay {
+  day: string;
+  /** Month-to-date per category, aligned with `category_slugs`; resets on the 1st. */
+  stacks: number[];
+  /**
+   * Month-to-date gasto: what the month's total counts so far (a mortgage payment's carrying, not
+   * the amortization its stack draws below zero).
+   */
+  total: number;
+}
+
+/** One cell of the month × category matrix, with its bar (0–1, one scale for the whole matrix). */
+export interface ExpensesSpentCell {
+  value: number;
+  bar: number;
+}
+
+/** One month of the Expenses page, by the day each expense was spent. */
+export interface ExpensesSpentMonth {
+  /** YYYY-MM. */
+  month: string;
+  /** Gasto del mes: what counts, excluded big groups left out. */
+  total: number;
+  /** Every spend line of the month, big groups and non-counting categories included. */
+  total_real: number;
+  line_count: number;
+  /** Per category (at the request's level), aligned with `category_slugs`, with bars. */
+  cells: ExpensesSpentCell[];
+  /** The month's own bar on the totals row (0–1 across the payload's months). */
+  total_bar: number;
+  /** Every calendar day of the month through today, heat levels over the payload's months. */
+  days: ExpensesSpentDay[];
+}
+
+/**
+ * `GET /api/flows/expenses/spent?unit=&mode=&level=&range=&exclude_big_groups=&include_pre_tax=`:
+ * the Expenses page by the day each expense was spent (server `flowsExpensesSpent.ts`). A card
+ * purchase counts on its purchase day, a cuota («split») on the day its statement billed it, a
+ * whole installment purchase («total») on its purchase day; nothing after today. Excluded big
+ * groups are left out of everything but `total_real`.
+ */
+export interface ExpensesSpentYearAverage {
+  year: string;
+  from_ym: string;
+  through_ym: string;
+  avg: number;
+}
+
+export interface FlowsExpensesSpentResponse {
+  unit: DisplayUnitCode;
+  mode: "split" | "total";
+  level: "category" | "subcategory";
+  include_pre_tax: boolean;
+  excluded_big_groups: string[];
+  range: ExpensesSpentRange;
+  /** Chile today (YYYY-MM-DD). */
+  today: string;
+  /** Stack order of the chart and the matrix rows (categories with no spend in the months dropped). */
+  category_slugs: string[];
+  /** Every day of the range through today, oldest first. */
+  chart: ExpensesSpentChartDay[];
+  /** The same days' own spend and heat levels (over the range), for the strip under the chart. */
+  day_strip: ExpensesSpentDay[];
+  /** The last months through the current one, oldest first. */
+  months: ExpensesSpentMonth[];
+  /**
+   * Per year the chart's days touch, the average monthly gasto over that year's complete months
+   * (from the first month with spend, through last month), oldest first; a year with no complete
+   * month is absent.
+   */
+  year_averages: ExpensesSpentYearAverage[];
+  /** Big groups that hold spend in the mode (every big group counted), sorted by label. */
+  big_group_usage: BigGroupUsage[];
+}
+
+/** One day of an Expenses line list, newest day first. */
+export interface ExpensesSpentLinesDay {
+  day: string;
+  /** What the day's listed lines count toward gastos, in the unit. */
+  total: number;
+  lines: FlowCcExpenseLineRow[];
+}
+
+/**
+ * `GET /api/flows/expenses/spent/lines?unit=&mode=&level=&month=[&day=][&category=]&exclude_big_groups=&include_pre_tax=`:
+ * the lines that count toward one month (or one day of it), optionally one category at the
+ * request's level, grouped by day, by the same rule as {@link FlowsExpensesSpentResponse}.
+ */
+export interface FlowsExpensesSpentLinesResponse {
+  unit: DisplayUnitCode;
+  month: string;
+  day: string | null;
+  category: string | null;
+  total: number;
+  line_count: number;
+  days: ExpensesSpentLinesDay[];
+  categories: CcExpenseCategoryDto[];
+  big_groups: CcExpenseBigGroupDto[];
+}
+
 /** One big group's spend in an installment mode (server `bigGroupUsageByMode`). */
 export interface BigGroupUsage {
   slug: string;

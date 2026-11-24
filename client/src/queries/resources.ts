@@ -19,14 +19,15 @@ export const resources = {
   /** The lines' rows only (names, labels): the gastos views and the overview do not move. */
   expenseLineRows: (): Invalidation[] => [
     { queryKey: queryKeys.flowsExpensesLinesAll() },
+    { queryKey: queryKeys.flowsExpensesSpentAll() },
     { queryKey: queryKeys.latestMovementsAll() },
   ],
   /**
-   * A big group on a line: the rows, the gastos views (chart filter, usage), the summary (the
+   * A big group on a line: the rows, the spent views (chart filter, usage), the summary (the
    * active groups, the chart's default exclusion), «Últimos gastos».
    */
   expenseBigGroups: (): Invalidation[] => [
-    { queryKey: queryKeys.flowsExpensesGastosAll() },
+    { queryKey: queryKeys.flowsExpensesSpentAll() },
     { queryKey: queryKeys.flowsExpensesLinesAll() },
     { queryKey: queryKeys.flowsExpensesSummaryAll() },
     { queryKey: queryKeys.latestMovementsAll() },

@@ -1,4 +1,4 @@
-import type { FlowsExpenseLinesSelector } from "../types";
+import type { ExpensesSpentParams, FlowsExpenseLinesSelector } from "../types";
 /**
  * A display unit: a lowercase core currency code the server loads (`clp`, `usd`, `eur`, …;
  * `GET /api/currencies`). Data, not a closed union. The unit a page was showing before a switch
@@ -137,10 +137,13 @@ export const queryKeys = {
   /** The financing manager's pickers; under `flowsExpenses()`, so every line write refreshes them. */
   flowsExpensesFinancingCandidates: (unit: DisplayUnit) =>
     ["flowsExpenses", "financingCandidates", unit] as const,
-  /** Nested under `flowsExpenses()`: every invalidation of the lines refetches the gastos views too. */
-  flowsExpensesGastosAll: () => ["flowsExpenses", "gastos"] as const,
-  flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[], includePreTax: boolean) =>
-    ["flowsExpenses", "gastos", unit, [...excludedBigGroups].sort().join(","), includePreTax] as const,
+  /** The Expenses page by spending day; under `flowsExpenses()`, so every line write refetches it. */
+  /** Both spent payloads (the page's and its line lists). */
+  flowsExpensesSpentAll: () => ["flowsExpenses", "spent"] as const,
+  flowsExpensesSpent: (p: ExpensesSpentParams) =>
+    ["flowsExpenses", "spent", p.unit, p.mode, p.level, p.range, [...p.excludedBigGroups].sort().join(","), p.includePreTax] as const,
+  flowsExpensesSpentLines: (p: ExpensesSpentParams, month: string, day: string | null, category: string | null) =>
+    ["flowsExpenses", "spent", "lines", p.unit, p.mode, p.level, [...p.excludedBigGroups].sort().join(","), p.includePreTax, month, day, category] as const,
   /** Nested under `flowsExpenses()` too: a line edit refetches the overview. Entity = up to the unit. */
   flowsOverview: (unit: DisplayUnit, installmentMode: "split" | "total", days?: number) =>
     withEntity(["flowsExpenses", "overview", unit, installmentMode, days ?? null] as const, 3),

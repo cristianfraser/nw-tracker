@@ -156,6 +156,39 @@ function mortgageLinkAmortizationChartAmount(
   return expenseDepositAmortizationChartAmount(link.amortization_clp);
 }
 
+/**
+ * What one line adds to its gastos month in a mode (the line already counts in the mode's month,
+ * `gastosSumMonthForLine`, and is not an annulled purchase or its nota): a positive line or a
+ * refund is spend — all of it in «total real», its gasto-del-mes share in `gastos` and the chart
+ * stacks it lands in (a mortgage-linked payment: carrying in bills, amortization below zero) —;
+ * any other negative line is an abono. The gastos views and the spent-day views read this one rule.
+ */
+export type GastosLineShare =
+  | { kind: "spend"; real: number; gastos: number; stacks: Array<readonly [string, number]> }
+  | { kind: "abono"; amount: number };
+
+export function gastosShareOfLine(
+  ln: GastosLine,
+  mode: CcInstallmentGastosMode,
+  unit: GastosUnit,
+  amount: number = expenseLineGastosAmount(ln, unit)
+): GastosLineShare {
+  if (!(amount > 0 || isGastosRefundLine(ln))) return { kind: "abono", amount };
+  const link = splittableMortgageLinkOf(ln);
+  if (link) {
+    if (!mortgageLinkedLineCountsInMode(ln, mode)) return { kind: "spend", real: amount, gastos: 0, stacks: [] };
+    const carrying = mortgageLinkCarryingAmount(ln, link, unit);
+    const stacks: Array<readonly [string, number]> = [];
+    if (carrying > 0) stacks.push([BILLS_CC_EXPENSE_SLUG, carrying]);
+    stacks.push([REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG, mortgageLinkAmortizationChartAmount(ln, link, unit)]);
+    return { kind: "spend", real: amount, gastos: carrying, stacks };
+  }
+  if (countsTowardGastosMes(ln, mode)) {
+    return { kind: "spend", real: amount, gastos: amount, stacks: [[ln.category_slug, amount]] };
+  }
+  return { kind: "spend", real: amount, gastos: 0, stacks: [] };
+}
+
 export type GastosAggregate = {
   by_month: FlowCcExpenseMonthRow[];
   chart_monthly: FlowCcExpenseChartPoint[];
@@ -207,30 +240,17 @@ export function aggregateGastosFromLines(
 
     if (sumMonth) {
       const sumBucket = touchBucket(sumMonth);
-      if (amount > 0 || isGastosRefundLine(ln)) {
-        sumBucket.gastosReal += amount;
+      const share = gastosShareOfLine(ln, mode, unit, amount);
+      if (share.kind === "spend") {
+        sumBucket.gastosReal += share.real;
+        sumBucket.gastos += share.gastos;
         const skipChartCategory =
           ln.big_group_slug != null && excludedBigGroupSlugs?.has(ln.big_group_slug) === true;
-        const link = splittableMortgageLinkOf(ln);
-        if (link) {
-          if (mortgageLinkedLineCountsInMode(ln, mode)) {
-            const carrying = mortgageLinkCarryingAmount(ln, link, unit);
-            sumBucket.gastos += carrying;
-            if (!skipChartCategory) {
-              if (carrying > 0) addToCategory(sumMonth, BILLS_CC_EXPENSE_SLUG, carrying);
-              addToCategory(
-                sumMonth,
-                REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
-                mortgageLinkAmortizationChartAmount(ln, link, unit)
-              );
-            }
-          }
-        } else if (countsTowardGastosMes(ln, mode)) {
-          sumBucket.gastos += amount;
-          if (!skipChartCategory) addToCategory(sumMonth, ln.category_slug, amount);
+        if (!skipChartCategory) {
+          for (const [slug, v] of share.stacks) addToCategory(sumMonth, slug, v);
         }
       } else {
-        sumBucket.abonos += amount;
+        sumBucket.abonos += share.amount;
       }
     }
 
