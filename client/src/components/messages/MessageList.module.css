@@ -5,7 +5,9 @@
    switches on (a container query restyles only what is inside it).
 
    Wide: the list is the grid and every row's line a subgrid of it, so date, title and first line
-   line up down the list; the first line takes the rest and cuts with an ellipsis.
+   line up down the list. The title column is as wide as the widest title up to 40% of the list
+   (a longer title cuts with an ellipsis while closed and wraps once open); the first line takes
+   the rest and cuts with an ellipsis.
    Narrow: a line is two — title and date, then the first line under them. */
 .frame {
   container: message-list / inline-size;
@@ -13,7 +15,7 @@
 
 .list {
   display: grid;
-  grid-template-columns: max-content max-content minmax(0, 1fr) max-content;
+  grid-template-columns: max-content fit-content(40%) minmax(0, 1fr) max-content;
   column-gap: 1rem;
   font-size: var(--font-size-prose);
 }
@@ -60,6 +62,14 @@
 .title {
   grid-area: title;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.open .title {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .unread {
@@ -129,5 +139,10 @@
       "first first first";
     column-gap: 0.75rem;
     row-gap: 0.15rem;
+  }
+
+  .title {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }

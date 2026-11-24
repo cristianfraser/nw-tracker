@@ -526,7 +526,7 @@
   },
   "messages": {
     "readAt": "Read {{when}}",
-    "unread": "Unread"
+    "new": "new"
   },
   "notifications": {
     "unreadBadge": "{{count}} unread",

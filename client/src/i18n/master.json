@@ -1660,9 +1660,9 @@
       "en": "Read {{when}}",
       "es": "Leído {{when}}"
     },
-    "unread": {
-      "en": "Unread",
-      "es": "Sin leer"
+    "new": {
+      "en": "new",
+      "es": "nuevo"
     }
   },
   "notifications": {
