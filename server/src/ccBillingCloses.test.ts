@@ -332,9 +332,11 @@ describe("credit-card close evidence", () => {
     expect(plan).toMatchObject({ purchase_billing_month: "2026-09", first_due_month: "2026-09" });
   });
 
-  it("closes the month once its announced next cycle has started, without touching schedule evidence", () => {
+  it("closes the month the day after its announced close, without touching schedule evidence", () => {
     expect(lastClosedBillingMonthForAccount(accountId, "2026-09-23")).toBe("2026-08");
-    expect(lastClosedBillingMonthForAccount(accountId, "2026-09-24")).toBe("2026-09");
+    // The close day is still September's open facturación, though a purchase on it bills October.
+    expect(lastClosedBillingMonthForAccount(accountId, "2026-09-24")).toBe("2026-08");
+    expect(lastClosedBillingMonthForAccount(accountId, "2026-09-25")).toBe("2026-09");
     expect(billingMonthForManualLedgerPurchase(accountId)).toBe("2026-10");
     expect(isProvisionallyClosedBillingMonth(accountId, "2026-09")).toBe(true);
     expect(lastPdfBillingMonthForAccount(accountId)).toBe("2026-08");
@@ -715,8 +717,9 @@ describe("credit-card close evidence", () => {
 
   /**
    * The night before the September close: the plan is on file and the snapshot's open month is
-   * still September. Nothing is written again until a line lands, so on the close day the open
-   * month (October) has neither a bucket nor a snapshot row.
+   * still September, and stays September through the close day. Nothing is written again until a
+   * line lands, so the day after the close the open month (October) has neither a bucket nor a
+   * snapshot row.
    */
   function insertSeptemberPlanBeforeTheClose() {
     vi.setSystemTime(new Date("2026-09-23T15:00:00Z"));
@@ -726,11 +729,13 @@ describe("credit-card close evidence", () => {
       "2026-09 manual",
     ]);
     vi.setSystemTime(new Date("2026-09-24T15:00:00Z")); // 12:00 Chile on the announced close day
+    expect(billingMonthForManualLedgerPurchase(accountId)).toBe("2026-09");
+    vi.setSystemTime(new Date("2026-09-25T15:00:00Z")); // the day after
     expect(billingMonthForManualLedgerPurchase(accountId)).toBe("2026-10");
     expect(bucketId("2026-10")).toBeNull();
   }
 
-  it("the open facturación exists from the close day, before any line or snapshot row lands in it", () => {
+  it("the open facturación exists from the day after the close, before any line or snapshot row lands in it", () => {
     insertSeptemberPlanBeforeTheClose();
     const response = creditCardInstallmentsResponse(accountId);
 
@@ -767,7 +772,7 @@ describe("credit-card close evidence", () => {
     expect(october.projected).toBeUndefined();
     expect(october).toMatchObject({
       as_of_kind: "manual",
-      as_of_date: "2026-09-24",
+      as_of_date: "2026-09-25",
       total_facturado: 30_000,
       cuota_a_pagar_next_mes: 30_000,
       cupo_statement: 60_000,
@@ -786,7 +791,7 @@ describe("credit-card close evidence", () => {
       (r) => r.billing_month === "2026-10" && r.as_of_kind === "manual"
     )!;
     expect([stored.as_of_date, stored.cupo_utilizado_clp, stored.saldo_total_clp]).toEqual([
-      "2026-09-24",
+      "2026-09-25",
       october.cupo_statement,
       october.balance_statement,
     ]);
@@ -857,8 +862,10 @@ describe("credit-card close evidence", () => {
       }),
     ]);
 
-    // The announced close day: October is closed at the bank, November is the open facturación.
+    // The announced close day is still October's; the day after, November is the open facturación.
     vi.setSystemTime(new Date("2026-10-26T15:00:00Z"));
+    expect(billingMonthForManualLedgerPurchase(accountId)).toBe("2026-10");
+    vi.setSystemTime(new Date("2026-10-27T15:00:00Z"));
     expect(billingMonthForManualLedgerPurchase(accountId)).toBe("2026-11");
     const ledger = ccInstallmentsDbApiPayload(accountId);
     facturaciones = buildFacturaciones(accountId, ledger.months);
@@ -880,7 +887,7 @@ describe("credit-card close evidence", () => {
     const detail = buildBillingDetailByMonth(accountId, ledger.months);
     expect(detail.find((d) => d.billing_month === "2026-11")).toMatchObject({
       as_of_kind: "manual",
-      as_of_date: "2026-10-26",
+      as_of_date: "2026-10-27",
       total_facturado: 30_000,
     });
     expect(detail.find((d) => d.billing_month === "2026-11")!.projected).toBeUndefined();
