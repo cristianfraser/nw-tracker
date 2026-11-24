@@ -114,7 +114,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
   ] as const;
 
   return (
-    <PageGridTile id="flows-periods" order={dashboardTileOrder("flows-periods")} smallSpan={dashboardTileSmallSpan("flows-periods")}>
+    <PageGridTile id="flows-periods" order={dashboardTileOrder("flows-periods")}>
       <h2>
         <HeadingLink to="/flows">{t("dashboard.flows.title")}</HeadingLink>
       </h2>
@@ -161,7 +161,14 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
  * The /flows overview chart on the home dashboard, with its own Período / Rango
  * (`dashboard.flows`). The client only picks rows, clips them to the Rango and rolls years up.
  */
-export function DashboardFlowsChart({ displayUnit }: { displayUnit: DisplayUnit }) {
+export function DashboardFlowsChart({
+  displayUnit,
+  alone = false,
+}: {
+  displayUnit: DisplayUnit;
+  /** No partner beside it (the Δ by class chart is not shown): the chart takes the whole row. */
+  alone?: boolean;
+}) {
   const { t } = useTranslation();
   const prefs = useSurfacePrefs("dashboard.flows", "month", "1y");
   const granularity = prefs.period;
@@ -203,7 +210,8 @@ export function DashboardFlowsChart({ displayUnit }: { displayUnit: DisplayUnit 
     <PageGridTile
       id="flows-chart"
       order={dashboardTileOrder("flows-chart")}
-      wide={dashboardTileWide("flows-chart")}
+      wide={alone ? { order: dashboardTileWide("flows-chart")!.order, span: 12 } : dashboardTileWide("flows-chart")}
+      smallSpan={alone ? undefined : dashboardTileSmallSpan("flows-chart")}
       className="chart-grid chart-grid--full-line"
     >
       <FlowsOverviewChart

@@ -24,6 +24,17 @@ describe("dashboard layout", () => {
     }
   });
 
+  it("stacks in the big desktop's reading order, the net-worth chart right under the cards", () => {
+    const byBigDesktop = [...ids].sort((a, b) => {
+      const ra = DASHBOARD_LAYOUT[a].l;
+      const rb = DASHBOARD_LAYOUT[b].l;
+      return ra.y - rb.y || ra.x - rb.x;
+    });
+    byBigDesktop.splice(byBigDesktop.indexOf("net-worth-chart"), 1);
+    byBigDesktop.splice(byBigDesktop.indexOf("strip") + 1, 0, "net-worth-chart");
+    expect([...ids].sort((a, b) => dashboardTileOrder(a) - dashboardTileOrder(b))).toEqual(byBigDesktop);
+  });
+
   it("spans the whole content width on the phone, and on the small desktop but for half-width pairs", () => {
     for (const id of ids) {
       expect(DASHBOARD_LAYOUT[id].m).toMatchObject({ x: 0, w: GRID.cols.m });

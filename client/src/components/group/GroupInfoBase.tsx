@@ -81,6 +81,8 @@ export type GroupInfoDashboardOptions = {
   tileOrder: (id: GroupInfoTileId) => number;
   /** Big desktop: a tile's order and span below the band (dashboardLayout.ts). */
   tileWide: (id: GroupInfoTileId) => { order: number; span: number } | undefined;
+  /** Small desktop: a tile's column span when it shares its row (dashboardLayout.ts). */
+  tileSmallSpan: (id: GroupInfoTileId) => number | undefined;
   /**
    * How much is drawn below the first screen (the strip, the main charts and the rail): `cut`
    * leaves the tiles out, `hidden` renders them invisible and inert with their own queries off,
@@ -159,6 +161,7 @@ export function GroupInfoBase({
   const pairs = dashboard?.pairs;
   const tileOrder = dashboard?.tileOrder;
   const tileWide = dashboard?.tileWide;
+  const tileSmallSpan = dashboard?.tileSmallSpan;
   const fold: DashboardFold = dashboard?.fold ?? "full";
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -324,7 +327,12 @@ export function GroupInfoBase({
       </>
     ) : null;
   const returnsTile = returnsBody ? (
-    <PageGridTile id="returns" order={tileOrder?.("returns")} wide={tileWide?.("returns")}>
+    <PageGridTile
+      id="returns"
+      order={tileOrder?.("returns")}
+      wide={tileWide?.("returns")}
+      smallSpan={tileSmallSpan?.("returns")}
+    >
       {returnsBody}
     </PageGridTile>
   ) : null;
@@ -448,7 +456,12 @@ export function GroupInfoBase({
         )}
         {tablesEnabled && fold !== "cut" ? (
           <BelowFoldHiddenContext.Provider value={fold === "hidden"}>
-            <PageGridTile id="detail" order={tileOrder?.("detail")} wide={tileWide?.("detail")}>
+            <PageGridTile
+              id="detail"
+              order={tileOrder?.("detail")}
+              wide={tileWide?.("detail")}
+              smallSpan={tileSmallSpan?.("detail")}
+            >
               {detailBody}
             </PageGridTile>
 
