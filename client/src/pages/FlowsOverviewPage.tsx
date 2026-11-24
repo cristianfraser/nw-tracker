@@ -207,6 +207,8 @@ export function FlowsOverviewPage() {
       <PageGridTile id="detail">
         <div className="chart-panel-title-row">
           <h3>{t("flows.overview.detailTitle")}</h3>
+          {/* The basis: the Expenses page totals by the day each expense was spent. */}
+          <span className="muted">{t("flows.overview.expensesBasis")}</span>
           <SurfaceControls
             period={tablePrefs.period}
             onPeriodChange={tablePrefs.setPeriod}

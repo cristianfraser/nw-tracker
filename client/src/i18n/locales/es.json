@@ -1120,6 +1120,7 @@
       "prepagoNumber": "P{{n}}",
       "registerPayment": "Registrar pago",
       "paymentsCount": "{{count}} pagos",
+      "paymentsCollapse": "menos",
       "partAmortization": "amortización",
       "partExtra": "amortización extra",
       "partInterest": "interés",
@@ -1347,6 +1348,7 @@
       "chartEmpty": "Sin datos de flujos.",
       "income": "Ingresos",
       "expenses": "Gastos",
+      "expensesBasis": "Gastos por mes de compra; cuotas en el mes facturado",
       "savings": "Ahorro",
       "deposits": "Depósitos",
       "depositsPreTax": "AFP+AFC (cotizaciones)",
@@ -1575,6 +1577,7 @@
   "expenses": {
     "spent": {
       "chartTitle": "Acumulado del mes, por categoría",
+      "basis": "Por el día en que se hizo cada gasto",
       "chartAria": "Gasto acumulado de cada mes, día a día, por categoría",
       "stripAria": "Gasto de cada día",
       "allCategories": "todas",
@@ -2115,6 +2118,7 @@
       "assignedResult": "{{stamped}} compra(s) clasificadas."
     },
     "products": {
+      "aliasCount": "nombres: {{count}}",
       "search": "Buscar productos",
       "noMatch": "Ningún producto coincide.",
       "title": "Productos",

@@ -8,8 +8,13 @@
   min-width: 0;
 }
 
-/* As wide as the field (react-aria publishes the trigger's width), never wider than the page. */
+/* As wide as the field (react-aria publishes the trigger's width), never wider than the page.
+   Its height is react-aria's: an inline max-height from the space left in the visual viewport
+   on the side it opens, which shrinks with the on-screen keyboard (a vh unit would not); the
+   list scrolls inside it. */
 .popover {
+  display: flex;
+  flex-direction: column;
   width: var(--trigger-width);
   max-width: calc(100vw - 1.5rem);
   background: var(--surface);
@@ -22,7 +27,9 @@
 }
 
 .list {
-  max-height: min(16rem, 40vh);
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 16rem;
   overflow-y: auto;
   outline: none;
 }

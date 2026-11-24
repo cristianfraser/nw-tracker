@@ -3682,6 +3682,7 @@
       "prepagoNumber": { "en": "P{{n}}", "es": "P{{n}}" },
       "registerPayment": { "en": "Record payment", "es": "Registrar pago" },
       "paymentsCount": { "en": "{{count}} payments", "es": "{{count}} pagos" },
+      "paymentsCollapse": { "en": "fewer", "es": "menos" },
       "partAmortization": { "en": "principal", "es": "amortización" },
       "partExtra": { "en": "extra principal", "es": "amortización extra" },
       "partInterest": { "en": "interest", "es": "interés" },
@@ -4256,6 +4257,10 @@
       "expenses": {
         "en": "Expenses",
         "es": "Gastos"
+      },
+      "expensesBasis": {
+        "en": "Expenses by month of purchase; cuotas in the month billed",
+        "es": "Gastos por mes de compra; cuotas en el mes facturado"
       },
       "savings": {
         "en": "Savings",
@@ -5084,6 +5089,10 @@
       "chartTitle": {
         "en": "Month to date, by category",
         "es": "Acumulado del mes, por categoría"
+      },
+      "basis": {
+        "en": "By the day each expense was spent",
+        "es": "Por el día en que se hizo cada gasto"
       },
       "chartAria": {
         "en": "Each month's spend to date, day by day, by category",
@@ -6921,6 +6930,10 @@
       }
     },
     "products": {
+      "aliasCount": {
+        "en": "names: {{count}}",
+        "es": "nombres: {{count}}"
+      },
       "search": {
         "en": "Search products",
         "es": "Buscar productos"

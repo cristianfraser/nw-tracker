@@ -26,7 +26,8 @@ import type {
   Money,
 } from "nw-tracker-contracts/dto/flows";
 import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
-import { lineAmount, lineConvertedForWire } from "./lineMoney.js";
+import { lineConvertedForWire } from "./lineMoney.js";
+import { movementOn } from "./expenseLineDay.js";
 import { toWireExpenseLine } from "./wireExpenseLine.js";
 import { cardPaymentEvidence, latestCardPayment, loadCardPaymentTransfers, type CardPaymentTransfer } from "./latestCardPayments.js";
 import { isPaymentLine } from "./expensePaymentNames.js";
@@ -53,20 +54,7 @@ export function listedAsLatestMovement(
   return true;
 }
 
-/** The day an expense line happened (see the module comment). */
-export function movementOn(
-  line: Pick<FlowCcExpenseLineRow, "source" | "purchase_on" | "occurred_on" | "first_seen_on" | "posting_on" | "amount"> & {
-    annulment?: unknown;
-  },
-  todayYmd: string
-): string {
-  const purchaseOn = line.purchase_on ?? line.occurred_on;
-  // An annulment is dated the day the bank dropped the purchase, never by arrival.
-  if (line.source !== "cc" || line.annulment != null || lineAmount(line).value >= 0) return purchaseOn;
-  if (line.first_seen_on) return line.first_seen_on;
-  if (line.posting_on && line.posting_on > purchaseOn) return line.posting_on;
-  return line.occurred_on <= todayYmd ? line.occurred_on : purchaseOn;
-}
+export { movementOn };
 
 /**
  * An income credit's money: a foreign checking account's credit is in its currency (its pesos and

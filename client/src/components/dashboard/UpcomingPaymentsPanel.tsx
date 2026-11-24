@@ -132,10 +132,11 @@ function AmountCell({ item, unit }: { item: UpcomingPaymentItemDto; unit: string
   const className = item.estimated ? `mono ${styles.estimate}` : "mono";
   // A range (the mortgage) shows its minimum, what counts in the month's total; the maximum is on hover.
   if (item.amount_max != null) {
-    const hint = `${t("dashboard.ccUpcoming.mortgageMaxHint", { amount: formatMoney(item.amount_max) })} · ${t("dashboard.ccUpcoming.mortgageRangeHint")}`;
+    // The lender states a cuota to 4 decimals of its currency (a UF cuota «12,3456 UF»).
+    const hint = `${t("dashboard.ccUpcoming.mortgageMaxHint", { amount: formatMoney(item.amount_max, { precision: "full" }) })} · ${t("dashboard.ccUpcoming.mortgageRangeHint")}`;
     return (
       <span className={className} title={withUnitHint(hint, item.amount, item.amount_in_unit, unit)}>
-        {formatMoney(item.amount)}
+        {formatMoney(item.amount, { precision: "full" })}
       </span>
     );
   }

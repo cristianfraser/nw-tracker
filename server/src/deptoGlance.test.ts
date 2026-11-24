@@ -132,18 +132,30 @@ describe("deptoMonthSplit", () => {
 
   it("splits the month's P/L into the cuota's cost and the currency move", () => {
     // Δ equity 680 − paid 1000 = −320. Cuota part 600 − 1000 = −400; currency 100 − (−580 + 600) = 80.
-    const s = deptoMonthSplit({ points, ledger: [row({})], unit: "clp", pl: -320, loanCurrency: "uf", paymentCurrency: "clp" })!;
+    const s = deptoMonthSplit({ points, ledger: [row({})], unit: "clp", pl: -320 })!;
     expect(s).toMatchObject({ month: "2026-03", cuotas: ["7"], cuota_part: -400, currency_part: 80, cuota_share: 1, currency_share: 0.2 });
   });
 
   it("throws when the parts do not add up to the month's P/L", () => {
-    expect(() => deptoMonthSplit({ points, ledger: [row({})], unit: "clp", pl: -300, loanCurrency: "uf", paymentCurrency: "clp" })).toThrow(
+    expect(() => deptoMonthSplit({ points, ledger: [row({})], unit: "clp", pl: -300 })).toThrow(
       /does not add up/
     );
   });
 
+  it("reports a currency move for a loan in the payment currency too (a peso loan in another display unit)", () => {
+    const s = deptoMonthSplit({ points, ledger: [row({ loan_currency: "clp" })], unit: "clp", pl: -320 })!;
+    expect(s).toMatchObject({ cuota_part: -400, currency_part: 80 });
+  });
+
+  it("has no currency part when the currency did not move", () => {
+    // The value holds and the balance falls by exactly the 600 amortized: the P/L is the cuota's cost.
+    const still: DeptoValuePointDto[] = [points[0]!, { ...points[1]!, value: 10_000, mortgage: 4_400, equity: 5_600 }];
+    const s = deptoMonthSplit({ points: still, ledger: [row({})], unit: "clp", pl: -400 })!;
+    expect(s).toMatchObject({ cuota_part: -400, currency_part: null, currency_share: 0, cuota_share: 1 });
+  });
+
   it("has no split without a previous month-end", () => {
-    expect(deptoMonthSplit({ points: points.slice(1), ledger: [], unit: "clp", pl: 0, loanCurrency: "uf", paymentCurrency: "clp" })).toBeNull();
+    expect(deptoMonthSplit({ points: points.slice(1), ledger: [], unit: "clp", pl: 0 })).toBeNull();
   });
 });
 

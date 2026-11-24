@@ -24,14 +24,14 @@ describe("dashboard layout", () => {
     }
   });
 
-  it("stacks in the big desktop's reading order, the net-worth chart right under the cards", () => {
+  it("stacks in the big desktop's reading order: the main band, the rail, then the rest", () => {
+    // The page's DOM order (GroupInfoBase: `.page-main`, `.page-rail`, then the tiles below).
+    const stack = (r: TileRect) => (r.y === 0 ? 0 : r.x === 0 && r.w === 8 ? 1 : r.x === 8 && r.w === 4 ? 2 : 3);
     const byBigDesktop = [...ids].sort((a, b) => {
       const ra = DASHBOARD_LAYOUT[a].l;
       const rb = DASHBOARD_LAYOUT[b].l;
-      return ra.y - rb.y || ra.x - rb.x;
+      return stack(ra) - stack(rb) || ra.y - rb.y || ra.x - rb.x;
     });
-    byBigDesktop.splice(byBigDesktop.indexOf("net-worth-chart"), 1);
-    byBigDesktop.splice(byBigDesktop.indexOf("strip") + 1, 0, "net-worth-chart");
     expect([...ids].sort((a, b) => dashboardTileOrder(a) - dashboardTileOrder(b))).toEqual(byBigDesktop);
   });
 

@@ -255,8 +255,6 @@ function buildProperty(
       ledger,
       unit,
       pl: monthPl,
-      loanCurrency: ledger[0]!.loan_currency,
-      paymentCurrency: ledger[0]!.payment_currency,
     }),
   };
   return { value, pl, cost: propertyCostBand(propertyId, unit, asOf), movement_count: accountMovementCount(accountId) };
@@ -396,10 +394,8 @@ export function deptoMonthSplit(args: {
   ledger: readonly DeptoMortgageSheetRow[];
   unit: TsUnit;
   pl: number;
-  loanCurrency: string;
-  paymentCurrency: string;
 }): DeptoMonthSplitDto | null {
-  const { points, ledger, unit, pl, loanCurrency, paymentCurrency } = args;
+  const { points, ledger, unit, pl } = args;
   const end = points[points.length - 1];
   const start = points[points.length - 2];
   if (!end || !start) return null;
@@ -412,7 +408,7 @@ export function deptoMonthSplit(args: {
   let amortized = 0;
   for (const r of payments) {
     paid += convertFlow(r.pago_pay, r.payment_currency, unit, r.occurred_on);
-    amortized += convertFlow(r.amortizacion_total_pay ?? 0, r.payment_currency, unit, r.occurred_on);
+    amortized += convertFlow(requireNumber(r.amortizacion_total_pay, `${r.cuota}'s amortization`), r.payment_currency, unit, r.occurred_on);
   }
   const cuotaPart = amortized - paid;
   const currencyPart = end.value - start.value - (end.mortgage - start.mortgage + amortized);
@@ -422,19 +418,19 @@ export function deptoMonthSplit(args: {
       `depto glance: ${month}'s split ${cuotaPart} + ${currencyPart} does not add up to its P/L ${pl}`
     );
   }
-  const sameCurrency = loanCurrency === paymentCurrency;
-  if (sameCurrency && Math.abs(currencyPart) > tol) {
-    throw new Error(`depto glance: a ${loanCurrency} loan paid in ${paymentCurrency} moved ${currencyPart} on the currency`);
-  }
-  const larger = Math.max(Math.abs(cuotaPart), sameCurrency ? 0 : Math.abs(currencyPart));
+  // The property's move in the display unit beyond what the payments explain: the loan currency
+  // against the unit (UF indexation in pesos; any rate move when the unit is another currency).
+  // None when it did not move (a loan in the display unit's own currency).
+  const moved = Math.abs(currencyPart) > tol;
+  const larger = Math.max(Math.abs(cuotaPart), moved ? Math.abs(currencyPart) : 0);
   return {
     month,
     pl,
     cuotas: payments.map((r) => r.cuota),
     cuota_part: cuotaPart,
-    currency_part: sameCurrency ? null : currencyPart,
+    currency_part: moved ? currencyPart : null,
     cuota_share: share(Math.abs(cuotaPart), larger),
-    currency_share: sameCurrency ? 0 : share(Math.abs(currencyPart), larger),
+    currency_share: moved ? share(Math.abs(currencyPart), larger) : 0,
   };
 }
 
@@ -636,6 +632,7 @@ export function deptoPaymentsList(args: {
   // The Σ row restates the ledger's own running totals (the pie is no payment to the loan).
   const ledgerPaid = requireNumber(last.pago_acumulado_pay, "the ledger's paid total") - pie.pago_pay;
   if (Math.abs(paidPay - ledgerPaid) > 1) throw new Error(`depto glance: Σ paid ${paidPay} ≠ the ledger's ${ledgerPaid}`);
+  // The pie is no payment to the loan: its row has no amortization or interest (null, not missing).
   const ledgerAmort = requireNumber(last.amort_acum_pay, "the ledger's amortization total") - (pie.amortizacion_total_pay ?? 0);
   if (Math.abs(amortPay - ledgerAmort) > 1) throw new Error(`depto glance: Σ amortization ${amortPay} ≠ the ledger's ${ledgerAmort}`);
   const ledgerInterest = requireNumber(last.interes_acum_pay, "the ledger's interest total") - (pie.interes_pay ?? 0);
@@ -874,7 +871,7 @@ export function deptoProjection(args: {
   const savingLoan = minimum.interest_loan - usual.interest_loan;
   const loanCurrency = lastCuota.loan_currency;
 
-  const insurance = lastCuota.total_seguros_loan ?? 0;
+  const insurance = requireNumber(lastCuota.total_seguros_loan, `cuota ${lastCuota.cuota}'s insurance`);
   const usualPaymentLoan = Math.min(pace, balance) + balance * rate + insurance;
   const payRate = storedPairRate(loanCurrency, lastCuota.payment_currency, next.occurred_on);
   if (payRate == null) throw new Error(`depto glance: no ${loanCurrency}→${lastCuota.payment_currency} rate on or before ${next.occurred_on}`);
