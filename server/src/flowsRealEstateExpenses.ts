@@ -349,6 +349,27 @@ export function chartPartsOf(slot: RealEstateBillSlot): { kind: RealEstateChartS
 }
 
 /**
+ * What a bill puts on a chart, per kind and month: its positive parts (a refund or a zero bill
+ * draws nothing), each spread over the months it covers. One rule for the expenses chart and the
+ * property page's cost band.
+ */
+export function chartedBillParts(slot: RealEstateBillSlot): { kind: RealEstateChartSeriesDto["kind"]; month: string; amount: number }[] {
+  if (slot.display_amount <= 0) return [];
+  const out: { kind: RealEstateChartSeriesDto["kind"]; month: string; amount: number }[] = [];
+  for (const part of chartPartsOf(slot)) {
+    if (part.amount <= 0) continue;
+    for (const { month, amount } of spreadOverCoveredMonths({
+      bill_month: slot.bill_month,
+      months_covered: slot.months_covered,
+      display_amount: part.amount,
+    })) {
+      out.push({ kind: part.kind, month, amount });
+    }
+  }
+  return out;
+}
+
+/**
  * A payment that covers several months, in equal whole-peso shares over the months ending at its
  * bill month; the last month takes the rounding remainder, so the shares add up to the payment.
  */
@@ -381,32 +402,23 @@ function chartScope(
   const used = new Map<string, RealEstateChartSeriesDto>();
   const byPeriod = new Map<string, RealEstateExpenseChartPoint>();
   for (const slot of slots) {
-    if (slot.display_amount <= 0) continue;
-    for (const part of chartPartsOf(slot)) {
-      if (part.amount <= 0) continue;
-      const dataKey = `${slot.account_slug}__${part.kind}`;
+    for (const { kind, month, amount } of chartedBillParts(slot)) {
+      const dataKey = `${slot.account_slug}__${kind}`;
       if (!used.has(dataKey)) {
         const scheme = schemeByPlace.get(slot.account_slug);
         if (!scheme) throw new Error(`real-estate chart: unknown place '${slot.account_slug}'`);
-        used.set(dataKey, { data_key: dataKey, place_slug: slot.account_slug, kind: part.kind, scheme });
+        used.set(dataKey, { data_key: dataKey, place_slug: slot.account_slug, kind, scheme });
       }
-      const spread = spreadOverCoveredMonths({
-        bill_month: slot.bill_month,
-        months_covered: slot.months_covered,
-        display_amount: part.amount,
-      });
-      const sign = REAL_ESTATE_BELOW_ZERO_KINDS.has(part.kind) ? -1 : 1;
-      for (const { month, amount } of spread) {
-        const pe = monthEndUtcYmd(month);
-        let pt = byPeriod.get(pe);
-        if (!pt) {
-          pt = { as_of_date: pe, total: 0 };
-          byPeriod.set(pe, pt);
-        }
-        pt[dataKey] = Number(pt[dataKey] ?? 0) + sign * amount;
-        // The total counts what was paid, the below-zero kinds included.
-        pt.total += amount;
+      const sign = REAL_ESTATE_BELOW_ZERO_KINDS.has(kind) ? -1 : 1;
+      const pe = monthEndUtcYmd(month);
+      let pt = byPeriod.get(pe);
+      if (!pt) {
+        pt = { as_of_date: pe, total: 0 };
+        byPeriod.set(pe, pt);
       }
+      pt[dataKey] = Number(pt[dataKey] ?? 0) + sign * amount;
+      // The total counts what was paid, the below-zero kinds included.
+      pt.total += amount;
     }
   }
   // Stack by place (date order), then by kind; every point carries every series (0 when none).

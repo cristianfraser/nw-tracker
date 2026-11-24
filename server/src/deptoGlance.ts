@@ -72,10 +72,9 @@ import { isDeptoPieCuota, isDeptoPrepagoCuota } from "./deptoDividendosLedger.js
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { currencyMinorDigits, currencySmallestCoin } from "./displayUnits.js";
 import {
-  chartPartsOf,
+  chartedBillParts,
   REAL_ESTATE_CHART_KINDS,
   realEstateBillSlotsReadOnly,
-  spreadOverCoveredMonths,
 } from "./flowsRealEstateExpenses.js";
 import { computeMortgagePrepaymentComparison, type MortgagePrepaymentComparison } from "./mortgagePrepaymentComparison.js";
 import { mortgageLedgerRowDto } from "./mortgageLedgerDto.js";
@@ -447,16 +446,9 @@ function propertyCostBand(propertyId: number, unit: TsUnit, asOf: string): Depto
   const place = mine[0]!;
   const parts: { month: string; kind: string; amount: number }[] = [];
   for (const slot of slots) {
-    if (slot.account_slug !== place.slug || slot.display_amount <= 0) continue;
-    for (const part of chartPartsOf(slot)) {
-      if (part.amount <= 0) continue;
-      for (const { month, amount } of spreadOverCoveredMonths({
-        bill_month: slot.bill_month,
-        months_covered: slot.months_covered,
-        display_amount: part.amount,
-      })) {
-        parts.push({ month, kind: part.kind, amount: convertFlow(amount, slot.currency, unit, slot.spent_on) });
-      }
+    if (slot.account_slug !== place.slug) continue;
+    for (const { month, kind, amount } of chartedBillParts(slot)) {
+      parts.push({ month, kind, amount: convertFlow(amount, slot.currency, unit, slot.spent_on) });
     }
   }
   return deptoCostBand({ placeSlug: place.slug, parts, currentMonth: asOf.slice(0, 7) });
@@ -851,7 +843,11 @@ export function deptoProjection(args: {
   if (regularIdx.length === 0) return null;
   const lastIdx = regularIdx[regularIdx.length - 1]!;
   const lastCuota = loanRows[lastIdx]!;
-  // `ledger[lastIdx]` is the row before `loanRows[lastIdx]` (the pie for the first one).
+  // `ledger[lastIdx]` is the row before `loanRows[lastIdx]` (the pie for the first one). A cuota's
+  // interest accrues on the balance its bank sequence leaves before it, a prepago in between
+  // included: the lender recomputes the cuota on the balance after a prepago, so the interest over
+  // that balance is the same monthly rate as the cuotas either side (checked on the ledger), not
+  // the rate on the balance before the prepago.
   const before = requireNumber(ledger[lastIdx]!.credito_restante_loan, `the balance before cuota ${lastCuota.cuota}`);
   const rate = requireNumber(lastCuota.interes_loan, `cuota ${lastCuota.cuota}'s interest`) / before;
   const balance = requireNumber(loanRows[loanRows.length - 1]!.credito_restante_loan, "today's balance");

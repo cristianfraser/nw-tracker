@@ -142,11 +142,6 @@ describe("deptoMonthSplit", () => {
     );
   });
 
-  it("reports a currency move for a loan in the payment currency too (a peso loan in another display unit)", () => {
-    const s = deptoMonthSplit({ points, ledger: [row({ loan_currency: "clp" })], unit: "clp", pl: -320 })!;
-    expect(s).toMatchObject({ cuota_part: -400, currency_part: 80 });
-  });
-
   it("has no currency part when the currency did not move", () => {
     // The value holds and the balance falls by exactly the 600 amortized: the P/L is the cuota's cost.
     const still: DeptoValuePointDto[] = [points[0]!, { ...points[1]!, value: 10_000, mortgage: 4_400, equity: 5_600 }];

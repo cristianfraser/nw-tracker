@@ -41,10 +41,14 @@ export const resources = {
   taxReturn: (): Invalidation[] => [{ queryKey: queryKeys.taxReturnAll() }],
   /** A declared residency period: the list, and every año tributario's regime. */
   taxResidency: (): Invalidation[] => [{ queryKey: queryKeys.taxResidency() }, { queryKey: queryKeys.taxReturnAll() }],
-  /** One account's page bundle (monthly) in a unit, and its blocks fetched apart (a mortgage's prepaid vs invested). */
+  /**
+   * One account's page bundle (monthly) in a unit, and the blocks fetched apart: the
+   * prepaid-vs-invested ones of every mortgage, since a property and its mortgage share one
+   * ledger and a payment is written or edited from either page.
+   */
   accountPage: (accountId: string | number, unit: DisplayUnit): Invalidation[] => [
     { queryKey: queryKeys.accountDetail(String(accountId), unit, "monthly") },
-    { queryKey: queryKeys.deptoPrepaymentsOf(Number(accountId)) },
+    { queryKey: queryKeys.deptoPrepaymentsAll() },
   ],
   accountFlows: (): Invalidation[] => [{ queryKey: queryKeys.accountFlowsAll() }],
   accountValuations: (accountId: number | string): Invalidation[] => [

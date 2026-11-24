@@ -626,7 +626,11 @@ export interface DeptoMonthSplitDto {
   /** The month's payments by ledger label (`"33"`, `"prepago 2"`), oldest first; empty when none. */
   cuotas: string[];
   cuota_part: number;
-  /** Null when the loan and payment currencies match (no currency move to show). */
+  /**
+   * The rest of the equity's move: the loan currency against `unit` on the appraisal net of the
+   * balance's indexation (both are held in the loan currency). Null when it did not move (within
+   * two of the unit's smallest coin).
+   */
   currency_part: number | null;
   /** Each part's width on the diverging bar: |part| ÷ the larger |part| (0 when both are 0). */
   cuota_share: number;
