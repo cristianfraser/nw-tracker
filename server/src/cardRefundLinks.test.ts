@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
-import { cardRefundCandidates, isLinkableCardRefund, withCardRefundLinks } from "./cardRefundLinks.js";
+import { cardRefundCandidates, isLinkableCardRefund, refundPurchaseIndex, withCardRefundLinks } from "./cardRefundLinks.js";
 import { withLineMoney } from "./lineMoney.js";
 
 function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
@@ -58,7 +58,7 @@ describe("cardRefundCandidates", () => {
   const refund = lines.at(-1)!;
 
   it("lists the card's purchases worth at least the credit in the window, the merchant's own first", () => {
-    expect(cardRefundCandidates(lines, refund).map((c) => [c.line.statement_line_id, c.merchant_match])).toEqual([
+    expect(cardRefundCandidates(refundPurchaseIndex(lines), refund).map((c) => [c.line.statement_line_id, c.merchant_match])).toEqual([
       [1, true],
       [2, false],
     ]);
@@ -79,8 +79,41 @@ describe("cardRefundCandidates", () => {
     expect(isLinkableCardRefund(linked)).toBe(true);
   });
 
-  it("throws on a link to a flow no line is (bad stored state)", () => {
-    expect(() => withCardRefundLinks(lines, new Map([[1009, 9999]]))).toThrow(/no expense line is/);
+  it("follows a purchase a cuota plan took over to the plan's whole price", () => {
+    const withPlan = withLineMoney([
+      ...lines,
+      line({
+        statement_line_id: -30,
+        line_role: "installment_purchase_total",
+        installment_purchase_id: 30,
+        purchase_on: "2026-05-12",
+        amount_clp: 90_000,
+        flow_id: 1030,
+      }),
+    ]);
+    // Flow 1099 was a one-shot line plan 30 superseded: no expense line carries it.
+    const linked = withCardRefundLinks(withPlan, new Map([[1009, 1099]]), (flow) => (flow === 1099 ? 30 : null)).find(
+      (l) => l.statement_line_id === 9
+    )!;
+    expect(linked.refund_of).toMatchObject({ line_id: -30, manual: true });
+  });
+
+  it("marks a link no line stands for as broken, for the row to undo", () => {
+    const broken = withCardRefundLinks(lines, new Map([[1009, 9999]]), () => null).find((l) => l.statement_line_id === 9)!;
+    expect(broken.refund_link_broken).toBe(true);
+    expect(broken.refund_of).toBeUndefined();
+    expect(isLinkableCardRefund(broken)).toBe(true);
+  });
+
+  it("offers a purchase broken into pieces at its whole amount, under the line its pieces leave", () => {
+    const pieces = withLineMoney([
+      line({ statement_line_id: 40, purchase_on: "2026-05-15", amount_clp: 8_000, flow_id: 1040, piece_seq: 1 }),
+      line({ statement_line_id: 40, purchase_on: "2026-05-15", amount_clp: 7_000, flow_id: 1040, pieces_remainder: true }),
+      credit(),
+    ]);
+    const [c] = cardRefundCandidates(refundPurchaseIndex(pieces), pieces.at(-1)!);
+    expect(c!.amount).toEqual({ value: 15_000, currency: "clp" });
+    expect(c!.line.pieces_remainder).toBe(true);
   });
 
   it("only a card credit is linkable, and not one the bank already paired", () => {

@@ -318,6 +318,8 @@ export type FlowCcExpenseLineRow = {
   };
   /** The row may name the purchase this card credit refunds, or undo the name (server line shapes). */
   can_link_refund?: boolean;
+  /** The purchase this credit was linked to is no line any more (`cardRefundLinks.ts`): the row offers to undo the link. */
+  refund_link_broken?: true;
   /**
    * A card line the bank charged as the cost of financing (section 3: intereses, comisiones,
    * impuestos, administración) — the lines the card's P/L counts ({@link markFinancingCostLines}).

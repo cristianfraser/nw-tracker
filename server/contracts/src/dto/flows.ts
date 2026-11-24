@@ -541,6 +541,8 @@ export interface FlowCcExpenseLineRow {
   can_edit_pieces?: boolean;
   /** The row may name the purchase this card credit refunds, or undo the name. */
   can_link_refund?: boolean;
+  /** The purchase this card credit was linked to is no line any more: the row offers to undo the link. */
+  refund_link_broken?: true;
 }
 
 /** A card or checking purchase line and its pieces (`GET /api/flows/expenses/line-pieces`). */

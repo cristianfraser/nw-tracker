@@ -246,15 +246,16 @@ async function main() {
     const overview = await get(`/api/flows/overview${qs({ unit, installment_mode: "split" })}`);
     await get(`/api/flows/overview${qs({ unit, installment_mode: "total" })}`);
     await get(`/api/flows/overview${qs({ unit, installment_mode: "split", days })}`);
-    await get(`/api/flows/expenses/gastos${qs({ unit })}`);
-    await get(`/api/flows/expenses/gastos${qs({ unit, include_pre_tax: 1 })}`);
+    const spentBase = { unit, mode: "split", level: "category", exclude_big_groups: "" };
+    await get(`/api/flows/expenses/spent${qs({ ...spentBase, range: "6m" })}`);
+    await get(`/api/flows/expenses/spent${qs({ ...spentBase, range: "1y", mode: "total", include_pre_tax: 1 })}`);
     const summary = await get(`/api/flows/expenses/summary${qs({ unit })}`);
     await get(`/api/flows/expenses/financing-candidates${qs({ unit })}`);
     if (expenseMonths.length === 0) expenseMonths = (overview?.months ?? []).map((m) => m.period_month).filter(Boolean).sort().slice(-6);
     if (bigGroups.length === 0) bigGroups = (summary?.big_groups ?? []).map((g) => g.slug);
     for (const month of expenseMonths) {
-      await get(`/api/flows/expenses/lines${qs({ unit, month })}`);
-      await get(`/api/flows/expenses/lines${qs({ unit, month, include_pre_tax: 1 })}`);
+      await get(`/api/flows/expenses/spent/lines${qs({ ...spentBase, month })}`);
+      await get(`/api/flows/expenses/spent/lines${qs({ ...spentBase, month, include_pre_tax: 1 })}`);
     }
     await get(`/api/flows/expenses/lines${qs({ unit, list: "uncategorized", page: 1, page_size: 100 })}`);
     await get(`/api/flows/expenses/lines${qs({ unit, list: "deposit_matched" })}`);

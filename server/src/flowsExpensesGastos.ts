@@ -1,10 +1,8 @@
 /**
- * Gastos by month and category for the Expenses page (`GET /api/flows/expenses/gastos`).
- *
- * The page offers two installment modes (Por cuota / Total) × two category levels (Categorías /
- * Subcategorías), in the display unit, with some big groups left out of the chart. Every
- * combination of mode and level is built here; the request names the unit and the excluded
- * groups. The client picks a view and only clips it to its Rango.
+ * The gastos rule over finished expense lines: what each line adds to gasto del mes in a mode
+ * (`gastosShareOfLine`), the month buckets and category stacks (`aggregateGastosFromLines`), the
+ * flows overview's month rows (`gastosMonthRows`) and each big group's usage. The Expenses page's
+ * spend by day (`flowsExpensesSpent.ts`) shares the same per-line rule.
  */
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
 import {

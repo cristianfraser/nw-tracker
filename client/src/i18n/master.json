@@ -5952,6 +5952,7 @@
           "other": { "en": "Another purchase…", "es": "Otra compra…" },
           "close": { "en": "Close", "es": "Cerrar" },
           "unlink": { "en": "Unlink", "es": "Quitar" },
+          "broken": { "en": "The purchase this refund was linked to is no longer listed.", "es": "La compra de este reembolso ya no aparece." },
           "pickAria": { "en": "Purchases this credit may refund", "es": "Compras que este abono puede reembolsar" },
           "empty": { "en": "No purchase on this card fits: same currency, at least the credit, up to 120 days before.", "es": "Ninguna compra de esta tarjeta calza: misma moneda, al menos el abono, hasta 120 días antes." }
         },

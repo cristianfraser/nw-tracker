@@ -1785,6 +1785,7 @@
           "other": "Another purchase…",
           "close": "Close",
           "unlink": "Unlink",
+          "broken": "The purchase this refund was linked to is no longer listed.",
           "pickAria": "Purchases this credit may refund",
           "empty": "No purchase on this card fits: same currency, at least the credit, up to 120 days before."
         },

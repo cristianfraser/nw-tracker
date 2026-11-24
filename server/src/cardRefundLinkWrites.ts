@@ -4,13 +4,12 @@
  * import graph.
  */
 import type { CardRefundCandidatesResponse } from "nw-tracker-contracts/dto/flows";
-import { cardRefundCandidates, isLinkableCardRefund } from "./cardRefundLinks.js";
+import { cardRefundCandidates, isLinkableCardRefund, refundPurchaseIndex, type RefundCandidate } from "./cardRefundLinks.js";
 import { db } from "./db.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import type { FlowCcExpenseLineRow } from "./expenseLineTypes.js";
 import { cachedFlowsExpenseLines } from "./flowsMortgageCarrying.js";
 import { InputError } from "./inputError.js";
-import { lineAmount } from "./lineMoney.js";
 import { toWireExpenseLine } from "./wireExpenseLine.js";
 
 /** The card credit a request names: a refund line of that card the user can link. */
@@ -21,24 +20,34 @@ function refundLine(lines: readonly FlowCcExpenseLineRow[], accountId: number, l
   return line;
 }
 
+/**
+ * A purchase's whole value in the unit: Σ its lines' (a purchase broken into pieces), null when a
+ * line has none (its own currency is the unit) or the lines disagree on how they were converted.
+ */
+function wholeConverted(c: RefundCandidate, unit: string): CardRefundCandidatesResponse["candidates"][number]["converted"] {
+  const parts = c.lines.map((l) => toWireExpenseLine(l, unit).converted);
+  const first = parts[0];
+  if (first == null || parts.some((p) => p == null || p.currency !== first.currency || p.rate_source !== first.rate_source)) {
+    return null;
+  }
+  return { ...first, value: parts.reduce((sum, p) => sum + p!.value, 0) };
+}
+
 /** `GET /api/flows/expenses/refund-candidates?unit=&account_id=&line_id=`. */
 export function cardRefundCandidatesResponse(accountId: number, lineId: number, unit: string): CardRefundCandidatesResponse {
   const lines = cachedFlowsExpenseLines();
   const refund = refundLine(lines, accountId, lineId);
   return {
     unit,
-    candidates: cardRefundCandidates(lines, refund).map(({ line, merchant_match }) => {
-      const wire = toWireExpenseLine(line, unit);
-      return {
-        line_id: line.statement_line_id,
-        purchase_date: line.purchase_on ?? line.occurred_on,
-        amount: lineAmount(line),
-        converted: wire.converted,
-        name: wire.name,
-        category_slug: line.category_slug,
-        merchant_match,
-      };
-    }),
+    candidates: cardRefundCandidates(refundPurchaseIndex(lines), refund).map((c) => ({
+      line_id: c.line.statement_line_id,
+      purchase_date: c.day,
+      amount: c.amount,
+      converted: wholeConverted(c, unit),
+      name: toWireExpenseLine(c.line, unit).name,
+      category_slug: c.line.category_slug,
+      merchant_match: c.merchant_match,
+    })),
   };
 }
 
@@ -50,7 +59,7 @@ export function cardRefundCandidatesResponse(accountId: number, lineId: number, 
 export function linkCardRefund(opts: { accountId: number; lineId: number; purchaseLineId: number }): { ok: true } {
   const lines = cachedFlowsExpenseLines();
   const refund = refundLine(lines, opts.accountId, opts.lineId);
-  const candidate = cardRefundCandidates(lines, refund).find((c) => c.line.statement_line_id === opts.purchaseLineId);
+  const candidate = cardRefundCandidates(refundPurchaseIndex(lines), refund).find((c) => c.line.statement_line_id === opts.purchaseLineId);
   if (!candidate) {
     throw new InputError(`line ${opts.purchaseLineId} is not a purchase card ${opts.accountId}'s credit ${opts.lineId} can refund`);
   }

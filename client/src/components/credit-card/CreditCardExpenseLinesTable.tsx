@@ -513,6 +513,22 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
       { onSuccess: () => setOpen(false), onError }
     );
 
+  if (line.refund_link_broken) {
+    return (
+      <div className={styles.panelBigGroup}>
+        <span className="error">{t("expenses.creditCard.lineRow.refund.broken")}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => unlink.mutate({ account_id: line.account_id, line_id: line.statement_line_id }, { onError })}
+        >
+          {t("expenses.creditCard.lineRow.refund.unlink")}
+        </Button>
+      </div>
+    );
+  }
+
   if (line.refund_of?.manual) {
     return (
       <div className={styles.panelBigGroup}>
@@ -648,7 +664,10 @@ function ExpenseLineRow({
   const branchChoices = DEMO_EDITS_LIMITED ? null : ln.branch_choices;
   const canLinkRefund = !DEMO_EDITS_LIMITED && ln.can_link_refund === true;
   // A suggested purchase waits on one confirm.
-  const needsAction = ln.cuota_purchase_kind != null || branchChoices != null || (canLinkRefund && ln.refund_suggestion != null);
+  const needsAction =
+    ln.cuota_purchase_kind != null ||
+    branchChoices != null ||
+    (canLinkRefund && (ln.refund_suggestion != null || ln.refund_link_broken === true));
   // A big group shows on the row once set; until then its picker lives in the row's extras.
   const canBigGroup = showBigGroupControls && Boolean(ln.purchase_key) && !fixedCategory;
   const bigGroupOnRow = canBigGroup && ln.big_group_slug != null;

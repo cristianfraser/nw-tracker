@@ -1785,6 +1785,7 @@
           "other": "Otra compra…",
           "close": "Cerrar",
           "unlink": "Quitar",
+          "broken": "La compra de este reembolso ya no aparece.",
           "pickAria": "Compras que este abono puede reembolsar",
           "empty": "Ninguna compra de esta tarjeta calza: misma moneda, al menos el abono, hasta 120 días antes."
         },

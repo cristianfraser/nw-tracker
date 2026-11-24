@@ -171,7 +171,7 @@ export type FlowsExpensesPayload = {
   /** Big groups some line carries, sorted: the Expenses page's default chart exclusion. */
   active_big_group_slugs: string[];
 
-  /** Gastos by month / category: `GET /api/flows/expenses/gastos` (`flowsExpensesGastos.ts`). */
+  /** Gastos by spending day: `GET /api/flows/expenses/spent` (`flowsExpensesSpent.ts`). */
 
   /**
    * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO). The Diario

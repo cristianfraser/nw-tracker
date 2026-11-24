@@ -239,7 +239,9 @@ function holdingConflicts(a: number, b: number): string[] {
 function flowHoldsAssignments(flowId: number): boolean {
   return (
     FLOW_HOLDING_TABLES.some((t) => db.prepare(`SELECT 1 FROM ${t} WHERE flow_id = ?`).get(flowId) != null) ||
-    db.prepare(`SELECT 1 FROM flow_links WHERE flow_id = ?`).get(flowId) != null
+    db.prepare(`SELECT 1 FROM flow_links WHERE flow_id = ?`).get(flowId) != null ||
+    // A card refund link holds both its ends (migration 366).
+    db.prepare(`SELECT 1 FROM card_refund_links WHERE flow_id = ? OR purchase_flow_id = ?`).get(flowId, flowId) != null
   );
 }
 
