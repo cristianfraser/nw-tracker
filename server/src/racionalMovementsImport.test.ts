@@ -22,7 +22,7 @@ import { brokerMovement } from "./test/brokerMovementFixtures.js";
  * Duplicate detection has to survive how the ledger actually looks, which real data showed is
  * not one-row-per-feed-row: the 2026-03-05 VEA purchase the app reports as a single US$xxx,xx
  * line exists as TWO ledger rows that add up to it, and the 2026-03-26 one is recorded at
- * US$xx,xx against the feed's US$54,68. Matching a single row by exact amount misses both and
+ * US$xx,xx against the feed's US$xx,xx. Matching a single row by exact amount misses both and
  * would import a second copy of each.
  */
 describe("racionalMovementsImport duplicate detection", () => {
@@ -82,25 +82,25 @@ describe("racionalMovementsImport duplicate detection", () => {
 
   it("treats a purchase split across several ledger rows as already imported", () => {
     const { from, to } = twoAccounts();
-    const first = seedTransfer(from, to, 264.35);
-    seedTransfer(from, to, 64.04); // 264.35 + 64.04 = 328.39
+    const first = seedTransfer(from, to, 200.25);
+    seedTransfer(from, to, 50.10); // 200.25 + 50.10 = 250.35
 
-    const [marked] = markDuplicates([plannedBuy(from, to, 328.39)]);
+    const [marked] = markDuplicates([plannedBuy(from, to, 250.35)]);
     expect(marked!.duplicate_of).toBe(first);
     expect(marked!.requires_manual).toBeNull();
   });
 
   it("flags a near-miss as a conflict instead of importing a second copy", () => {
     const { from, to } = twoAccounts();
-    const existing = seedTransfer(from, to, 55.22, "2026-03-26");
+    const existing = seedTransfer(from, to, 40.15, "2026-03-26");
 
-    const [marked] = markDuplicates([plannedBuy(from, to, 54.68, "2026-03-26")]);
+    const [marked] = markDuplicates([plannedBuy(from, to, 39.55, "2026-03-26")]);
     expect(marked!.duplicate_of).toBeNull();
     // A conflict, not `requires_manual`: the ledger and the feed disagree about one movement,
     // which is a data error that must fail the step (the gross-booked SOXX dividend of
     // 2026-09-18 sat as an «ok» log line for four days as a requires_manual).
     expect(marked!.requires_manual).toBeNull();
-    expect(marked!.conflict).toMatch(/totalling 55\.22 usd vs the feed's 54\.68/);
+    expect(marked!.conflict).toMatch(/totalling 40\.15 usd vs the feed's 39\.55/);
     expect(marked!.conflict).toContain(String(existing));
   });
 
@@ -111,34 +111,6 @@ describe("racionalMovementsImport duplicate detection", () => {
     expect(marked!.requires_manual).toBeNull();
   });
 
-  it("never plans cash in or out as an automatic write", () => {
-    // The synthetic test DB has no Racional cash account; create the CLP one this needs.
-    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as
-      | { id: number }
-      | undefined;
-    if (!group) return;
-    db.prepare(
-      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
-       VALUES (?, 'vitest Racional CLP', 0, datetime('now'), 'import:panel|kind=clp|key=clp')`
-    ).run(group.id);
-    const accountId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
-
-    try {
-      for (const [title, kind] of [
-        ["Depósito", "deposit"],
-        ["Retiro", "withdrawal"],
-      ] as const) {
-        const planned = planRacionalMovement(
-          brokerMovement({ kind, title, occurred_on: "2026-07-02", amount: 1_000_000, currency: "clp" })
-        );
-        // Its counterpart is a real bank movement that arrives via the checking importer.
-        expect(planned.requires_manual).toMatch(/mirror-pairs/);
-        expect(planned.account_id).toBe(accountId);
-      }
-    } finally {
-      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
-    }
-  });
 });
 
 describe("racional portafolio comisión (cash_fee)", () => {
@@ -297,16 +269,16 @@ describe("racional dividend breakdowns from the dividends API file", () => {
   const soxx = {
     id: "div_NI.vitest-uuid_VTSOX_2026-09-18T11:56:15.827Z",
     asset_id: "VTSOX",
-    gross: 2.75,
-    withholding: 0.41,
-    net: 2.34,
+    gross: 3.25,
+    withholding: 0.49,
+    net: 2.76,
     execution_date: "2026-09-18T11:56:15.827Z",
     is_interest: false,
   };
 
   it("pairs an API dividend with its ledger row on the Chile day and writes the breakdown", () => {
     const { holder, cash } = twoAccounts();
-    const id = seedDividend(holder, cash, 2.34, "2026-09-18");
+    const id = seedDividend(holder, cash, 2.76, "2026-09-18");
     const accounts = { holderFor: () => [holder], racionalUsd: cash };
 
     const [plan] = planRacionalDividendDetails([soxx], "dividends-vitest.json", accounts);
@@ -314,8 +286,8 @@ describe("racional dividend breakdowns from the dividends API file", () => {
 
     expect(applyRacionalDividendDetails([plan!], "dividends-vitest.json")).toEqual([{ movement_id: id, outcome: "inserted" }]);
     expect(getMovementDividendDetail(id)).toMatchObject({
-      gross_amount: 2.75,
-      withholding_amount: 0.41,
+      gross_amount: 3.25,
+      withholding_amount: 0.49,
       withholding_jurisdiction: "US",
       withholding_rate_pct: null,
       pay_date: "2026-09-18",
@@ -336,9 +308,9 @@ describe("racional dividend breakdowns from the dividends API file", () => {
     const [missing] = planRacionalDividendDetails([soxx], "f.json", accounts);
     expect(missing!.conflict).toMatch(/no dividend_payout of VTSOX/);
 
-    seedDividend(holder, cash, 2.75, "2026-09-18");
+    seedDividend(holder, cash, 3.25, "2026-09-18");
     const [gross] = planRacionalDividendDetails([soxx], "f.json", accounts);
-    expect(gross!.conflict).toMatch(/read 2\.75 .* but Racional credited 2\.34/);
+    expect(gross!.conflict).toMatch(/read 3\.25 .* but Racional credited 2\.76/);
 
     const [interest] = planRacionalDividendDetails([{ ...soxx, id: "int-vitest", is_interest: true }], "f.json", accounts);
     expect(interest!.skipped).toMatch(/interest/);
@@ -565,6 +537,80 @@ describe("racional reads — incomplete rows, read isolation, coverage", () => {
  * wallet → caja). Until then the row was set aside as a bank withdrawal and the cursor moved
  * past it. Synthetic amounts; the shape is the real one.
  */
+describe("racional cash in and out the ledger already holds", () => {
+  const made: { accounts: number[]; movements: number[] } = { accounts: [], movements: [] };
+
+  function account(importKey: string, name: string): number {
+    const existing = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(importKey) as { id: number } | undefined;
+    if (existing) return existing.id;
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
+    const id = Number(
+      db.prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, ?, 'vitest-cash', ?)`).run(group.id, name, importKey)
+        .lastInsertRowid
+    );
+    made.accounts.push(id);
+    return id;
+  }
+
+  function seed(row: { from?: number; to?: number; account?: number; amount: number; currency: string; counter?: [number, string]; day: string }): number {
+    const id = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'vitest-racional-cash')`
+        )
+        .run(row.account ?? null, row.from ?? null, row.to ?? null, row.amount, row.currency, row.counter?.[0] ?? null, row.counter?.[1] ?? null, row.day)
+        .lastInsertRowid
+    );
+    made.movements.push(id);
+    return id;
+  }
+
+  let clp: number;
+  let usd: number;
+  let bank: number;
+  beforeEach(() => {
+    clp = account("import:panel|kind=clp|key=clp", "vitest Racional CLP");
+    usd = account("import:panel|kind=usd|key=usd", "vitest Racional USD");
+    bank = account("vitest-racional-cash|bank", "vitest checking");
+  });
+  afterEach(() => {
+    for (const id of made.movements.splice(0)) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+    for (const id of made.accounts.splice(0)) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+  });
+
+  const plan = (kind: "deposit" | "withdrawal", amount: number, currency: "clp" | "usd", day: string) => // convention-ok: Racional lists amounts in pesos or dollars only
+    planRacionalMovements([brokerMovement({ kind, title: kind === "deposit" ? "Depósito" : "Retiro", occurred_on: day, amount, currency })]).planned[0]!;
+
+  it("recognises a bank deposit the mails booked as a transfer into Racional", () => {
+    const id = seed({ from: bank, to: clp, amount: 750_000, currency: "clp", day: "2097-09-22" });
+    expect(plan("deposit", 750_000, "clp", "2097-09-22")).toMatchObject({ duplicate_of: id, requires_manual: null });
+  });
+
+  it("recognises a dollar «Depósito» as the pesos → dollars conversion, by its dollar leg", () => {
+    const id = seed({ from: clp, to: usd, amount: 3_000_000, currency: "clp", counter: [3_012.34, "usd"], day: "2097-10-22" });
+    expect(plan("deposit", 3_012.34, "usd", "2097-10-22")).toMatchObject({ duplicate_of: id, requires_manual: null });
+  });
+
+  it("recognises a Retiro the ledger holds as a transfer out to the bank", () => {
+    const id = seed({ from: clp, to: bank, amount: 500_000, currency: "clp", day: "2097-11-03" });
+    expect(plan("withdrawal", 500_000, "clp", "2097-11-03")).toMatchObject({ duplicate_of: id, requires_manual: null });
+  });
+
+  it("stays manual with no match, a match the other way, or two matches", () => {
+    expect(plan("deposit", 123_456, "clp", "2097-12-01").requires_manual).toMatch(/mirror-pairs/);
+    // Money out of Racional on that day is not the deposit.
+    seed({ from: clp, to: bank, amount: 200_000, currency: "clp", day: "2097-12-02" });
+    expect(plan("deposit", 200_000, "clp", "2097-12-02").requires_manual).toMatch(/mirror-pairs/);
+    // Two same-day transfers of the amount: which one is it?
+    seed({ from: bank, to: clp, amount: 300_000, currency: "clp", day: "2097-12-03" });
+    seed({ from: bank, to: clp, amount: 300_000, currency: "clp", day: "2097-12-03" });
+    const twice = plan("deposit", 300_000, "clp", "2097-12-03");
+    expect(twice.duplicate_of).toBeNull();
+    expect(twice.requires_manual).toMatch(/mirror-pairs/);
+  });
+});
+
 describe("racional portfolio liquidation («Retiro» with sold amounts)", () => {
   const TICKER = "VTIPSA";
   let clp: { id: number; cleanup: () => void };
@@ -714,16 +760,22 @@ describe("racional portfolio liquidation («Retiro» with sold amounts)", () => 
 
   it("recognises a liquidation booked by hand as already present", () => {
     // The real one (2026-10-20) was booked by hand as a stock_sell and a caja transfer before the importer could.
-    db.prepare(
-      `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-       VALUES (?, ?, 2600000, 'clp', '2097-10-20', 'vitest-hand-sell', 2000, 'stock_sell')`
-    ).run(equity, clp.id);
-    db.prepare(`INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note) VALUES (?, ?, 40000, 'clp', '2097-10-20', 'vitest-hand-caja')`).run(
-      caja.accountId,
-      clp.id
+    const sold = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+           VALUES (?, ?, 2600000, 'clp', '2097-10-20', 'vitest-hand-sell', 2000, 'stock_sell')`
+        )
+        .run(equity, clp.id).lastInsertRowid
+    );
+    const cajaRow = Number(
+      db.prepare(`INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note) VALUES (?, ?, 40000, 'clp', '2097-10-20', 'vitest-hand-caja')`).run(caja.accountId, clp.id).lastInsertRowid
     );
     const { planned } = planRacionalMovements([sell, cajaOut]);
-    expect(planned.every((p) => p.duplicate_of != null && p.conflict == null)).toBe(true);
+    expect(planned.map((p) => ({ duplicate_of: p.duplicate_of, conflict: p.conflict }))).toEqual([
+      { duplicate_of: sold, conflict: null },
+      { duplicate_of: cajaRow, conflict: null },
+    ]);
   });
 
   it("keeps a plain bank Retiro manual, and blocks one the crawl never opened", () => {

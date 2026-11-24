@@ -74,7 +74,8 @@ export type RacionalPlannedMovement = {
    * a real bank account (the ledger models it as a checking→Racional transfer, e.g. movement
    * 11373), and that side arrives through the checking importer. Writing this half here would
    * either double-count the checking leg or invent a transfer from an account the feed never
-   * names — so these are surfaced for the existing mirror-pairs flow to link instead.
+   * names — so these are surfaced for the existing mirror-pairs flow to link instead, unless
+   * the ledger already holds them (`markCashLegDuplicate`: Racional's mails book most of them).
    */
   requires_manual: string | null;
   /**
@@ -290,8 +291,52 @@ const findOneLegTransfersOnDay = {
   ),
 };
 
+/**
+ * Every ledger movement on a day that moves money into (`in`) or out of (`out`) one account, with
+ * both legs' amounts: a cross-currency transfer carries the other side in `counter_*`. Single-leg
+ * rows on the account count either way (a dollar row's direction is in its flow kind, not its
+ * sign): a same-amount pair in and out on one day is two hits, which stays manual.
+ */
+const findCashMovementsOnDay = {
+  in: db.prepare(
+    `SELECT id, amount, currency, counter_amount, counter_currency FROM movements
+     WHERE occurred_on = ? AND (to_account_id = ? OR account_id = ?)`
+  ),
+  out: db.prepare(
+    `SELECT id, amount, currency, counter_amount, counter_currency FROM movements
+     WHERE occurred_on = ? AND (from_account_id = ? OR account_id = ?)`
+  ),
+};
+
+/**
+ * A Racional «Depósito» or «Retiro» to a bank is never written here (`requires_manual`), but the
+ * ledger usually holds it already: Racional's own mails book a bank deposit as the transfer from
+ * cuenta corriente (movement 12329) and a dollar purchase as the CLP → USD `fx_exchange` the app
+ * lists as a USD «Depósito» (movement 13041, 2026-10-22). Exactly one same-day movement into
+ * (deposit) or out of (withdrawal) the Racional cash account with that amount on either leg is it;
+ * none or several stay manual. An unopened «Retiro» is not matched: whether it sold a portfolio
+ * is what its detail decides (`blockedReason`).
+ */
+function markCashLegDuplicate(p: RacionalPlannedMovement): RacionalPlannedMovement {
+  if (p.account_id == null || p.source.incomplete != null) return p;
+  const stmt = p.source.kind === "deposit" ? findCashMovementsOnDay.in : findCashMovementsOnDay.out;
+  const rows = stmt.all(p.source.occurred_on, p.account_id, p.account_id) as {
+    id: number;
+    amount: number;
+    currency: string;
+    counter_amount: number | null;
+    counter_currency: string | null;
+  }[];
+  const want = Math.abs(p.amount);
+  const legMatches = (amount: number | null, currency: string | null) =>
+    amount != null && currency === p.currency && Math.abs(Math.abs(Number(amount)) - want) <= AMOUNT_TOLERANCE;
+  const hits = rows.filter((r) => legMatches(r.amount, r.currency) || legMatches(r.counter_amount, r.counter_currency));
+  return hits.length === 1 ? { ...p, duplicate_of: hits[0]!.id, requires_manual: null } : p;
+}
+
 export function markDuplicates(planned: RacionalPlannedMovement[]): RacionalPlannedMovement[] {
   return planned.map((p) => {
+    if (p.source.kind === "deposit" || p.source.kind === "withdrawal") return markCashLegDuplicate(p);
     // A transfer that knows only its Racional cash leg — the paying position of an unopened
     // dividend no API record covered, the instrument of a trade whose title named none — is
     // recognised by that leg alone: exactly one same-day movement of its kind and amount there.
