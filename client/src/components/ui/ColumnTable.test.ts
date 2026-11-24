@@ -22,6 +22,23 @@ describe("ColumnTable", () => {
     expect(html).not.toContain('table-mobile-card__label">Note</span>');
   });
 
+  it("draws a table's own card in place of the title + label/value card", () => {
+    const html = renderToStaticMarkup(
+      createElement(ColumnTable<Row>, {
+        rows: [{ id: 1, name: "Alpha", amount: 42 }],
+        columns: columns.map(({ title: _title, ...c }) => c),
+        rowKey: (r) => r.id,
+        card: (r) => `${r.name}=${r.amount}`,
+        rowExpansion: () => "detail",
+      })
+    );
+    expect(html).toContain('<td class="mobile-only">Alpha=42<div>detail</div></td>');
+    expect(html).not.toContain("table-mobile-card");
+    // The desktop row is still the column list, with the detail in a row of its own.
+    expect(html).toContain('<td class="desktop-only mono">42</td>');
+    expect(html).toContain('<tr class="desktop-only"><td colSpan="3">detail</td></tr>');
+  });
+
   it("shows the empty label as one row", () => {
     const html = renderToStaticMarkup(
       createElement(ColumnTable<Row>, { rows: [], columns, rowKey: (r) => r.id, emptyLabel: "Nothing" })

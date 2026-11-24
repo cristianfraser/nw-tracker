@@ -243,30 +243,6 @@ tr:hover td {
   font-family: inherit;
 }
 
-/* Work earnings: twelve columns on one row — denser cells, the employer truncated, the linked
-   credit's source on its own line — so the table fits the page instead of spilling. */
-.work-earnings-table th,
-.work-earnings-table td {
-  padding: 0.5rem 0.45rem;
-}
-
-/* `max-width: 0` takes the name out of the column's minimum width (a note column's
-   trick), so the table can shrink; the th width is what the column then gets. */
-.work-earnings-table th.work-earnings-table__employer {
-  width: 8rem;
-}
-
-.work-earnings-table td.work-earnings-table__employer {
-  max-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.work-earnings-table .work-earnings-table__link-source {
-  display: block;
-}
-
 .table--parallel-mobile .table-mobile-card__section ul {
   margin: 0.15rem 0 0;
   padding-left: 1.1rem;

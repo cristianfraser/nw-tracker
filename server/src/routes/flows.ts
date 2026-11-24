@@ -95,7 +95,7 @@ import {
   updateRealEstateExpenseMonthsCovered,
   updateRealEstateExpenseConsumption,
 } from "../realEstateExpenseMatching.js";
-import { requestDisplayUnit } from "../displayUnits.js";
+import { requestDisplayUnit, roundToCurrency } from "../displayUnits.js";
 
 /**
  * A write that can move an expense deposit link (an income mark, a refund, pieces, a manual
@@ -171,9 +171,16 @@ app.get("/api/income", (req, res) => {
       // The bank's description goes out only as the name's provenance (`name_detail`).
       return { ...l, ...names };
     });
+  const listTotal = (lines: readonly { amount: number | null }[]) =>
+    roundToCurrency(lines.reduce((sum, l) => sum + (l.amount ?? 0), 0), unit);
   res.json({
     ...payload,
     unit,
+    list_totals: {
+      refund_lines: listTotal(inUnit.refund_lines),
+      filtered_lines: listTotal(inUnit.filtered_lines),
+      excluded_lines: listTotal(inUnit.excluded_lines),
+    },
     lines: named(inUnit.lines),
     manual: inUnit.manual,
     work_earnings: inUnit.work_earnings,

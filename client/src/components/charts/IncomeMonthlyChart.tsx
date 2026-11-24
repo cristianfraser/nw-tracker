@@ -20,16 +20,11 @@ import {
   resolvePeriodXAxis,
 } from "./chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
+import { INCOME_KIND_SERIES } from "../income/incomeColors";
 
 const CHART_ANIM_MS = 90;
 
-const SERIES = [
-  { dataKey: "salary" as const, color: "#22c55e" },
-  { dataKey: "severance" as const, color: "#f59e0b" },
-  { dataKey: "parent_gift" as const, color: "#a78bfa" },
-  { dataKey: "rent" as const, color: "#14b8a6" },
-  { dataKey: "other" as const, color: "#64748b" },
-];
+const SERIES = INCOME_KIND_SERIES.map((s) => ({ dataKey: s.kind, color: s.color }));
 
 export function IncomeMonthlyChart({
   title,

@@ -1,8 +1,7 @@
-import { PageGridTile } from "../layout/PageGridTile";
 import { useMemo } from "react";
 import { Bar, Legend, Line, XAxis, YAxis } from "recharts";
 import { useTranslation } from "../../i18n";
-import { flowPeriodLabel, formatFlowMoney } from "../../flowsDisplay";
+import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
 import type { PayrollBreakdownField, PayrollBreakdownPayload, PayrollBreakdownRow } from "../../types";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
@@ -22,58 +21,18 @@ import {
   resolvePeriodXAxis,
 } from "../charts/chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
-import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
-import { Table } from "../ui/Table";
+import { PAYROLL_STACK } from "./incomeColors";
 
 const CHART_ANIM_MS = 90;
-const PAGE_SIZE = 12;
 
 /** Stands in for the server payload while it loads: the frame renders with no rows. */
 const EMPTY_BREAKDOWN: PayrollBreakdownPayload = { unit: "clp", payslips: [], months: [], years: [] };
 
-/**
- * Stacked bottom to top: what reached the account, then what was taken from gross pay. Chilean
- * groups and US ones (FICA, 401(k), HSA) add up to gross either way; a group no payslip uses is
- * not drawn.
- */
-const STACK: readonly { field: PayrollBreakdownField; color: string }[] = [
-  { field: "net", color: "#22c55e" },
-  { field: "pension", color: "#3b82f6" },
-  { field: "retirement_401k", color: "#2563eb" },
-  { field: "voluntary_pension", color: "#60a5fa" },
-  { field: "hsa", color: "#0ea5e9" },
-  { field: "unemployment", color: "#818cf8" },
-  { field: "pension_commission", color: "#f59e0b" },
-  { field: "health", color: "#14b8a6" },
-  { field: "social_security_medicare", color: "#f97316" },
-  { field: "income_tax", color: "#ef4444" },
-  { field: "other_deductions", color: "#64748b" },
-];
-
-/** Gross and net always; a deduction group only when a payslip uses it. The employer match is shown, outside the sum. */
-const TABLE_COLUMNS: readonly PayrollBreakdownField[] = [
-  "gross",
-  "net",
-  "pension",
-  "pension_commission",
-  "health",
-  "unemployment",
-  "income_tax",
-  "social_security_medicare",
-  "voluntary_pension",
-  "retirement_401k",
-  "hsa",
-  "other_deductions",
-  "employer_retirement",
-];
-
-const ALWAYS_SHOWN: ReadonlySet<PayrollBreakdownField> = new Set(["gross", "net"]);
-
-/** The fields some period of the payload carries (the server's figures, only picked here). */
+/** The stack's fields some year of the payload carries (the server's figures, only picked here). */
 function fieldsInUse(breakdown: PayrollBreakdownPayload): Set<PayrollBreakdownField> {
-  const used = new Set<PayrollBreakdownField>(ALWAYS_SHOWN);
+  const used = new Set<PayrollBreakdownField>(["net"]);
   for (const row of breakdown.years) {
-    for (const f of TABLE_COLUMNS) if (row.values[f] !== 0) used.add(f);
+    for (const s of PAYROLL_STACK) if (row.values[s.field] !== 0) used.add(s.field);
   }
   return used;
 }
@@ -90,8 +49,8 @@ function periodEndYmd(period: string): string {
 }
 
 /**
- * «Bruto vs líquido»: each payroll month's (or year's) gross pay as net pay plus every deduction,
- * and the same figures as a table. Built by the server (`payroll_breakdown`); this only picks the
+ * «Bruto vs líquido»: each payroll month's (or year's) gross pay as net pay plus every deduction
+ * (the same figures per payslip are the payslip list's, `PayslipList`). Built by the server (`payroll_breakdown`); this only picks the
  * display unit and the period. While `loading` it renders its frame dimmed; once loaded it
  * is absent when there is no payslip.
  */
@@ -108,13 +67,10 @@ export function PayrollBreakdownSection({
   const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();
   const chartPrefs = useSurfacePrefs("income.payroll.chart", "month", "3y");
-  const tablePrefs = useSurfacePrefs("income.payroll.table", "year", "total");
   const chartGranularity = chartPrefs.period === "year" ? "year" : "month";
-  const tableGranularity = tablePrefs.period === "year" ? "year" : "month";
   const label = (f: PayrollBreakdownField) => t(`income.payroll.fields.${f}`);
   const used = useMemo(() => fieldsInUse(breakdown), [breakdown]);
-  const stack = useMemo(() => STACK.filter((s) => used.has(s.field)), [used]);
-  const columns = useMemo(() => TABLE_COLUMNS.filter((f) => used.has(f)), [used]);
+  const stack = useMemo(() => PAYROLL_STACK.filter((s) => used.has(s.field)), [used]);
 
   const points = useMemo(() => {
     const rows = chartGranularity === "year" ? breakdown.years : breakdown.months;
@@ -138,12 +94,6 @@ export function PayrollBreakdownSection({
     () => resolvePeriodXAxis(extractSortedAsOfDates(points as Record<string, string | number | null>[]), chartGranularity),
     [points, chartGranularity]
   );
-
-  const tableRows = useMemo(
-    () => [...(tableGranularity === "year" ? breakdown.years : breakdown.months)].reverse(),
-    [breakdown, tableGranularity]
-  );
-  const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
 
   if (breakdown.months.length === 0 && !loading) return null;
 
@@ -222,38 +172,6 @@ export function PayrollBreakdownSection({
         </section>
       </div>
 
-      <PageGridTile id="payroll-table">
-        <div className="chart-panel-title-row">
-          <h3>{t("income.payroll.tableTitle")}</h3>
-          <SurfaceControls period={tablePrefs.period} onPeriodChange={tablePrefs.setPeriod} periodOptions={["month", "year"]} />
-        </div>
-        <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-          <Table
-            tableStyle={{ fontSize: "var(--font-size-prose)" }}
-            header={
-              <thead>
-                <tr>
-                  <th>{t("income.payroll.colPeriod")}</th>
-                  {columns.map((f) => (
-                    <th key={f}>{label(f)}</th>
-                  ))}
-                </tr>
-              </thead>
-            }
-          >
-            {pageRows.map((row) => (
-              <tr key={row.period}>
-                <td className="mono">{flowPeriodLabel(row.period, tableGranularity)}</td>
-                {columns.map((f) => (
-                  <td key={f} className={f === "gross" || f === "net" ? "mono" : "mono muted"}>
-                    {formatFlowMoney(pick(row, f, displayUnit), displayUnit)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </Table>
-        </PaginatedTable>
-      </PageGridTile>
     </>
   );
 }
