@@ -2107,6 +2107,7 @@
       "assignedResult": "{{stamped}} compra(s) clasificadas."
     },
     "products": {
+      "aliasCount": "nombres: {{count}}",
       "search": "Buscar productos",
       "noMatch": "Ningún producto coincide.",
       "title": "Productos",

@@ -6889,6 +6889,10 @@
       }
     },
     "products": {
+      "aliasCount": {
+        "en": "names: {{count}}",
+        "es": "nombres: {{count}}"
+      },
       "search": {
         "en": "Search products",
         "es": "Buscar productos"

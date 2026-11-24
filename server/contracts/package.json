@@ -17,6 +17,10 @@
       "types": "./src/dto/*.ts",
       "default": "./src/dto/*.ts"
     },
+    "./formats/*": {
+      "types": "./src/formats/*.ts",
+      "default": "./src/formats/*.ts"
+    },
     "./liveInputs": {
       "types": "./src/liveInputs.ts",
       "default": "./src/liveInputs.ts"

@@ -224,9 +224,3 @@ h4 {
 .demo-tour-target--positioned {
   position: relative;
 }
-
-/* A select is as wide as its longest option: it shrinks to its container instead of widening
-   the page (its text is cut; the open list still shows whole names). */
-select {
-  max-width: 100%;
-}
