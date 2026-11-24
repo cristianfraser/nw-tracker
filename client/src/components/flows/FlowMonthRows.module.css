@@ -33,9 +33,21 @@
   border-bottom-color: var(--hairline);
 }
 
-/* A month heading row: the month and its total, across the list. */
+/* A month: its heading, then its rows as a list; both subgrids of the list, so every row of every
+   month shares the list's columns. */
+.monthGroup,
+.monthRows {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+/* A month heading (an h4 / h5): the month and its total, across the list. */
 .month {
   grid-column: 1 / -1;
+  margin: 0;
+  font-size: inherit;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
@@ -46,7 +58,7 @@
   color: var(--text);
 }
 
-.list > .month:first-child {
+.monthGroup:first-child > .month {
   padding-top: 0.1rem;
 }
 

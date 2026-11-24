@@ -73,26 +73,33 @@ export function RealEstateBillMonthList({
   onLink: (slot: RealEstateBillSlot) => void;
 }) {
   const { t } = useTranslation();
+  const idBase = useId();
   return (
     <div className={styles.frame}>
       {block.months.length === 0 ? (
         <p className="muted">{t("expenses.emptyAccount")}</p>
       ) : (
-        <div className={cn(styles.list, styles.bills)} role="list">
+        <div className={cn(styles.list, styles.bills)}>
           {block.months.map((m) => (
-            <div key={m.bill_month} role="listitem" style={{ display: "contents" }}>
-              <div className={styles.month}>
+            <section
+              key={m.bill_month}
+              className={styles.monthGroup}
+              aria-labelledby={`${idBase}-${m.bill_month}`}
+            >
+              <h5 id={`${idBase}-${m.bill_month}`} className={styles.month}>
                 <span>{formatYearMonthLabel(m.bill_month)}</span>
                 <span className="mono">{formatMoney({ value: m.total, currency: block.currency })}</span>
+              </h5>
+              <div role="list" className={styles.monthRows}>
+                {m.slots.map((slot) => (
+                  <RealEstateBillRow
+                    key={slot.expense_entry_id ?? `${slot.kind}|${slot.spent_on}`}
+                    slot={slot}
+                    onLink={onLink}
+                  />
+                ))}
               </div>
-              {m.slots.map((slot) => (
-                <RealEstateBillRow
-                  key={slot.expense_entry_id ?? `${slot.kind}|${slot.spent_on}`}
-                  slot={slot}
-                  onLink={onLink}
-                />
-              ))}
-            </div>
+            </section>
           ))}
         </div>
       )}
@@ -214,7 +221,7 @@ function RealEstateBillRow({
   }
 
   return (
-    <div className={styles.row}>
+    <div role="listitem" className={styles.row}>
       <span className={styles.kind}>{expenseKindLabel(slot.kind)}</span>
       <span className={cn(styles.linked, slot.link && styles.linkedLinked)}>
         {linkedPurchaseLabel(slot, t)}

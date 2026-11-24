@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@crfrsr/ui";
 import { cn } from "../../cn";
@@ -41,6 +41,7 @@ export function DepositMonthList({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const idBase = useId();
   const months = block?.months ?? [];
   const collapsedCount = collapsedMonthCount(months);
   const shown = expanded ? months : months.slice(0, collapsedCount);
@@ -49,29 +50,31 @@ export function DepositMonthList({
       {months.length === 0 && !loading ? (
         <p className="muted">{t("deposits.emptyCategory")}</p>
       ) : (
-        <div className={cn(styles.list, styles.deposits)} role="list">
+        <div className={cn(styles.list, styles.deposits)}>
           {shown.map((m) => (
-            <div key={m.month} role="listitem" style={{ display: "contents" }}>
-              <div className={styles.month}>
+            <section key={m.month} className={styles.monthGroup} aria-labelledby={`${idBase}-${m.month}`}>
+              <h4 id={`${idBase}-${m.month}`} className={styles.month}>
                 <span>{formatYearMonthLabel(m.month)}</span>
                 <span className="mono">{formatFlowMoney(m.total, displayUnit)}</span>
+              </h4>
+              <div role="list" className={styles.monthRows}>
+                {m.rows.map((r, idx) => (
+                  <div key={`${r.account_id}-${r.occurred_on}-${idx}`} role="listitem" className={styles.row}>
+                    <span className={cn("mono", styles.day)} title={r.occurred_on}>
+                      <span aria-hidden="true">{r.occurred_on.slice(8, 10)}</span>
+                      <span className="visually-hidden">{r.occurred_on}</span>
+                    </span>
+                    <span className={styles.account}>
+                      <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
+                      {r.mortgage_carrying ? (
+                        <span className={styles.chip}>{t("deposits.mortgageCarryingTag")}</span>
+                      ) : null}
+                    </span>
+                    <span className={cn("mono", styles.num)}>{formatFlowMoney(r.amount, displayUnit)}</span>
+                  </div>
+                ))}
               </div>
-              {m.rows.map((r, idx) => (
-                <div key={`${r.account_id}-${r.occurred_on}-${idx}`} className={styles.row}>
-                  <span className={cn("mono", styles.day)} title={r.occurred_on}>
-                    <span aria-hidden="true">{r.occurred_on.slice(8, 10)}</span>
-                    <span className="visually-hidden">{r.occurred_on}</span>
-                  </span>
-                  <span className={styles.account}>
-                    <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
-                    {r.mortgage_carrying ? (
-                      <span className={styles.chip}>{t("deposits.mortgageCarryingTag")}</span>
-                    ) : null}
-                  </span>
-                  <span className={cn("mono", styles.num)}>{formatFlowMoney(r.amount, displayUnit)}</span>
-                </div>
-              ))}
-            </div>
+            </section>
           ))}
         </div>
       )}
