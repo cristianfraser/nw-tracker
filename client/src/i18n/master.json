@@ -6319,13 +6319,25 @@
       "en": "Restore",
       "es": "Restaurar"
     },
-    "selectAll": {
-      "en": "Select all",
-      "es": "Seleccionar todos"
-    },
     "selectPair": {
       "en": "Select pair",
       "es": "Seleccionar par"
+    },
+    "selectRoute": {
+      "en": "Select every pair on this route",
+      "es": "Seleccionar todos los pares de esta ruta"
+    },
+    "units": {
+      "en": "({{n}} units)",
+      "es": "({{n}} cuotas)"
+    },
+    "noteExpand": {
+      "en": "Show the whole note",
+      "es": "Mostrar la nota completa"
+    },
+    "noteCollapse": {
+      "en": "Shorten the note",
+      "es": "Acortar la nota"
     },
     "convertSelected": {
       "en": "Convert selected ({{n}})",
@@ -6338,38 +6350,6 @@
     "reject": {
       "en": "Reject",
       "es": "Rechazar"
-    },
-    "colDates": {
-      "en": "Dates",
-      "es": "Fechas"
-    },
-    "colFrom": {
-      "en": "From",
-      "es": "Origen"
-    },
-    "colTo": {
-      "en": "To",
-      "es": "Destino"
-    },
-    "colAmount": {
-      "en": "Amount",
-      "es": "Monto"
-    },
-    "colNotes": {
-      "en": "Notes",
-      "es": "Notas"
-    },
-    "colFlags": {
-      "en": "Flags",
-      "es": "Avisos"
-    },
-    "colActions": {
-      "en": "Actions",
-      "es": "Acciones"
-    },
-    "colAlternatives": {
-      "en": "Other candidates",
-      "es": "Otros candidatos"
     },
     "altOut": {
       "en": "Other withdrawal",

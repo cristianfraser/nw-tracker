@@ -1,0 +1,233 @@
+/* /panel/mirror-pairs: each section's pairs grouped under their route (from → to).
+
+   One rendering at every width. While a route's rows fit on one line, the route's list is the
+   grid and every row a subgrid of it — check, dates, amount, flags + note (the one flexible
+   column, the note cut with an ellipsis; a click shows it whole), actions — so the fields line up
+   down the route. Below the frame's breakpoint a row reads as lines: dates and amount, flags,
+   the note in full, the other candidates, the actions. */
+
+/* Each route block is the container its rows switch on (a container query restyles only what is
+   inside it). One container name for both kinds of list; each states its breakpoint as its
+   font-size and the query reads `1em`, which a container query resolves against the container
+   (never a list of containers: Safari drops the whole rule). The breakpoint is the list's
+   one-line width with the note at its 8rem minimum, plus a margin: a list with checkboxes
+   (check, a two-date span, amount) 34rem; a list with actions (two-date span, amount, Approve
+   and Reject) 46rem. The block sets its children's font-size, so the frame's reaches no text. */
+.route {
+  container: mirror-rows / inline-size;
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  margin-bottom: 0.75rem;
+}
+
+.routeChecks {
+  font-size: 34rem;
+}
+
+.routeActions {
+  font-size: 46rem;
+}
+
+.routeHead {
+  font-size: var(--font-size-prose);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--surface2);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.routeCount {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.arrow {
+  color: var(--muted);
+}
+
+.list {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(8rem, 1fr);
+  column-gap: 1rem;
+  font-size: var(--font-size-prose);
+}
+
+.listCheck {
+  grid-template-columns: auto max-content max-content minmax(8rem, 1fr);
+}
+
+.listActions {
+  grid-template-columns: max-content max-content minmax(8rem, 1fr) auto;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  padding: 0.45rem 0.75rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.check {
+  align-self: center;
+}
+
+.dates {
+  white-space: nowrap;
+}
+
+.datesTo {
+  color: var(--muted);
+}
+
+.amount {
+  text-align: right;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.units {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  min-width: 0;
+}
+
+.note {
+  flex: 1 1 8rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--font-size-prose-sm);
+  /* A button that reads as text: a click shows the note whole. */
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.noteOpen {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.noteNone {
+  cursor: default;
+}
+
+.actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+/* Another leg that could take one side of an ambiguous pair, under its pair. */
+.alt {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  padding: 0.3rem 0.75rem 0.45rem 2rem;
+  background: color-mix(in srgb, var(--surface2) 50%, transparent);
+  font-size: var(--font-size-prose-sm);
+}
+
+.altLabel {
+  color: var(--muted);
+}
+
+.alt .note {
+  flex-basis: 10rem;
+}
+
+.rejected {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.rejected li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--muted);
+}
+
+@container mirror-rows (max-width: 1em) {
+  .list {
+    display: block;
+  }
+
+  .row {
+    grid-template-columns: max-content minmax(0, 1fr) auto;
+    grid-template-areas:
+      "dates   dates   amount"
+      "info    info    info"
+      "actions actions actions";
+    gap: 0.25rem 0.75rem;
+  }
+
+  .listCheck .row {
+    grid-template-areas:
+      "check dates   amount"
+      ".     info    info"
+      ".     actions actions";
+  }
+
+  .check {
+    grid-area: check;
+  }
+
+  .dates {
+    grid-area: dates;
+    white-space: normal;
+  }
+
+  .amount {
+    grid-area: amount;
+  }
+
+  .info {
+    grid-area: info;
+  }
+
+  .info:empty {
+    display: none;
+  }
+
+  .note {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: default;
+  }
+
+  .actions {
+    grid-area: actions;
+    justify-content: flex-start;
+  }
+
+  .alt {
+    padding-left: 1.5rem;
+  }
+}

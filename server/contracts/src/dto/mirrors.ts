@@ -74,10 +74,34 @@ export interface CcPaymentMirrorRefDto {
   statement_id?: number | null;
 }
 
+/** One end of a mirror route: the account money leaves or reaches. */
+export interface MirrorRouteAccount {
+  account_id: number;
+  account_name: string;
+}
+
+/** The pairs of a section that move money along one route (from → to), in the section's order. */
+export interface MirrorRouteGroup<P> {
+  from: MirrorRouteAccount;
+  to: MirrorRouteAccount;
+  pairs: P[];
+}
+
+/** A panel section: its pair count and its pairs grouped by route (routes in first-pair order). */
+export interface MirrorPairSection<P> {
+  count: number;
+  routes: MirrorRouteGroup<P>[];
+}
+
+/**
+ * /panel/mirror-pairs, built by the server: high-confidence and ambiguous pairs, convertible card
+ * payments (blocked ones left out), each grouped by route; rejected pairs as a flat list.
+ */
 export interface MovementMirrorCandidatesResponse {
-  pairs: MirrorPairCandidate[];
+  high: MirrorPairSection<MirrorPairCandidate>;
+  ambiguous: MirrorPairSection<MirrorPairCandidate>;
+  cc_payments: MirrorPairSection<CcPaymentMirrorCandidateDto>;
   rejected: RejectedMirrorPair[];
-  cc_payment_pairs: CcPaymentMirrorCandidateDto[];
 }
 
 export interface MirrorPairRef {

@@ -9,6 +9,7 @@ import {
   type MirrorPairRef,
 } from "../movementMirrorConvert.js";
 import { listMirrorPairCandidates, listRejectedMirrorPairs } from "../movementMirrorPairs.js";
+import { buildMirrorPairsPanel } from "../movementMirrorPanel.js";
 import {
   convertCcPaymentMirrors,
   listCcPaymentMirrorCandidates,
@@ -30,11 +31,13 @@ function parsePairRefs(body: unknown): MirrorPairRef[] | null {
 
 export function registerMovementMirrorsRoutes(app: express.Express): void {
   app.get("/api/movement-mirrors/candidates", (_req, res) => {
-    res.json({
-      pairs: listMirrorPairCandidates(),
-      rejected: listRejectedMirrorPairs(),
-      cc_payment_pairs: listCcPaymentMirrorCandidates(),
-    });
+    res.json(
+      buildMirrorPairsPanel(
+        listMirrorPairCandidates(),
+        listCcPaymentMirrorCandidates(),
+        listRejectedMirrorPairs()
+      )
+    );
   });
 
   app.post("/api/movement-mirrors/convert", (req, res) => {

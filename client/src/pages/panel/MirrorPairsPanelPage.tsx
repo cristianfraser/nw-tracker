@@ -1,17 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { invalidateResources, resources } from "../../queries/resources";
 import { Link } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
+import { cn } from "../../cn";
 import { formatGroupedDecimalTrimmed, formatMoney } from "../../format";
 import { formatCheckingPesos } from "../../formatNative";
 import { useMovementMirrorCandidates } from "../../queries/hooks";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { loadableClass } from "../../components/ui/Loadable";
-import { Table } from "../../components/ui/Table";
-import { TableMobileCard, TableMobileCardRow } from "../../components/ui/TableMobileCard";
+import { Pill } from "../../components/ui/Pill";
 import { Button } from "@crfrsr/ui";
 import type {
   CcPaymentMirrorCandidateDto,
@@ -19,7 +19,10 @@ import type {
   MirrorLegDto,
   MirrorPairCandidate,
   MirrorPairRef,
+  MirrorPairSection,
+  MirrorRouteGroup,
 } from "../../types";
+import styles from "./MirrorPairsPanelPage.module.css";
 
 function ccPairKey(p: CcPaymentMirrorCandidateDto): string {
   return `cc|${p.out.movement_id}|${p.evidence.statement_line_id ?? ""}|${p.evidence.statement_id ?? ""}`;
@@ -41,93 +44,34 @@ function pairRef(p: { out: MirrorLegDto; in: MirrorLegDto }): MirrorPairRef {
   return { out_movement_id: p.out.movement_id, in_movement_id: p.in.movement_id };
 }
 
-function AccountCell({ leg }: { leg: MirrorLegDto }) {
-  return <Link to={`/account/${leg.account_id}`}>{leg.account_name}</Link>;
-}
-
-function LegDates({ p }: { p: MirrorPairCandidate }) {
-  return (
-    <>
-      {p.out.occurred_on}
-      {p.gap_days > 0 ? <span className="muted"> → {p.in.occurred_on}</span> : null}
-    </>
-  );
-}
-
-function PairBadges({ p }: { p: MirrorPairCandidate }) {
-  const { t } = useTranslation();
-  const badges: string[] = [];
-  if (p.linked) badges.push(t("mirrorPairs.badgeLinked"));
-  if (p.month_precision) badges.push(t("mirrorPairs.badgeMonthPrecision"));
-  if (p.month_straddle) badges.push(t("mirrorPairs.badgeMonthStraddle"));
-  // Month-precision and linked pairs convert on the real-day checking leg's date, so the
-  // bank-window re-import caveat does not apply to them.
-  if (!p.within_business_day_window && !p.month_precision && !p.linked) {
-    badges.push(t("mirrorPairs.badgeWideGap"));
-  }
-  if (p.out_candidate_count > 1 || p.in_candidate_count > 1) {
-    badges.push(
-      t("mirrorPairs.badgeMultiCandidate", {
-        n: Math.max(p.out_candidate_count, p.in_candidate_count),
-      })
-    );
-  }
-  if (badges.length === 0) return null;
-  return <span className="muted"> {badges.join(" · ")}</span>;
-}
-
-function NotesCell({ p }: { p: { out: MirrorLegDto; in: MirrorLegDto } }) {
-  const parts = [p.out.note, p.in.note].filter(Boolean) as string[];
-  if (parts.length === 0) return <span className="muted">—</span>;
-  return (
-    <span className="muted" style={{ fontSize: "0.85em", overflowWrap: "anywhere" }}>
-      {parts.join(" · ")}
-    </span>
-  );
-}
-
 type MirrorPairLegs = { out: MirrorLegDto; in: MirrorLegDto };
 
-/**
- * The competing legs of an ambiguous pair: same amount, inside the pairing window. Same-day siblings
- * cannot be told apart by amount and date, so the offered pair is only the first by id — read the
- * notes and convert the right one.
- */
-function AlternativesCell({
-  p,
-  disabled,
-  onPick,
-}: {
-  p: MirrorPairCandidate;
-  disabled: boolean;
-  onPick: (pair: MirrorPairLegs) => void;
-}) {
-  const { t } = useTranslation();
-  const alts = [
-    ...p.out_alternatives.map((a) => ({ alt: a, side: "out" as const })),
-    ...p.in_alternatives.map((a) => ({ alt: a, side: "in" as const })),
-  ];
-  if (alts.length === 0) return <span className="muted">—</span>;
-  return (
-    <>
-      {alts.map(({ alt, side }) => (
-        <div key={`${side}|${alt.leg.movement_id}`}>
-          <span className="muted">{t(side === "out" ? "mirrorPairs.altOut" : "mirrorPairs.altIn")}:</span>{" "}
-          {alt.leg.occurred_on} <AccountCell leg={alt.leg} />{" "}
-          <span className="muted" style={{ fontSize: "0.85em", overflowWrap: "anywhere" }}>
-            {alt.leg.note ?? "—"}
-          </span>{" "}
-          <Button
-            variant="secondary"
-            disabled={disabled}
-            onClick={() => onPick(side === "out" ? { out: alt.leg, in: p.in } : { out: p.out, in: alt.leg })}
-          >
-            {t("mirrorPairs.useAlternative")}
-          </Button>
-        </div>
-      ))}
-    </>
-  );
+const EMPTY_SECTION = { count: 0, routes: [] };
+
+function sectionPairs<P>(section: MirrorPairSection<P>): P[] {
+  return section.routes.flatMap((r) => r.pairs);
+}
+
+function AccountLink({ id, name }: { id: number; name: string }) {
+  return <Link to={`/account/${id}`}>{name}</Link>;
+}
+
+/** A pair's flags, worded. Month-precision and linked pairs convert on the real-day checking
+ * leg's date, so the bank-window re-import caveat does not apply to them. */
+function pairFlags(p: MirrorPairCandidate, t: (k: string, o?: Record<string, unknown>) => string): string[] {
+  const flags: string[] = [];
+  if (p.linked) flags.push(t("mirrorPairs.badgeLinked"));
+  if (p.month_precision) flags.push(t("mirrorPairs.badgeMonthPrecision"));
+  if (p.month_straddle) flags.push(t("mirrorPairs.badgeMonthStraddle"));
+  if (!p.within_business_day_window && !p.month_precision && !p.linked) {
+    flags.push(t("mirrorPairs.badgeWideGap"));
+  }
+  if (p.out_candidate_count > 1 || p.in_candidate_count > 1) {
+    flags.push(
+      t("mirrorPairs.badgeMultiCandidate", { n: Math.max(p.out_candidate_count, p.in_candidate_count) })
+    );
+  }
+  return flags;
 }
 
 /** A leg's amount, unsigned, in the currency the pair moves. */
@@ -135,15 +79,109 @@ function legAmountText(leg: MirrorLegDto): string {
   return formatMoney({ value: Math.abs(leg.amount), currency: leg.currency });
 }
 
-function AmountCell({ p }: { p: { out: MirrorLegDto } }) {
-  const units = p.out.units_delta;
+/** The import note, one line cut with an ellipsis while the row is on one line; a click shows it whole. */
+function NoteText({ text }: { text: string | null }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  if (!text) return <span className={cn(styles.note, styles.noteNone)}>—</span>;
+  return (
+    <button
+      type="button"
+      className={cn(styles.note, open && styles.noteOpen)}
+      aria-expanded={open}
+      aria-label={open ? t("mirrorPairs.noteCollapse") : t("mirrorPairs.noteExpand")}
+      title={open ? undefined : text}
+      onClick={() => setOpen((o) => !o)}
+    >
+      {text}
+    </button>
+  );
+}
+
+function RouteCheckbox({ keys, unchecked, onSet }: { keys: string[]; unchecked: Set<string>; onSet: (keys: string[], on: boolean) => void }) {
+  const { t } = useTranslation();
+  const ref = useRef<HTMLInputElement>(null);
+  const selected = keys.filter((k) => !unchecked.has(k)).length;
+  const all = selected === keys.length;
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = selected > 0 && !all;
+  }, [selected, all]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={all}
+      onChange={() => onSet(keys, !all)}
+      aria-label={t("mirrorPairs.selectRoute")}
+    />
+  );
+}
+
+/** One pair as the list draws it (every field already rendered). */
+type PairRowItem = {
+  key: string;
+  check: ReactNode | null;
+  from: string;
+  to: string | null;
+  amount: ReactNode;
+  flags: string[];
+  note: string | null;
+  actions: ReactNode | null;
+  alternatives: ReactNode | null;
+};
+
+function PairRow({ item }: { item: PairRowItem }) {
   return (
     <>
-      {legAmountText(p.out)}
-      {units != null && units !== 0 ? (
-        <span className="muted"> ({formatGroupedDecimalTrimmed(units)} cuotas)</span>
-      ) : null}
+      <div role="listitem" className={styles.row}>
+        {item.check != null ? <span className={styles.check}>{item.check}</span> : null}
+        <span className={cn("mono", styles.dates)}>
+          {item.from}
+          {item.to != null ? <span className={styles.datesTo}> → {item.to}</span> : null}
+        </span>
+        <span className={cn("mono", styles.amount)}>{item.amount}</span>
+        <span className={styles.info}>
+          {item.flags.map((f) => (
+            <Pill key={f} size="small" uppercase={false} label={f} />
+          ))}
+          <NoteText text={item.note} />
+        </span>
+        {item.actions != null ? <span className={styles.actions}>{item.actions}</span> : null}
+      </div>
+      {item.alternatives}
     </>
+  );
+}
+
+function RouteBlock<P>({
+  route,
+  check,
+  actions,
+  rows,
+}: {
+  route: MirrorRouteGroup<P>;
+  check: ReactNode | null;
+  actions: boolean;
+  rows: PairRowItem[];
+}) {
+  return (
+    <div className={cn(styles.route, actions ? styles.routeActions : styles.routeChecks)}>
+      <div className={styles.routeHead}>
+        {check}
+        <AccountLink id={route.from.account_id} name={route.from.account_name} />
+        <span className={styles.arrow}>→</span>
+        <AccountLink id={route.to.account_id} name={route.to.account_name} />
+        <span className={styles.routeCount}>· {route.pairs.length}</span>
+      </div>
+      <div
+        role="list"
+        className={cn(styles.list, check != null && styles.listCheck, actions && styles.listActions)}
+      >
+        {rows.map((r) => (
+          <PairRow key={r.key} item={r} />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -152,7 +190,9 @@ export function MirrorPairsPanelPage() {
   const queryClient = useQueryClient();
   const { data, error, isPending } = useMovementMirrorCandidates();
   const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
+  const [ccUnchecked, setCcUnchecked] = useState<Set<string>>(new Set());
   const [confirmBatch, setConfirmBatch] = useState(false);
+  const [confirmCcBatch, setConfirmCcBatch] = useState(false);
   const [confirmSingle, setConfirmSingle] = useState<MirrorPairLegs | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -189,324 +229,178 @@ export function MirrorPairsPanelPage() {
     onError: (e) => setActionError(e instanceof Error ? e.message : String(e)),
   });
 
-  const high = useMemo(() => (data?.pairs ?? []).filter((p) => p.confidence === "high"), [data]);
-  const ambiguous = useMemo(() => (data?.pairs ?? []).filter((p) => p.confidence === "ambiguous"), [data]);
-  const rejected = data?.rejected ?? [];
-
-  const ccPairs = useMemo(() => (data?.cc_payment_pairs ?? []).filter((p) => !p.blocked), [data]);
-  const [ccUnchecked, setCcUnchecked] = useState<Set<string>>(new Set());
-  const [confirmCcBatch, setConfirmCcBatch] = useState(false);
-  const selectedCc = ccPairs.filter((p) => !ccUnchecked.has(ccPairKey(p)));
-
-  const selectedHigh = high.filter((p) => !unchecked.has(pairKey(p)));
-  const busy = convert.isPending || reject.isPending || unreject.isPending || convertCc.isPending;
-
   if (error) {
     return <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>;
   }
 
-  const toggle = (key: string) => {
-    setUnchecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-  const allChecked = high.length > 0 && selectedHigh.length === high.length;
-  const toggleAll = () => {
-    setUnchecked(allChecked ? new Set(high.map(pairKey)) : new Set());
+  const high: MirrorPairSection<MirrorPairCandidate> = data?.high ?? EMPTY_SECTION;
+  const ambiguous: MirrorPairSection<MirrorPairCandidate> = data?.ambiguous ?? EMPTY_SECTION;
+  const cc: MirrorPairSection<CcPaymentMirrorCandidateDto> = data?.cc_payments ?? EMPTY_SECTION;
+  const rejected = data?.rejected ?? [];
+
+  const selectedHigh = sectionPairs(high).filter((p) => !unchecked.has(pairKey(p)));
+  const selectedCc = sectionPairs(cc).filter((p) => !ccUnchecked.has(ccPairKey(p)));
+  const busy = convert.isPending || reject.isPending || unreject.isPending || convertCc.isPending;
+
+  const setKeys =
+    (set: (f: (prev: Set<string>) => Set<string>) => void) => (keys: string[], on: boolean) =>
+      set((prev) => {
+        const next = new Set(prev);
+        for (const k of keys) {
+          if (on) next.delete(k);
+          else next.add(k);
+        }
+        return next;
+      });
+  const setHigh = setKeys(setUnchecked);
+  const setCc = setKeys(setCcUnchecked);
+
+  const pairCheckbox = (key: string, set: Set<string>, onSet: (keys: string[], on: boolean) => void) => (
+    <input
+      type="checkbox"
+      checked={!set.has(key)}
+      onChange={() => onSet([key], set.has(key))}
+      aria-label={t("mirrorPairs.selectPair")}
+    />
+  );
+
+  const legAmount = (p: MirrorPairCandidate) => {
+    const units = p.out.units_delta;
+    return (
+      <>
+        {legAmountText(p.out)}
+        {units != null && units !== 0 ? (
+          <span className={styles.units}> {t("mirrorPairs.units", { n: formatGroupedDecimalTrimmed(units) })}</span>
+        ) : null}
+      </>
+    );
   };
 
-  const rowActions = (p: MirrorPairCandidate) => (
-    <>
-      <Button
-        disabled={busy}
-        onClick={() => setConfirmSingle(p)}
-      >
-        {t("mirrorPairs.approve")}
-      </Button>{" "}
-      <Button variant="secondary" disabled={busy} onClick={() => reject.mutate([pairRef(p)])}>
-        {t("mirrorPairs.reject")}
-      </Button>
-    </>
-  );
+  const legNote = (p: MirrorPairLegs) => {
+    const parts = [p.out.note, p.in.note].filter(Boolean) as string[];
+    return parts.length === 0 ? null : parts.join(" · ");
+  };
+
+  const legRow = (p: MirrorPairCandidate, mode: "high" | "ambiguous"): PairRowItem => {
+    const alts = [
+      ...p.out_alternatives.map((a) => ({ alt: a, side: "out" as const })),
+      ...p.in_alternatives.map((a) => ({ alt: a, side: "in" as const })),
+    ];
+    return {
+      key: pairKey(p),
+      check: mode === "high" ? pairCheckbox(pairKey(p), unchecked, setHigh) : null,
+      from: p.out.occurred_on,
+      to: p.gap_days > 0 ? p.in.occurred_on : null,
+      amount: legAmount(p),
+      flags: pairFlags(p, t),
+      note: legNote(p),
+      actions:
+        mode === "ambiguous" ? (
+          <>
+            <Button size="sm" disabled={busy} onClick={() => setConfirmSingle(p)}>
+              {t("mirrorPairs.approve")}
+            </Button>
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => reject.mutate([pairRef(p)])}>
+              {t("mirrorPairs.reject")}
+            </Button>
+          </>
+        ) : null,
+      alternatives:
+        alts.length === 0
+          ? null
+          : alts.map(({ alt, side }) => (
+              <div key={`${side}|${alt.leg.movement_id}`} className={styles.alt}>
+                <span className={styles.altLabel}>
+                  {t(side === "out" ? "mirrorPairs.altOut" : "mirrorPairs.altIn")}
+                </span>
+                <span className="mono">{alt.leg.occurred_on}</span>
+                <AccountLink id={alt.leg.account_id} name={alt.leg.account_name} />
+                <NoteText text={alt.leg.note} />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    setConfirmSingle(side === "out" ? { out: alt.leg, in: p.in } : { out: p.out, in: alt.leg })
+                  }
+                >
+                  {t("mirrorPairs.useAlternative")}
+                </Button>
+              </div>
+            )),
+    };
+  };
+
+  const ccRow = (p: CcPaymentMirrorCandidateDto): PairRowItem => ({
+    key: ccPairKey(p),
+    check: pairCheckbox(ccPairKey(p), ccUnchecked, setCc),
+    from: p.out.occurred_on,
+    to: p.skew_days !== 0 ? p.evidence.pago_iso : null,
+    amount: formatCheckingPesos(p.evidence.amount_clp),
+    flags: p.skew_days !== 0 ? [t("mirrorPairs.badgeSkew", { n: Math.abs(p.skew_days) })] : [],
+    note: p.out.note ? `${p.out.note} · ${p.evidence.label}` : p.evidence.label,
+    actions: null,
+    alternatives: null,
+  });
 
   return (
     <PageGridTile id="mirror-pairs" className={loadableClass(isPending)}>
       <h2>{t("mirrorPairs.title")}</h2>
       {actionError ? <p className="error">{actionError}</p> : null}
 
-      <h3>{t("mirrorPairs.highTitle", { n: high.length })}</h3>
-      {high.length === 0 && !isPending ? (
+      <h3>{t("mirrorPairs.highTitle", { n: high.count })}</h3>
+      {high.count === 0 && !isPending ? (
         <p className="muted">{t("mirrorPairs.emptyHigh")}</p>
       ) : (
         <>
-          <Table
-            header={
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      checked={allChecked}
-                      onChange={toggleAll}
-                      aria-label={t("mirrorPairs.selectAll")}
-                    />
-                  </th>
-                  <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
-                </tr>
-              </thead>
-            }
-          >
-            {high.map((p) => {
-              const key = pairKey(p);
-              const checkbox = (
-                <input
-                  type="checkbox"
-                  checked={!unchecked.has(key)}
-                  onChange={() => toggle(key)}
-                  aria-label={t("mirrorPairs.selectPair")}
-                />
-              );
-              return (
-                <tr key={key}>
-                  <td>{checkbox}</td>
-                  <td className="desktop-only">
-                    <LegDates p={p} />
-                  </td>
-                  <td className="desktop-only">
-                    <AccountCell leg={p.out} />
-                  </td>
-                  <td className="desktop-only">
-                    <AccountCell leg={p.in} />
-                  </td>
-                  <td className="desktop-only">
-                    <AmountCell p={p} />
-                  </td>
-                  <td className="desktop-only">
-                    <PairBadges p={p} />
-                  </td>
-                  <td className="desktop-only">
-                    <NotesCell p={p} />
-                  </td>
-                  <td className="mobile-only">
-                    <TableMobileCard
-                      title={
-                        <>
-                          <AccountCell leg={p.out} /> → <AccountCell leg={p.in} />
-                        </>
-                      }
-                    >
-                      <TableMobileCardRow label={t("mirrorPairs.colDates")} value={<LegDates p={p} />} />
-                      <TableMobileCardRow label={t("mirrorPairs.colAmount")} value={<AmountCell p={p} />} />
-                      <TableMobileCardRow label={t("mirrorPairs.colFlags")} value={<PairBadges p={p} />} />
-                      <TableMobileCardRow label={t("mirrorPairs.colNotes")} value={<NotesCell p={p} />} />
-                    </TableMobileCard>
-                  </td>
-                </tr>
-              );
-            })}
-          </Table>
+          {high.routes.map((route) => (
+            <RouteBlock
+              key={`${route.from.account_id}|${route.to.account_id}`}
+              route={route}
+              check={<RouteCheckbox keys={route.pairs.map(pairKey)} unchecked={unchecked} onSet={setHigh} />}
+              actions={false}
+              rows={route.pairs.map((p) => legRow(p, "high"))}
+            />
+          ))}
           <p>
-            <Button
-              disabled={busy || selectedHigh.length === 0}
-              onClick={() => setConfirmBatch(true)}
-            >
+            <Button disabled={busy || selectedHigh.length === 0} onClick={() => setConfirmBatch(true)}>
               {t("mirrorPairs.convertSelected", { n: selectedHigh.length })}
             </Button>
           </p>
         </>
       )}
 
-      <h3>{t("mirrorPairs.ambiguousTitle", { n: ambiguous.length })}</h3>
-      {ambiguous.length === 0 && !isPending ? (
+      <h3>{t("mirrorPairs.ambiguousTitle", { n: ambiguous.count })}</h3>
+      {ambiguous.count === 0 && !isPending ? (
         <p className="muted">{t("mirrorPairs.emptyAmbiguous")}</p>
       ) : (
-        <Table
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colAlternatives")}</th>
-                <th className="desktop-only">{t("mirrorPairs.colActions")}</th>
-              </tr>
-            </thead>
-          }
-        >
-          {ambiguous.map((p) => (
-            <tr key={pairKey(p)}>
-              <td className="desktop-only">
-                <LegDates p={p} />
-              </td>
-              <td className="desktop-only">
-                <AccountCell leg={p.out} />
-              </td>
-              <td className="desktop-only">
-                <AccountCell leg={p.in} />
-              </td>
-              <td className="desktop-only">
-                <AmountCell p={p} />
-              </td>
-              <td className="desktop-only">
-                <PairBadges p={p} />
-              </td>
-              <td className="desktop-only">
-                <NotesCell p={p} />
-              </td>
-              <td className="desktop-only">
-                <AlternativesCell p={p} disabled={busy} onPick={setConfirmSingle} />
-              </td>
-              <td className="desktop-only">{rowActions(p)}</td>
-              <td className="mobile-only">
-                <TableMobileCard
-                  title={
-                    <>
-                      <AccountCell leg={p.out} /> → <AccountCell leg={p.in} />
-                    </>
-                  }
-                >
-                  <TableMobileCardRow label={t("mirrorPairs.colDates")} value={<LegDates p={p} />} />
-                  <TableMobileCardRow label={t("mirrorPairs.colAmount")} value={<AmountCell p={p} />} />
-                  <TableMobileCardRow label={t("mirrorPairs.colFlags")} value={<PairBadges p={p} />} />
-                  <TableMobileCardRow label={t("mirrorPairs.colNotes")} value={<NotesCell p={p} />} />
-                  <TableMobileCardRow
-                    label={t("mirrorPairs.colAlternatives")}
-                    value={<AlternativesCell p={p} disabled={busy} onPick={setConfirmSingle} />}
-                  />
-                  <TableMobileCardRow label={t("mirrorPairs.colActions")} value={rowActions(p)} />
-                </TableMobileCard>
-              </td>
-            </tr>
-          ))}
-        </Table>
+        ambiguous.routes.map((route) => (
+          <RouteBlock
+            key={`${route.from.account_id}|${route.to.account_id}`}
+            route={route}
+            check={null}
+            actions
+            rows={route.pairs.map((p) => legRow(p, "ambiguous"))}
+          />
+        ))
       )}
 
-      <h3>{t("mirrorPairs.ccTitle", { n: ccPairs.length })}</h3>
-      {ccPairs.length === 0 && !isPending ? (
+      <h3>{t("mirrorPairs.ccTitle", { n: cc.count })}</h3>
+      {cc.count === 0 && !isPending ? (
         <p className="muted">{t("mirrorPairs.emptyCc")}</p>
       ) : (
         <>
-          <Table
-            header={
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      checked={ccPairs.length > 0 && selectedCc.length === ccPairs.length}
-                      onChange={() =>
-                        setCcUnchecked(
-                          selectedCc.length === ccPairs.length
-                            ? new Set(ccPairs.map(ccPairKey))
-                            : new Set()
-                        )
-                      }
-                      aria-label={t("mirrorPairs.selectAll")}
-                    />
-                  </th>
-                  <th className="desktop-only">{t("mirrorPairs.colDates")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colFrom")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colTo")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
-                  <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
-                </tr>
-              </thead>
-            }
-          >
-            {ccPairs.map((p) => {
-              const key = ccPairKey(p);
-              const dates = (
-                <>
-                  {p.out.occurred_on}
-                  {p.skew_days !== 0 ? (
-                    <span className="muted"> → {p.evidence.pago_iso}</span>
-                  ) : null}
-                </>
-              );
-              const flags =
-                p.skew_days !== 0 ? (
-                  <span className="muted">
-                    {t("mirrorPairs.badgeSkew", { n: Math.abs(p.skew_days) })}
-                  </span>
-                ) : null;
-              const note = p.out.note ? (
-                <span className="muted" style={{ fontSize: "0.85em", overflowWrap: "anywhere" }}>
-                  {p.out.note} · {p.evidence.label}
-                </span>
-              ) : (
-                <span className="muted">{p.evidence.label}</span>
-              );
-              const checkbox = (
-                <input
-                  type="checkbox"
-                  checked={!ccUnchecked.has(key)}
-                  onChange={() =>
-                    setCcUnchecked((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(key)) next.delete(key);
-                      else next.add(key);
-                      return next;
-                    })
-                  }
-                  aria-label={t("mirrorPairs.selectPair")}
-                />
-              );
-              return (
-                <tr key={key}>
-                  <td>{checkbox}</td>
-                  <td className="desktop-only">{dates}</td>
-                  <td className="desktop-only">
-                    <Link to={`/account/${p.out.account_id}`}>{p.out.account_name}</Link>
-                  </td>
-                  <td className="desktop-only">
-                    <Link to={`/account/${p.evidence.cc_account_id}`}>
-                      {p.evidence.cc_account_name}
-                    </Link>
-                  </td>
-                  <td className="desktop-only">{formatCheckingPesos(p.evidence.amount_clp)}</td>
-                  <td className="desktop-only">{flags}</td>
-                  <td className="desktop-only">{note}</td>
-                  <td className="mobile-only">
-                    <TableMobileCard
-                      title={
-                        <>
-                          <Link to={`/account/${p.out.account_id}`}>{p.out.account_name}</Link> →{" "}
-                          <Link to={`/account/${p.evidence.cc_account_id}`}>
-                            {p.evidence.cc_account_name}
-                          </Link>
-                        </>
-                      }
-                    >
-                      <TableMobileCardRow label={t("mirrorPairs.colDates")} value={dates} />
-                      <TableMobileCardRow
-                        label={t("mirrorPairs.colAmount")}
-                        value={formatCheckingPesos(p.evidence.amount_clp)}
-                      />
-                      <TableMobileCardRow label={t("mirrorPairs.colFlags")} value={flags} />
-                      <TableMobileCardRow label={t("mirrorPairs.colNotes")} value={note} />
-                    </TableMobileCard>
-                  </td>
-                </tr>
-              );
-            })}
-          </Table>
+          {cc.routes.map((route) => (
+            <RouteBlock
+              key={`${route.from.account_id}|${route.to.account_id}`}
+              route={route}
+              check={<RouteCheckbox keys={route.pairs.map(ccPairKey)} unchecked={ccUnchecked} onSet={setCc} />}
+              actions={false}
+              rows={route.pairs.map(ccRow)}
+            />
+          ))}
           <p>
-            <Button
-              disabled={busy || selectedCc.length === 0}
-              onClick={() => setConfirmCcBatch(true)}
-            >
+            <Button disabled={busy || selectedCc.length === 0} onClick={() => setConfirmCcBatch(true)}>
               {t("mirrorPairs.convertSelected", { n: selectedCc.length })}
             </Button>
           </p>
@@ -516,12 +410,15 @@ export function MirrorPairsPanelPage() {
       {rejected.length > 0 ? (
         <>
           <h3>{t("mirrorPairs.rejectedTitle", { n: rejected.length })}</h3>
-          <ul>
+          <ul className={styles.rejected}>
             {rejected.map((p) => (
-              <li key={pairKey(p)} className="muted">
-                {p.out.occurred_on} — {p.out.account_name} → {p.in.account_name},{" "}
-                {legAmountText(p.out)}{" "}
-                <Button variant="secondary" disabled={busy} onClick={() => unreject.mutate([pairRef(p)])}>
+              <li key={pairKey(p)}>
+                <span className="mono">{p.out.occurred_on}</span>
+                <span>
+                  {p.out.account_name} → {p.in.account_name}
+                </span>
+                <span className="mono">{legAmountText(p.out)}</span>
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => unreject.mutate([pairRef(p)])}>
                   {t("mirrorPairs.restore")}
                 </Button>
               </li>
