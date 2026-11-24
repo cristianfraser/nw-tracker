@@ -83,8 +83,8 @@ export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }
             <div className={loadableClass(loading)} aria-busy={loading || undefined}>
               {mortgage && loanCurrency && payCurrency ? (
                 <DeptoPaymentsList
-                  accountId={summary.account_id}
-                  payments={mortgage.payments}
+                  scope={{ accountId: summary.account_id }}
+                  payments={{ ...mortgage.payments, next: mortgage.payments.next ? [mortgage.payments.next] : [] }}
                   unit={unit}
                   loanCurrency={loanCurrency}
                   payCurrency={payCurrency}

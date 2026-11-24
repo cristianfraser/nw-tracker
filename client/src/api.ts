@@ -244,6 +244,15 @@ export const api = {
         loanAccountId != null ? `?account_id=${loanAccountId}` : ""
       }`
     ),
+  /** The mortgage group page (`mortgageGroupGlance.ts`), every sum in `unit`. */
+  mortgageGroupGlance: (slug: string, unit: DisplayUnit) => {
+    const q = new URLSearchParams();
+    if (!isHomeCurrency(unit)) q.set("unit", unit);
+    const qs = q.toString();
+    return j<import("./types").MortgageGroupGlanceDto>(
+      `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-glance${qs ? `?${qs}` : ""}`
+    );
+  },
   creditCardConfig: (id: string | number) =>
     j<{ config: import("./types").CreditCardAccountConfigDto }>(
       `/api/accounts/${id}/credit-card-config`
@@ -923,6 +932,11 @@ export const api = {
   deptoPrepayments: (accountId: number, benchmark: string, unit: DisplayUnit) =>
     j<import("./types").DeptoPrepayBlockDto | null>(
       `/api/accounts/${accountId}/depto-prepayments?${new URLSearchParams({ benchmark, unit }).toString()}`
+    ),
+  /** The mortgage group's merged payments list: its prepaid-vs-invested column. */
+  mortgageGroupPrepayments: (slug: string, benchmark: string, unit: DisplayUnit) =>
+    j<import("./types").DeptoPrepayBlockDto | null>(
+      `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-prepayments?${new URLSearchParams({ benchmark, unit }).toString()}`
     ),
   benchmarkComparison: (
     scope: { accountId: number } | { portfolioGroup: string },

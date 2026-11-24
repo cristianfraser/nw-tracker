@@ -887,3 +887,99 @@ interface DeptoGlanceBase {
 export type DeptoGlanceDto =
   | (DeptoGlanceBase & { kind: "property"; property: DeptoPropertyGlanceDto })
   | (DeptoGlanceBase & { kind: "mortgage"; mortgage: DeptoMortgageGlanceDto });
+
+/** One loan of the mortgage group page (`mortgageGroupGlance.ts`): the loan page's own figures. */
+export interface MortgageGroupLoanDto {
+  account_id: number;
+  name: string;
+  /** The account's chart colour (`r,g,b`). */
+  color_rgb: string;
+  loan_currency: string;
+  payment_currency: string;
+  /** Today's balance in the loan currency, and in the payload's unit. */
+  balance_loan: number;
+  balance: number;
+  original_loan: number;
+  paid_loan: number;
+  /** Paid ÷ original (loan currency). */
+  paid_share: number;
+  prepaid_loan: number;
+  /** The next cuota (the loan page's first payments row): its minimum in the loan currency, and its payment-currency minimum in the unit at today's rate. */
+  next: { date: string; min_loan: number; max_loan: number | null; min: number } | null;
+  /** The monthly rate of the last regular cuota, compounded to a year; null before the first cuota. */
+  annual_rate: number | null;
+  /** The payoff at the usual pace (the loan page's projection); null before the first cuota. */
+  payoff: { date: string; cuotas: number } | null;
+}
+
+/** The loan a merged payments row belongs to (tagged only when the group has several loans). */
+export interface MortgageGroupPaymentLoanDto {
+  account_id: number;
+  name: string;
+  color_rgb: string;
+}
+
+/**
+ * Every loan's payments as one list (the loan pages' lists merged): each loan's next cuota soonest
+ * first, one Σ row, the payments newest first keyed `<account id>:<label>`, on one bar scale (the
+ * largest of the loans' scales). The loans share one loan and one payment currency.
+ */
+export interface MortgageGroupPaymentsDto {
+  loan_currency: string;
+  payment_currency: string;
+  next: (DeptoNextCuotaDto & { loan: MortgageGroupPaymentLoanDto | null })[];
+  totals: DeptoPaymentTotalsDto;
+  rows: (DeptoPaymentRowDto & { loan: MortgageGroupPaymentLoanDto | null })[];
+  bar_scale_loan: number;
+  default_benchmark: string;
+}
+
+/** The cuotas due next across the loans, in the unit at today's rate. */
+export interface MortgageGroupNextDto {
+  first_date: string;
+  last_date: string;
+  count: number;
+  min: number;
+  /** Null when a loan's lender quotes no maximum. */
+  max: number | null;
+}
+
+/** The stacked balance chart: one value per loan per date (null before the loan), in the unit at each date's rate. */
+export interface MortgageGroupChartDto {
+  dates: string[];
+  series: { account_id: number; values: (number | null)[] }[];
+  /** Each prepago's drop (negative) in the unit at its date. */
+  prepagos: { date: string; account_id: number; step: number }[];
+}
+
+/**
+ * `GET /api/portfolio-groups/:slug/mortgage-glance?unit=`: the mortgage group page. Every figure
+ * not suffixed `_loan` is in `unit`; sums are over `loans`.
+ */
+export interface MortgageGroupGlanceDto {
+  unit: DisplayUnitCode;
+  as_of: string;
+  /** Σ today's balances. */
+  balance: number;
+  /** Día / mes / año / total financing cost (Σ the loan pages' strips; negative = cost). */
+  strip: { day: number | null; month: number; year: number; total: number };
+  next: MortgageGroupNextDto | null;
+  loans: MortgageGroupLoanDto[];
+  /** Every loan's payments as one list; null when no loan has a ledger. */
+  payments: MortgageGroupPaymentsDto | null;
+  /** Mortgage accounts with no ledger row yet (listed, no figures). */
+  loans_without_ledger: { account_id: number; name: string }[];
+  /** The list's total row; null with one loan. */
+  total: { balance: number; paid_share: number; next_min: number | null } | null;
+  chart: MortgageGroupChartDto;
+  /** The rail beside the chart: original / paid / left / prepaid at today's rate, financing cost per year. */
+  rail: {
+    original: number;
+    paid: number;
+    left: number;
+    paid_share: number;
+    prepaid: number;
+    cuotas_paid: number;
+    financing_cost: { total: number; years: { year: string; cost: number }[] };
+  };
+}

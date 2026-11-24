@@ -44,7 +44,7 @@ import { DASHBOARD_PATH } from "../dashboardPath";
 import type { DisplayUnit } from "../queries/keys";
 import type { DashboardAccountRow } from "../types";
 
-/** Pasivos root and subgroups (`/liabilities`, `/liabilities/credit-card`, `/liabilities/mortgage`). */
+/** Pasivos root and the credit-card subgroup (`/liabilities`, `/liabilities/credit-card`); `/liabilities/mortgage` is `MortgageGroupPage`. */
 export function LiabilitiesGroupPage() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
@@ -120,12 +120,8 @@ export function LiabilitiesGroupPage() {
 
   const ccLedgerSlug =
     pageKind === "pasivos_root" || pageKind === "credit_card" ? portfolioGroup : undefined;
-  const mortgageLedgerSlug =
-    pageKind === "pasivos_root"
-      ? "liabilities"
-      : pageKind === "mortgage"
-        ? portfolioGroup
-        : undefined;
+  // `/liabilities/mortgage` is its own page (MortgageGroupPage); the root keeps a section per loan.
+  const mortgageLedgerSlug = pageKind === "pasivos_root" ? "liabilities" : undefined;
 
   const { data: ccLedger, isPending: ccLedgerQueryPending } = usePortfolioGroupCcLedger(
     ccLedgerSlug,
@@ -266,7 +262,7 @@ export function LiabilitiesGroupPage() {
   // With one loan (or before the page's accounts are known) one section asks for the group's one
   // loan (`ledgerAccountId` null), so the section is not refetched when the accounts arrive.
   const mortgageLoans = useMemo((): { ledgerAccountId: number | null; accountId: number | null }[] => {
-    if (pageKind !== "mortgage" && pageKind !== "pasivos_root") return [];
+    if (pageKind !== "pasivos_root") return [];
     const ids = accounts
       .filter((a) => {
         const cat = a.category_slug ?? a.bucket_slug ?? "";
@@ -384,20 +380,6 @@ export function LiabilitiesGroupPage() {
           ))
         : null}
 
-      {pageKind === "mortgage" && mortgageLedgerSlug != null && shapeEnabled
-        ? mortgageLoans.map((loan) => (
-            <MortgageLoanSection
-              key={loan.ledgerAccountId ?? "group"}
-              slug={mortgageLedgerSlug}
-              ledgerAccountId={loan.ledgerAccountId}
-              accountId={loan.accountId}
-              displayUnit={displayUnit}
-              accountRows={accountRows}
-              tsAccounts={tsAccounts}
-              fallbackColorRgb={navMatchNode?.color_rgb ?? null}
-            />
-          ))
-        : null}
     </>
   );
 

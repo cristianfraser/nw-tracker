@@ -156,6 +156,9 @@ export const queryKeys = {
   ccFacturadoFinancingLinks: () => ["ccFacturadoFinancingLinks"] as const,
   portfolioGroup: (group: string, unit: DisplayUnit) =>
     withEntity(["portfolioGroup", group, unit] as const, 2),
+  /** Under the group's prefix, so what refreshes a group page reaches it. */
+  mortgageGroupGlance: (group: string, unit: DisplayUnit) =>
+    withEntity(["portfolioGroup", group, unit, "mortgageGlance"] as const, 2),
   groupPageShell: (portfolioGroup: string, unit: DisplayUnit) =>
     withEntity(["groupPageShell", portfolioGroup, unit] as const, 2),
   /** Prefix: every account page bundle (without `id`), or one account's in every unit. */
@@ -195,6 +198,9 @@ export const queryKeys = {
   deptoPrepayments: (accountId: number, benchmark: string, unit: DisplayUnit) =>
     ["deptoPrepayments", accountId, benchmark, unit] as const,
   /** Every mortgage's prepaid-vs-invested blocks (a payment is written from either depto page). */
+  /** Under the `deptoPrepayments` prefix, so a payment written on a loan page reaches it. */
+  mortgageGroupPrepayments: (group: string, benchmark: string, unit: DisplayUnit) =>
+    ["deptoPrepayments", "group", group, benchmark, unit] as const,
   deptoPrepaymentsAll: () => ["deptoPrepayments"] as const,
   benchmarkComparison: (scope: string, benchmark: string, unit: DisplayUnit) =>
     ["benchmarkComparison", scope, benchmark, unit] as const,

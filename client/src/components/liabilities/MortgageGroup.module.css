@@ -1,0 +1,185 @@
+/* The mortgage group page (MortgageGroupPage.tsx): the depto header and balance band
+   (Depto.module.css) over the group's sums, a «next payments» line and the loan list. The list is
+   one rendering at every width: wide rows are subgrids of the list under a header; below 44rem of
+   its frame a loan is four lines (name + balance, the paid bar, rate + next cuota, payoff), each
+   figure naming itself. */
+
+.next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 18px;
+  padding: 8px 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.78rem;
+}
+
+.next em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.frame {
+  container-type: inline-size;
+  container-name: mortgage-loans;
+}
+
+.list {
+  display: grid;
+  grid-template-columns:
+    minmax(6rem, 1.2fr) minmax(7rem, 1fr) minmax(7rem, 1.3fr) minmax(7rem, 1fr) minmax(3rem, auto)
+    minmax(6.5rem, 1fr);
+  column-gap: 18px;
+  margin: 0;
+  padding: 0;
+  font-size: 0.78rem;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  padding: 7px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.head {
+  padding-top: 0;
+  border-top: 0;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.r {
+  text-align: right;
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.name a {
+  overflow: hidden;
+  color: var(--accent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sw {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+}
+
+.sub {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* A figure's own label: hidden while the header names the column. */
+.lbl {
+  display: none;
+  font-style: normal;
+  color: var(--muted);
+}
+
+.bar {
+  display: flex;
+  height: 6px;
+  background: var(--depto-owed);
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+}
+
+.total {
+  font-weight: 600;
+}
+
+.empty {
+  grid-column: 2 / -1;
+  color: var(--muted);
+}
+
+@container mortgage-loans (max-width: 44rem) {
+  .list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .head {
+    display: none;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name bal"
+      "paid paid"
+      "rate next"
+      "payoff payoff";
+    row-gap: 5px;
+    column-gap: 10px;
+    align-items: baseline;
+  }
+
+  .cName {
+    grid-area: name;
+  }
+
+  .cBal {
+    grid-area: bal;
+  }
+
+  .cPaid {
+    grid-area: paid;
+  }
+
+  .cRate {
+    grid-area: rate;
+    text-align: left;
+  }
+
+  .cNext {
+    grid-area: next;
+  }
+
+  .cPayoff {
+    grid-area: payoff;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .cPayoff:empty,
+  .cRate:empty {
+    display: none;
+  }
+
+  .lbl {
+    display: inline;
+  }
+
+  .empty {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Big desktop: the ticker covers the content's last 8 columns at the top and the content reserves
+   no strip for it, so the header's strip (right-aligned, under it) starts below the ticker. */
+@media (min-width: 1440px) {
+  .headStrip {
+    padding-top: calc(var(--market-ticker-height) + 6px);
+  }
+}

@@ -881,6 +881,15 @@ export function usePortfolioGroupMortgageLedger(
 }
 
 
+export function useMortgageGroupGlance(slug: string | undefined, unit: DisplayUnit) {
+  return useQuery({
+    queryKey: queryKeys.mortgageGroupGlance(slug ?? "", unit),
+    queryFn: () => api.mortgageGroupGlance(slug!, unit),
+    enabled: Boolean(slug),
+    ...displayUnitQueryBehaviorFor(queryKeys.mortgageGroupGlance(slug ?? "", unit)),
+  });
+}
+
 export function useAccountDetailBundle(
   id: string | undefined,
   unit: DisplayUnit,
@@ -1077,10 +1086,22 @@ export function useBenchmarks() {
  * The mortgage payments list's prepaid-vs-invested block for `benchmark` (the bundle carries the
  * default benchmark's; this fetches another one only when picked).
  */
-export function useDeptoPrepayments(accountId: number, benchmark: string, unit: DisplayUnit, enabled: boolean) {
+/** A mortgage payments list's prepaid-vs-invested column: one loan's, or the mortgage group's merged list. */
+export function useDeptoPrepayments(
+  scope: { accountId: number } | { portfolioGroup: string },
+  benchmark: string,
+  unit: DisplayUnit,
+  enabled: boolean
+) {
   return useQuery({
-    queryKey: queryKeys.deptoPrepayments(accountId, benchmark, unit),
-    queryFn: () => api.deptoPrepayments(accountId, benchmark, unit),
+    queryKey:
+      "accountId" in scope
+        ? queryKeys.deptoPrepayments(scope.accountId, benchmark, unit)
+        : queryKeys.mortgageGroupPrepayments(scope.portfolioGroup, benchmark, unit),
+    queryFn: () =>
+      "accountId" in scope
+        ? api.deptoPrepayments(scope.accountId, benchmark, unit)
+        : api.mortgageGroupPrepayments(scope.portfolioGroup, benchmark, unit),
     enabled,
     staleTime: DISPLAY_UNIT_STALE_MS,
     refetchInterval: DISPLAY_UNIT_STALE_MS,

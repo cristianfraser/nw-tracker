@@ -217,6 +217,25 @@
     "mortgageOfProperty": "hipoteca · {{property}}"
   },
   "liabilities": {
+    "mortgageGroup": {
+      "loanCount": "{{count}} créditos",
+      "nextPayment": "próximo dividendo",
+      "nextPayments": "próximos dividendos",
+      "loansLabel": "Créditos",
+      "colLoan": "crédito",
+      "colBalance": "saldo",
+      "colPaid": "pagado",
+      "colNext": "próximo dividendo",
+      "colRate": "tasa",
+      "colPayoff": "término · ritmo habitual",
+      "paidOf": "{{share}} de {{original}}",
+      "paidShare": "{{share}} pagado",
+      "cuotasLeft": "quedan {{count}} cuotas",
+      "cuotasLeftOne": "queda {{count}} cuota",
+      "total": "Total",
+      "inCuotas": "{{amount}} en cuotas",
+      "financingCost": "costo de financiamiento"
+    },
     "mortgage": "hipoteca",
     "creditCard": "tarjeta de crédito",
     "ref": {

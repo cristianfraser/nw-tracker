@@ -173,9 +173,22 @@ export function computeMortgagePrepaymentComparison(input: {
     };
   });
 
-  // Totals cover the payments the benchmark reaches: one that predates the benchmark's history
-  // (your Acciones began after the first prepayments) is listed with no invested value and left
-  // out of both sides of the totals, so they still compare like with like.
+  return {
+    unit,
+    account_id: accountId,
+    benchmark: { slug: benchmark.slug },
+    as_of_date: todayYmd,
+    rows,
+    totals: prepaymentTotals(rows, todayYmd),
+  };
+}
+
+/**
+ * The Σ row over payments (oldest first). Totals cover the payments the benchmark reaches: one that
+ * predates the benchmark's history (your Acciones began after the first prepayments) is listed with
+ * no invested value and left out of both sides of the totals, so they still compare like with like.
+ */
+export function prepaymentTotals(rows: readonly PrepaymentRow[], todayYmd: string): PrepaymentTotals {
   const covered = rows.filter((r) => r.prepaid_value != null && r.invested_value != null);
   const sum = (pick: (r: PrepaymentRow) => number): number =>
     covered.reduce((total, r) => total + pick(r), 0);
@@ -195,24 +208,41 @@ export function computeMortgagePrepaymentComparison(input: {
         );
   const prepaidIrr = irr(prepaidValue);
   const investedIrr = irr(investedValue);
-
   return {
-    unit,
-    account_id: accountId,
-    benchmark: { slug: benchmark.slug },
-    as_of_date: todayYmd,
-    rows,
-    totals: {
-      covered_payments: covered.length,
-      covered_from: covered[0]?.date ?? null,
-      extra,
-      prepaid_value: prepaidValue,
-      invested_value: investedValue,
-      delta: prepaidValue != null && investedValue != null ? investedValue - prepaidValue : null,
-      delta_pct: deltaPct(prepaidValue, investedValue),
-      prepaid_irr_pct: prepaidIrr?.pct ?? null,
-      invested_irr_pct: investedIrr?.pct ?? null,
-      irr_annualized: (prepaidIrr ?? investedIrr)?.annualized ?? false,
-    },
+    covered_payments: covered.length,
+    covered_from: covered[0]?.date ?? null,
+    extra,
+    prepaid_value: prepaidValue,
+    invested_value: investedValue,
+    delta: prepaidValue != null && investedValue != null ? investedValue - prepaidValue : null,
+    delta_pct: deltaPct(prepaidValue, investedValue),
+    prepaid_irr_pct: prepaidIrr?.pct ?? null,
+    invested_irr_pct: investedIrr?.pct ?? null,
+    irr_annualized: (prepaidIrr ?? investedIrr)?.annualized ?? false,
   };
+}
+
+/**
+ * Several loans as one list (the mortgage group page): each loan's own comparison, its rows keyed
+ * `<account id>:<cuota>` and merged by date, the Σ row over all of them by the same rule. Null when
+ * no loan has a payment above the minimum.
+ */
+export function computeMortgageGroupPrepaymentComparison(input: {
+  accountIds: readonly number[];
+  benchmark: BenchmarkRow;
+  unit: TsUnit;
+  now?: Date;
+}): Omit<MortgagePrepaymentComparison, "account_id"> | null {
+  const { accountIds, benchmark, unit } = input;
+  const now = input.now ?? new Date();
+  const todayYmd = chileWallClockAt(now).ymd;
+  const rows: PrepaymentRow[] = [];
+  for (const accountId of accountIds) {
+    const c = computeMortgagePrepaymentComparison({ accountId, benchmark, unit, now });
+    if (c == null) continue;
+    rows.push(...c.rows.map((r) => ({ ...r, cuota: `${accountId}:${r.cuota}` })));
+  }
+  if (rows.length === 0) return null;
+  rows.sort((a, b) => a.date.localeCompare(b.date));
+  return { unit, benchmark: { slug: benchmark.slug }, as_of_date: todayYmd, rows, totals: prepaymentTotals(rows, todayYmd) };
 }

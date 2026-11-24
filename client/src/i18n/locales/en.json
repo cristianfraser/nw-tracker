@@ -217,6 +217,25 @@
     "mortgageOfProperty": "mortgage · {{property}}"
   },
   "liabilities": {
+    "mortgageGroup": {
+      "loanCount": "{{count}} loans",
+      "nextPayment": "next payment",
+      "nextPayments": "next payments",
+      "loansLabel": "Loans",
+      "colLoan": "loan",
+      "colBalance": "balance",
+      "colPaid": "paid",
+      "colNext": "next payment",
+      "colRate": "rate",
+      "colPayoff": "payoff · usual pace",
+      "paidOf": "{{share}} of {{original}}",
+      "paidShare": "{{share}} paid",
+      "cuotasLeft": "{{count}} payments left",
+      "cuotasLeftOne": "{{count}} payment left",
+      "total": "Total",
+      "inCuotas": "{{amount}} in payments",
+      "financingCost": "financing cost"
+    },
     "mortgage": "mortgage",
     "creditCard": "credit card",
     "ref": {

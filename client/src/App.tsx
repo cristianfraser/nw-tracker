@@ -18,6 +18,7 @@ import { VISIBLE_PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/p
 import { DashboardPage } from "./pages/DashboardPage";
 import { GroupInfoPage } from "./pages/GroupInfoPage";
 import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
+import { MortgageGroupPage } from "./pages/MortgageGroupPage";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { FlowsLayout } from "./pages/FlowsLayout";
 import { ControlPanelLayout } from "./pages/panel/ControlPanelLayout";
@@ -148,6 +149,7 @@ function AppTree() {
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
             <Route path="/liabilities" element={<LiabilitiesGroupPage />} />
+            <Route path="/liabilities/mortgage" element={<MortgageGroupPage />} />
             <Route path="/liabilities/:subgroup" element={<LiabilitiesGroupPage />} />
             <Route path="/flows" element={<FlowsLayout />}>
               <Route index element={<FlowsOverviewPage />} />

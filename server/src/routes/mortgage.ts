@@ -8,7 +8,10 @@ import {
 import { mortgageLedgerRowDto } from "../mortgageLedgerDto.js";
 import { buildMortgageUfReminder } from "../mortgageUfReminder.js";
 import { writeHandler } from "../inputError.js";
-import { accountIdFromReq } from "./shared.js";
+import { buildMortgageGroupGlance, mortgageGroupPrepayBlock } from "../mortgageGroupGlance.js";
+import { requestDisplayUnit } from "../displayUnits.js";
+import { timeHeavyAsync } from "../heavyWork.js";
+import { accountIdFromReq, asyncHandler } from "./shared.js";
 
 export function registerMortgageRoutes(app: express.Express): void {
   // UF-timing reminder for the CC-paid Depto mortgage cuota (global toast). Cheap indexed
@@ -16,6 +19,32 @@ export function registerMortgageRoutes(app: express.Express): void {
   app.get("/api/reminders/mortgage-uf", (_req, res) => {
     res.json(buildMortgageUfReminder());
   });
+
+// The mortgage group page (`mortgageGroupGlance.ts`): every loan of the group, summed in `unit`.
+app.get("/api/portfolio-groups/:slug/mortgage-glance", asyncHandler(async (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  const unit = requestDisplayUnit(req.query, { surface: "/api/portfolio-groups/:slug/mortgage-glance" });
+  const payload = await timeHeavyAsync(`mortgage.group_glance ${slug} ${unit}`, () => buildMortgageGroupGlance(slug, unit));
+  if (!payload) {
+    res.status(404).json({ error: "not a mortgage group" });
+    return;
+  }
+  res.json(payload);
+}));
+
+// `?benchmark=<slug>&unit=`: the merged payments list's prepaid-vs-invested column (`null`: no
+// payment above the minimum). Apart from the page payload, as on the loan page.
+app.get("/api/portfolio-groups/:slug/mortgage-prepayments", (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  const benchmark = typeof req.query.benchmark === "string" ? req.query.benchmark : "";
+  const unit = requestDisplayUnit(req.query, { surface: "/api/portfolio-groups/:slug/mortgage-prepayments" });
+  const block = mortgageGroupPrepayBlock(slug, benchmark, unit);
+  if (block === undefined) {
+    res.status(400).json({ error: "not a mortgage group or unknown benchmark" });
+    return;
+  }
+  res.json(block);
+});
 
 // A payment the form can fix (a missing figure, components that do not add up, a cuota already
 // logged, an account that is no loan) is an `InputError` → 400; a ledger or rate the payment

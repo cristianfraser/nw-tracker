@@ -715,16 +715,19 @@
   background: var(--depto-amber);
 }
 
-/* The next cuota's range: up to the minimum, then on to the maximum. */
+/* The next cuota's range: up to the minimum, then on to the maximum. Both shrink, so the maximum's
+   label beside them stays inside a narrow card. */
 .ghost {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   height: 6px;
   border: 1px dashed var(--muted);
   border-radius: 3px 0 0 3px;
 }
 
 .ghostHi {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   height: 6px;
   border: 1px dashed #3a4658;
   border-left: 0;

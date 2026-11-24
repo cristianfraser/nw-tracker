@@ -690,7 +690,9 @@ function paymentSegments(r: DeptoMortgageSheetRow): { part: DeptoPaymentPart; am
 }
 
 /** The prepayment comparison as the payments list reads it: cells by row key, both bars' widths. */
-export function deptoPrepayBlock(c: MortgagePrepaymentComparison | null): DeptoPrepayBlockDto | null {
+export function deptoPrepayBlock(
+  c: Pick<MortgagePrepaymentComparison, "benchmark" | "unit" | "rows" | "totals"> | null
+): DeptoPrepayBlockDto | null {
   if (c == null) return null;
   const cell = (x: {
     extra: number;

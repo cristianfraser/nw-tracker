@@ -8,15 +8,38 @@ import { queryLoadError } from "../../queries/pageShapeReady";
 import { formatMoney, formatPct } from "../../format";
 import type { DisplayUnit } from "../../queries/keys";
 import type {
+  DeptoNextCuotaDto,
   DeptoPaymentBarDto,
   DeptoPaymentPart,
   DeptoPaymentRowDto,
   DeptoPaymentsListDto,
   DeptoPrepayBlockDto,
   DeptoPrepayCellDto,
+  MortgageGroupPaymentLoanDto,
 } from "../../types";
 import { pct1Signed, signedMoney, toneOf } from "./deptoFormat";
 import styles from "./Depto.module.css";
+
+/** The loan a row of a merged list belongs to (the mortgage group page with several loans). */
+type LoanTag = { loan?: MortgageGroupPaymentLoanDto | null };
+
+/**
+ * What the list draws: one loan page's list (`DeptoPaymentsListDto`, its next cuota as a list of
+ * one) or the mortgage group's merged list (`MortgageGroupPaymentsDto`).
+ */
+export type DeptoPaymentsListInput = Omit<DeptoPaymentsListDto, "next" | "rows"> & {
+  next: (DeptoNextCuotaDto & LoanTag)[];
+  rows: (DeptoPaymentRowDto & LoanTag)[];
+};
+
+/** Where the prepaid-vs-invested column comes from: the loan's comparison or the group's merged one. */
+export type DeptoPrepayScope = { accountId: number } | { portfolioGroup: string };
+
+/** The loan's swatch before a row's number on a merged list (its name on hover). */
+function LoanSwatch({ loan }: LoanTag) {
+  if (!loan) return null;
+  return <i className={styles.sw} style={{ background: `rgb(${loan.color_rgb})`, marginRight: 6 }} title={loan.name} role="img" aria-label={loan.name} />;
+}
 
 /** Rows shown before «N pagos» opens the rest. */
 const COLLAPSED_ROWS = 12;
@@ -100,15 +123,15 @@ function PrepayCell({ cell, unit, irr }: { cell: DeptoPrepayCellDto | undefined;
  * `/api/accounts/:id/depto-prepayments`), remembered per account.
  */
 export function DeptoPaymentsList({
-  accountId,
+  scope,
   payments,
   unit,
   loanCurrency,
   payCurrency,
   onRegisterPayment,
 }: {
-  accountId: number;
-  payments: DeptoPaymentsListDto;
+  scope: DeptoPrepayScope;
+  payments: DeptoPaymentsListInput;
   unit: DisplayUnit;
   loanCurrency: string;
   payCurrency: string;
@@ -117,12 +140,13 @@ export function DeptoPaymentsList({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const { benchmark, setBenchmark } = useSurfaceBenchmark(`account.${accountId}.prepayments`, payments.default_benchmark);
+  const surface = "accountId" in scope ? `account.${scope.accountId}.prepayments` : `group.${scope.portfolioGroup}.prepayments`;
+  const { benchmark, setBenchmark } = useSurfaceBenchmark(surface, payments.default_benchmark);
   const benchmarks = useBenchmarks();
   const options = (benchmarks.data?.benchmarks ?? []).filter((o) => o.slug !== "mortgage");
   const selected = options.some((o) => o.slug === benchmark) ? benchmark : payments.default_benchmark;
   // Never in the bundle: a stale benchmark series fails this column only.
-  const prepay = useDeptoPrepayments(accountId, selected, unit, true);
+  const prepay = useDeptoPrepayments(scope, selected, unit, true);
   const block: DeptoPrepayBlockDto | null =
     prepay.data != null && prepay.data.benchmark === selected && prepay.data.unit === unit ? prepay.data : null;
   // The block in flight: the prepay column dims (the rest of the list stays).
@@ -134,7 +158,7 @@ export function DeptoPaymentsList({
 
   const rows = expanded ? payments.rows : payments.rows.slice(0, COLLAPSED_ROWS);
   const totals = payments.totals;
-  const next = payments.next;
+  const nexts = payments.next;
   const prepayClass = prepayLoading ? "loadable is-loading" : undefined;
   const irr = (pct: number | null, color: string, annualized: boolean) =>
     pct == null ? (
@@ -173,10 +197,13 @@ export function DeptoPaymentsList({
           </span>
         </div>
 
-        {next ? (
-          <div className={cn(styles.payRow, styles.payNext)}>
+        {nexts.map((next) => (
+          <div key={`${next.loan?.account_id ?? ""}:${next.cuota}`} className={cn(styles.payRow, styles.payNext)}>
             <span className="mono">
-              <b className={styles.line}>{next.cuota}</b>
+              <b className={styles.line}>
+                <LoanSwatch loan={next.loan} />
+                {next.cuota}
+              </b>
               <span className={styles.sub}>{next.date}</span>
             </span>
             <Cell lines={[formatMoney({ value: next.min_loan, currency: loanCurrency }), formatMoney({ value: next.min_pay, currency: payCurrency })]} />
@@ -199,7 +226,7 @@ export function DeptoPaymentsList({
               ) : null}
             </span>
           </div>
-        ) : null}
+        ))}
 
         <div className={cn(styles.payRow, styles.payTotal)}>
           <span className="mono">
@@ -285,7 +312,7 @@ function PaymentRow({
   cell,
   prepayClass,
 }: {
-  row: DeptoPaymentRowDto;
+  row: DeptoPaymentRowDto & LoanTag;
   scale: number;
   loanCurrency: string;
   payCurrency: string;
@@ -299,6 +326,7 @@ function PaymentRow({
     <div className={styles.payRow}>
       <span className="mono">
         <b className={cn(styles.line, isPrepago && styles.prepagoNum)}>
+          <LoanSwatch loan={row.loan} />
           {isPrepago ? t("accountDetail.depto.prepagoNumber", { n: row.number }) : row.number}
         </b>
         <span className={styles.sub}>{row.date}</span>

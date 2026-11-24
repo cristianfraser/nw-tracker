@@ -640,6 +640,76 @@
     }
   },
   "liabilities": {
+    "mortgageGroup": {
+      "loanCount": {
+        "en": "{{count}} loans",
+        "es": "{{count}} créditos"
+      },
+      "nextPayment": {
+        "en": "next payment",
+        "es": "próximo dividendo"
+      },
+      "nextPayments": {
+        "en": "next payments",
+        "es": "próximos dividendos"
+      },
+      "loansLabel": {
+        "en": "Loans",
+        "es": "Créditos"
+      },
+      "colLoan": {
+        "en": "loan",
+        "es": "crédito"
+      },
+      "colBalance": {
+        "en": "balance",
+        "es": "saldo"
+      },
+      "colPaid": {
+        "en": "paid",
+        "es": "pagado"
+      },
+      "colNext": {
+        "en": "next payment",
+        "es": "próximo dividendo"
+      },
+      "colRate": {
+        "en": "rate",
+        "es": "tasa"
+      },
+      "colPayoff": {
+        "en": "payoff · usual pace",
+        "es": "término · ritmo habitual"
+      },
+      "paidOf": {
+        "en": "{{share}} of {{original}}",
+        "es": "{{share}} de {{original}}"
+      },
+      "paidShare": {
+        "en": "{{share}} paid",
+        "es": "{{share}} pagado"
+      },
+      "cuotasLeft": {
+        "en": "{{count}} payments left",
+        "es": "quedan {{count}} cuotas"
+      },
+      "cuotasLeftOne": {
+        "en": "{{count}} payment left",
+        "es": "queda {{count}} cuota"
+      },
+      "total": {
+        "en": "Total",
+        "es": "Total"
+      },
+      "inCuotas": {
+        "en": "{{amount}} in payments",
+        "es": "{{amount}} en cuotas"
+      },
+      "financingCost": {
+        "en": "financing cost",
+        "es": "costo de financiamiento"
+      }
+    },
     "mortgage": {
       "en": "mortgage",
       "es": "hipoteca"
