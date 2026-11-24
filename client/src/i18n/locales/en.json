@@ -21,6 +21,12 @@
       "reload": "Reload the app"
     }
   },
+  "accountsTree": {
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "expand": "Expand {{name}}",
+    "collapse": "Collapse {{name}}"
+  },
   "demo": {
     "writable": {
       "limitReached": "You've reached today's limit of edits on the demo. Edits reset to the original data after a while.",

@@ -21,6 +21,12 @@
       "reload": "Recargar la aplicación"
     }
   },
+  "accountsTree": {
+    "expandAll": "Expandir todo",
+    "collapseAll": "Plegar todo",
+    "expand": "Desplegar {{name}}",
+    "collapse": "Plegar {{name}}"
+  },
   "demo": {
     "writable": {
       "limitReached": "Llegaste al límite de ediciones de hoy en la demo. Las ediciones vuelven a los datos originales después de un rato.",

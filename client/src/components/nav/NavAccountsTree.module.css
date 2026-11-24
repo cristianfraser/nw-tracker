@@ -1,24 +1,153 @@
-/* Nav accounts tree: a nested list, each level indented one step. The lists are nested, so a
-   node's indent is its own step on top of its ancestors' — depth never multiplies here. */
+/* Nav accounts tree: a collapsible nested list. Each level's children sit one step in, on a
+   guide rail; the lists are nested, so a node's indent is its own step on top of its ancestors'. */
+.frame {
+  container-type: inline-size;
+  container-name: accounts-tree;
+  font-size: 0.86rem;
+}
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  margin-bottom: var(--space-xs);
+}
+
+.tool {
+  font: inherit;
+  font-size: var(--font-size-caption);
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  cursor: pointer;
+}
+
+.tool:hover {
+  color: var(--text);
+}
+
 .tree,
 .children {
-  margin-left: 0;
-  padding-left: 0;
   list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .children {
-  margin-top: var(--space-2xs);
+  margin-left: 0.6rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--border);
 }
 
-.node {
-  --tree-indent: 32px;
-  margin-left: var(--tree-indent);
+.children[hidden] {
+  display: none;
 }
 
-/* A slug has no break opportunity; at depth on a phone it would otherwise widen the page. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0.15rem 0.25rem;
+  border-radius: 4px;
+}
+
+.row:hover {
+  background: var(--surface);
+}
+
+.toggle,
+.toggleSpace {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.toggle {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.toggle:hover,
+.toggle:focus-visible {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+/* A right-pointing triangle, turned down while open. */
+.toggle::before {
+  content: "";
+  border: 4px solid transparent;
+  border-left: 6px solid currentColor;
+  border-right: 0;
+  transition: transform 0.15s;
+}
+
+.toggle[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+.dot,
+.dotSpace {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin: 0 0.1rem;
+}
+
+.dot {
+  border-radius: 2px;
+  background: rgb(var(--node-rgb));
+}
+
+.groupLink,
+.groupLabel {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .slug {
-  overflow-wrap: anywhere;
+  margin-left: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* An account lines up with its siblings' names: past the chevron's column. */
+.leaf {
+  padding: 0.15rem 0.25rem 0.15rem 1.6rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.id {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--muted);
+}
+
+/* On a phone the slug gives its room to the names. */
+@container accounts-tree (max-width: 30rem) {
+  .slug {
+    display: none;
+  }
 }
 
 /* Spacing only until the tree becomes a page tile; size comes from the base h2 rule. */

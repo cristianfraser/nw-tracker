@@ -45,6 +45,24 @@
       }
     }
   },
+  "accountsTree": {
+    "expandAll": {
+      "en": "Expand all",
+      "es": "Expandir todo"
+    },
+    "collapseAll": {
+      "en": "Collapse all",
+      "es": "Plegar todo"
+    },
+    "expand": {
+      "en": "Expand {{name}}",
+      "es": "Desplegar {{name}}"
+    },
+    "collapse": {
+      "en": "Collapse {{name}}",
+      "es": "Plegar {{name}}"
+    }
+  },
   "demo": {
     "writable": {
       "limitReached": {
