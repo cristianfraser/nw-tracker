@@ -6,6 +6,7 @@ import { RECHARTS_MONEY_CHART_MARGIN } from "./chartLayout";
 import { appTooltipElement, type AppTooltipSpec } from "./ChartTooltip";
 import { groupedBarSpacing } from "./groupedBarSpacing";
 import { useElementSize } from "./useElementSize";
+import { useStableChartInputs } from "./stableChartInputs";
 import { useChartStyle } from "./chartStyle";
 import { RoughChartDefs, roughGrainFilterId, roughGridProps, roughModeFor, roughSeed } from "./roughShapes";
 import { RoughAxisLines, injectRoughShapes, roughAxisSides } from "./roughChartInjection";
@@ -37,6 +38,8 @@ export type AppComposedChartProps = ComponentProps<typeof ComposedChart> & {
   barGroup?: AppBarGroup | null;
   /** `false` to opt out of the shared grid; an object to override its props. */
   grid?: boolean | ComponentProps<typeof CartesianGrid>;
+  /** Animate the series again when this changes, beyond the shape changes the wrapper sees itself ({@link useStableChartInputs}). */
+  animationKey?: string | null;
   children: ReactNode;
 };
 
@@ -63,9 +66,12 @@ function SizedAppComposedChart({
   margin,
   barGroup,
   grid = true,
-  children,
+  animationKey,
+  children: rawChildren,
+  data: rawData,
   ...rest
 }: AppComposedChartProps & { width: number; height: number }) {
+  const { data, children } = useStableChartInputs(rawData, rawChildren, animationKey);
   const gridProps = grid === false ? null : grid === true ? {} : grid;
   const rough = roughModeFor(useChartStyle());
   const grainFilterId = roughGrainFilterId(useId());
@@ -76,7 +82,7 @@ function SizedAppComposedChart({
   );
   const axisSides = useMemo(() => (rough?.extras ? roughAxisSides(children) : []), [children, rough]);
   const chartMargin = margin ?? RECHARTS_MONEY_CHART_MARGIN;
-  const categoryCount = rest.data?.length ?? 0;
+  const categoryCount = data?.length ?? 0;
   const groupedBars = barGroup != null && hasBandableBarGroups(barGroup.count, categoryCount);
   const spacing =
     barGroup && groupedBars
@@ -91,7 +97,7 @@ function SizedAppComposedChart({
         })
       : null;
   return (
-    <ComposedChart margin={chartMargin} {...spacing} {...rest} width={width} height={height}>
+    <ComposedChart margin={chartMargin} {...spacing} {...rest} data={data} width={width} height={height}>
       {/* Its own layer under the grid and every series. */}
       {groupedBars ? <AlternatingXBands /> : null}
       {gridProps ? (

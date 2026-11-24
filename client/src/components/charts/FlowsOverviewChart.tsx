@@ -92,7 +92,7 @@ export function FlowsOverviewChart({
       <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
       <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")}>
         <AppComposedChart
-          data={[...points]}
+          data={points as FlowsOverviewChartPoint[]}
           stackOffset="sign"
           tooltip={{
             formatValue: (v) => formatFlowMoney(v, displayUnit),

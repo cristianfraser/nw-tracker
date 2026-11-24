@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Line, LineChart } from "recharts";
 import { useElementSize } from "./useElementSize";
+import { useStableChartInputs } from "./stableChartInputs";
 import { RECHARTS_MONEY_CHART_MARGIN } from "./chartLayout";
 import { appTooltipElement, type AppTooltipSpec } from "./ChartTooltip";
 import { useChartStyle } from "./chartStyle";
@@ -49,6 +50,8 @@ export type AppLineChartProps = Omit<ComponentProps<typeof LineChart>, "data"> &
   tailClippedKeys?: ReadonlySet<string> | readonly string[] | null;
   /** Docked collision-aware tooltip (see {@link AppTooltipSpec}). Omit for no tooltip. */
   tooltip?: AppTooltipSpec | null;
+  /** Animate the lines again when this changes, beyond the shape changes the wrapper sees itself ({@link useStableChartInputs}). */
+  animationKey?: string | null;
   children: ReactNode;
 };
 
@@ -60,7 +63,16 @@ export type AppLineChartProps = Omit<ComponentProps<typeof LineChart>, "data"> &
  * size is the on-screen box: inside a transform (the demo's tilted About preview) that is the
  * shrunken size, and the chart kept it after the transform ended until something else resized it.
  */
-export function AppLineChart({ data, tailClippedKeys, tooltip, margin, children, ...rest }: AppLineChartProps) {
+export function AppLineChart({
+  data: rawData,
+  tailClippedKeys,
+  tooltip,
+  margin,
+  animationKey,
+  children: rawChildren,
+  ...rest
+}: AppLineChartProps) {
+  const { data, children } = useStableChartInputs(rawData, rawChildren, animationKey);
   const clipSet = useMemo(() => tailClipKeySet(tailClippedKeys), [tailClippedKeys]);
   const rough = roughModeFor(useChartStyle());
   const grainFilterId = roughGrainFilterId(useId());

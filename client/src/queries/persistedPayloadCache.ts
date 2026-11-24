@@ -10,7 +10,8 @@
  * still on the previous payload, during a deploy). Older versions and the keys of the conventions
  * before this helper are swept once at boot (`sweepPersistedPayloads`).
  */
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { useStructuralValue } from "../useStructuralValue";
 import { DTO_SCHEMA_VERSIONS, type DtoSchemaVersionName } from "nw-tracker-contracts/dto/schemaVersions";
 
 const PREFIX = "nw:cache:";
@@ -109,8 +110,13 @@ export function usePersistedPayload<T>(
     // `key` stands for `def` + `scope`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, live, versionOk]);
-  if (live != null) return { value: live, cached: false };
-  return { value: readPersistedPayload(def, scope) ?? null, cached: true };
+  // Read once per key, not on every render while the live payload is pending (each read parses a
+  // new object). Shared across the stored → live switch, so equal parts keep their objects.
+  const pending = live == null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands for `def` + `scope`
+  const stored = useMemo(() => (pending ? (readPersistedPayload(def, scope) ?? null) : null), [key, pending]);
+  const value = useStructuralValue(live ?? stored);
+  return { value, cached: pending };
 }
 
 /** Exact keys no longer read: global prefs that went per-surface, the old fx cache. */

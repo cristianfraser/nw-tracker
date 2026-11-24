@@ -52,7 +52,7 @@ import {
   type AppTooltipSpec,
 } from "./ChartTooltip";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
-import { useStableChartRows } from "./useStableChartRows";
+import { useStructuralValue } from "../../useStructuralValue";
 
 function numericCell(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -559,7 +559,7 @@ export function LineChartPanel({
     return clipChartDataToYDomain(chartData, clipKeys, yScale.domain);
   }, [chartData, visibleSeries, yScale.domain, clipPlotToYDomain]);
   // The rows the chart draws: an unchanged row keeps its object across refetches.
-  const plotChartData = useStableChartRows(builtPlotChartData);
+  const plotChartData = useStructuralValue(builtPlotChartData);
 
   // Tooltip nearness to the peak works in plotted-row indices (the tooltip only knows the
   // hovered label); the plot rows are the densified grid, so index distance is x distance.
