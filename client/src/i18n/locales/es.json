@@ -1529,7 +1529,7 @@
     "chartEmpty": "Sin depósitos en este período.",
     "chartTotal": "Total",
     "emptyCategory": "Sin depósitos en esta categoría.",
-    "mortgageCarryingTag": "Intereses y seguros del dividendo (gasto)"
+    "mortgageCarryingTag": "Intereses y seguros del dividendo"
   },
   "depositsReconciliation": {
     "title": "Reconciliación de depósitos",

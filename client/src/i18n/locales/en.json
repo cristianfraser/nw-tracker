@@ -1529,7 +1529,7 @@
     "chartEmpty": "No deposits in this period.",
     "chartTotal": "Total",
     "emptyCategory": "No deposits in this category.",
-    "mortgageCarryingTag": "Mortgage interest + insurance (an expense)"
+    "mortgageCarryingTag": "Mortgage interest + insurance"
   },
   "depositsReconciliation": {
     "title": "Deposits reconciliation",

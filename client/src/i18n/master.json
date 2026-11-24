@@ -4917,8 +4917,8 @@
       "es": "Sin depósitos en esta categoría."
     },
     "mortgageCarryingTag": {
-      "en": "Mortgage interest + insurance (an expense)",
-      "es": "Intereses y seguros del dividendo (gasto)"
+      "en": "Mortgage interest + insurance",
+      "es": "Intereses y seguros del dividendo"
     }
   },
   "depositsReconciliation": {
