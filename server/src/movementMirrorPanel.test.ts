@@ -64,6 +64,7 @@ describe("buildMirrorPairsPanel", () => {
       [3, 1],
     ]);
     expect(panel.high.routes[0]!.pairs.map((p) => p.out.movement_id)).toEqual([1, 4]);
+    expect(panel.high.routes.map((r) => r.count)).toEqual([2, 1]);
     expect(panel.ambiguous.count).toBe(1);
     expect(panel.ambiguous.routes[0]!.to.account_name).toBe("acct-2");
   });

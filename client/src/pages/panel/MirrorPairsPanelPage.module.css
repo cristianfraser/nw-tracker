@@ -93,7 +93,17 @@
 
 .units {
   color: var(--muted);
-  font-weight: 400;
+  font-size: var(--font-size-prose-sm);
+  white-space: nowrap;
+}
+
+.selectAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--muted);
+  font-size: var(--font-size-prose);
 }
 
 .info {
@@ -112,13 +122,7 @@
   white-space: nowrap;
   color: var(--muted);
   font-size: var(--font-size-prose-sm);
-  /* A button that reads as text: a click shows the note whole. */
-  appearance: none;
-  background: none;
-  border: 0;
-  padding: 0;
-  font-family: inherit;
-  text-align: left;
+  /* A click shows the note whole (one-line layout only). */
   cursor: pointer;
 }
 
@@ -138,14 +142,17 @@
   white-space: nowrap;
 }
 
-/* Another leg that could take one side of an ambiguous pair, under its pair. */
+/* Another leg that could take one side of an ambiguous pair: inside its pair's list item, on a
+   line of its own across the row. */
 .alt {
   grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.25rem 0.5rem;
-  padding: 0.3rem 0.75rem 0.45rem 2rem;
+  margin-top: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--card-radius);
   background: color-mix(in srgb, var(--surface2) 50%, transparent);
   font-size: var(--font-size-prose-sm);
 }
@@ -216,7 +223,10 @@
     display: none;
   }
 
-  .note {
+  /* A line of its own under the flags, never squeezed beside the last pill. */
+  .note,
+  .alt .note {
+    flex-basis: 100%;
     white-space: normal;
     overflow-wrap: anywhere;
     cursor: default;
@@ -227,7 +237,4 @@
     justify-content: flex-start;
   }
 
-  .alt {
-    padding-left: 1.5rem;
-  }
 }

@@ -6319,25 +6319,41 @@
       "en": "Restore",
       "es": "Restaurar"
     },
+    "selectAll": {
+      "en": "Select all",
+      "es": "Seleccionar todos"
+    },
     "selectPair": {
-      "en": "Select pair",
-      "es": "Seleccionar par"
+      "en": "Select pair: {{pair}}",
+      "es": "Seleccionar par: {{pair}}"
     },
     "selectRoute": {
-      "en": "Select every pair on this route",
-      "es": "Seleccionar todos los pares de esta ruta"
+      "en": "Select every pair from {{route}}",
+      "es": "Seleccionar todos los pares de {{route}}"
+    },
+    "pairName": {
+      "en": "{{date}}, {{amount}}, {{from}} → {{to}}",
+      "es": "{{date}}, {{amount}}, {{from}} → {{to}}"
+    },
+    "routeName": {
+      "en": "{{from}} → {{to}}",
+      "es": "{{from}} → {{to}}"
+    },
+    "approvePair": {
+      "en": "Approve: {{pair}}",
+      "es": "Aprobar: {{pair}}"
+    },
+    "rejectPair": {
+      "en": "Reject: {{pair}}",
+      "es": "Rechazar: {{pair}}"
+    },
+    "useAlternativeFor": {
+      "en": "Convert with this one: {{leg}}, instead of {{pair}}",
+      "es": "Convertir con este: {{leg}}, en vez de {{pair}}"
     },
     "units": {
       "en": "({{n}} units)",
       "es": "({{n}} cuotas)"
-    },
-    "noteExpand": {
-      "en": "Show the whole note",
-      "es": "Mostrar la nota completa"
-    },
-    "noteCollapse": {
-      "en": "Shorten the note",
-      "es": "Acortar la nota"
     },
     "convertSelected": {
       "en": "Convert selected ({{n}})",

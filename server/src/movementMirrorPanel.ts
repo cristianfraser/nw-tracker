@@ -22,8 +22,10 @@ export function mirrorPairSection<P>(
     const { from, to } = route(p);
     const key = `${from.account_id}|${to.account_id}`;
     const group = groups.get(key);
-    if (group) group.pairs.push(p);
-    else groups.set(key, { from, to, pairs: [p] });
+    if (group) {
+      group.pairs.push(p);
+      group.count = group.pairs.length;
+    } else groups.set(key, { from, to, count: 1, pairs: [p] });
   }
   return { count: pairs.length, routes: [...groups.values()] };
 }

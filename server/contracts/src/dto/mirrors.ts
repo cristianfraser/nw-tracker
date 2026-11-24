@@ -84,6 +84,7 @@ export interface MirrorRouteAccount {
 export interface MirrorRouteGroup<P> {
   from: MirrorRouteAccount;
   to: MirrorRouteAccount;
+  count: number;
   pairs: P[];
 }
 
