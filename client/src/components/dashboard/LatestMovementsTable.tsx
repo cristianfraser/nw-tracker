@@ -5,7 +5,7 @@ import { useLatestMovements } from "../../queries/hooks";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, LatestCardPayment, LatestIncomeMovement, LatestMovementsResponse } from "../../types";
 import { hasSchemaVersion, persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
 import { PageGridTile } from "../layout/PageGridTile";
-import { dashboardTileOrder, dashboardTileSmallSpan } from "../../dashboardLayout";
+import { dashboardTileOrder } from "../../dashboardLayout";
 import {
   CreditCardExpenseLinesTable,
   ExpenseListStaticRow,
@@ -195,11 +195,7 @@ export function LatestMovementsTable() {
   });
 
   return (
-    <PageGridTile
-      id="latest-movements"
-      order={dashboardTileOrder("latest-movements")}
-      smallSpan={dashboardTileSmallSpan("latest-movements")}
-    >
+    <PageGridTile id="latest-movements" order={dashboardTileOrder("latest-movements")}>
       <h2>
         <HeadingLink to="/flows/expenses">{t("dashboard.latestMovements.title")}</HeadingLink>
       </h2>

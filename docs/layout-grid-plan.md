@@ -221,9 +221,9 @@ The wide tables span 12 below the rail. Rail tiles are `container-type: inline-s
 `@container (max-width: 40rem)` switches their parallel tables to the mobile rendering
 (`!important`, mirroring `tables.css:93-122`). See reviewer note 1 on shared rows.
 
-**S (12):** the big desktop's reading order (`L` by y, then x, the chart kept under the cards):
-`title`, `strip`, `net-worth-chart`, `flows-periods` + `cc-upcoming` (one wrapper, one row
-whenever both fit at any width, the periods at their own width), `latest-movements` | `returns`,
+**S (12):** the big desktop's reading order, which is the DOM order: the main band (`title`,
+`strip`, `net-worth-chart`, `returns`), the rail (`flows-periods` + `cc-upcoming` in one wrapper,
+one row whenever both fit at any width, the periods at their own width; `latest-movements`), then
 `flows-chart` | `perf-combo`, `allocation` | `detail`, `wealth-flows`, `export`, `accounts` —
 `a | b` = one row, w6 each (`SMALL_PAIRS`); every other tile w12. (Updated 2026-11-24; the
 first version kept the pre-rail order, which pushed the rail tiles below the tables.)
