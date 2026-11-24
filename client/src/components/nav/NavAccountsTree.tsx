@@ -6,12 +6,13 @@ import { useTranslation } from "../../i18n";
 import { readPref, writePref } from "../../usePersistedPref";
 import styles from "./NavAccountsTree.module.css";
 
-/** Groups shallower than this start open; the viewer's own choices (stored per tree root) win. */
-const DEFAULT_OPEN_DEPTH = 2;
+/**
+ * Stored per tree root. v2: the default became «groups of groups open» — choices stored under the
+ * earlier depth default are no longer read.
+ */
+const OPEN_STATE_LS_PREFIX = "nw-tracker.accountsTree.v2.";
 
-const OPEN_STATE_LS_PREFIX = "nw-tracker.accountsTree.";
-
-/** Explicit open/closed choices by `node_id`; a group without one follows its depth's default. */
+/** Explicit open/closed choices by `node_id`; a group without one follows `openByDefault`. */
 type OpenChoices = Record<string, boolean>;
 
 /** Tolerant parse of the stored choices (a per-viewer convenience): anything else is no choice. */
@@ -35,6 +36,15 @@ function isGroup(node: NavTreeNodeDto): boolean {
   return node.account_id == null;
 }
 
+/**
+ * A group whose children are all groups starts open; a group that holds accounts (a leaf group, or
+ * one mixing accounts and sub-groups) starts closed — so the default shows every group down to the
+ * ones that list accounts.
+ */
+function openByDefault(node: NavTreeNodeDto): boolean {
+  return node.children.length > 0 && node.children.every(isGroup);
+}
+
 function groupNodeIds(node: NavTreeNodeDto, out: string[] = []): string[] {
   if (!isGroup(node)) return out;
   out.push(node.node_id);
@@ -43,18 +53,16 @@ function groupNodeIds(node: NavTreeNodeDto, out: string[] = []): string[] {
 }
 
 type TreeContext = {
-  isOpen: (node: NavTreeNodeDto, depth: number) => boolean;
-  toggle: (node: NavTreeNodeDto, depth: number) => void;
+  isOpen: (node: NavTreeNodeDto) => boolean;
+  toggle: (node: NavTreeNodeDto) => void;
   idPrefix: string;
 };
 
 function NavAccountsTreeNode({
   node,
-  depth,
   ctx,
 }: {
   node: NavTreeNodeDto;
-  depth: number;
   ctx: TreeContext;
 }) {
   const { t } = useTranslation();
@@ -71,7 +79,7 @@ function NavAccountsTreeNode({
   }
 
   const hasChildren = node.children.length > 0;
-  const open = hasChildren && ctx.isOpen(node, depth);
+  const open = hasChildren && ctx.isOpen(node);
   const childrenId = `${ctx.idPrefix}-${node.node_id}`;
   const route = node.route_path?.trim();
   const dotStyle = node.color_rgb
@@ -88,7 +96,7 @@ function NavAccountsTreeNode({
             aria-expanded={open}
             aria-controls={childrenId}
             aria-label={t(open ? "accountsTree.collapse" : "accountsTree.expand", { name: label })}
-            onClick={() => ctx.toggle(node, depth)}
+            onClick={() => ctx.toggle(node)}
           />
         ) : (
           <span className={styles.toggleSpace} aria-hidden />
@@ -106,7 +114,7 @@ function NavAccountsTreeNode({
       {hasChildren ? (
         <ul id={childrenId} className={styles.children} hidden={!open}>
           {node.children.map((child) => (
-            <NavAccountsTreeNode key={child.node_id} node={child} depth={depth + 1} ctx={ctx} />
+            <NavAccountsTreeNode key={child.node_id} node={child} ctx={ctx} />
           ))}
         </ul>
       ) : null}
@@ -123,8 +131,8 @@ export type NavAccountsTreeProps = {
 
 /**
  * The nav tree as a collapsible nested list: a group opens and closes from its chevron (its name
- * stays the link to its page), guide rails mark each level, accounts read «#id name». Groups
- * shallower than `DEFAULT_OPEN_DEPTH` start open; the viewer's choices are kept per tree root.
+ * stays the link to its page), guide rails mark each level, accounts read «#id name». Groups of
+ * groups start open and groups holding accounts closed; the viewer's choices are kept per tree root.
  */
 export function NavAccountsTree({
   root,
@@ -151,9 +159,9 @@ export function NavAccountsTree({
 
   const groupIds = useMemo(() => groupNodeIds(root), [root]);
   const ctx: TreeContext = {
-    isOpen: (node, depth) => open[node.node_id] ?? depth < DEFAULT_OPEN_DEPTH,
-    toggle: (node, depth) => {
-      const current = open[node.node_id] ?? depth < DEFAULT_OPEN_DEPTH;
+    isOpen: (node) => open[node.node_id] ?? openByDefault(node),
+    toggle: (node) => {
+      const current = open[node.node_id] ?? openByDefault(node);
       save({ ...open, [node.node_id]: !current });
     },
     idPrefix,
@@ -184,7 +192,7 @@ export function NavAccountsTree({
             </button>
           </div>
           <ul className={styles.tree}>
-            <NavAccountsTreeNode node={root} depth={0} ctx={ctx} />
+            <NavAccountsTreeNode node={root} ctx={ctx} />
           </ul>
         </div>
       )}
