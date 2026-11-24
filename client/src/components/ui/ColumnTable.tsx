@@ -57,6 +57,12 @@ export type ColumnTableProps<R> = Omit<TableProps, "header" | "children"> & {
   rowExpansion?: (row: R) => ReactNode | null;
   /** `flat`: the card's cells sit directly under its title, with no section around them. */
   cardLayout?: "sections" | "flat";
+  /**
+   * The row's whole card, in place of the title + label/value card (a compact row of the
+   * table's own). The columns then describe the desktop row only, so the two renderings are
+   * hand-paired: keep this beside the column list and change them together.
+   */
+  card?: (row: R) => ReactNode;
 };
 
 /** A table drawn from one column list: desktop cells and the mobile card alike. */
@@ -71,11 +77,12 @@ export function ColumnTable<R>({
   rowProps,
   rowExpansion,
   cardLayout = "sections",
+  card,
   tableClassName,
   ...tableProps
 }: ColumnTableProps<R>) {
   const titleColumn = columns.find((c) => c.title);
-  if (!titleColumn) throw new Error("ColumnTable: one column must be the card's title");
+  if (!titleColumn && !card) throw new Error("ColumnTable: one column must be the card's title");
   const cardColumns = columns.filter((c) => !c.title && !c.desktopOnly);
   const sections = [...new Set(cardColumns.map((c) => c.section ?? 0))].sort((a, b) => a - b);
   const cardRows = (row: R, cols: readonly TableColumn<R>[]) =>
@@ -141,14 +148,21 @@ export function ColumnTable<R>({
                 </td>
               ))}
               <td className="mobile-only">
-                <TableMobileCard
-                  title={titleColumn.title === true ? titleColumn.cell(row) : titleColumn.title!(row)}
-                >
-                  {cardLead?.(row)}
-                  {cardBody(row)}
-                  {cardTail?.(row)}
-                  {expansion === null ? null : <div>{expansion}</div>}
-                </TableMobileCard>
+                {card ? (
+                  <>
+                    {card(row)}
+                    {expansion === null ? null : <div>{expansion}</div>}
+                  </>
+                ) : (
+                  <TableMobileCard
+                    title={titleColumn!.title === true ? titleColumn!.cell(row) : titleColumn!.title!(row)}
+                  >
+                    {cardLead?.(row)}
+                    {cardBody(row)}
+                    {cardTail?.(row)}
+                    {expansion === null ? null : <div>{expansion}</div>}
+                  </TableMobileCard>
+                )}
               </td>
             </tr>
           );
