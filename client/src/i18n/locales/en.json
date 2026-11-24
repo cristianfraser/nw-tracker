@@ -1347,6 +1347,7 @@
       "chartEmpty": "No flow data.",
       "income": "Income",
       "expenses": "Expenses",
+      "expensesBasis": "Expenses by month of purchase; cuotas in the month billed",
       "savings": "Savings",
       "deposits": "Deposits",
       "depositsPreTax": "AFP+AFC (contributions)",
@@ -1567,6 +1568,7 @@
   "expenses": {
     "spent": {
       "chartTitle": "Month to date, by category",
+      "basis": "By the day each expense was spent",
       "chartAria": "Each month's spend to date, day by day, by category",
       "stripAria": "Each day's spend",
       "allCategories": "all",

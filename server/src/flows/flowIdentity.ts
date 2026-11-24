@@ -99,10 +99,30 @@ export function ensureFlowForKey(key: string, dbHandle: Database = db): number {
     // A facturado payment charge (migration 297) names the purchase by its flow: it follows it.
     dbHandle.prepare(`UPDATE cc_facturado_payment_charges SET flow_id = ? WHERE flow_id = ?`).run(target, other);
     carryFlowFirstSeen(other, target, dbHandle);
+    // A refund link on the folded flow follows it (the target's own link stays).
+    moveCardRefundLinks(other, target, "to", dbHandle);
     dbHandle.prepare(`DELETE FROM flows WHERE id = ? AND legacy_key IS NULL`).run(other);
   }
   dbHandle.prepare(`UPDATE flows SET legacy_key = ? WHERE id = ?`).run(resolved.flowKey, target);
   return target;
+}
+
+/**
+ * A card refund link (migration 365) follows both its ends from one flow onto another: the refund's
+ * own link (the preferred flow's stays when both carry one) and the purchase it names; a link the
+ * move turns onto itself goes. Every path that folds a flow into another calls it before the fold
+ * deletes `from`, or the link cascades away unseen.
+ */
+function moveCardRefundLinks(from: number, to: number, prefer: "from" | "to", dbHandle: Database): void {
+  if (prefer === "from") {
+    dbHandle
+      .prepare(`DELETE FROM card_refund_links WHERE flow_id = ? AND EXISTS (SELECT 1 FROM card_refund_links x WHERE x.flow_id = ?)`)
+      .run(to, from);
+  }
+  dbHandle.prepare(`UPDATE OR IGNORE card_refund_links SET flow_id = ? WHERE flow_id = ?`).run(to, from);
+  dbHandle.prepare(`DELETE FROM card_refund_links WHERE flow_id = ?`).run(from);
+  dbHandle.prepare(`DELETE FROM card_refund_links WHERE flow_id = ? AND purchase_flow_id = ?`).run(to, from);
+  dbHandle.prepare(`UPDATE card_refund_links SET purchase_flow_id = ? WHERE purchase_flow_id = ?`).run(to, from);
 }
 
 function repointRow(row: FlowSourceRow, flowId: number, dbHandle: Database): void {
@@ -173,13 +193,7 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
     if (!hasParts(to)) dbHandle.prepare(`UPDATE flow_parts SET flow_id = ? WHERE flow_id = ?`).run(to, from);
     dbHandle.prepare(`DELETE FROM flow_parts WHERE flow_id = ?`).run(from);
   }
-  // A refund link (migration 365) follows both ends: the refund's own (the preferred flow's stays)
-  // and the purchase it names; a link the merge turns onto itself goes.
-  if (prefer === "from") dbHandle.prepare(`DELETE FROM card_refund_links WHERE flow_id = ? AND EXISTS (SELECT 1 FROM card_refund_links x WHERE x.flow_id = ?)`).run(to, from);
-  dbHandle.prepare(`UPDATE OR IGNORE card_refund_links SET flow_id = ? WHERE flow_id = ?`).run(to, from);
-  dbHandle.prepare(`DELETE FROM card_refund_links WHERE flow_id = ?`).run(from);
-  dbHandle.prepare(`DELETE FROM card_refund_links WHERE flow_id = ? AND purchase_flow_id = ?`).run(to, from);
-  dbHandle.prepare(`UPDATE card_refund_links SET purchase_flow_id = ? WHERE purchase_flow_id = ?`).run(to, from);
+  moveCardRefundLinks(from, to, prefer, dbHandle);
   // A link that points at the merged flow (a deposit a purchase funded) points at the survivor.
   dbHandle.prepare(`UPDATE OR IGNORE flow_links SET counterpart_flow_id = ? WHERE counterpart_flow_id = ?`).run(to, from);
   // The day the purchase first reached the ledger: the earlier of the two.

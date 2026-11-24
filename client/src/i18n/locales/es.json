@@ -1347,6 +1347,7 @@
       "chartEmpty": "Sin datos de flujos.",
       "income": "Ingresos",
       "expenses": "Gastos",
+      "expensesBasis": "Gastos por mes de compra; cuotas en el mes facturado",
       "savings": "Ahorro",
       "deposits": "Depósitos",
       "depositsPreTax": "AFP+AFC (cotizaciones)",
@@ -1567,6 +1568,7 @@
   "expenses": {
     "spent": {
       "chartTitle": "Acumulado del mes, por categoría",
+      "basis": "Por el día en que se hizo cada gasto",
       "chartAria": "Gasto acumulado de cada mes, día a día, por categoría",
       "stripAria": "Gasto de cada día",
       "allCategories": "todas",

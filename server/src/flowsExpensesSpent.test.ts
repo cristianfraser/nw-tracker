@@ -4,7 +4,9 @@ import {
   buildExpensesSpentPayload,
   heatLevels,
   selectSpentLines,
+  spentBigGroupUsage,
   spentDayOfLine,
+  type SpentDayContext,
   type SpentOptions,
 } from "./flowsExpensesSpent.js";
 import { withLineMoney } from "./lineMoney.js";
@@ -61,25 +63,80 @@ const OPTS: SpentOptions = {
   includePreTax: false,
 };
 
+/** Today and each facturación's close, without the database: the 2026-03 facturación closes on the 20th. */
+const CTX: SpentDayContext = {
+  today: TODAY,
+  closeOf: (_account, billingMonth) => `${billingMonth}-20`,
+};
+const dayOf = (partial: Partial<FlowCcExpenseLineRow>, mode: "split" | "total" = "split") =>
+  spentDayOfLine(withLineMoney([line(partial)])[0]!, mode, CTX);
+
 describe("spentDayOfLine", () => {
   it("puts a purchase on its purchase day, whatever month it was billed in", () => {
-    expect(spentDayOfLine(line({ purchase_on: "2026-02-27", billing_month: "2026-03" }), "split")).toBe("2026-02-27");
+    expect(dayOf({ purchase_on: "2026-02-27", billing_month: "2026-03" })).toBe("2026-02-27");
   });
 
-  it("puts a cuota on its statement day in «split» and nowhere in «total»", () => {
-    const cuota = line({ line_role: "installment_cuota", installment_flag: 1, nro_cuota_current: 2, nro_cuota_total: 3, occurred_on: "2026-03-25" });
-    expect(spentDayOfLine(cuota, "split")).toBe("2026-03-25");
-    expect(spentDayOfLine(cuota, "total")).toBeNull();
+  it("puts a cuota on the close of the facturación that bills it, whatever its occurred_on means", () => {
+    const cuota = { line_role: "installment_cuota" as const, installment_flag: 1, nro_cuota_current: 2, nro_cuota_total: 3, billing_month: "2026-03" };
+    // A ledger cuota carries its pay-by, a scheduled one the month's last day: both read the close.
+    expect(dayOf({ ...cuota, occurred_on: "2026-04-10" })).toBe("2026-03-20");
+    expect(dayOf({ ...cuota, occurred_on: "2026-03-31" })).toBe("2026-03-20");
+    expect(dayOf({ ...cuota, occurred_on: "2026-03-20" }, "total")).toBeNull();
+  });
+
+  it("puts a card credit on the day it reached the ledger, never its printed date", () => {
+    const credit = { amount_clp: -12_000, card_refund: true as const, purchase_on: "2026-02-15", occurred_on: "2026-03-20" };
+    expect(dayOf({ ...credit, first_seen_on: "2026-03-05" })).toBe("2026-03-05");
+    expect(dayOf({ ...credit, posting_on: "2026-02-28" })).toBe("2026-02-28");
   });
 
   it("puts a whole installment purchase on its purchase day in «total» only", () => {
-    const whole = line({ line_role: "installment_purchase_total", purchase_on: "2026-01-15" });
-    expect(spentDayOfLine(whole, "total")).toBe("2026-01-15");
-    expect(spentDayOfLine(whole, "split")).toBeNull();
+    const whole = { line_role: "installment_purchase_total" as const, purchase_on: "2026-01-15" };
+    expect(dayOf(whole, "total")).toBe("2026-01-15");
+    expect(dayOf(whole, "split")).toBeNull();
   });
 
   it("leaves out an annulled purchase", () => {
-    expect(spentDayOfLine(line({ nota_credito_role: "annulled_purchase" }), "split")).toBeNull();
+    expect(dayOf({ nota_credito_role: "annulled_purchase" })).toBeNull();
+  });
+});
+
+describe("a cuota a future close bills", () => {
+  it("is not spent yet: the month-to-date chart leaves it out", () => {
+    const lines = withLineMoney([
+      line({ statement_line_id: 1, line_role: "installment_cuota", installment_flag: 1, nro_cuota_current: 1, nro_cuota_total: 3, billing_month: "2026-04", occurred_on: "2026-03-31", amount_clp: 30_000 }),
+    ]);
+    const payload = buildExpensesSpentPayload(lines, CATEGORIES, OPTS, "90d", TODAY, CTX);
+    expect(payload.chart.at(-1)!.total).toBe(0);
+  });
+});
+
+describe("spentBigGroupUsage", () => {
+  it("counts what the page counts: nothing after today, a mortgage payment's carrying, excluded groups too", () => {
+    const lines = withLineMoney([
+      line({ statement_line_id: 1, purchase_on: "2026-03-02", amount_clp: 10_000, big_group_slug: "trip", purchase_key: "line-pr:a" }),
+      // After today: not spent yet.
+      line({ statement_line_id: 2, purchase_on: "2026-03-20", amount_clp: 99_000, big_group_slug: "trip", purchase_key: "line-pr:b" }),
+      line({
+        statement_line_id: 3,
+        purchase_on: "2026-03-04",
+        amount_clp: 750_000,
+        category_slug: "bills",
+        big_group_slug: "house",
+        purchase_key: "line-pr:c",
+        expense_deposit_links: [
+          { deposit_movement_id: 900, payment_clp: 750_000, amortization_clp: 410_000, carrying_clp: 340_000, depto_cuota: "30", depto_occurred_on: "2026-03-04", link_source: "auto" },
+        ],
+      }),
+    ]);
+    const usage = spentBigGroupUsage(lines, { ...OPTS, excludedBigGroups: new Set(["trip"]) }, [
+      { slug: "trip", label: "Trip" },
+      { slug: "house", label: "House" },
+    ], CTX);
+    expect(usage).toEqual([
+      { slug: "house", label: "House", total: 340_000, purchase_count: 1 },
+      { slug: "trip", label: "Trip", total: 10_000, purchase_count: 1 },
+    ]);
   });
 });
 

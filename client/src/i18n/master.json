@@ -4257,6 +4257,10 @@
         "en": "Expenses",
         "es": "Gastos"
       },
+      "expensesBasis": {
+        "en": "Expenses by month of purchase; cuotas in the month billed",
+        "es": "Gastos por mes de compra; cuotas en el mes facturado"
+      },
       "savings": {
         "en": "Savings",
         "es": "Ahorro"
@@ -5052,6 +5056,10 @@
       "chartTitle": {
         "en": "Month to date, by category",
         "es": "Acumulado del mes, por categoría"
+      },
+      "basis": {
+        "en": "By the day each expense was spent",
+        "es": "Por el día en que se hizo cada gasto"
       },
       "chartAria": {
         "en": "Each month's spend to date, day by day, by category",
