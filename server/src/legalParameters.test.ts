@@ -6,7 +6,6 @@ import {
   iuscTax,
   monthlyGratificationClp,
   pensionCapUf,
-  roundReajustePct,
   unemploymentCapUf,
 } from "./legalParameters.js";
 import { f22Code170, f22Code305, f22IdentityViolations } from "./f22/identities.js";
@@ -60,7 +59,7 @@ describe("the IPC reajuste", () => {
   it("rounds to the SII's decimal and, for year-end factors, never goes below zero", () => {
     const r = ipcReajuste({ round: true, lookup, latestMonth: "2025-03-01" });
     expect(r.pct("2025-01-01", "2025-02-01")).toBe(1);
-    expect(r.pct("2025-02-01", "2025-03-01")).toBe(roundReajustePct((100.53 / 101.04 - 1) * 100));
+    expect(r.pct("2025-02-01", "2025-03-01")).toBe(-0.5);
     expect(r.yearEndPct("2025-02-01", "2025-03-01")).toBe(0);
     expect(r.yearEndPct("2025-03-01", "2025-02-01")).toBe(0);
     // A month after the latest published one reads as the latest.

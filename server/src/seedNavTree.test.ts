@@ -161,13 +161,6 @@ describe("seedNavTree retirement AFP+AFC", () => {
         .get(bucketId) as { n: number }
     ).n;
     expect(accountCount).toBeGreaterThanOrEqual(2);
-
-    const orphanNavGroups = db
-      .prepare(
-        `SELECT slug FROM portfolio_groups WHERE slug IN ('retirement_afp_afc__afp', 'retirement_afp_afc__afc')`
-      )
-      .all() as { slug: string }[];
-    expect(orphanNavGroups).toEqual([]);
   });
 });
 

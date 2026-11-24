@@ -9,7 +9,6 @@ import {
 } from "./additionalCardReimbursements.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 import { buildFlowsIncomeAggregates } from "./flowsOverview.js";
-import { isCheckingIncomeKind } from "./flowsCheckingIncomeOverrides.js";
 import { markCheckingExpenseRefund, unmarkCheckingExpenseRefund } from "./checkingExpenseRefunds.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
@@ -199,10 +198,6 @@ function insertCartolaCredit(occurredOn: string, amountClp: number, idx: number)
 }
 
 describe("checking credits as expense refunds", () => {
-  it("is no income kind any more", () => {
-    expect(isCheckingIncomeKind("card_reimbursement")).toBe(false);
-  });
-
   it("moves a refund out of income into a negative gastos line in its category", () => {
     const movementId = insertCartolaCredit("2099-05-12", 12_340, 993101);
     try {

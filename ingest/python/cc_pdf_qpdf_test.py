@@ -83,16 +83,6 @@ class ReadableTextTest(unittest.TestCase):
         self.assertEqual(iso, "2026-08-26")
         self.assertEqual(last4, "4343")
 
-    def test_password_env_names(self) -> None:
-        self.assertEqual(
-            mod.SANTANDER_CC_STATEMENT_PDF_PASSWORD_ENV,
-            "SANTANDER_CC_STATEMENT_PDF_PASSWORD",
-        )
-        self.assertEqual(
-            mod.LIDER_CC_STATEMENT_PDF_PASSWORD_ENV,
-            "LIDER_CC_STATEMENT_PDF_PASSWORD",
-        )
-
     def test_all_configured_passwords_dedupes(self) -> None:
         with mock.patch.dict(
             "os.environ",

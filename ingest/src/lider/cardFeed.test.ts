@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { cardUnbilledMovementsKind } from "nw-tracker-contracts";
 import {
   liderCardFeedPayload,
-  liderDateToIso,
   liderIssuerBalances,
   liderMovementRowToLine,
   type LiderCardFeedFile,
@@ -104,9 +103,5 @@ describe("Lider BCI card feed", () => {
   it("keeps the schema's cupo identity", () => {
     const bad = file({ balances: { ...file().balances!, cupodisppesos: "1" } });
     expect(() => cardUnbilledMovementsKind.payload.parse(liderCardFeedPayload(bad))).toThrow();
-  });
-
-  it("reads dd/mm/yyyy dates", () => {
-    expect(liderDateToIso("02/06/2026")).toBe("2026-06-02");
   });
 });

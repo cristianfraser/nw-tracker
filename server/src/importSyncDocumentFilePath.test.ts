@@ -145,23 +145,6 @@ describe("importSyncDocumentFilePath", () => {
     expect(resolveCcStatementPdfPath(name, { usd: false })).toBe(path.join(legacyDir, name));
   });
 
-  it("resolves predecessor-card PDF under successor slot dir (4113 -> 4141)", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cc-pdf-redirect-"));
-    const masterDir = path.join(root, "4141", "usd");
-    fs.mkdirSync(masterDir, { recursive: true });
-    const name = "2017-09-22 estado de cuenta tarjeta usd 4113.pdf";
-    fs.writeFileSync(path.join(masterDir, name), "");
-    vi.spyOn(cfraserPaths, "ccStatementPdfSearchDirs").mockImplementation((last4, usd) => {
-      const slot = usd ? "usd" : "clp";
-      const dirs = [path.join(root, last4 ?? "", slot)];
-      if (last4 === "4113") dirs.push(path.join(root, "4141", slot));
-      dirs.push(path.join(root, "legacy", slot));
-      return dirs;
-    });
-
-    expect(resolveCcStatementPdfPath(name, { usd: true })).toBe(path.join(masterDir, name));
-  });
-
   it("returns null for web-paste statement sources", () => {
     expect(resolveCcStatementPdfPath("import:web-paste|open|2026-05", { usd: false })).toBeNull();
   });

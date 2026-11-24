@@ -2,38 +2,20 @@ import { describe, expect, it, beforeAll, afterAll, afterEach } from "vitest";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { db } from "./db.js";
-import { getMergedDepositInflowEventsForAccount, pocketDepositsClpForAccount } from "./accountDeposits.js";
+import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
 import {
   loadEquityBrokerageCapitalInflowEvents,
   loadEquityBrokerageCapitalSortFlows,
   loadForeignCashCapitalSortFlows,
   type EquityCapitalSortFlow,
 } from "./equityBrokerageCapitalFlows.js";
-import { equityReturnSnapshot, totalDividendsClpForAccount } from "./equityReturns.js";
+import { totalDividendsClpForAccount } from "./equityReturns.js";
 import { referenceAmountAtMid } from "./rates.js";
 
 const FIXTURE_USD = "vitest-equity-cap-usd";
 const FIXTURE_CLP = "vitest-equity-cap-clp";
 const FIXTURE_STOCK = "vitest-equity-cap-stock";
 const FIXTURE_NOTE = "vitest-equity-capital-flows";
-
-function findEquityAccountByName(name: string): number | null {
-  const row = db.prepare(`SELECT id FROM accounts WHERE name = ? LIMIT 1`).get(name) as
-    | { id: number }
-    | undefined;
-  return row?.id ?? null;
-}
-
-function hasStockBuyTransfer(accountId: number): boolean {
-  return (
-    db
-      .prepare(
-        `SELECT 1 FROM movements
-         WHERE to_account_id = ? AND flow_kind = 'stock_buy' LIMIT 1`
-      )
-      .get(accountId) != null
-  );
-}
 
 let restoreFx: (() => void) | null = null;
 
@@ -138,11 +120,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
 
     const events = marchEvents();
     expect(events).toHaveLength(1);
-    expect(events[0]!.amt).toBe(-referenceAmountAtMid(1.7, "usd", "clp", "2026-03-26")!);
-    expect(totalDividendsClpForAccount(stockId)).toBeCloseTo(
-      referenceAmountAtMid(1.7, "usd", "clp", "2026-03-26")!,
-      0
-    );
+    expect(events[0]!.amt).toBe(-1530);
+    expect(totalDividendsClpForAccount(stockId)).toBeCloseTo(1530, 0);
 
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(divId);
   });
@@ -227,7 +206,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     expect(wire!.amt).toBe(50_000);
     expect(wire!.amt_usd).toBeCloseTo(54.68, 6);
     expect(resid).toBeDefined();
-    expect(resid!.amt).toBe(referenceAmountAtMid(55.22 - 54.68, "usd", "clp", "2026-03-26")!);
+    expect(resid!.amt).toBe(486);
     expect(resid!.amt_usd).toBeCloseTo(0.54, 6);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
@@ -273,7 +252,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const wire = events.find((e) => e.capital_kind === "clp_wire");
     const resid = events.find((e) => e.capital_kind === "usd_reference");
     expect(wire?.amt).toBe(50_000);
-    expect(resid?.amt).toBe(referenceAmountAtMid(55.22 - 54.68, "usd", "clp", "2026-03-26")!);
+    expect(resid?.amt).toBe(486);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
@@ -289,7 +268,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const events = marchEvents();
     expect(events).toHaveLength(1);
     expect(events[0]!.capital_kind).toBe("usd_reference");
-    expect(events[0]!.amt).toBe(referenceAmountAtMid(55.22, "usd", "clp", "2026-03-26")!);
+    expect(events[0]!.amt).toBe(49_698);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
@@ -342,7 +321,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const aResidUsd = 40 - (54.68 * 40) / total;
     expect(aResid.capital_kind).toBe("usd_reference");
     expect(aResid.amt_usd).toBeCloseTo(aResidUsd, 9);
-    expect(aResid.amt).toBe(referenceAmountAtMid(aResidUsd, "usd", "clp", "2026-03-26")!);
+    expect(aResid.amt).toBeCloseTo(aResidUsd * 900, 4);
     expect(aResid.amt_usd! + bResid.amt_usd!).toBeCloseTo(2.13, 9);
 
     // The cash account mirrors the buys: the wire's pesos come in and go out again, and the
@@ -388,10 +367,7 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     expect(events).toHaveLength(2);
     expect(events.every((e) => e.capital_kind === "usd_reference")).toBe(true);
     const amts = events.map((e) => e.amt).sort((a, b) => a - b);
-    expect(amts).toEqual([
-      referenceAmountAtMid(10, "usd", "clp", "2026-03-26")!,
-      referenceAmountAtMid(20, "usd", "clp", "2026-03-26")!,
-    ]);
+    expect(amts).toEqual([9000, 18_000]);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
@@ -410,25 +386,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     const wire = events.find((e) => e.capital_kind === "clp_wire");
     const ref = events.find((e) => e.capital_kind === "usd_reference");
     expect(wire?.amt).toBe(50_000);
-    expect(ref?.amt).toBe(referenceAmountAtMid(10, "usd", "clp", "2026-03-26")!);
+    expect(ref?.amt).toBe(9000);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
 });
-
-describe("equityBrokerageCapitalFlows on the Vitest person", () => {
-  it("SPY return snapshot: total return vs deposited, dividends informational", () => {
-    const spyId = findEquityAccountByName("SPY");
-    if (spyId == null || !hasStockBuyTransfer(spyId)) return;
-
-    const pocket = pocketDepositsClpForAccount(spyId);
-    const dividends = totalDividendsClpForAccount(spyId);
-    if (dividends <= 0) return;
-
-    const snap = equityReturnSnapshot(spyId, pocket, pocket + 1_000, "clp");
-    expect(snap).not.toBeNull();
-    expect(snap!.dividends).toBeCloseTo(dividends, -2);
-    expect(snap!.total_return).toBeCloseTo(1_000, 0);
-  });
-});
-

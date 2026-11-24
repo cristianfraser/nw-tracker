@@ -1,4 +1,3 @@
-import { wireLineBankText } from "./expenseShownName.js";
 import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { randomUUID } from "node:crypto";
@@ -11,7 +10,6 @@ import {
 } from "vitest";
 import {
   ADDITIONAL_CARD_CC_EXPENSE_SLUG,
-  countsTowardCcExpenseGastosMes,
   getCcExpenseCategoryBySlug,
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
@@ -26,6 +24,9 @@ import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.j
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 import { aggregateGastosFromLines, countsTowardGastosMes, gastosMonthRows } from "./flowsExpensesGastos.js";
 import { lineAmountClpSql, lineAmountUsdSql, lineCuotaClpSql } from "./cards/lineAmountSql.js";
+
+/** The Vitest person's installment contract (`demoData/person.ts`: 6 cuotas on its main card). */
+const TEST_PERSON_INSTALLMENT_MERCHANT = "MAC STORE PRUEBA";
 
 /** Por cuota's month rows (the flows overview's expenses leg), its total and category stacks, in CLP. */
 function splitView(payload: ReturnType<typeof buildFlowsExpensesPayload>) {
@@ -71,6 +72,8 @@ describe("flowsExpenses", () => {
   it("listCreditCardMasterAccountIds drives the gastos payload", () => {
     const payload = buildFlowsExpensesPayload();
     const allowed = new Set(listCreditCardMasterAccountIds());
+    expect(payload.account_ids.length).toBeGreaterThan(0);
+    expect(payload.lines.some((ln) => ln.source === "cc")).toBe(true);
     for (const id of payload.account_ids) {
       expect(allowed.has(id)).toBe(true);
     }
@@ -80,48 +83,9 @@ describe("flowsExpenses", () => {
     }
   });
 
-  it("shows one installment purchase total per contract in compras month (feb 2025 ROCA)", () => {
-    const payload = buildFlowsExpensesPayload();
-    const rocaTotals = payload.lines.filter(
-      (ln) =>
-        ln.line_role === "installment_purchase_total" &&
-        ln.purchase_month === "2025-02" &&
-        ln.merchant_key.includes("ROCA")
-    );
-    if (rocaTotals.length === 0) return;
-    expect(rocaTotals).toHaveLength(1);
-    expect(rocaTotals[0]?.value_clp).toBe(881_134);
-  });
-
-  it("includes 4242 purchase lines when statement data exists", () => {
-    const id4242 = (
-      db
-        .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
-        .get() as { id: number } | undefined
-    )?.id;
-    if (!id4242) return;
-
-    const raw = (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS c FROM cc_statement_lines l
-           JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?`
-        )
-        .get(id4242) as { c: number }
-    ).c;
-    if (raw === 0) return;
-
-    const payload = buildFlowsExpensesPayload();
-    expect(payload.account_ids).toContain(id4242);
-    const cc4242 = payload.lines.filter(
-      (ln) => ln.source === "cc" && ln.account_id === id4242 && ln.value_clp > 0
-    );
-    expect(cc4242.length).toBeGreaterThan(0);
-  });
-
   it("auto-tags adicional-card lines as additional_card + unique in the payload", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
-    if (accountId == null) return;
+    expect(accountId).not.toBeNull();
     const parserRowId = `vitest-addl-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
     const stmt = db
@@ -155,7 +119,7 @@ describe("flowsExpenses", () => {
 
   it("does not force the additional_card category when the user cleared unique category", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
-    if (accountId == null) return;
+    expect(accountId).not.toBeNull();
     const parserRowId = `vitest-addl-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
     const stmt = db
@@ -183,7 +147,7 @@ describe("flowsExpenses", () => {
     expect(additionalCardId).toBeTruthy();
 
     // Simulate user-cleared unique: category_id NULL exists in DB at load.
-    uniqueCategoryInsert.run(accountId, purchaseKey, null);
+    uniqueCategoryInsert.run(accountId!, purchaseKey, null);
 
     const payload = buildFlowsExpensesPayload();
     const found = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === lineId);
@@ -194,17 +158,41 @@ describe("flowsExpenses", () => {
   });
 
   it("never auto-tags installment contracts as additional_card for adicional cuotas", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    expect(accountId).not.toBeNull();
+    const parserRowId = `vitest-addl-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+    const stmt = db
+      .prepare(
+        `INSERT INTO cc_statements (
+           account_id, card_group, source_pdf, statement_date, period_from, period_to,
+           card_last4, layout, currency
+         ) VALUES (?, 'santander', ?, '20/05/2026', '01/05/2026', '19/05/2026', '4242', 'compact', 'clp')`
+      )
+      .run(accountId, SRC_ADDITIONAL_FIXTURE);
+    const statementId = Number(stmt.lastInsertRowid);
+
+    // Cuota 1 of 3 bought on the adicional plastic (·4999) of the ·4242 statement.
+    const line = db
+      .prepare(
+        `INSERT INTO cc_statement_lines (
+           statement_id, transaction_date, merchant, amount, installment_flag,
+           nro_cuota_current, nro_cuota_total, cuota_amount,
+           parser_row_id, origin_card_last4, dedupe_key
+         ) VALUES (?, '10/05/2026', 'Additional card installment fixture', 10000, 1, 1, 3, 10000, ?, '4999', ?)`
+      )
+      .run(statementId, parserRowId, `vitest-addl-dedupe-${parserRowId}`);
+    const lineId = Number(line.lastInsertRowid);
+
     const payload = buildFlowsExpensesPayload();
-    const adicionalInstallment = payload.lines.find(
-      (ln) =>
-        ln.source === "cc" &&
-        ln.installment_flag === 1 &&
-        ln.origin_card_last4 != null &&
-        ln.primary_card_last4 != null &&
-        ln.origin_card_last4 !== ln.primary_card_last4
-    );
-    if (!adicionalInstallment) return;
-    expect(adicionalInstallment.category_slug).not.toBe(ADDITIONAL_CARD_CC_EXPENSE_SLUG);
+    const found = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === lineId);
+    expect(found).toBeDefined();
+    expect(found!.installment_flag).toBe(1);
+    expect(found!.line_role).toBe("installment_cuota");
+    expect(found!.origin_card_last4).toBe("4999");
+    expect(found!.primary_card_last4).toBe("4242");
+    expect(found!.category_slug).not.toBe(ADDITIONAL_CARD_CC_EXPENSE_SLUG);
+    expect(found!.category_unique).toBe(false);
   });
 
   it("keeps user unique category on installment contract when an adicional cuota exists", () => {
@@ -216,13 +204,13 @@ describe("flowsExpenses", () => {
         // and cannot be assigned/resolved through the statement-line APIs.
         ln.statement_line_id > 0 &&
         ln.installment_flag === 1 &&
-        ln.merchant_key.includes("ROCA") &&
+        ln.merchant_key.includes(TEST_PERSON_INSTALLMENT_MERCHANT) &&
         ln.nro_cuota_current === 1 &&
         ln.origin_card_last4 === ln.primary_card_last4
     );
-    if (!titularCuota) return;
+    expect(titularCuota).toBeDefined();
 
-    const purchaseKey = resolveCcExpensePurchaseKey(titularCuota.statement_line_id);
+    const purchaseKey = resolveCcExpensePurchaseKey(titularCuota!.statement_line_id);
     expect(purchaseKey).toMatch(/^installment-h:/);
 
     // Snapshot + restore: assignments persist in the shared DB and leaked into the
@@ -231,12 +219,12 @@ describe("flowsExpenses", () => {
       .prepare(
         `SELECT category_id FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`
       )
-      .get(titularCuota.account_id, purchaseKey) as { category_id: number | null } | undefined;
+      .get(titularCuota!.account_id, purchaseKey) as { category_id: number | null } | undefined;
 
     try {
       assignFlowExpenseLineCategory({
         source: "cc",
-        lineId: titularCuota.statement_line_id,
+        lineId: titularCuota!.statement_line_id,
         unique: true,
         categorySlug: "others",
       });
@@ -245,7 +233,7 @@ describe("flowsExpenses", () => {
       const contractLines = after.lines.filter(
         (ln) =>
           ln.source === "cc" &&
-          ln.merchant_key.includes("ROCA") &&
+          ln.merchant_key.includes(TEST_PERSON_INSTALLMENT_MERCHANT) &&
           (ln.line_role === "installment_cuota" || ln.line_role === "installment_purchase_total")
       );
       expect(contractLines.length).toBeGreaterThan(0);
@@ -259,14 +247,14 @@ describe("flowsExpenses", () => {
            JOIN cc_expense_categories c ON c.id = up.category_id
            WHERE up.account_id = ? AND up.purchase_key = ?`
         )
-        .get(titularCuota.account_id, purchaseKey) as { slug: string } | undefined;
+        .get(titularCuota!.account_id, purchaseKey) as { slug: string } | undefined;
       expect(row?.slug).toBe("others");
     } finally {
       db.prepare(
         `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
-      ).run(titularCuota.account_id, purchaseKey);
+      ).run(titularCuota!.account_id, purchaseKey);
       if (prior) {
-        uniqueCategoryInsert.run(titularCuota.account_id, purchaseKey, prior.category_id);
+        uniqueCategoryInsert.run(titularCuota!.account_id, purchaseKey, prior.category_id);
       }
     }
   });
@@ -280,13 +268,13 @@ describe("flowsExpenses", () => {
         // and cannot be assigned/resolved through the statement-line APIs.
         ln.statement_line_id > 0 &&
         ln.installment_flag === 1 &&
-        ln.merchant_key.includes("ROCA") &&
+        ln.merchant_key.includes(TEST_PERSON_INSTALLMENT_MERCHANT) &&
         ln.nro_cuota_current === 1 &&
         ln.origin_card_last4 === ln.primary_card_last4
     );
-    if (!titularCuota) return;
+    expect(titularCuota).toBeDefined();
 
-    const purchaseKey = resolveCcExpensePurchaseKey(titularCuota.statement_line_id);
+    const purchaseKey = resolveCcExpensePurchaseKey(titularCuota!.statement_line_id);
     const legacyKey = installmentHKeyWithoutTotal(purchaseKey);
     const snapshotKey = (key: string | null) =>
       key
@@ -294,7 +282,7 @@ describe("flowsExpenses", () => {
             .prepare(
               `SELECT category_id FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?`
             )
-            .get(titularCuota.account_id, key) as { category_id: number | null } | undefined)
+            .get(titularCuota!.account_id, key) as { category_id: number | null } | undefined)
         : undefined;
     const prior = snapshotKey(purchaseKey);
     const priorLegacy = snapshotKey(legacyKey);
@@ -302,14 +290,14 @@ describe("flowsExpenses", () => {
     try {
       assignFlowExpenseLineCategory({
         source: "cc",
-        lineId: titularCuota.statement_line_id,
+        lineId: titularCuota!.statement_line_id,
         unique: true,
         categorySlug: "others",
       });
 
       assignFlowExpenseLineCategory({
         source: "cc",
-        lineId: titularCuota.statement_line_id,
+        lineId: titularCuota!.statement_line_id,
         unique: true,
         clearCategory: true,
       });
@@ -319,7 +307,7 @@ describe("flowsExpenses", () => {
         const contractLines = after.lines.filter(
           (ln) =>
             ln.source === "cc" &&
-            ln.merchant_key.includes("ROCA") &&
+            ln.merchant_key.includes(TEST_PERSON_INSTALLMENT_MERCHANT) &&
             (ln.line_role === "installment_cuota" || ln.line_role === "installment_purchase_total")
         );
         expect(contractLines.length).toBeGreaterThan(0);
@@ -335,9 +323,9 @@ describe("flowsExpenses", () => {
         if (!key) return;
         db.prepare(
           `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
-        ).run(titularCuota.account_id, key);
+        ).run(titularCuota!.account_id, key);
         if (snap) {
-          uniqueCategoryInsert.run(titularCuota.account_id, key, snap.category_id);
+          uniqueCategoryInsert.run(titularCuota!.account_id, key, snap.category_id);
         }
       };
       restoreKey(purchaseKey, prior);
@@ -349,7 +337,7 @@ describe("flowsExpenses", () => {
     const payload = buildFlowsExpensesPayload();
     expect(payload.group_slug).toBe("credit_cards");
     const byMonth = splitView(payload).by_month;
-    if (byMonth.length === 0) return;
+    expect(byMonth.length).toBeGreaterThan(0);
 
     const asc = [...byMonth].reverse();
     let expected = 0;
@@ -370,28 +358,24 @@ describe("flowsExpenses", () => {
 
   it("groups installment lines by billing month, not purchase month", () => {
     const payload = buildFlowsExpensesPayload();
-    const installmentLines = payload.lines.filter(
+    const cuotas = payload.lines.filter(
       (ln) =>
         ln.source === "cc" &&
-        ln.installment_flag === 1 &&
-        ln.purchase_on != null &&
-        ln.purchase_on.startsWith("2025-02") &&
-        ln.billing_month !== ln.expense_month
+        ln.statement_line_id > 0 &&
+        ln.line_role === "installment_cuota" &&
+        ln.merchant_key.includes(TEST_PERSON_INSTALLMENT_MERCHANT)
     );
-    if (installmentLines.length === 0) return;
-
-    for (const ln of installmentLines) {
+    // The Vitest person's contract: one purchase day, six cuotas billed one a month.
+    expect(cuotas.map((ln) => ln.nro_cuota_current).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(new Set(cuotas.map((ln) => ln.purchase_on)).size).toBe(1);
+    for (const ln of cuotas) {
+      expect(ln.installment_flag).toBe(1);
       expect(ln.expense_month).toBe(ln.billing_month);
-      expect(ln.line_role).toBe("installment_cuota");
     }
-
-    const febPurchaseInstallments = installmentLines.filter((ln) =>
-      ln.purchase_on!.startsWith("2025-02")
-    );
-    const febModalCount = febPurchaseInstallments.filter(
-      (ln) => ln.expense_month === "2025-02"
-    ).length;
-    expect(febModalCount).toBe(0);
+    const months = [...new Set(cuotas.map((ln) => ln.expense_month))].sort();
+    expect(months).toHaveLength(6);
+    const purchaseMonth = cuotas[0]!.purchase_on!.slice(0, 7);
+    expect(months.filter((m) => m === purchaseMonth).length).toBeLessThanOrEqual(1);
   });
 
   it("does not count installment purchase totals toward gastos in split mode", () => {
@@ -399,7 +383,7 @@ describe("flowsExpenses", () => {
     const totals = payload.lines.filter(
       (ln) => ln.line_role === "installment_purchase_total" && ln.value_clp > 0
     );
-    if (totals.length === 0) return;
+    expect(totals.some((ln) => ln.merchant_key.includes(TEST_PERSON_INSTALLMENT_MERCHANT))).toBe(true);
 
     for (const ln of totals) {
       expect(gastosSumMonthForLine(ln, "split")).toBe("");
@@ -415,6 +399,7 @@ describe("flowsExpenses", () => {
 
   it("gastos_mes reflects NOTA DE CREDITO pairing and unmatched adjustments", () => {
     const payload = buildFlowsExpensesPayload();
+    expect(splitView(payload).by_month.length).toBeGreaterThan(0);
     for (const row of splitView(payload).by_month) {
       const monthLines = payload.lines.filter(
         (ln) => gastosSumMonthForLine(ln, "split") === row.period_month
@@ -447,49 +432,9 @@ describe("flowsExpenses", () => {
     }
   });
 
-  it("annuls APPLE purchase when a matching NOTA DE CREDITO appears later", () => {
-    const payload = buildFlowsExpensesPayload();
-    const apple = payload.lines.find(
-      (ln) => wireLineBankText(ln) === "APPLE.COM CL" && ln.nota_credito_role === "annulled_purchase"
-    );
-    const nota = payload.lines.find(
-      (ln) => wireLineBankText(ln) === "NOTA DE CREDITO" && ln.nota_credito_role === "matched_nota"
-    );
-    if (!apple || !nota) return;
-
-    expect(apple.nota_credito_role).toBe("annulled_purchase");
-    expect(nota.nota_credito_role).toBe("matched_nota");
-
-    const novCountedIds = payload.lines
-      .filter((ln) => {
-        if (ln.expense_month !== "2024-11") return false;
-        if (ln.nota_credito_role === "annulled_purchase" || ln.nota_credito_role === "matched_nota") {
-          return false;
-        }
-        if (ln.nota_credito_role === "unmatched_nota") return true;
-        return (
-          ln.value_clp > 0 &&
-          countsTowardCcExpenseGastosMes(ln.category_slug, {
-            installment_flag: ln.installment_flag,
-            nro_cuota_current: ln.nro_cuota_current,
-          })
-        );
-      })
-      .map((ln) => ln.statement_line_id);
-    expect(novCountedIds).not.toContain(apple.statement_line_id);
-
-    const dec = splitView(payload).by_month.find((m) => m.period_month === "2024-12");
-    expect(dec).toBeDefined();
-    const decAbonosFromLines = payload.lines
-      .filter((ln) => ln.expense_month === "2024-12" && ln.value_clp < 0 && ln.checking_refund !== true)
-      .filter((ln) => ln.nota_credito_role !== "matched_nota" && ln.nota_credito_role !== "unmatched_nota")
-      .reduce((s, ln) => s + ln.value_clp, 0);
-    expect(dec!.abonos_mes).toBe(Math.round(decAbonosFromLines));
-  });
-
   it("includes USD-only statement lines converted to CLP", () => {
     const accountIds = listCreditCardMasterAccountIds();
-    if (accountIds.length === 0) return;
+    expect(accountIds.length).toBeGreaterThan(0);
     const ph = accountIds.map(() => "?").join(",");
     const usdOnlyIds = db
       .prepare(
@@ -501,7 +446,8 @@ describe("flowsExpenses", () => {
            AND NOT (l.installment_flag = 1 AND ${lineCuotaClpSql("l")} IS NOT NULL AND ${lineCuotaClpSql("l")} != 0)`
       )
       .all(...accountIds) as { id: number }[];
-    if (usdOnlyIds.length === 0) return;
+    // The Vitest person's dollar purchase («HOTEL PRUEBA» on its second card).
+    expect(usdOnlyIds.length).toBeGreaterThan(0);
 
     const payload = buildFlowsExpensesPayload();
     const included = new Set(payload.lines.map((ln) => ln.statement_line_id));
@@ -516,19 +462,6 @@ describe("flowsExpenses", () => {
       )
       .reduce((s, ln) => s + ln.value_clp, 0);
     expect(usdIncludedClp).toBeGreaterThan(0);
-  });
-
-  it("installment lines in payload use cuota amount, not full purchase", () => {
-    const payload = buildFlowsExpensesPayload();
-    const inst = payload.lines.find(
-      (ln) =>
-        ln.installment_flag === 1 &&
-        wireLineBankText(ln)?.includes("ROCA") &&
-        ln.nro_cuota_current != null &&
-        ln.nro_cuota_current >= 2
-    );
-    if (!inst) return;
-    expect(inst.value_clp).toBeLessThan(200_000);
   });
 
   it("lands each facturación's cuotas on the pay-by its facturaciones row shows", () => {
@@ -557,6 +490,7 @@ describe("flowsExpenses", () => {
       expect(seen.has(fp)).toBe(false);
       seen.add(fp);
     }
+    expect(seen.size).toBeGreaterThan(0);
   });
 });
 

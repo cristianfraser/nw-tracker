@@ -68,8 +68,6 @@ describe("cuotaLedgerSeriesKeyForAccount (afp)", () => {
     const planvital = insertAfpAccount("planvital", "afp_planvital_cuota_a");
     const bare = insertAfpAccount("bare", null);
     expect(cuotaLedgerSeriesKeyForAccount(planvital)).toBe("afp_planvital_cuota_a");
-    // The date no longer picks the series: the same account, any day.
-    expect(cuotaLedgerSeriesKeyForAccount(planvital)).toBe("afp_planvital_cuota_a");
     expect(() => cuotaLedgerSeriesKeyForAccount(bare)).toThrow(/fund_series_key/);
   });
 

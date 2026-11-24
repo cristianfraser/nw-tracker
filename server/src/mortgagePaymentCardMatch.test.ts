@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { checkMortgageCardMatches, mortgagePaymentCardMatchesFromLinks, type MortgageCardLine } from "./mortgagePaymentCardMatch.js";
+import { propertyLoanPairsWithLoan } from "./accountRoles.js";
+import {
+  CHECK_WINDOW_DAYS,
+  checkMortgageCardMatches,
+  mortgagePaymentCardMatchesFromLinks,
+  type MortgageCardLine,
+} from "./mortgagePaymentCardMatch.js";
 
 function line(id: number, date: string, amount: number, flowId = 100 + id): MortgageCardLine & { flow_id: number } {
   return { line_id: id, account_id: 9, account_name: "Card", date, merchant: "TOKU *METLIFE HIPOTECAR (T)", amount_clp: amount, flow_id: flowId };
@@ -45,9 +51,9 @@ describe("mortgagePaymentCardMatchesFromLinks", () => {
 
 describe("checkMortgageCardMatches", () => {
   it("passes on an empty ledger", () => {
-    // The lean test DB has no depto accounts; the check only reports the window.
+    // The Vitest person rents (`testPerson` houses: []): no property/loan pair, so nothing to judge.
+    expect(propertyLoanPairsWithLoan()).toEqual([]);
     const c = checkMortgageCardMatches("2099-01-01");
-    expect(typeof c.ok).toBe("boolean");
-    expect(c.report.length).toBeGreaterThan(0);
+    expect(c).toEqual({ ok: true, report: [`No mortgage cuota or card line in the last ${CHECK_WINDOW_DAYS} days.`] });
   });
 });

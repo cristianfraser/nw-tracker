@@ -3,7 +3,6 @@ import { db } from "../db.js";
 import { checkingAccountId } from "../checkingCartolaImport.js";
 import { computeF22Tax } from "./chain.js";
 import { buildF22Draft } from "./draft.js";
-import { f22PropertyTaxCreditCap } from "./identities.js";
 import { rentalsForYear } from "./rentals.js";
 import {
   deleteCheckingIncomeMovementOverride,
@@ -45,7 +44,6 @@ describe("the F22 chain with rent", () => {
     const capped = computeF22Tax({ ...base, 1849: 6_000_000, 955: 6_000_000 }, UTA, 2030, { propertyTaxPaidClp: 50_000_000 });
     const factor = Math.round((capped[157]! / capped[170]!) * 1000) / 1000;
     expect(capped[1637]).toBe(Math.round(6_000_000 * factor));
-    expect(capped[1637]).toBe(f22PropertyTaxCreditCap(capped));
   });
 
   it("refuses a negative 152 (a negative real interest is a line-17 loss)", () => {

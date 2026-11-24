@@ -52,32 +52,4 @@ describe("equity brokerage position meta", () => {
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
     }
   });
-
-  it("returns ticker and units for a stock account from accounts.equity_ticker", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id, a.name, a.notes, g.slug, a.equity_ticker
-         FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE a.equity_ticker = 'SPY'
-         LIMIT 1`
-      )
-      .get() as {
-      id: number;
-      name: string;
-      notes: string;
-      slug: string;
-      equity_ticker: string;
-    };
-
-    expect(equityTickerForAccount(row.id)).toBe(row.equity_ticker);
-
-    const meta = getAccountPositionMeta(row.id);
-
-    expect(meta).not.toBeNull();
-    expect(meta!.ticker).toBe(row.equity_ticker);
-    expect(meta!.units).not.toBeNull();
-    expect(meta!.units!).toBeGreaterThan(0);
-    expect(meta!.mark_unit_price_clp).not.toBeNull();
-  });
 });

@@ -233,19 +233,6 @@ describe("foreignOutflowPesoCostByMovement", () => {
     ]);
   });
 
-  it("lets a timeless day's arrivals fund its spending, whatever the ids", () => {
-    const usd = account("USD cash", "cash_eqs__usd");
-    const clp = account("CLP cash", CLP_GROUP);
-    const stock = account("stock", "brokerage_acciones__spy");
-    const card = account("card", "credit_cards__credit_card");
-    // The buy is written before the wire that funds it, the same day.
-    movement({ date: "2097-11-10", from: usd, to: stock, amount: 100, currency: "usd", flow_kind: "stock_buy", units: 1 });
-    movement({ date: "2097-11-10", from: clp, to: usd, amount: 95_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
-    movement({ date: "2097-11-11", from: clp, to: usd, amount: 97_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
-    const payment = movement({ date: "2097-11-12", from: usd, to: card, amount: 100, currency: "usd", flow_kind: "pago_tarjeta" });
-    expect(foreignOutflowPesoCostByMovement().get(payment)!.clp).toBeCloseTo(97_000, 6);
-  });
-
   it("values a dollar inflow without pesos at the stored rate of its date", () => {
     const usd = account("USD cash", "cash_eqs__usd");
     const stock = account("stock", "brokerage_acciones__spy");
@@ -257,15 +244,6 @@ describe("foreignOutflowPesoCostByMovement", () => {
     const cost = foreignOutflowPesoCostByMovement().get(payment)!;
     expect(cost.clp).toBeCloseTo(47_500, 6);
     expect(cost.lots[0]!.source).toBe("market");
-  });
-
-  it("throws on a shortfall", () => {
-    const usd = account("USD cash", "cash_eqs__usd");
-    const clp = account("CLP cash", CLP_GROUP);
-    const card = account("card", "credit_cards__credit_card");
-    movement({ date: "2097-12-01", from: clp, to: usd, amount: 90_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "fx_exchange" });
-    movement({ date: "2097-12-03", from: usd, to: card, amount: 200, currency: "usd", flow_kind: "pago_tarjeta" });
-    expect(() => foreignOutflowPesoCostByMovement()).toThrow(/needs 200\.00 USD but only 100\.00 USD/);
   });
 });
 

@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import { addDaysIso, dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { pairRecurringPendingLines, type RecurringPendingLine } from "./ccRecurringPendingLines.js";
 import { recurringPatternIndex, ufAmountFits, type RecurringEntry } from "./recurringPaymentMatch.js";
-import { MATCH_WINDOWS } from "./matching/windows.js";
 import { seededRandom } from "./matching/seededRandom.js";
 
 /** The pre-wave-7 rule: the loop `planRecurringPendingReplacement` carried for one entry. */
@@ -62,10 +61,6 @@ const MERCHANTS = ["CONVENIO FICTICIO P.A.T.", "SEGURO FICTICIO AUTO", "Asegurad
 const AMOUNTS = [80000, 80040, 80040.3, 80800, 80900, 79250, 79150, 50000];
 
 describe("recurring pending listings: pairOneToOne reproduces the pre-wave-7 rule", () => {
-  it("the window is still the pending day to seven days later", () => {
-    expect(MATCH_WINDOWS.recurring_pending).toMatchObject({ daysBefore: 0, daysAfter: 7 });
-  });
-
   it("800 random card ledgers: same pairs, same ambiguity reports", () => {
     const r = seededRandom(310501);
     let paired = 0;

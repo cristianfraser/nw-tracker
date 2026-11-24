@@ -12,7 +12,6 @@ import {
   plantedPaymentMatchesStatementLine,
   type PlantedPaymentRow,
 } from "./ccPlantedPayments.js";
-import { MATCH_WINDOWS } from "./matching/windows.js";
 import { seededRandom } from "./matching/seededRandom.js";
 
 type Currency = PlantedPaymentRow["currency"];
@@ -71,10 +70,6 @@ function randomAmount(r: ReturnType<typeof seededRandom>, currency: string): num
 }
 
 describe("planted payments: pairOneToOne reproduces the pre-wave-7 rule", () => {
-  it("the window is still the planted day to five days later", () => {
-    expect(MATCH_WINDOWS.planted_payment).toMatchObject({ daysBefore: 0, daysAfter: 5 });
-  });
-
   it("600 random imports: same pairs, same ambiguity reports", () => {
     const r = seededRandom(20261115);
     let paired = 0;

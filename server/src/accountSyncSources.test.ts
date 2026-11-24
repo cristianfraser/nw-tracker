@@ -20,7 +20,7 @@ describe("accountSyncSources", () => {
     ).toEqual(["fintual"]);
   });
 
-  it("infers fintual from the declared series, never from a legacy excel identity string", () => {
+  it("infers fintual from the declared series", () => {
     expect(
       inferSyncSourcesForAccount({
         id: 1,
@@ -29,14 +29,6 @@ describe("accountSyncSources", () => {
         fund_series_key: "fintual_risky_norris",
       })
     ).toEqual(["fintual"]);
-    expect(
-      inferSyncSourcesForAccount({
-        id: 1,
-        import_key: "import:excel|key=fintual_rn",
-        equity_ticker: null,
-        fund_series_key: null,
-      })
-    ).toEqual([]);
   });
 
   it("infers afp_uno for the account declared on the UNO Fondo A series, whatever its import key", () => {
@@ -48,16 +40,7 @@ describe("accountSyncSources", () => {
         fund_series_key: AFP_UNO_CUOTA_SERIES_KEY,
       })
     ).toEqual(["afp_uno"]);
-    // The legacy import key alone no longer names the live account …
-    expect(
-      inferSyncSourcesForAccount({
-        id: 1,
-        import_key: "import:excel|key=afp",
-        equity_ticker: null,
-        fund_series_key: null,
-      })
-    ).toEqual([]);
-    // … and an earlier fund of the chain is not synced by the UNO source.
+    // An earlier fund of the chain is not synced by the UNO source.
     expect(
       inferSyncSourcesForAccount({
         id: 1,

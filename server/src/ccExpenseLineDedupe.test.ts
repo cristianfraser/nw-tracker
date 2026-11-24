@@ -1,7 +1,7 @@
 import { canonicalLineDedupeKeys } from "./cards/statementStorage.js";
 import { parsedStatements } from "./test/parsedStatementRecords.js";
 import { describe, expect, it } from "vitest";
-import { dedupeFlowCcExpenseLines, flowCcExpenseLineFingerprint, purchaseExpenseLinesMatchForDisplayDedupe } from "./ccExpenseLineDedupe.js";
+import { dedupeFlowCcExpenseLines, purchaseExpenseLinesMatchForDisplayDedupe } from "./ccExpenseLineDedupe.js";
 import type { CcExpenseLineForDedupe } from "./ccExpenseLineDedupe.js";
 
 type DedupeLine = CcExpenseLineForDedupe & { line_role?: string };
@@ -56,12 +56,6 @@ describe("ccExpenseLineDedupe", () => {
     expect(deduped[0]?.category_slug).toBe("restaurants");
   });
 
-  it("uses same fingerprint for duplicate re-import rows", () => {
-    const a = line({ statement_line_id: 23605 });
-    const b = line({ statement_line_id: 23694 });
-    expect(flowCcExpenseLineFingerprint(a)).toBe(flowCcExpenseLineFingerprint(b));
-  });
-
   it("dedupes web-paste vs PDF purchase when merchant suffix differs", () => {
     const web = line({
       statement_line_id: 86435,
@@ -85,7 +79,7 @@ describe("ccExpenseLineDedupe", () => {
     expect(deduped[0]?.statement_line_id).toBe(86435);
   });
 
-  it("uses different fingerprints for the same cuota in different billing months", () => {
+  it("keeps the same cuota in different billing months apart", () => {
     const april = line({
       line_role: "installment_cuota",
       installment_flag: 1,
@@ -101,7 +95,7 @@ describe("ccExpenseLineDedupe", () => {
       billing_month: "2026-05",
       statement_line_id: -2,
     });
-    expect(flowCcExpenseLineFingerprint(april)).not.toBe(flowCcExpenseLineFingerprint(may));
+    expect(dedupeFlowCcExpenseLines([april, may]).map((l) => l.statement_line_id).sort()).toEqual([-2, 1]);
   });
 
   function twinCuota(statementLineId: number, statementDate: string): DedupeLine {

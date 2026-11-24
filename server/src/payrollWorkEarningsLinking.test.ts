@@ -3,7 +3,6 @@ import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import {
   findPayrollAutoLinkMovement,
-  PAYROLL_LINK_REMUNERACION_TOLERANCE_CLP,
   findUsPayrollAutoLinkMovement,
   type PayrollLinkCandidate,
 } from "./payrollWorkEarningsLinking.js";
@@ -98,7 +97,6 @@ describe("payrollWorkEarningsLinking", () => {
       new Set()
     );
     expect(result).toEqual({ kind: "linked", movement_id: movementId });
-    expect(PAYROLL_LINK_REMUNERACION_TOLERANCE_CLP).toBeGreaterThanOrEqual(24);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(movementId);
   });
 

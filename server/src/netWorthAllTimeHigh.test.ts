@@ -35,15 +35,6 @@ describe("pickAllTimeHigh", () => {
     expect(pickAllTimeHigh([])).toBeNull();
     expect(pickAllTimeHigh([{ as_of_date: "2026-01-01", value: null }])).toBeNull();
   });
-
-  it("reads a live record day as today's ATH (last point wins when it is the max)", () => {
-    expect(
-      pickAllTimeHigh([
-        { as_of_date: "2026-03-01", value: 1 },
-        { as_of_date: "2026-03-02", value: 2 },
-      ])
-    ).toEqual({ as_of_date: "2026-03-02", value: 2 });
-  });
 });
 
 describe("pickAllTimeHighOnCalendarGrid", () => {

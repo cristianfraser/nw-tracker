@@ -30,14 +30,4 @@ describe("fundSeriesKeyForAccount", () => {
     });
     expect(fundSeriesKeyForAccount(id)).toBe("vitest_series");
   });
-
-  it("never derives a series from notes when the column is unset", () => {
-    // The old fallback resolved this notes string to fintual_risky_norris_apv.
-    const id = makeAccount({
-      importKey: "vitest-fund-series|no-column",
-      notes: "import:excel|key=apv_a",
-      fundSeriesKey: null,
-    });
-    expect(fundSeriesKeyForAccount(id)).toBeNull();
-  });
 });

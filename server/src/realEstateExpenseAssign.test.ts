@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { BILL_LINKS_SQL, billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
+import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { fixtureMovement } from "./test/flowFixtures.js";
 import { db } from "./db.js";
-import { runExpenseConsumptionBackfill161 } from "./migrationHooks/legacyNoteBackfills.js";
 import {
   assignPurchaseToRealEstateExpense,
   assignPurchasesToRealEstateExpenses,
@@ -52,34 +52,6 @@ afterAll(() => {
     db.prepare(`DELETE FROM expense_entries WHERE expense_account_id = ?`).run(account.id);
     db.prepare(`DELETE FROM expense_accounts WHERE id = ?`).run(account.id);
   }
-});
-
-describe("runExpenseConsumptionBackfill161", () => {
-  it("promotes kwh=/m3= note tags to columns and strips them from the note", () => {
-    const accountId = ensureFixtureExpenseAccount();
-    const entryId = insertFixtureEntry(
-      accountId,
-      "import:depto-gastos|arriendo_b|gas|2023-07|m3=10.9|kwh=366"
-    );
-
-    runExpenseConsumptionBackfill161(db);
-
-    const row = db
-      .prepare(`SELECT kwh, m3, note FROM expense_entries WHERE id = ?`)
-      .get(entryId) as { kwh: number | null; m3: number | null; note: string };
-    expect(row.kwh).toBe(366);
-    expect(row.m3).toBeCloseTo(10.9, 6);
-    expect(row.note).toBe("import:depto-gastos|arriendo_b|gas|2023-07");
-
-    db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
-  });
-
-  it("throws on an unparseable tag value", () => {
-    const accountId = ensureFixtureExpenseAccount();
-    const entryId = insertFixtureEntry(accountId, "import:depto-gastos|x|gas|2023-07|m3=abc");
-    expect(() => runExpenseConsumptionBackfill161(db)).toThrow(/invalid tag/);
-    db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
-  });
 });
 
 describe("updateRealEstateExpenseConsumption", () => {
@@ -224,26 +196,46 @@ describe("assignPurchaseToRealEstateExpense validation", () => {
 
 describe("listRealEstateUnlinkedPurchases", () => {
   it("excludes already-linked purchases and honors the q filter", () => {
-    const linked = new Set(
-      (
-        db.prepare(`SELECT purchase_key FROM ${BILL_LINKS_SQL}`).all() as {
-          purchase_key: string;
-        }[]
-      ).map((r) => r.purchase_key)
-    );
-    const all = listRealEstateUnlinkedPurchases({ limit: 50 });
-    for (const p of all) {
-      expect(linked.has(p.purchase_key)).toBe(false);
-    }
-    if (all.length > 0) {
-      const first = all.find((p) => (p.merchant ?? "").length >= 3);
-      if (first) {
-        const q = first.merchant!.slice(0, 3);
-        const filtered = listRealEstateUnlinkedPurchases({ q, limit: 50 });
-        for (const p of filtered) {
-          expect(`${p.merchant ?? ""} ${p.origin_label}`.toLowerCase()).toContain(q.toLowerCase());
-        }
-      }
+    const accountId = ensureFixtureExpenseAccount();
+    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
+    expect(vistaId).not.toBeNull();
+    // Two cartola purchases of its own on the cuenta vista; a bill links the first.
+    const insertPurchase = (description: string, amount: number, idx: number) =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+             VALUES (?, ?, 'clp', '2099-06-10', ?)`
+          )
+          .run(
+            vistaId,
+            -amount,
+            `import:cartola|2099-06|Agustinas|${description}|on:2099-06-10|amt:-${amount}|idx:${idx}`
+          ).lastInsertRowid
+      );
+    const linkedId = insertPurchase("VITEST ZQX GAS", 30000, 9998821);
+    const unlinkedId = insertPurchase("VITEST ZQX AGUA", 20000, 9998822);
+    let entryId: number | null = null;
+    try {
+      const lines = loadGastosLinesForRealEstateMatching();
+      const linkedKey = lines.find((l) => l.source === "checking" && l.statement_line_id === linkedId)?.purchase_key;
+      const unlinkedKey = lines.find((l) => l.source === "checking" && l.statement_line_id === unlinkedId)?.purchase_key;
+      expect(linkedKey).toBeDefined();
+      expect(unlinkedKey).toBeDefined();
+      entryId = insertFixtureEntry(accountId, null);
+      insertBillLink(entryId, linkedKey!, "manual");
+
+      const all = listRealEstateUnlinkedPurchases({ limit: 1000 });
+      expect(all.some((p) => p.purchase_key === linkedKey)).toBe(false);
+      expect(all.some((p) => p.purchase_key === unlinkedKey)).toBe(true);
+
+      const filtered = listRealEstateUnlinkedPurchases({ q: "vitest zqx", limit: 1000 });
+      expect(filtered.map((p) => [p.purchase_key, p.amount, p.purchase_month])).toEqual([
+        [unlinkedKey, 20000, "2099-06"],
+      ]);
+    } finally {
+      if (entryId != null) deleteRealEstateExpenseEntry(entryId);
+      db.prepare(`DELETE FROM movements WHERE id IN (?, ?)`).run(linkedId, unlinkedId);
     }
   });
 });

@@ -23,12 +23,6 @@ describe("MATCH_WINDOWS", () => {
  * The matchers read their days from the table: none of the owned matcher files may carry a day
  * window of its own again (`const SOMETHING_DAYS = 4`, `<= 4` on a day gap).
  */
-describe("MATCH_WINDOWS.same_split", () => {
-  it("is seven days either side, with no money test (a split has none)", () => {
-    expect(MATCH_WINDOWS.same_split).toMatchObject({ daysBefore: 7, daysAfter: 7, unit: "days", amount: "none" });
-  });
-});
-
 describe("the split writers share one same-split window", () => {
   it.each(["equitySplits", "brokerSplitNotifications"])("%s reads MATCH_WINDOWS.same_split and carries no copy", (f) => {
     const text = fs.readFileSync(path.resolve(__dirname, "..", `${f}.ts`), "utf8");

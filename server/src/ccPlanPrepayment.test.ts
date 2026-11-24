@@ -257,8 +257,6 @@ describe("a plan the bank prepaid", () => {
   });
 
   describe("the statement that closes the cycle", () => {
-    const NOV = "import:web-paste|open|2026-11";
-
     function statement(): number {
       return insertStatement({ source: "vitest 2026-11-23 clp.pdf", date: "23/11/2026", from: "23/10/2026", to: "23/11/2026", currency: "clp", monto: FACTURADO, nextFrom: "23/11/2026", nextTo: "23/12/2026" });
     }
@@ -289,7 +287,6 @@ describe("a plan the bank prepaid", () => {
       expect(result.deleted_line_ids.sort()).toEqual([row!.line_id!, row!.credit_line_id!].sort());
       const [after] = planPrepaymentRows(accountId);
       expect(after).toMatchObject({ line_id: printedPrepago, credit_line_id: printedNota, purchase_id: row!.purchase_id });
-      expect(NOV).toMatch(/2026-11/);
     });
   });
 });

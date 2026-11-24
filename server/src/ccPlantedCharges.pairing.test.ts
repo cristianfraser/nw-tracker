@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import { addDaysIso, daysBetweenIso, dayWithinWindow } from "nw-tracker-contracts";
 import { absorberForPlanted, type ChargeFacts, type Planted, type PlantedSamePurchase } from "./ccPlantedCharges.js";
 import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
-import { MATCH_WINDOWS } from "./matching/windows.js";
 import { seededRandom } from "./matching/seededRandom.js";
 
 /** The pre-wave-7 rule: the absorber's own loops (money compared to the cent in every currency). */
@@ -54,10 +53,6 @@ const MERCHANTS = ["ALMACEN CENTRAL, SANTIAGO", "ALMACEN CENTRAL", "ALMACEN CENT
 const AMOUNTS: Record<string, number[]> = { clp: [11670, 11671, 45990], usd: [12.5, 12.51, 80] };
 
 describe("planted charges: pairOneToOne reproduces the pre-wave-7 rule", () => {
-  it("the window is still the planted day to three days later", () => {
-    expect(MATCH_WINDOWS.planted_charge).toMatchObject({ daysBefore: 0, daysAfter: 3 });
-  });
-
   it("600 random listings: the same planted line absorbs the same listing line", () => {
     const r = seededRandom(11670);
     let absorbedTotal = 0;

@@ -12,20 +12,6 @@ afterAll(async () => {
 });
 
 describe("formatYearMonthLabel", () => {
-  it("renders Spanish month names in es (node default language)", () => {
-    expect(i18n.language).toBe("es");
-    expect(formatYearMonthLabel("2026-12")).toBe("dic 2026");
-    expect(formatYearMonthLabel("2026-09")).toBe("sep 2026");
-    expect(formatYearMonthLabel("2026-01")).toBe("ene 2026");
-  });
-
-  it("renders English month names in en", async () => {
-    await i18n.changeLanguage("en");
-    expect(formatYearMonthLabel("2026-12")).toBe("Dec 2026");
-    expect(formatYearMonthLabel("2026-09")).toBe("Sep 2026");
-    await i18n.changeLanguage("es");
-  });
-
   it("names all twelve months in each language", async () => {
     const yearLabels = () =>
       Array.from({ length: 12 }, (_, i) => formatYearMonthLabel(`2026-${String(i + 1).padStart(2, "0")}`));

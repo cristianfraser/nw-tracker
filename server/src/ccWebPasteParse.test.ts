@@ -57,7 +57,8 @@ describe("listingStatements", () => {
     const lines = pasted([["2026-05-19", "SHOP", -10000]]);
     const line = lines[0]!;
     const key = ccOneShotDedupeKey("santander", line.merchant, Math.abs(line.amount), line.transaction_date);
-    expect(key).toHaveLength(16);
+    const { statements } = listingStatements(fixtureCardId(), "santander", "4242", lines);
+    expect(statements[0]!.lines[0]!.document.dedupe_key).toBe(key);
   });
 
   it("files charges positive and payments negative, each with its kind and listing key", () => {

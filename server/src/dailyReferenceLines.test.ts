@@ -2,9 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { dailyReferenceLinesForChartHost } from "./dailyReferenceLines.js";
-import { getBucketDailySeriesCached } from "./dailySeries.js";
 import { db } from "./db.js";
-import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 
 /**
  * Chart-host reference overlays on the daily grid: a weighted sum of other groups' daily
@@ -103,25 +101,6 @@ describe("dailyReferenceLinesForChartHost", () => {
     expect(lines![0]!.dataKey).toBe("ref:vitest-refline");
     const expected = 1_000_000 + 0.85 * 400_000;
     expect(lines![0]!.values).toEqual([expected, expected]);
-  });
-
-  it("reads each source from the very series its own daily page builds (shared cache entry)", () => {
-    if (srcAccountA == null) return;
-    // Same scope key, rows and options as the `/api/daily-series` group branch: if the
-    // reference build used a private scope this would be a second, divergent build.
-    const totals = ["vitest-refsrc-a", "vitest-refsrc-b"].map((slug) =>
-      getBucketDailySeriesCached(
-        `pg:${slug}`,
-        listAccountsForGroupTab(slug).filter((r) => r.account_id > 0),
-        { unit: "clp", days: DAYS, includeAccounts: true }
-      )
-    );
-    const lines = dailyReferenceLinesForChartHost("vitest-host", "clp", DAYS, DATES);
-    lines![0]!.values.forEach((v, i) => {
-      const a = totals[0]!.points[i]!.value ?? 0;
-      const b = totals[1]!.points[i]!.value ?? 0;
-      expect(v).toBeCloseTo(a + 0.85 * b, 6);
-    });
   });
 
   it("returns null for a host with no reference groups", () => {

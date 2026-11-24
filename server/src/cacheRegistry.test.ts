@@ -14,7 +14,6 @@ import {
 } from "./cacheFamilies.js";
 import {
   aggregationCacheHasForTest,
-  aggregationCacheKeysForTest,
   cacheFamilyOfKeyForTest,
   clearAggregationCache,
   getAggregationCached,
@@ -312,10 +311,5 @@ describe("cache registry", () => {
     } finally {
       db.prepare(`DELETE FROM cc_expense_categories WHERE slug = 'vitest-churn'`).run();
     }
-  });
-
-  it("lists the cached keys after applying the log", () => {
-    getAggregationCached("daily.series|vitest-list", () => 1);
-    expect(aggregationCacheKeysForTest()).toContain("daily.series|vitest-list");
   });
 });

@@ -14,7 +14,11 @@ describe("dashboard card closing reconcile", () => {
       const row = buildNetWorthConsolidatedMonthly("clp").find(
         (r) => monthKeyFromYmd(r.as_of_date) === mk
       );
-      if (!row || row.prior_closing == null || !Number.isFinite(row.prior_closing)) return;
+      // The Vitest person's history spans many months: the current one always has a prior close.
+      if (!row) throw new Error(`no consolidated net-worth row for ${mk}`);
+      if (row.prior_closing == null || !Number.isFinite(row.prior_closing)) {
+        throw new Error(`consolidated net-worth row ${mk} has no prior close`);
+      }
 
       const titleDelta =
         payload.totals.net_worth! - payload.totals.prior_closes.month.net_worth!;

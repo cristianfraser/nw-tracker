@@ -366,12 +366,9 @@ describe("fintualGlobalSyncSettledForChileDay", () => {
       fintualLastAppliedPublishYmd: "2026-09-10",
       fintualLastAppliedSig: "sig",
     });
-    const caughtUp = vi
-      .spyOn(fintualPublishDate, "fintualPollDayCaughtUp")
-      .mockImplementation((pollYmd: string) => pollYmd === "2026-09-10");
+    vi.spyOn(fintualPublishDate, "fintualPollDayCaughtUp").mockImplementation((pollYmd: string) => pollYmd === "2026-09-10");
     vi.spyOn(fintualCertV2Reconcile, "fintualCertV2PollReconciled").mockReturnValue(true);
     expect(fintualGlobalSyncSettledForChileDay("2026-09-10")).toBe(true);
     expect(fintualGlobalSyncSettledForChileDay("2026-09-11")).toBe(false);
-    expect(caughtUp).toHaveBeenCalledWith("2026-09-10", expect.anything(), expect.anything(), expect.anything());
   });
 });

@@ -10,6 +10,7 @@ import { listingLineStoredAmount, webPasteLinesFromPastedListing } from "./ccWeb
 import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
 import { closedBillingMonthsFromStatements } from "./cards/facturacion.js";
 import type { CcStatementRow } from "./ccStatementsDb.js";
+import { db } from "./db.js";
 
 function stmt(billingMonth: string, currency: string, close: string, kind = "statement_pdf"): CcStatementRow {
   return { billing_month: billingMonth, currency, period_to: close, statement_date: close, source_kind: kind } as unknown as CcStatementRow;
@@ -57,10 +58,13 @@ describe("card issuers as data", () => {
     expect(ccCardGroupsCompatible("B", "A", "santander")).toBe(false);
   });
 
-  it("every issuer states its statement currencies, cuota products and listing", () => {
+  it("every issuer's statement currencies are distinct currencies the app loads", () => {
+    // A code outside `currencies` would refuse every statement of the issuer (`requireCardCurrency`).
+    const loaded = new Set((db.prepare(`SELECT code FROM currencies`).all() as { code: string }[]).map((r) => r.code));
     for (const i of CC_ISSUERS) {
-      expect(i.statement_currencies.primary).toMatch(/^[a-z]{3}$/);
-      expect(i.statement_currencies.secondary).not.toContain(i.statement_currencies.primary);
+      const all = [i.statement_currencies.primary, ...i.statement_currencies.secondary];
+      expect(new Set(all).size).toBe(all.length);
+      for (const code of all) expect(loaded.has(code), `${i.slug}: ${code}`).toBe(true);
     }
   });
 

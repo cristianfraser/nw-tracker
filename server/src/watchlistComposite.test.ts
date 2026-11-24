@@ -96,12 +96,18 @@ function seedCompositeFixture(): void {
 
 describe("watchlistComposite valuation", () => {
   it("computes basket USD from equity_daily when prices exist", () => {
-    seedCompositeFixture();
-    const holdings = loadCompositeHoldings(TEST_BUCKET);
+    // Synthetic closes (C 100 → 110, D 10 → 10, weight 0.5 each): basket = Σ weight × close.
+    seedValueWeightFixture();
+    const holdings = loadCompositeHoldings(VALUE_WEIGHT_BUCKET);
     expect(holdings).toHaveLength(2);
-    const basket = basketUsdForHoldings(holdings, COMPOSITION_DATE, { preferLive: false });
-    expect(basket).toBeGreaterThan(0);
-    expect(Number.isFinite(basket)).toBe(true);
+    expect(basketUsdForHoldings(holdings, VW_DAYS[0], { preferLive: false })).toBeCloseTo(55, 9);
+    expect(basketUsdForHoldings(holdings, VW_DAYS[1], { preferLive: false })).toBeCloseTo(60, 9);
+    // A day with no close reads the latest close on or before it.
+    expect(basketUsdForHoldings(holdings, "2026-07-08", { preferLive: false })).toBeCloseTo(60, 9);
+    // Before the first close there is no price: it throws, never a 0 basket.
+    expect(() => basketUsdForHoldings(holdings, "2026-07-03", { preferLive: false })).toThrow(
+      /missing price for VITESTRNC/
+    );
   });
 });
 

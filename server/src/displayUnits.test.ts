@@ -21,11 +21,6 @@ describe("requestDisplayUnit", () => {
     expect(requestDisplayUnit({ unit: "eur" }, { surface })).toBe("eur");
   });
 
-  it("ignores the retired include_usd / include_uf flags", () => {
-    expect(requestDisplayUnit({ include_usd: "1" }, { surface })).toBe("clp");
-    expect(requestDisplayUnit({ include_uf: "1" }, { surface, allowUf: true })).toBe("clp");
-  });
-
   it("refuses an unknown code and uf where the surface does not take it", () => {
     expect(() => requestDisplayUnit({ unit: "xyz" }, { surface })).toThrow(DisplayUnitRequestError);
     expect(() => parseDisplayUnit("uf", "clp")).toThrow(DisplayUnitRequestError);

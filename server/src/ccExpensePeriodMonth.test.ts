@@ -16,7 +16,6 @@ const aggregateGastosFromLines = (
   ...rest: Parameters<typeof aggregateFinishedLines> extends [unknown, ...infer R] ? R : never
 ) => aggregateFinishedLines(withLineMoney(lines), ...rest);
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   const expenseMonth = partial.expense_month ?? "2024-03";
@@ -203,13 +202,5 @@ describe("ccExpensePeriodMonth", () => {
     const { by_month } = aggregateGastosFromLines([line], ["bills"]);
     expect(by_month.find((m) => m.period_month === "2025-02")?.gastos_mes).toBe(3_071_622);
     expect(by_month.find((m) => m.period_month === "2025-01")?.gastos_mes ?? 0).toBe(0);
-  });
-});
-
-describe("parseDdMmYyToIso jammed MCC dates", () => {
-  it("unwraps pypdf merged YY + MCC prefix digits", () => {
-    expect(parseDdMmYyToIso("13/05/2511")).toBe("2025-05-13");
-    expect(parseDdMmYyToIso("08/01/2611")).toBe("2026-01-08");
-    expect(parseDdMmYyToIso("22/10/2024")).toBe("2024-10-22");
   });
 });

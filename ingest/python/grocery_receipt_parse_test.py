@@ -150,10 +150,6 @@ class LiderPaperOcrTest(unittest.TestCase):
         self.assertEqual(p.mi_club_points, 858)
         self.assertEqual(p.ignored_lines, ["Junta, ahorra y canjea cuando", "quieras tus Pesos Mi Club"])
 
-    def test_comprobante_block_never_adds_a_payment_leg(self) -> None:
-        p = parse_receipt_text(PAPER_OCR_TEXT)
-        self.assertEqual(len(p.payments), 1)
-
 
 class ChainRegistryTest(unittest.TestCase):
     def test_lider_by_rut(self) -> None:

@@ -1,6 +1,6 @@
 import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { describe, expect, it } from "vitest";
-import { billingMonthForCcStatement } from "./cards/statementMonth.js";
+import { createTempCardMaster, deleteTempCardMaster } from "./test/tempCardMaster.js";
 import { db } from "./db.js";
 import {
   assertCcImportReconcilesOrThrow,
@@ -430,41 +430,57 @@ describe("ccStatementImportReconcile", () => {
   });
 
   it("assertCcImportReconcilesOrThrow skips web-paste-only import when closed PDF exists", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
-      .get() as { id: number };
+    const accountId = createTempCardMaster({ issuer: "santander", last4: "4242", key: "vitest-wp-only-reconcile" });
+    try {
+      // May is closed by a statement that billed 50.000.
+      const pdfId = Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statements (
+               account_id, card_group, source_pdf, statement_date, period_from, period_to,
+               card_last4, layout, currency, monto_facturado
+             ) VALUES (?, 'santander', 'vitest 2026-05-20 clp.pdf', '20/05/2026', '21/04/2026', '20/05/2026',
+                       '4242', 'compact', 'clp', 50000)`
+          )
+          .run(accountId).lastInsertRowid
+      );
+      db.prepare(
+        `INSERT INTO cc_statement_lines (
+           statement_id, transaction_date, merchant, amount, installment_flag, dedupe_key, parser_row_id, raw_line
+         ) VALUES (?, '10/05/2026', 'ACME STORE', 50000, 0, 'vitest-wp-only-pdf', 'vitest-wp-only-pdf', 'raw')`
+      ).run(pdfId);
 
-    const anchor = db
-      .prepare(
-        `SELECT statement_date, period_to FROM cc_statements
-         WHERE account_id = ? AND source_kind NOT IN ('listing_open', 'listing_other')
-           AND monto_facturado IS NOT NULL AND monto_facturado > 0
-         ORDER BY statement_date DESC LIMIT 1`
-      )
-      .get(master.id) as { statement_date: string; period_to: string | null } | undefined;
-    if (!anchor) return;
-
-    const closedBm = billingMonthForCcStatement({
-      statement_date: anchor.statement_date,
-      period_to: anchor.period_to,
-    });
-    if (!closedBm) return;
-
-    const incoming: ParsedRecord[] = [
-      {
+      const record = (sourcePdf: string, key: string): ParsedRecord => ({
         card_group: "santander",
-        source_pdf: `import:web-paste|open|${closedBm}`,
+        source_pdf: sourcePdf,
         statement_date: "20/05/2026",
-        transaction_date: "28/05/2026",
-        merchant: "TEST WEB PASTE ONLY",
+        period_to: "20/05/2026",
+        transaction_date: "15/05/2026",
+        merchant: "ACME CAFE",
         amount_clp: "99999",
         installment_flag: "false",
-        dedupe_key: `vitest-wp-only-${Date.now()}`,
+        dedupe_key: key,
         currency: "clp",
         parser_layout: "compact",
-      },
-    ];
+        statement_monto_facturado: "50000",
+      });
 
-    expect(() => assertCcImportReconcilesOrThrow(master.id, parsedStatements(incoming))).not.toThrow();
+      // A paste for the closed month does not reconcile against its statement.
+      expect(
+        assertCcImportReconcilesOrThrow(
+          accountId,
+          parsedStatements([record("import:web-paste|open|2026-05", "vitest-wp-only-paste")])
+        )
+      ).toEqual([]);
+      // The same line arriving on the statement itself breaks its printed total.
+      expect(() =>
+        assertCcImportReconcilesOrThrow(
+          accountId,
+          parsedStatements([record("vitest 2026-05-20 clp.pdf", "vitest-wp-only-stmt")])
+        )
+      ).toThrow(/CC import reconcile failed for 2026-05/);
+    } finally {
+      deleteTempCardMaster(accountId);
+    }
   });
 });

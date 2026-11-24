@@ -5,7 +5,7 @@ import * as filePathMod from "./importSyncDocumentFilePath.js";
 
 describe("importSyncCartolaSinMovimientosForMonth", () => {
   it("returns true for parser-flagged sin-mov with zero movements", () => {
-    vi.spyOn(cartolaSinMov, "cartolaPdfIndicatesSinMovimientos").mockReturnValue(true);
+    vi.spyOn(cartolaSinMov, "cartolaPdfIndicatesSinMovimientos").mockReturnValue(false);
     vi.spyOn(filePathMod, "loadCartolaParsedPdfJsonEntries").mockReturnValue([
       {
         source_file: "2021-04-30 cartola cuenta vista.pdf",

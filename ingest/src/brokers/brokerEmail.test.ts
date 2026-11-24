@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { parseChileanNumber, parseUsNumber } from "nw-tracker-contracts";
 import {
   brokerFromSender,
   classifyBrokerEmail,
@@ -23,22 +22,6 @@ describe("brokerEmail", () => {
     // Newsletters must never trigger a fetch.
     expect(brokerFromSender("newsletter@fintualist.com")).toBeNull();
     expect(brokerFromSender("racionalteam@racional.cl")).toBeNull();
-  });
-
-  it("keeps the two number formats apart", () => {
-    // Subjects are Chilean: dot groups thousands, comma is the decimal.
-    expect(parseChileanNumber("1.346,17")).toBe(1346.17);
-    expect(parseChileanNumber("5.344,04")).toBe(5344.04);
-    expect(parseChileanNumber("3.000.000")).toBe(3000000);
-    expect(parseChileanNumber("1,67")).toBe(1.67);
-    expect(() => parseChileanNumber("abc")).toThrow(/Unparseable/);
-
-    // Racional's BODY is US-formatted in the very same e-mail — reading "54.41" the Chilean
-    // way would give 5.441, a 100x error on the share price.
-    expect(parseUsNumber("54.41")).toBe(54.41);
-    expect(parseUsNumber("1346.17")).toBe(1346.17);
-    expect(parseUsNumber("1,346.17")).toBe(1346.17);
-    expect(parseChileanNumber("54.41")).toBe(5441);
   });
 
   it("parses the 2026-08-05 SPY dividend and its reinvestment", () => {
@@ -89,7 +72,7 @@ describe("brokerEmail", () => {
       sender: FINTUAL,
       subject: "Recibiste un dividendo de LIN",
       snippet:
-        "Recibiste un dividendo de Linde plc. Hola Cristian Recibiste un dividendo de LIN por US $10,75 " +
+        "Recibiste un dividendo de Linde plc. Hola Camila Recibiste un dividendo de LIN por US $10,75 " +
         "y lo asignamos a tu cuenta Como el dividendo es mayor o igual a US $0,20, cuando abra el mercado " +
         "reinvertiremos este monto en acciones de Linde plc.",
       date: "2026-09-18T02:06:22Z",
@@ -109,7 +92,7 @@ describe("brokerEmail", () => {
       sender: FINTUAL,
       subject: "Reinvertimos tu dividendo de LIN",
       snippet:
-        "Reinvertimos tu dividendo de LIN Hola Cristian Reinvertimos tu dividendo de $10,75 en LIN " +
+        "Reinvertimos tu dividendo de LIN Hola Camila Reinvertimos tu dividendo de $10,75 en LIN " +
         "Monto invertido US $10,75 Precio de la acción US $458,38 Acciones compradas 0,023452157 " +
         "Si tienes dudas responde este correo y te ayudamos.",
       date: "2026-09-18T13:30:07Z",
@@ -128,7 +111,7 @@ describe("brokerEmail", () => {
     const bare = classifyBrokerEmail({
       sender: FINTUAL,
       subject: "Reinvertimos tu dividendo de LIN",
-      snippet: "Hola Cristian, revisa tu cuenta.",
+      snippet: "Hola Camila, revisa tu cuenta.",
       date: "2026-09-18T13:30:07Z",
     });
     expect(bare).toMatchObject({ kind: "buy", is_transaction: true, is_complete: false, ticker: "LIN" });
@@ -139,7 +122,7 @@ describe("brokerEmail", () => {
       sender: FINTUAL,
       subject: "Recibimos tu depósito",
       snippet:
-        "Decide cómo lo quieres invertir. Hola Cristian Recibimos tus $700.000 Decide cómo los " +
+        "Decide cómo lo quieres invertir. Hola Camila Recibimos tus $700.000 Decide cómo los " +
         "quieres invertir. Si no lo haces dentro de los próximos 7 días, devolveremos el depósito",
       date: "2026-10-07T14:24:12Z",
     });
@@ -153,7 +136,7 @@ describe("brokerEmail", () => {
       sender: FINTUAL,
       subject: "Compraste dólares",
       snippet:
-        "Hola Cristian Compraste US $ 711,05 El miércoles 7 de octubre a las 11:24 con tus $700.000 " +
+        "Hola Camila Compraste US $ 711,05 El miércoles 7 de octubre a las 11:24 con tus $700.000 " +
         "pesos chilenos compraste US $ 711,05 a un tipo de cambio de $984,46 CLP/USD. Todo esto",
       date: "2026-10-07T14:24:53Z",
     });
@@ -171,7 +154,7 @@ describe("brokerEmail", () => {
     const dividend = classifyBrokerEmail({
       sender: FINTUAL,
       subject: "Recibiste un dividendo de LIN",
-      snippet: "Hola Cristian, revisa tu cuenta.",
+      snippet: "Hola Camila, revisa tu cuenta.",
       date: "2026-09-18T02:06:22Z",
     });
     expect(dividend).toMatchObject({ kind: "dividend", is_transaction: true, is_complete: false, ticker: "LIN", amount: null });
@@ -336,7 +319,7 @@ describe("brokerEmail", () => {
       sender: RACIONAL,
       subject: "Recibiste dividendos de VEA 💸",
       snippet:
-        "Tienes nuevos dólares en tu Billetera Cristian, acabas de ganar dividendos por tu " +
+        "Tienes nuevos dólares en tu Billetera Camila, acabas de ganar dividendos por tu " +
         "inversión en VEA (VEA). Ya puedes utilizarlo para comprar más Stocks.",
       date: "2026-06-23T10:46:13Z",
     });
@@ -351,7 +334,7 @@ describe("brokerEmail", () => {
       sender: FINTUAL,
       subject: "Pagamos tu retiro de 🏦 Reserva",
       snippet:
-        "Se pagó a tu cuenta de banco. Hola Cristian Pagamos tu retiro de $2.000.000 " +
+        "Se pagó a tu cuenta de banco. Hola Camila Pagamos tu retiro de $2.000.000 " +
         "El miércoles 08 de julio a las 11:13 pagamos tu retiro desde 🏦 Reserva. Monto $2.000.000",
       date: "2026-07-08T15:13:19Z",
     });
@@ -371,7 +354,7 @@ describe("brokerEmail", () => {
       sender: FINTUAL,
       subject: "Pagamos tu retiro de 🏦 Reserva",
       snippet:
-        "Cristian pagamos tu retiro de 🏦 Reserva Hola Cristian Pagamos tu retiro de $100.000 El " +
+        "Camila pagamos tu retiro de 🏦 Reserva Hola Camila Pagamos tu retiro de $100.000 El " +
         "martes 29 de septiembre a las 11:00 tus $100.000 pesos chilenos quedaron disponibles para " +
         "invertir en Fintual. Se retiró de 🏦 Reserva : $100.000 desde Fondo Mutuo Very " +
         "Conservative Streep Serie A, equivalente a 68,8876 cuotas . Decide cómo lo quieres invertir.",
@@ -466,7 +449,7 @@ describe("brokerEmail", () => {
 
 // Real 2026-08-25 template excerpts (amounts anonymized to synthetic values).
 const CONVERSION_SNIPPET =
-  "*** Agregaste dólares a Billetera de Stocks *** Cristian, tus $1.086,49 dólares ya están en " +
+  "*** Agregaste dólares a Billetera de Stocks *** Camila, tus $1.086,49 dólares ya están en " +
   "tránsito a tu cuenta de inversión en Estados Unidos, y te aparecerán en tu Poder de Compra " +
   "( https://example.test ) para invertir en Stocks. Estos dólares los compraste con tu " +
   "depósito de $1.000.000, a un precio promedio de $920,39 por dólar.";

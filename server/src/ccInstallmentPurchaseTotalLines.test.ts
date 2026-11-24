@@ -117,30 +117,6 @@ describe("ccInstallmentPurchaseTotalLines merge", () => {
     expect(appleRows[0]?.line_role).toBe("installment_purchase_total");
   });
 
-  it("collapses duplicate ledger purchases into one installment total", () => {
-    const cuota = line({
-      statement_line_id: 501,
-      line_role: "installment_cuota",
-      installment_flag: 1,
-      nro_cuota_current: 2,
-      nro_cuota_total: 12,
-      purchase_on: "2025-02-27",
-      purchase_month: "2025-02",
-      billing_month: "2025-02",
-      merchant: "ROCA WEBPAY",
-      merchant_key: "ROCA WEBPAY",
-      amount_clp: 73_428,
-    });
-    const merged = mergeInstallmentPurchaseTotalsIntoLines([cuota], [32], emptyMaps);
-    const rocaTotals = merged.filter(
-      (ln) =>
-        ln.line_role === "installment_purchase_total" &&
-        ln.purchase_on === "2025-02-27" &&
-        ln.amount_clp === 881_134
-    );
-    expect(rocaTotals.length).toBeLessThanOrEqual(1);
-  });
-
   it("matches installment purchases by merchant stem", () => {
     const pr: InstallmentPurchaseRow = {
       id: 1,

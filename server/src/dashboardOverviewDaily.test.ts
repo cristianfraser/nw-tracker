@@ -27,23 +27,23 @@ describe("getDashboardOverviewDaily — phase 3 blocks", () => {
       .map((p) => String(p.as_of_date))
       .filter((date) => dayIdx.has(date))
       .at(-2); // penultimate: avoid the live "today" point whose value moves intraday
-    if (!monthEnd) return; // lean synthetic DB may not overlap — shape test above still covers it
-    const i = dayIdx.get(monthEnd)!;
+    // The Vitest person spans about twenty months, so the grids share many month-ends.
+    expect(monthEnd).toBeDefined();
+    const i = dayIdx.get(monthEnd!)!;
 
-    const monthlyOverview = m.overview.points.find((p) => p.as_of_date === monthEnd);
+    const monthlyOverview = m.overview.points.find((p) => p.as_of_date === monthEnd)!;
     const dailyOverview = d.points[i]!;
-    if (monthlyOverview) {
-      for (const [dailyKey, monthlyKey] of [
-        ["net_worth", "total_nw"],
-        ["invested", "invested"],
-        ["usd_100k", "usd_100k"],
-      ] as const) {
-        const nd = dailyOverview[dailyKey];
-        const nm = monthlyOverview[monthlyKey];
-        if (typeof nd === "number" && typeof nm === "number") {
-          expect(Math.abs(nd - nm)).toBeLessThan(2);
-        }
-      }
+    for (const [dailyKey, monthlyKey] of [
+      ["net_worth", "total_nw"],
+      ["invested", "invested"],
+      ["usd_100k", "usd_100k"],
+    ] as const) {
+      const nd = dailyOverview[dailyKey];
+      const nm = monthlyOverview[monthlyKey];
+      expect(typeof nd).toBe("number");
+      expect(typeof nm).toBe("number");
+      expect(nm).not.toBe(0);
+      expect(Math.abs((nd as number) - (nm as number))).toBeLessThan(2);
     }
   });
 
@@ -54,11 +54,12 @@ describe("getDashboardOverviewDaily — phase 3 blocks", () => {
     expect(m.series.length).toBeGreaterThan(3);
     const dayIdx = new Map(d.dates.map((date, i) => [date, i]));
     const mi = m.dates.map((date, i) => ({ date, i })).filter((x) => dayIdx.has(x.date)).at(-2);
-    if (!mi) return;
+    expect(mi).toBeDefined();
+    expect(m.series.some((s) => (s.values[mi!.i] ?? 0) > 0)).toBe(true);
     for (const ms of m.series) {
       const ds = d.series.find((x) => x.dataKey === ms.dataKey)!;
-      const a = ds.values[dayIdx.get(mi.date)!] ?? 0;
-      const b = ms.values[mi.i] ?? 0;
+      const a = ds.values[dayIdx.get(mi!.date)!] ?? 0;
+      const b = ms.values[mi!.i] ?? 0;
       expect(Math.abs(a - b)).toBeLessThan(1e-6);
     }
   });

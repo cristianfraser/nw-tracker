@@ -18,10 +18,11 @@ function num(v: string | number | null | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-/** First nav portfolio group in the test DB whose grouped block carries a deposit total. */
-function firstAggregatingNavGroup():
-  | { slug: string; grouped: Block; ungrouped: Block }
-  | null {
+/**
+ * First nav portfolio group in the test DB whose grouped block carries a deposit total. The
+ * Vitest person holds investments with deposits, so one always exists: throws otherwise.
+ */
+function firstAggregatingNavGroup(): { slug: string; grouped: Block; ungrouped: Block } {
   for (const slug of ["inversiones", "brokerage", "retirement"]) {
     const built = getGroupValuationTimeseries(slug, "clp", undefined, { groupedBlocks: true }) as {
       accounts_in_group: Block;
@@ -32,13 +33,12 @@ function firstAggregatingNavGroup():
       return { slug, grouped, ungrouped: built.accounts_in_group };
     }
   }
-  return null;
+  throw new Error("no nav group with a grouped deposit total in the test DB");
 }
 
 describe("server-grouped chart totals (Agrupado ≡ raw ≡ card)", () => {
   it("grouped __group_dep_total / __group_val_total are copied verbatim from the raw block", () => {
     const found = firstAggregatingNavGroup();
-    if (!found) return; // lean test DB may lack an aggregating group with deposits
     const { grouped, ungrouped } = found;
     expect(grouped.points.length).toBe(ungrouped.points.length);
     for (let i = 0; i < ungrouped.points.length; i++) {
@@ -53,7 +53,6 @@ describe("server-grouped chart totals (Agrupado ≡ raw ≡ card)", () => {
 
   it("last-point grouped aportes total equals Σ lifetime deposits (chart ≡ summary card)", () => {
     const found = firstAggregatingNavGroup();
-    if (!found) return;
     const { slug, grouped } = found;
     const last = grouped.points[grouped.points.length - 1]!;
     const chartDepTotal = num(last["__group_dep_total"]);
@@ -72,7 +71,6 @@ describe("server-grouped chart totals (Agrupado ≡ raw ≡ card)", () => {
 
   it("the display clip never lists the group totals as tail-clipped", () => {
     const found = firstAggregatingNavGroup();
-    if (!found) return;
     const clipped = found.grouped.tail_clipped_keys ?? [];
     expect(clipped).not.toContain("__group_dep_total");
     expect(clipped).not.toContain("__group_val_total");
@@ -83,12 +81,12 @@ describe("server-grouped chart totals (Agrupado ≡ raw ≡ card)", () => {
       groupedBlocks: true,
     }) as { accounts_in_group: Block; liab_grouped_block?: Block };
     const block = built.liab_grouped_block;
-    if (!block) return; // no CC issuer aggregation in this DB
-    const bucketKeys = block.accounts
+    expect(block).toBeDefined();
+    const bucketKeys = block!.accounts
       .filter((a) => a.account_id < 0 && a.account_id !== -1)
       .map((a) => a.dataKey);
     // Every real CC master line collapsed into an issuer bucket (none left as its own positive line).
-    const positiveDataLines = block.accounts.filter(
+    const positiveDataLines = block!.accounts.filter(
       (a) => a.account_id > 0 && a.valueSeriesType === "data"
     );
     expect(bucketKeys.length).toBeGreaterThanOrEqual(1);
@@ -118,9 +116,9 @@ function node(partial: Partial<NavTreeNodeDto> & { slug: string }): NavTreeNodeD
     color_rgb: partial.color_rgb ?? null,
     color: null,
     kind_slug: null,
-    investment_glance: false,
     dashboard_bucket_slug: partial.dashboard_bucket_slug ?? null,
     exclude_from_parent_total: false,
+    investment_glance: false,
     group_kind: partial.group_kind ?? "bucket",
     children: partial.children ?? [],
   };
@@ -187,8 +185,8 @@ describe("buildNavChartBucketPlan (server bucket-node selection)", () => {
     // `liabilities` exists as a childless stub under net_worth; the resolver must return the real
     // Pasivos subtree (with children) instead.
     const liab = getNavChartGroupNodeBySlug("liabilities");
-    if (liab) {
-      expect(stripChartBucketNavNodes(liab).length).toBeGreaterThanOrEqual(1);
-    }
+    expect(liab).toBeDefined();
+    expect(liab!.children.length).toBeGreaterThanOrEqual(1);
+    expect(stripChartBucketNavNodes(liab!).length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -3,7 +3,6 @@ import { db } from "./db.js";
 import {
   computeMortgagePaymentRow,
   defaultDesgravamenClp,
-  DESGRAVAMEN_CLP_PER_CLP_BALANCE,
 } from "./mortgagePaymentCompute.js";
 import type { DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 
@@ -156,7 +155,6 @@ describe("mortgagePaymentCompute", () => {
     const priorUf = 1906.3793;
     const ufDay = 40273.69;
     const expected = defaultDesgravamenClp(priorUf, ufDay);
-    expect(expected).toBe(Math.round(priorUf * ufDay * DESGRAVAMEN_CLP_PER_CLP_BALANCE));
     expect(Math.abs(expected - 3041)).toBeLessThanOrEqual(3);
   });
 

@@ -13,13 +13,25 @@ describe("portfolioGroupTree", () => {
   it("lists AFP and AFC under retirement_afp_afc portfolio group", () => {
     seedNavTree();
     const ids = accountIdsInPortfolioGroup("retirement_afp_afc");
-    expect(ids.length).toBeGreaterThanOrEqual(2);
+    // The Vitest person holds one AFP account (UNO-A) and the AFC: each filed under its own leaf.
+    const leafSlugs = ids.map(
+      (id) =>
+        (
+          db
+            .prepare(`SELECT g.slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`)
+            .get(id) as { slug: string }
+        ).slug
+    );
+    expect(leafSlugs.sort()).toEqual(["retirement_afp_afc__afc", "retirement_afp_afc__afp"]);
   });
 
   it("resolves import kind afc to leaf asset group, not parent bucket", () => {
     seedNavTree();
     const agId = assetGroupIdForImportKind("afc");
-    expect(agId).toBeGreaterThan(0);
+    const bySlug = (slug: string) =>
+      (db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as { id: number }).id;
+    expect(agId).toBe(bySlug("retirement_afp_afc__afc"));
+    expect(agId).not.toBe(bySlug("retirement_afp_afc"));
   });
 
   it("rolls up brokerage total from nested portfolio groups (tree, not per-account slug tags)", () => {
@@ -32,10 +44,11 @@ describe("portfolioGroupTree", () => {
          LIMIT 1`
       )
       .get() as { id: number } | undefined;
-    if (!mfAccount) return;
-    expect(bucketOfAccount(mfAccount.id)).toBe("brokerage");
+    // The Vitest person's fund («Fondo Moderado», `testPerson` fund).
+    expect(mfAccount).toBeDefined();
+    expect(bucketOfAccount(mfAccount!.id)).toBe("brokerage");
     const broIds = new Set(accountIdsInPortfolioGroupForTotals("brokerage"));
-    expect(broIds.has(mfAccount.id)).toBe(true);
+    expect(broIds.has(mfAccount!.id)).toBe(true);
   });
 
   it("marks checking_accounts as a leaf bucket under cash_eqs", () => {

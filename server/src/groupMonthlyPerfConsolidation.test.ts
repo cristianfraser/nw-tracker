@@ -22,6 +22,19 @@ import {
 } from "./groupMonthlyPerfConsolidation.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 
+/**
+ * A mid-month "today" inside the Vitest person's history: seven months before its newest movement
+ * (its broker holds SPY and the fund by then), so the current-month rows have real activity
+ * whenever the test database was generated.
+ */
+function midHistoryTodayYmd(): string {
+  const { last } = db.prepare(`SELECT MAX(occurred_on) AS last FROM movements`).get() as { last: string | null };
+  if (!last) throw new Error("test database holds no movements");
+  const d = new Date(`${last.slice(0, 7)}-15T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
 describe("groupMonthlyPerfConsolidation", () => {
   it("sums picked per-account nominal_pl for current month (not stale max-date row)", () => {
     chileToday.ymd = "2026-06-01";
@@ -232,12 +245,14 @@ describe("groupMonthlyPerfConsolidation", () => {
   });
 
   it("brokerage dashboard sum of delta_year_clp matches consolidated YTD nominal_pl", async () => {
+    chileToday.ymd = midHistoryTodayYmd();
     const curMk = monthKeyFromYmd(chileToday.ymd);
     const tables = getGroupConsolidatedTables("brokerage", "clp");
     const june = tables.consolidated_monthly.find((r) =>
       monthKeyFromYmd(String(r.as_of_date)) === curMk
     );
-    if (june?.ytd_nominal_pl == null || !Number.isFinite(june.ytd_nominal_pl)) return;
+    expect(june).toBeDefined();
+    expect(Number.isFinite(june!.ytd_nominal_pl)).toBe(true);
 
     const { buildDashboardAccountRows } = await import("./dashboardAccounts.js");
     const { withPortfolioGroupIndex } = await import("./portfolioGroupTree.js");
@@ -246,23 +261,28 @@ describe("groupMonthlyPerfConsolidation", () => {
       listAccountsForGroupTab("brokerage").map((a) => a.account_id)
     );
     let sumYear = 0;
+    let counted = 0;
     for (const r of rows) {
       if (!ids.has(r.account_id) || r.exclude_from_group_totals === 1) continue;
       if (r.delta_year != null && Number.isFinite(r.delta_year)) {
         sumYear += r.delta_year;
+        counted += 1;
       }
     }
-    expect(sumYear).toBeCloseTo(june.ytd_nominal_pl, 0);
+    expect(counted).toBeGreaterThanOrEqual(2);
+    expect(sumYear).toBeCloseTo(june!.ytd_nominal_pl!, 0);
   });
 
   it("brokerage consolidated current-month P/L matches performance-monthly delta_total", () => {
+    chileToday.ymd = midHistoryTodayYmd();
     const curMk = monthKeyFromYmd(chileToday.ymd);
     const series = getGroupMonthlyPlSeries("brokerage", "clp");
-    if (!series.bar_accounts.length || !series.points.length) return;
+    expect(series.bar_accounts.length).toBeGreaterThanOrEqual(2);
 
     const last = series.points[series.points.length - 1]!;
-    if (monthKeyFromYmd(String(last.as_of_date)) !== curMk) return;
-    if (last.delta_total == null || !Number.isFinite(Number(last.delta_total))) return;
+    expect(last).toBeDefined();
+    expect(monthKeyFromYmd(String(last.as_of_date))).toBe(curMk);
+    expect(Number.isFinite(Number(last.delta_total))).toBe(true);
 
     const tables = getGroupConsolidatedTables("brokerage", "clp");
     const june = tables.consolidated_monthly.find((r) =>
@@ -272,29 +292,38 @@ describe("groupMonthlyPerfConsolidation", () => {
     expect(june!.nominal_pl).toBeCloseTo(Number(last.delta_total), 0);
   });
 
-  it("net_worth consolidated tables build for dashboard home", () => {
-    const r = getGroupConsolidatedTables("net_worth", "clp");
-    expect(r.group_slug).toBe("net_worth");
-    expect(Array.isArray(r.consolidated_monthly)).toBe(true);
-    expect(Array.isArray(r.account_monthly)).toBe(true);
-  });
-
   it("cash_eqs includes movement-balance accounts when movements exist", () => {
+    chileToday.ymd = midHistoryTodayYmd();
     const corriente = listAccountsForGroupTab("cash_eqs").find((a) =>
       a.bucket_slug.endsWith("cuenta_corriente")
     );
-    if (!corriente) return;
+    expect(corriente).toBeDefined();
 
-    const hasMovements = db
-      .prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? LIMIT 1`)
-      .get(corriente.account_id) as { o: number } | undefined;
-    if (!hasMovements) return;
+    const bounds = db
+      .prepare(
+        `SELECT MIN(occurred_on) AS first, MAX(occurred_on) AS last FROM movements
+         WHERE account_id = @id OR from_account_id = @id OR to_account_id = @id`
+      )
+      .get({ id: corriente!.account_id }) as { first: string | null; last: string | null };
+    expect(bounds.first).not.toBeNull();
 
     const monthly = monthlyPerfRowsForAccount(
-      corriente.account_id,
-      corriente.bucket_slug,
+      corriente!.account_id,
+      corriente!.bucket_slug,
       "clp"
     );
-    expect(monthly.length).toBeGreaterThan(0);
+    // One month-end row per month from the first movement through the last (later than "today"),
+    // newest first, each month's prior close the previous month's close.
+    const monthIndex = (ymd: string) => Number(ymd.slice(0, 4)) * 12 + Number(ymd.slice(5, 7));
+    const months = monthIndex(bounds.last!) - monthIndex(bounds.first!) + 1;
+    expect(monthly.map((r) => r.as_of_date.slice(0, 7))).toEqual(
+      Array.from({ length: months }, (_, i) => {
+        const m = monthIndex(bounds.last!) - i - 1;
+        return `${Math.floor(m / 12)}-${String((m % 12) + 1).padStart(2, "0")}`;
+      })
+    );
+    for (let i = 0; i + 1 < monthly.length; i++) {
+      expect(monthly[i]!.prior_closing).toBeCloseTo(monthly[i + 1]!.closing_value, 0);
+    }
   });
 });

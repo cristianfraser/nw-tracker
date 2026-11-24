@@ -61,10 +61,12 @@ let fixturePropertyId: number | null = null;
 let fixtureMortgageId: number | null = null;
 
 beforeAll(() => {
+  // The Vitest person rents: it tracks no depto and no mortgage, so this file's fixture is
+  // the only property/loan pair and every test below runs against it.
   const existing = db
-    .prepare(`SELECT 1 FROM accounts WHERE import_key = ?`)
-    .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY);
-  if (existing) return; // real depto tracked — tests run against it
+    .prepare(`SELECT 1 FROM accounts WHERE import_key IN (?, ?)`)
+    .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, MORTGAGE_ACCOUNT_NOTES);
+  if (existing) throw new Error("test DB already tracks a depto; the fixture expects none");
 
   const propGroup = db
     .prepare(`SELECT id FROM asset_groups WHERE slug = 'real_estate__property'`)
@@ -72,7 +74,7 @@ beforeAll(() => {
   const mortGroup = db
     .prepare(`SELECT id FROM asset_groups WHERE slug = 'liabilities__mortgage'`)
     .get() as { id: number } | undefined;
-  if (!propGroup || !mortGroup) return;
+  if (!propGroup || !mortGroup) throw new Error("property / mortgage asset groups missing");
 
   fixturePropertyId = Number(
     db
@@ -82,20 +84,15 @@ beforeAll(() => {
       )
       .run(propGroup.id, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY).lastInsertRowid
   );
-  const hadMortgage = db
-    .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
-    .get(MORTGAGE_ACCOUNT_NOTES) as { id: number } | undefined;
-  fixtureMortgageId = hadMortgage
-    ? null
-    : Number(
-        db
-          .prepare(
-            `INSERT INTO accounts (asset_group_id, name, notes, import_key)
-             VALUES (?, 'depto fixture', ?, ?)`
-          )
-          .run(mortGroup.id, MORTGAGE_ACCOUNT_NOTES, MORTGAGE_ACCOUNT_NOTES).lastInsertRowid
-      );
-  const mortgageId = fixtureMortgageId ?? hadMortgage!.id;
+  fixtureMortgageId = Number(
+    db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+         VALUES (?, 'depto fixture', ?, ?)`
+      )
+      .run(mortGroup.id, MORTGAGE_ACCOUNT_NOTES, MORTGAGE_ACCOUNT_NOTES).lastInsertRowid
+  );
+  const mortgageId = fixtureMortgageId;
 
   const rows: { r: DeptoDividendosPaymentRow; onMortgage: boolean }[] = [
     {
@@ -177,7 +174,7 @@ beforeAll(() => {
 
   // Month-end snapshots so the mortgage perf series has rows (closes themselves are
   // recomputed from the UF ledger; stored values only anchor snapshot dates).
-  if (fixtureMortgageId != null) {
+  {
     const today = chileCalendarTodayYmd();
     const monthEnds = new Set<string>();
     for (const { r } of rows) {
@@ -207,181 +204,193 @@ function propertyAccountRow(): { id: number } | undefined {
     .get(DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
 }
 
+
+/** The fixture property's account id (asserted to exist: the Vitest person has no depto). */
+function fixtureProperty(): number {
+  const row = propertyAccountRow();
+  expect(row).toBeDefined();
+  expect(deptoPropertyId()).toBe(row!.id);
+  return row!.id;
+}
+
+/** UF at the prior month-end and today; the synthetic market moves the UF every day. */
+function ufPriorAndToday(): { priorEnd: string; today: string; ufPrior: number; ufNow: number } {
+  const today = chileCalendarTodayYmd();
+  const priorEnd = priorPeriodEndYmd("mtd", today);
+  const uf = storedPairRatesOnOrBefore("uf", "clp", [priorEnd, today]);
+  const ufPrior = uf.get(priorEnd)!;
+  const ufNow = uf.get(today)!;
+  expect(ufPrior).toBeGreaterThan(0);
+  expect(ufNow).toBeGreaterThan(0);
+  expect(ufNow).not.toBe(ufPrior);
+  return { priorEnd, today, ufPrior, ufNow };
+}
+
 describe("deptoAccountMarkClpAtYmd", () => {
   it("property mark at two dates differs when UF rates differ", () => {
+    const propertyId = fixtureProperty();
     const ledger = loadAllDeptoLedgers().flatMap((l) => l.rows);
-    if (!ledger.length) return;
+    // pie + two cuotas, each a property leg; the cuotas also carry a loan leg.
+    expect(ledger.length).toBeGreaterThanOrEqual(3);
 
-    const today = chileCalendarTodayYmd();
-    const priorEnd = priorPeriodEndYmd("mtd", today);
-    const may = deptoAccountMarkClpAtYmd(deptoPropertyId(), priorEnd);
-    const now = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
-    if (!may || !now) return;
-
-    const ufMap = storedPairRatesOnOrBefore("uf", "clp", [priorEnd, today]);
-    const ufPrior = ufMap.get(priorEnd);
-    const ufNow = ufMap.get(today);
-    if (ufPrior == null || ufNow == null || ufPrior === ufNow) return;
+    const { priorEnd, today, ufPrior, ufNow } = ufPriorAndToday();
+    const may = deptoAccountMarkClpAtYmd(propertyId, priorEnd);
+    const now = deptoAccountMarkClpAtYmd(propertyId, today);
+    expect(may).not.toBeNull();
+    expect(now).not.toBeNull();
 
     const netMap = deptoNetEquityUfBySnapshotDates([priorEnd, today], ledger);
-    const netPrior = netMap.get(priorEnd);
-    const netNow = netMap.get(today);
-    if (netPrior == null || netNow == null) return;
+    const netPrior = netMap.get(priorEnd)!;
+    const netNow = netMap.get(today)!;
+    expect(netPrior).toBeGreaterThan(0);
+    expect(netNow).toBeGreaterThan(0);
 
-    expect(now.value_clp).not.toBe(may.value_clp);
+    expect(now!.value_clp).not.toBe(may!.value_clp);
     // Mark identity: value(d) = netEquityUf(d) × uf(d). Net equity can change inside the
     // window (a cuota paid after the prior month-end adds amortización equity), so each
     // date uses its own net UF — a single shared netUf made this calendar-date dependent.
-    expect(now.value_clp - may.value_clp).toBeCloseTo(netNow * ufNow - netPrior * ufPrior, -2);
-  });
-});
-
-describe("deptoKindForBucketSlug via accountMarkClpAtYmd", () => {
-  it("resolves real_estate__property leaf slug to depto UF mark", () => {
-    const today = chileCalendarTodayYmd();
-    const depto = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
-    const viaLeaf = accountMarkClpAtYmd(deptoPropertyId(), today);
-    if (!depto || !viaLeaf) return;
-    expect(viaLeaf.value_clp).toBe(depto.value_clp);
+    expect(may!.value_clp).toBeCloseTo(netPrior * ufPrior, 0);
+    expect(now!.value_clp).toBeCloseTo(netNow * ufNow, 0);
+    expect(now!.value_clp - may!.value_clp).toBeCloseTo(netNow * ufNow - netPrior * ufPrior, -2);
   });
 });
 
 describe("accountMarkClpAtYmd property", () => {
   it("today uses UF mark not stale valuations when ledger exists", () => {
-    const row = propertyAccountRow();
-    if (!row) return;
+    const propertyId = fixtureProperty();
+    const { priorEnd, today } = ufPriorAndToday();
+    const deptoToday = deptoAccountMarkClpAtYmd(propertyId, today);
+    expect(deptoToday).not.toBeNull();
 
-    const today = chileCalendarTodayYmd();
-    const priorEnd = priorPeriodEndYmd("mtd", today);
-    const deptoToday = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
-    if (!deptoToday) return;
-
-    const markToday = accountMarkClpAtYmd(row.id, today);
-    const markPrior = accountMarkClpAtYmd(row.id, priorEnd);
-    expect(markToday?.value_clp).toBe(deptoToday.value_clp);
-    expect(markPrior).not.toBeNull();
+    const markToday = accountMarkClpAtYmd(propertyId, today);
+    const markPrior = accountMarkClpAtYmd(propertyId, priorEnd);
+    expect(markToday?.value_clp).toBe(deptoToday!.value_clp);
+    expect(markPrior?.value_clp).toBe(deptoAccountMarkClpAtYmd(propertyId, priorEnd)!.value_clp);
   });
 
   it("depto current-month perf nominal reflects UF move when prior month-end differs", () => {
-    const row = propertyAccountRow();
-    if (!row) return;
+    const propertyId = fixtureProperty();
+    const { priorEnd, today } = ufPriorAndToday();
+    const may = deptoAccountMarkClpAtYmd(propertyId, priorEnd)!;
+    const now = deptoAccountMarkClpAtYmd(propertyId, today)!;
+    expect(now.value_clp).not.toBe(may.value_clp);
 
-    const perf = monthlyPerfForAccountId(row.id, "clp");
-    if (!perf?.monthly.length) return;
+    const perf = monthlyPerfForAccountId(propertyId, "clp");
+    const curMk = monthKeyFromYmd(today);
+    const cur = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
+    expect(cur).toBeDefined();
+    expect(cur!.nominal_pl).not.toBeNull();
+    expect(cur!.prior_closing).not.toBeNull();
 
-    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
-    const cur = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
-    if (cur?.nominal_pl == null) return;
-
-    const today = chileCalendarTodayYmd();
-    const priorEnd = priorPeriodEndYmd("mtd", today);
-    const may = deptoAccountMarkClpAtYmd(deptoPropertyId(), priorEnd);
-    const now = deptoAccountMarkClpAtYmd(deptoPropertyId(), today);
-    if (!may || !now || may.value_clp === now.value_clp) return;
-
-    expect(Math.abs(cur.nominal_pl ?? 0)).toBeGreaterThan(0);
+    // The month's row runs from the prior month-end's mark to today's mark: its P/L is the
+    // level move less the month's payments, and the UF move makes it non-zero.
+    expect(cur!.prior_closing!).toBeCloseTo(may.value_clp, 0);
+    expect(cur!.closing_value).toBeCloseTo(now.value_clp, 0);
+    expect(cur!.nominal_pl!).toBeCloseTo(
+      cur!.closing_value - cur!.prior_closing! - cur!.net_capital_flow,
+      2
+    );
+    expect(Math.abs(cur!.nominal_pl!)).toBeGreaterThan(0);
   });
 
   it("current-month perf row is dated Chile today", () => {
-    const row = propertyAccountRow();
-    if (!row) return;
-
-    const perf = monthlyPerfForAccountId(row.id, "clp");
-    if (!perf?.monthly.length) return;
+    const propertyId = fixtureProperty();
+    const perf = monthlyPerfForAccountId(propertyId, "clp");
+    expect(perf?.monthly.length).toBeGreaterThan(0);
 
     const today = chileCalendarTodayYmd();
     const curMk = monthKeyFromYmd(today);
-    const cur = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
-    if (!cur) return;
-
-    expect(cur.as_of_date).toBe(today);
+    const cur = perf!.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
+    expect(cur).toBeDefined();
+    expect(cur!.as_of_date).toBe(today);
   });
 
   it("property marks move with the UF between the month-end and today", () => {
+    // The Vitest person tracks no depto, so the file's fixture property is always there.
     const acc = propertyAccountRow();
-    if (!acc) return;
-    const row = db
-      .prepare(
-        `SELECT a.id, a.name, a.notes, g.slug AS bucket_slug FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
-      )
-      .get(acc.id) as { id: number; name: string; notes: string | null; bucket_slug: string };
+    expect(acc).toBeDefined();
 
     const today = chileCalendarTodayYmd();
     const priorEnd = priorPeriodEndYmd("mtd", today);
-    const current = accountMarkClpAtYmd(row.id, today);
-    const prior = accountMarkClpAtYmd(row.id, priorEnd);
-    if (!current || !prior || current.value_clp === prior.value_clp) return;
+    const current = accountMarkClpAtYmd(acc!.id, today);
+    const prior = accountMarkClpAtYmd(acc!.id, priorEnd);
+    expect(current?.as_of_date).toBe(today);
+    expect(prior).not.toBeNull();
 
-    // The marks the dashboard row's prior-close fields carry: a UF move between the month-end
-    // mark and today's is a non-zero balance change on the property.
-    expect(current.as_of_date).toBe(today);
+    const uf = storedPairRatesOnOrBefore("uf", "clp", [priorEnd, today]);
+    const ufPrior = uf.get(priorEnd)!;
+    const ufNow = uf.get(today)!;
+    expect(ufPrior).toBeGreaterThan(0);
+    expect(ufNow).not.toBe(ufPrior);
+
+    // The marks the dashboard row's prior-close fields carry: each date's mark is the
+    // property's net equity in UF at that date × that date's UF, so a UF move between the
+    // month-end and today moves the mark.
+    const net = deptoNetEquityUfBySnapshotDates(
+      [priorEnd, today],
+      loadAllDeptoLedgers().flatMap((l) => l.rows)
+    );
+    expect(net.get(priorEnd)).toBeGreaterThan(0);
+    expect(current!.value_clp).toBeCloseTo(net.get(today)! * ufNow, 0);
+    expect(prior!.value_clp).toBeCloseTo(net.get(priorEnd)! * ufPrior, 0);
+    expect(current!.value_clp).not.toBe(prior!.value_clp);
   });
 });
 
-describe("depto mortgage live perf row", () => {
-  it("current-month row is dated today with UF fields after live patch", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE (g.slug LIKE '%__mortgage' OR g.slug = 'mortgage')
-         ORDER BY (a.notes = 'import:excel|key=mortgage') DESC
-         LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!row) return;
-    if (!loadAllDeptoLedgers().flatMap((l) => l.rows).length) return;
-
-    const perf = monthlyPerfForAccountId(row.id, "clp");
-    if (!perf?.monthly.length) return;
-
-    const today = chileCalendarTodayYmd();
-    const curMk = monthKeyFromYmd(today);
-    const cur = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
-    if (!cur) return;
-
-    expect(cur.as_of_date).toBe(today);
-    expect(cur.uf_clp_day).not.toBeNull();
-    expect(Number.isFinite(cur.uf_clp_day)).toBe(true);
-    expect(cur.closing_balance_uf).not.toBeNull();
-    expect(Number.isFinite(cur.closing_balance_uf)).toBe(true);
-  });
-});
-
-function mortgageMasterRow(): { id: number } | undefined {
-  return db
+/** The fixture mortgage's account id (the only mortgage: the Vitest person has none). */
+function fixtureMortgage(): number {
+  expect(fixtureMortgageId).not.toBeNull();
+  const rows = db
     .prepare(
       `SELECT a.id FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE (g.slug LIKE '%__mortgage' OR g.slug = 'mortgage')
-       ORDER BY (a.import_key = 'import:excel|key=mortgage') DESC
-       LIMIT 1`
+       WHERE (g.slug LIKE '%__mortgage' OR g.slug = 'mortgage')`
     )
-    .get() as { id: number } | undefined;
+    .all() as { id: number }[];
+  expect(rows.map((r) => r.id)).toEqual([fixtureMortgageId]);
+  return fixtureMortgageId!;
 }
+
+describe("depto mortgage live perf row", () => {
+  it("current-month row is dated today with UF fields after live patch", () => {
+    const mortgageId = fixtureMortgage();
+    const { today, ufNow } = ufPriorAndToday();
+
+    const perf = monthlyPerfForAccountId(mortgageId, "clp");
+    const curMk = monthKeyFromYmd(today);
+    const cur = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
+    expect(cur).toBeDefined();
+
+    expect(cur!.as_of_date).toBe(today);
+    expect(cur!.uf_clp_day).toBe(ufNow);
+    // The fixture's last cuota leaves 3921,8 UF owed; today's balance is that or less.
+    expect(cur!.closing_balance_uf).not.toBeNull();
+    expect(cur!.closing_balance_uf!).toBeGreaterThan(0);
+    expect(cur!.closing_balance_uf!).toBeLessThanOrEqual(3936);
+  });
+});
 
 describe("mortgage P/L sign convention", () => {
   it("nominal_pl = prior − close − payments on every row; lifetime P/L is a loss", () => {
-    if (!loadAllDeptoLedgers().flatMap((l) => l.rows).length) return;
-    const row = mortgageMasterRow();
-    if (!row) return;
+    const mortgageId = fixtureMortgage();
+    const perf = monthlyPerfForAccountId(mortgageId, "clp");
+    expect(perf?.monthly.length).toBeGreaterThan(0);
 
-    const perf = monthlyPerfForAccountId(row.id, "clp");
-    if (!perf?.monthly.length) return;
-
+    let checked = 0;
     let sawPaymentMonth = false;
-    for (const r of perf.monthly) {
+    for (const r of perf!.monthly) {
       if (r.prior_closing == null || r.nominal_pl == null) continue;
+      checked += 1;
       expect(r.nominal_pl).toBeCloseTo(
         r.prior_closing - r.closing_value - r.net_capital_flow,
         2
       );
       if (r.net_capital_flow > 0) sawPaymentMonth = true;
     }
+    expect(checked).toBeGreaterThan(0);
     expect(sawPaymentMonth).toBe(true);
 
-    const cum = perf.monthly[0]?.cumulative_nominal_pl;
+    const cum = perf!.monthly[0]?.cumulative_nominal_pl;
     expect(cum).not.toBeNull();
     expect(cum!).toBeLessThan(0);
   });
@@ -389,50 +398,40 @@ describe("mortgage P/L sign convention", () => {
 
 describe("mortgage dashboard card metrics", () => {
   it("deposits = ledger payments and deltas = perf financing-cost P/L (not balance − deposits)", async () => {
+    const mortgageId = fixtureMortgage();
     const ledger = loadAllDeptoLedgers().flatMap((l) => l.rows);
-    if (!ledger.length) return;
-    const master = mortgageMasterRow();
-    if (!master) return;
 
     const today = chileCalendarTodayYmd();
     const events = mortgageSheetPaymentEventsThroughDate(ledger, today);
     const expectedDeposits = events.reduce((s, e) => s + e.pago_clp, 0);
-    if (expectedDeposits <= 0) return;
+    // The fixture's two cuotas (1.200.000 + 1.205.000) are the loan's payments.
+    expect(expectedDeposits).toBe(2_405_000);
     const priorMonthEnd = priorPeriodEndYmd("mtd", today);
     const expectedMonthDeposits = events
       .filter((e) => e.occurred_on > priorMonthEnd)
       .reduce((s, e) => s + e.pago_clp, 0);
 
-    const perf = monthlyPerfForAccountId(master.id, "clp");
+    const perf = monthlyPerfForAccountId(mortgageId, "clp");
     const cum = perf?.monthly[0]?.cumulative_nominal_pl ?? null;
+    expect(cum).not.toBeNull();
 
     const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows("clp"));
-
-    let checked = 0;
-    for (const id of [master.id]) {
-      const dash = rows.find((r) => r.account_id === id);
-      if (!dash) continue;
-      checked += 1;
-      expect(dash.deposits).toBe(expectedDeposits);
-      expect(dash.deposits_month).toBe(expectedMonthDeposits);
-      // Day metrics: mortgage is UF-marked (reprices every calendar day) — the day window
-      // anchors on yesterday and the delta keeps the loss-negative convention
-      // (prior − close − payments). Regression: v1 shipped mortgage day deltas as null.
-      if (dash.prior_day_close != null && dash.current_value != null) {
-        expect(dash.delta_day).not.toBeNull();
-        expect(dash.delta_day!).toBeCloseTo(
-          dash.prior_day_close - dash.current_value - (dash.deposits_day ?? 0),
-          2
-        );
-      }
-      if (cum != null) {
-        expect(dash.delta_total).toBeCloseTo(cum, 2);
-        expect(dash.delta_total!).toBeLessThan(0);
-      } else {
-        // No perf series (no snapshots): honest null, never balance − deposits.
-        expect(dash.delta_total).toBeNull();
-      }
-    }
-    expect(checked).toBeGreaterThan(0);
+    const dash = rows.find((r) => r.account_id === mortgageId);
+    expect(dash).toBeDefined();
+    expect(dash!.deposits).toBe(expectedDeposits);
+    expect(dash!.deposits_month).toBe(expectedMonthDeposits);
+    // Day metrics: mortgage is UF-marked (reprices every calendar day) — the day window
+    // anchors on yesterday and the delta keeps the loss-negative convention
+    // (prior − close − payments). Regression: v1 shipped mortgage day deltas as null.
+    expect(dash!.prior_day_close).not.toBeNull();
+    expect(dash!.current_value).not.toBeNull();
+    expect(dash!.delta_day).not.toBeNull();
+    expect(dash!.delta_day!).toBeCloseTo(
+      dash!.prior_day_close! - dash!.current_value! - (dash!.deposits_day ?? 0),
+      2
+    );
+    // Lifetime delta is the perf series' cumulative financing-cost P/L, never balance − deposits.
+    expect(dash!.delta_total).toBeCloseTo(cum!, 2);
+    expect(dash!.delta_total!).toBeLessThan(0);
   });
 });

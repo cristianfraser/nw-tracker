@@ -296,26 +296,6 @@ describe("ccExpenseCategories", () => {
     ).toBe("unclassified");
   });
 
-  it("cuota 0 exclusion is line-level only — category slug unchanged without override", () => {
-    expect(
-      countsTowardCcExpenseGastosMes("supermarket", {
-        installment_flag: 1,
-        nro_cuota_current: 0,
-      })
-    ).toBe(false);
-    expect(
-      resolveCcExpenseCategorySlug({
-        statementLineId: 99,
-        accountId: 15,
-        merchantKey: "SHOP",
-        purchaseKey: "installment-h:15:2025-04-01:6:SHOP",
-        lineOverrides: new Map(),
-        merchantRules: rulesFor([]),
-        uniquePurchases: new Map(),
-      })
-    ).toBe("unclassified");
-  });
-
   it("marks cancelled installment purchase as no_cuenta when no explicit override exists", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|vitest-fixture' LIMIT 1`)
@@ -733,6 +713,7 @@ function createMerchantPropagationFixture(tag: string): {
     const categories = listCcExpenseCategories();
     const amort = categories.find((c) => c.slug === REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG);
     expect(amort).toBeDefined();
+    expect(darkenHexColor("#ff8000")).toBe("#c76400");
     expect(amort!.chart_color).toBe(darkenHexColor(bills!.chart_color));
     expect(amort!.chart_color).not.toBe(bills!.chart_color);
   });

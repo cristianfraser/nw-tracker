@@ -35,18 +35,23 @@ describe("getCheckingCartolaMonths", () => {
          WHERE g.slug = 'cuenta_corriente' OR g.slug LIKE '%__cuenta_corriente' LIMIT 1`
       )
       .get() as { id: number } | undefined;
-    if (!row) return;
-    const payload = getCheckingCartolaMonths(row.id);
+    // The Vitest person's cuenta corriente carries monthly cartola imports (`generate.ts`).
+    expect(row).toBeDefined();
+    const payload = getCheckingCartolaMonths(row!.id);
     expect(payload).not.toBeNull();
     const withCartola = payload!.rows.filter((r) => r.has_cartola);
-    expect(withCartola.length).toBeGreaterThan(0);
+    const imported = db
+      .prepare(`SELECT DISTINCT period_month FROM checking_cartola_imports WHERE account_id = ? ORDER BY period_month`)
+      .all(row!.id) as { period_month: string }[];
+    expect(imported.length).toBeGreaterThan(0);
+    expect(withCartola.map((r) => r.period_month).sort()).toEqual(imported.map((r) => r.period_month));
     // Any month: the closing balance is the walk's, and the month's totals explain its change.
     for (const r of payload!.rows) {
-      const end = checkingMovementBalanceAtMonthEnd(row.id, r.period_month);
+      const end = checkingMovementBalanceAtMonthEnd(row!.id, r.period_month);
       const [y, m] = r.period_month.split("-").map(Number) as [number, number];
       const priorYm = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
       expect(r.balance_end_clp).toBe(end);
-      expect(end - checkingMovementBalanceAtMonthEnd(row.id, priorYm)).toBe(
+      expect(end - checkingMovementBalanceAtMonthEnd(row!.id, priorYm)).toBe(
         r.deposits_clp - r.withdrawals_clp
       );
     }

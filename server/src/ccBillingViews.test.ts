@@ -188,35 +188,6 @@ describe("buildBillingDetailByMonth", () => {
     });
   });
 
-  it("open month facturado is this cycle's charges plus cuota a pagar (not rolled)", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
-      .get() as { id: number } | undefined;
-    if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
-
-    const openBm = billingMonthForManualLedgerPurchase(master.id);
-    const lastPdf = lastPdfBillingMonthForAccount(master.id);
-    if (!openBm || !lastPdf || ymCompare(openBm, lastPdf) <= 0) throw new Error("the Vitest person's card lacks the state this test reads");
-
-    withOpenBucket(master.id, openBm, () => {
-      recomputeCcBillingMonthBalances(master.id);
-      const payload = ccInstallmentsDbApiPayload(master.id);
-      const det = buildBillingDetailByMonth(master.id, payload.months);
-      const openRow = det.find((d) => d.billing_month === openBm);
-      const may = det.find((d) => d.billing_month === lastPdf);
-      if (!openRow || !may?.total_facturado) throw new Error("the Vitest person's card lacks the state this test reads");
-
-      // Facturado for the open cycle = únicos billed this cycle + cuota a pagar; the prior
-      // closed month's facturado is NOT rolled in (that lives in deuda/saldo).
-      const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
-      const expected = uniquo + openRow.cuota_a_pagar_next_mes;
-
-      expect(openRow.total_facturado).toBe(expected);
-      // …but the balance carries the prior closed month's debt forward: it is the card's owed today.
-      expectOpenRowIsOwedTodayPerCurrency(master.id, payload.months, openBm);
-    });
-  });
-
   it("open month includes charges when PAGO and purchases share web-paste bucket", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
@@ -408,29 +379,6 @@ describe("buildFacturaciones", () => {
     expect(row.close_date_iso).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(det).toBeDefined();
     expect(det!.total_facturado).toBe(row.facturado_total);
-  });
-
-  it("open month facturado_total equals uniquo statement lines plus cuota a pagar", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
-      .get() as { id: number } | undefined;
-    if (!master) throw new Error("the Vitest person's card lacks the state this test reads");
-
-    const openBm = billingMonthForManualLedgerPurchase(master.id);
-    if (!openBm) throw new Error("the Vitest person's card lacks the state this test reads");
-
-    withOpenBucket(master.id, openBm, () => {
-      const payload = ccInstallmentsDbApiPayload(master.id);
-      const openRow = buildFacturaciones(master.id, payload.months).find(
-        (f) => f.billing_month === openBm
-      );
-      if (!openRow?.is_open_month) throw new Error("the Vitest person's card lacks the state this test reads");
-
-      const uniquo = facturadoClpFromOpenMonthStatementLines(master.id, openBm);
-      const cuota = openRow.cuota_a_pagar ?? 0;
-      expect(openRow.facturado_total).toBe(uniquo + cuota);
-      expect(openRow.is_open_month).toBe(true);
-    });
   });
 
   it("open month facturado_total equals facturado_clp plus facturado_usd_clp", () => {

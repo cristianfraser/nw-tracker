@@ -1,8 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
-import { ymCompare } from "./calendarMonth.js";
 import { billingMonthContainingPurchase, billingMonthForLedgerPurchase, billingMonthForManualLedgerPurchase, lastPdfBillingMonthForAccount, targetBillingMonthForManualImports } from "./cards/facturacion.js";
-import { addCalendarMonths } from "nw-tracker-contracts";
+import { createTempCardMaster, deleteTempCardMaster } from "./test/tempCardMaster.js";
 
 describe("lastPdfBillingMonthForAccount", () => {
   const accountIds: number[] = [];
@@ -132,35 +131,40 @@ describe("billingMonthContainingPurchase", () => {
 });
 
 describe("targetBillingMonthForManualImports", () => {
+  let id = 0;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // Titular ·9977; the closed May statement was printed for the adicional ·5544.
+    id = createTempCardMaster({ issuer: "santander", last4: "9977", key: "vitest-manual-target" });
+    db.prepare(
+      `INSERT INTO cc_statements (
+         account_id, card_group, source_pdf, statement_date, period_from, period_to, card_last4, layout, currency
+       ) VALUES (?, 'santander', 'vitest 2026-05-20 clp.pdf', '20/05/2026', '21/04/2026', '20/05/2026', '5544', 'compact', 'clp')`
+    ).run(id);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    deleteTempCardMaster(id);
+  });
+
   it("returns month after last PDF close (any card_last4 on account)", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
-      .get() as { id: number };
-    const lastPdf = lastPdfBillingMonthForAccount(master.id);
-    if (!lastPdf) return;
-    const target = targetBillingMonthForManualImports(master.id, "4242");
-    expect(ymCompare(target, addCalendarMonths(lastPdf!, 1))).toBeGreaterThanOrEqual(0);
+    // Five days after the May close: the calendar month is still May, the open facturación is June.
+    vi.setSystemTime(new Date("2026-05-25T15:00:00Z"));
+    expect(lastPdfBillingMonthForAccount(id)).toBe("2026-05");
+    expect(targetBillingMonthForManualImports(id, "4242")).toBe("2026-06");
+    // Months later with no newer close: the current calendar month.
+    vi.setSystemTime(new Date("2026-08-10T15:00:00Z"));
+    expect(targetBillingMonthForManualImports(id, "4242")).toBe("2026-08");
   });
 
   it("maps manual ledger purchases to open month regardless of purchase date", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|santander|4321'`)
-      .get() as { id: number };
-    const lastPdf = lastPdfBillingMonthForAccount(master.id);
-    const open = billingMonthForManualLedgerPurchase(master.id);
-    if (!lastPdf || !open) return;
-    expect(ymCompare(open, addCalendarMonths(lastPdf, 1))).toBeGreaterThanOrEqual(0);
-    expect(
-      billingMonthForLedgerPurchase(master.id, {
-        purchase_date: "2026-03-15",
-        source: "manual",
-      })
-    ).toBe(open);
-    expect(
-      billingMonthForLedgerPurchase(master.id, {
-        purchase_date: "2026-04-25",
-        source: "manual",
-      })
-    ).toBe(open);
+    vi.setSystemTime(new Date("2026-05-25T15:00:00Z"));
+    expect(billingMonthForManualLedgerPurchase(id)).toBe("2026-06");
+    expect(billingMonthForLedgerPurchase(id, { purchase_date: "2026-03-15", source: "manual" })).toBe("2026-06");
+    expect(billingMonthForLedgerPurchase(id, { purchase_date: "2026-04-25", source: "manual" })).toBe("2026-06");
+    // A statement plan's purchase stays in the cycle its date falls in.
+    expect(billingMonthForLedgerPurchase(id, { purchase_date: "2026-04-25", source: "pdf" })).toBe("2026-05");
   });
 });

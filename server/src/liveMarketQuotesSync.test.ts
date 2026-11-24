@@ -107,14 +107,22 @@ describe("syncAllLiveMarketQuotes", () => {
   });
 
   it("inserts live rows for distinct account tickers", async () => {
-    const result = await syncAllLiveMarketQuotes(new Date("2026-06-01T16:00:00Z"));
-    const spy = result.equities.find((r) => r.ticker === "SPY");
-    if (!spy) return;
-    expect(spy.ok).toBe(true);
-    const row = getLatestLiveEquityQuoteRow("SPY", 600_000);
-    if (!row) return;
-    expect(row.value).toBe(600);
-    expect(row.session_ymd).toBe("2026-06-01");
+    // The Vitest person's broker holds SPY and AAPL (`testPerson` brokerTickers).
+    const now = new Date("2026-06-01T16:00:00Z");
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      const result = await syncAllLiveMarketQuotes(now);
+      const tickers = result.equities.map((r) => r.ticker);
+      expect(new Set(tickers).size).toBe(tickers.length);
+      expect(result.equities.find((r) => r.ticker === "SPY")).toMatchObject({ ok: true, changed: true });
+      expect(result.equities.find((r) => r.ticker === "AAPL")).toMatchObject({ ok: true, changed: true });
+      const spy = getLatestLiveEquityQuoteRow("SPY", 600_000);
+      expect(spy).toMatchObject({ value: 600, previous_value: 590, session_ymd: "2026-06-01" });
+      expect(getLatestLiveEquityQuoteRow("AAPL", 600_000)?.value).toBe(270);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("flags changed values on first poll, not on an identical re-poll", async () => {

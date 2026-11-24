@@ -17,7 +17,7 @@ import { scheduleB } from "./scheduleB.js";
 import { capitalLossCarryoverOut, scheduleD, scheduleDNetCapitalGainForWorksheet } from "./scheduleD.js";
 import { taxReturnOrderFor } from "../taxReturnOrder.js";
 import type { YearResidency } from "../taxResidency.js";
-import { usBracketTax, usDividendWithholdingRateForChileanResident, usForm1040Tax, usTaxYear } from "../usLegalParameters.js";
+import { usDividendWithholdingRateForChileanResident, usForm1040Tax, usTaxYear } from "../usLegalParameters.js";
 
 const tax2024 = (t: number) => usForm1040Tax(t, "single", 2024);
 
@@ -159,7 +159,6 @@ describe("the Qualified Dividends and Capital Gain Tax Worksheet", () => {
     const high = qualifiedDividendsWorksheet({ taxableIncome: 600_000, qualifiedDividends: 0, netCapitalGain: 200_000, edges: edges2024, taxOn: tax2024 });
     // 5 = 400.000; 9 = 0; 14 = 518.900; 16 = 118.900; 17 = 118.900; 18 = 17.835; 20 = 81.100; 21 = 16.220.
     expect(high).toMatchObject({ "5": 400_000, "9": 0, "14": 518_900, "16": 118_900, "17": 118_900, "18": 17_835, "20": 81_100, "21": 16_220 });
-    expect(high["22"]).toBe(Math.round(usBracketTax(400_000, usTaxYear(2024).brackets.single)));
     expect(high["22"]).toBe(110_375);
     expect(high["25"]).toBe(17_835 + 16_220 + 110_375);
     expect(high["24"]).toBe(180_375);

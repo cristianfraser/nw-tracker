@@ -371,10 +371,4 @@ describe("flowsCheckingInflows", () => {
 
     deleteManualIncome([entryId]);
   });
-
-  it("returns work_earnings and income_kind_by_movement_id in payload", () => {
-    const payload = buildFlowsCheckingIncomePayload();
-    expect(Array.isArray(payload.work_earnings)).toBe(true);
-    expect(payload.income_kind_by_movement_id).toBeTypeOf("object");
-  });
 });

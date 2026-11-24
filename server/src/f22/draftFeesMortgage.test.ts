@@ -1,8 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../db.js";
 import { buildF22Draft } from "./draft.js";
-import { igcTax } from "../legalParameters.js";
-import { mortgageInterestDeduction } from "./estimates.js";
 import type { ForeignFxDisposalLoader } from "./foreignFx.js";
 
 // Two synthetic years the Vitest person does not reach: fees alone (income 2018) and a salary with
@@ -73,9 +71,9 @@ describe("F22 draft: the fees box and the lender's mortgage interest", () => {
     expect(d.draft[494]).toBe(presumed);
     expect(d.draft[110]).toBe(gross - presumed);
     expect(d.draft[198]).toBe(3_600_000);
-    const tax = Math.round(igcTax(gross - presumed, UTA, FEES_YEAR + 1));
-    expect(d.draft[304]).toBe(tax);
-    expect(d.draft[305]).toBe(tax - 3_600_000);
+    // 27,36 M is 47,5 UTA: 8 % less 1,74 UTA.
+    expect(d.draft[304]).toBe(1_186_560);
+    expect(d.draft[305]).toBe(1_186_560 - 3_600_000);
   });
 
   it("deducts the lender's informed interest through the art. 55 bis cap, not in full", () => {
@@ -83,9 +81,8 @@ describe("F22 draft: the fees box and the lender's mortgage interest", () => {
     expect(d.base).toBe("informed");
     expect(d.informed[751]).toBe(3_000_000);
     expect(d.estimatedCodes).not.toContain(750);
-    // 60 M of gross income is ~104 UTA: between 90 and 150 the deduction is cut proportionally.
-    const expected = mortgageInterestDeduction(3_000_000, 60_000_000, UTA);
-    expect(expected).toBeLessThan(3_000_000);
+    // 60 M of gross income is ~104,17 UTA: between 90 and 150 the deduction is cut to (250 − 1,667 × 104,17) %.
+    const expected = 2_290_625;
     expect(d.draft[751]).toBe(3_000_000);
     expect(d.draft[750]).toBe(expected);
     expect(d.draft[170]).toBe(60_000_000 - expected);

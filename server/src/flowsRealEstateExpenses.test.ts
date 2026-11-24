@@ -4,7 +4,6 @@ import {
   buildChartScopes,
   buildRealEstateExpensesPayload,
   chartPartsOf,
-  REAL_ESTATE_CHART_KINDS,
   createRealEstatePlace,
   mortgageCuotaBillMonths,
   spreadOverCoveredMonths,
@@ -224,12 +223,6 @@ describe("chartPartsOf", () => {
       { kind: "mortgage_extra_amortization", amount: 350_000 },
       { kind: "mortgage_carrying", amount: 250_000 },
     ]);
-  });
-
-  it("stacks the cuota's interest and insurance at the bottom and the extra amortization on top of every kind", () => {
-    expect(REAL_ESTATE_CHART_KINDS[0]).toBe("mortgage_carrying");
-    expect(REAL_ESTATE_CHART_KINDS[1]).toBe("mortgage_amortization");
-    expect(REAL_ESTATE_CHART_KINDS.at(-1)).toBe("mortgage_extra_amortization");
   });
 
   it("throws on a mortgage cuota without parts, and on a kind the chart does not know", () => {

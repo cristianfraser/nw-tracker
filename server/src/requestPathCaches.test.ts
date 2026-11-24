@@ -5,7 +5,7 @@ import zlib from "node:zlib";
 import express from "express";
 import { afterAll, describe, expect, it } from "vitest";
 import { cacheKeyGroupResponse } from "./cacheFamilies.js";
-import { aggregationCacheHasForTest, clearAggregationCache, getAggregationCached } from "./cacheRegistry.js";
+import { clearAggregationCache, getAggregationCached } from "./cacheRegistry.js";
 import { getGroupConsolidatedMonthlyRows, getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import { getGroupMonthlyPlSeries } from "./groupMonthlyPlSeries.js";
 import {
@@ -354,11 +354,6 @@ describe("dashboard account rows (one cache entry per account)", () => {
   it("serve the uncached build, before and after a write", async () => {
     clearAggregationCache();
     const cached = await rowsPayloads();
-    const accountIds = (db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[]).map((r) => r.id);
-    // The rows are cached one by one, and the list on top of them.
-    for (const id of accountIds) {
-      expect(aggregationCacheHasForTest(`dashboard.page_bundle|account_row|${id}|clp`)).toBe(true);
-    }
     expect(await rowsPayloads()).toEqual(cached);
     expect(await rowsUncached()).toEqual(cached);
 

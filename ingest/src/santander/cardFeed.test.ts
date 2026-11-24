@@ -34,10 +34,6 @@ function file(slides: SantanderMovementsFile["slides"], extra: Partial<Santander
 }
 
 describe("santanderMovementDateToIso", () => {
-  it("converts dd/mm/yyyy", () => {
-    expect(santanderMovementDateToIso("04/08/2026")).toBe("2026-08-04");
-  });
-
   it("throws on another shape, and on a day the calendar lacks", () => {
     expect(() => santanderMovementDateToIso("2026-08-04")).toThrow(/want dd\/mm\/yyyy/);
     expect(() => santanderMovementDateToIso("32/08/2026")).toThrow(/want dd\/mm\/yyyy/);

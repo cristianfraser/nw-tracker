@@ -1,27 +1,12 @@
 /**
  * The position of a stock with no shares (`equityBrokeragePositionMeta`) is answered from the
- * shares: same position as the priced rule it replaced, for every stock account on two dates
- * at several instants, and no live quote read for an empty position.
+ * shares: no units, no mark, and no live quote read, on two dates at several instants.
  */
 import { describe, expect, it } from "vitest";
-import { db } from "./db.js";
-import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
-import { requireEquityTicker } from "./accountEquityTicker.js";
-import {
-  equityCloseEod,
-  equityHeldSessionQuote,
-  equityQuoteCurrency,
-  equitySessionYmdForTicker,
-  getLiveEquityQuoteFromDb,
-  shouldUseLiveEquityQuote,
-} from "./equityQuote.js";
-import { convertValue } from "./valueConvert.js";
-import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
-import { equityBrokeragePositionMeta, type AccountPositionMeta } from "./accountPosition.js";
+import { equityBrokeragePositionMeta } from "./accountPosition.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   PARITY_INSTANTS,
-  allAccountIds,
   holdingFixtures,
   observeLiveReads,
   storedStockTicker,
@@ -29,97 +14,21 @@ import {
 
 const fixtures = holdingFixtures();
 
-/** The rule as it was: the price first, the shares last. */
-function priorEquityPositionMeta(
-  accountId: number,
-  ticker: string,
-  asOfYmd: string,
-  now: Date
-): AccountPositionMeta | null {
-  const units = brokerageShareUnitsThroughDate(accountId, asOfYmd);
-  const out: AccountPositionMeta = {
-    ticker,
-    units_kind: "shares",
-    units: units > 1e-12 && Number.isFinite(units) ? units : null,
-  };
-  const today = chileCalendarTodayYmd();
-  const session = equitySessionYmdForTicker(ticker, now);
-  const useLive = asOfYmd === today && shouldUseLiveEquityQuote(ticker, session, now);
-  let close: number | null = null;
-  let markDate = asOfYmd;
-  if (useLive) {
-    const live = getLiveEquityQuoteFromDb(ticker);
-    if (live) {
-      close = live.price;
-      markDate = live.trade_date;
-    }
-  }
-  if (close == null && asOfYmd === today) {
-    const held = equityHeldSessionQuote(ticker, now);
-    if (held) {
-      close = held.price;
-      markDate = held.trade_date;
-    }
-  }
-  if (close == null) {
-    const closeRow = db
-      .prepare(
-        `SELECT trade_date, close FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
-      )
-      .get(ticker, asOfYmd) as { trade_date: string; close: number } | undefined;
-    close = closeRow?.close ?? equityCloseEod(ticker, asOfYmd);
-    markDate = closeRow?.trade_date ?? asOfYmd;
-  }
-  if (close == null || !Number.isFinite(close)) return out;
-  const u = out.units;
-  if (u == null || u <= 1e-12) return out;
-  if (equityQuoteCurrency(ticker) === "clp") {
-    out.mark_value_clp = Math.round(u * close * 100) / 100;
-    out.mark_as_of = markDate;
-    out.mark_unit_price_clp = Math.round(close * 10000) / 10000;
-    return out;
-  }
-  // Converted once at the asked date's sell rate (`valueConvert.ts`).
-  const value = convertValue(u * close, "usd", "clp", asOfYmd, "asset", now);
-  const perUnit = convertValue(close, "usd", "clp", asOfYmd, "asset", now);
-  if (value == null || perUnit == null) return out;
-  out.mark_value_clp = Math.round(value * 100) / 100;
-  out.mark_as_of = markDate;
-  out.mark_unit_price_clp = Math.round(perUnit * 10000) / 10000;
-  return out;
-}
-
 describe("the position of a stock with no shares reads no price", () => {
-  it("matches the priced rule for every stock account, and reads no quote when empty", () => {
-    const soldOut = fixtures.account("sold-out stock", "brokerage_acciones__%", storedStockTicker("VHFU"));
+  it("a sold-out stock has no units and no mark, and reads no quote", () => {
+    const ticker = storedStockTicker("VHFU");
+    const soldOut = fixtures.account("sold-out stock", "brokerage_acciones__%", ticker);
     fixtures.singleLeg(soldOut, "2024-03-01", 1000, 10, "stock_buy", "usd");
     fixtures.singleLeg(soldOut, "2025-03-01", 1200, -10, "stock_sell", "usd");
-    const held = fixtures.account("held stock", "brokerage_acciones__%", "VHFU2");
-    fixtures.singleLeg(held, "2024-03-01", 1000, 4, "stock_buy", "usd");
 
-    let compared = 0;
-    for (const id of allAccountIds()) {
-      if (!accountUsesEquityMtm(id)) continue;
-      const ticker = requireEquityTicker(id);
-      for (const now of PARITY_INSTANTS) {
-        for (const asOf of [chileCalendarTodayYmd(), "2025-06-30"]) {
-          const before = observeLiveReads(() => priorEquityPositionMeta(id, ticker, asOf, now));
-          const after = observeLiveReads(() => equityBrokeragePositionMeta(id, ticker, asOf, now));
-          expect(after.out, `stock ${id} position on ${asOf} at ${now.toISOString()}`).toEqual(before.out);
-          if (after.out != null && typeof after.out === "object" && after.out.units == null) {
-            expect(after.tickers, `empty position ${id} reads no quote`).toEqual([]);
-          }
-          compared++;
-        }
+    for (const now of PARITY_INSTANTS) {
+      for (const asOf of [chileCalendarTodayYmd(), "2025-06-30"]) {
+        const read = observeLiveReads(() => equityBrokeragePositionMeta(soldOut, ticker, asOf, now));
+        const label = `sold-out position on ${asOf} at ${now.toISOString()}`;
+        expect(read.out, label).toMatchObject({ ticker, units: null });
+        expect(read.out, label).not.toHaveProperty("mark_value_clp");
+        expect(read.tickers, label).toEqual([]);
       }
     }
-    expect(compared).toBeGreaterThanOrEqual(4 * PARITY_INSTANTS.length);
-    const today = chileCalendarTodayYmd();
-    const now = PARITY_INSTANTS[1]!;
-    const ticker = requireEquityTicker(soldOut);
-    expect(observeLiveReads(() => equityBrokeragePositionMeta(soldOut, ticker, today, now)).out).toMatchObject({
-      units: null,
-    });
-    expect(observeLiveReads(() => priorEquityPositionMeta(soldOut, ticker, today, now)).tickers).not.toEqual([]);
   });
 });

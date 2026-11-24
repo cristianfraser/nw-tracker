@@ -312,7 +312,6 @@ describe("fund holdings", () => {
     movement({ from: cash, to: id, amount: 20_000, currency: "clp", day: `${YEAR}-02-10`, kind: null, units: 0.2 });
     movement({ from: id, to: cash, amount: 31_000, currency: "clp", day: `${YEAR}-03-10`, kind: null, units: 0.3 });
     // 0.1 + 0.2 − 0.3 is 5.55e-17 in floating point: the reader states 0.
-    expect(0.1 + 0.2 - 0.3).not.toBe(0);
     const pos = holdingPositionsOn(id, [`${YEAR}-02-20`, `${YEAR}-03-20`])!;
     expect(pos.positions.map((p) => p.cuotas)).toEqual([0.30000000000000004, 0]);
   });

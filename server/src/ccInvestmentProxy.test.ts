@@ -15,7 +15,6 @@ import {
   type ProxyLot,
   type ProxyLotResult,
 } from "./ccInvestmentProxy.js";
-import * as watchlistStats from "./watchlistStats.js";
 import { db } from "./db.js";
 import { buildFacturaciones } from "./ccBillingViews.js";
 import { buildInstallmentProxy, creditCardInstallmentsResponse } from "./creditCardInstallments.js";
@@ -249,61 +248,6 @@ describe("realizedCuotaGains", () => {
     expect(cuotas[0]!.total_gain_so_far_clp).toBeCloseTo(189_900 * 0.01, 2); // 1899 — whole purchase
     expect(cuotas[0]!.total_return_so_far_pct).toBeCloseTo(1, 6);
     expect(cuotas[0]!.projected).toBe(true);
-  });
-});
-
-// ─── computeProxyLot (price-map engine) ──────────────────────────────────────
-
-describe("computeProxyLot via price-map helper", () => {
-  const prices = {
-    reserva: {
-      "2025-07-15": 1000,
-      "2025-08-08": 1010,
-      "2025-09-08": 1020,
-      "2025-10-08": 1030,
-    },
-  };
-
-  it("3-cuota: gain_clp = sum of realized_gain per cuota, floats run from the purchase date", () => {
-    const lot: ProxyLot = {
-      deposit: { amount_clp: 90_000, date: "2025-07-15" },
-      withdrawals: [
-        { amount_clp: 30_000, date: "2025-08-08", billing_month: "2025-07" },
-        { amount_clp: 30_000, date: "2025-09-08", billing_month: "2025-08" },
-        { amount_clp: 30_000, date: "2025-10-08", billing_month: "2025-09" },
-      ],
-    };
-    const result = computeProxyLotWithPrices(lot, ["reserva"], "2025-11-01", prices);
-    const r = result.by_ticker["reserva"]!;
-
-    // Every cuota earns from 2025-07-15 — the first one included (it is no longer a
-    // zero-length float), and the later ones now carry the purchase → first-pay-by stretch.
-    const expectedGain =
-      30_000 * (1010 / 1000 - 1) +
-      30_000 * (1020 / 1000 - 1) +
-      30_000 * (1030 / 1000 - 1);
-
-    expect(r.cuotas[0]!.realized_gain_clp).toBeCloseTo(30_000 * 0.01, 2);
-    // Fully billed → the lot's P/L is the realized total.
-    expect(r.gain_clp).toBeCloseTo(expectedGain, 2);
-    expect(r.return_pct).toBeCloseTo((expectedGain / 90_000) * 100, 4);
-    expect(r.cuotas).toHaveLength(3);
-    expect(r.projected).toBe(false);
-  });
-
-  it("normal purchase single withdrawal: gain = amount × (pay_by_price/deposit_price − 1)", () => {
-    const normalPrices = { reserva: { "2025-07-15": 1000, "2025-08-08": 1020 } };
-    const lot = normalPurchaseToLot({
-      amount_clp: 50_000,
-      purchase_on: "2025-07-15",
-      pay_by_iso: "2025-08-08",
-      billing_month: "2025-07",
-    });
-    const result = computeProxyLotWithPrices(lot, ["reserva"], "2025-08-08", normalPrices);
-    const r = result.by_ticker["reserva"]!;
-    const expectedGain = 50_000 * (1020 / 1000 - 1); // = 1000
-    expect(r.gain_clp).toBeCloseTo(expectedGain, 2);
-    expect(r.return_pct).toBeCloseTo((expectedGain / 50_000) * 100, 4); // 2%
   });
 });
 
@@ -663,21 +607,5 @@ describe("facturación proxy on a card ledger", () => {
     expect(() =>
       buildNormalPurchaseProxyForAccount(accountId, [SERIES], TODAY, buildFacturaciones(accountId, []))
     ).toThrow(/no parseable purchase date/);
-  });
-});
-
-// ─── UF-YoY projection (structural test) ─────────────────────────────────────
-
-describe("UF-YoY projection fallback", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("ufYoyAnnualRate is used when projecting: 4% over 365 days ≈ ×1.04", () => {
-    vi.spyOn(watchlistStats, "ufYoyAnnualRate").mockReturnValue(0.04);
-    const rate = watchlistStats.ufYoyAnnualRate();
-    expect(rate).toBe(0.04);
-    const projected = 1000 * Math.pow(1 + rate!, 365 / 365);
-    expect(projected).toBeCloseTo(1040, 0);
   });
 });

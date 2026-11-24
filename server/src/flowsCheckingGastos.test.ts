@@ -19,9 +19,7 @@ import {
   withdrawalMatchesInternalCashTransfer,
 } from "./flowsCheckingGastos.js";
 import {
-  fondoReservaAccountId,
   loadCheckingCredits,
-  loadDepositMatchCandidates,
   type CheckingCredit,
   type DepositMatchCandidate,
 } from "./checkingCartolaLoaders.js";
@@ -67,6 +65,13 @@ function insertCheckingCartolaWithdrawal(
   return Number(ins.lastInsertRowid);
 }
 
+/** The Vitest person's cuenta vista (`demoData/generate.ts`). */
+function requireVistaId(): number {
+  const id = cartolaCashAccountIdOptional("cuenta_vista");
+  expect(id).not.toBeNull();
+  return id!;
+}
+
 function deleteCheckingMovements(ids: readonly number[]): void {
   if (ids.length === 0) return;
   const placeholders = ids.map(() => "?").join(", ");
@@ -76,8 +81,7 @@ function deleteCheckingMovements(ids: readonly number[]): void {
 describe("flowsCheckingGastos", () => {
   it("builds checking-internal lines for exactly paired corriente/vista transfers", () => {
     const corrienteId = checkingAccountId();
-    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
-    if (vistaId == null) return;
+    const vistaId = requireVistaId();
 
     const movementId = insertCheckingCartolaWithdrawal(
       corrienteId,
@@ -130,12 +134,24 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("builds gastos lines per checking account including cuenta vista when present", () => {
-    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
-    if (vistaId == null) return;
-    const vistaLines = buildCheckingGastosLines({ accountId: vistaId });
-    for (const line of vistaLines) {
-      expect(line.account_id).toBe(vistaId);
-      expect(line.source).toBe("checking");
+    const vistaId = requireVistaId();
+    const movId = insertCheckingCartolaWithdrawal(vistaId, "2099-07-08", -4_321, "Compra ACME STORE", {
+      cartolaMonth: "2099-07",
+      idx: 9998831,
+    });
+    try {
+      const vistaLines = buildCheckingGastosLines({ accountId: vistaId });
+      for (const line of vistaLines) {
+        expect(line.account_id).toBe(vistaId);
+        expect(line.source).toBe("checking");
+      }
+      const hit = vistaLines.filter((l) => l.statement_line_id === movId);
+      expect(hit).toHaveLength(1);
+      expect(hit[0]!.amount_clp).toBe(4_321);
+      expect(hit[0]!.expense_month).toBe("2099-07");
+      expect(hit[0]!.checking_purchase_portion).toBeUndefined();
+    } finally {
+      deleteCheckingMovements([movId]);
     }
   });
 
@@ -386,15 +402,6 @@ describe("flowsCheckingGastos", () => {
     ).toBe(true);
   });
 
-  it("excludes traspaso a cuenta vista (AFP 10%) from checking gastos", () => {
-    const lines = buildCheckingGastosLines();
-    const vistaAfpIds = new Set([637, 640, 1712]);
-    const matched = lines.filter(
-      (l) => l.source === "checking" && vistaAfpIds.has(l.statement_line_id)
-    );
-    expect(matched).toEqual([]);
-  });
-
   it("excludes DAP-reversed MC cargos from checking gastos lines", () => {
     const corrienteId = checkingAccountId();
     const checkingCredits: CheckingCredit[] = [
@@ -536,8 +543,7 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("treats checking outflows paired with cash/efectivo deposits as internal", () => {
-    const reservaId = fondoReservaAccountId();
-    if (reservaId == null) return;
+    const reservaId = 990_021;
     const deposits: DepositMatchCandidate[] = [
       {
         occurred_on: "2024-03-15",
@@ -609,16 +615,6 @@ describe("flowsCheckingGastos", () => {
         3
       )
     ).toBe(false);
-  });
-
-  it("shows transf a otro bancos paired with cuenta ahorro deposit as deposits category", () => {
-    const lines = buildCheckingGastosLines();
-    if (lines.length === 0) return;
-    const hit = lines.find((l) => l.statement_line_id === 624);
-    if (hit == null) return;
-    expect(hit?.category_slug).toBe("deposits");
-    expect(hit?.checking_purchase_portion).toBe("deposit");
-    expect(isAutoDepositMatchedPurchaseNote(hit?.auto_deposit_match_note ?? "")).toBe(true);
   });
 
   it("detects ATM withdrawals including branch-prefixed descriptions", () => {
@@ -838,15 +834,15 @@ describe("flowsCheckingGastos", () => {
     expect(splitJul2Paired.internalClp).toBe(700_000);
     expect(splitJul2Paired.gastosClp).toBe(0);
 
-    const vistaIdReal = cartolaCashAccountIdOptional("cuenta_vista");
-    if (vistaIdReal != null) {
-      const movId = insertCheckingCartolaWithdrawal(
-        vistaIdReal,
-        "2099-07-02",
-        -700_000,
-        "Traspaso Internet a Cta. Cte.",
-        { cartolaMonth: "2099-07", idx: 8805 }
-      );
+    const vistaIdReal = requireVistaId();
+    const movId = insertCheckingCartolaWithdrawal(
+      vistaIdReal,
+      "2099-07-02",
+      -700_000,
+      "Traspaso Internet a Cta. Cte.",
+      { cartolaMonth: "2099-07", idx: 8805 }
+    );
+    try {
       const lines = buildCheckingGastosLines({
         accountId: vistaIdReal,
         depositCandidates: [],
@@ -857,6 +853,7 @@ describe("flowsCheckingGastos", () => {
       expect(hit?.checking_purchase_portion).toBe("deposit");
       expect(hit?.category_unique).toBe(true);
       expect(hit?.amount_clp).toBe(700_000);
+    } finally {
       deleteCheckingMovements([movId]);
     }
   });
@@ -969,8 +966,7 @@ describe("flowsCheckingGastos", () => {
     expect(split.internalClp).toBe(0);
     expect(split.gastosClp).toBe(365_970);
 
-    const vistaIdReal = cartolaCashAccountIdOptional("cuenta_vista");
-    if (vistaIdReal == null) return;
+    const vistaIdReal = requireVistaId();
     const movId = insertCheckingCartolaWithdrawal(
       vistaIdReal,
       "2099-07-15",
@@ -1028,13 +1024,43 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("attaches auto deposit-match notes to paired checking gastos lines", () => {
-    const drafts = buildCheckingGastosLines().filter((l) => l.auto_deposit_match_note);
-    if (drafts.length === 0) return;
-    const sample = drafts[0]!;
-    expect(isAutoDepositMatchedPurchaseNote(sample.auto_deposit_match_note ?? "")).toBe(true);
-    expect(sample.deposit_match?.length ?? 0).toBeGreaterThan(0);
-    const enriched = enrichFlowLinesWithPurchaseNotes([sample]);
-    expect(isAutoDepositMatchedPurchaseNote(enriched[0]!.purchase_notes)).toBe(true);
+    const corrienteId = checkingAccountId();
+    const vistaId = requireVistaId();
+    const movId = insertCheckingCartolaWithdrawal(
+      corrienteId,
+      "2099-07-12",
+      -250_000,
+      "Transf. Internet a otro Bancos",
+      { cartolaMonth: "2099-07", idx: 9998832 }
+    );
+    try {
+      const drafts = buildCheckingGastosLines({
+        accountId: corrienteId,
+        depositCandidates: [
+          {
+            occurred_on: "2099-07-12",
+            amount_clp: 250_000,
+            account_id: vistaId,
+            category_slug: "cuenta_vista",
+            group_slug: "cash_eqs",
+            claim_key: "flowsCheckingGastos-auto-note",
+            movement_id: null,
+          },
+        ],
+        checkingCredits: [],
+      }).filter((l) => l.statement_line_id === movId);
+      expect(drafts).toHaveLength(1);
+      const sample = drafts[0]!;
+      expect(sample.auto_deposit_match_note).toBe(
+        `auto:deposit-match|acct:${vistaId}|date:2099-07-12|amt:250000`
+      );
+      expect(isAutoDepositMatchedPurchaseNote(sample.auto_deposit_match_note ?? "")).toBe(true);
+      expect(sample.deposit_match?.length ?? 0).toBeGreaterThan(0);
+      const enriched = enrichFlowLinesWithPurchaseNotes([sample]);
+      expect(isAutoDepositMatchedPurchaseNote(enriched[0]!.purchase_notes)).toBe(true);
+    } finally {
+      deleteCheckingMovements([movId]);
+    }
   });
 
   it("allocates two checking wires against one lump-sum reserva deposit on the same day", () => {
@@ -1082,26 +1108,6 @@ describe("flowsCheckingGastos", () => {
       )
     ).toBe(false);
     expect(pool.get("flowsCheckingGastos-1041")).toBe(10_000_000);
-  });
-
-  it("matches Jan 2025 Fintual wires against lump-sum reserva deposit in DB", () => {
-    const deposits = loadDepositMatchCandidates();
-    if (
-      !deposits.some((d) => d.category_slug === "fondo_reserva" && d.amount_clp === 10_000_000)
-    ) {
-      return;
-    }
-    const pool = createSplittableInternalTransferPool(deposits);
-    const withdrawal = {
-      occurred_on: "2025-01-09",
-      amount_clp: -5_000_000,
-      description: "0768106274 Transf a FINTUAL ADMINISTRADORA G",
-    };
-    expect(
-      deposits.some((d) => d.category_slug === "fondo_reserva" && d.amount_clp === 10_000_000)
-    ).toBe(true);
-    expect(withdrawalMatchesInternalCashTransfer(withdrawal, deposits, 3, pool)).toBe(true);
-    expect(withdrawalMatchesInternalCashTransfer(withdrawal, deposits, 3, pool)).toBe(true);
   });
 
   it("does not partial-match May 2023 555k wire against unrelated ahorro month deposit", () => {
@@ -1170,60 +1176,115 @@ describe("flowsCheckingGastos", () => {
     expect(split.gastosClp).toBe(86_668);
   });
 
-  it("splits Dec 2024 wire: 4M reserva internal + 600k acciones gasto", () => {
-    const deposits = loadDepositMatchCandidates();
-    if (deposits.length === 0) return;
-    const pool = createSplittableInternalTransferPool(deposits);
-    const used = new Set<string>();
+  it("splits a reserva wire: 4M reserva internal + 600k acciones deposit", () => {
+    const corrienteId = checkingAccountId();
+    // One wire funds a lump-sum reserva deposit and, with the rest, a same-day stock deposit.
+    const deposits: DepositMatchCandidate[] = [
+      {
+        occurred_on: "2099-03-10",
+        amount_clp: 4_000_000,
+        account_id: 990_031,
+        category_slug: "fondo_reserva",
+        group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-split-reserva",
+        movement_id: null,
+      },
+      {
+        occurred_on: "2099-03-10",
+        amount_clp: 600_000,
+        account_id: 990_032,
+        category_slug: "spy",
+        group_slug: "brokerage",
+        claim_key: "flowsCheckingGastos-split-spy",
+        movement_id: null,
+      },
+    ];
     const split = splitCheckingWithdrawalAgainstDeposits(
-      { occurred_on: "2024-12-10", amount_clp: -4_600_000 },
+      { occurred_on: "2099-03-10", amount_clp: -4_600_000, description: "TRASPASO A FONDO RESERVA" },
       deposits,
-      { splittablePool: pool, usedDepositKeys: used, withdrawalAccountId: checkingAccountId(), withdrawalCategorySlug: "cuenta_corriente" }
+      {
+        splittablePool: createSplittableInternalTransferPool(deposits),
+        usedDepositKeys: new Set<string>(),
+        withdrawalAccountId: corrienteId,
+        withdrawalCategorySlug: "cuenta_corriente",
+      }
     );
-    if (split.internalClp === 0 && split.investmentDeposit == null) return;
     expect(split.internalClp).toBe(4_000_000);
     expect(split.gastosClp).toBe(600_000);
+    expect(split.investmentMatchClp).toBe(600_000);
     expect(split.investmentDeposit?.category_slug).toBe("spy");
 
-    const lines = buildCheckingGastosLines();
-    if (lines.length === 0) return;
-    const movId = (
-      db.prepare(
-        `SELECT id FROM movements WHERE account_id = ? AND occurred_on = '2024-12-10' AND currency = 'clp' AND amount = -4600000 LIMIT 1`
-      ).get(checkingAccountId()) as { id: number } | undefined
-    )?.id;
-    if (movId == null) return;
-    const decLines = lines.filter((l) => l.statement_line_id === movId);
-    const dec10Gastos = decLines.find((l) => !l.checking_purchase_portion);
-    const dec10Deposit = decLines.find((l) => l.checking_purchase_portion === "deposit");
-    if (dec10Gastos == null || dec10Deposit == null) return;
-    expect(dec10Gastos?.amount_clp).toBe(600_000);
-    expect(dec10Gastos?.category_slug).toBe("deposits");
-    expect(dec10Deposit?.amount_clp).toBe(4_000_000);
-    expect(dec10Deposit?.category_slug).toBe("deposits");
-    expect(dec10Gastos?.expense_month).toBe("2024-12");
+    const movId = insertCheckingCartolaWithdrawal(
+      corrienteId,
+      "2099-03-10",
+      -4_600_000,
+      "TRASPASO A FONDO RESERVA",
+      { cartolaMonth: "2099-03", idx: 9998833 }
+    );
+    try {
+      const decLines = buildCheckingGastosLines({
+        accountId: corrienteId,
+        depositCandidates: deposits,
+        checkingCredits: [],
+      }).filter((l) => l.statement_line_id === movId);
+      expect(decLines).toHaveLength(2);
+      const gastos = decLines.find((l) => !l.checking_purchase_portion);
+      const deposit = decLines.find((l) => l.checking_purchase_portion === "deposit");
+      expect(gastos?.amount_clp).toBe(600_000);
+      expect(gastos?.category_slug).toBe("deposits");
+      expect(deposit?.amount_clp).toBe(4_000_000);
+      expect(deposit?.category_slug).toBe("deposits");
+      expect(gastos?.expense_month).toBe("2099-03");
+    } finally {
+      deleteCheckingMovements([movId]);
+    }
   });
 
   it("Fintual reserva wires emit deposit-portion lines (excluded from gastos totals), not gastos", () => {
-    const lines = buildCheckingGastosLines();
-    const fintualJan = lines.filter(
-      (l) =>
-        l.source === "checking" &&
-        l.expense_month === "2025-01" &&
-        l.merchant?.includes("FINTUAL")
+    const corrienteId = checkingAccountId();
+    const movId = insertCheckingCartolaWithdrawal(
+      corrienteId,
+      "2099-01-14",
+      -500_000,
+      "0768106274 Transf a FINTUAL ADMINISTRADORA G",
+      { cartolaMonth: "2099-01", idx: 9998834 }
     );
-    // Fintual wires are capital flows, not consumption. They emit deposit-portion lines (so the funded
-    // Reserva2 deposit gets linked through the shared matcher) with the `deposits` category, which is
-    // excluded from gastos totals — never a gastos-portion (consumption) line.
-    for (const l of fintualJan) {
-      expect(l.checking_purchase_portion).toBe("deposit");
-      expect(l.category_slug).toBe("deposits");
+    const reserva: DepositMatchCandidate = {
+      occurred_on: "2099-01-15",
+      amount_clp: 500_000,
+      account_id: 990_041,
+      category_slug: "fondo_reserva",
+      group_slug: "cash_eqs",
+      claim_key: "flowsCheckingGastos-fintual-reserva",
+      movement_id: null,
+    };
+    try {
+      // Fintual wires are capital flows, not consumption. They emit deposit-portion lines (so the funded
+      // Reserva2 deposit gets linked through the shared matcher) with the `deposits` category, which is
+      // excluded from gastos totals — never a gastos-portion (consumption) line.
+      const fintual = buildCheckingGastosLines({
+        accountId: corrienteId,
+        depositCandidates: [reserva],
+        checkingCredits: [],
+      }).filter((l) => l.statement_line_id === movId);
+      expect(fintual).toHaveLength(1);
+      expect(fintual[0]!.amount_clp).toBe(500_000);
+      expect(fintual[0]!.checking_purchase_portion).toBe("deposit");
+      expect(fintual[0]!.category_slug).toBe("deposits");
+      // With no deposit to fund, the wire is still no gastos line.
+      const unpaired = buildCheckingGastosLines({
+        accountId: corrienteId,
+        depositCandidates: [],
+        checkingCredits: [],
+      }).filter((l) => l.statement_line_id === movId);
+      expect(unpaired).toEqual([]);
+    } finally {
+      deleteCheckingMovements([movId]);
     }
   });
 
   it("investment deposit match ignores cash/efectivo inflows", () => {
-    const reservaId = fondoReservaAccountId();
-    if (reservaId == null) return;
+    const reservaId = 990_021;
     const deposits: DepositMatchCandidate[] = [
       {
         occurred_on: "2024-03-15",
@@ -1297,38 +1358,57 @@ describe("flowsCheckingGastos", () => {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(legacyId);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(acctId);
     }
-    const row = db
-      .prepare(`SELECT id FROM movements WHERE note LIKE 'import:cartola|%' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!row) return;
-    const full = db
-      .prepare(`SELECT account_id, note FROM movements WHERE id = ?`)
-      .get(row.id) as { account_id: number; note: string };
-    const key = checkingGastosMovementPurchaseKey(row.id);
-    expect(key.startsWith(`checking-cartola:${full.account_id}:`)).toBe(true);
-    expect(key).toBe(checkingCartolaStablePurchaseKey(full.account_id, full.note));
+    // A cartola row → the stable key built from its note.
+    const corrienteId = checkingAccountId();
+    const cartolaId = insertCheckingCartolaWithdrawal(corrienteId, "2099-02-03", -7_000, "Compra ACME STORE", {
+      cartolaMonth: "2099-02",
+      idx: 9998835,
+    });
+    try {
+      const full = db
+        .prepare(`SELECT account_id, note FROM movements WHERE id = ?`)
+        .get(cartolaId) as { account_id: number; note: string };
+      const key = checkingGastosMovementPurchaseKey(cartolaId);
+      expect(key).toBe(`checking-cartola:${corrienteId}:2099-02:2099-02-03:-7000:9998835`);
+      expect(key).toBe(checkingCartolaStablePurchaseKey(full.account_id, full.note));
+    } finally {
+      deleteCheckingMovements([cartolaId]);
+    }
   });
 
   it("assigns category to checking gastos movement when present in DB", () => {
-    const payload = buildFlowsExpensesPayload();
-    const line = payload.lines.find((ln) => ln.source === "checking" && ln.value_clp > 0);
-    if (!line) return;
-
-    expect(checkingGastosMovementBelongs(line.statement_line_id).ok).toBe(true);
-
-    assignFlowExpenseLineCategory({
-      source: "checking",
-      lineId: line.statement_line_id,
-      unique: true,
-      categorySlug: "fun",
+    const corrienteId = checkingAccountId();
+    const movId = insertCheckingCartolaWithdrawal(corrienteId, "2099-02-07", -8_000, "Compra ACME STORE", {
+      cartolaMonth: "2099-02",
+      idx: 9998836,
     });
+    const key = checkingGastosMovementPurchaseKey(movId, "gastos");
+    try {
+      const payload = buildFlowsExpensesPayload();
+      const line = payload.lines.find((ln) => ln.source === "checking" && ln.statement_line_id === movId);
+      expect(line).toBeDefined();
+      expect(line!.value_clp).toBe(8_000);
+      expect(line!.category_slug).not.toBe("fun");
 
-    const after = buildFlowsExpensesPayload();
-    const updated = after.lines.find(
-      (ln) => ln.source === "checking" && ln.statement_line_id === line.statement_line_id
-    );
-    expect(updated?.category_slug).toBe("fun");
-    expect(updated?.category_unique).toBe(true);
+      expect(checkingGastosMovementBelongs(movId).ok).toBe(true);
+
+      assignFlowExpenseLineCategory({
+        source: "checking",
+        lineId: movId,
+        unique: true,
+        categorySlug: "fun",
+      });
+
+      const after = buildFlowsExpensesPayload();
+      const updated = after.lines.find((ln) => ln.source === "checking" && ln.statement_line_id === movId);
+      expect(updated?.category_slug).toBe("fun");
+      expect(updated?.category_unique).toBe(true);
+    } finally {
+      db.prepare(
+        `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
+      ).run(corrienteId, key);
+      deleteCheckingMovements([movId]);
+    }
   });
 
   it("matches deposit within 3 days and exact CLP", () => {
@@ -1364,8 +1444,7 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("excludes ledger anchor movements from gastos and cartola credit matching", () => {
-    const accountId = cartolaCashAccountIdOptional("cuenta_vista");
-    if (accountId == null) return;
+    const accountId = requireVistaId();
 
     const depositId = db
       .prepare(
@@ -1452,8 +1531,7 @@ describe("flowsCheckingGastos", () => {
 
   it("persists cleared category across payload rebuild", () => {
     const corrienteId = checkingAccountId();
-    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
-    if (vistaId == null) return;
+    const vistaId = requireVistaId();
 
     const movementId = insertCheckingCartolaWithdrawal(
       corrienteId,

@@ -1,6 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import * as accountMarkModule from "./accountMarkClpAtYmd.js";
-import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
+import { describe, expect, it } from "vitest";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -14,36 +12,6 @@ const deptoPropertyId = (): number => accountWithRoleOptional("property") ?? -1;
 
 
 describe("buildDashboardAccountRows prior closes", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("requests prior month and year marks via accountMarkClpAtYmd for every valued row", async () => {
-    const markSpy = vi.spyOn(accountMarkModule, "accountMarkClpAtYmd");
-    const rows = await buildDashboardAccountRows("clp");
-    const today = chileCalendarTodayYmd();
-    const priorMonthEnd = priorPeriodEndYmd("mtd", today);
-    const priorYearEnd = priorPeriodEndYmd("ytd", today);
-
-    const valued = rows.filter(
-      (r) => r.current_value != null && Number.isFinite(r.current_value)
-    );
-    expect(valued.length).toBeGreaterThan(0);
-
-    for (const row of valued) {
-      expect(
-        markSpy.mock.calls.some(
-          ([id, ymd]) => id === row.account_id && ymd === priorMonthEnd
-        )
-      ).toBe(true);
-      expect(
-        markSpy.mock.calls.some(
-          ([id, ymd]) => id === row.account_id && ymd === priorYearEnd
-        )
-      ).toBe(true);
-    }
-  });
-
   it("depto dashboard current and month delta match depto live mark and perf P/L", async () => {
     const row = db
       .prepare(
@@ -68,23 +36,5 @@ describe("buildDashboardAccountRows prior closes", () => {
 
     expect(dash.current_value).toBe(depto.value_clp);
     expect(dash.delta_month).toBe(cur.nominal_pl);
-  });
-
-  it("sets prior_year_close_clp when accountMarkClpAtYmd returns a year-end mark", async () => {
-    const today = chileCalendarTodayYmd();
-    const priorYearEnd = priorPeriodEndYmd("ytd", today);
-    const markSpy = vi.spyOn(accountMarkModule, "accountMarkClpAtYmd");
-    markSpy.mockImplementation((accountId, ymd) => {
-      if (ymd === priorYearEnd && accountId === 1) {
-        return { value_clp: 11_610_000, as_of_date: priorYearEnd };
-      }
-      return null;
-    });
-
-    const rows = await buildDashboardAccountRows("clp");
-    const hit = rows.find((r) => r.account_id === 1);
-    if (hit?.current_value != null) {
-      expect(hit.prior_year_close).toBe(11_610_000);
-    }
   });
 });

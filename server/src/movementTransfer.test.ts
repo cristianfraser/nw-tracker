@@ -95,27 +95,6 @@ describe("movementTransfer", () => {
     expect(unitsDeltaForAccountMovement(row, fromId)).toBe(0);
   });
 
-  it("stock_buy transfer debits USD from the cash from-leg regardless of provenance notes", () => {
-    // The migration:usd-cash zero-debit gate was removed with tranche B (2026-08): every
-    // funding wire is a real transfer credit now, so buys must debit the cash ledger for real.
-    const row = {
-      account_id: null,
-      from_account_id: fromId,
-      to_account_id: toId,
-      amount: 612.36,
-      currency: "usd",
-      counter_amount: null,
-      counter_currency: null,
-      occurred_on: "2024-12-10",
-      note: "migration:usd-cash|from=85|migration:stock-flow-kind",
-      units_delta: 1,
-      flow_kind: "stock_buy",
-      ticker: "SPY",
-    };
-    expect(signedNativeDeltaForAccountMovement(row, fromId, "usd")).toBe(-612.36);
-    expect(signedNativeDeltaForAccountMovement(row, toId, "usd")).toBe(0);
-  });
-
   it("single-leg compra credits USD regardless of provenance notes (gates removed with tranche B)", () => {
     const row = {
       account_id: fromId,

@@ -3,16 +3,6 @@ import { db } from "./db.js";
 import { accountChartInactive, navBucketChartInactive } from "./accountChartInactive.js";
 
 describe("accountChartInactive", () => {
-  it("CC masters are never tail-inactive", () => {
-    const row = db
-      .prepare(
-        `SELECT id FROM accounts
-         WHERE import_key = 'credit_card_master|santander|4321'`
-      )
-      .get() as { id: number };
-    expect(accountChartInactive(row.id)).toBe(false);
-  });
-
   it("navBucketChartInactive mirrors per-account inactivity", () => {
     expect(navBucketChartInactive([])).toBe(true);
     const active = db

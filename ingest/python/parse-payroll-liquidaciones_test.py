@@ -1,7 +1,4 @@
-"""Tests for payroll liquidación parsing.
-
-The ``test_*`` functions read personal OCR scans and skip without them; ``HeaderColumnTest``
-is synthetic and runs anywhere:
+"""Tests for payroll liquidación parsing (synthetic text only):
   python3 ingest/python/parse-payroll-liquidaciones_test.py
 """
 
@@ -23,28 +20,6 @@ spec = importlib.util.spec_from_file_location(
 mod = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(mod)
-
-CFRASER = SCRIPT_DIR.parent.parent / "cfraser"
-
-
-def test_unholster_scan_april_2018_liquido():
-    path = CFRASER / "liquidaciones/2018/2018-04.pdf"
-    if not path.is_file():
-        return
-    parsed = mod.parse_payroll_pdf(path)
-    assert parsed["format"] == "unholster_scan"
-    assert parsed["liquido_clp"] == 304_804
-    assert parsed["employer_name"].upper().startswith("UNHOLSTER")
-
-
-def test_unholster_scan_september_2018_liquido():
-    path = CFRASER / "liquidaciones/2018/2018-09.pdf"
-    if not path.is_file():
-        return
-    parsed = mod.parse_payroll_pdf(path)
-    assert parsed["format"] == "unholster_scan"
-    assert parsed["liquido_clp"] == 1_271_796
-
 
 # Talana/Buk's header table (synthetic values): the value row sits under the headers.
 TALANA_HEADER = (

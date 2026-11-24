@@ -3,6 +3,7 @@ import { db } from "./db.js";
 import { equityBrokeragePositionMeta } from "./accountPosition.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import { clearLiveMarketQuotesForTest, insertLiveMarketQuote } from "./liveMarketQuotesDb.js";
+import { deleteMovements, insertMovement } from "./movementWrites.js";
 
 afterEach(() => {
   clearLiveMarketQuotesForTest();
@@ -11,21 +12,51 @@ afterEach(() => {
 /** Values convert at the sell rate: the stored mid less the inferred half spread (`rates.ts`). */
 const SELL = (mid: number): number => mid - 2;
 
+/** A synthetic US-quoted holding (`VITEST_PM_USD`, declared in `instrumentFixtures.ts`): its account and buy. */
+const TICKER = "VITEST_PM_USD";
+const UNITS = 10;
+
+function createHolding(boughtOn: string): { accountId: number; movementId: number } {
+  const leaf = db
+    .prepare(`SELECT id FROM asset_groups WHERE slug LIKE 'brokerage_acciones__%' LIMIT 1`)
+    .get() as { id: number } | undefined;
+  if (!leaf) throw new Error("no brokerage_acciones leaf asset group");
+  const accountId = Number(
+    db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker)
+         VALUES (?, 'Vitest · usd equity hold fixture', 'import:panel|ticker=VITEST_PM_USD|key=vitest-pm-usd', ?)`
+      )
+      .run(leaf.id, TICKER).lastInsertRowid
+  );
+  const movementId = insertMovement({
+    accountId,
+    amount: 5000,
+    currency: "usd",
+    occurredOn: boughtOn,
+    note: "vitest-pm-usd-buy",
+    flowKind: "stock_buy",
+    unitsDelta: UNITS,
+  });
+  return { accountId, movementId };
+}
+
+function deleteHolding(h: { accountId: number; movementId: number } | null): void {
+  if (!h) return;
+  deleteMovements([h.movementId]);
+  db.prepare(`DELETE FROM accounts WHERE id = ?`).run(h.accountId);
+}
+
 describe("equityBrokeragePositionMeta", () => {
   it("uses live_market_quotes for Chile today during NYSE session", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id, a.equity_ticker FROM accounts a
-         WHERE a.equity_ticker = 'SPY' LIMIT 1`
-      )
-      .get() as { id: number; equity_ticker: string };
+    const holding = createHolding("2026-05-01");
 
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-19T15:00:00.000Z"));
     try {
       const fetchedAt = new Date().toISOString();
       insertLiveMarketQuote({
-        symbol: "SPY",
+        symbol: TICKER,
         kind: "equity",
         currency: "usd",
         value: 600,
@@ -43,14 +74,14 @@ describe("equityBrokeragePositionMeta", () => {
         fetched_at: fetchedAt,
       });
 
-      const meta = equityBrokeragePositionMeta(row.id, "SPY", "2026-05-19", new Date("2026-05-19T15:00:00.000Z"));
-      const units = meta?.units ?? 0;
-      expect(units).toBeGreaterThan(0);
-
-      expect(meta!.mark_unit_price_clp).toBeCloseTo(600 * SELL(900), 0);
-      expect(meta!.mark_value_clp).toBeCloseTo(units * 600 * SELL(900), -2);
+      const meta = equityBrokeragePositionMeta(holding.accountId, TICKER, "2026-05-19", new Date("2026-05-19T15:00:00.000Z"));
+      expect(meta?.units).toBeCloseTo(UNITS, 9);
+      expect(meta?.mark_as_of).toBe("2026-05-19");
+      expect(meta!.mark_unit_price_clp).toBeCloseTo(600 * SELL(900), 4);
+      expect(meta!.mark_value_clp).toBeCloseTo(UNITS * 600 * SELL(900), 2);
     } finally {
       vi.useRealTimers();
+      deleteHolding(holding);
     }
   });
 });
@@ -60,33 +91,13 @@ describe("equityBrokeragePositionMeta", () => {
  * 2099-01-06 (Tue) bar 500, a session print of 510 on 2099-01-07 (Wed), 10 shares.
  */
 describe("equityBrokeragePositionMeta after the close (hold + fx frame)", () => {
-  const TICKER = "VITEST_PM_USD";
   const TODAY = "2099-01-07";
-  const UNITS = 10;
+  let holding: { accountId: number; movementId: number } | null = null;
   let accountId: number | null = null;
-  let movId: number | null = null;
 
-  function seedFixture(): boolean {
-    const leaf = db
-      .prepare(`SELECT id FROM asset_groups WHERE slug LIKE 'brokerage_acciones__%' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!leaf) return false;
-    accountId = Number(
-      db
-        .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker)
-           VALUES (?, 'Vitest · usd equity hold fixture', 'import:panel|ticker=VITEST_PM_USD|key=vitest-pm-usd', ?)`
-        )
-        .run(leaf.id, TICKER).lastInsertRowid
-    );
-    movId = Number(
-      db
-        .prepare(
-          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind, units_delta)
-           VALUES (?, 5000, 'usd', '2099-01-02', 'vitest-pm-usd-buy', 'stock_buy', ?)`
-        )
-        .run(accountId, UNITS).lastInsertRowid
-    );
+  function seedFixture(): void {
+    holding = createHolding("2099-01-02");
+    accountId = holding.accountId;
     db.prepare(
       `INSERT OR REPLACE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, '2099-01-06', 500, 'usd')`
     ).run(TICKER);
@@ -109,21 +120,19 @@ describe("equityBrokeragePositionMeta after the close (hold + fx frame)", () => 
       previous_value: 900,
       fetched_at: "2099-01-07T21:29:00.000Z",
     });
-    return true;
   }
 
   afterEach(() => {
     vi.useRealTimers();
     db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(TICKER);
     db.prepare(`DELETE FROM fx_daily WHERE date >= '2099-01-01'`).run();
-    if (movId != null) db.prepare(`DELETE FROM movements WHERE id = ?`).run(movId);
-    if (accountId != null) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
-    movId = null;
+    deleteHolding(holding);
+    holding = null;
     accountId = null;
   });
 
   it("holds the session's last print at the live fx between the NYSE close and the fx day end", () => {
-    if (!seedFixture()) return;
+    seedFixture();
     // 16:30 New York (EST): NYSE closed, fx day open until 17:05; Chile 18:30 the same date.
     const now = new Date("2099-01-07T21:30:00.000Z");
     vi.useFakeTimers();
@@ -137,7 +146,7 @@ describe("equityBrokeragePositionMeta after the close (hold + fx frame)", () => 
   });
 
   it("prices today's bar at the live fx while the fx day is open, the stored close after", () => {
-    if (!seedFixture()) return;
+    seedFixture();
     db.prepare(
       `INSERT OR REPLACE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, 512, 'usd')`
     ).run(TICKER, TODAY);

@@ -3,7 +3,8 @@ import { db } from "./db.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { getAccountValuationTimeseries, getGroupValuationTimeseries } from "./valuationTimeseries.js";
 
-function cuentaCorrienteAccountId(): number | null {
+/** The Vitest person's checking account: movements only, no stored valuations. */
+function cuentaCorrienteAccountId(): number {
   const row = db
     .prepare(
       `SELECT a.id FROM accounts a
@@ -12,18 +13,21 @@ function cuentaCorrienteAccountId(): number | null {
        LIMIT 1`
     )
     .get() as { id: number } | undefined;
-  return row?.id ?? null;
+  if (!row) throw new Error("test person has no cuenta corriente account");
+  const movements = db
+    .prepare(`SELECT COUNT(*) AS n FROM movements WHERE account_id = ?`)
+    .get(row.id) as { n: number };
+  if (movements.n === 0) throw new Error(`cuenta corriente ${row.id} has no movements`);
+  const valuations = db
+    .prepare(`SELECT COUNT(*) AS n FROM valuations WHERE account_id = ?`)
+    .get(row.id) as { n: number };
+  if (valuations.n !== 0) throw new Error(`cuenta corriente ${row.id} has stored valuations`);
+  return row.id;
 }
 
 describe("getAccountValuationTimeseries (checking)", () => {
   it("returns month-end points from movement balances when valuations table is empty", () => {
     const accountId = cuentaCorrienteAccountId();
-    if (accountId == null) return;
-
-    const hasMovements = db
-      .prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? LIMIT 1`)
-      .get(accountId) as { o: number } | undefined;
-    if (!hasMovements) return;
 
     const ts = getAccountValuationTimeseries(accountId, "clp");
     expect(ts).not.toBeNull();
@@ -41,12 +45,6 @@ describe("getAccountValuationTimeseries (checking)", () => {
 describe("getGroupValuationTimeseries (cash_eqs checking)", () => {
   it("includes non-null checking series when movements exist", () => {
     const accountId = cuentaCorrienteAccountId();
-    if (accountId == null) return;
-
-    const hasMovements = db
-      .prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? LIMIT 1`)
-      .get(accountId) as { o: number } | undefined;
-    if (!hasMovements) return;
 
     const ts = getGroupValuationTimeseries("cash_eqs", "clp");
     expect(ts.accounts_in_group.points.length).toBeGreaterThan(0);
@@ -56,5 +54,9 @@ describe("getGroupValuationTimeseries (cash_eqs checking)", () => {
       (p) => p[dk] != null && Number.isFinite(Number(p[dk]))
     );
     expect(withValue.length).toBeGreaterThan(0);
+    // Every checking point is the movement balance at its date (the ledger the account chart reads).
+    for (const p of withValue) {
+      expect(Number(p[dk])).toBe(checkingMovementBalanceClpAtCached(accountId, String(p.as_of_date)));
+    }
   });
 });
