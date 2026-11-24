@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { MessagesTable } from "../../components/messages/MessagesTable";
+import { MessageList } from "../../components/messages/MessageList";
 import { useMarkMessagesReadMutation, useMessages } from "../../queries/hooks";
 import { DEMO_BUILD } from "../../dashboardPath";
 
@@ -36,16 +36,12 @@ export function NotificationsPage() {
 
   return (
     <>
-      <MessagesTable
+      <MessageList
         rows={notifications}
         showReadAt
         emptyLabel={t("notifications.empty")}
         showMoreLabel={t("notifications.showMore")}
         showLessLabel={t("notifications.showLess")}
-        colDate={t("notifications.colDate")}
-        colTitle={t("notifications.colTitle")}
-        colDetail={t("notifications.colDetail")}
-        colRead={t("notifications.colRead")}
         loading={notificationsPending}
       />
     </>

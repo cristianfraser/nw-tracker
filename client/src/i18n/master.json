@@ -1656,13 +1656,13 @@
     }
   },
   "messages": {
-    "showMoreDetail": {
-      "en": "See more…",
-      "es": "Ver más…"
+    "readAt": {
+      "en": "Read {{when}}",
+      "es": "Leído {{when}}"
     },
-    "detailModalClose": {
-      "en": "Close",
-      "es": "Cerrar"
+    "unread": {
+      "en": "Unread",
+      "es": "Sin leer"
     }
   },
   "notifications": {
@@ -1681,22 +1681,6 @@
     "showLess": {
       "en": "Show less…",
       "es": "Mostrar menos…"
-    },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colTitle": {
-      "en": "Title",
-      "es": "Título"
-    },
-    "colDetail": {
-      "en": "Detail",
-      "es": "Detalle"
-    },
-    "colRead": {
-      "en": "Read",
-      "es": "Leído"
     }
   },
   "importSync": {
@@ -1809,22 +1793,6 @@
     "showLess": {
       "en": "Show less…",
       "es": "Mostrar menos…"
-    },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colTitle": {
-      "en": "Title",
-      "es": "Título"
-    },
-    "colDetail": {
-      "en": "Detail",
-      "es": "Detalle"
-    },
-    "colRead": {
-      "en": "Read",
-      "es": "Leído"
     },
     "sync": {
       "lastSync": {

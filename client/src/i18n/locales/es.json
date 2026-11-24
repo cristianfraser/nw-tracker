@@ -525,18 +525,14 @@
     "groupAccountsCount": "({{count}} cuentas)"
   },
   "messages": {
-    "showMoreDetail": "Ver más…",
-    "detailModalClose": "Cerrar"
+    "readAt": "Leído {{when}}",
+    "unread": "Sin leer"
   },
   "notifications": {
     "unreadBadge": "{{count}} sin leer",
     "empty": "Sin notificaciones.",
     "showMore": "Mostrar más…",
-    "showLess": "Mostrar menos…",
-    "colDate": "Fecha",
-    "colTitle": "Título",
-    "colDetail": "Detalle",
-    "colRead": "Leído"
+    "showLess": "Mostrar menos…"
   },
   "importSync": {
     "syncLogTitle": "Registro de sync",
@@ -568,10 +564,6 @@
     "importedNo": "{{account}}: falta documento de {{month}}",
     "showMore": "Mostrar más…",
     "showLess": "Mostrar menos…",
-    "colDate": "Fecha",
-    "colTitle": "Título",
-    "colDetail": "Detalle",
-    "colRead": "Leído",
     "sync": {
       "lastSync": "Último sync: {{time}} ({{ago}})",
       "lastSyncNever": "Último sync: —",

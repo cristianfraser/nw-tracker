@@ -525,18 +525,14 @@
     "groupAccountsCount": "({{count}} accounts)"
   },
   "messages": {
-    "showMoreDetail": "See more…",
-    "detailModalClose": "Close"
+    "readAt": "Read {{when}}",
+    "unread": "Unread"
   },
   "notifications": {
     "unreadBadge": "{{count}} unread",
     "empty": "No notifications.",
     "showMore": "Show more…",
-    "showLess": "Show less…",
-    "colDate": "Date",
-    "colTitle": "Title",
-    "colDetail": "Detail",
-    "colRead": "Read"
+    "showLess": "Show less…"
   },
   "importSync": {
     "syncLogTitle": "Sync log",
@@ -568,10 +564,6 @@
     "importedNo": "{{account}}: {{month}} document missing",
     "showMore": "Show more…",
     "showLess": "Show less…",
-    "colDate": "Date",
-    "colTitle": "Title",
-    "colDetail": "Detail",
-    "colRead": "Read",
     "sync": {
       "lastSync": "Last sync: {{time}} ({{ago}})",
       "lastSyncNever": "Last sync: —",
