@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { readPref, writePref } from "../../usePersistedPref";
 import { ChevronIcon } from "../ui/ChevronIcon";
 import { ColorMarker } from "../ui/ColorMarker";
 import { Link } from "react-router-dom";
@@ -97,6 +98,34 @@ function Spark({ points, className }: { points: readonly { x: number; y: number 
       <polyline points={d} vectorEffect="non-scaling-stroke" />
     </svg>
   );
+}
+
+const GLANCE_OPEN_LS_PREFIX = "nw-tracker.groupGlance.open.";
+
+/**
+ * A child row starts open while it holds something and every row under it is a group (a group of
+ * groups); one holding accounts — a basket, a leaf group, a group mixing accounts and sub-groups —
+ * or a sold-out one starts closed. Same rule as the accounts tree.
+ */
+function openByDefault(row: GroupGlanceRowDto): boolean {
+  return row.held && row.members.length > 0 && row.members.every((m) => m.kind === "group");
+}
+
+/** Tolerant parse of the stored choices (a per-viewer convenience): anything else is no choice. */
+function parseOpenChoices(raw: string | null): Record<string, boolean> {
+  if (raw == null) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const out: Record<string, boolean> = {};
+  for (const [key, open] of Object.entries(parsed)) {
+    if (typeof open === "boolean") out[key] = open;
+  }
+  return out;
 }
 
 function rowKey(row: Pick<GroupGlanceRowDto, "kind" | "slug" | "account_id">): string {
@@ -209,8 +238,8 @@ function PendingRow({ label, total = false }: { label: string; total?: boolean }
 
 /**
  * The children table (server `group_glance`): the group's own row first, a hairline, then one
- * row per child heaviest first, a basket child opening one level (its members indented under a
- * caret), sold-out children last and muted. One row list at every width: a container query keeps
+ * row per child heaviest first, a child group opening one level (its rows indented under a caret;
+ * `openByDefault`, toggles kept per page), sold-out children last and muted. One row list at every width: a container query keeps
  * name, value, mes and total when narrow (no horizontal scroll). Each dot takes the child's chart
  * colour (`colorFor`, the page's group colour maps), so dot, band and bar match.
  */
@@ -233,16 +262,19 @@ export function GroupGlanceTable({
   loading?: boolean;
 }) {
   const { t } = useTranslation();
-  // A basket child opens by default while it holds something; a sold-out one stays closed. The
-  // set holds the rows toggled away from that default.
-  const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
-  const toggle = (key: string) =>
-    setToggled((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  // The viewer's open/closed choices, kept per page; a row without one follows `openByDefault`.
+  const storageKey = `${GLANCE_OPEN_LS_PREFIX}${glance?.slug ?? ""}`;
+  const [choices, setChoices] = useState<{ key: string; open: Record<string, boolean> }>(() => ({
+    key: storageKey,
+    open: parseOpenChoices(readPref(storageKey)),
+  }));
+  // Another page (or the slug arriving after the pending frame) reads its own stored choices.
+  const openChoices = choices.key === storageKey ? choices.open : parseOpenChoices(readPref(storageKey));
+  const toggle = (key: string, current: boolean) => {
+    const next = { ...openChoices, [key]: !current };
+    setChoices({ key: storageKey, open: next });
+    if (glance) writePref(storageKey, JSON.stringify(next));
+  };
   return (
     <div className={loadableClass(loading, styles.frame)}>
       <div role="table" className={styles.table} aria-label={t("groupPage.investmentGlance.tableLabel", { name: title })}>
@@ -274,15 +306,15 @@ export function GroupGlanceTable({
             {glance.rows.map((row) => {
               const key = rowKey(row);
               const color = colorFor(row);
-              const open = row.held !== toggled.has(key);
               const hasMembers = row.members.length > 0;
+              const open = hasMembers && (openChoices[key] ?? openByDefault(row));
               return (
                 <div key={key} role="rowgroup" className={styles.rowGroup}>
                   <GlanceRow
                     row={row}
                     color={color}
                     variant="child"
-                    caret={hasMembers ? { open, onToggle: () => toggle(key) } : undefined}
+                    caret={hasMembers ? { open, onToggle: () => toggle(key, open) } : undefined}
                   />
                   {hasMembers && open
                     ? row.members.map((m) => (

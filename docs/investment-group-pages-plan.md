@@ -27,7 +27,7 @@ layout before any payload. Never a slug list in the client.
    row** (the group itself: bold name, its colour dot, its sparkline, 100%), a hairline, then one row per
    child heaviest first: colour dot (the child's chart colour: the same one its line/area/bar uses),
    name → its page, own-scale one-year sparkline, value, thin share bar + %, mes %, año %, total P/L,
-   aportes. A basket child opens one level (its members indented, dimmer dot, collapsible caret).
+   aportes. A child group opens one level (collapsible caret, its rows indented with a dimmer dot): a basket its member accounts, any other group its own rows as its page lists them. It starts open while it holds something and every row under it is a group; a group holding accounts starts closed. The viewer's toggles are kept per page in localStorage.
    Sold-out children last, muted, value $0, no %, still their total P/L and aportes. One line per row on
    desktop; below its container breakpoint it keeps name, value, mes and total (no horizontal scroll).
 5. **Charts pair**: «Valor por posición» (value stacked by child, from the grouped valuation block's
@@ -70,7 +70,7 @@ export interface GroupGlanceRowDto {
   held: boolean;                // holds something today
   /** One year ending today, own scale: up to ~60 points, x/y in 0..1 (x by calendar day from today−364). */
   spark: { x: number; y: number }[];
-  /** A basket child's members (one level); empty otherwise. */
+  /** One level under a child row: a basket's accounts, another group's own rows; empty otherwise. */
   members: GroupGlanceRowDto[];
 }
 

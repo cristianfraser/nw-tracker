@@ -161,7 +161,11 @@ export interface GroupGlanceRowDto {
   held: boolean;
   /** One year ending today, own scale: up to ~60 points, x/y in 0..1 (x by calendar day from today−364). */
   spark: { x: number; y: number }[];
-  /** A basket child's members (one level); empty otherwise. */
+  /**
+   * One level under a child row: a basket's member accounts, any other child group's own rows (its
+   * sub-groups and accounts, as its page lists them, without members of their own); empty for an
+   * account, the total row and the members themselves.
+   */
   members: GroupGlanceRowDto[];
 }
 

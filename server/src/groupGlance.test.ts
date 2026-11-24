@@ -186,10 +186,14 @@ describe("group_glance on the nav-context payload", () => {
     expect(s3!.total_pl!.value).toBeCloseTo(10_000, 6);
     expect(s2!.deposits!.value).toBeCloseTo(300_000, 6);
     expect(s2!.total_pl!.value).toBeCloseTo(-15_000, 6);
-    // Only the basket child opens its members.
+    // Every child group carries one level: the basket its members, the others their own rows —
+    // here their accounts — none with a chart line or members of its own.
     expect(s1!.members.map((m) => m.account_id)).toEqual([ids.stockA, ids.cajaA]);
-    expect(s1!.members.every((m) => m.kind === "account" && m.chart_line_account_id == null)).toBe(true);
-    expect(s2!.members).toEqual([]);
+    expect(new Set(s2!.members.map((m) => m.account_id))).toEqual(new Set([ids.stockB, ids.cajaB]));
+    expect(new Set(s3!.members.map((m) => m.account_id))).toEqual(new Set([ids.stockC, ids.cajaC]));
+    for (const m of [s1!, s2!, s3!].flatMap((r) => r.members)) {
+      expect(m).toMatchObject({ kind: "account", chart_line_account_id: null, members: [] });
+    }
   });
 
   it("takes every figure from the card metrics, the total row being the group's own card", async () => {

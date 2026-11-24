@@ -10,7 +10,8 @@
  * - the children: the group's grouped chart plan (`buildNavChartBucketPlan(node, true)` over the
  *   chart node, `getNavChartGroupNodeBySlug`) — so a row, its valuation line and its P/L bar are one
  *   membership. When the page draws no grouped block (fewer than two buckets) its lines are the
- *   member accounts, and so are its rows. A child group's figures are its card's `child` variant,
+ *   member accounts, and so are its rows. A child group carries one level under it (`members`: a
+ *   basket's accounts, any other group's own rows by the same rule). A child group's figures are its card's `child` variant,
  *   `value.child` and `row_pct` (the figures of a row in its parent's table); an account's are its
  *   dashboard row's. A child without card metrics or a dashboard row throws;
  * - composition: the basket's rule (`compositionOnLastHeldDay`) over the group's counted member
@@ -195,18 +196,24 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     };
   };
 
-  const groupRow = (node: NavTreeNodeDto, chartLineAccountId: number | null): GroupGlanceRowDto => {
+  /**
+   * A child group's row. With `withMembers` it carries one level under it: a basket's member
+   * accounts, any other group's own children as its page lists them (`rowsUnder`, without members
+   * of their own).
+   */
+  const groupRow = (node: NavTreeNodeDto, chartLineAccountId: number | null, withMembers: boolean): GroupGlanceRowDto => {
     const c = requireCard(node.slug);
     const value = presentValue(finiteOrNull(c.value.child), c.value.fx_missing, `child ${node.slug}`);
     const held = Math.abs(value) > eps;
-    const members =
-      node.basket === true
+    const members = !withMembers
+      ? []
+      : node.basket === true
         ? sortGroupGlanceRows(
             [...new Set(node.member_account_ids ?? leafAccountIds(node))]
               .filter(counted)
               .map((id) => accountRow(id, null, colorOfAccountIn(node, id)))
           )
-        : [];
+        : rowsUnder(node, false);
     return {
       kind: "group",
       slug: node.slug,
@@ -229,28 +236,36 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     };
   };
 
-  // Children: the grouped chart plan's buckets, or the member accounts when the page draws
-  // per-account lines. Accounts no bucket holds keep their own line, so their own row.
-  const children: GroupGlanceRowDto[] = [];
-  const covered = new Set<number>();
-  if (shouldAggregateNavCharts(inp.chartNode, true)) {
-    const plan = buildNavChartBucketPlan(inp.chartNode, true);
-    for (const n of navChartBucketNavNodes(inp.chartNode, true)) {
-      const meta = plan.meta[n.slug];
-      if (!meta) throw new Error(`Group glance ${inp.slug}: bucket ${n.slug} is not in the chart plan`);
-      for (const id of leafAccountIds(n)) covered.add(id);
-      if (n.account_id != null) {
-        if (counted(n.account_id)) children.push(accountRow(n.account_id, meta.accountId, n.color_rgb));
-      } else {
-        children.push(groupRow(n, meta.accountId));
+  /**
+   * A group's rows, as its own page lists them: the grouped chart plan's buckets, or the member
+   * accounts when the page draws per-account lines. Accounts no bucket holds keep their own line,
+   * so their own row. The page's own rows (`asPage`) name their chart line and carry one level of
+   * members; a child group's rows (its members here) do neither.
+   */
+  function rowsUnder(node: NavTreeNodeDto, asPage: boolean): GroupGlanceRowDto[] {
+    const children: GroupGlanceRowDto[] = [];
+    const covered = new Set<number>();
+    if (shouldAggregateNavCharts(node, true)) {
+      const plan = buildNavChartBucketPlan(node, true);
+      for (const n of navChartBucketNavNodes(node, true)) {
+        const meta = plan.meta[n.slug];
+        if (!meta) throw new Error(`Group glance ${inp.slug}: bucket ${n.slug} of ${node.slug} is not in the chart plan`);
+        const line = asPage ? meta.accountId : null;
+        for (const id of leafAccountIds(n)) covered.add(id);
+        if (n.account_id != null) {
+          if (counted(n.account_id)) children.push(accountRow(n.account_id, line, n.color_rgb));
+        } else {
+          children.push(groupRow(n, line, asPage));
+        }
       }
     }
+    for (const id of new Set(leafAccountIds(node))) {
+      if (covered.has(id) || !counted(id)) continue;
+      children.push(accountRow(id, asPage ? id : null, colorOfAccountIn(node, id)));
+    }
+    return sortGroupGlanceRows(children);
   }
-  for (const id of new Set(leafAccountIds(inp.chartNode))) {
-    if (covered.has(id) || !counted(id)) continue;
-    children.push(accountRow(id, id, colorOfAccountIn(inp.chartNode, id)));
-  }
-  const rows = sortGroupGlanceRows(children);
+  const rows = rowsUnder(inp.chartNode, true);
 
   // Composition: the counted members' summed position on the last day any held something (the basket's rule).
   const memberIds = [...new Set(inp.chartNode.member_account_ids ?? leafAccountIds(inp.chartNode))].filter(counted);
