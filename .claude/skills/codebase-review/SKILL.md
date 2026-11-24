@@ -12,9 +12,9 @@ Produce a single markdown report reviewing this repo for code smells, improvemen
 
 ## Context to load first
 
-- **AGENTS.md is the source of truth for conventions**: fail-fast / no runtime fallbacks, UI copy via `client/src/i18n/locales/es.json`, `cfraser/` files are import-time inputs only, number formatting via `client/src/format.ts` (never hardcoded-locale `Intl.NumberFormat`/`toLocaleString` for numbers), desktop/mobile table parity, `DataOrigin` provenance, `asyncHandler` on async Express routes.
+- **AGENTS.md and the topic files under `.claude/rules/` are the source of truth for conventions** (AGENTS.md lists them; read the topic file of every area you review, since they load only when a matching file is read): fail-fast / no runtime fallbacks, UI copy via `client/src/i18n/master.json` (the locale files are generated), `cfraser/` files are import-time inputs only, number formatting via `client/src/format.ts` (never hardcoded-locale `Intl.NumberFormat`/`toLocaleString` for numbers), desktop/mobile table parity, `DataOrigin` provenance, `asyncHandler` on async Express routes.
 - **Check memory and prior reports before starting.** Findings already delivered in earlier audits (e.g. the 2026-07-03 read-only audit: formatting/i18n breaches, cfraser-read-on-request-path, route import bloat) must not be re-reported — only note whether they regressed or grew.
-- The **"Deferred: value + currency refactor"** section in AGENTS.md is known, deliberately-parked debt (movements.amount_clp/amount_usd, cc_billing_month_balances, …). Don't re-propose those tranches unless you found something that changes their priority.
+- The CLP/USD-fixed storage still listed under «Remaining work» in `docs/any-currency-plan.md` is known, deliberately-parked debt. Don't re-propose it unless you found something that changes its priority.
 
 ## Part 1 — Code smells (server/src and client/src)
 
@@ -22,7 +22,7 @@ Report concrete, cited issues only — each with `file:line` and 1–3 sentences
 
 **Violations of the repo's own rules** (the highest-signal smells in this codebase):
 - Runtime fallbacks or silent defaults where AGENTS.md says throw (`catch { return null/0/[] }`, "best guess" branches).
-- Hardcoded UI strings outside `es.json`; `Intl.NumberFormat` / `toLocaleString` with hardcoded locales for numbers.
+- Hardcoded UI strings outside `master.json`; `Intl.NumberFormat` / `toLocaleString` with hardcoded locales for numbers.
 - Formatted strings cached in `useMemo`/state without `decimalSeparator` in deps.
 - Desktop/mobile table drift (columns present in one rendering but not the other).
 - `fs` reads of `cfraser/` outside `server/scripts/` and import helpers.
@@ -32,7 +32,7 @@ Report concrete, cited issues only — each with `file:line` and 1–3 sentences
 - Functions/files that have outgrown their responsibility — `flowsCheckingGastos.ts` and `routes/dashboard.ts` are known heavyweights; measure whether anything else is in that class.
 - Copy-pasted logic that should share a helper; dead code / unused exports.
 - SQL built by string concatenation with interpolated values; N+1 query patterns on request paths.
-- Aggregation-cache keys or invalidation hooks inconsistent with the patterns in `aggregationCache.ts`.
+- Cache keys or families inconsistent with `cacheRegistry.ts` / `cacheFamilies.ts` (see `.claude/rules/market-data.md` «Cache invalidation»).
 
 **Test gaps:** server modules with meaningful business logic (money math, reconciliation, parsers) and no corresponding test file.
 
