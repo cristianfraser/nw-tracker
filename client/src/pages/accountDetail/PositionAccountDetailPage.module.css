@@ -1,5 +1,6 @@
 /* The unit-position page (PositionAccountDetailPage.tsx) on the page grid: the band [valuation chart 8 |
-   rail 4] between two hairlines, then row A [P/L mensual 7 | Rentabilidad 5] split by a hairline
+   rail 4] (7 | 5 from 880 to 1099, where four columns are too narrow for the rail's figures) between
+   two hairlines, then row A [P/L mensual 7 | Rentabilidad 5] split by a hairline
    in the gutter, then Movimientos and Detalle each across the page (side by side their rows
    could not stay on one line at the app's sizes). One column below 880, in DOM order (the chart
    before the rail). */
@@ -66,6 +67,17 @@
     margin-left: calc(-0.5 * var(--gutter));
     padding-left: calc(0.5 * var(--gutter));
     border-left: 1px solid var(--hairline);
+  }
+}
+
+/* The small desktop's narrow end: the rail takes a fifth column from the chart. */
+@media (min-width: 880px) and (max-width: 1099px) {
+  .band > .bandChart {
+    grid-column: span 7;
+  }
+
+  .band > .bandRail {
+    grid-column: span 5;
   }
 }
 
