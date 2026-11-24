@@ -3682,6 +3682,7 @@
       "prepagoNumber": { "en": "P{{n}}", "es": "P{{n}}" },
       "registerPayment": { "en": "Record payment", "es": "Registrar pago" },
       "paymentsCount": { "en": "{{count}} payments", "es": "{{count}} pagos" },
+      "paymentsCollapse": { "en": "fewer", "es": "menos" },
       "partAmortization": { "en": "principal", "es": "amortización" },
       "partExtra": { "en": "extra principal", "es": "amortización extra" },
       "partInterest": { "en": "interest", "es": "interés" },

@@ -1120,6 +1120,7 @@
       "prepagoNumber": "P{{n}}",
       "registerPayment": "Record payment",
       "paymentsCount": "{{count}} payments",
+      "paymentsCollapse": "fewer",
       "partAmortization": "principal",
       "partExtra": "extra principal",
       "partInterest": "interest",

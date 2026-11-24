@@ -268,7 +268,7 @@ export function DeptoPaymentsList({
         ) : null}
         {payments.rows.length > COLLAPSED_ROWS ? (
           <button type="button" className={styles.lnk} onClick={() => setExpanded((v) => !v)}>
-            {t("accountDetail.depto.paymentsCount", { count: expanded ? COLLAPSED_ROWS : payments.rows.length })}
+            {expanded ? t("accountDetail.depto.paymentsCollapse") : t("accountDetail.depto.paymentsCount", { count: payments.rows.length })}
           </button>
         ) : null}
       </div>

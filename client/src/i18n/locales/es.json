@@ -1120,6 +1120,7 @@
       "prepagoNumber": "P{{n}}",
       "registerPayment": "Registrar pago",
       "paymentsCount": "{{count}} pagos",
+      "paymentsCollapse": "menos",
       "partAmortization": "amortización",
       "partExtra": "amortización extra",
       "partInterest": "interés",
