@@ -53,13 +53,12 @@ function yearMonthParam(name: string, raw: string): string {
 }
 
 /**
- * The selector of `GET /api/flows/expenses/lines`: exactly one of `month=YYYY-MM`,
+ * The selector of `GET /api/flows/expenses/lines`: exactly one of
  * `account_id=<id>&billing_month=YYYY-MM` (both), `list=uncategorized|deposit_matched`,
  * `big_group=<slug>`; `include_pre_tax` is `0` or `1` (absent = 0) and refused with a facturación,
  * which has no pre-tax lines. Anything else is a 400.
  */
 export function parseExpenseLinesSelector(query: Record<string, unknown>): FlowsExpenseLinesSelector {
-  const month = singleParam(query, "month");
   const accountIdRaw = singleParam(query, "account_id");
   const billingMonth = singleParam(query, "billing_month");
   const list = singleParam(query, "list");
@@ -70,7 +69,6 @@ export function parseExpenseLinesSelector(query: Record<string, unknown>): Flows
     throw new ExpenseLinesRequestError(400, "account_id and billing_month go together");
   }
   const given = [
-    month !== undefined ? "month" : null,
     accountIdRaw !== undefined ? "account_id+billing_month" : null,
     list !== undefined ? "list" : null,
     bigGroup !== undefined ? "big_group" : null,
@@ -79,7 +77,7 @@ export function parseExpenseLinesSelector(query: Record<string, unknown>): Flows
     throw new ExpenseLinesRequestError(
       400,
       given.length === 0
-        ? "one selector required: month, account_id+billing_month, list or big_group"
+        ? "one selector required: account_id+billing_month, list or big_group"
         : `exactly one selector allowed, got ${given.join(", ")}`
     );
   }
@@ -88,7 +86,6 @@ export function parseExpenseLinesSelector(query: Record<string, unknown>): Flows
   }
   const includePreTax = preTaxRaw === "1";
 
-  if (month !== undefined) return { kind: "month", period_month: yearMonthParam("month", month), include_pre_tax: includePreTax };
   if (accountIdRaw !== undefined && billingMonth !== undefined) {
     if (preTaxRaw !== undefined) throw new ExpenseLinesRequestError(400, "include_pre_tax does not apply to a facturación");
     if (!POSITIVE_INT_RE.test(accountIdRaw)) {
@@ -207,8 +204,6 @@ export function selectExpenseLines(
   }
   const keep = (ln: FlowCcExpenseLineRow): boolean => {
     switch (selector.kind) {
-      case "month":
-        return ln.period_month === selector.period_month;
       case "uncategorized":
         return ln.pending_classification === true;
       case "deposit_matched":
@@ -224,8 +219,6 @@ function selectorCacheKey(selector: FlowsExpenseLinesSelector): string {
   switch (selector.kind) {
     case "facturacion":
       return `facturacion|${selector.account_id}|${selector.billing_month}`;
-    case "month":
-      return `month|${selector.period_month}|${selector.include_pre_tax ? 1 : 0}`;
     case "big_group":
       return `big_group|${selector.slug}|${selector.include_pre_tax ? 1 : 0}`;
     default:

@@ -5,7 +5,6 @@
 import type { CardLineKind } from "nw-tracker-contracts";
 import type {
   ExpenseLinePaymentName,
-  ExpenseMonthModalSection,
   LineRateSource,
   LineUnitValue,
   Money,
@@ -328,9 +327,6 @@ export type FlowCcExpenseLineRow = {
   /** What a line's pieces leave of it: the line's own expense, on its own day. */
   pieces_remainder?: true;
   /** The line's shape and row capabilities (`expenseLineShapes.ts`, the last step). */
-  period_month?: string;
-  counts_toward_gastos?: Record<"split" | "total", boolean>;
-  month_modal_sections?: Record<"split" | "total", ExpenseMonthModalSection[]>;
   abono?: boolean;
   pending_classification?: boolean;
   can_delete?: boolean;

@@ -1663,7 +1663,6 @@
       "chartStyleLabel": "View",
       "chartStyleStacked": "Stacked bars",
       "chartStyleLine": "Lines",
-      "chartYearAverage": "Yearly average",
       "chartTotal": "Total",
       "chartShownTotal": "Shown total",
       "selectRowAria": "Select {{merchant}}",

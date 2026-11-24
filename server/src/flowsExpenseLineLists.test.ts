@@ -32,10 +32,9 @@ function rejects(query: Record<string, unknown>, status: 400 | 404 = 400): void 
 
 describe("parseExpenseLinesSelector", () => {
   it("reads each selector", () => {
-    expect(parseExpenseLinesSelector({ month: "2026-03" })).toEqual({ kind: "month", period_month: "2026-03", include_pre_tax: false });
-    expect(parseExpenseLinesSelector({ month: "2026-03", include_pre_tax: "1" })).toEqual({
-      kind: "month",
-      period_month: "2026-03",
+    expect(parseExpenseLinesSelector({ big_group: "trip", include_pre_tax: "1" })).toEqual({
+      kind: "big_group",
+      slug: "trip",
       include_pre_tax: true,
     });
     expect(parseExpenseLinesSelector({ account_id: "32", billing_month: "2026-09" })).toEqual({
@@ -54,10 +53,7 @@ describe("parseExpenseLinesSelector", () => {
   it("refuses no selector, two selectors and malformed values", () => {
     rejects({});
     rejects({ unit: "clp" });
-    rejects({ month: "2026-03", list: "uncategorized" });
-    rejects({ month: "2026-13" });
-    rejects({ month: "2026-3" });
-    rejects({ month: ["2026-03", "2026-04"] });
+    rejects({ big_group: "trip", list: "uncategorized" });
     rejects({ account_id: "32" });
     rejects({ billing_month: "2026-09" });
     rejects({ account_id: "x", billing_month: "2026-09" });
@@ -72,19 +68,6 @@ describe("parseExpenseLinesSelector", () => {
 
 describe("selectExpenseLines over the synthetic person's lines", () => {
   const lines = buildFlowsExpenseLines();
-
-  it("month: the lines of that period month, pre-tax only when asked", () => {
-    const preTaxMonth = lines.find((l) => l.pre_tax === true && l.period_month)?.period_month;
-    expect(preTaxMonth).toBeTruthy();
-    const net = selectExpenseLines(lines, { kind: "month", period_month: preTaxMonth!, include_pre_tax: false });
-    const all = selectExpenseLines(lines, { kind: "month", period_month: preTaxMonth!, include_pre_tax: true });
-    expect(net.length).toBeGreaterThan(0);
-    expect(all.every((l) => l.period_month === preTaxMonth)).toBe(true);
-    expect(net.some((l) => l.pre_tax)).toBe(false);
-    expect(all.some((l) => l.pre_tax)).toBe(true);
-    expect(all.length).toBe(lines.filter((l) => l.period_month === preTaxMonth).length);
-    expect(net.length).toBe(all.filter((l) => !l.pre_tax).length);
-  });
 
   it("uncategorized, deposit_matched and big_group pick by their fields", () => {
     const unc = selectExpenseLines(lines, { kind: "uncategorized", include_pre_tax: true });
@@ -314,8 +297,8 @@ describe("paging the uncategorized list", () => {
   it("pages only list=uncategorized, with defaults, and refuses bad values", () => {
     expect(parseExpenseLinesPage({}, unc)).toEqual({ page: 1, pageSize: UNCATEGORIZED_DEFAULT_PAGE_SIZE });
     expect(parseExpenseLinesPage({ page: "3", page_size: "25" }, unc)).toEqual({ page: 3, pageSize: 25 });
-    expect(parseExpenseLinesPage({}, { kind: "month", period_month: "2026-03", include_pre_tax: false })).toBeNull();
-    pageRejects({ page: "2" }, { kind: "month", period_month: "2026-03", include_pre_tax: false });
+    expect(parseExpenseLinesPage({}, { kind: "big_group", slug: "trip", include_pre_tax: false })).toBeNull();
+    pageRejects({ page: "2" }, { kind: "big_group", slug: "trip", include_pre_tax: false });
     pageRejects({ page_size: "10" }, { kind: "deposit_matched", include_pre_tax: false });
     pageRejects({ page: "0" }, unc);
     pageRejects({ page: "x" }, unc);
@@ -332,7 +315,7 @@ describe("paging the uncategorized list", () => {
 
   it("slices pages of the cached list, clamps past the end and leaves the list as it was", () => {
     clearAggregationCache();
-    const base = cachedFlowsExpenseLinesList("clp", { kind: "month", period_month: "2026-01", include_pre_tax: true });
+    const base = cachedFlowsExpenseLinesList("clp", { kind: "deposit_matched", include_pre_tax: true });
     const lines = buildFlowsExpenseLines().slice(0, 5) as unknown as typeof base.lines;
     const list = { ...base, selector: unc, lines };
     const p1 = pageOfExpenseLinesList(list, { page: 1, pageSize: 2 });

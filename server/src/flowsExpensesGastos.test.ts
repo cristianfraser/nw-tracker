@@ -6,16 +6,13 @@ import { describe, expect, it } from "vitest";
 import type { ExpenseDepositLinkDto } from "./expenseDepositLinks.js";
 import { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG } from "./expenseDepositLinks.js";
 import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
-import { markCardRefunds, markFinancingCostLines, type FlowCcExpenseCategoryChartPoint, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { markCardRefunds, markFinancingCostLines, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { enrichLinesWithNotaDeCreditoPairing } from "./ccNotaDeCreditoPairing.js";
 import {
   aggregateGastosFromLines as aggregateFinishedLines,
   bigGroupUsageByMode as bigGroupUsageOfFinishedLines,
-  buildFlowsExpensesGastosPayload as gastosPayloadOfFinishedLines,
-  buildFlowsExpensesGastosViews as gastosViewsOfFinishedLines,
   countsTowardGastosMes,
-  expenseYearMonthlyAverages,
-  gastosViewKey,
+  gastosMonthRows as gastosMonthRowsOfFinishedLines,
 } from "./flowsExpensesGastos.js";
 import { withLineMoney } from "./lineMoney.js";
 
@@ -24,20 +21,14 @@ const aggregateGastosFromLines = (
   lines: FlowCcExpenseLineRow[],
   ...rest: Parameters<typeof aggregateFinishedLines> extends [unknown, ...infer R] ? R : never
 ) => aggregateFinishedLines(withLineMoney(lines), ...rest);
-const buildFlowsExpensesGastosViews = (
+const gastosMonthRows = (
   lines: FlowCcExpenseLineRow[],
-  ...rest: Parameters<typeof gastosViewsOfFinishedLines> extends [unknown, ...infer R] ? R : never
-) => gastosViewsOfFinishedLines(withLineMoney(lines), ...rest);
+  ...rest: Parameters<typeof gastosMonthRowsOfFinishedLines> extends [unknown, ...infer R] ? R : never
+) => gastosMonthRowsOfFinishedLines(withLineMoney(lines), ...rest);
 const bigGroupUsageByMode = (
   lines: FlowCcExpenseLineRow[],
   ...rest: Parameters<typeof bigGroupUsageOfFinishedLines> extends [unknown, ...infer R] ? R : never
 ) => bigGroupUsageOfFinishedLines(withLineMoney(lines), ...rest);
-const buildFlowsExpensesGastosPayload = (
-  unit: Parameters<typeof gastosPayloadOfFinishedLines>[0],
-  excluded: ReadonlySet<string>,
-  includePreTax: boolean,
-  lines: FlowCcExpenseLineRow[]
-) => gastosPayloadOfFinishedLines(unit, excluded, includePreTax, withLineMoney(lines));
 
 /** A card line as the builder emits it: with the kind the importer stored for its statement line. */
 function withStoredKind<L extends FlowCcExpenseLineRow>(l: L): L {
@@ -413,48 +404,7 @@ describe("aggregateGastosFromLines — linked mortgage deposits", () => {
 
 });
 
-describe("expenseYearMonthlyAverages", () => {
-const SLUGS = ["food", "bills"];
-
-function pt(ym: string, food: number, bills = 0): FlowCcExpenseCategoryChartPoint {
-  return { as_of_date: `${ym}-28`, food, bills };
-}
-
-  it("averages the category total over the year's complete months, current year through last month", () => {
-    const points = [
-      pt("2025-01", 100, 20),
-      pt("2025-12", 300),
-      pt("2026-01", 100),
-      pt("2026-08", 700),
-      pt("2026-09", 9_999), // current month: left out
-      pt("2026-11", 5_000), // projected cuota month: left out
-    ];
-    const avgs = expenseYearMonthlyAverages(points, SLUGS, "2026-09", "clp");
-    // 2025: 420 over 12 months (the months with no points count as 0).
-    expect(avgs["2025"]).toEqual({ from_ym: "2025-01", through_ym: "2025-12", avg: 35 });
-    // 2026: 800 over Jan–Aug.
-    expect(avgs["2026"]).toEqual({ from_ym: "2026-01", through_ym: "2026-08", avg: 100 });
-    expect("2027" in avgs).toBe(false);
-  });
-
-  it("starts the first year at its first month with spend", () => {
-    const avgs = expenseYearMonthlyAverages([pt("2024-10", 0), pt("2024-11", 300), pt("2024-12", 100)], SLUGS, "2025-03", "clp");
-    expect(avgs["2024"]).toEqual({ from_ym: "2024-11", through_ym: "2024-12", avg: 200 });
-  });
-
-  it("has no current-year entry in January (no complete month yet)", () => {
-    const avgs = expenseYearMonthlyAverages([pt("2025-06", 100), pt("2026-01", 500)], SLUGS, "2026-01", "clp");
-    expect(Object.keys(avgs)).toEqual(["2025"]);
-  });
-});
-
-describe("buildFlowsExpensesGastosViews", () => {
-  const categories = [
-    { slug: "bills", parent_slug: null },
-    { slug: "taxes", parent_slug: "bills" },
-    { slug: "food", parent_slug: null },
-    { slug: "deposits", parent_slug: null },
-  ];
+describe("gastosMonthRows", () => {
   const oneShot = (id: number, month: string, amount: number, category: string, bigGroup: string | null = null) =>
     ccLine({
       statement_line_id: id, line_role: "purchase", installment_flag: 0, nro_cuota_current: null, nro_cuota_total: null,
@@ -469,58 +419,12 @@ describe("buildFlowsExpensesGastosViews", () => {
   ];
   const lines = [oneShot(1, "2025-10", 10_000, "taxes"), oneShot(2, "2025-11", 20_000, "bills", "trip"), ...plan];
 
-  it("folds subcategories into their parent at the category level only", () => {
-    const { views } = buildFlowsExpensesGastosViews(lines, categories, "clp", new Set(), "2026-03");
-    const cat = views[gastosViewKey("split", "category")]!;
-    const sub = views[gastosViewKey("split", "subcategory")]!;
-    expect(cat.chart_category_slugs).toEqual(["bills", "food", "real_estate_amortization"]);
-    expect(sub.chart_category_slugs).toEqual(["bills", "taxes", "food", "real_estate_amortization"]);
-    const oct = (pts: FlowCcExpenseCategoryChartPoint[]) => pts.find((p) => p.as_of_date.startsWith("2025-10"))!;
-    expect(oct(cat.chart_monthly_by_category).bills).toBe(10_000);
-    expect(oct(sub.chart_monthly_by_category).taxes).toBe(10_000);
-    expect(oct(sub.chart_monthly_by_category).bills).toBe(0);
-    expect(cat.total).toBe(sub.total);
-  });
-
-  it("ends the table at the mode's last real spend and the chart at Por cuota's, in both modes", () => {
-    const { views } = buildFlowsExpensesGastosViews(lines, categories, "clp", new Set(), "2026-03");
-    const total = views[gastosViewKey("total", "category")]!;
-    expect(total.by_month[0]!.period_month).toBe("2025-11");
-    expect(total.chart_monthly_by_category.at(-1)!.as_of_date).toBe("2026-01-31");
-    expect(total.by_year.map((r) => [r.period_month, r.gastos_mes])).toEqual([["2025-12", 130_000]]);
-  });
-
-  it("leaves excluded big groups out of the chart only, and sends the unfiltered stacks for ordering", () => {
-    const plain = buildFlowsExpensesGastosViews(lines, categories, "clp", new Set(), "2026-03");
-    expect(plain.views[gastosViewKey("split", "category")]!.chart_sort_monthly_by_category).toBeUndefined();
-    const { views } = buildFlowsExpensesGastosViews(lines, categories, "clp", new Set(["trip"]), "2026-03");
-    const v = views[gastosViewKey("split", "category")]!;
-    const nov = (pts: FlowCcExpenseCategoryChartPoint[]) => pts.find((p) => p.as_of_date.startsWith("2025-11"))!;
-    expect(nov(v.chart_monthly_by_category).bills).toBe(0);
-    expect(nov(v.chart_sort_monthly_by_category!).bills).toBe(20_000);
-    expect(v.by_month.find((r) => r.period_month === "2025-11")!.gastos_mes).toBe(20_000);
-  });
-});
-
-describe("buildFlowsExpensesGastosPayload — pre-tax deductions", () => {
-  const card = ccLine({
-    statement_line_id: 1, line_role: "purchase", installment_flag: 0, nro_cuota_current: null, nro_cuota_total: null,
-    expense_month: "2025-10", billing_month: "2025-10", purchase_month: "2025-10", purchase_on: "2025-10-05",
-    amount_clp: 10_000, category_slug: "bills", purchase_key: "line-pr:1",
-  });
-  const payslip = ccLine({
-    source: "payslip", pre_tax: true, statement_line_id: 7001, account_id: 0, line_role: "purchase", installment_flag: 0,
-    nro_cuota_current: null, nro_cuota_total: null, expense_month: "2025-10", billing_month: "2025-10",
-    purchase_month: "2025-10", purchase_on: "2025-10-31", amount_clp: 4_000, category_slug: "taxes",
-    purchase_key: "payslip:7001",
-  });
-  const octGastos = (includePreTax: boolean) =>
-    buildFlowsExpensesGastosPayload("clp", new Set(), includePreTax, [card, payslip])
-      .views[gastosViewKey("split", "subcategory")]!.by_month.find((r) => r.period_month === "2025-10")!.gastos_mes;
-
-  it("tracks spending from net pay: payslip deductions only when asked", () => {
-    expect(octGastos(false)).toBe(10_000);
-    expect(octGastos(true)).toBe(14_000);
+  it("ends at the mode's last real spend: «Total» drops the months only cuotas fill", () => {
+    expect(gastosMonthRows(lines, "total", "clp").map((r) => [r.period_month, r.gastos_mes])).toEqual([
+      ["2025-11", 120_000],
+      ["2025-10", 10_000],
+    ]);
+    expect(gastosMonthRows(lines, "split", "clp").map((r) => r.period_month)).toEqual(["2026-01", "2025-12", "2025-11", "2025-10"]);
   });
 });
 
@@ -538,7 +442,7 @@ const gastosMesCases = JSON.parse(
   )
 ) as GastosMesCase[];
 
-/** The same table is asserted by the client's `ccExpenseLineBuckets.test.ts` (optimistic edits). */
+/** The gastos counting rule, case by case (`gastosMesCountingCases.json`). */
 describe("countsTowardGastosMes (shared case table)", () => {
   it.each(gastosMesCases)("$note", (c) => {
     const line = ccLine({

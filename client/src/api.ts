@@ -665,7 +665,7 @@ export const api = {
     }),
   deleteRealEstateExpenseEntry: (expenseEntryId: number) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
-  /** Expense lines of one selector (a month, a facturación, a list, a big group), in `unit`. */
+  /** Expense lines of one selector (a facturación, a list, a big group), in `unit`. */
   flowsExpenseLines: (
     unit: DisplayUnit,
     selector: import("./types").FlowsExpenseLinesSelector,
@@ -673,9 +673,6 @@ export const api = {
   ) => {
     const q = new URLSearchParams({ unit });
     switch (selector.kind) {
-      case "month":
-        q.set("month", selector.period_month);
-        break;
       case "facturacion":
         q.set("account_id", String(selector.account_id));
         q.set("billing_month", selector.billing_month);

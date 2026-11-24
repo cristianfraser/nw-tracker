@@ -19,7 +19,6 @@ import {
   type FlowCcExpenseLineRow,
 } from "./flowsExpenses.js";
 import {
-  buildFlowsExpensesGastosPayload,
   mortgageLinkCarryingAmount,
   splittableMortgageLinkOf,
   type GastosUnit,
@@ -101,20 +100,6 @@ export function syncFlowsInputsWithLiveUsdRates(): void {
 export function cachedFlowsExpenseLines(): FlowCcExpenseLineRow[] {
   syncFlowsInputsWithLiveUsdRates();
   return getAggregationCached(cacheKeyFlowsInputs("lines"), () => buildFlowsExpenseLines(listCreditCardMasterAccountIds()));
-}
-
-/** The Expenses page's gastos view (`GET /api/flows/expenses/gastos`), cached the same way. */
-export function cachedFlowsExpensesGastosPayload(
-  unit: GastosUnit,
-  excludedBigGroupSlugs: ReadonlySet<string>,
-  includePreTax: boolean
-): ReturnType<typeof buildFlowsExpensesGastosPayload> {
-  syncFlowsInputsWithLiveUsdRates();
-  const excludedKey = [...excludedBigGroupSlugs].sort().join(",");
-  const preTaxKey = includePreTax ? "pre_tax" : "net";
-  return getAggregationCached(cacheKeyFlowsInputs(`gastos|${unit}|${preTaxKey}|${excludedKey}`), () =>
-    buildFlowsExpensesGastosPayload(unit, excludedBigGroupSlugs, includePreTax, cachedFlowsExpenseLines())
-  );
 }
 
 /** {@link mortgageCarryingEvents} over the cached expense lines, per unit. */

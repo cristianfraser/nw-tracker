@@ -24,14 +24,14 @@ import { buildFlowsExpenseLines, buildFlowsExpensesPayload, resolveExpenseMonth 
 import { gastosSumMonthForLine } from "./ccExpensePeriodMonth.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
-import { buildFlowsExpensesGastosViews, countsTowardGastosMes, gastosViewKey } from "./flowsExpensesGastos.js";
+import { aggregateGastosFromLines, countsTowardGastosMes, gastosMonthRows } from "./flowsExpensesGastos.js";
 import { lineAmountClpSql, lineAmountUsdSql, lineCuotaClpSql } from "./cards/lineAmountSql.js";
 
-/** The Expenses page's Por cuota view at the subcategory level (every category its own), in CLP. */
+/** Por cuota's month rows (the flows overview's expenses leg), its total and category stacks, in CLP. */
 function splitView(payload: ReturnType<typeof buildFlowsExpensesPayload>) {
-  return buildFlowsExpensesGastosViews(buildFlowsExpenseLines(payload.account_ids), payload.categories, "clp", new Set(), "2099-01").views[
-    gastosViewKey("split", "subcategory")
-  ]!;
+  const lines = buildFlowsExpenseLines(payload.account_ids);
+  const agg = aggregateGastosFromLines(lines, payload.categories.map((c) => c.slug), "split", undefined, "clp");
+  return { by_month: gastosMonthRows(lines, "split", "clp"), total: agg.total, chart_monthly_by_category: agg.chart_monthly_by_category };
 }
 
 describe("resolveExpenseMonth", () => {

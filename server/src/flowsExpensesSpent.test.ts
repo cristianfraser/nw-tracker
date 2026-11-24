@@ -146,6 +146,19 @@ describe("buildExpensesSpentPayload", () => {
   });
 });
 
+describe("pre-tax deductions", () => {
+  it("track spending from net pay: payslip deductions only when asked", () => {
+    const lines = withLineMoney([
+      line({ statement_line_id: 1, purchase_on: "2026-03-02", amount_clp: 10_000, category_slug: "bills" }),
+      line({ source: "payslip", pre_tax: true, statement_line_id: 7001, account_id: 0, purchase_on: "2026-03-05", amount_clp: 4_000, category_slug: "taxes", purchase_key: "payslip:7001" }),
+    ]);
+    const march = (includePreTax: boolean) =>
+      buildExpensesSpentPayload(lines, CATEGORIES, { ...OPTS, includePreTax }, "90d", TODAY).months.find((m) => m.month === "2026-03")!.total;
+    expect(march(false)).toBe(10_000);
+    expect(march(true)).toBe(14_000);
+  });
+});
+
 describe("year averages", () => {
   it("average each year's complete months from the first month with spend, leaving the current month out", () => {
     const lines = withLineMoney([

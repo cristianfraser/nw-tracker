@@ -11,7 +11,7 @@ import { ccOwedByCurrency } from "./ccOwedByCurrency.js";
 import { ccOwedByCurrencyAtYmd } from "./ccOwedWalk.js";
 import { installmentPlanBreakdownByMonth, installmentRemainderAfterFacturacionClp } from "./ccInstallmentLedgerDb.js";
 import { buildFlowsExpenseLines } from "./flowsExpenses.js";
-import { aggregateGastosFromLines } from "./flowsExpensesGastos.js";
+import { aggregateGastosFromLines, countsTowardGastosMes } from "./flowsExpensesGastos.js";
 import { latestMovementRows } from "./latestMovements.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { listCcExpenseCategories } from "./ccExpenseCategories.js";
@@ -197,11 +197,11 @@ describe("a plan the bank prepaid", () => {
       const total = lines.find((l) => l.line_role === "installment_purchase_total")!;
       const nota = lines.find((l) => l.amount!.value < 0)!;
       expect(total.category_slug).toBe("hobbies");
-      expect(total.counts_toward_gastos!.total).toBe(true);
+      expect(countsTowardGastosMes(total, "total")).toBe(true);
       expect(nota.card_refund).toBe(true);
       expect(nota.category_slug).toBe("hobbies");
       expect(nota.amount!.value).toBe(-PRINCIPAL);
-      expect(nota.counts_toward_gastos).toEqual({ split: false, total: true });
+      expect({ split: countsTowardGastosMes(nota, "split"), total: countsTowardGastosMes(nota, "total") }).toEqual({ split: false, total: true });
       // Nothing else positive: the prepayment line is not an expense.
       expect(lines.filter((l) => l.amount!.value > 0).map((l) => l.line_role)).toEqual(["installment_purchase_total"]);
       expect(lines).toHaveLength(2);

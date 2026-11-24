@@ -397,17 +397,29 @@ function optionsKey(opts: SpentOptions): string {
 }
 
 /** `GET /api/flows/expenses/spent`, cached beside the expense lines. */
+/**
+ * `GET /api/flows/expenses/spent` from the finished expense lines: spending from net pay, so the
+ * payslip deductions ({@link isPreTaxExpenseLine}) are left out unless `includePreTax`.
+ */
+export function buildExpensesSpentResponse(
+  allLines: readonly GastosLine[],
+  opts: SpentOptions,
+  range: ExpensesSpentRange,
+  today: string
+): FlowsExpensesSpentResponse {
+  const lines = opts.includePreTax ? allLines : allLines.filter((l) => !isPreTaxExpenseLine(l));
+  return {
+    ...buildExpensesSpentPayload(lines, listCcExpenseCategories(), opts, range, today),
+    big_group_usage: bigGroupUsageByMode(lines, listCcExpenseBigGroups(), opts.unit)[opts.mode],
+  };
+}
+
 export function cachedExpensesSpentPayload(opts: SpentOptions, range: ExpensesSpentRange): FlowsExpensesSpentResponse {
   syncFlowsInputsWithLiveUsdRates();
   const today = chileCalendarTodayYmd();
-  return getAggregationCached(cacheKeyFlowsInputs(`spent|${optionsKey(opts)}|${range}|${today}`), () => {
-    const all = cachedFlowsExpenseLines();
-    const lines = opts.includePreTax ? all : all.filter((l) => !isPreTaxExpenseLine(l));
-    return {
-      ...buildExpensesSpentPayload(lines, listCcExpenseCategories(), opts, range, today),
-      big_group_usage: bigGroupUsageByMode(lines, listCcExpenseBigGroups(), opts.unit)[opts.mode],
-    };
-  });
+  return getAggregationCached(cacheKeyFlowsInputs(`spent|${optionsKey(opts)}|${range}|${today}`), () =>
+    buildExpensesSpentResponse(cachedFlowsExpenseLines(), opts, range, today)
+  );
 }
 
 /** `GET /api/flows/expenses/spent/lines`, cached beside the expense lines. */

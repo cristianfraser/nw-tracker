@@ -132,8 +132,7 @@ import { dropPlanPrepaymentLines, markPlanPrepaymentCreditRefunds, refundPlanPre
 import { annulledPurchaseLineId, annulledPurchaseRowsForAccount } from "./ccAnnulledPurchasesRead.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { withExpenseLineShapes } from "./expenseLineShapes.js";
-import { isCcExpenseTotalsExcludedSlug, isInstallmentCuotaZeroLine } from "./ccExpenseCategories.js";
-import { countsTowardGastosMes, isGastosRefundLine } from "./gastosMesCounting.js";
+import { isGastosRefundLine } from "./gastosMesCounting.js";
 
 export { listCreditCardMasterAccountIds };
 
@@ -905,12 +904,7 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   {
     name: "line shapes",
     run: (lines) =>
-      withExpenseLineShapes(lines, {
-        countsTowardGastosMes,
-        isGastosRefundLine,
-        isCcExpenseTotalsExcludedSlug,
-        isInstallmentCuotaZeroLine,
-      }),
+      withExpenseLineShapes(lines, { isGastosRefundLine }),
   },
 ];
 

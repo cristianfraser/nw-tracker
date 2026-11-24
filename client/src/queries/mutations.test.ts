@@ -9,7 +9,7 @@ import type { FlowsExpenseLinesResponse } from "../types";
 function sampleData(): FlowsExpenseLinesResponse {
   return {
     unit: "clp",
-    selector: { kind: "month", period_month: "2025-05", include_pre_tax: false },
+    selector: { kind: "big_group", slug: "trip", include_pre_tax: false },
     categories: [],
     big_groups: [],
     lines: [

@@ -53,7 +53,7 @@ import type { DepositReconciliationStatus as S_DepositReconciliationStatus, Depo
 type S_DepositReconciliationRow = S_DepositReconciliationUnitPayload["rows"][number];
 type S_DepositRedemptionRow = S_DepositReconciliationUnitPayload["redemptions"][number];
 type S_DepositManualAssertionRow = S_DepositReconciliationUnitPayload["manual_assertions"][number];
-import type { ExpenseYearMonthlyAverage as S_ExpenseYearMonthlyAverage, FlowsExpensesGastosView as S_FlowsExpensesGastosView, BigGroupUsage as S_BigGroupUsage } from "../flowsExpensesGastos.js";
+import type { BigGroupUsage as S_BigGroupUsage } from "../flowsExpensesGastos.js";
 import type { AdditionalCardsPeriodRow as S_AdditionalCardsPeriodRow, AdditionalCardsSummary as S_AdditionalCardsSummary } from "../additionalCardReimbursements.js";
 import type { FlowsCheckingIncomeUnitLists as S_IncomeUnitLists, IncomeAutoFilterReason as S_IncomeAutoFilterReason } from "../flowsCheckingInflows.js";
 type S_FlowCheckingIncomeLine = S_IncomeUnitLists["lines"][number];
@@ -216,8 +216,6 @@ export type ServerDtosFitContracts = [
   Fits<S_DepositRedemptionRow, Dto.DepositRedemptionRow>,
   Fits<S_DepositManualAssertionStatus, Dto.DepositManualAssertionStatus>,
   Fits<S_DepositManualAssertionRow, Dto.DepositManualAssertionRow>,
-  Fits<S_ExpenseYearMonthlyAverage, Dto.ExpenseYearMonthlyAverage>,
-  Fits<S_FlowsExpensesGastosView, Dto.FlowsExpensesGastosView>,
   Fits<S_BigGroupUsage, Dto.BigGroupUsage>,
   Fits<S_AdditionalCardsPeriodRow, Dto.AdditionalCardsPeriodRow>,
   Fits<S_AdditionalCardsSummary, Dto.AdditionalCardsSummary>,

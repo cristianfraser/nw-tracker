@@ -7,10 +7,8 @@
  * groups. The client picks a view and only clips it to its Rango.
  */
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   isCcExpenseTotalsExcludedSlug,
-  listCcExpenseCategories,
   type CcExpenseCategoryRow,
 } from "./ccExpenseCategories.js";
 import {
@@ -25,8 +23,7 @@ import {
   splittableMortgageLinkOf,
   REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
 } from "./expenseDepositLinks.js";
-import { listCcExpenseBigGroups, type CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
-import { buildFlowsExpenseLines, isPreTaxExpenseLine } from "./flowsExpenses.js";
+import type { CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
 import type {
   FlowCcExpenseCategoryChartPoint,
   FlowCcExpenseChartPoint,
@@ -44,7 +41,6 @@ import {
 export { splittableMortgageLinkOf };
 export { countsTowardGastosMes, expenseLineSignedValue, isGastosRefundLine };
 export type { GastosMesLine, SignedExpenseLine };
-import { addCalendarMonths } from "nw-tracker-contracts";
 import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import type { FlowCcExpenseLineRow as WireExpenseLine, LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
 import { lineValueIn } from "./lineMoney.js";
@@ -65,43 +61,6 @@ export type GastosLine = Omit<WireExpenseLine, "amount" | "converted" | "value_c
 export type CcExpenseCategoryLevel = "category" | "subcategory";
 
 export const CC_INSTALLMENT_GASTOS_MODES: readonly CcInstallmentGastosMode[] = ["split", "total"];
-export const CC_EXPENSE_CATEGORY_LEVELS: readonly CcExpenseCategoryLevel[] = ["category", "subcategory"];
-
-export function gastosViewKey(mode: CcInstallmentGastosMode, level: CcExpenseCategoryLevel): string {
-  return `${mode}|${level}`;
-}
-
-/** One calendar year's average monthly gastos, and the months it covers (YYYY-MM, inclusive). */
-export type ExpenseYearMonthlyAverage = { from_ym: string; through_ym: string; avg: number };
-
-export type FlowsExpensesGastosView = {
-  /** The chart's stack keys, in stack order. */
-  chart_category_slugs: string[];
-  /** Full-history headline: every month bucket summed, rounded to the unit's minor digits. */
-  total: number;
-  total_real: number;
-  /** Month rows, newest first, through the latest month with real spend in this mode. */
-  by_month: FlowCcExpenseMonthRow[];
-  /** The same rows rolled up to calendar years, newest first. */
-  by_year: FlowCcExpenseMonthRow[];
-  /**
-   * Monthly stacks, oldest first, through the chart's end month (the same in both modes, so
-   * toggling never shrinks the x-axis), without the excluded big groups.
-   */
-  chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
-  /** The stacks with every big group, for a stable stack order. Absent = `chart_monthly_by_category`. */
-  chart_sort_monthly_by_category?: FlowCcExpenseCategoryChartPoint[];
-  /** Per-year average of the chart's monthly total, keyed by year (YYYY). */
-  year_averages: Record<string, ExpenseYearMonthlyAverage>;
-};
-
-export type FlowsExpensesGastosPayload = {
-  unit: GastosUnit;
-  excluded_big_groups: string[];
-  /** Keyed `gastosViewKey(mode, level)`. */
-  views: Record<string, FlowsExpensesGastosView>;
-};
-
 /**
  * A finished line's value in the display unit (`lineValueIn`, the «line money» step). Throws when
  * the line has no value in the unit (no rate on file for its day).
@@ -347,160 +306,19 @@ function latestRealSpendMonth(rows: readonly FlowCcExpenseMonthRow[]): string | 
   return latest;
 }
 
-/** Month rows (oldest first) rolled up to calendar years (oldest first), running totals re-run; sums rounded to the unit's minor digits. */
-export function rollupExpenseMonthRowsByYear(
-  rows: readonly FlowCcExpenseMonthRow[],
+/**
+ * Gasto del mes per month in a mode (newest first), through the latest month with real spend: in
+ * «Total» the cuota lines leave $0 future buckets, which are dropped. The flows overview's
+ * expenses leg.
+ */
+export function gastosMonthRows(
+  lines: readonly GastosLine[],
+  mode: CcInstallmentGastosMode,
   unit: GastosUnit
 ): FlowCcExpenseMonthRow[] {
-  const byYear = new Map<
-    string,
-    Omit<FlowCcExpenseMonthRow, "gastos_acumulado" | "gastos_real_acumulado">
-  >();
-  for (const row of rows) {
-    const year = row.period_month.slice(0, 4);
-    const cur = byYear.get(year);
-    if (!cur) {
-      byYear.set(year, {
-        period_month: `${year}-12`,
-        as_of_date: `${year}-12-31`,
-        gastos_mes: row.gastos_mes,
-        gastos_real_mes: row.gastos_real_mes,
-        abonos_mes: row.abonos_mes,
-        line_count: row.line_count,
-      });
-      continue;
-    }
-    cur.gastos_mes += row.gastos_mes;
-    cur.gastos_real_mes += row.gastos_real_mes;
-    cur.abonos_mes += row.abonos_mes;
-    cur.line_count += row.line_count;
-  }
-  let runningGastos = 0;
-  let runningGastosReal = 0;
-  return [...byYear.keys()].sort().map((year) => {
-    const row = byYear.get(year)!;
-    runningGastos += row.gastos_mes;
-    runningGastosReal += row.gastos_real_mes;
-    return {
-      ...row,
-      gastos_mes: roundToCurrency(row.gastos_mes, unit),
-      gastos_real_mes: roundToCurrency(row.gastos_real_mes, unit),
-      abonos_mes: roundToCurrency(row.abonos_mes, unit),
-      gastos_acumulado: roundToCurrency(runningGastos, unit),
-      gastos_real_acumulado: roundToCurrency(runningGastosReal, unit),
-    };
-  });
-}
-
-/** Sum of the visible stacks; the negative amortization segment counts as positive spend. */
-function chartPointTotal(
-  point: FlowCcExpenseCategoryChartPoint,
-  categorySlugs: readonly string[],
-  unit: GastosUnit
-): number {
-  let total = 0;
-  for (const slug of categorySlugs) {
-    const v = point[slug];
-    if (typeof v === "number" && Number.isFinite(v)) total += v < 0 ? -v : v;
-  }
-  return roundToCurrency(total, unit);
-}
-
-/**
- * Average monthly gastos per calendar year, over FULL history (the client's Rango only decides
- * which part of each year's line is drawn):
- *
- * - The monthly figure is the chart's total (the stacks summed), so the average sits on the line
- *   it summarizes.
- * - Only complete months count: the current month and the future months Por cuota projects are
- *   left out, so the current year reads the average through last month.
- * - The first year starts at the first month with any spend; a month without a point inside a
- *   covered span counts as 0.
- */
-export function expenseYearMonthlyAverages(
-  monthlyPoints: readonly FlowCcExpenseCategoryChartPoint[],
-  categorySlugs: readonly string[],
-  todayYm: string,
-  unit: GastosUnit
-): Record<string, ExpenseYearMonthlyAverage> {
-  const lastCompleteYm = addCalendarMonths(todayYm, -1);
-  const totalByYm = new Map<string, number>();
-  for (const p of monthlyPoints) {
-    const ym = p.as_of_date.slice(0, 7);
-    totalByYm.set(ym, (totalByYm.get(ym) ?? 0) + chartPointTotal(p, categorySlugs, unit));
-  }
-  let firstYm: string | null = null;
-  for (const [ym, total] of totalByYm) {
-    if (total !== 0 && ym <= lastCompleteYm && (firstYm == null || ym < firstYm)) firstYm = ym;
-  }
-  const out: Record<string, ExpenseYearMonthlyAverage> = {};
-  if (firstYm == null) return out;
-
-  for (let year = Number(firstYm.slice(0, 4)); year <= Number(lastCompleteYm.slice(0, 4)); year++) {
-    const fromYm = `${year}-01` < firstYm ? firstYm : `${year}-01`;
-    const throughYm = `${year}-12` > lastCompleteYm ? lastCompleteYm : `${year}-12`;
-    let sum = 0;
-    let months = 0;
-    for (let ym = fromYm; ym <= throughYm; ym = addCalendarMonths(ym, 1)) {
-      sum += totalByYm.get(ym) ?? 0;
-      months++;
-    }
-    out[String(year)] = { from_ym: fromYm, through_ym: throughYm, avg: roundToCurrency(sum / months, unit) };
-  }
-  return out;
-}
-
-export function buildFlowsExpensesGastosViews(
-  lines: readonly GastosLine[],
-  categories: readonly Pick<CcExpenseCategoryRow, "slug" | "parent_slug">[],
-  unit: GastosUnit,
-  excludedBigGroupSlugs: ReadonlySet<string>,
-  todayYm: string
-): FlowsExpensesGastosPayload {
-  // The chart's x-axis ends where Por cuota's real spend ends, in both modes: Total keeps the
-  // future months that only carry projected cuotas so the toggle never shrinks the axis.
-  const splitEnd = latestRealSpendMonth(aggregateGastosFromLines(lines, [], "split", undefined, unit).by_month);
-
-  const views: Record<string, FlowsExpensesGastosView> = {};
-  for (const level of CC_EXPENSE_CATEGORY_LEVELS) {
-    const levelLines = linesAtCategoryLevel(lines, categories, level);
-    const slugs = chartCategorySlugsAtLevel(categories, level);
-    for (const mode of CC_INSTALLMENT_GASTOS_MODES) {
-      const table = aggregateGastosFromLines(levelLines, slugs, mode, undefined, unit);
-      const chart =
-        excludedBigGroupSlugs.size > 0
-          ? aggregateGastosFromLines(levelLines, slugs, mode, excludedBigGroupSlugs, unit)
-          : table;
-
-      // Table rows beyond the latest real spend are dropped: in Total mode the cuota lines
-      // leave $0 future buckets.
-      const latestNonEmpty = latestRealSpendMonth(table.by_month);
-      const chartEnd =
-        mode === "split" || splitEnd == null || (latestNonEmpty != null && splitEnd <= latestNonEmpty)
-          ? latestNonEmpty
-          : splitEnd;
-      const throughChartEnd = (points: readonly FlowCcExpenseCategoryChartPoint[]) =>
-        points.filter((p) => chartEnd == null || p.as_of_date.slice(0, 7) <= chartEnd);
-
-      const by_month = table.by_month.filter(
-        (r) => latestNonEmpty == null || r.period_month <= latestNonEmpty
-      );
-      const chartPoints = throughChartEnd(chart.chart_monthly_by_category);
-      views[gastosViewKey(mode, level)] = {
-        chart_category_slugs: slugs,
-        total: table.total,
-        total_real: table.total_real,
-        by_month,
-        by_year: rollupExpenseMonthRowsByYear([...by_month].reverse(), unit).reverse(),
-        chart_monthly_by_category: chartPoints,
-        ...(chart !== table
-          ? { chart_sort_monthly_by_category: throughChartEnd(table.chart_monthly_by_category) }
-          : {}),
-        year_averages: expenseYearMonthlyAverages(chartPoints, slugs, todayYm, unit),
-      };
-    }
-  }
-  return { unit, excluded_big_groups: [...excludedBigGroupSlugs].sort(), views };
+  const rows = aggregateGastosFromLines(lines, [], mode, undefined, unit).by_month;
+  const latest = latestRealSpendMonth(rows);
+  return rows.filter((r) => latest == null || r.period_month <= latest);
 }
 
 /** A big group's spend in the display unit and how many purchases it holds. */
@@ -545,32 +363,4 @@ export function bigGroupUsageByMode(
       }));
   };
   return { split: usageFor("split"), total: usageFor("total") };
-}
-
-/**
- * The Expenses page's gastos: spending from net pay, so the deductions taken from a payslip
- * ({@link isPreTaxExpenseLine}) are left out unless `includePreTax`. The flows overview builds its
- * own views over every line (`flowsOverview.ts`), where they count.
- */
-export function buildFlowsExpensesGastosPayload(
-  unit: GastosUnit,
-  excludedBigGroupSlugs: ReadonlySet<string>,
-  includePreTax: boolean,
-  allLines: FlowCcExpenseLineRow[] = buildFlowsExpenseLines()
-): FlowsExpensesGastosPayload & {
-  include_pre_tax: boolean;
-  big_group_usage: Record<CcInstallmentGastosMode, BigGroupUsage[]>;
-} {
-  const lines = includePreTax ? allLines : allLines.filter((l) => !isPreTaxExpenseLine(l));
-  return {
-    include_pre_tax: includePreTax,
-    ...buildFlowsExpensesGastosViews(
-      lines,
-      listCcExpenseCategories(),
-      unit,
-      excludedBigGroupSlugs,
-      chileCalendarTodayYmd().slice(0, 7)
-    ),
-    big_group_usage: bigGroupUsageByMode(lines, listCcExpenseBigGroups(), unit),
-  };
 }

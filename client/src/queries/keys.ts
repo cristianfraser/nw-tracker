@@ -14,8 +14,6 @@ export function isDisplayUnitCode(v: unknown): v is DisplayUnit {
 /** A stable key segment for an expense-lines selector (its fields in a fixed order). */
 function expenseLinesSelectorKey(selector: FlowsExpenseLinesSelector): string {
   switch (selector.kind) {
-    case "month":
-      return `month|${selector.period_month}|${selector.include_pre_tax ? 1 : 0}`;
     case "facturacion":
       return `facturacion|${selector.account_id}|${selector.billing_month}`;
     case "uncategorized":

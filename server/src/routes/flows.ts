@@ -19,7 +19,7 @@ import { saveVendorBranchChoice } from "../vendorCatalog.js";
 import type { CategoryRuleLinkKind } from "../expenseCategoryRules.js";
 import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsResponse } from "../flowsDeposits.js";
-import { cachedFlowsExpensesGastosPayload, cachedMortgageCarryingEvents } from "../flowsMortgageCarrying.js";
+import { cachedMortgageCarryingEvents } from "../flowsMortgageCarrying.js";
 import {
   cachedFlowsExpenseLinesList,
   cachedFlowsExpensesFinancingCandidates,
@@ -417,22 +417,6 @@ app.get("/api/flows/expenses/spent/lines", (req, res) => {
     }
     throw err;
   }
-});
-
-app.get("/api/flows/expenses/gastos", (req, res) => {
-  const unitRaw = requestDisplayUnit(req.query, { surface: "/api/flows/expenses/gastos" });
-  const excluded = new Set(
-    String(req.query.exclude_big_groups ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-  );
-  const preTaxRaw = String(req.query.include_pre_tax ?? "0");
-  if (preTaxRaw !== "0" && preTaxRaw !== "1") {
-    res.status(400).json({ error: `include_pre_tax must be 0 or 1, got ${preTaxRaw}` });
-    return;
-  }
-  res.json(cachedFlowsExpensesGastosPayload(unitRaw, excluded, preTaxRaw === "1"));
 });
 
 function piecesLineRef(source: unknown, lineId: unknown): { source: ExpenseLinePieceSource; lineId: number } {
