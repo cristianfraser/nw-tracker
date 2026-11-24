@@ -492,14 +492,16 @@ export function pdfClosedBillingMonthsForAccount(accountId: number): Set<string>
   const required = requiredStatementCurrenciesForAccount(accountId);
   const { primary } = ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.statement_currencies;
   const latestBankClose =
-    required.size > 1 ? latestKnownCloseIso(accountId, statements, chileCalendarTodayYmd()) : null;
+    required.size > 1
+      ? latestKnownCloseIso(accountId, statements, addDaysIso(chileCalendarTodayYmd(), -1))
+      : null;
   return closedBillingMonthsFromStatements(statements, primary, required, latestBankClose);
 }
 
 /**
  * Latest facturación the BANK has closed: the latest statement-closed month, a later month whose
  * close the card feed observed (SALDO INICIAL — see `ccBillingCloses.ts`), or a later month whose
- * statement-announced next cycle has already started (today on/after its first day). This is what
+ * statement-announced close day is over (today after it). This is what
  * moves the open month forward. It is deliberately not what the installment schedule treats as
  * negative evidence (`lastPdfBillingMonthForAccount`): a close without its statement says nothing
  * about which cuotas it billed.
@@ -513,13 +515,15 @@ export function lastClosedBillingMonthForAccount(
   let last =
     observed && (!lastPdf || ymCompare(observed, lastPdf) > 0) ? observed : lastPdf;
   if (!last) return null;
-  // Walk forward through closes the bank announced and whose next cycle is already running.
+  // Walk forward through closes the bank announced whose close day is over. The close day itself
+  // still belongs to the closing facturación (the bank closes at the end of it and rolls its list
+  // the night after), even where a close-day purchase already bills next month (Santander).
   // Bounded: an announcement only ever reaches the month after the latest statement.
   const statements = listCcStatementsForAccount(accountId);
   for (let i = 0; i < 3; i++) {
     const candidate = addCalendarMonths(last, 1);
-    const next = nextPeriodStartIsoForBillingMonth(accountId, candidate, statements);
-    if (next.source === "estimated" || todayIso < next.iso) break;
+    const close = closeEvidenceForBillingMonth(accountId, candidate, statements);
+    if (close.source === "estimated" || todayIso <= close.close_iso) break;
     last = candidate;
   }
   return last;

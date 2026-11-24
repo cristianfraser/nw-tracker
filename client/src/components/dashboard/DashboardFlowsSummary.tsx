@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useStructuralValue } from "../../useStructuralValue";
 import { HeadingLink } from "../ui/HeadingLink";
 import { FlowsOverviewChart } from "../charts/lazyCharts";
 import { PageGridTile } from "../layout/PageGridTile";
@@ -174,7 +175,8 @@ export function DashboardFlowsChart({ displayUnit }: { displayUnit: DisplayUnit 
   const data = overview.data;
   const loading = !data || overview.isPlaceholderData;
 
-  const chartPoints = useMemo(() => {
+  // Structurally shared: a refetch that changes only totals or another grain keeps the points.
+  const builtChartPoints = useMemo(() => {
     if (!data) return [];
     let rows: readonly FlowsOverviewRow[];
     if (isDaily) {
@@ -195,6 +197,7 @@ export function DashboardFlowsChart({ displayUnit }: { displayUnit: DisplayUnit 
       pl: r.pl,
     }));
   }, [data, granularity, isDaily, prefs.range]);
+  const chartPoints = useStructuralValue(builtChartPoints);
 
   return (
     <PageGridTile

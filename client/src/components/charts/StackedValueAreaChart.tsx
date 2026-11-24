@@ -1,4 +1,4 @@
-import { Area, Line, XAxis, YAxis } from "recharts";
+import { Area, Line, ReferenceDot, XAxis, YAxis } from "recharts";
 import { useMemo, type ReactNode } from "react";
 import i18n from "../../i18n";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
@@ -145,14 +145,24 @@ export function StackedValueAreaChart({
 
   const lastIndex = rows.length - 1;
   const lastTotal = stacked.reduce((s, x) => s + Math.max(0, x.lastValue), 0);
+  const lastDate = String(rows[lastIndex]?.as_of_date ?? "");
   // A band's name at its right end, just under its top edge; thin bands stay unlabelled, and a
   // label that would overlap one already placed (the bands draw bottom up) moves up a line.
+  // Drawn on reference dots, not the Areas' `label`: Recharts hides an Area's labels while it
+  // animates, and every live-quote refetch re-animates the bands, so the names would blink.
   const placedLabelYs = new Map<string, number>();
-  const endLabel = (name: string, color: string, share: number) =>
-    function EndLabel(props: { x?: number | string; y?: number | string; index?: number }) {
-      if (props.index !== lastIndex || share < MIN_LABELLED_SHARE) return null;
-      const x = Number(props.x);
-      let y = Number(props.y) + 10;
+  const endLabels: { key: string; name: string; color: string; top: number }[] = [];
+  let bandTop = 0;
+  for (const { line, color, lastValue } of stacked) {
+    bandTop += Math.max(0, lastValue);
+    const share = lastTotal > 0 ? lastValue / lastTotal : 0;
+    if (share >= MIN_LABELLED_SHARE) endLabels.push({ key: line.dataKey, name: lineName(line), color, top: bandTop });
+  }
+  const endLabelContent = (name: string, color: string) =>
+    function EndLabel(props: { viewBox?: unknown }) {
+      const box = (props.viewBox ?? {}) as { x?: number; y?: number };
+      const x = Number(box.x);
+      let y = Number(box.y) + 10;
       if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
       const others = [...placedLabelYs].filter(([k]) => k !== name).map(([, v]) => v);
       while (others.some((p) => Math.abs(p - y) < END_LABEL_LINE)) y -= END_LABEL_LINE;
@@ -188,26 +198,32 @@ export function StackedValueAreaChart({
             tickFormatter={(d: string) => xAxis.formatTick(String(d))}
           />
           <YAxis domain={yScale.domain} ticks={yScale.ticks} {...moneyYAxisProps(displayUnit, compactAxis, yScale.ticks)} />
-          {stacked.map(({ line, color, lastValue }) => {
-            const name = lineName(line);
-            return (
-              <Area
-                key={line.dataKey}
-                type="linear"
-                stackId="positions"
-                dataKey={line.dataKey}
-                name={name}
-                stroke={color}
-                fill={color}
-                fillOpacity={0.45}
-                strokeWidth={1}
-                connectNulls
-                isAnimationActive
-                animationDuration={CHART_ANIM_MS}
-                label={endLabel(name, color, lastTotal > 0 ? lastValue / lastTotal : 0)}
-              />
-            );
-          })}
+          {stacked.map(({ line, color }) => (
+            <Area
+              key={line.dataKey}
+              type="linear"
+              stackId="positions"
+              dataKey={line.dataKey}
+              name={lineName(line)}
+              stroke={color}
+              fill={color}
+              fillOpacity={0.45}
+              strokeWidth={1}
+              connectNulls
+              isAnimationActive
+              animationDuration={CHART_ANIM_MS}
+            />
+          ))}
+          {endLabels.map(({ key, name, color, top }) => (
+            <ReferenceDot
+              key={`end-label-${key}`}
+              x={lastDate}
+              y={top}
+              r={0}
+              ifOverflow="visible"
+              label={{ content: endLabelContent(name, color) }}
+            />
+          ))}
           {depositsKey ? (
             <Line
               type="stepAfter"

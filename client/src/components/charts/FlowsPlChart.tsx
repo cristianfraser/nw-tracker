@@ -84,7 +84,7 @@ export function FlowsPlChart({
       <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
       <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")}>
         <AppComposedChart
-          data={[...points]}
+          data={points as FlowsPlChartPoint[]}
           barGroup={{
             count: PL_CHART_BUCKETS.length,
             maxBarSize: BAR_MAX_SIZE,
