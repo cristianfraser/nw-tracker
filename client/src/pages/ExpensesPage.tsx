@@ -75,7 +75,12 @@ export function ExpensesPage() {
   // No month picked yet (or one the payload no longer has): the current month.
   const month = sel.month != null && selectableMonths.has(sel.month) ? sel.month : (monthKeys[monthKeys.length - 1] ?? "");
   const day = sel.day != null && sel.day.startsWith(month) ? sel.day : null;
-  const category = sel.category != null && (data?.category_slugs ?? []).includes(sel.category) ? sel.category : null;
+  // A picked category holds only while the payload is the current level's (a held payload of the
+  // other level would still list it and send the lines request a category the level lacks).
+  const category =
+    sel.category != null && data?.level === categoryLevel && data.category_slugs.includes(sel.category)
+      ? sel.category
+      : null;
 
   const lines = useFlowsExpensesSpentLines(params, { month, day, category }, summary.data != null && month !== "");
 

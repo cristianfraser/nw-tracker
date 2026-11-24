@@ -135,9 +135,13 @@ export const queryKeys = {
   /** The financing manager's pickers; under `flowsExpenses()`, so every line write refreshes them. */
   flowsExpensesFinancingCandidates: (unit: DisplayUnit) =>
     ["flowsExpenses", "financingCandidates", unit] as const,
-  /** The Expenses page by spending day; under `flowsExpenses()`, so every line write refetches it. */
-  /** Both spent payloads (the page's and its line lists). */
+  /**
+   * The Expenses page by spending day, both payloads (the page's and its line lists); under
+   * `flowsExpenses()`, so every line write refetches it.
+   */
   flowsExpensesSpentAll: () => ["flowsExpenses", "spent"] as const,
+  /** The spent line lists only (lines grouped by day). */
+  flowsExpensesSpentLinesAll: () => ["flowsExpenses", "spent", "lines"] as const,
   flowsExpensesSpent: (p: ExpensesSpentParams) =>
     ["flowsExpenses", "spent", p.unit, p.mode, p.level, p.range, [...p.excludedBigGroups].sort().join(","), p.includePreTax] as const,
   flowsExpensesSpentLines: (p: ExpensesSpentParams, month: string, day: string | null, category: string | null) =>

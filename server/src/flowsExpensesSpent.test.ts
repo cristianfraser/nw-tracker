@@ -146,6 +146,21 @@ describe("buildExpensesSpentPayload", () => {
   });
 });
 
+describe("the chart's first month", () => {
+  it("keeps a category spent only before the range's first day (the month runs from its 1st)", () => {
+    // 90 days back from 2026-03-10 is 2025-12-11: December runs from the 1st.
+    const lines = withLineMoney([
+      line({ statement_line_id: 1, purchase_on: "2025-12-03", amount_clp: 8_000, category_slug: "food" }),
+    ]);
+    const payload = buildExpensesSpentPayload(lines, CATEGORIES, OPTS, "90d", TODAY);
+    const first = payload.chart[0]!;
+    expect(first.day).toBe("2025-12-11");
+    expect(payload.category_slugs).toContain("food");
+    expect(first.stacks[payload.category_slugs.indexOf("food")]).toBe(8_000);
+    expect(first.total).toBe(8_000);
+  });
+});
+
 describe("pre-tax deductions", () => {
   it("track spending from net pay: payslip deductions only when asked", () => {
     const lines = withLineMoney([
@@ -235,5 +250,33 @@ describe("a mortgage payment paid by card", () => {
     expect(march.total_real).toBe(750_000);
     expect(payload.category_slugs).not.toContain("real_estate_amortization");
     expect(payload.chart.at(-1)!.stacks[payload.category_slugs.indexOf("bills")]).toBe(340_000);
+  });
+
+  it("lists the payment under «bills» with its carrying, whatever the line's own category", () => {
+    const lines = withLineMoney([
+      line({
+        statement_line_id: 9,
+        purchase_on: "2026-03-04",
+        amount_clp: 750_000,
+        category_slug: "deposits",
+        expense_deposit_links: [
+          {
+            deposit_movement_id: 900,
+            payment_clp: 750_000,
+            amortization_clp: 410_000,
+            carrying_clp: 340_000,
+            depto_cuota: "30",
+            depto_occurred_on: "2026-03-04",
+            link_source: "auto",
+          },
+        ],
+      }),
+    ]);
+    const categories = [...CATEGORIES, { slug: "deposits", parent_slug: null }, { slug: "real_estate_amortization", parent_slug: null }];
+    const payload = buildExpensesSpentPayload(lines, categories, OPTS, "90d", TODAY);
+    const cell = payload.months.find((m) => m.month === "2026-03")!.cells[payload.category_slugs.indexOf("bills")]!.value;
+    const picked = selectSpentLines(lines, categories, OPTS, { month: "2026-03", day: null, category: "bills" }, TODAY);
+    expect(picked.total).toBe(cell);
+    expect(picked.days[0]!.lines.map((l) => l.statement_line_id)).toEqual([9]);
   });
 });

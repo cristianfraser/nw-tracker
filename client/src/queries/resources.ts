@@ -19,7 +19,7 @@ export const resources = {
   /** The lines' rows only (names, labels): the gastos views and the overview do not move. */
   expenseLineRows: (): Invalidation[] => [
     { queryKey: queryKeys.flowsExpensesLinesAll() },
-    { queryKey: queryKeys.flowsExpensesSpentAll() },
+    { queryKey: queryKeys.flowsExpensesSpentLinesAll() },
     { queryKey: queryKeys.latestMovementsAll() },
   ],
   /**

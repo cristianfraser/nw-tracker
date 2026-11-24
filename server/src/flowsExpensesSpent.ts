@@ -201,7 +201,10 @@ export function buildExpensesSpentPayload(
   const firstSpendDay = [...byDay.keys()].sort()[0] ?? todayYmd;
   const rangeDays = RANGE_DAYS[range];
   const chartFrom = rangeDays === 0 ? firstSpendDay : chileCalendarAddDays(todayYmd, -(rangeDays - 1));
-  const shownFrom = chartFrom < `${firstMonth}-01` ? chartFrom : `${firstMonth}-01`;
+  // The chart sums from the 1st of its first month (the running month starts there), so a category
+  // spent only before the range's first day still has its stack.
+  const chartMonthStart = `${chartFrom.slice(0, 7)}-01`;
+  const shownFrom = chartMonthStart < `${firstMonth}-01` ? chartMonthStart : `${firstMonth}-01`;
   const used = allSlugs.map(() => false);
   for (const [day, d] of byDay) {
     if (day < shownFrom) continue;
@@ -342,13 +345,20 @@ export function selectSpentLines<L extends GastosLine>(
   entries.forEach((e) => {
     if (!e.listed || !e.day.startsWith(sel.month)) return;
     if (sel.day != null && e.day !== sel.day) return;
-    if (sel.category != null && e.line.category_slug !== sel.category) return;
+    // A category picks the lines with a share in its stack, and counts that share: a card-paid
+    // mortgage payment's carrying is in «bills» whatever the line's own category, as in the matrix.
+    let value = e.gastos;
+    if (sel.category != null) {
+      const share = e.stacks.filter(([slug]) => slug === sel.category);
+      if (share.length === 0) return;
+      value = share.reduce((sum, [, v]) => sum + v, 0);
+    }
     const original = lines[e.index]!;
     const d = byDay.get(e.day) ?? { total: 0, lines: [] };
-    d.total += e.gastos;
+    d.total += value;
     d.lines.push(original);
     byDay.set(e.day, d);
-    total += e.gastos;
+    total += value;
   });
   const round = (v: number) => roundToCurrency(v, opts.unit);
   return {

@@ -772,10 +772,7 @@ export interface ExpensesSpentChartDay {
   day: string;
   /** Month-to-date per category, aligned with `category_slugs`; resets on the 1st. */
   stacks: number[];
-  /**
-   * Month-to-date gasto: what the month's total counts so far (a mortgage payment's carrying, not
-   * the amortization its stack draws below zero).
-   */
+  /** Month-to-date gasto: what the month's total counts so far (a mortgage payment's carrying, never its amortization). */
   total: number;
 }
 
@@ -802,13 +799,7 @@ export interface ExpensesSpentMonth {
   days: ExpensesSpentDay[];
 }
 
-/**
- * `GET /api/flows/expenses/spent?unit=&mode=&level=&range=&exclude_big_groups=&include_pre_tax=`:
- * the Expenses page by the day each expense was spent (server `flowsExpensesSpent.ts`). A card
- * purchase counts on its purchase day, a cuota («split») on the day its statement billed it, a
- * whole installment purchase («total») on its purchase day; nothing after today. Excluded big
- * groups are left out of everything but `total_real`.
- */
+/** A year's average monthly gasto over its complete months (YYYY-MM, inclusive). */
 export interface ExpensesSpentYearAverage {
   year: string;
   from_ym: string;
@@ -816,6 +807,13 @@ export interface ExpensesSpentYearAverage {
   avg: number;
 }
 
+/**
+ * `GET /api/flows/expenses/spent?unit=&mode=&level=&range=&exclude_big_groups=&include_pre_tax=`:
+ * the Expenses page by the day each expense was spent (server `flowsExpensesSpent.ts`). A card
+ * purchase counts on its purchase day, a cuota («split») on the day its statement billed it, a
+ * whole installment purchase («total») on its purchase day; nothing after today. Excluded big
+ * groups are left out of everything but `total_real`.
+ */
 export interface FlowsExpensesSpentResponse {
   unit: DisplayUnitCode;
   mode: "split" | "total";
