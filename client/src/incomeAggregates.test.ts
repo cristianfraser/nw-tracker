@@ -19,6 +19,7 @@ function monthRow(period_month: string, salary: number, other = 0): FlowIncomeMo
     total: salary + other,
     line_count: (salary ? 1 : 0) + (other ? 1 : 0),
     cumulative: 0,
+    lines: [],
   };
 }
 

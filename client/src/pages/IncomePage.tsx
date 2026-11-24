@@ -1,12 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { IncomeMonthlyChart } from "../components/charts/IncomeMonthlyChart";
-import { IncomeAllLinesTable } from "../components/income/IncomeAllLinesTable";
-import { IncomeRefundLinesTable } from "../components/income/IncomeRefundLinesTable";
-import { IncomeExcludedLinesTable } from "../components/income/IncomeExcludedLinesTable";
-import { IncomeFilteredLinesTable } from "../components/income/IncomeFilteredLinesTable";
-import { IncomeMonthTable } from "../components/income/IncomeMonthTable";
-import { WorkEarningsTable } from "../components/income/WorkEarningsTable";
+import { IncomeMonthList } from "../components/income/IncomeMonthList";
+import { IncomeSideLists } from "../components/income/IncomeSideLists";
+import { PayslipList } from "../components/income/PayslipList";
 import { PayrollBreakdownSection } from "../components/income/PayrollBreakdownSection";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
@@ -14,11 +11,7 @@ import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { loadableClass } from "../components/ui/Loadable";
 import { useIncome } from "../queries/hooks";
 import { useTranslation } from "../i18n";
-import {
-  buildIncomeDisplayRows,
-  rollupIncomeChartPointsByYear,
-  rollupIncomeMonthRowsByYear,
-} from "../incomeAggregates";
+import { rollupIncomeChartPointsByYear } from "../incomeAggregates";
 import {
   flowTableGranularity,
   formatFlowMoney,
@@ -53,7 +46,8 @@ export function IncomePage() {
 
   // Month rows, day points and the total are the server's (the overview's own income rule).
   const aggregates = data?.aggregates ?? null;
-  const allRows = useMemo(() => (data ? buildIncomeDisplayRows(data) : []), [data]);
+  // A salary line's «receipt» link shows its payslip in the payslip list.
+  const [payslipFocus, setPayslipFocus] = useState<{ payslipId: number; seq: number } | null>(null);
 
   const chartPoints = useMemo(() => {
     if (!aggregates) return [];
@@ -83,14 +77,6 @@ export function IncomePage() {
    * sum, the same at month and year grain since the yearly rows are built from the in-range months.
    */
   const rangeTotal = useMemo(() => sumChartPointsField(chartPoints, "total"), [chartPoints]);
-
-  const monthTableRows = useMemo(() => {
-    if (!aggregates) return [];
-    // Tables include full history (newest first); the chart's Rango only scopes the chart.
-    const asc =
-      tableGranularity === "year" ? rollupIncomeMonthRowsByYear(aggregates.months) : aggregates.months;
-    return [...asc].reverse();
-  }, [aggregates, tableGranularity]);
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -133,55 +119,30 @@ export function IncomePage() {
             periodOptions={["month", "year"]}
           />
         </div>
-        <IncomeMonthTable
-          rows={monthTableRows}
+        <IncomeMonthList
+          data={data}
+          granularity={tableGranularity}
           displayUnit={displayUnit}
-          periodGranularity={tableGranularity}
           loading={loading}
+          onOpenPayslip={(payslipId) => setPayslipFocus((prev) => ({ payslipId, seq: (prev?.seq ?? 0) + 1 }))}
         />
       </PageGridTile>
 
       <PayrollBreakdownSection breakdown={data?.payroll_breakdown} displayUnit={displayUnit} loading={loading} />
 
       <PageGridTile id="work-earnings">
-        <h3>
-          {t("workEarnings.sectionTitle")}
-        </h3>
-        <WorkEarningsTable
+        <PayslipList
           rows={data?.work_earnings ?? []}
+          breakdown={data?.payroll_breakdown}
+          checks={data?.payslip_checks ?? []}
           displayUnit={displayUnit}
-          checks={data?.payslip_checks}
           loading={loading}
+          focus={payslipFocus}
         />
       </PageGridTile>
 
-      <PageGridTile id="all-lines">
-        <h3>{t("income.sectionAllLines")}</h3>
-        <IncomeAllLinesTable rows={allRows} displayUnit={displayUnit} loading={loading} />
-      </PageGridTile>
-
-      <PageGridTile id="refunds">
-        <h3>
-          {t("income.sectionRefunds")}
-        </h3>
-        <p className="muted" style={{ fontSize: "var(--font-size-prose)", marginTop: 0 }}>
-          {t("income.refundsHint")}
-        </p>
-        <IncomeRefundLinesTable rows={data?.refund_lines ?? []} displayUnit={displayUnit} loading={loading} />
-      </PageGridTile>
-
-      <PageGridTile id="filtered">
-        <h3>
-          {t("income.sectionFiltered")}
-        </h3>
-        <IncomeFilteredLinesTable rows={data?.filtered_lines ?? []} displayUnit={displayUnit} loading={loading} />
-      </PageGridTile>
-
-      <PageGridTile id="excluded">
-        <h3>
-          {t("income.sectionExcluded")}
-        </h3>
-        <IncomeExcludedLinesTable rows={data?.excluded_lines ?? []} displayUnit={displayUnit} loading={loading} />
+      <PageGridTile id="side-lists">
+        <IncomeSideLists data={data} displayUnit={displayUnit} loading={loading} />
       </PageGridTile>
     </>
   );

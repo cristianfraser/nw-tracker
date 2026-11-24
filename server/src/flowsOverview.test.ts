@@ -331,6 +331,7 @@ describe("buildFlowsIncomeAggregates", () => {
     ];
     income.work_earnings = [
       {
+        id: 55,
         earning_type: "salary",
         liquido_clp: 900_000.6,
         liquido_usd: 950.25,
@@ -381,6 +382,24 @@ describe("buildFlowsIncomeAggregates", () => {
     expect(agg.days.map((d) => d.as_of_date)).toEqual(["2024-01-10", "2024-03-02", "2024-03-05", "2024-03-20", "2024-03-28"]);
     expect(agg.days[1]).toMatchObject({ rent: 380_000, other: 0, total: 380_000 });
     expect(agg.days[2]).toMatchObject({ salary: 2_000_000, total: 2_000_000 });
+  });
+
+  it("lists each month's legs newest first, the salary on its payroll month", () => {
+    const agg = buildFlowsIncomeAggregates(mixedIncome(), "clp", TODAY);
+    expect(agg.months[0]!.lines).toEqual([
+      { source: "manual", id: 7, received_on: "2024-01-10", income_kind: "other", amount: 30_000 },
+    ]);
+    // Paid in March for February: listed under February with its arrival day.
+    expect(agg.months[1]!.lines).toEqual([
+      { source: "checking", id: 1, received_on: "2024-03-05", income_kind: "salary", amount: 2_000_000 },
+    ]);
+    expect(agg.months[2]!.lines).toEqual([
+      { source: "work_earning", id: 55, received_on: "2024-03-28", income_kind: "salary", amount: 900_001 },
+      { source: "checking", id: 2, received_on: "2024-03-20", income_kind: "parent_gift", amount: 150_000 },
+      { source: "checking", id: 3, received_on: "2024-03-02", income_kind: "rent", amount: 380_000 },
+    ]);
+    expect(agg.months[3]!.lines).toEqual([]);
+    for (const m of agg.months) expect(m.lines).toHaveLength(m.line_count);
   });
 });
 
