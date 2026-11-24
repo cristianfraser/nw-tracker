@@ -14,6 +14,7 @@ import { withPurchaseExpenseLinks } from "./ccPurchaseExpenseLinks.js";
 import { buildCcGlanceForAccount } from "./ccGlance.js";
 import { buildPositionGlanceForAccount } from "./positionGlance.js";
 import { buildCheckingGlanceForAccount } from "./checkingStatement.js";
+import { buildDeptoGlanceForAccount } from "./deptoGlance.js";
 import {
   isDeptoMortgagePaymentCuota,
 } from "./deptoDividendosLedger.js";
@@ -289,6 +290,14 @@ export async function buildAccountDetailBundle(
   // The checking page's head (`checkingStatement.ts`): today's balance, its moves, the balance strip.
   const checking_glance = buildCheckingGlanceForAccount(accountId);
 
+  // The property and mortgage pages (`deptoGlance.ts`): one ledger, every figure both pages draw.
+  const depto_glance = buildDeptoGlanceForAccount(accountId, {
+    unit,
+    mortgageLedger,
+    row: dashboard_account_row,
+    perf: monthly_performance,
+  });
+
   return {
     summary,
     ts,
@@ -297,6 +306,7 @@ export async function buildAccountDetailBundle(
     ccLedger,
     checkingCartolaMonths,
     checking_glance,
+    depto_glance,
     monthly_performance,
     period_returns,
     dashboard_account_row,

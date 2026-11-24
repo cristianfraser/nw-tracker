@@ -661,18 +661,7 @@ export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
   const expectations = listRealEstateExpectations();
   const gastosLines = loadGastosLinesForRealEstateMatching();
   const linksByEntry = ensureAutoLinks(expectations, gastosLines);
-
-  const brokenByEntry = new Map(
-    findInvalidRealEstateExpenseLinks(expectations, gastosLines, linksByEntry).map((l) => [
-      l.expense_entry_id,
-      { purchase_key: l.purchase_key, problem: l.problem } satisfies RealEstateBrokenLinkDto,
-    ])
-  );
-
-  const slots = expectations
-    .map((exp) => expectationToSlot(exp, linksByEntry.get(exp.id), gastosLines, brokenByEntry.get(exp.id)))
-    .concat(mortgageLedgerSlots(places))
-    .sort((a, b) => b.spent_on.localeCompare(a.spent_on));
+  const slots = realEstateSlots(places, expectations, gastosLines, linksByEntry);
 
   const by_account: Record<string, RealEstateExpenseAccountBlock> = {};
   for (const place of places) {
@@ -697,6 +686,37 @@ export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
     total,
     currency: PLACE_BILL_CURRENCY,
   };
+}
+
+/**
+ * Every place's bill slots with the links already stored — no auto-link pass, so it writes
+ * nothing: the property page reads its place's bills through it (`deptoGlance.ts`).
+ */
+export function realEstateBillSlotsReadOnly(): { places: RealEstatePlaceRow[]; slots: RealEstateBillSlot[] } {
+  const places = listRealEstatePlaces();
+  const expectations = listRealEstateExpectations();
+  const gastosLines = loadGastosLinesForRealEstateMatching();
+  return { places, slots: realEstateSlots(places, expectations, gastosLines, loadExistingLinks()) };
+}
+
+function realEstateSlots(
+  places: readonly RealEstatePlaceRow[],
+  expectations: readonly ExpenseExpectationRow[],
+  gastosLines: readonly FlowCcExpenseLineRow[],
+  linksByEntry: Map<number, RealEstateLinkRow>
+): RealEstateBillSlot[] {
+  const brokenByEntry = new Map(
+    findInvalidRealEstateExpenseLinks(expectations, gastosLines, linksByEntry).map((l) => [
+      l.expense_entry_id,
+      { purchase_key: l.purchase_key, problem: l.problem } satisfies RealEstateBrokenLinkDto,
+    ])
+  );
+
+  const slots = expectations
+    .map((exp) => expectationToSlot(exp, linksByEntry.get(exp.id), gastosLines, brokenByEntry.get(exp.id)))
+    .concat(mortgageLedgerSlots(places))
+    .sort((a, b) => b.spent_on.localeCompare(a.spent_on));
+  return slots;
 }
 
 export type RealEstateUnlinkedPurchaseDto = {

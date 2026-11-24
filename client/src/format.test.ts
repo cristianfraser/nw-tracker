@@ -5,7 +5,6 @@ import {
   adaptiveUsdAccountingNumberFlowParts,
   adaptiveUsdFractionDigits,
   formatClp,
-  formatClpUfDay,
   formatCurrency,
   formatCurrencyFine,
   formatMoney,
@@ -97,14 +96,17 @@ describe("formatPct", () => {
   });
 });
 
-describe("formatClpUfDay", () => {
-  it("shows CLP per UF with exactly two decimals", () => {
-    expect(formatClpUfDay(40_763.45)).toBe("$40.763,45");
-    expect(formatClpUfDay(40_273.69)).toBe("$40.273,69");
+describe("formatMoney precision options", () => {
+  it("prints a fixed number of decimals when asked, pesos included", () => {
+    expect(formatMoney({ value: 40_763.45, currency: "clp" }, { digits: 2 })).toBe("$40.763,45");
+    expect(formatMoney({ value: 40_763.45, currency: "clp" })).toBe("$40.763");
   });
 
-  it("returns em dash for null", () => {
-    expect(formatClpUfDay(null)).toBe("—");
+  it("prints up to the digits a currency is counted in with precision full", () => {
+    setCurrencyRegistry([{ code: "zzy", symbol: "ZY", minor_digits: 4, display_digits: 2, symbol_after: true }]);
+    expect(formatMoney({ value: 7.1432, currency: "zzy" })).toBe("7,14\u00A0ZY");
+    expect(formatMoney({ value: 7.1432, currency: "zzy" }, { precision: "full" })).toBe("7,1432\u00A0ZY");
+    expect(formatMoney({ value: 7.1, currency: "zzy" }, { precision: "full" })).toBe("7,10\u00A0ZY");
   });
 });
 
@@ -118,7 +120,7 @@ describe("decimal-separator preference applies to every currency", () => {
     setDecimalSeparatorForFormatting("period");
     expect(formatClp(-1234)).toBe("($1,234)");
     expect(formatClp(95_817_344)).toBe("$95,817,344");
-    expect(formatClpUfDay(40_763.45)).toBe("$40,763.45");
+    expect(formatMoney({ value: 40_763.45, currency: "clp" }, { digits: 2 })).toBe("$40,763.45");
     expect(formatUsdFine(1_234.56)).toBe("US$1,234.56");
     expect(formatGroupedDecimal(1_234.5, 2)).toBe("1,234.50");
   });
@@ -390,7 +392,12 @@ describe("formats by currency code", () => {
     expect(adaptiveAccountingNumberFlowParts(54.327, "clp", "bare")).toEqual(
       accountingCurrencyNumberFlowParts(54.327, "clp", "bare")
     );
-    setCurrencyRegistry([{ code: "pen", symbol: "S/ ", minor_digits: 2 }]);
+    setCurrencyRegistry([{ code: "pen", symbol: "S/ ", minor_digits: 2, display_digits: 2, symbol_after: false }]);
     expect(formatCurrencyFine(12.5, "pen")).toBe("S/ 12,50");
+    // A row with its symbol after the figure and fewer shown decimals than it is counted in.
+    setCurrencyRegistry([{ code: "zzx", symbol: "ZX", minor_digits: 4, display_digits: 2, symbol_after: true }]);
+    expect(formatCurrencyFine(1234.0049, "zzx")).toBe("1.234,00\u00A0ZX");
+    expect(formatCurrencyFine(-3.5, "zzx")).toBe("(3,50\u00A0ZX)");
+    expect(formatCurrency(1234.4, "zzx")).toBe("1.234\u00A0ZX");
   });
 });

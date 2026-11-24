@@ -3,13 +3,12 @@ import express from "express";
 import { benchmarkComparisonForAccount, benchmarkComparisonForGroup } from "../benchmarkComparison.js";
 import { getBenchmark, listBenchmarks } from "../benchmarkLevels.js";
 import { db } from "../db.js";
-import { computeMortgagePrepaymentComparison } from "../mortgagePrepaymentComparison.js";
 import {
   groupHasPeriodReturns,
   isResolvablePortfolioGroupSlug,
 } from "../portfolioGroupTree.js";
 import { isKnownClassTabGroup } from "./shared.js";
-import { coreCurrencyCodes, requestDisplayUnit } from "../displayUnits.js";
+import { requestDisplayUnit } from "../displayUnits.js";
 
 export function registerBenchmarkRoutes(app: express.Express): void {
   app.get("/api/benchmarks", (_req, res) => {
@@ -82,27 +81,5 @@ export function registerBenchmarkRoutes(app: express.Express): void {
       return;
     }
     res.json(benchmarkComparisonForGroup(tabSlug, benchmark, unit));
-  });
-
-  /**
-   * `?account_id=<mortgage account>&benchmark=<slug>&unit=<core currency>`: the mortgage's payments above
-   * the minimum, prepaid vs invested in the benchmark. `null` body: no such payments.
-   */
-  app.get("/api/mortgage-prepayment-comparison", (req, res) => {
-    const benchmark = getBenchmark(typeof req.query.benchmark === "string" ? req.query.benchmark : "");
-    if (!benchmark) {
-      res.status(400).json({ error: "unknown benchmark" });
-      return;
-    }
-    const id = Number(req.query.account_id);
-    if (!Number.isInteger(id) || id <= 0) {
-      res.status(400).json({ error: "invalid account_id" });
-      return;
-    }
-    const unit = requestDisplayUnit(req.query, {
-      surface: "/api/mortgage-prepayment-comparison",
-      supported: coreCurrencyCodes(),
-    });
-    res.json(computeMortgagePrepaymentComparison({ accountId: id, benchmark, unit }));
   });
 }

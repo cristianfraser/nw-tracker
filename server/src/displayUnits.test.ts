@@ -67,8 +67,9 @@ describe("GET /api/currencies", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as CurrenciesResponse;
     const byCode = new Map(body.currencies.map((c) => [c.code, c]));
-    expect(byCode.get("clp")).toEqual({ code: "clp", symbol: "$", minor_digits: 0, tier: "core" });
-    expect(byCode.get("usd")).toEqual({ code: "usd", symbol: "US$", minor_digits: 2, tier: "core" });
+    expect(byCode.get("clp")).toEqual({ code: "clp", symbol: "$", minor_digits: 0, display_digits: 0, symbol_after: false, tier: "core" });
+    expect(byCode.get("usd")).toEqual({ code: "usd", symbol: "US$", minor_digits: 2, display_digits: 2, symbol_after: false, tier: "core" });
+    expect(byCode.get("uf")).toEqual({ code: "uf", symbol: "UF", minor_digits: 4, display_digits: 2, symbol_after: true, tier: "index" });
     expect(byCode.get("eur")).toMatchObject({ code: "eur", minor_digits: 2, tier: "core" });
     const firstNonCore = body.currencies.findIndex((c) => c.tier !== "core");
     if (firstNonCore >= 0) expect(body.currencies.slice(firstNonCore).every((c) => c.tier !== "core")).toBe(true);

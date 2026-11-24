@@ -29,6 +29,7 @@ import type {
   CheckingCartolaMonthsResponse,
   CheckingGlanceDto,
   DashboardAccountRow,
+  DeptoGlanceDto,
   PositionGlanceDto,
   PeriodReturnsPayload,
 } from "../../types";
@@ -58,6 +59,8 @@ export type AccountDetailPageData = {
   positionGlance: PositionGlanceDto | null | undefined;
   /** The checking page's head (server `checking_glance`): undefined while the bundle is not in, null on any other account. */
   checkingGlance: CheckingGlanceDto | null | undefined;
+  /** The property / mortgage page (server `depto_glance`): undefined while the bundle is not in, null on any other account or a loan with no ledger rows. */
+  deptoGlance: DeptoGlanceDto | null | undefined;
   dash: ReturnType<typeof dashPickForNavStrip> | null;
   /** `dash` is the nav-tree zero frame (nav-context not in yet): its cards are in the placeholder phase. */
   dashIsPlaceholder: boolean;
@@ -156,6 +159,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const checkingCartolaMonths = detail?.checkingCartolaMonths ?? null;
   const positionGlance = bundleReady ? detail?.position_glance : undefined;
   const checkingGlance = bundleReady ? detail?.checking_glance : undefined;
+  const deptoGlance = bundleReady ? detail?.depto_glance : undefined;
 
   const needsNavChildCards =
     (navSelfEarly?.children?.filter((c) => c.route_path?.trim()).length ?? 0) > 0;
@@ -284,6 +288,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     checkingCartolaMonths,
     positionGlance,
     checkingGlance,
+    deptoGlance,
     dash,
     dashIsPlaceholder,
     monthlyPerf,

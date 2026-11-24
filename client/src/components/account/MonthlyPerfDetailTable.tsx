@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { formatInstrumentUnits, formatMoney, formatPct, formatUfBalance } from "../../format";
+import { formatInstrumentUnits, formatMoney, formatPct } from "../../format";
 import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { formatYearMonthLabel } from "../../formatDateLabel";
@@ -123,7 +123,7 @@ export function MonthlyPerfDetailTable({
 
   const ufBalance = (row: PerfRow): string | undefined => {
     const uf = "closing_balance_uf" in row ? (row as AccountMonthlyPerformanceRow).closing_balance_uf : null;
-    return uf != null && Number.isFinite(uf) ? formatUfBalance(uf) : undefined;
+    return uf != null && Number.isFinite(uf) ? formatMoney({ value: uf, currency: "uf" }, { precision: "full" }) : undefined;
   };
 
   // Net worth's rows carry the period's income and spending (its contribution is their difference).

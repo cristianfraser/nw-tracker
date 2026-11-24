@@ -1043,16 +1043,14 @@ export function useBenchmarks() {
   });
 }
 
-/** The mortgage's payments above the minimum, prepaid vs invested in a benchmark. */
-export function useMortgagePrepaymentComparison(
-  accountId: number,
-  benchmark: string,
-  unit: DisplayUnit,
-  enabled: boolean
-) {
+/**
+ * The mortgage payments list's prepaid-vs-invested block for `benchmark` (the bundle carries the
+ * default benchmark's; this fetches another one only when picked).
+ */
+export function useDeptoPrepayments(accountId: number, benchmark: string, unit: DisplayUnit, enabled: boolean) {
   return useQuery({
-    queryKey: queryKeys.mortgagePrepaymentComparison(accountId, benchmark, unit),
-    queryFn: () => api.mortgagePrepaymentComparison(accountId, benchmark, unit),
+    queryKey: queryKeys.deptoPrepayments(accountId, benchmark, unit),
+    queryFn: () => api.deptoPrepayments(accountId, benchmark, unit),
     enabled,
     staleTime: DISPLAY_UNIT_STALE_MS,
     refetchInterval: DISPLAY_UNIT_STALE_MS,

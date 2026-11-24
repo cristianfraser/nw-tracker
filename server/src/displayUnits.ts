@@ -19,12 +19,14 @@ export function coreCurrencyCodes(): readonly string[] {
 }
 
 const selCurrencies = db.prepare(
-  `SELECT code, symbol, minor_digits, tier FROM currencies ORDER BY CASE tier WHEN 'core' THEN 0 ELSE 1 END, code`
+  `SELECT code, symbol, minor_digits, COALESCE(display_digits, minor_digits) AS display_digits, symbol_after, tier
+   FROM currencies ORDER BY CASE tier WHEN 'core' THEN 0 ELSE 1 END, code`
 );
 
 /** `GET /api/currencies`: every loaded currency (core first), for the client's unit picker and formats. */
 export function currenciesPayload(): CurrenciesResponse {
-  return { currencies: selCurrencies.all() as CurrencyDto[] };
+  const rows = selCurrencies.all() as (Omit<CurrencyDto, "symbol_after"> & { symbol_after: number })[];
+  return { currencies: rows.map((r) => ({ ...r, symbol_after: r.symbol_after === 1 })) };
 }
 
 /** A display-unit problem in a request: the route answers it with its `status`, never a 500. */

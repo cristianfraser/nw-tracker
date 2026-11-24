@@ -1,23 +1,18 @@
-import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useTranslation } from "../../i18n";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { PeriodReturnsWithBenchmark } from "../../components/perf/PeriodReturnsTable";
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
 import { Table } from "../../components/ui/Table";
-import { Loadable, loadableClass } from "../../components/ui/Loadable";
+import { loadableClass } from "../../components/ui/Loadable";
 import { PageGridTile } from "../../components/layout/PageGridTile";
 import { formatInstrumentUnits, formatMoney, formatPct } from "../../format";
 import { formatOptionStrikeDollars } from "../../formatNative";
 import { AccountBookLedgerSection } from "../../components/account/AccountBookLedgerSection";
-import { MortgagePaymentForm } from "../../components/account/MortgagePaymentForm";
-import { MortgagePrepaymentSection } from "../../components/account/MortgagePrepaymentSection";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { supportsBookLedgerEdit } from "../../accountBookLedgerEdit";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
 import { ExportToolbarButton } from "../../components/export/ExportModal";
-import { DeptoAccountSummaryCards } from "./DeptoAccountSummaryCards";
-import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "./MortgageTables";
 import type { AccountDetailPageData } from "./useAccountDetailPageData";
 import {
   AccountDeltaAccumCombo,
@@ -27,11 +22,7 @@ import {
   useAccountChartSurfaces,
   useAccountMovementForm,
 } from "./accountSurfaces";
-import {
-  MONTHLY_PERF_COLLAPSED,
-  isDeptoMortgageCategory,
-  isDeptoPropertyCategory,
-} from "./shared";
+import { MONTHLY_PERF_COLLAPSED } from "./shared";
 
 type Props = {
   data: AccountDetailPageData;
@@ -42,7 +33,6 @@ export function StandardAccountDetailPage({ data }: Props) {
   const {
     summary,
     depositInflows,
-    mortgageLedger,
     displayUnit,
     monthlyPerfRows,
     periodReturns,
@@ -66,12 +56,7 @@ export function StandardAccountDetailPage({ data }: Props) {
   const isAfcAccount = summary.category_slug === "afc";
   // Cuota-ledger accounts (AFP, AFC): the perf table reads contributions in cuotas.
   const isCuotaLedgerAccount = isAfpAccount || isAfcAccount;
-  const isMortgageAccount = isDeptoMortgageCategory(summary.category_slug);
-  const isPropertyAccount = isDeptoPropertyCategory(summary.category_slug);
-  const isDeptoAccount = isMortgageAccount || isPropertyAccount;
-  const showMortgagePaymentForm =
-    isMortgageAccount && summary.mortgage_payment_create != null;
-  const showPositionBlock = !isMovementCartolaAccount && !isDeptoAccount && !isUsdCashAccount;
+  const showPositionBlock = !isMovementCartolaAccount && !isUsdCashAccount;
   const showPeriodReturns =
     periodReturns === undefined
       ? data.accountDashRow == null || data.accountDashRow.has_period_returns === true
@@ -100,20 +85,6 @@ export function StandardAccountDetailPage({ data }: Props) {
     >
       {/* Self-gates on the server's import specs (a capability): hidden until they arrive. */}
       <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
-
-      {isDeptoAccount ? (
-        <PageGridTile id="depto-summary">
-          <DeptoAccountSummaryCards
-            variant={isMortgageAccount ? "mortgage" : "property"}
-            ledger={mortgageLedger}
-            summary={summary}
-            monthlyPerfRows={monthlyPerfRows}
-            // Its pesos fallbacks: the dashboard row is in the strip's unit, pesos only in CLP.
-            accountDashRow={isHomeCurrency(data.stripUnit) ? data.accountDashRow : null}
-            loading={loading}
-          />
-        </PageGridTile>
-      ) : null}
 
       {optionContract ? (
         <PageGridTile id="option-contract" className={loadableClass(loading)} aria-busy={loading || undefined}>
@@ -322,54 +293,21 @@ export function StandardAccountDetailPage({ data }: Props) {
           {monthlyPerfRows.length === 0 && !loading ? null : (
             <>
               <PageGridTile id="perf-combo" className="chart-grid chart-grid--full-line">
-                <AccountPlYtdCombo data={data} surfaces={surfaces} isMortgageAccount={isMortgageAccount} />
+                <AccountPlYtdCombo data={data} surfaces={surfaces} />
               </PageGridTile>
               <PageGridTile id="perf-accum" className="chart-grid chart-grid--full-line">
-                <AccountDeltaAccumCombo data={data} surfaces={surfaces} isMortgageAccount={isMortgageAccount} />
+                <AccountDeltaAccumCombo data={data} surfaces={surfaces} />
               </PageGridTile>
               <PageGridTile id="detail">
                 <AccountDetalleSurface
                   data={data}
-                  isMortgageAccount={isMortgageAccount}
+                 
                   isCuotaLedgerAccount={isCuotaLedgerAccount}
                 />
               </PageGridTile>
             </>
           )}
         </>
-      ) : null}
-
-      {/* While the ledger loads a depto account shows its tables' frame (no «sheet empty» copy). */}
-      {(mortgageLedger.has_sheet_rows && mortgageLedger.rows.length > 0) ||
-      (loading && isDeptoAccount) ? (
-        // A page grid of its own: the form, the sheet, the scenarios and the prepayments are tiles.
-        <Loadable loading={loading} className="page-grid">
-          {showMortgagePaymentForm && summary.mortgage_payment_create ? (
-            <MortgagePaymentForm
-              accountId={summary.account_id}
-              displayUnit={displayUnit}
-              schema={summary.mortgage_payment_create}
-            />
-          ) : null}
-          <MortgageDividendosTable
-            ledger={mortgageLedger}
-            variant={isMortgageAccount ? "mortgage" : "property"}
-            loading={loading}
-          />
-          {(mortgageLedger.payment_scenarios && mortgageLedger.payment_scenarios.length > 0) ||
-          loading ? (
-            <DeptoPaymentScenarioTable rows={mortgageLedger.payment_scenarios ?? []} loading={loading} />
-          ) : null}
-          {isMortgageAccount ? (
-            <MortgagePrepaymentSection accountId={summary.account_id} displayUnit={displayUnit} />
-          ) : null}
-        </Loadable>
-      ) : isDeptoAccount ? (
-        !mortgageLedger.has_sheet_rows ? (
-          <PageGridTile id="mortgage-sheet">
-            <p className="muted">{t("account.creditCard.mortgageSheetEmpty")}</p>
-          </PageGridTile>
-        ) : null
       ) : null}
 
       {/* The state bonus only exists on APV accounts: while loading they show the table's frame. */}

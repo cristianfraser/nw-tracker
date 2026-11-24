@@ -1,5 +1,7 @@
 import { CheckingAccountDetailPage } from "./accountDetail/CheckingAccountDetailPage";
 import { CreditCardAccountDetailPage } from "./accountDetail/CreditCardAccountDetailPage";
+import { DeptoAccountDetailPage } from "./accountDetail/DeptoAccountDetailPage";
+import { isDeptoMortgageCategory, isDeptoPropertyCategory } from "./accountDetail/shared";
 import { PositionAccountDetailPage } from "./accountDetail/PositionAccountDetailPage";
 import { StandardAccountDetailPage } from "./accountDetail/StandardAccountDetailPage";
 import { useAccountDetailPageData } from "./accountDetail/useAccountDetailPageData";
@@ -36,6 +38,10 @@ export function AccountDetailPage() {
   // A cuenta corriente / cuenta vista: its category is known from the placeholder, so the page mounts at first paint.
   if (CHECKING_PAGE_CATEGORY_SLUGS.has(data.summary.category_slug ?? "")) {
     return <CheckingAccountDetailPage data={data} />;
+  }
+  // A property or its mortgage: the category is known from the placeholder, so the page mounts at first paint.
+  if (isDeptoPropertyCategory(data.summary.category_slug) || isDeptoMortgageCategory(data.summary.category_slug)) {
+    return <DeptoAccountDetailPage data={data} />;
   }
   const isPosition = data.positionGlance != null || (data.positionGlance === undefined && pendingShape != null);
   if (isPosition) {

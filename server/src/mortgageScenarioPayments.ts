@@ -28,6 +28,9 @@ const TERM_PLAZO_MESES: Record<AmortizationTerm, number> = {
   5: 60,
 };
 
+/** The minimum payment's term in cuotas: the longest scenario (the minimum is its annuity). */
+export const MORTGAGE_MINIMUM_TERM_CUOTAS = TERM_PLAZO_MESES[30];
+
 function roundUf5(v: number): number {
   return Math.round(v * 1e5) / 1e5;
 }

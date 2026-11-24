@@ -156,13 +156,11 @@ export function AccountPlYtdCombo({
   surfaces,
   title,
   titleAs = "h3",
-  isMortgageAccount = false,
 }: {
   data: AccountDetailPageData;
   surfaces: AccountChartSurfaces;
   title?: string;
   titleAs?: "h2" | "h3";
-  isMortgageAccount?: boolean;
 }) {
   const { t } = useTranslation();
   const { perf } = surfaces;
@@ -178,7 +176,7 @@ export function AccountPlYtdCombo({
       barSeries={[
         {
           dataKey: "nominal_pl",
-          name: isMortgageAccount ? t("accountDetail.financingCostMonth") : t("accountDetail.deltaMonthNominal"),
+          name: t("accountDetail.deltaMonthNominal"),
           color: data.accountChartTheme.bar,
         },
       ]}
@@ -195,11 +193,9 @@ export function AccountPlYtdCombo({
 export function AccountDeltaAccumCombo({
   data,
   surfaces,
-  isMortgageAccount = false,
 }: {
   data: AccountDetailPageData;
   surfaces: AccountChartSurfaces;
-  isMortgageAccount?: boolean;
 }) {
   const { t } = useTranslation();
   const { perf } = surfaces;
@@ -215,7 +211,7 @@ export function AccountDeltaAccumCombo({
       barSeries={[
         {
           dataKey: "delta_month",
-          name: isMortgageAccount ? t("accountDetail.financingCostMonth") : t("accountDetail.monthlyDelta"),
+          name: t("accountDetail.monthlyDelta"),
           color: data.accountChartTheme.bar,
         },
       ]}
@@ -236,12 +232,10 @@ export function AccountDeltaAccumCombo({
 export function AccountDetalleSurface({
   data,
   headingAs: Heading = "h3",
-  isMortgageAccount = false,
   isCuotaLedgerAccount = false,
 }: {
   data: AccountDetailPageData;
   headingAs?: "h2" | "h3";
-  isMortgageAccount?: boolean;
   isCuotaLedgerAccount?: boolean;
 }) {
   const { t } = useTranslation();
@@ -288,7 +282,6 @@ export function AccountDetalleSurface({
           yearlyRows={data.monthlyPerfYearlyRows}
           displayUnit={displayUnit}
           period={detallePrefs.period === "year" ? "year" : "month"}
-          isMortgageAccount={isMortgageAccount}
           isAfpAccount={isCuotaLedgerAccount}
           unitsKind={summary.units_kind}
           loading={data.contentLoading}

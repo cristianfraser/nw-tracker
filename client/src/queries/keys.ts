@@ -181,8 +181,8 @@ export const queryKeys = {
   projections: (unit: string, overridesKey: string) => ["projections", unit, overridesKey] as const,
   wealthPercentile: (unit: DisplayUnit) => ["wealth-percentile", unit] as const,
   benchmarks: () => ["benchmarks"] as const,
-  mortgagePrepaymentComparison: (accountId: number, benchmark: string, unit: DisplayUnit) =>
-    ["mortgagePrepaymentComparison", accountId, benchmark, unit] as const,
+  deptoPrepayments: (accountId: number, benchmark: string, unit: DisplayUnit) =>
+    ["deptoPrepayments", accountId, benchmark, unit] as const,
   benchmarkComparison: (scope: string, benchmark: string, unit: DisplayUnit) =>
     ["benchmarkComparison", scope, benchmark, unit] as const,
   taxReturn: (taxYear: number | null) => ["tax-return", taxYear] as const,

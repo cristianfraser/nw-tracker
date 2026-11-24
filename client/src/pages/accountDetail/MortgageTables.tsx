@@ -14,7 +14,6 @@ import type {
   DeptoPaymentScenarioTerm,
 } from "../../types";
 import { formatMoney } from "../../format";
-import { formatLoanFigure } from "../../formatLoan";
 import { cn } from "../../cn";
 import i18n from "../../i18n";
 import { PageGridTile } from "../../components/layout/PageGridTile";
@@ -28,9 +27,9 @@ function cellLoanPayPair(c: LoanCurrencies, loan: number | null, pay: number | n
   if (loan == null && pay == null) return "—";
   return (
     <>
-      {loan != null ? formatLoanFigure(loan, c.loan_currency) : "—"}
+      {loan != null ? formatMoney({ value: loan, currency: c.loan_currency }, { precision: "full" }) : "—"}
       {pay != null ? (
-        <span className={cn("muted", styles.cellSub)}>{formatLoanFigure(pay, c.payment_currency)}</span>
+        <span className={cn("muted", styles.cellSub)}>{formatMoney({ value: pay, currency: c.payment_currency })}</span>
       ) : null}
     </>
   );
@@ -53,9 +52,9 @@ function cellCreditoPair(row: DeptoMortgageSheetRow) {
   if (row.credito_restante_loan == null && row.restante_pay == null) return "—";
   return (
     <>
-      {row.credito_restante_loan != null ? formatLoanFigure(row.credito_restante_loan, row.loan_currency, "coarse") : "—"}
+      {row.credito_restante_loan != null ? formatMoney({ value: row.credito_restante_loan, currency: row.loan_currency }) : "—"}
       {row.restante_pay != null ? (
-        <span className={cn("muted", styles.cellSub)}>{formatLoanFigure(row.restante_pay, row.payment_currency)}</span>
+        <span className={cn("muted", styles.cellSub)}>{formatMoney({ value: row.restante_pay, currency: row.payment_currency })}</span>
       ) : null}
     </>
   );
@@ -79,8 +78,8 @@ type MergedCellLine = {
 function loanPayLine(c: LoanCurrencies, key: string, loan: number | null, pay: number | null): MergedCellLine {
   return {
     key,
-    main: loan != null ? formatLoanFigure(loan, c.loan_currency) : "—",
-    sub: pay != null ? formatLoanFigure(pay, c.payment_currency) : null,
+    main: loan != null ? formatMoney({ value: loan, currency: c.loan_currency }, { precision: "full" }) : "—",
+    sub: pay != null ? formatMoney({ value: pay, currency: c.payment_currency }) : null,
   };
 }
 
@@ -248,20 +247,20 @@ export function MortgageDividendosTable({
             <div className="card">
               <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.viviendaHoja")}</div>
               <div className="value mono">
-                {m?.valor_vivienda_loan != null ? formatLoanFigure(m.valor_vivienda_loan, m.loan_currency, "coarse") : "—"}
+                {m?.valor_vivienda_loan != null ? formatMoney({ value: m.valor_vivienda_loan, currency: m.loan_currency }) : "—"}
               </div>
             </div>
             <div className="card">
               <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.hipotecaTrasPie")}</div>
               <div className="value mono">
-                {m?.hipoteca_tras_pie_loan != null ? formatLoanFigure(m.hipoteca_tras_pie_loan, m.loan_currency, "coarse") : "—"}
+                {m?.hipoteca_tras_pie_loan != null ? formatMoney({ value: m.hipoteca_tras_pie_loan, currency: m.loan_currency }) : "—"}
               </div>
             </div>
             <div className="card">
               <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.pieClpUf")}</div>
               <div className={cn("value", "mono", styles.cardValueSecondary)}>
-                {m?.pie_pay != null ? formatLoanFigure(m.pie_pay, m.payment_currency) : "—"} ·{" "}
-                {m?.pie_loan != null ? formatLoanFigure(m.pie_loan, m.loan_currency) : "—"}
+                {m?.pie_pay != null ? formatMoney({ value: m.pie_pay, currency: m.payment_currency }) : "—"} ·{" "}
+                {m?.pie_loan != null ? formatMoney({ value: m.pie_loan, currency: m.loan_currency }, { precision: "full" }) : "—"}
               </div>
             </div>
             <div className="card">

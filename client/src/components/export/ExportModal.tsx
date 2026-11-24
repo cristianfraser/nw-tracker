@@ -48,7 +48,14 @@ function rangeForPreset(
 }
 
 /** Toolbar button + modal: pick range/sections/unit, download one XLSX workbook. */
-export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
+export function ExportToolbarButton({
+  exportPath,
+  triggerClassName,
+}: {
+  exportPath: string;
+  /** A quiet trigger (a plain button with this class, e.g. a dotted link) in place of the secondary button. */
+  triggerClassName?: string;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState<RangePreset>("all");
@@ -98,9 +105,15 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
 
   return (
     <>
-      <Button variant="secondary" onClick={() => setOpen(true)}>
-        {t("export.button")}
-      </Button>
+      {triggerClassName ? (
+        <button type="button" className={triggerClassName} onClick={() => setOpen(true)}>
+          {t("export.button")}
+        </button>
+      ) : (
+        <Button variant="secondary" onClick={() => setOpen(true)}>
+          {t("export.button")}
+        </Button>
+      )}
       <Modal
         open={open}
         onClose={() => setOpen(false)}

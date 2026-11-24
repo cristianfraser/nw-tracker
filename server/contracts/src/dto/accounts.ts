@@ -166,6 +166,11 @@ export interface AccountDetailBundleResponse {
   position_glance?: PositionGlanceDto | null;
   /** A cuenta corriente / cuenta vista page's head (server `checkingStatement.ts`); null on every other account. Optional like `position_glance`. */
   checking_glance?: CheckingGlanceDto | null;
+  /**
+   * The property and mortgage pages (server `deptoGlance.ts`): every figure, series and bar share
+   * both pages draw. Null on every other account. Optional like `position_glance`.
+   */
+  depto_glance?: DeptoGlanceDto | null;
 }
 
 /** «up» above zero, «down» below, «flat» at zero (or no figure). */
@@ -544,3 +549,334 @@ export interface CheckingCartolaMonthsResponse {
   ledger_anchor: CheckingLedgerAnchorDto | null;
   cartola_derived_anchor: CartolaDerivedAnchorDto | null;
 }
+
+/*
+ * ---- Property and mortgage pages (server `deptoGlance.ts`) ----
+ *
+ * One ledger, two views. Currency naming follows the loan ledger (`DeptoMortgageSheetRow`): a key
+ * ending `_loan` is in `loan_currency` (what the lender states the balance and the minimum / maximum
+ * in), one ending `_pay` in `payment_currency` (what the payment and its parts are charged in); every
+ * other money figure is in the glance's `unit` (the request's display unit). A `_share` is a
+ * fraction 0..1 of the bar it belongs to. Dates are ISO days, months `YYYY-MM`, years `YYYY`.
+ */
+
+/** The head both pages share: the hero in the loan currency, its display-unit value, the P/L strip. */
+export interface DeptoGlanceHeaderDto {
+  /** Property: net equity (appraisal − balance); mortgage: the balance after the last payment. */
+  hero_loan: number;
+  /** The same today in `unit`; null when `unit` is the loan currency (the figure would repeat). */
+  hero: number | null;
+  /**
+   * Día / mes / año / total: the property's P/L, the mortgage's financing cost (the dashboard
+   * row's deltas, negative = cost). `year_pct` / `total_pct` only on the property (total on
+   * deposits), null on the mortgage.
+   */
+  strip: { day: number; month: number; year: number; total: number; year_pct: number | null; total_pct: number | null };
+}
+
+/** One month-end of the property's value chart (the last point is today), all in `unit`. */
+export interface DeptoValuePointDto {
+  date: string;
+  /** The appraisal's value (dashed line). */
+  value: number;
+  /** The mortgage balance (the band between value and equity). */
+  mortgage: number;
+  /** Deposited so far (pie + every payment), each at its own day's rate. */
+  deposited: number;
+  /** Net equity = value − mortgage. */
+  equity: number;
+}
+
+/** The property's value band: chart + its right rail. */
+export interface DeptoPropertyValueBandDto {
+  points: DeptoValuePointDto[];
+  /** Prepagos marked on the x axis with what each paid down. */
+  prepagos: { date: string; amount_loan: number }[];
+  /** Owned vs owed bar: net equity and balance in the loan currency, shares of the appraisal. */
+  ownership: { owned_loan: number; owed_loan: number; owned_share: number; owed_share: number };
+  /** The appraisal in the loan currency and its value today in `unit`. */
+  appraisal: { value_loan: number; value: number };
+  /** The purchase (the pie's day), the appraisal's value in `unit` that day, and the move since. */
+  purchase: { date: string; value: number; revaluation: number; revaluation_pct: number };
+  /** The pie in the loan currency and in `unit` at its day's rate. */
+  pie: { pie_loan: number; pie: number };
+}
+
+/** One month of the property's P/L chart, in `unit`. */
+export interface DeptoPlMonthDto {
+  month: string;
+  pl: number;
+  /** P/L since the first month through this one (the cumulative line). */
+  pl_cumulative: number;
+  /** Month-end value (net equity) and its change from the previous month-end (Δ valor; null on the first month). */
+  closing: number;
+  value_change: number | null;
+}
+
+/**
+ * This month's P/L split in two: the part of the month's payments that did not become equity
+ * (interest, insurance, a prepayment charge: Σ amortization − Σ paid, ≤ 0) and the move of the
+ * loan currency against `unit` on the property net of the balance's own indexation (Δ appraisal
+ * value − (Δ balance + amortized)). The two add up to `pl` (asserted on the server).
+ */
+export interface DeptoMonthSplitDto {
+  month: string;
+  pl: number;
+  /** The month's payments by ledger label (`"33"`, `"prepago 2"`), oldest first; empty when none. */
+  cuotas: string[];
+  cuota_part: number;
+  /** Null when the loan and payment currencies match (no currency move to show). */
+  currency_part: number | null;
+  /** Each part's width on the diverging bar: |part| ÷ the larger |part| (0 when both are 0). */
+  cuota_share: number;
+  currency_share: number;
+}
+
+/** The property's P/L band: monthly bars + cumulative line, year bands, rail. */
+export interface DeptoPropertyPlBandDto {
+  months: DeptoPlMonthDto[];
+  /** Calendar years the months cover, oldest first: totals for the bands and the rail. */
+  years: { year: string; first_month: string; last_month: string; pl: number; value_change: number }[];
+  /** Total P/L and its % on deposits (the header's total). */
+  total: { pl: number; pct: number | null };
+  /** Null in the property's first month (no previous month-end to split from). */
+  this_month: DeptoMonthSplitDto | null;
+}
+
+/** The property's cost of living: real-estate bills of its place, plus the mortgage cuota parts. */
+export type DeptoCostDirection = "cost" | "equity";
+
+export interface DeptoCostKindDto {
+  /** The expenses builder's chart kind (`mortgage_carrying`, `gastos_comunes`, …; colour by kind on the client). */
+  kind: string;
+  /** Cost bars go up; equity (amortization, extra amortization) goes down. */
+  direction: DeptoCostDirection;
+}
+
+export interface DeptoCostMonthDto {
+  /** The bill month. */
+  month: string;
+  /** Amount per kind in `unit` (positive, every kind of `kinds` present; 0 when none). */
+  values: Record<string, number>;
+  cost_total: number;
+  equity_total: number;
+  /** The equity side exceeds the axis cap: drawn clipped, `equity_total` printed under it. */
+  equity_over_cap: boolean;
+  /** Inside the rail's 12-month window (shaded). */
+  in_window: boolean;
+}
+
+export interface DeptoCostBandDto {
+  /** The tracked place (`expense_accounts.slug`) whose bills these are: links to its expenses page. */
+  place_slug: string;
+  /** Kinds in the expenses builder's stacking order. */
+  kinds: DeptoCostKindDto[];
+  months: DeptoCostMonthDto[];
+  /** The axis cap (a nice ceiling of the largest monthly cost total), the same both ways, and its ticks. */
+  axis: { cap: number; ticks: number[] };
+  /**
+   * The last 12 complete bill months (ending two months before the current one: a bill sits one
+   * month before its charge), clipped to the months on file; null when no bill month is complete.
+   */
+  window: {
+    from: string;
+    to: string;
+    total: number;
+    cost: number;
+    equity: number;
+    cost_share: number;
+    equity_share: number;
+    /** One row per kind with a total in the window: cost kinds first, then equity, each in kind order; `share` of the largest row. */
+    rows: { kind: string; direction: DeptoCostDirection; total: number; share: number }[];
+  } | null;
+}
+
+export interface DeptoPropertyGlanceDto {
+  value: DeptoPropertyValueBandDto;
+  pl: DeptoPropertyPlBandDto;
+  /** Null when no tracked place names this property. */
+  cost: DeptoCostBandDto | null;
+  /** The account's movements (the folded «movimientos (N)» link). */
+  movement_count: number;
+}
+
+/** One segment of a payment row's split bar. */
+export type DeptoPaymentPart = "amortization" | "extra" | "interest" | "insurance" | "charge" | "prepago";
+
+export interface DeptoPaymentBarDto {
+  /** Left to right; `share` of the list's bar scale (`bar_scale_loan`), Σ ≤ 1. */
+  segments: { part: DeptoPaymentPart; share: number }[];
+  /** The payment is larger than the scale: the bar is cut at it. */
+  clipped: boolean;
+}
+
+/** A payment's (or the totals') prepaid-vs-invested figures in `unit`, for one benchmark. */
+export interface DeptoPrepayCellDto {
+  extra: number;
+  prepaid_value: number | null;
+  invested_value: number | null;
+  delta: number | null;
+  delta_pct: number | null;
+  /** The two thin bars: each value ÷ the larger of the two (null when it is). */
+  prepaid_share: number | null;
+  invested_share: number | null;
+}
+
+/**
+ * Prepaid vs invested for one benchmark (`mortgagePrepaymentComparison.ts`): the payments list's
+ * per-row cells by row `key`, and the Σ row's. The bundle carries the default benchmark's;
+ * `GET /api/accounts/:id/depto-prepayments?benchmark=&unit=` serves the same block for another.
+ */
+export interface DeptoPrepayBlockDto {
+  benchmark: string;
+  unit: DisplayUnitCode;
+  /** Keyed by `DeptoPaymentRowDto.key`; a payment with nothing above the minimum has no entry. */
+  rows: Record<string, DeptoPrepayCellDto>;
+  totals: DeptoPrepayCellDto & {
+    covered_payments: number;
+    covered_from: string | null;
+    prepaid_irr_pct: number | null;
+    invested_irr_pct: number | null;
+    irr_annualized: boolean;
+  };
+}
+
+/** One payment of the «Dividendos» list (newest first). */
+export interface DeptoPaymentRowDto {
+  /** The ledger label (`"33"`, `"prepago 3"`): the row's identity and the prepayment block's key. */
+  key: string;
+  kind: "cuota" | "prepago";
+  /** The cuota number, or the prepago's ordinal (shown «P3»). */
+  number: number;
+  date: string;
+  paid_loan: number;
+  paid_pay: number;
+  amortization_loan: number | null;
+  extra_loan: number | null;
+  interest_loan: number | null;
+  insurance_loan: number | null;
+  charge_loan: number | null;
+  balance_loan: number;
+  balance_pay: number;
+  /** The lender's minimum for the cuota; null on a prepago. */
+  min_loan: number | null;
+  bar: DeptoPaymentBarDto;
+}
+
+/** The Σ row: every column summed over the payments (asserted against the ledger's running totals). */
+export interface DeptoPaymentTotalsDto {
+  first_date: string;
+  count: number;
+  paid_loan: number;
+  paid_pay: number;
+  amortization_loan: number;
+  extra_loan: number;
+  /** Scheduled + extra amortization in the payment currency. */
+  amortization_total_pay: number;
+  interest_loan: number;
+  interest_pay: number;
+  insurance_loan: number;
+  insurance_pay: number;
+  charge_loan: number;
+  charge_pay: number;
+  /** The Σ row's own bar: each part's share of the total paid (Σ = 1). */
+  bar: DeptoPaymentBarDto;
+}
+
+/** The next cuota (dimmed first row). */
+export interface DeptoNextCuotaDto {
+  cuota: string;
+  date: string;
+  min_loan: number;
+  min_pay: number;
+  max_loan: number | null;
+  max_pay: number | null;
+  /** Where the dashed min…max range sits on the list's bar scale. */
+  min_share: number;
+  max_share: number | null;
+  /** The minimum and maximum are the lender's quote, not a projection. */
+  quoted: boolean;
+}
+
+export interface DeptoPaymentsListDto {
+  next: DeptoNextCuotaDto | null;
+  totals: DeptoPaymentTotalsDto;
+  rows: DeptoPaymentRowDto[];
+  /** The bar scale: a nice ceiling of the largest regular cuota paid (a larger prepago is cut, «› scale»). */
+  bar_scale_loan: number;
+  /** The benchmark the bundle's block was built for (the selector's default). */
+  default_benchmark: string;
+  prepayments: DeptoPrepayBlockDto | null;
+}
+
+/** One step of the balance chart (loan currency). */
+export interface DeptoBalancePointDto {
+  date: string;
+  balance_loan: number;
+  kind: "start" | "cuota" | "prepago";
+  /** A prepago's drop of the balance (negative), labelled on its accent step; null otherwise. */
+  step_loan: number | null;
+}
+
+export interface DeptoBalanceBandDto {
+  /** The balance after the pie, then after every payment. */
+  points: DeptoBalancePointDto[];
+  original_loan: number;
+  left_loan: number;
+  paid_loan: number;
+  paid_share: number;
+  left_share: number;
+  /** What the paid part split into: prepagos (Σ their drops) and the cuotas (the rest). */
+  prepaid_loan: number;
+  cuotas_paid_loan: number;
+  /** The mortgage's financing cost (its P/L, negative) in `unit`: total and per calendar year. */
+  financing_cost: { total: number; years: { year: string; cost: number }[] };
+}
+
+/** One projected payoff path from today's balance. */
+export interface DeptoPayoffPathDto {
+  /** Amortization per cuota (usual pace) or null (the minimum's annuity amortizes a growing part). */
+  amortization_loan: number | null;
+  end_date: string;
+  cuotas: number;
+  years: number;
+  /** Interest paid along the path (insurance left out). */
+  interest_loan: number;
+  /** Today's balance, then the balance after each projected cuota. */
+  path: { date: string; balance_loan: number }[];
+}
+
+export type DeptoTermKey = 30 | 25 | 20 | 15 | 12 | 10 | 5 | "max" | "usual";
+
+export interface DeptoProjectionDto {
+  /** The monthly rate the paths use: the last cuota's interest ÷ the balance before it. */
+  monthly_rate: number;
+  /** The usual pace: median amortization (scheduled + extra) of the last five regular cuotas. */
+  usual: DeptoPayoffPathDto;
+  /** The minimum: an annuity ending at the loan's full term (the minimum scenario's, 30 years). */
+  minimum: DeptoPayoffPathDto;
+  saving: { interest_loan: number; interest: number; years_earlier: number };
+  /** The term strip, longest first, with the usual pace inserted at its place (`highlighted`). */
+  terms: { term: DeptoTermKey; years: number | null; payment_loan: number | null; payment_pay: number | null; highlighted: boolean }[];
+}
+
+export interface DeptoMortgageGlanceDto {
+  payments: DeptoPaymentsListDto;
+  balance: DeptoBalanceBandDto;
+  /** Null when the loan has no regular cuota yet (no rate to project with). */
+  projection: DeptoProjectionDto | null;
+}
+
+interface DeptoGlanceBase {
+  /** The currency of every display-unit figure. */
+  unit: DisplayUnitCode;
+  loan_currency: string;
+  payment_currency: string;
+  /** Chile today: the day «today» figures are at. */
+  as_of: string;
+  header: DeptoGlanceHeaderDto;
+}
+
+export type DeptoGlanceDto =
+  | (DeptoGlanceBase & { kind: "property"; property: DeptoPropertyGlanceDto })
+  | (DeptoGlanceBase & { kind: "mortgage"; mortgage: DeptoMortgageGlanceDto });

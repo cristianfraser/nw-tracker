@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { formatCurrency, formatUfUnits, parseNumberInputOrThrow } from "../../format";
+import { formatMoney, parseNumberInputOrThrow } from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import { Table } from "../ui/Table";
@@ -13,8 +13,7 @@ import {
 
 /** A stored row in the currency it is stated in (a book account's rows are pesos). */
 function formatStoredValuation(value: number, currency: string): string {
-  if (currency === "uf") return formatUfUnits(value); // convention-ok: the UF is an index shown as UF units, not with a money symbol
-  return formatCurrency(value, currency);
+  return formatMoney({ value, currency });
 }
 
 type Props = {

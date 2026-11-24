@@ -890,13 +890,10 @@ export const api = {
     ),
   benchmarks: () =>
     j<{ benchmarks: import("./types").BenchmarkOption[] }>("/api/benchmarks"),
-  mortgagePrepaymentComparison: (accountId: number, benchmark: string, unit: DisplayUnit) =>
-    j<import("./types").MortgagePrepaymentComparison | null>(
-      `/api/mortgage-prepayment-comparison?${new URLSearchParams({
-        account_id: String(accountId),
-        benchmark,
-        unit,
-      }).toString()}`
+  /** The mortgage payments list's prepaid-vs-invested block for a benchmark other than the bundle's default. */
+  deptoPrepayments: (accountId: number, benchmark: string, unit: DisplayUnit) =>
+    j<import("./types").DeptoPrepayBlockDto | null>(
+      `/api/accounts/${accountId}/depto-prepayments?${new URLSearchParams({ benchmark, unit }).toString()}`
     ),
   benchmarkComparison: (
     scope: { accountId: number } | { portfolioGroup: string },

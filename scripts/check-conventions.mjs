@@ -195,7 +195,7 @@ if (fs.existsSync(MIGRATIONS_DIR)) {
  * the F22 states pesos, a Santander feed has a peso and a dollar side). The ratchet baseline these
  * rules started with emptied on 2026-11-12 (docs/any-currency-plan.md C7) and was removed.
  *
- *  8. currency-formatter: formatClp / formatClpUfDay / formatUsd / formatUsdFine in
+ *  8. currency-formatter: formatClp / formatUsd / formatUsdFine in
  *     client/src/components or client/src/pages — format through the unit (formatCurrency,
  *     formatMoney), never a formatter named after one currency; a figure one currency by its nature
  *     (an F22 code, a card's billing pesos, a receipt) uses its named wrapper in client/src/formatNative.ts.
@@ -224,7 +224,7 @@ const CURRENCY_RULES = [
   {
     id: "currency-formatter",
     applies: (file) => VIEW_DIRS.some((d) => file.startsWith(d + path.sep)),
-    re: /\b(formatClp|formatClpUfDay|formatUsd|formatUsdFine)\s*\(/g,
+    re: /\b(formatClp|formatUsd|formatUsdFine)\s*\(/g,
     why: "a formatter named after one currency in a view — format through the unit (formatCurrency / formatMoney), or a native figure through its formatNative.ts wrapper",
   },
   {

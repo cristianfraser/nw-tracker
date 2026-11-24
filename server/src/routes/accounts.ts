@@ -19,6 +19,9 @@ import { db } from "../db.js";
 import { monthlyPerfForAccountDisplay } from "../detalleDailyChainedPct.js";
 import { listPortfolioGroupAccountsForApi } from "../portfolioGroupAccountsApi.js";
 import { cachedAccountDetailBundle } from "../accountDetailBundle.js";
+import { deptoPrepayBlockForBenchmark } from "../deptoGlance.js";
+import { getBenchmark } from "../benchmarkLevels.js";
+import { accountHasRole } from "../accountRoles.js";
 import { HeavyWork, timeHeavy, timeHeavyAsync } from "../heavyWork.js";
 import { clearCheckingLedgerAnchor, upsertCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { getCheckingCartolaMonths } from "../checkingCartolaMonthSummary.js";
@@ -305,6 +308,30 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
   }
   res.json(payload);
 }));
+
+/**
+ * `?benchmark=<slug>&unit=<core currency>`: the mortgage payments list's prepaid-vs-invested block
+ * for a benchmark other than the bundle's default (`deptoGlance.ts`). `null` body: no payment above
+ * the minimum. Apart from the bundle so a benchmark change refetches only this block.
+ */
+app.get("/api/accounts/:id/depto-prepayments", (req, res) => {
+  const id = accountIdFromReq(req);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "invalid account id" });
+    return;
+  }
+  const slug = typeof req.query.benchmark === "string" ? req.query.benchmark : "";
+  if (!getBenchmark(slug)) {
+    res.status(400).json({ error: "unknown benchmark" });
+    return;
+  }
+  if (!accountHasRole(id, "loan_of")) {
+    res.status(400).json({ error: "not a mortgage account" });
+    return;
+  }
+  const unit = requestDisplayUnit(req.query, { surface: "/api/accounts/:id/depto-prepayments" });
+  res.json(deptoPrepayBlockForBenchmark(id, slug, unit));
+});
 
 /** The account's monthly performance rows (`monthlyPerfForAccountDisplay`: the series its dashboard card sums, each month's % compounded from the daily returns; not persisted). */
 app.get("/api/accounts/:id/performance-monthly", (req, res) => {

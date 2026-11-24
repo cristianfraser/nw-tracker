@@ -4,7 +4,7 @@
  * (`formatMoney` / `formatCurrency`); it reaches for one of these only when the source fixes the
  * currency, and the name says which source. Each is the plain peso or dollar formatter.
  */
-import { formatClp, formatClpUfDay, formatUsd, formatUsdFine } from "./format";
+import { formatClp, formatMoney, formatUsd, formatUsdFine } from "./format";
 
 /** An F22 code, a Chilean tax figure: stated in pesos by law. */
 export const formatF22Pesos = (n: number): string => formatClp(n); // convention-ok: an F22 figure is stated in pesos by law
@@ -25,7 +25,8 @@ export const formatChileTaxPesos = (n: number): string => formatClp(n); // conve
 export const formatCardBillingPesos = (n: number): string => formatClp(n); // convention-ok: the card's billing frame is kept in pesos
 
 /** The UF of a day in pesos (UF día). */
-export const formatUfDayPesos = (n: number | null | undefined): string => formatClpUfDay(n); // convention-ok: the UF's value in pesos
+export const formatUfDayPesos = (n: number | null | undefined): string =>
+  n == null ? "—" : formatMoney({ value: n, currency: "clp" }, { digits: 2 }); // convention-ok: the UF's value in pesos, to the cent
 
 /** A checking cartola's printed pesos and the ledger anchor derived from it. */
 export const formatCartolaPesos = (n: number): string => formatClp(n); // convention-ok: a checking cartola prints pesos

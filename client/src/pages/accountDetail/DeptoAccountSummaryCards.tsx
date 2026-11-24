@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { formatCurrency } from "../../format";
-import { formatLoanFigure } from "../../formatLoan";
+import { formatCurrency, formatMoney } from "../../format";
 import { loadableClass } from "../../components/ui/Loadable";
 import type {
   AccountMortgageLedgerResponse,
@@ -43,7 +42,7 @@ function PaymentCardValue({
   }
   return (
     <>
-      <div className="value mono">{formatLoanFigure(amount.value, amount.currency)}</div>
+      <div className="value mono">{formatMoney({ value: amount.value, currency: amount.currency }, { precision: "full" })}</div>
       {date ? <div className="muted mono">{date}</div> : null}
     </>
   );

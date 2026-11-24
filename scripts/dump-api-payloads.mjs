@@ -332,9 +332,9 @@ async function main() {
       const months = (bundle.ccLedger.facturaciones ?? []).map((f) => f.billing_month).filter(Boolean).sort().slice(-4);
       for (const unit of units) for (const m of months) await get(`/api/flows/expenses/lines${qs({ unit, account_id: id, billing_month: m })}`);
     }
-    // Mortgage / property: the prepayment comparison per benchmark.
-    if (bundle?.mortgageLedger?.has_sheet_rows) {
-      for (const b of benchmarks) for (const unit of units) await get(`/api/mortgage-prepayment-comparison${qs({ account_id: id, benchmark: b, unit })}`);
+    // Mortgage: the payments list's prepayment block per benchmark.
+    if (bundle?.depto_glance?.kind === "mortgage") {
+      for (const b of benchmarks) for (const unit of units) await get(`/api/accounts/${id}/depto-prepayments${qs({ benchmark: b, unit })}`);
     }
   }
 

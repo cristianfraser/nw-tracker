@@ -2316,10 +2316,6 @@
       "en": "Monthly P/L vs YTD",
       "es": "P/L mensual vs YTD"
     },
-    "financingCostMonth": {
-      "en": "Month P/L (financing cost)",
-      "es": "P/L mes (coste financiero)"
-    },
     "deltaMonthNominal": {
       "en": "Month Δ (nominal P/L)",
       "es": "Δ mes (P/L nominal)"
@@ -3688,55 +3684,47 @@
         "es": "Acumulado"
       }
     },
-    "prepayments": {
-      "title": {
-        "en": "Prepayments vs investing",
-        "es": "Prepagos vs invertir"
-      },
-      "hint": {
-        "en": "Every peso paid above the minimum cuota, followed to today two ways: prepaid, it grows at the mortgage's rate ({{mortgage}}); invested the same day, it grows with the benchmark. Δ = invested − prepaid; green means investing would have come out ahead. Before tax.",
-        "es": "Cada peso pagado sobre la cuota mínima, seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca ({{mortgage}}); invertido el mismo día, crece con la referencia. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor. Antes de impuestos."
-      },
-      "portfolioHint": {
-        "en": "Your own portfolios earn their own time-weighted return — what each peso held there made, picks included (APV: without its tax benefit or the early-withdrawal penalty).",
-        "es": "Tus portafolios rinden su propia rentabilidad ponderada por tiempo — lo que ganó cada peso que estuvo ahí, con tus elecciones incluidas (APV: sin su beneficio tributario ni la penalidad por retiro anticipado)."
-      },
-      "compareWith": {
-        "en": "Invested in",
-        "es": "Invertido en"
-      },
-      "colDate": {
-        "en": "Date",
-        "es": "Fecha"
-      },
-      "colCuota": {
-        "en": "Payment",
-        "es": "Pago"
-      },
-      "colExtra": {
-        "en": "Above minimum",
-        "es": "Sobre el mínimo"
-      },
-      "colPrepaid": {
-        "en": "Prepaid, today",
-        "es": "Prepagado, hoy"
-      },
-      "colInvested": {
-        "en": "Invested, today",
-        "es": "Invertido, hoy"
-      },
-      "colDelta": {
-        "en": "Δ",
-        "es": "Δ"
-      },
-      "totalLabel": {
-        "en": "All payments",
-        "es": "Todos los pagos"
-      },
-      "coveredFrom": {
-        "en": "Totals from {{date}} ({{covered}} of {{total}} payments): earlier payments predate this portfolio.",
-        "es": "Totales desde {{date}} ({{covered}} de {{total}} pagos): los pagos anteriores son de antes de este portafolio."
-      }
+    "depto": {
+      "day": { "en": "day", "es": "día" },
+      "month": { "en": "month", "es": "mes" },
+      "year": { "en": "year", "es": "año" },
+      "total": { "en": "total", "es": "total" },
+      "valueChart": { "en": "Value, mortgage and net equity", "es": "Valor, hipoteca y patrimonio neto" },
+      "plChart": { "en": "Monthly and cumulative P/L", "es": "P/L mensual y acumulado" },
+      "costChart": { "en": "Monthly cost of the home", "es": "Costo mensual de la vivienda" },
+      "balanceChart": { "en": "Mortgage balance", "es": "Saldo de la hipoteca" },
+      "projectionChart": { "en": "Payoff projection", "es": "Proyección de pago" },
+      "plMode": { "en": "P/L", "es": "P/L" },
+      "valueChangeMode": { "en": "Δ value", "es": "Δ valor" },
+      "cuotas": { "en": "payment {{list}}", "es": "cuota {{list}}" },
+      "expensesLink": { "en": "expenses", "es": "gastos" },
+      "movements": { "en": "movements ({{count}})", "es": "movimientos ({{count}})" },
+      "paymentsTitle": { "en": "Payments", "es": "Dividendos" },
+      "colPaid": { "en": "paid", "es": "pago" },
+      "colAmortization": { "en": "principal", "es": "amortización" },
+      "colInterest": { "en": "interest", "es": "interés" },
+      "colBalance": { "en": "balance", "es": "saldo" },
+      "colMin": { "en": "min", "es": "mín" },
+      "compareWith": { "en": "Compare prepayments with", "es": "Comparar prepagos con" },
+      "prepagoNumber": { "en": "P{{n}}", "es": "P{{n}}" },
+      "registerPayment": { "en": "Record payment", "es": "Registrar pago" },
+      "paymentsCount": { "en": "{{count}} payments", "es": "{{count}} pagos" },
+      "partAmortization": { "en": "principal", "es": "amortización" },
+      "partExtra": { "en": "extra principal", "es": "amortización extra" },
+      "partInterest": { "en": "interest", "es": "interés" },
+      "partInsurance": { "en": "insurance", "es": "seguros" },
+      "partCharge": { "en": "prepayment charge", "es": "comisión de prepago" },
+      "partPrepago": { "en": "prepayment", "es": "prepago" },
+      "prepaid": { "en": "prepaid", "es": "prepagado" },
+      "invested": { "en": "invested", "es": "invertido" },
+      "usualPace": { "en": "{{amount}}/month", "es": "{{amount}}/mes" },
+      "minimum": { "en": "minimum", "es": "mínimo" },
+      "saving": { "en": "saving", "es": "ahorro" },
+      "cuotasYears": { "en": "{{cuotas}} payments · {{years}} years", "es": "{{cuotas}} cuotas · {{years}} años" },
+      "yearsEarlier": { "en": "{{years}} years sooner", "es": "{{years}} años antes" },
+      "termYears": { "en": "{{years}} years", "es": "{{years}} años" },
+      "termMax": { "en": "maximum", "es": "máximo" },
+      "noLedger": { "en": "This loan has no payments on file yet.", "es": "Este crédito aún no tiene pagos registrados." }
     },
     "positionGlance": {
       "sessionClosed": { "en": "at the {{market}} close", "es": "al cierre de {{market}}" },

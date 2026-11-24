@@ -82,22 +82,40 @@ const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
   chf: "CHF ",
 };
 
-type CurrencyFormatInfo = { symbol: string; minorDigits: number };
+type CurrencyFormatInfo = {
+  symbol: string;
+  /** The decimals the currency is counted in (CLP 0, USD 2, UF 4). */
+  minorDigits: number;
+  /** The decimals a figure prints with (UF 2; else `minorDigits`). */
+  displayDigits: number;
+  /** The symbol goes after the figure («1.234,00 UF»). */
+  symbolAfter: boolean;
+};
 
 /** The loaded currencies (`GET /api/currencies`), by code. */
 const currencyRegistry = new Map<string, CurrencyFormatInfo>();
 
-/** Records the server's currencies (symbol, minor digits); formats read them from then on. */
-export function setCurrencyRegistry(rows: readonly { code: string; symbol: string; minor_digits: number }[]): void {
-  for (const r of rows) currencyRegistry.set(r.code, { symbol: r.symbol, minorDigits: r.minor_digits });
+/** Records the server's currencies (symbol, digits, symbol side); formats read them from then on. */
+export function setCurrencyRegistry(
+  rows: readonly { code: string; symbol: string; minor_digits: number; display_digits: number; symbol_after: boolean }[]
+): void {
+  for (const r of rows) {
+    currencyRegistry.set(r.code, {
+      symbol: r.symbol,
+      minorDigits: r.minor_digits,
+      displayDigits: r.display_digits,
+      symbolAfter: r.symbol_after,
+    });
+  }
 }
 
 /** How `code` prints: the registry's row, else the built-in symbol and the ISO minor digits. */
 export function currencyFormatInfo(code: string): CurrencyFormatInfo {
   const known = currencyRegistry.get(code);
   if (known) return known;
-  if (code === "clp") return { symbol: "$", minorDigits: 0 };
-  if (code === "usd") return { symbol: "US$", minorDigits: 2 };
+  if (code === "clp") return { symbol: "$", minorDigits: 0, displayDigits: 0, symbolAfter: false }; // convention-ok: built-in rows until /api/currencies answers
+  if (code === "usd") return { symbol: "US$", minorDigits: 2, displayDigits: 2, symbolAfter: false }; // convention-ok: built-in rows until /api/currencies answers
+  if (code === "uf") return { symbol: "UF", minorDigits: 4, displayDigits: 2, symbolAfter: true }; // convention-ok: built-in rows until /api/currencies answers
   const iso = code.toUpperCase();
   let minorDigits = 2;
   try {
@@ -106,7 +124,13 @@ export function currencyFormatInfo(code: string): CurrencyFormatInfo {
   } catch {
     throw new Error(`unknown currency ${code}`);
   }
-  return { symbol: CURRENCY_SYMBOLS[code] ?? `${iso} `, minorDigits };
+  return { symbol: CURRENCY_SYMBOLS[code] ?? `${iso} `, minorDigits, displayDigits: minorDigits, symbolAfter: false };
+}
+
+/** `digits` (already formatted, unsigned) with `code`'s symbol on its side: «$1.234», «1.234,00 UF». */
+function withCurrencySymbol(digits: string, code: string): string {
+  const info = currencyFormatInfo(code);
+  return info.symbolAfter ? `${digits}\u00A0${info.symbol}` : `${currencySymbol(code)}${digits}`;
 }
 
 /** `code`'s symbol: `full` as written (`US$`, `€`), `bare` without a letter qualifier on `$` (`$`). */
@@ -136,16 +160,35 @@ export function formatCurrency(n: number, unit: CurrencyDisplayUnit = "clp"): st
   if (!Number.isFinite(n)) return "—";
   const rounded = Math.round(n);
   const abs = Math.abs(rounded);
-  const body = `${currencySymbol(unit)}${normalizeIntlNum(numFmt(0, 0).format(abs))}`;
+  const body = withCurrencySymbol(normalizeIntlNum(numFmt(0, 0).format(abs)), unit);
   if (rounded < 0) return `(${body})`;
   return body;
 }
 
-/** `code` with its minor digits (`US$1.234,50`, `€12,50`; pesos whole). Negatives in parentheses. */
-export function formatCurrencyFine(n: number, code: string): string {
+/** How many decimals a money figure prints with (`formatMoney`, `formatCurrencyFine`). */
+export type MoneyFormatOptions = {
+  /**
+   * `display` (default): the currency's display digits (UF 2, pesos 0, dollars 2). `full`: up to the
+   * digits the currency is counted in (UF 4: a cuota's parts), trailing zeros past the display digits
+   * dropped.
+   */
+  precision?: "display" | "full";
+  /** A fixed number of decimals instead, for a figure finer than its currency's coin (the UF in pesos: 2). */
+  digits?: number;
+};
+
+function moneyFractionDigits(code: string, opts: MoneyFormatOptions | undefined): [min: number, max: number] {
+  if (opts?.digits != null) return [opts.digits, opts.digits];
+  const info = currencyFormatInfo(code);
+  if (opts?.precision === "full") return [info.displayDigits, Math.max(info.displayDigits, info.minorDigits)];
+  return [info.displayDigits, info.displayDigits];
+}
+
+/** `code` with its display digits (`US$1.234,50`, `€12,50`, `1.234,00 UF`; pesos whole). Negatives in parentheses. */
+export function formatCurrencyFine(n: number, code: string, opts?: MoneyFormatOptions): string {
   if (!Number.isFinite(n)) return "—";
-  const digits = currencyFormatInfo(code).minorDigits;
-  const body = `${currencySymbol(code)}${normalizeIntlNum(numFmt(digits, digits).format(Math.abs(n)))}`;
+  const [minFrac, maxFrac] = moneyFractionDigits(code, opts);
+  const body = withCurrencySymbol(normalizeIntlNum(numFmt(minFrac, maxFrac).format(Math.abs(n))), code);
   if (n < 0) return `(${body})`;
   return body;
 }
@@ -153,12 +196,6 @@ export function formatCurrencyFine(n: number, code: string): string {
 /** Whole pesos: `$` + grouped thousands (e.g. `$9x.xxx.xxx`; negative `($1.234)`). */
 export function formatClp(n: number): string {
   return formatCurrency(n, "clp");
-}
-
-/** CLP per 1 UF (UF día) — `$` + exactly 2 decimals (e.g. `$4x.xxx,xx`). */
-export function formatClpUfDay(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `$${normalizeIntlNum(numFmt(2, 2).format(n))}`;
 }
 
 /** Whole USD: `US$` + grouped thousands (e.g. `US$1xx.xxx`; negative `(US$1.234)`). */
@@ -260,9 +297,9 @@ export function formatCcExpenseLineAmount(amountClp: number, amountUsd: number |
  * currency with its own minor digits and its symbol (`€12,50`), else its code (`PEN 12,50`).
  * Negatives in parentheses.
  */
-export function formatMoney(m: { value: number; currency: string }): string {
-  if (m.currency === "clp") return formatClp(m.value); // convention-ok: pesos print through the whole-peso formatter, which rounds before taking the sign
-  return formatCurrencyFine(m.value, m.currency);
+export function formatMoney(m: { value: number; currency: string }, opts?: MoneyFormatOptions): string {
+  if (m.currency === "clp" && opts?.digits == null) return formatClp(m.value); // convention-ok: pesos print through the whole-peso formatter, which rounds before taking the sign
+  return formatCurrencyFine(m.value, m.currency, opts);
 }
 
 /** The parts of a line's amount: its own currency, and its value in the display unit when that is another currency. */
@@ -457,25 +494,6 @@ export function plainNumberFlowParts(
 export function formatInstrumentUnits(n: number, kind: "shares" | "coin" | "contracts") {
   const max = kind === "coin" ? 8 : kind === "contracts" ? 0 : 6;
   return normalizeIntlNum(numFmt(0, max).format(n));
-}
-
-/** Values already in UF units (e.g. CLP / clp_per_uf) — suffix ` UF`, up to 2 decimals. */
-export function formatUfUnits(uf: number): string {
-  if (!Number.isFinite(uf)) return "—";
-  // NBSP keeps the unit attached to the number so line wrapping can't split "123,45 UF".
-  return `${normalizeIntlNum(numFmt(0, 2).format(uf))}\u00A0UF`;
-}
-
-/** UF with up to 4 decimals (tables / certificates). */
-export function formatUfUnitsFine(uf: number | null | undefined): string {
-  if (uf == null || !Number.isFinite(uf)) return "—";
-  // NBSP keeps the unit attached to the number so line wrapping can't split "123,45 UF".
-  return `${normalizeIntlNum(numFmt(0, 4).format(uf))}\u00A0UF`;
-}
-
-/** Mortgage / loan remaining balance — up to 4 UF decimals, no trailing zeros. */
-export function formatUfBalance(uf: number | null | undefined): string {
-  return formatUfUnitsFine(uf);
 }
 
 /** Returns `fmt(value)` when value is a finite number, otherwise `"—"`. */

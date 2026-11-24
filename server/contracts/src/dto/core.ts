@@ -126,7 +126,12 @@ export type DisplayUnitCode = string;
 export interface CurrencyDto {
   code: string;
   symbol: string;
+  /** The decimals the currency is counted in (CLP 0, USD 2, UF 4). */
   minor_digits: number;
+  /** The decimals a figure prints with (UF 2; else `minor_digits`). */
+  display_digits: number;
+  /** The symbol goes after the figure («1.234,00 UF»), not before it («US$1.234,50»). */
+  symbol_after: boolean;
   /** `core`: a display unit, kept current; `on_demand`: loaded when something holds it. */
   tier: string;
 }

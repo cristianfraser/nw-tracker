@@ -3,8 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { formatNumberInput, parseNumberInputOrThrow } from "../../format";
-import { formatLoanFigure } from "../../formatLoan";
+import { formatMoney, formatNumberInput, parseNumberInputOrThrow } from "../../format";
 import { formatUfDayPesos } from "../../formatNative";
 import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
@@ -326,14 +325,14 @@ export function MortgagePaymentForm({
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewAmort")}</div>
             <div className="value mono">
-              {formatLoanFigure(preview.sheet.amortizacion_pay ?? 0, preview.payment_currency)}
+              {formatMoney({ value: preview.sheet.amortizacion_pay ?? 0, currency: preview.payment_currency })}
             </div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewAmortExt")}</div>
             <div className="value mono">
               {preview.sheet.amortizacion_ext_pay != null
-                ? formatLoanFigure(preview.sheet.amortizacion_ext_pay, preview.payment_currency)
+                ? formatMoney({ value: preview.sheet.amortizacion_ext_pay, currency: preview.payment_currency })
                 : "—"}
             </div>
           </div>
@@ -347,30 +346,30 @@ export function MortgagePaymentForm({
             <div className="label">{t("accountDetail.mortgagePayment.previewCreditoUf")}</div>
             <div className="value mono">
               {preview.sheet.credito_restante_loan != null
-                ? formatLoanFigure(preview.sheet.credito_restante_loan, preview.loan_currency)
+                ? formatMoney({ value: preview.sheet.credito_restante_loan, currency: preview.loan_currency }, { precision: "full" })
                 : "—"}
             </div>
             {preview.credito_restante_used_override &&
             preview.credito_restante_derived_loan !== preview.sheet.credito_restante_loan ? (
               <div className="muted" style={{ fontSize: "var(--font-size-card-label)" }}>
                 {t("accountDetail.mortgagePayment.previewCreditoDerived", {
-                  value: formatLoanFigure(preview.credito_restante_derived_loan, preview.loan_currency),
+                  value: formatMoney({ value: preview.credito_restante_derived_loan, currency: preview.loan_currency }, { precision: "full" }),
                 })}
               </div>
             ) : null}
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewMortgageClp")}</div>
-            <div className="value mono">{formatLoanFigure(preview.mortgage_balance_pay, preview.payment_currency)}</div>
+            <div className="value mono">{formatMoney({ value: preview.mortgage_balance_pay, currency: preview.payment_currency })}</div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewNetClp")}</div>
-            <div className="value mono">{formatLoanFigure(preview.property_net_pay, preview.payment_currency)}</div>
+            <div className="value mono">{formatMoney({ value: preview.property_net_pay, currency: preview.payment_currency })}</div>
           </div>
           <div className="card">
             <div className="label">{t("accountDetail.mortgagePayment.previewPagoUf")}</div>
             <div className="value mono">
-              {preview.sheet.pago_loan != null ? formatLoanFigure(preview.sheet.pago_loan, preview.loan_currency) : "—"}
+              {preview.sheet.pago_loan != null ? formatMoney({ value: preview.sheet.pago_loan, currency: preview.loan_currency }, { precision: "full" }) : "—"}
             </div>
           </div>
         </div>
