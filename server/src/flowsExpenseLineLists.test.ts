@@ -125,9 +125,9 @@ function line(partial: Partial<FlowCcExpenseLineRow> & { statement_line_id: numb
   } as unknown as FlowCcExpenseLineRow;
 }
 
-const closed = (billing_month: string) => ({ billing_month, is_open_month: false, is_provisional_close: false });
-const open = (billing_month: string) => ({ billing_month, is_open_month: true, is_provisional_close: false });
-const provisional = (billing_month: string) => ({ billing_month, is_open_month: false, is_provisional_close: true });
+const closed = (billing_month: string) => ({ billing_month, is_open_month: false, is_provisional_close: false, is_next_cycle: false });
+const open = (billing_month: string) => ({ billing_month, is_open_month: true, is_provisional_close: false, is_next_cycle: false });
+const provisional = (billing_month: string) => ({ billing_month, is_open_month: false, is_provisional_close: true, is_next_cycle: false });
 const ids = (lines: readonly FlowCcExpenseLineRow[]) => lines.map((ln) => ln.statement_line_id).sort((a, b) => a - b);
 
 describe("flowLinesForFacturacionMonth", () => {

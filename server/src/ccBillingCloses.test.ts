@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { db } from "./db.js";
 import { closeDayOffsetDays, closeEvidenceForBillingMonth, nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import { feedCloseStatementMismatches, recordFeedBillingClose } from "./ccBillingCloses.js";
-import { billingMonthContainingPurchase, billingMonthForManualLedgerPurchase, isProvisionallyClosedBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount, pdfClosedBillingMonthsForAccount, statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./cards/facturacion.js";
+import { billingMonthContainingPurchase, billingMonthForLedgerPurchase, billingMonthForManualLedgerPurchase, isProvisionallyClosedBillingMonth, lastClosedBillingMonthForAccount, lastPdfBillingMonthForAccount, pdfClosedBillingMonthsForAccount, statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./cards/facturacion.js";
 import { feedLineBillingMonths } from "./cardUnbilledMovementsApply.js";
 import { importCcListingLines } from "./accountImports.js";
 import { ccInstallmentsDbApiPayload, ccLedgerMonthEndIso, liveCreditCardOutstandingClp } from "./ccInstallmentLedgerDb.js";
@@ -14,6 +14,8 @@ import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { ccLedgerStatementClosingPointsClp } from "./ccCreditCardValuations.js";
 import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
+import { buildCcGlanceForAccount } from "./ccGlance.js";
+import { openAndLatestClosedFacturacion } from "./dashboardCcUpcomingPayments.js";
 import { foreignBilledFromStatementLines } from "./ccForeignStatementBilled.js";
 import { applyListing, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import { reconcileOpenWebPasteAfterPdfClose } from "./ccOpenWebPastePdfReconcile.js";
@@ -492,6 +494,27 @@ describe("credit-card close evidence", () => {
     expect(merchantsIn(bucketId("2026-10"))).toEqual(["CLINICA VITEST", "PENDIENTE VITEST"]);
     expect(bucketId("2026-11")).toBeNull();
 
+    // September is still the open facturación on its close day; October already holds the close-day
+    // purchases as the next cycle — one open row, so «Próximos pagos» and the glance read September
+    // open and August as the facturación before it.
+    const closeDay = buildFacturaciones(accountId, ccInstallmentsDbApiPayload(accountId).months);
+    expect(closeDay.filter((f) => f.is_open_month).map((f) => f.billing_month)).toEqual(["2026-09"]);
+    expect(closeDay.find((f) => f.billing_month === "2026-10")).toMatchObject({
+      is_open_month: false,
+      is_next_cycle: true,
+      is_provisional_close: false,
+    });
+    expect(openAndLatestClosedFacturacion(closeDay)).toMatchObject({
+      open: { billing_month: "2026-09" },
+      latestClosed: { billing_month: "2026-08" },
+    });
+    const glance = buildCcGlanceForAccount(accountId, "clp");
+    const segments = glance!.sides[0]!.segments!.filter((s) => s.kind === "purchases");
+    expect(segments.map((s) => [s.billing_month, s.amount])).toEqual([
+      ["2026-09", 15_000],
+      ["2026-10", 9_400],
+    ]);
+
     // The next night's listing has rolled: it opens with September's close and lists only the
     // October rows, which are already where they belong — nothing moves, nothing imports twice.
     vi.setSystemTime(new Date("2026-09-26T00:30:00Z"));
@@ -936,6 +959,30 @@ describe("credit-card close evidence", () => {
     expect(skipped_saldo_inicial).toHaveLength(1);
     expect(statements.flatMap((st) => st.lines.map((l) => l.merchant))).toEqual(["SWITCH VITEST"]);
     expect(statements[0]!.document).toBe("import:web-paste|open|2026-10");
+  });
+
+  it("files a hand paste and a manual purchase of the close day under the next cycle, the open month staying", () => {
+    vi.setSystemTime(new Date("2026-09-24T15:00:00Z")); // 12:00 Chile on the announced close day
+    expect(billingMonthForManualLedgerPurchase(accountId)).toBe("2026-09");
+    const { statements } = listingStatements(accountId, CARD_GROUP, LAST4, [
+      webLine("2026-09-23", "FARMACIA VITEST", 5_000),
+      webLine("2026-09-24", "CLINICA VITEST", 2_400),
+    ]);
+    expect(statements.map((st) => [st.document, st.lines.map((l) => l.merchant)])).toEqual([
+      ["import:web-paste|open|2026-09", ["FARMACIA VITEST"]],
+      ["import:web-paste|open|2026-10", ["CLINICA VITEST"]],
+    ]);
+    // A manual plan bought long ago projects into the open month; one bought today into October.
+    expect(billingMonthForLedgerPurchase(accountId, { purchase_date: "2026-07-01", source: "manual" })).toBe("2026-09");
+    expect(billingMonthForLedgerPurchase(accountId, { purchase_date: "2026-09-24", source: "manual" })).toBe("2026-10");
+
+    // A close-day line already sitting in the open bucket moves to the next cycle's bucket.
+    const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
+    insertBucketLine(sept, "2026-09-22", "SUPERMERCADO VITEST", 10_000);
+    insertBucketLine(sept, "2026-09-24", "TAXI VITEST", 3_000);
+    expect(repairMisplacedOpenWebPasteBuckets(accountId).lines_moved).toBe(1);
+    expect(merchantsIn(bucketId("2026-09"))).toEqual(["SUPERMERCADO VITEST"]);
+    expect(merchantsIn(bucketId("2026-10"))).toEqual(["TAXI VITEST"]);
   });
 
   it("settles the buckets against September's statement: billed lines go, unbilled ones move on", () => {

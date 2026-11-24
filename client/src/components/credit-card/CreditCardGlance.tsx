@@ -112,6 +112,9 @@ function SegmentedBar({
   const { t } = useTranslation();
   const segments = side.segments ?? [];
   let cuotaIndex = 0;
+  // The open cycle's purchases come first; a later purchases segment (the next cycle's, on a close
+  // day) is named by its month.
+  const openPurchasesMonth = segments.find((s) => s.kind === "purchases")?.billing_month ?? null;
   const looks: SegmentLook[] = segments.map((s: CcGlanceSegmentDto) => {
     if (s.kind === "previous") {
       return {
@@ -125,7 +128,10 @@ function SegmentedBar({
       return {
         background: "var(--accent)",
         color: "var(--accent)",
-        name: t("accountDetail.creditCard.glance.purchases"),
+        name:
+          s.billing_month === openPurchasesMonth
+            ? t("accountDetail.creditCard.glance.purchases")
+            : formatMonthShortLabel(s.billing_month),
         kindName: t("accountDetail.creditCard.glance.purchases"),
       };
     }

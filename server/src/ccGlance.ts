@@ -47,7 +47,10 @@ import { convertCurrency } from "./rates.js";
 export type CcGlanceAmount = { currency: string; amount: number };
 
 export type CcGlanceSegment = {
-  /** `previous`: the previous facturación's unpaid part; `purchases`: the open cycle's; `cuotas`: one billing month's plan cuotas. */
+  /**
+   * `previous`: the previous facturación's unpaid part; `purchases`: the open cycle's (on a close day
+   * also the next cycle's, its own month); `cuotas`: one billing month's plan cuotas.
+   */
   kind: "previous" | "purchases" | "cuotas";
   /** The facturación the segment belongs to (`YYYY-MM`). */
   billing_month: string;
@@ -180,6 +183,17 @@ export function ccGlanceFromInputs(inp: CcGlanceInputs): CcGlance | null {
   }
   if (purchases !== 0) segAmounts.push({ kind: "purchases", billing_month: open.billing_month, amount: purchases });
   for (const m of cuotaMonths) segAmounts.push({ kind: "cuotas", billing_month: m.billing_month, amount: m.amount_clp });
+  // On a Santander close day a purchase dated that day already bills the next cycle: its own
+  // purchases segment, right after the open facturación's segments (outside its bracket).
+  for (const next of inp.facturaciones.filter((f) => f.is_next_cycle)) {
+    const amount = (next.facturado ?? 0) - (next.cuota_a_pagar ?? 0);
+    if (amount === 0) continue;
+    let at = 0;
+    segAmounts.forEach((s, i) => {
+      if (s.kind === "previous" || s.billing_month === open.billing_month) at = i + 1;
+    });
+    segAmounts.splice(at, 0, { kind: "purchases", billing_month: next.billing_month, amount });
+  }
   const negative = segAmounts.find((s) => s.amount < 0);
   if (negative) {
     throw new Error(
@@ -218,7 +232,7 @@ export function ccGlanceFromInputs(inp: CcGlanceInputs): CcGlance | null {
     let width = 0;
     let started = false;
     for (const s of side.segments) {
-      const inOpen = s.kind === "purchases" || (s.kind === "cuotas" && s.billing_month === open.billing_month);
+      const inOpen = (s.kind === "purchases" || s.kind === "cuotas") && s.billing_month === open.billing_month;
       if (inOpen) {
         started = true;
         width += s.share;

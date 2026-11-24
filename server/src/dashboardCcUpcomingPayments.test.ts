@@ -24,6 +24,7 @@ function fact(over: Partial<CcFacturacionRow> & Pick<CcFacturacionRow, "billing_
     deuda_en_cuotas: null,
     is_open_month: false,
     is_provisional_close: false,
+    is_next_cycle: false,
     close_date_source: "statement",
     provisional_estimate_total: null,
     ...over,

@@ -43,8 +43,9 @@ export function CreditCardSummaryCards({ ccLedger }: { ccLedger: AccountCcInstal
   const facturaciones = ccLedger.facturaciones ?? [];
   // The facturación still accumulating charges — its total is what the next statement will bill.
   const openFact = facturaciones.find((f) => f.is_open_month);
-  // Facturaciones are sorted descending: the first closed one is the last billed.
-  const lastFact = facturaciones.find((f) => !f.is_open_month);
+  // Facturaciones are sorted descending: the first closed one is the last billed (the next cycle,
+  // on a close day, is neither).
+  const lastFact = facturaciones.find((f) => !f.is_open_month && !f.is_next_cycle);
   const cupo = ccLedger.cupo;
   // The bank states each currency's cupo (nightly product summary); without it, the app's CLP cupo.
   const bankCupo = ccLedger.bank_cupo ?? null;

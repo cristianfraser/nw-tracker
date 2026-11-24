@@ -128,6 +128,12 @@ export type CcFacturacionRow = {
   is_open_month: boolean;
   /** Closed at the bank, statement pending (feed SALDO INICIAL or a passed announced close). */
   is_provisional_close: boolean;
+  /**
+   * A cycle after the open facturación that already holds purchases: on a Santander close day the
+   * closing facturación is still the open one while a purchase dated that day bills the next. Not
+   * open and not closed; from the day after the close it is the open facturación.
+   */
+  is_next_cycle: boolean;
   /** Where `close_date` comes from; `estimated` = config cycle, nothing published by the bank. */
   close_date_source: CcCloseSource;
   /** Provisional month with the bank's total: what the app had estimated for it (únicos + cuotas). */
@@ -1158,8 +1164,10 @@ function buildFacturacionesInner(
     }
     if (!hasPdfClose) {
       // The open month's bucket: the row reads the month, not the bucket (see `openFacturacionRow`).
+      // A bucket after the open month is the next cycle (a Santander close-day purchase).
+      const nextCycle = frame.openBillingMonth != null && ymCompare(billingMonth, frame.openBillingMonth) > 0;
       out.push(
-        openFacturacionRow(accountId, billingMonth, cuotaAPagarClp, deudaEnCuotasClp(billingMonth), billedForeign)
+        openFacturacionRow(accountId, billingMonth, cuotaAPagarClp, deudaEnCuotasClp(billingMonth), billedForeign, nextCycle)
       );
       continue;
     }
@@ -1178,6 +1186,7 @@ function buildFacturacionesInner(
       deuda_en_cuotas: deudaEnCuotasClp(billingMonth),
       is_open_month: false,
       is_provisional_close: false,
+      is_next_cycle: false,
       close_date_source: "statement",
       provisional_estimate_total: null,
     });
@@ -1229,7 +1238,8 @@ function openFacturacionRow(
   billingMonth: string,
   cuotaAPagarClp: number,
   deudaEnCuotasClp: number | null,
-  slotForeign: ReadonlyMap<string, { amount: number; clp: number }>
+  slotForeign: ReadonlyMap<string, { amount: number; clp: number }>,
+  nextCycle = false
 ): CcFacturacionRow {
   const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
   const facturadoTotal = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaAPagar ?? 0, REAL_DEBT_FRAME_RATES);
@@ -1260,8 +1270,9 @@ function openFacturacionRow(
     facturado_total: facturadoTotal,
     cuota_a_pagar: cuotaAPagar,
     deuda_en_cuotas: deudaEnCuotasClp,
-    is_open_month: true,
+    is_open_month: !nextCycle,
     is_provisional_close: false,
+    is_next_cycle: nextCycle,
     close_date_source: close.source,
     provisional_estimate_total: null,
   };
@@ -1288,6 +1299,7 @@ function provisionalFacturacionRow(
     deuda_en_cuotas: deudaEnCuotasClp,
     is_open_month: false,
     is_provisional_close: true,
+    is_next_cycle: false,
     close_date_source: pv.close_source,
     provisional_estimate_total: pv.source === "feed" ? pv.estimate_total_clp : null,
   };

@@ -110,6 +110,7 @@ const FACTURACION_ROW_FIELDS = new Set<string>([
   "deuda_en_cuotas",
   "is_open_month",
   "is_provisional_close",
+  "is_next_cycle",
   "close_date_source",
   "provisional_estimate_total",
 ] satisfies (keyof CcFacturacionRow)[]);
@@ -140,6 +141,8 @@ function mergeFacturacionRow(prev: CcFacturacionRow, row: CcFacturacionRow): CcF
     // Provisional while any member still awaits its statement; its estimate is only
     // meaningful per card, so a merged month carries the Σ when every member has one.
     is_provisional_close: prev.is_provisional_close || row.is_provisional_close,
+    // The next cycle only while no member has the month open (cards close on different days).
+    is_next_cycle: (prev.is_next_cycle || row.is_next_cycle) && !(prev.is_open_month || row.is_open_month),
     // The weaker evidence wins, so a merged row never claims more certainty than a member.
     close_date_source: weakerCloseSource(prev.close_date_source, row.close_date_source),
     provisional_estimate_total:

@@ -1,5 +1,9 @@
 import { ymCompare } from "./calendarMonth.js";
-import { statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./cards/facturacion.js";
+import {
+  billingMonthForPurchaseFromOpen,
+  statementCloseDdMmYyyyForBillingMonth,
+  targetBillingMonthForManualImports,
+} from "./cards/facturacion.js";
 import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import { db } from "./db.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -83,8 +87,8 @@ export type CcOpenWebPasteRepairResult = {
 
 /**
  * Move open-bucket web-paste lines dated on/after the first day of the cycle that follows their
- * bucket's facturación into the current open facturación bucket (post-close purchases belong on
- * the next statement). The boundary is `nextPeriodStartIsoForBillingMonth`: the close day itself
+ * bucket's facturación into the bucket of their own cycle, never before the open facturación
+ * (`billingMonthForPurchaseFromOpen`; post-close purchases belong on the next statement). The boundary is `nextPeriodStartIsoForBillingMonth`: the close day itself
  * on Santander (a close-day purchase bills next month), the day after on BCI, from the statement,
  * the feed-observed close or the announced one — so a provisionally closed month hands its
  * post-close lines forward before its statement exists. Unmatched survivors on stale `open|{M}`
@@ -99,7 +103,14 @@ export function repairMisplacedOpenWebPasteBuckets(accountId: number): CcOpenWeb
   const openBm = targetBillingMonthForManualImports(accountId, meta.cardLast4);
 
   let linesMoved = 0;
-  let targetStmtId = existingOpenWebPasteStatementId(accountId, openBm, meta.cardGroup);
+  /** Target bucket per month, created only when a line moves into it. */
+  const targetStmtIds = new Map<string, number>();
+  const targetStmtId = (bm: string): number => {
+    let id = targetStmtIds.get(bm) ?? existingOpenWebPasteStatementId(accountId, bm, meta.cardGroup);
+    id ??= ensureOpenWebPasteStatementId(accountId, bm, meta.cardGroup, meta.cardLast4);
+    targetStmtIds.set(bm, id);
+    return id;
+  };
 
   const statements = listCcStatementsForAccount(accountId);
   for (const st of statements) {
@@ -108,16 +119,17 @@ export function repairMisplacedOpenWebPasteBuckets(accountId: number): CcOpenWeb
 
     const nextStart = nextPeriodStartIsoForBillingMonth(accountId, bucketBm, statements).iso;
 
-    const staleBucket = ymCompare(bucketBm, openBm) < 0;
     for (const line of listCcStatementLinesForStatement(st.id)) {
       const purchaseIso = linePurchaseIso(line.transaction_date, line.posting_date);
       if (!purchaseIso) continue;
       if (purchaseIso < nextStart) continue;
-      if (!staleBucket && bucketBm === openBm) continue;
-
-      if (st.id === targetStmtId) continue;
-      targetStmtId ??= ensureOpenWebPasteStatementId(accountId, openBm, meta.cardGroup, meta.cardLast4);
-      moveLine.run(targetStmtId, line.id);
+      // Its own cycle, never before the open month: a stale bucket's line goes to the open month,
+      // the open bucket's close-day line (Santander bills it next) to the month after.
+      const target = billingMonthForPurchaseFromOpen(accountId, purchaseIso, openBm, statements);
+      if (target === bucketBm) continue;
+      const toId = targetStmtId(target);
+      if (st.id === toId) continue;
+      moveLine.run(toId, line.id);
       linesMoved += 1;
     }
   }

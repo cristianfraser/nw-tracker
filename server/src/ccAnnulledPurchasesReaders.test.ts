@@ -220,7 +220,7 @@ describe("annulled purchases: readers", () => {
     it("the facturación modal lists neither line, any other card line stays", () => {
       setupAnnulledWithCategory();
       const lines = buildFlowsExpenseLines([accountId]);
-      const flags = (billing_month: string) => ({ billing_month, is_open_month: true, is_provisional_close: false });
+      const flags = (billing_month: string) => ({ billing_month, is_open_month: true, is_provisional_close: false, is_next_cycle: false });
       const annulledMonth = lines.find((l) => l.annulled != null)!.billing_month;
       expect(flowLinesForFacturacionMonth(lines, accountId, flags(annulledMonth)).filter((l) => l.annulled || l.annulment)).toHaveLength(0);
       const kept = lines.find((l) => l.merchant === "VITEST KEPT SHOP")!;

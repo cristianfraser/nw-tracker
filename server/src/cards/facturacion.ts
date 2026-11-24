@@ -611,6 +611,23 @@ export function targetBillingMonthForManualImports(
   return ymCompare(currentBm, nextAfterClosed) >= 0 ? currentBm : nextAfterClosed;
 }
 
+/**
+ * The facturación a purchase entered now is filed under: its own cycle
+ * ({@link billingMonthContainingPurchase}), never earlier than the open facturación (a line pasted
+ * late, a hand-entered plan bought long ago). On a Santander close day the open facturación is
+ * still the closing one, while a purchase dated that day already bills the next — so this, not the
+ * open month, is where a hand paste, a pasted line or a manual plan goes.
+ */
+export function billingMonthForPurchaseFromOpen(
+  accountId: number,
+  purchaseIso: string,
+  openBillingMonth: string,
+  statements: readonly CcStatementRow[] = listCcStatementsForAccount(accountId)
+): string {
+  const own = billingMonthContainingPurchase(accountId, purchaseIso, statements);
+  return ymCompare(own, openBillingMonth) > 0 ? own : openBillingMonth;
+}
+
 /** Card last4 for a credit-card master account (`credit_card_account_config.card_last4` —
  * the card identity; a master without a config row is a data problem). */
 export function cardLast4ForCreditCardAccount(accountId: number): string | null {
@@ -630,16 +647,19 @@ export function billingMonthForManualLedgerPurchase(accountId: number): string |
 
 /**
  * Billing month for a ledger purchase when projecting facturado.
- * Manual entries → open facturación; PDF entries → the cycle the purchase date falls in
+ * Manual entries → the open facturación, or a later one when the purchase date already bills there
+ * ({@link billingMonthForPurchaseFromOpen}); PDF entries → the cycle the purchase date falls in
  * ({@link billingMonthContainingPurchase}).
  */
 export function billingMonthForLedgerPurchase(
   accountId: number,
   purchase: { purchase_date: string; source: string },
-  statements?: readonly CcStatementRow[]
+  statements: readonly CcStatementRow[] = listCcStatementsForAccount(accountId)
 ): string | null {
   if (purchase.source === "manual") {
-    return billingMonthForManualLedgerPurchase(accountId);
+    const openBm = billingMonthForManualLedgerPurchase(accountId);
+    if (openBm == null) return null;
+    return billingMonthForPurchaseFromOpen(accountId, purchase.purchase_date, openBm, statements);
   }
   return billingMonthContainingPurchase(accountId, purchase.purchase_date, statements);
 }

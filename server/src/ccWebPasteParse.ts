@@ -10,10 +10,15 @@ import {
   type CardPastedListing,
 } from "nw-tracker-contracts";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
-import { statementCloseDdMmYyyyForBillingMonth, targetBillingMonthForManualImports } from "./cards/facturacion.js";
+import {
+  billingMonthForPurchaseFromOpen,
+  statementCloseDdMmYyyyForBillingMonth,
+  targetBillingMonthForManualImports,
+} from "./cards/facturacion.js";
 import { ccOneShotDedupeKey, normCcMerchant } from "./ccDedupeKey.js";
 import { activeAdditionalCardLast4ForAccount } from "./ccAdditionalCardExpenseMatch.js";
 import { db } from "./db.js";
+import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccIssuerBySlug, ccIssuerForWebPasteCardGroup } from "./ccIssuers.js";
 import { ccImportFlowItemFromLine, ccStatementLabel, type CcImportFlowItem } from "./ccStatementsImport.js";
@@ -187,6 +192,7 @@ export function listingStatements(
   skipped_saldo_inicial: CcImportFlowItem[];
 } {
   const openBillingMonth = targetBillingMonthForManualImports(accountId, cardLast4);
+  const statementsOnFile = listCcStatementsForAccount(accountId);
   // The bucket is a statement in the currency of the card's main statement; a line in another of
   // the issuer's currencies sits on it as a foreign line (its own `amount` + `currency`).
   const bucketCurrency = cardPrimaryStatementCurrency(accountId);
@@ -232,7 +238,10 @@ export function listingStatements(
   parsed.forEach((line, i) => {
     // Pesos, dollars or a currency the card's issuer bills in — anything else is refused here, for every listing source.
     requireCardCurrency(line.currency, accountId, "card listing line");
-    const billingMonth = lineMonths?.[i] ?? opts?.targetBillingMonth ?? openBillingMonth;
+    const billingMonth =
+      lineMonths?.[i] ??
+      opts?.targetBillingMonth ??
+      billingMonthForPurchaseFromOpen(accountId, line.transaction_date, openBillingMonth, statementsOnFile);
     const statement = bucket(billingMonth);
     const dedupe_key = dedupeKeys[i]!;
     const amount = listingLineStoredAmount(line);

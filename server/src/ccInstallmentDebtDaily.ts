@@ -76,7 +76,7 @@ function ccInstallmentDebtEvents(
   const seen = new Set<string>();
   const monthInput = (billingMonth: string, cuotaClp: number): CuotaRetirementMonth => {
     const f = factByMonth.get(billingMonth);
-    const closed = f != null && !f.is_open_month;
+    const closed = f != null && !f.is_open_month && !f.is_next_cycle;
     return {
       month: billingMonth,
       cuota_clp: Number.isFinite(cuotaClp) && cuotaClp > 0 ? Math.round(cuotaClp) : 0,

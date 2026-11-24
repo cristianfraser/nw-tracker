@@ -156,7 +156,12 @@ export function pageOfExpenseLinesList(
   return { ...list, lines: list.lines.slice(start, start + request.pageSize), page: info };
 }
 
-type FacturacionFlags = { billing_month: string; is_open_month: boolean; is_provisional_close: boolean };
+type FacturacionFlags = {
+  billing_month: string;
+  is_open_month: boolean;
+  is_provisional_close: boolean;
+  is_next_cycle: boolean;
+};
 
 /**
  * Facturación modal lines: this card's expense rows whose `billing_month` — stamped by the line
@@ -174,7 +179,7 @@ export function flowLinesForFacturacionMonth<
     annulment?: unknown;
   },
 >(lines: readonly L[], accountId: number, row: FacturacionFlags): L[] {
-  const statementLinesOnly = !row.is_open_month && !row.is_provisional_close;
+  const statementLinesOnly = !row.is_open_month && !row.is_provisional_close && !row.is_next_cycle;
   return lines.filter((ln) => {
     if (ln.account_id !== accountId || ln.billing_month !== row.billing_month) return false;
     if (ln.line_role === "installment_purchase_total") return false;

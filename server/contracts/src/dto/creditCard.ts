@@ -157,6 +157,12 @@ export interface CcFacturacionDto {
   is_open_month: boolean;
   /** Closed at the bank, statement pending: facturado is the bank's total or the app's estimate. */
   is_provisional_close: boolean;
+  /**
+   * A cycle after the open facturación that already holds purchases: on a Santander close day the
+   * closing facturación is still the open one while a purchase dated that day bills the next. Not
+   * open and not closed; from the day after the close it is the open facturación.
+   */
+  is_next_cycle: boolean;
   close_date_source: CcCloseSource;
   /** Provisional month with the bank's total: what the app had estimated for it. */
   provisional_estimate_total: number | null;
@@ -395,7 +401,10 @@ export type CcGlanceAmountDto = { currency: string; amount: number };
 
 /** One segment of the billing currency's cupo bar, left to right. */
 export type CcGlanceSegmentDto = {
-  /** `previous`: the previous facturación's unpaid part; `purchases`: the open cycle's; `cuotas`: one billing month's plan cuotas. */
+  /**
+   * `previous`: the previous facturación's unpaid part; `purchases`: the open cycle's (on a close day
+   * also the next cycle's, its own month); `cuotas`: one billing month's plan cuotas.
+   */
   kind: "previous" | "purchases" | "cuotas";
   /** The facturación it belongs to (`YYYY-MM`). */
   billing_month: string;
