@@ -103,24 +103,50 @@ function ReturnsHeading({
 }
 
 /**
- * The gap bars: your % over the benchmark's on the row's own scale (the larger magnitude fills the
- * track); when either is negative the zero sits mid-track. Geometry only — both figures are the
- * server's.
+ * Where the gap bars' zero sits, shared by every row of the list so all bars start from one
+ * origin: at the left edge when no figure is negative, else as far right as the most negative row
+ * needs (its negative share of the row's range), never past mid-track.
  */
-function GapBars({ you, bench, title }: { you: number | null; bench: number | null; title: string }) {
-  const max = Math.max(Math.abs(you ?? 0), Math.abs(bench ?? 0));
-  const split = (you ?? 0) < 0 || (bench ?? 0) < 0;
-  const zero = split ? 50 : 0;
-  const span = split ? 50 : 100;
+function gapBarsZero(pairs: readonly (readonly (number | null)[])[]): number {
+  let share = 0;
+  for (const pair of pairs) {
+    const neg = Math.max(0, ...pair.map((v) => -(v ?? 0)));
+    const pos = Math.max(0, ...pair.map((v) => v ?? 0));
+    if (neg > 0) share = Math.max(share, neg / (neg + pos));
+  }
+  return Math.min(0.5, share);
+}
+
+/**
+ * The gap bars: your % over the benchmark's from the list's shared zero (`gapBarsZero`), on the
+ * row's own scale (the larger magnitude fills its side of the track). Geometry only — both figures
+ * are the server's.
+ */
+function GapBars({
+  you,
+  bench,
+  zero: z,
+  title,
+}: {
+  you: number | null;
+  bench: number | null;
+  zero: number;
+  title: string;
+}) {
+  const neg = Math.max(0, -(you ?? 0), -(bench ?? 0));
+  const pos = Math.max(0, you ?? 0, bench ?? 0);
+  const scale = Math.min(neg > 0 ? z / neg : Infinity, pos > 0 ? (1 - z) / pos : Infinity);
+  const split = z > 0;
+  const zero = z * 100;
   const bar = (v: number | null, className: string) => {
     let fill: CSSProperties | null = null;
-    if (v != null && v !== 0 && max > 0) {
-      const w = (Math.abs(v) / max) * span;
+    if (v != null && v !== 0 && Number.isFinite(scale)) {
+      const w = Math.abs(v) * scale * 100;
       fill = { left: `${v < 0 ? zero - w : zero}%`, width: `${w}%` };
     }
     return (
       <span className={styles.track}>
-        {split ? <span className={styles.zero} /> : null}
+        {split ? <span className={styles.zero} style={{ left: `${zero}%` }} /> : null}
         {fill ? <span className={cn(styles.fill, className)} style={fill} /> : null}
       </span>
     );
@@ -159,6 +185,7 @@ function PeriodReturnsFullList({
 }) {
   const { t } = useTranslation();
   const rows = listRows(data, comparison, FULL_PENDING_PERIODS);
+  const barsZero = gapBarsZero(rows.map(({ cell, bench: b }) => [cell?.pct ?? null, b?.benchmark_pct ?? null]));
   const selected = comparison.options.find((o) => o.slug === comparison.selected);
   const benchLabel = selected ? benchmarkOptionLabel(t, selected) : "";
   const benchPending = comparison.data == null;
@@ -241,6 +268,7 @@ function PeriodReturnsFullList({
                 <GapBars
                   you={cell?.pct ?? null}
                   bench={b?.benchmark_pct ?? null}
+                  zero={barsZero}
                   title={t("periodReturns.barsTitle", { benchmark: benchLabel })}
                 />
                 <span className={cn("mono", styles.num, styles.muted, styles.wideOnly, benchDim)} title={benchTitle(b)}>
