@@ -1812,10 +1812,13 @@ export function simulate(person: Person, market: MarketReader, today: Ymd, optio
     const reserved = upcomingCashNeeds(month);
     // Abroad the wire brings the next two months' needs, so checking keeps them too.
     const nextNeeds = !savingsClpOn(month) ? 0 : abroad(month) ? chileNeedsInMonth(month, 1) + chileNeedsInMonth(month, 2) : cashNeedsInMonth(month, 1);
+    // The options wheel runs first: its events sit mid-month, before the month-end investing below.
+    // Not gated on payday: in the month in progress a contract that expired before today settles
+    // (and a sale day already past is written) though the month's payday is still ahead; the wheel's
+    // own day checks keep it off days after today.
+    if (person.optionsWheel) runWheel(month);
     if (brokerDay <= today) {
       const holdForHouse = HOUSES.some((h) => month >= h.holdFromMonth && month <= h.month);
-      // The options wheel runs first: its events sit mid-month, before the month-end investing below.
-      if (person.optionsWheel) runWheel(month);
       // Dividends (quarterly): the Chilean broker withholds the US tax (W-8BEN: 30 %, the treaty's
       // 15 % from 2024-02-01), the US one nothing (W-9).
       if (mo % 3 === 0) {
