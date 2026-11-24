@@ -2,300 +2,262 @@ import { useMemo, useState } from "react";
 import { Button } from "@crfrsr/ui";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { ManualExpenseDialog } from "../components/credit-card/ManualExpenseDialog";
-import { useFlowsExpensesGastos, useFlowsExpensesSummary } from "../queries/hooks";
-import { CreditCardGroupExpensesChart } from "../components/charts/CreditCardGroupExpensesChart";
-import { GroupExpensesMonthTable } from "../components/credit-card/GroupExpensesMonthTable";
+import { useFlowsExpensesSpent, useFlowsExpensesSpentLines, useFlowsExpensesSummary } from "../queries/hooks";
 import { BigExpenseGroupsSection } from "../components/credit-card/BigExpenseGroupsSection";
 import { CreditCardUnclassifiedExpensesTable } from "../components/credit-card/CreditCardUnclassifiedExpensesTable";
 import { CreditCardDepositMatchedExpensesTable } from "../components/credit-card/CreditCardDepositMatchedExpensesTable";
 import { CreditCardFacturadoFinancingManager } from "../components/credit-card/CreditCardFacturadoFinancingManager";
 import { AdditionalCardsSection } from "../components/credit-card/AdditionalCardsSection";
+import { ExpensesSpentChart } from "../components/expenses/ExpensesSpentChart";
+import { ExpensesCalendar } from "../components/expenses/ExpensesCalendar";
+import { ExpensesSpentList } from "../components/expenses/ExpensesSpentList";
+import { ExpensesMonthMatrix } from "../components/expenses/ExpensesMonthMatrix";
+import styles from "../components/expenses/ExpensesSpent.module.css";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
-import { SurfaceControls } from "../components/ui/SurfaceControls";
-import { loadableClass } from "../components/ui/Loadable";
-import { useTranslation } from "../i18n";
-import {
-  flowTableGranularity,
-  formatFlowMoney,
-  rollupChartPointsByYear,
-} from "../flowsDisplay";
-import { clipMonthsThenRollup, clipPointsToTimeRange, type TimeRange } from "../timeRange";
+import { ccExpenseCategoryLabel, useTranslation } from "../i18n";
+import { formatCurrency } from "../format";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import { useExpensesIncludePreTax } from "../useExpensesIncludePreTax";
 import { useCcExpenseCategoryLevel } from "../useCcExpenseCategoryLevel";
-import { ccExpenseCategoriesAtLevel } from "../ccExpenseCategories";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
-import { queryLoadError } from "../queries/pageShapeReady";
+import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
+import { loadableClass } from "../components/ui/Loadable";
+import { EXPENSES_SPENT_RANGES, type ExpensesSpentRange, type FlowCcExpenseLineRow } from "../types";
 
-/** Chart Período choices: Diario is not offered on this page. */
-const EXPENSES_CHART_PERIODS = ["month", "year"] as const;
+function asSpentRange(r: string): ExpensesSpentRange {
+  return (EXPENSES_SPENT_RANGES as readonly string[]).includes(r) ? (r as ExpensesSpentRange) : "6m";
+}
 
-/** Rangos long enough for the per-year average line to read as a trend. */
-const YEAR_AVERAGE_RANGES: ReadonlySet<TimeRange> = new Set(["3y", "5y", "10y", "total"]);
+/** What the list shows: a month, or one day of it; optionally one category. */
+type Selection = { month: string | null; day: string | null; category: string | null };
 
-/** Expenses page: gastos by month and category, with the expense lines behind them. */
+/**
+ * Expenses page, by the day each expense was spent: the month-to-date chart stacked by category
+ * with its day strip, the category pills, the calendar beside the selection's lines, the month ×
+ * category matrix; then big groups, additional cards and the lists that wait on the user. One
+ * selection (month, day, category) drives the chart band, the calendar, the list and the matrix.
+ */
 export function ExpensesPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const [manualOpen, setManualOpen] = useState(false);
-  const chartPrefs = useSurfacePrefs("flows.expenses.chart", "month", "3y");
-  // A stored Diario from before it was dropped reads as Mensual.
-  const metricsPeriod: "month" | "year" = chartPrefs.period === "year" ? "year" : "month";
-  const timeRange = chartPrefs.range;
-  const chartControls = (
-    <SurfaceControls
-      period={metricsPeriod}
-      onPeriodChange={chartPrefs.setPeriod}
-      periodOptions={EXPENSES_CHART_PERIODS}
-      range={chartPrefs.range}
-      onRangeChange={chartPrefs.setRange}
-    />
-  );
-  const chartGranularity = metricsPeriod;
-  // The month-detail table owns its período (month/year) and always covers full history.
-  const tablePrefs = useSurfacePrefs("flows.expenses.table", "month", "total");
-  const tableGranularity = flowTableGranularity(
-    tablePrefs.period
-  );
-  const { data, error } = useFlowsExpensesSummary(displayUnit);
+  const [manualLine, setManualLine] = useState<FlowCcExpenseLineRow | null>(null);
+  const chartPrefs = useSurfacePrefs("flows.expenses.spent", "day", "6m");
+  const range = asSpentRange(chartPrefs.range);
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
   const { categoryLevel, setCategoryLevel } = useCcExpenseCategoryLevel();
   const { includePreTax, setIncludePreTax } = useExpensesIncludePreTax();
 
-  /** The chart's categories at the chosen level: at «Categorías» a subcategory folds into its parent. */
-  const chartCategories = useMemo(
-    () => ccExpenseCategoriesAtLevel(data?.categories ?? [], categoryLevel),
-    [categoryLevel, data?.categories]
-  );
-
-  const activeBigGroups = useMemo(() => data?.active_big_group_slugs ?? [], [data]);
-
-  const { excludedBigGroups, isExcluded, toggleExcluded } =
-    useCcExpenseExcludedBigGroups(activeBigGroups);
+  const summary = useFlowsExpensesSummary(displayUnit);
+  const activeBigGroups = useMemo(() => summary.data?.active_big_group_slugs ?? [], [summary.data]);
+  const { excludedBigGroups, isExcluded, toggleExcluded } = useCcExpenseExcludedBigGroups(activeBigGroups);
   const excludedBigGroupList = useMemo(() => [...excludedBigGroups], [excludedBigGroups]);
+
+  const params = useMemo(
+    () => ({
+      unit: displayUnit,
+      mode: installmentMode,
+      level: categoryLevel,
+      range,
+      excludedBigGroups: excludedBigGroupList,
+      includePreTax,
+    }),
+    [displayUnit, installmentMode, categoryLevel, range, excludedBigGroupList, includePreTax]
+  );
   // The default exclusion is every big group the lines carry: wait for the summary before asking.
-  const gastos = useFlowsExpensesGastos(displayUnit, excludedBigGroupList, includePreTax, data != null);
-  const loadError = queryLoadError({ data, error }) ?? queryLoadError(gastos);
-  const err =
-    loadError instanceof Error ? loadError.message : loadError ? t("common.loadFailed") : null;
+  const spent = useFlowsExpensesSpent(params, summary.data != null);
+  const data = spent.data;
+  const monthKeys = useMemo(() => (data?.months ?? []).map((m) => m.month), [data]);
+  const selectableMonths = useMemo(() => new Set(monthKeys), [monthKeys]);
 
-  /** Big groups that hold spend in this mode (server `bigGroupUsageByMode`). */
-  const bigGroupUsage = gastos.data?.big_group_usage[installmentMode] ?? [];
-
-  /** The server's precomputed view for this installment mode and category level, in this unit. */
-  const view = gastos.data?.views[`${installmentMode}|${categoryLevel}`] ?? null;
-
-  const chartPoints = useMemo(() => {
-    if (!view) return [];
-    // Months cut at the Rango start, then rolled up: the yearly chart starts with a partial
-    // first year.
-    return clipMonthsThenRollup(view.chart_monthly_by_category, chartGranularity, timeRange, (rows) =>
-      rollupChartPointsByYear(rows, view.chart_category_slugs)
-    );
-  }, [chartGranularity, view, timeRange]);
-
-  /** Per-year averages (full history, server-built): monthly chart and long Rangos only. */
-  const yearAverages =
-    view && chartGranularity === "month" && YEAR_AVERAGE_RANGES.has(timeRange)
-      ? view.year_averages
+  const [sel, setSel] = useState<Selection>({ month: null, day: null, category: null });
+  // No month picked yet (or one the payload no longer has): the current month.
+  const month = sel.month != null && selectableMonths.has(sel.month) ? sel.month : (monthKeys[monthKeys.length - 1] ?? "");
+  const day = sel.day != null && sel.day.startsWith(month) ? sel.day : null;
+  // A picked category holds only while the payload is the current level's (a held payload of the
+  // other level would still list it and send the lines request a category the level lacks).
+  const category =
+    sel.category != null && data?.level === categoryLevel && data.category_slugs.includes(sel.category)
+      ? sel.category
       : null;
 
-  /** Unfiltered totals — stack order stays stable when big groups are excluded from display. */
-  const chartSortPoints = useMemo(() => {
-    if (!view) return [];
-    return clipMonthsThenRollup(
-      view.chart_sort_monthly_by_category ?? view.chart_monthly_by_category,
-      chartGranularity === "year" ? "year" : "month",
-      timeRange,
-      (rows) => rollupChartPointsByYear(rows, view.chart_category_slugs)
-    );
-  }, [chartGranularity, view, timeRange]);
+  const lines = useFlowsExpensesSpentLines(params, { month, day, category }, summary.data != null && month !== "");
 
-  /** Table rows: FULL history (no range clip), at the table's own período. */
-  const monthTableRows = view ? (tableGranularity === "month" ? view.by_month : view.by_year) : [];
-
-  /**
-   * "En el rango" companion follows the CHART's Rango (headline `view.total` stays full): the
-   * months the chart keeps, so it matches the bars at month and year grain alike.
-   */
-  const rangeTotals = useMemo(() => {
-    if (!view) return { total: 0, total_real: 0 };
-    let total = 0;
-    let total_real = 0;
-    for (const r of clipPointsToTimeRange(view.by_month, timeRange)) {
-      total += r.gastos_mes;
-      total_real += r.gastos_real_mes;
-    }
-    return { total, total_real };
-  }, [view, timeRange]);
-
-  const chartFilterActive = bigGroupUsage.some((g) => isExcluded(g.slug));
-
-  // Two flags: the summary (catalogs, additional cards) and the gastos view (chart, month table,
-  // totals), which waits for the summary and holds the prior view across an exclusion change. The
-  // line lists below fetch their own lines.
-  const summaryLoading = !data;
-  const gastosLoading = !data || !view || gastos.isPlaceholderData;
-
-  if (err) {
-    return <p className="error">{err}</p>;
+  const loadError = queryLoadError(summary) ?? queryLoadError(spent) ?? queryLoadError(lines);
+  if (loadError) {
+    return <p className="error">{loadError instanceof Error ? loadError.message : t("common.loadFailed")}</p>;
   }
+
+  const spentLoading = queryShowsLoading(spent);
+  const linesLoading = queryShowsLoading(lines);
+  const categories = summary.data?.categories ?? [];
+  const unit = data?.unit ?? displayUnit;
+  const selectedMonth = data?.months.find((m) => m.month === month);
+  const at = monthKeys.indexOf(month);
+  // The calendar: the selected month and the three before it, two by two.
+  const calendarMonths = at < 0 ? [] : (data?.months ?? []).slice(Math.max(0, at - 3), at + 1);
+
+  const pickMonth = (ym: string) => setSel((s) => ({ ...s, month: ym, day: null }));
+  const pickDay = (ymd: string) => setSel((s) => ({ ...s, month: ymd.slice(0, 7), day: ymd }));
+  const pickCategory = (slug: string) => setSel((s) => ({ ...s, month, category: s.category === slug ? null : slug }));
+  const dayMode = () => {
+    if (day != null) return;
+    // The latest day of the month that spent something, else its last day so far.
+    const days = selectedMonth?.days ?? [];
+    const pick = [...days].reverse().find((d) => d.total > 0) ?? days[days.length - 1];
+    if (pick) pickDay(pick.day);
+  };
+
+  const toggle = (on: boolean) => `${styles.toggle} ${on ? styles.toggleOn : ""}`;
 
   return (
     <>
-      <h2 className="flow-section-title">{t("sidebar.flowsExpenses")}</h2>
-
-      <div
-        className="chart-controls"
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: "0.5rem 1rem",
-        }}
-      >
-        <span className="label-inline">{t("expenses.creditCard.installmentModeLabel")}</span>
-        <label className="radio-pill">
-          <input
-            type="radio"
-            name="cc-installment-gastos-mode"
-            checked={installmentMode === "split"}
-            onChange={() => setInstallmentMode("split")}
-          />
-          {t("expenses.creditCard.installmentModeSplit")}
-        </label>
-        <label className="radio-pill">
-          <input
-            type="radio"
-            name="cc-installment-gastos-mode"
-            checked={installmentMode === "total"}
-            onChange={() => setInstallmentMode("total")}
-          />
-          {t("expenses.creditCard.installmentModeTotal")}
-        </label>
-        <span className="label-inline">{t("expenses.creditCard.categoryLevelLabel")}</span>
-        <label className="radio-pill">
-          <input
-            type="radio"
-            name="cc-expense-category-level"
-            checked={categoryLevel === "category"}
-            onChange={() => setCategoryLevel("category")}
-          />
-          {t("expenses.creditCard.categoryLevelCategory")}
-        </label>
-        <label className="radio-pill">
-          <input
-            type="radio"
-            name="cc-expense-category-level"
-            checked={categoryLevel === "subcategory"}
-            onChange={() => setCategoryLevel("subcategory")}
-          />
-          {t("expenses.creditCard.categoryLevelSubcategory")}
-        </label>
-        <label className="radio-pill" title={t("expenses.creditCard.includePreTaxHint")}>
-          <input
-            type="checkbox"
-            checked={includePreTax}
-            onChange={(e) => setIncludePreTax(e.target.checked)}
-          />
-          {t("expenses.creditCard.includePreTax")}
-        </label>
-        <span style={{ marginLeft: "auto", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+      <div className={styles.titleRow}>
+        <h2 className="flow-section-title">{t("sidebar.flowsExpenses")}</h2>
+        <div className={styles.toggles}>
+          <span className={styles.toggleGroup}>
+            <button type="button" className={toggle(installmentMode === "split")} onClick={() => setInstallmentMode("split")}>
+              {t("expenses.creditCard.installmentModeSplit")}
+            </button>
+            <button type="button" className={toggle(installmentMode === "total")} onClick={() => setInstallmentMode("total")}>
+              {t("expenses.creditCard.installmentModeTotal")}
+            </button>
+          </span>
+          <span className={styles.toggleGroup}>
+            <button type="button" className={toggle(categoryLevel === "category")} onClick={() => setCategoryLevel("category")}>
+              {t("expenses.creditCard.categoryLevelCategory")}
+            </button>
+            <button type="button" className={toggle(categoryLevel === "subcategory")} onClick={() => setCategoryLevel("subcategory")}>
+              {t("expenses.creditCard.categoryLevelSubcategory")}
+            </button>
+          </span>
+          <button
+            type="button"
+            className={toggle(includePreTax)}
+            title={t("expenses.creditCard.includePreTaxHint")}
+            aria-pressed={includePreTax}
+            onClick={() => setIncludePreTax(!includePreTax)}
+          >
+            {t("expenses.creditCard.includePreTax")}
+          </button>
           <Button variant="secondary" onClick={() => setManualOpen(true)}>
             {t("expenses.creditCard.manualExpense.add")}
           </Button>
           <CreditCardFacturadoFinancingManager />
-        </span>
-        <ManualExpenseDialog
-          open={manualOpen}
-          expense={null}
-          categories={data?.categories ?? []}
-          onClose={() => setManualOpen(false)}
-        />
+        </div>
       </div>
-
-      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack">
-        <CreditCardGroupExpensesChart
-          controls={chartControls}
-          title={t("expenses.creditCard.chartTitle")}
-          points={chartPoints}
-          categorySortPoints={chartSortPoints}
-          categories={chartCategories}
-          displayUnit={displayUnit}
-          xAxisGranularity={chartGranularity}
-          yearAverages={yearAverages}
-          loading={gastosLoading}
-        />
-      </div>
-      {chartFilterActive ? (
-        <p className="muted" style={{ fontSize: "var(--font-size-ui)" }}>
-          {t("expenses.creditCard.bigGroups.chartFilterHint")}
-        </p>
-      ) : null}
-
-      <BigExpenseGroupsSection
-        includePreTax={includePreTax}
-        categories={data?.categories ?? []}
-        bigGroups={data?.big_groups ?? []}
-        usage={bigGroupUsage}
-        unit={gastos.data?.unit ?? displayUnit}
-        isExcluded={isExcluded}
-        toggleExcluded={toggleExcluded}
-        loading={gastosLoading}
+      <ManualExpenseDialog open={manualOpen} expense={null} categories={categories} onClose={() => setManualOpen(false)} />
+      <ManualExpenseDialog
+        open={manualLine != null}
+        expense={manualLine}
+        categories={categories}
+        onClose={() => setManualLine(null)}
       />
 
-      <PageGridTile id="detail">
-        <div className="chart-panel-title-row">
-          <h3>
-            {t(
-              tableGranularity === "year"
-                ? "accountDetail.yearlyDetailTitle"
-                : "accountDetail.monthlyDetailTitle"
-            )}
-            <span
-              className={loadableClass(gastosLoading, "muted mono")}
-              style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}
-            >
-              {formatFlowMoney(view?.total ?? 0, displayUnit)}
-              {view && view.total_real !== view.total ? (
-                <>
-                  {" · "}
-                  {t("expenses.creditCard.colMonthExpenseReal")}:{" "}
-                  {formatFlowMoney(view.total_real, displayUnit)}
-                </>
-              ) : null}
-              {timeRange !== "total" ? (
-                <>
-                  {" · "}
-                  {t("flows.rangeTotalLabel")}: {formatFlowMoney(rangeTotals.total, displayUnit)}
-                </>
-              ) : null}
-            </span>
-          </h3>
-          <SurfaceControls
-            period={tablePrefs.period}
-            onPeriodChange={tablePrefs.setPeriod}
-            periodOptions={["month", "year"]}
-          />
-        </div>
-        <GroupExpensesMonthTable
-          rows={monthTableRows}
-          includePreTax={includePreTax}
-          categories={data?.categories ?? []}
-          bigGroups={data?.big_groups ?? []}
-          installmentMode={installmentMode}
-          displayUnit={displayUnit}
-          periodGranularity={tableGranularity}
-          loading={gastosLoading}
+      <PageGridTile id="spent-chart">
+        <ExpensesSpentChart
+          data={data}
+          categories={categories}
+          range={range}
+          onRangeChange={(r) => chartPrefs.setRange(r)}
+          selectedMonth={month}
+          selectedCategory={category}
+          selectableMonths={selectableMonths}
+          onMonth={pickMonth}
+          onDay={pickDay}
+          loading={spentLoading}
         />
       </PageGridTile>
 
-      <AdditionalCardsSection
-        summary={data?.additional_cards}
-        displayUnit={displayUnit}
-        loading={summaryLoading}
+      <PageGridTile id="spent-categories">
+        <div className={styles.pills}>
+          {(data?.category_slugs ?? []).map((slug, k) => {
+            const value = selectedMonth?.cells[k]?.value ?? 0;
+            const on = slug === category;
+            const color = categories.find((c) => c.slug === slug)?.chart_color;
+            return (
+              <button
+                key={slug}
+                type="button"
+                className={`${styles.pill} ${on ? styles.pillOn : ""} ${value === 0 && !on ? styles.pillDim : ""}`}
+                aria-pressed={on}
+                onClick={() => pickCategory(slug)}
+              >
+                <span className={styles.dot} style={{ background: color }} />
+                {ccExpenseCategoryLabel(slug)}
+                <span className={`${styles.pillAmount} ${styles.mono}`}>{formatCurrency(value, unit)}</span>
+              </button>
+            );
+          })}
+          {category ? (
+            <button type="button" className={styles.linkButton} onClick={() => setSel((s) => ({ ...s, category: null }))}>
+              {t("expenses.spent.allCategories")}
+            </button>
+          ) : null}
+        </div>
+      </PageGridTile>
+
+      <PageGridTile id="spent-calendar">
+        <div className={styles.calendarTile}>
+          <div className={styles.calendarRow}>
+            <div className={loadableClass(spentLoading)}>
+              <ExpensesCalendar
+                months={calendarMonths}
+                unit={unit}
+                today={data?.today ?? ""}
+                selectedMonth={month}
+                selectedDay={day}
+                onMonth={pickMonth}
+                onDay={pickDay}
+              />
+            </div>
+            <div className={styles.listColumn}>
+            <ExpensesSpentList
+              data={lines.data}
+              months={monthKeys}
+              month={month}
+              day={day}
+              category={category}
+              categories={categories}
+              bigGroups={summary.data?.big_groups ?? []}
+              onMonth={pickMonth}
+              onDayMode={dayMode}
+              onWholeMonth={() => setSel((s) => ({ ...s, day: null }))}
+              onClearCategory={() => setSel((s) => ({ ...s, category: null }))}
+              onEditManual={setManualLine}
+              loading={linesLoading}
+            />
+            </div>
+          </div>
+        </div>
+      </PageGridTile>
+
+      <PageGridTile id="spent-matrix">
+        <ExpensesMonthMatrix
+          data={data}
+          categories={categories}
+          selectedMonth={month}
+          selectedCategory={category}
+          onMonth={pickMonth}
+          onCategory={pickCategory}
+          onCell={(ym, slug) => setSel({ month: ym, day: null, category: slug })}
+          loading={spentLoading}
+        />
+      </PageGridTile>
+
+      <BigExpenseGroupsSection
+        includePreTax={includePreTax}
+        categories={categories}
+        bigGroups={summary.data?.big_groups ?? []}
+        usage={data?.big_group_usage ?? []}
+        unit={unit}
+        isExcluded={isExcluded}
+        toggleExcluded={toggleExcluded}
+        loading={spentLoading}
       />
+
+      <AdditionalCardsSection summary={summary.data?.additional_cards} displayUnit={displayUnit} loading={summary.data == null} />
 
       <CreditCardUnclassifiedExpensesTable includePreTax={includePreTax} />
 

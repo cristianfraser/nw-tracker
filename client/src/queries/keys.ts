@@ -1,4 +1,4 @@
-import type { FlowsExpenseLinesSelector } from "../types";
+import type { ExpensesSpentParams, FlowsExpenseLinesSelector } from "../types";
 /**
  * A display unit: a lowercase core currency code the server loads (`clp`, `usd`, `eur`, …;
  * `GET /api/currencies`). Data, not a closed union. The unit a page was showing before a switch
@@ -14,8 +14,6 @@ export function isDisplayUnitCode(v: unknown): v is DisplayUnit {
 /** A stable key segment for an expense-lines selector (its fields in a fixed order). */
 function expenseLinesSelectorKey(selector: FlowsExpenseLinesSelector): string {
   switch (selector.kind) {
-    case "month":
-      return `month|${selector.period_month}|${selector.include_pre_tax ? 1 : 0}`;
     case "facturacion":
       return `facturacion|${selector.account_id}|${selector.billing_month}`;
     case "uncategorized":
@@ -134,13 +132,23 @@ export const queryKeys = {
   /** The Expenses page's catalogs and summaries (categories, big groups, additional cards). */
   flowsExpensesSummaryAll: () => ["flowsExpenses", "summary"] as const,
   flowsExpensesSummary: (unit: DisplayUnit) => ["flowsExpenses", "summary", unit] as const,
+  /** The purchases one card credit may refund (under `flowsExpenses()`: a line write refetches it). */
+  cardRefundCandidates: (unit: DisplayUnit, accountId: number, lineId: number) =>
+    ["flowsExpenses", "refundCandidates", unit, accountId, lineId] as const,
   /** The financing manager's pickers; under `flowsExpenses()`, so every line write refreshes them. */
   flowsExpensesFinancingCandidates: (unit: DisplayUnit) =>
     ["flowsExpenses", "financingCandidates", unit] as const,
-  /** Nested under `flowsExpenses()`: every invalidation of the lines refetches the gastos views too. */
-  flowsExpensesGastosAll: () => ["flowsExpenses", "gastos"] as const,
-  flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[], includePreTax: boolean) =>
-    ["flowsExpenses", "gastos", unit, [...excludedBigGroups].sort().join(","), includePreTax] as const,
+  /**
+   * The Expenses page by spending day, both payloads (the page's and its line lists); under
+   * `flowsExpenses()`, so every line write refetches it.
+   */
+  flowsExpensesSpentAll: () => ["flowsExpenses", "spent"] as const,
+  /** The spent line lists only (lines grouped by day). */
+  flowsExpensesSpentLinesAll: () => ["flowsExpenses", "spent", "lines"] as const,
+  flowsExpensesSpent: (p: ExpensesSpentParams) =>
+    ["flowsExpenses", "spent", p.unit, p.mode, p.level, p.range, [...p.excludedBigGroups].sort().join(","), p.includePreTax] as const,
+  flowsExpensesSpentLines: (p: ExpensesSpentParams, month: string, day: string | null, category: string | null) =>
+    ["flowsExpenses", "spent", "lines", p.unit, p.mode, p.level, [...p.excludedBigGroups].sort().join(","), p.includePreTax, month, day, category] as const,
   /** Nested under `flowsExpenses()` too: a line edit refetches the overview. Entity = up to the unit. */
   flowsOverview: (unit: DisplayUnit, installmentMode: "split" | "total", days?: number) =>
     withEntity(["flowsExpenses", "overview", unit, installmentMode, days ?? null] as const, 3),

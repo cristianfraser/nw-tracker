@@ -22,7 +22,7 @@ import { invalidateResources, resources } from "./resources";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
-import type { NavTreeNodeDto } from "../types";
+import type { ExpensesSpentParams, NavTreeNodeDto } from "../types";
 import { setCurrencyRegistry } from "../format";
 
 /** Snapshots read from localStorage (placeholders), as opposed to live server payloads. */
@@ -730,6 +730,15 @@ export function useFlowsExpensesSummary(unit: DisplayUnit) {
   });
 }
 
+/** The purchases a card credit may refund, fetched while its picker is open. */
+export function useCardRefundCandidates(unit: DisplayUnit, accountId: number, lineId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.cardRefundCandidates(unit, accountId, lineId),
+    queryFn: () => api.cardRefundCandidates(unit, accountId, lineId),
+    enabled,
+  });
+}
+
 /** The financing manager's pickers: financed cards with their facturaciones, and the plans. */
 export function useFlowsExpensesFinancingCandidates(unit: DisplayUnit, enabled: boolean) {
   return useQuery({
@@ -739,16 +748,25 @@ export function useFlowsExpensesFinancingCandidates(unit: DisplayUnit, enabled: 
   });
 }
 
-/** Gastos by month / category for every installment mode × category level; the page picks one. */
-export function useFlowsExpensesGastos(
-  unit: DisplayUnit,
-  excludedBigGroups: readonly string[],
-  includePreTax: boolean,
+/** The Expenses page by spending day: chart, day strip, the months' calendar days and matrix cells. */
+export function useFlowsExpensesSpent(params: ExpensesSpentParams, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.flowsExpensesSpent(params),
+    queryFn: () => api.flowsExpensesSpent(params),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/** The lines of one month (a day of it, a category) by spending day, grouped by day. */
+export function useFlowsExpensesSpentLines(
+  params: ExpensesSpentParams,
+  sel: { month: string; day: string | null; category: string | null },
   enabled = true
 ) {
   return useQuery({
-    queryKey: queryKeys.flowsExpensesGastos(unit, excludedBigGroups, includePreTax),
-    queryFn: () => api.flowsExpensesGastos(unit, excludedBigGroups, includePreTax),
+    queryKey: queryKeys.flowsExpensesSpentLines(params, sel.month, sel.day, sel.category),
+    queryFn: () => api.flowsExpensesSpentLines(params, sel),
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -816,6 +834,8 @@ export {
   useSaveExpenseLinePiecesMutation,
   useSaveManualExpenseMutation,
   useDeleteManualExpenseMutation,
+  useLinkCardRefundMutation,
+  useUnlinkCardRefundMutation,
 } from "./mutations";
 
 export function useAccountMonthlyPerformance(id: string | undefined, unit: DisplayUnit) {

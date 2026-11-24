@@ -132,8 +132,8 @@ import { dropPlanPrepaymentLines, markPlanPrepaymentCreditRefunds, refundPlanPre
 import { annulledPurchaseLineId, annulledPurchaseRowsForAccount } from "./ccAnnulledPurchasesRead.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { withExpenseLineShapes } from "./expenseLineShapes.js";
-import { isCcExpenseTotalsExcludedSlug, isInstallmentCuotaZeroLine } from "./ccExpenseCategories.js";
-import { countsTowardGastosMes, isGastosRefundLine } from "./gastosMesCounting.js";
+import { isGastosRefundLine } from "./gastosMesCounting.js";
+import { isLinkableCardRefund, withCardRefundLinks } from "./cardRefundLinks.js";
 
 export { listCreditCardMasterAccountIds };
 
@@ -171,7 +171,7 @@ export type FlowsExpensesPayload = {
   /** Big groups some line carries, sorted: the Expenses page's default chart exclusion. */
   active_big_group_slugs: string[];
 
-  /** Gastos by month / category: `GET /api/flows/expenses/gastos` (`flowsExpensesGastos.ts`). */
+  /** Gastos by spending day: `GET /api/flows/expenses/spent` (`flowsExpensesSpent.ts`). */
 
   /**
    * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO). The Diario
@@ -873,7 +873,8 @@ const asRows = <T,>(f: (lines: T[]) => unknown) => (lines: readonly FlowCcExpens
  *   the categories are final (`ccPlanPrepaymentLines.ts`);
  * - the subscription category before the specific rules (which drop the bank-name marker);
  * - the facturado-financing projection on the categorized lines, the financing-cost stamp last
- *   (it drops the internal kind marker).
+ *   (it drops the internal kind marker);
+ * - the card refunds the user linked to a purchase once the lines have their flows and money.
  */
 export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "plan prepayment lines", run: dropPlanPrepaymentLines },
@@ -902,15 +903,11 @@ export const EXPENSE_LINE_STEPS: readonly ExpenseLineStep[] = [
   { name: "financing cost lines", run: asRows(markFinancingCostLines) },
   { name: "flow ids", run: (lines) => withExpenseLineFlowIds(lines) },
   { name: "line money", run: asRows(withLineMoney) },
+  { name: "card refund links", run: (lines) => withCardRefundLinks(lines) },
   {
     name: "line shapes",
     run: (lines) =>
-      withExpenseLineShapes(lines, {
-        countsTowardGastosMes,
-        isGastosRefundLine,
-        isCcExpenseTotalsExcludedSlug,
-        isInstallmentCuotaZeroLine,
-      }),
+      withExpenseLineShapes(lines, { isGastosRefundLine, isLinkableCardRefund }),
   },
 ];
 

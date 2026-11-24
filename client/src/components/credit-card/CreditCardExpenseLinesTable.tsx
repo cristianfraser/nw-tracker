@@ -36,7 +36,11 @@ import {
   useUpdateCcPurchaseCuotasMutation,
   useMakeStatementLineInstallmentMutation,
   usePostVendorBranchChoiceMutation,
+  useCardRefundCandidates,
+  useLinkCardRefundMutation,
+  useUnlinkCardRefundMutation,
 } from "../../queries/hooks";
+import { queryLoadError, queryShowsLoading } from "../../queries/pageShapeReady";
 import styles from "./CreditCardExpenseLinesTable.module.css";
 
 function lineCategorySlug(line: FlowCcExpenseLineRow): string {
@@ -68,7 +72,8 @@ export function sortCreditCardExpenseLinesByAmountDesc(
 }
 
 type SortKey = "date" | "amount" | "category";
-type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
+export type ExpenseLinesSort = { key: SortKey; direction: "asc" | "desc" };
+type SortState = ExpenseLinesSort | null;
 
 /**
  * Sorts by the column's value; ties keep the incoming order. «No category» stays last in both
@@ -78,7 +83,8 @@ function sortLines(
   lines: readonly FlowCcExpenseLineRow[],
   sort: SortState,
   unit: string,
-  categoryLabel: (line: FlowCcExpenseLineRow) => string | null
+  categoryLabel: (line: FlowCcExpenseLineRow) => string | null,
+  dateOf: (line: FlowCcExpenseLineRow) => string = lineDate
 ): readonly FlowCcExpenseLineRow[] {
   if (!sort) return lines;
   const sign = sort.direction === "asc" ? 1 : -1;
@@ -86,7 +92,7 @@ function sortLines(
     .map((line, index) => ({ line, index }))
     .sort((a, b) => {
       let cmp = 0;
-      if (sort.key === "date") cmp = sign * lineDate(a.line).localeCompare(lineDate(b.line));
+      if (sort.key === "date") cmp = sign * dateOf(a.line).localeCompare(dateOf(b.line));
       else if (sort.key === "amount") cmp = sign * (lineValueIn(a.line, unit) - lineValueIn(b.line, unit));
       else {
         const la = categoryLabel(a.line);
@@ -486,6 +492,118 @@ function PlanCuotasControls({ line }: { line: FlowCcExpenseLineRow }) {
   );
 }
 
+/**
+ * A card credit's «Reembolso de…» (`cardRefundLinks.ts` on the server): the one same-merchant
+ * purchase the server suggests, for one confirm; else a picker of the purchases it may refund; a
+ * credit the user linked shows its purchase's day and may be unlinked. The server decides what it
+ * may do (`can_link_refund`).
+ */
+function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
+  const [open, setOpen] = useState(false);
+  const link = useLinkCardRefundMutation();
+  const unlink = useUnlinkCardRefundMutation();
+  const candidates = useCardRefundCandidates(displayUnit, line.account_id, line.statement_line_id, open);
+  const busy = link.isPending || unlink.isPending;
+  const onError = (err: unknown) => window.alert(err instanceof Error ? err.message : String(err));
+  const linkTo = (purchaseLineId: number) =>
+    link.mutate(
+      { account_id: line.account_id, line_id: line.statement_line_id, purchase_line_id: purchaseLineId },
+      { onSuccess: () => setOpen(false), onError }
+    );
+
+  if (line.refund_link_broken) {
+    return (
+      <div className={styles.panelBigGroup}>
+        <span className="error">{t("expenses.creditCard.lineRow.refund.broken")}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => unlink.mutate({ account_id: line.account_id, line_id: line.statement_line_id }, { onError })}
+        >
+          {t("expenses.creditCard.lineRow.refund.unlink")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (line.refund_of?.manual) {
+    return (
+      <div className={styles.panelBigGroup}>
+        <span className="muted">{t("expenses.creditCard.lineRow.refund.label")}</span>
+        <span className="mono muted">{line.refund_of.purchase_date}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => unlink.mutate({ account_id: line.account_id, line_id: line.statement_line_id }, { onError })}
+        >
+          {t("expenses.creditCard.lineRow.refund.unlink")}
+        </Button>
+      </div>
+    );
+  }
+
+  const suggestion = line.refund_suggestion;
+  const loadError = queryLoadError(candidates);
+  return (
+    <div className={styles.refundLink}>
+      {!open ? (
+        <div className={styles.panelBigGroup}>
+          {suggestion ? (
+            <>
+              <span className="muted">{t("expenses.creditCard.lineRow.refund.suggestion")}</span>
+              <span>{shownNameText(suggestion.name)}</span>
+              <span className="mono muted">{suggestion.purchase_date}</span>
+              <span className="mono">
+                <MoneyAmount money={{ amount: suggestion.amount, converted: null }} />
+              </span>
+              <Button size="sm" disabled={busy} onClick={() => linkTo(suggestion.line_id)}>
+                {t("expenses.creditCard.lineRow.refund.confirm")}
+              </Button>
+            </>
+          ) : null}
+          <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+            {suggestion ? t("expenses.creditCard.lineRow.refund.other") : t("expenses.creditCard.lineRow.refund.pick")}
+          </Button>
+        </div>
+      ) : (
+        <div className={loadableClass(queryShowsLoading(candidates))}>
+          {loadError ? (
+            <p className="error">{loadError instanceof Error ? loadError.message : t("common.loadFailed")}</p>
+          ) : candidates.data && candidates.data.candidates.length === 0 ? (
+            <p className="muted">{t("expenses.creditCard.lineRow.refund.empty")}</p>
+          ) : (
+            <div role="list" aria-label={t("expenses.creditCard.lineRow.refund.pickAria")} className={styles.refundCandidates}>
+              {(candidates.data?.candidates ?? []).map((c) => (
+                <button
+                  key={c.line_id}
+                  type="button"
+                  role="listitem"
+                  className={cn(styles.refundCandidate, c.merchant_match && styles.refundCandidateMatch)}
+                  disabled={busy}
+                  onClick={() => linkTo(c.line_id)}
+                >
+                  <span className="mono muted">{c.purchase_date}</span>
+                  <span className={styles.refundCandidateName}>{shownNameText(c.name)}</span>
+                  <span className="mono">
+                    <MoneyAmount money={c} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            {t("expenses.creditCard.lineRow.refund.close")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExpenseLineRow({
   line: ln,
   categories,
@@ -497,6 +615,8 @@ function ExpenseLineRow({
   expanded,
   onToggleExpanded,
   date,
+  hideOrigin = false,
+  hideDate = false,
 }: {
   line: FlowCcExpenseLineRow;
   categories: readonly CcExpenseCategoryDto[];
@@ -509,13 +629,17 @@ function ExpenseLineRow({
   onToggleExpanded: () => void;
   /** The date the row shows instead of the line's purchase date (a list ordered by another day). */
   date?: string;
+  /** No origin cell (and so no bulk-select checkbox). */
+  hideOrigin?: boolean;
+  /** No date cell (a list grouped under day headers). */
+  hideDate?: boolean;
 }) {
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
   const linkLabel = useExpenseVendorLinkLabel(ln);
   // A payslip deduction's category is the deduction's own: no picker, no bulk select, no group.
   const fixedCategory = ln.source === "payslip";
-  const canSelect = selectable && selection != null && !fixedCategory && !ln.annulment;
+  const canSelect = !hideOrigin && selectable && selection != null && !fixedCategory && !ln.annulment;
   const selected = canSelect && selection.isSelected(ln);
 
   // What the row may do is the server's call (`can_*`, `expenseLineShapes.ts`); the demo keeps
@@ -538,7 +662,12 @@ function ExpenseLineRow({
     ln.statement_line_id > 0 ? ln.statement_line_id : ln.category_statement_line_id ?? undefined;
   // The demo leaves branch picks closed (they write a catalog row every visitor would see).
   const branchChoices = DEMO_EDITS_LIMITED ? null : ln.branch_choices;
-  const needsAction = ln.cuota_purchase_kind != null || branchChoices != null;
+  const canLinkRefund = !DEMO_EDITS_LIMITED && ln.can_link_refund === true;
+  // A suggested purchase waits on one confirm.
+  const needsAction =
+    ln.cuota_purchase_kind != null ||
+    branchChoices != null ||
+    (canLinkRefund && (ln.refund_suggestion != null || ln.refund_link_broken === true));
   // A big group shows on the row once set; until then its picker lives in the row's extras.
   const canBigGroup = showBigGroupControls && Boolean(ln.purchase_key) && !fixedCategory;
   const bigGroupOnRow = canBigGroup && ln.big_group_slug != null;
@@ -555,6 +684,7 @@ function ExpenseLineRow({
     canEditInstallment ||
     canAnnul ||
     canUndoAnnul ||
+    canLinkRefund ||
     canDelete;
   const merchant = shownNameText(ln.name);
 
@@ -563,10 +693,12 @@ function ExpenseLineRow({
       role="listitem"
       className={cn(
         styles.row,
+        hideOrigin && (hideDate ? styles.rowBare : styles.rowNoOrigin),
         selected && styles.rowSelected,
         canSelect && styles.rowSelectable
       )}
     >
+      {hideOrigin ? null : (
       <div className={styles.origin}>
         <span className={styles.originIcon}>
           <ExpenseOriginIcon origin={ln.origin} />
@@ -581,7 +713,8 @@ function ExpenseLineRow({
           />
         ) : null}
       </div>
-      <div className={cn("mono", "muted", styles.date)}>{date ?? lineDate(ln)}</div>
+      )}
+      {hideDate ? null : <div className={cn("mono", "muted", styles.date)}>{date ?? lineDate(ln)}</div>}
       <div className={styles.pills}>
         {bigGroupOnRow ? (
           <ExpenseBigGroupPicker purchaseKey={ln.purchase_key} value={ln.big_group_slug} groups={bigGroups} />
@@ -663,6 +796,7 @@ function ExpenseLineRow({
               />
             </div>
           ) : null}
+          {canLinkRefund ? <RefundLinkControl line={ln} /> : null}
           {canAnnul ? <AnnulPurchaseControl line={ln} /> : null}
           {canEditPieces || canEditManual || canDelete || canUndoAnnul ? (
             <div className={styles.panelActions}>
@@ -821,6 +955,10 @@ export function CreditCardExpenseLinesTable({
   onEditManual,
   enableCheckingNotes = false,
   hideHeader = false,
+  hideOrigin = false,
+  hideDate = false,
+  defaultSort = null,
+  dateOf,
   loading,
 }: {
   lines?: readonly FlowCcExpenseLineRow[];
@@ -843,12 +981,20 @@ export function CreditCardExpenseLinesTable({
   enableCheckingNotes?: boolean;
   /** No sort header: the rows keep the order they come in (a short list such as «Últimos gastos»). */
   hideHeader?: boolean;
+  /** Rows without the origin icon (and without bulk selection). */
+  hideOrigin?: boolean;
+  /** Rows without their date (a list of one day). */
+  hideDate?: boolean;
+  /** The sort the list starts in (its header shows it); none keeps the incoming order. */
+  defaultSort?: ExpenseLinesSort | null;
+  /** The day a row shows and the date sort reads, when not the line's purchase date. */
+  dateOf?: (line: FlowCcExpenseLineRow) => string;
   /** Lines still loading: the header renders with no rows (not the empty label), dimmed. */
   loading?: boolean;
 }) {
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
-  const [sort, setSort] = useState<SortState>(null);
+  const [sort, setSort] = useState<SortState>(defaultSort);
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [showAll, setShowAll] = useState(false);
   // «Desglosar» lives in the row on every surface: the table mounts the pieces dialog once.
@@ -864,8 +1010,8 @@ export function CreditCardExpenseLinesTable({
       sortLines(lines, sort, displayUnit, (ln) => {
         const slug = lineCategorySlug(ln);
         return slug ? (categoryLabelBySlug.get(slug) ?? slug) : null;
-      }),
-    [categoryLabelBySlug, lines, sort, displayUnit]
+      }, dateOf),
+    [categoryLabelBySlug, lines, sort, displayUnit, dateOf]
   );
 
   const rowCount = items != null ? items.length : lines.length;
@@ -906,7 +1052,7 @@ export function CreditCardExpenseLinesTable({
         )}
       >
         {hideHeader || items != null ? null : (
-        <div className={styles.header}>
+        <div className={cn(styles.header, hideOrigin && styles.headerNoOrigin)}>
           <SortButton sortKey="date" label={t("expenses.creditCard.lineRow.sortDate")} sort={sort} onSort={onSort} />
           <span className={styles.headerRight}>
             <SortButton
@@ -933,7 +1079,7 @@ export function CreditCardExpenseLinesTable({
               <ExpenseLineRow
                 key={key}
                 line={ln}
-                date={item.on}
+                date={item.on ?? dateOf?.(ln)}
                 categories={categories}
                 bigGroups={bigGroups}
                 showCategoryControls={showCategoryControls}
@@ -942,6 +1088,8 @@ export function CreditCardExpenseLinesTable({
                 actions={actions}
                 expanded={expandedKeys.has(key)}
                 onToggleExpanded={() => toggleExpanded(key)}
+                hideOrigin={hideOrigin}
+                hideDate={hideDate}
               />
             );
           })}

@@ -666,6 +666,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "mortgage_lender_quotes",
   "flow_first_seen",
   "card_to_card_payments",
+  "card_refund_links",
   "currencies",
   "fx_rates",
   "cc_billing_month_metrics",

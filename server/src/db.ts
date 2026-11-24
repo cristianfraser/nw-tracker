@@ -64,6 +64,8 @@ import { runMortgageLenderQuotes308 } from "./migrationHooks/mortgageLenderQuote
 import { runFlowFirstSeen310 } from "./migrationHooks/flowFirstSeen310.js";
 import { runCardToCardPayments311 } from "./migrationHooks/cardToCardPayments311.js";
 import { runBrokerInstruments361 } from "./migrationHooks/brokerInstruments361.js";
+import { runCardRefundLinks365 } from "./migrationHooks/cardRefundLinks365.js";
+import { runCardRefundLinksHold366 } from "./migrationHooks/cardRefundLinksHold366.js";
 import { runCurrencies312 } from "./migrationHooks/currencies312.js";
 import { runCurrencyReferences314 } from "./migrationHooks/currencyReferences314.js";
 import { runVendorCatalog325 } from "./migrationHooks/vendorCatalog325.js";
@@ -427,6 +429,8 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "334_cc_plan_prepayments.sql": runMarkInputChangeTriggers334,
   "335_vendor_catalog_parque_arauco_stores.sql": runVendorCatalog335,
   "361_broker_instruments.sql": runBrokerInstruments361,
+  "365_card_refund_links.sql": runCardRefundLinks365,
+  "366_card_refund_links_hold_flows.sql": runCardRefundLinksHold366,
   "363_vendor_catalog_checking_names.sql": runVendorCatalog363,
 };
 

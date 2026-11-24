@@ -5,7 +5,6 @@
 import type { CardLineKind } from "nw-tracker-contracts";
 import type {
   ExpenseLinePaymentName,
-  ExpenseMonthModalSection,
   LineRateSource,
   LineUnitValue,
   Money,
@@ -302,7 +301,25 @@ export type FlowCcExpenseLineRow = {
     payment_name?: ExpenseLinePaymentName;
     link_label?: ExpenseLinkLabel;
     payment_receipt?: PaymentReceiptDto;
+    /** The user named the purchase (`card_refund_links`): the row may undo it. */
+    manual?: true;
   };
+  /**
+   * The one purchase a card credit with no purchase most likely refunds (`cardRefundLinks.ts`: the
+   * only candidate whose merchant is the credit's): the row offers it for one confirm.
+   */
+  refund_suggestion?: {
+    line_id: number;
+    purchase_date: string;
+    amount: Money;
+    merchant: string | null;
+    display_merchant?: string;
+    payment_name?: ExpenseLinePaymentName;
+  };
+  /** The row may name the purchase this card credit refunds, or undo the name (server line shapes). */
+  can_link_refund?: boolean;
+  /** The purchase this credit was linked to is no line any more (`cardRefundLinks.ts`): the row offers to undo the link. */
+  refund_link_broken?: true;
   /**
    * A card line the bank charged as the cost of financing (section 3: intereses, comisiones,
    * impuestos, administración) — the lines the card's P/L counts ({@link markFinancingCostLines}).
@@ -328,9 +345,6 @@ export type FlowCcExpenseLineRow = {
   /** What a line's pieces leave of it: the line's own expense, on its own day. */
   pieces_remainder?: true;
   /** The line's shape and row capabilities (`expenseLineShapes.ts`, the last step). */
-  period_month?: string;
-  counts_toward_gastos?: Record<"split" | "total", boolean>;
-  month_modal_sections?: Record<"split" | "total", ExpenseMonthModalSection[]>;
   abono?: boolean;
   pending_classification?: boolean;
   can_delete?: boolean;

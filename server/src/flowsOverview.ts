@@ -48,17 +48,15 @@ import {
   type FlowCcExpenseMonthRow,
 } from "./flowsExpenses.js";
 import {
-  buildFlowsExpensesGastosViews,
   countsTowardGastosMes,
   expenseLineGastosAmount,
-  gastosViewKey,
+  gastosMonthRows,
   isGastosRefundLine,
   mortgageLinkCarryingAmount,
   mortgageLinkedLineCountsInMode,
   splittableMortgageLinkOf,
   type GastosUnit,
 } from "./flowsExpensesGastos.js";
-import { listCcExpenseCategories } from "./ccExpenseCategories.js";
 import { cacheKeyFlowsInputs, cacheKeyFlowsOverview as cacheKeyFlowsOverviewPayload } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
@@ -887,18 +885,9 @@ function gastosByMonth(
   const key = `${unit}|${mode}`;
   const cached = src.gastosByMonthByUnitMode.get(key);
   if (cached) return cached;
-  const views = buildFlowsExpensesGastosViews(
-    src.lines,
-    listCcExpenseCategories(),
-    unit,
-    new Set(),
-    chileCalendarTodayYmd().slice(0, 7)
-  );
-  // Gasto del mes is level-independent: either category level's view carries the same months.
-  const view = views.views[gastosViewKey(mode, "subcategory")];
-  if (view == null) throw new Error(`missing gastos view ${gastosViewKey(mode, "subcategory")}`);
-  src.gastosByMonthByUnitMode.set(key, view.by_month);
-  return view.by_month;
+  const rows = gastosMonthRows(src.lines, mode, unit);
+  src.gastosByMonthByUnitMode.set(key, rows);
+  return rows;
 }
 
 /**

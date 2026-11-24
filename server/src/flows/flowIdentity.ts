@@ -173,6 +173,13 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
     if (!hasParts(to)) dbHandle.prepare(`UPDATE flow_parts SET flow_id = ? WHERE flow_id = ?`).run(to, from);
     dbHandle.prepare(`DELETE FROM flow_parts WHERE flow_id = ?`).run(from);
   }
+  // A refund link (migration 365) follows both ends: the refund's own (the preferred flow's stays)
+  // and the purchase it names; a link the merge turns onto itself goes.
+  if (prefer === "from") dbHandle.prepare(`DELETE FROM card_refund_links WHERE flow_id = ? AND EXISTS (SELECT 1 FROM card_refund_links x WHERE x.flow_id = ?)`).run(to, from);
+  dbHandle.prepare(`UPDATE OR IGNORE card_refund_links SET flow_id = ? WHERE flow_id = ?`).run(to, from);
+  dbHandle.prepare(`DELETE FROM card_refund_links WHERE flow_id = ?`).run(from);
+  dbHandle.prepare(`DELETE FROM card_refund_links WHERE flow_id = ? AND purchase_flow_id = ?`).run(to, from);
+  dbHandle.prepare(`UPDATE card_refund_links SET purchase_flow_id = ? WHERE purchase_flow_id = ?`).run(to, from);
   // A link that points at the merged flow (a deposit a purchase funded) points at the survivor.
   dbHandle.prepare(`UPDATE OR IGNORE flow_links SET counterpart_flow_id = ? WHERE counterpart_flow_id = ?`).run(to, from);
   // The day the purchase first reached the ledger: the earlier of the two.

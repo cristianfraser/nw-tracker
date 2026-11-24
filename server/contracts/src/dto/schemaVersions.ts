@@ -30,9 +30,11 @@ export const DTO_SCHEMA_VERSIONS = {
    * `GET /api/dashboard/latest-movements` («Últimos movimientos»: expense lines and income, by the
    * day each happened); v2: rows carry `amount` (native currency) + `values` per unit; v3: `values`
    * replaced by `converted` in the requested unit (and an expense line's `value_clp`); v4: expense
-   * and income rows carry the server's one shown `name` (`ShownName`) in place of the merchant fields.
+   * and income rows carry the server's one shown `name` (`ShownName`) in place of the merchant fields;
+   * v5: expense rows drop `period_month`, `counts_toward_gastos` and `month_modal_sections`, and a card
+   * credit may carry `refund_suggestion`, `refund_link_broken`, `can_link_refund` and `refund_of.manual`.
    */
-  latest_movements: 4,
+  latest_movements: 5,
   /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`. */
   flows_overview: 2,
 } as const;
