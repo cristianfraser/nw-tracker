@@ -1,214 +1,17 @@
-/*
- * The wrap is the size container the flip below queries: the table flips by the width it is
- * given, not by the viewport (a 46rem table did not fit the 694px content at an 880 viewport and
- * scrolled the page sideways).
- */
-.wrap {
-  container-type: inline-size;
-  container-name: period-returns;
-}
+/* Rentabilidad (PeriodReturnsTable.tsx): the full list and the compact one share the heading row
+   (title + «vs <benchmark> ▾»), the period label, the figures' type and the tones. */
 
-/*
- * Equal-width period columns. The floor is what 8 columns need to stay readable; narrower than
- * that (34rem, 42rem with the benchmark row) the flipped layout below takes over.
- */
-.table {
-  table-layout: fixed;
-  min-width: 34rem;
-}
-
-/* Compact like the redesigned row lists (detalle, flows): tight cells, card-sized figures. */
-.table th,
-.table td {
-  padding: 0.15rem 0.4rem;
-  line-height: 1.25;
-}
-
-.table th {
-  font-size: var(--font-size-card-meta-sm);
-}
-
-.head {
-  white-space: nowrap;
-}
-
-.pct {
-  font-size: var(--font-size-card-label);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.nominal {
-  font-size: var(--font-size-card-meta-sm);
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.annualized {
-  font-size: var(--font-size-card-meta-sm);
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.irr {
-  white-space: nowrap;
-  font-size: var(--font-size-card-meta-sm);
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.delta {
-  white-space: nowrap;
-  font-size: var(--font-size-card-meta-sm);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.pending {
-  opacity: 0.4;
-}
-
-/* Comparison mode: a leading row-label column (Real / the benchmark select). */
-.compare {
-  min-width: 42rem;
-}
-
-.corner {
-  width: 5.5rem;
-}
-
-.rowHead {
-  font-size: var(--font-size-card-meta-sm);
-  font-weight: 600;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.benchmarkSelect {
-  width: 100%;
-  max-width: 100%;
-  font-size: var(--font-size-card-meta-sm);
-  text-overflow: ellipsis;
-}
-
-.up {
-  color: var(--positive);
-}
-
-.down {
-  color: var(--negative);
-}
-
-/*
- * Narrow: the same markup, flipped — one row per period (label | values) instead of one wide row.
- * The table becomes a grid and thead/tbody/tr collapse away (`display: contents`), so every
- * cell is a grid item placed by its own `--r` / `--c` (set inline by the component): header
- * cells in column 1, the real row in column 2, the benchmark row (comparison mode) in column 3,
- * the comparison's row labels in row 1. The flip happens when the table's floor no longer fits
- * its container: 34rem plain, 42rem with the benchmark row. The two blocks are the same rules
- * for the two floors; keep them together.
- */
-@container period-returns (max-width: 42rem) {
-  .table.compare {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr);
-    min-width: 0;
-    width: 100%;
-  }
-
-  .table.compare thead,
-  .table.compare tbody,
-  .table.compare tr {
-    display: contents;
-  }
-
-  /* The label cell must fill the row (not shrink to its text) or its bottom border sits at a
-     different height than the value cells' and the rule breaks in two; flex centers the text. */
-  .table.compare th {
-    display: flex;
-    align-items: center;
-  }
-
-  .table.compare th,
-  .table.compare tbody tr td {
-    grid-row: var(--r);
-    grid-column: var(--c);
-    /* The single body `tr` of the plain table is also the last one, so `tr:last-child td`
-       (styles/tables.css) would strip every value cell's border — hence the heavier selector. */
-    border-bottom: 1px solid var(--border);
-  }
-
-  .table.compare td {
-    text-align: right;
-  }
-
-  .table.compare .corner {
-    width: auto;
-  }
-
-  .table.compare .rowHead {
-    justify-content: flex-end;
-    text-align: right;
-    min-width: 0;
-  }
-
-  .table.compare .benchmarkSelect {
-    width: 100%;
-  }
-
-  .table.compare thead th:last-child,
-  .table.compare tbody tr td:last-child {
-    border-bottom: none;
-  }
-}
-
-@container period-returns (max-width: 34rem) {
-  .table {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    min-width: 0;
-    width: 100%;
-  }
-
-  .table thead,
-  .table tbody,
-  .table tr {
-    display: contents;
-  }
-
-  .table th {
-    display: flex;
-    align-items: center;
-  }
-
-  .table th,
-  .table tbody tr td {
-    grid-row: var(--r);
-    grid-column: var(--c);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .table td {
-    text-align: right;
-  }
-
-  .table thead th:last-child,
-  .table tbody tr td:last-child {
-    border-bottom: none;
-  }
-}
-
-/* The compact list (`compact`): one line per period — label, %, amount, the benchmark's % — a
-   hairline under each, the picker in the heading row. */
-.compactPicker {
+.picker {
   display: inline-flex;
   align-items: baseline;
   gap: 0.35em;
+  min-width: 0;
   font-size: var(--font-size-card-meta);
   color: var(--muted);
 }
 
-.compactSelect {
+.pickerSelect {
+  min-width: 0;
   max-width: 14rem;
   padding: 0;
   border: 0;
@@ -219,6 +22,231 @@
   cursor: pointer;
 }
 
+.label {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.total {
+  font-weight: 600;
+}
+
+.total .label {
+  color: var(--text);
+}
+
+.up {
+  color: var(--positive);
+}
+
+.down {
+  color: var(--negative);
+}
+
+/* The benchmark's figures while its comparison is still loading. */
+.pending {
+  opacity: 0.4;
+}
+
+/* ---- The full list ----
+
+   The frame is the size container: the list lays out by the width it is given, not the viewport.
+   Wide, the list is the grid and every row a subgrid of it (period, %, P/L, IRR, bars, the
+   benchmark's %, P/L and IRR, Δ), each figure column as wide as its widest figure, the bars taking
+   what is left. */
+.frame {
+  container: period-returns / inline-size;
+}
+
+.full {
+  display: grid;
+  grid-template-columns:
+    max-content max-content max-content max-content minmax(3rem, 1fr)
+    max-content max-content max-content max-content;
+  column-gap: 1rem;
+  border-top: 1px solid var(--hairline);
+  font-size: var(--font-size-prose-sm);
+}
+
+.fullRow {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.colHead {
+  padding: 0.25rem 0;
+  font-size: var(--font-size-card-meta-sm);
+  color: var(--muted);
+}
+
+.colHead > span {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* A figure with its yearly rate under it (windows over a year). */
+.yearly {
+  display: block;
+  font-size: var(--font-size-card-meta-sm);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.delta {
+  font-weight: 600;
+}
+
+.bars {
+  display: grid;
+  gap: 3px;
+}
+
+.track {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface);
+}
+
+.fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+}
+
+.fillUp {
+  background: var(--positive);
+}
+
+.fillDown {
+  background: var(--negative);
+}
+
+/* The benchmark: its bar, and the swatch that names its figures. */
+.fillBench,
+.swatch {
+  background: var(--muted);
+}
+
+.zero {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 1px;
+  background: var(--border);
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.6em;
+  height: 4px;
+  margin-right: 0.35em;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+/* The narrow third line (IRR · the benchmark's figures); the wide row has columns for these. */
+.detail {
+  display: none;
+}
+
+/*
+ * Narrow: one line per period no longer fits. The list keeps four columns (period, %, P/L, Δ —
+ * rows still subgrids, so they line up) and each period is three lines: those four; the bars
+ * across the figures; the IRRs and the benchmark's figures, muted.
+ */
+@container period-returns (max-width: 54rem) {
+  .full {
+    grid-template-columns: max-content repeat(3, minmax(auto, 1fr));
+    column-gap: 0.7rem;
+  }
+
+  .colHead,
+  .wideOnly {
+    display: none;
+  }
+
+  .fullRow {
+    align-items: baseline;
+    row-gap: 0.3rem;
+  }
+
+  .fullRow > .label {
+    grid-row: 1;
+  }
+
+  .bars {
+    grid-row: 2;
+    grid-column: 2 / -1;
+  }
+
+  .detail {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.1rem 0.8rem;
+    grid-row: 3;
+    grid-column: 2 / -1;
+    font-size: var(--font-size-card-meta-sm);
+    font-weight: 400;
+    color: var(--muted);
+    white-space: normal;
+  }
+
+  .detailBench {
+    margin-left: auto;
+    text-align: right;
+  }
+
+  .yearly {
+    display: inline;
+    margin-left: 0.35em;
+  }
+}
+
+/* A phone-sized frame: Δ leaves the first line for the second, under the P/L beside the bars
+   (which then span the % column only). */
+@container period-returns (max-width: 26rem) {
+  .full {
+    grid-template-columns: max-content repeat(2, minmax(auto, 1fr));
+    column-gap: 0.6rem;
+    font-size: var(--font-size-card-meta);
+  }
+
+  .bars {
+    grid-column: 2;
+    align-self: center;
+  }
+
+  .delta {
+    grid-row: 2;
+    grid-column: 3;
+  }
+
+  .yearly {
+    display: block;
+    margin-left: 0;
+  }
+}
+
+/* ---- The compact list (`compact`): one line per period — label, %, amount, the benchmark's % —
+   a hairline under each. */
 .compactList {
   border-top: 1px solid var(--hairline);
   font-size: var(--font-size-prose-sm);
@@ -234,20 +262,7 @@
   white-space: nowrap;
 }
 
-.compactLabel {
-  color: var(--muted);
-}
-
-.compactNum {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
 .compactBench {
   color: var(--muted);
   font-size: var(--font-size-card-meta);
-}
-
-.compactTotal {
-  font-weight: 600;
 }

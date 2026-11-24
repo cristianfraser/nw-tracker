@@ -275,16 +275,15 @@ export function StandardAccountDetailPage({ data }: Props) {
             <h2>{t("accountDetail.monthlyPerfComputedTitle")}</h2>
             {/* undefined = still loading (the table frames itself unless the card row's bucket rules it out); null = the server states none. */}
             {showPeriodReturns ? (
-              <>
-                <h3>{t("periodReturns.title")}</h3>
-                <PeriodReturnsWithBenchmark
-                  data={periodReturns ?? null}
-                  displayUnit={displayUnit}
-                  scope={{ accountId: summary.account_id }}
-                  surfaceId={`account.${summary.account_id}.returns`}
-                  loading={loading}
-                />
-              </>
+              <PeriodReturnsWithBenchmark
+                title={t("periodReturns.title")}
+                titleAs="h3"
+                data={periodReturns ?? null}
+                displayUnit={displayUnit}
+                scope={{ accountId: summary.account_id }}
+                surfaceId={`account.${summary.account_id}.returns`}
+                loading={loading}
+              />
             ) : null}
             {monthlyPerfRows.length === 0 && !loading ? (
               <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>

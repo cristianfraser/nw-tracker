@@ -3832,17 +3832,9 @@
       "en": "Total",
       "es": "Total"
     },
-    "annualized": {
-      "en": "p.a.",
-      "es": "a.a."
-    },
     "annualizedTitle": {
       "en": "Annualized",
       "es": "Anualizado"
-    },
-    "insufficientHistory": {
-      "en": "Not enough history for this period",
-      "es": "Historial insuficiente para este período"
     },
     "windowTitle": {
       "en": "From {{start}} · {{months}} months",
@@ -3851,10 +3843,6 @@
     "windowTitleDate": {
       "en": "From {{start}}",
       "es": "Desde {{start}}"
-    },
-    "actual": {
-      "en": "Actual",
-      "es": "Real"
     },
     "compareWith": {
       "en": "Compare with",
@@ -3884,6 +3872,15 @@
     "irrTitle": {
       "en": "Internal rate of return of the money: the rate that turns the starting value and every deposit and withdrawal, on their dates, into the value at the end. Yearly on periods of a year or more, over the period on shorter ones. Blank when no single rate fits the flows.",
       "es": "Tasa interna de retorno del dinero: la tasa que convierte el valor inicial y cada aporte y retiro, en sus fechas, en el valor final. Anual en períodos de un año o más, del período en los más cortos. En blanco cuando ninguna tasa única calza con los flujos."
+    },
+    "colPct": { "en": "%", "es": "%" },
+    "colPl": { "en": "P/L", "es": "P/L" },
+    "colIrr": { "en": "IRR", "es": "TIR" },
+    "colDelta": { "en": "Δ P/L", "es": "Δ P/L" },
+    "annualizedValue": { "en": "{{pct}} p.a.", "es": "{{pct}} a.a." },
+    "barsTitle": {
+      "en": "Your return (top) and {{benchmark}}'s (bottom) over the period, on the row's own scale",
+      "es": "Tu rentabilidad (arriba) y la de {{benchmark}} (abajo) en el período, a la escala de la fila"
     }
   },
   "benchmarks": {

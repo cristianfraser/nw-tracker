@@ -313,20 +313,20 @@ export function GroupInfoBase({
   ) : null;
 
   // undefined = still loading (frame, dimmed — also before the nav names the group); null = the
-  // server sends none. With a rail (the dashboard) the table sits right under the allocation tile,
-  // untitled, in one column with it (`ALLOCATION_STACK`, dashboardLayout.ts).
+  // server sends none. With a rail (the dashboard) the list sits right under the allocation tile, in
+  // one column with it (`ALLOCATION_STACK`, dashboardLayout.ts).
   const returnsGroupSlug = portfolio?.groupSlug ?? "";
   const returnsBody =
     tablesEnabled && shownPeriodReturns !== null ? (
       <>
-        {rail || layout ? null : <h2>{t("periodReturns.title")}</h2>}
         <PeriodReturnsWithBenchmark
+          title={t("periodReturns.title")}
           data={shownPeriodReturns ?? null}
           displayUnit={displayUnit}
           scope={{ portfolioGroup: returnsGroupSlug }}
           surfaceId={returnsGroupSlug ? `group.${returnsGroupSlug}.returns` : null}
           loading={shownPeriodReturns === undefined || periodReturnsHeld}
-          compact={layout ? { title: t("periodReturns.title") } : undefined}
+          compact={layout != null}
         />
       </>
     ) : null;

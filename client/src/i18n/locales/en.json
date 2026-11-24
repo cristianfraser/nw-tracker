@@ -1222,12 +1222,9 @@
     "y3": "3Y",
     "y5": "5Y",
     "total": "Total",
-    "annualized": "p.a.",
     "annualizedTitle": "Annualized",
-    "insufficientHistory": "Not enough history for this period",
     "windowTitle": "From {{start}} · {{months}} months",
     "windowTitleDate": "From {{start}}",
-    "actual": "Actual",
     "compareWith": "Compare with",
     "versus": "vs",
     "delta": "Δ {{amount}}",
@@ -1235,7 +1232,13 @@
     "benchmarkUnavailable": "{{benchmark}} has no history for this period",
     "irr": "{{pct}} IRR",
     "irrAnnual": "{{pct}} IRR/yr",
-    "irrTitle": "Internal rate of return of the money: the rate that turns the starting value and every deposit and withdrawal, on their dates, into the value at the end. Yearly on periods of a year or more, over the period on shorter ones. Blank when no single rate fits the flows."
+    "irrTitle": "Internal rate of return of the money: the rate that turns the starting value and every deposit and withdrawal, on their dates, into the value at the end. Yearly on periods of a year or more, over the period on shorter ones. Blank when no single rate fits the flows.",
+    "colPct": "%",
+    "colPl": "P/L",
+    "colIrr": "IRR",
+    "colDelta": "Δ P/L",
+    "annualizedValue": "{{pct}} p.a.",
+    "barsTitle": "Your return (top) and {{benchmark}}'s (bottom) over the period, on the row's own scale"
   },
   "benchmarks": {
     "mortgage": "Mortgage (UF + {{rate}})",

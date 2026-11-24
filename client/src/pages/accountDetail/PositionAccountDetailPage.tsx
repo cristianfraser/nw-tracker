@@ -123,12 +123,13 @@ export function PositionAccountDetailPage({
       <PageGridTile id="returns" className={cn(styles.narrow, styles.second)}>
         {showPeriodReturns ? (
           <PeriodReturnsWithBenchmark
+            title={t("periodReturns.title")}
             data={periodReturns ?? null}
             displayUnit={displayUnit}
             scope={{ accountId: summary.account_id }}
             surfaceId={`account.${summary.account_id}.returns`}
             loading={loading}
-            compact={{ title: t("periodReturns.title") }}
+            compact
           />
         ) : null}
       </PageGridTile>
