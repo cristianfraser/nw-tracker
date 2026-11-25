@@ -472,19 +472,22 @@ export type CcGroupLaneEventDto = {
   days: number;
   /** Where it sits on the lanes' shared date axis (0 = axis start, 1 = axis end). */
   share: number;
-  /** In the billing currency: the bill so far (a close, an open bill's pay-by) or what it still owes. */
+  /**
+   * In the billing currency: a close, the bill so far; a pay-by, what that facturación still owes
+   * («Próximos pagos»' row: the open bill net of the credits and overpayment the closed one carries).
+   */
   amount: number;
   /** An open bill's pay-by: the amount is what it holds so far, not yet billed. */
   estimate: boolean;
 };
 
-/** The next payment of a card or of the group. */
+/** The next payment of a card or of the group: the earliest pay-by still owing (an overdue one first). */
 export type CcGroupNextPaymentDto = {
   account_id: number;
   billing_month: string;
   pay_by_iso: string;
   days: number;
-  /** In the billing currency. */
+  /** What it still owes, in the billing currency («Próximos pagos»' row). */
   amount: number;
   /** The open bill's estimate (the last closed one is paid). */
   estimate: boolean;
@@ -505,21 +508,25 @@ export type CcGroupLaneCardDto = {
   cuotas_ahead: number;
   /** Billing currency cupo: used over the configured total; null without one. */
   cupo: { used: number; total: number; used_share: number } | null;
-  next_payment: CcGroupNextPaymentDto;
+  /** Null when the card owes nothing on any facturación (an idle card). */
+  next_payment: CcGroupNextPaymentDto | null;
   /** Events inside the axis window, by date. */
   events: CcGroupLaneEventDto[];
 };
 
 /** One pay month of «Upcoming payments»: what each card pays in it. */
 export type CcGroupUpcomingMonthDto = {
-  /** The month the payment falls due (`YYYY-MM`). */
+  /** The month the payment falls due (`YYYY-MM`); an overdue bill is due now, in the current month. */
   month: string;
   total: number;
   /**
-   * `billed`: a closed facturación still owing; `open`: the open (or next-cycle) bill so far;
-   * `cuotas`: plan cuotas a later facturación will bill.
+   * `billed`: a closed facturación still owing; `open`: what the open bill owes so far (a next-cycle
+   * bill on a close day: its purchases); `cuotas`: the full cuotas (interest included) a later
+   * facturación will bill, the card's «Cuotas por facturación» row.
    */
   parts: { account_id: number; kind: "billed" | "open" | "cuotas"; amount: number }[];
+  /** Each card's amount in the month (its parts summed), in the parts' card order; `estimate` when it holds an open bill. */
+  by_card: { account_id: number; amount: number; estimate: boolean }[];
 };
 
 /**
@@ -540,7 +547,7 @@ export type CcGroupLanesResponse = {
     cupo: { used: number; total: number; used_share: number } | null;
     next_payment: CcGroupNextPaymentDto | null;
   };
-  /** Cards by their next payment's date. */
+  /** Cards by their next payment's date (idle cards last). */
   cards: CcGroupLaneCardDto[];
   upcoming_months: CcGroupUpcomingMonthDto[];
 };

@@ -152,12 +152,14 @@ function Lane({
           style={{ left: `${e.share * 100}%`, "--lane-color": color } as CSSProperties}
           title={`${e.iso} · ${formatMonthShortLabel(e.billing_month)}${e.estimate ? ` · ${t("groupPage.creditCardLanes.estimateHint")}` : ""}`}
         >
-          <em>{kindLabel(e)}</em>
+          {/* Tier 0: kind over the dot, amount under it; tier 1: the dot, then amount and kind under it. */}
+          {tier === 0 ? <em>{kindLabel(e)}</em> : null}
           <i className={e.kind === "close" ? styles.ring : styles.dot} aria-hidden />
           <b className="mono">
             {e.estimate ? "≈" : ""}
             {formatMoney({ value: e.amount, currency: billing })}
           </b>
+          {tier === 1 ? <em>{kindLabel(e)}</em> : null}
         </span>
       ))}
       <div className={styles.laneTicks} aria-hidden>
@@ -173,7 +175,8 @@ function Lane({
 
 /**
  * The credit-card group page's head (server `ccGroupLanes.ts`): a total row, then one lane per
- * card — owed, its close and pay-bys on a date axis shared by every card, its cupo. Every figure is
+ * card — owed, its cupo, its close and pay-bys on a date axis shared by every card. The markup is
+ * in that order, which is the drawn order at every width. Every figure is
  * the server's (each card's glance); the client only places them. One rendering at every width: a
  * container query moves the lane under the card on a narrow tile.
  */
@@ -195,6 +198,9 @@ export function CreditCardGroupLanes({ data, loading }: { data: CcGroupLanesResp
           <span className={styles.owedHead} role="columnheader">
             {t("groupPage.creditCardLanes.colOwed")}
           </span>
+          <span className={styles.cupoHead} role="columnheader">
+            {t("groupPage.creditCardLanes.colCupo")}
+          </span>
           <span className={styles.laneCol} aria-hidden>
             <span className={styles.headTicks}>
               {data.axis.ticks.map((tk) => (
@@ -203,9 +209,6 @@ export function CreditCardGroupLanes({ data, loading }: { data: CcGroupLanesResp
                 </span>
               ))}
             </span>
-          </span>
-          <span className={styles.cupoHead} role="columnheader">
-            {t("groupPage.creditCardLanes.colCupo")}
           </span>
         </div>
 
@@ -225,12 +228,12 @@ export function CreditCardGroupLanes({ data, loading }: { data: CcGroupLanesResp
             </span>
           </span>
           {n === 0 ? <span className={styles.owed}>{BLANK}</span> : <OwedCell owedTotal={data.total.owed_total} owed={data.total.owed} billing={billing} />}
+          {n === 0 ? <span className={styles.cupo}>{BLANK}</span> : <CupoCell cupo={data.total.cupo} billing={billing} withTotal />}
           <span className={cn(styles.laneCol, styles.nextCol)}>
             {data.total.next_payment && nextCard ? (
               <NextPaymentLine next={data.total.next_payment} cardName={nextCard.name} billing={billing} />
             ) : null}
           </span>
-          {n === 0 ? <span className={styles.cupo}>{BLANK}</span> : <CupoCell cupo={data.total.cupo} billing={billing} withTotal />}
         </div>
 
         {data.cards.map((card) => (
@@ -258,10 +261,10 @@ export function CreditCardGroupLanes({ data, loading }: { data: CcGroupLanesResp
               </span>
             </span>
             <OwedCell owedTotal={card.owed_total} owed={card.owed} billing={billing} />
+            <CupoCell cupo={card.cupo} billing={billing} withTotal={false} />
             <span className={styles.laneCol}>
               <Lane card={card} axis={data.axis} billing={billing} />
             </span>
-            <CupoCell cupo={card.cupo} billing={billing} withTotal={false} />
           </div>
         ))}
       </div>

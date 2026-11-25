@@ -30,23 +30,26 @@ export function CreditCardGroupSection({
   portfolioGroup,
   lanes,
   lanesLoading,
+  lanesError,
   ccLedger,
   ccLedgerLoading,
 }: {
   portfolioGroup: string;
   lanes: CcGroupLanesResponse | undefined;
   lanesLoading: boolean;
+  /** The lanes request failed with no data to show: its message replaces the lanes and the list. */
+  lanesError: string | null;
   ccLedger: AccountCcInstallmentsResponse;
   ccLedgerLoading: boolean;
 }) {
   const { t } = useTranslation();
   const ccScope: CcSurfaceScope = { variant: "group", portfolioGroup };
   const lanesData = lanes ?? EMPTY_LANES;
-  const lanesDim = lanesLoading || lanes == null;
+  const lanesDim = lanesError == null && (lanesLoading || lanes == null);
   return (
     <>
       <PageGridTile id="cc-lanes" className={loadableClass(lanesDim)} aria-busy={lanesDim || undefined}>
-        <CreditCardGroupLanes data={lanesData} loading={lanesDim} />
+        {lanesError != null ? <p className="error">{lanesError}</p> : <CreditCardGroupLanes data={lanesData} loading={lanesDim} />}
       </PageGridTile>
 
       <PageGridTile id="cc-charts" className="chart-grid">
@@ -54,7 +57,7 @@ export function CreditCardGroupSection({
           <div className="chart-panel-title-row">
             <h3 className="chart-panel-title">{t("groupPage.creditCardLanes.upcomingTitle")}</h3>
           </div>
-          <CcUpcomingPaymentsList data={lanesData} loading={lanesDim} />
+          {lanesError != null ? <p className="error">{lanesError}</p> : <CcUpcomingPaymentsList data={lanesData} loading={lanesDim} />}
         </div>
         <CreditCardHistorialSurface
           ccLedger={ccLedger}

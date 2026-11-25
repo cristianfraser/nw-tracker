@@ -2,7 +2,7 @@ import { CARD_BILLING_CURRENCY } from "./cards/cardCurrencies.js";
 import { cacheKeyCcLedgerGroup } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { markJsonResponseCacheable } from "./jsonResponse.js";
-import { dbInTransaction } from "./db.js";
+import { db, dbInTransaction } from "./db.js";
 import type { CcCloseSource } from "./cards/facturacion.js";
 import type {
   CcBillingDetailMonthRow,
@@ -34,17 +34,35 @@ function sumNullable(a: number | null | undefined, b: number | null | undefined)
 }
 
 /**
- * CC masters a Pasivos-side group page sums: every operational master for the credit-card group
- * and the Pasivos root. The daily historial block (`ccDailyHistorialBlock.ts`) reads the same
- * list so the D↔M toggle keeps one membership.
+ * CC masters a Pasivos-side group page sums: every operational master for the Pasivos root, and for
+ * a credit-card liability group (the credit-card group or any group nested under it) the masters in
+ * its subtree, in the Pasivos card order. Any other slug has none. The daily historial block
+ * (`ccDailyHistorialBlock.ts`) and the lanes (`ccGroupLanes.ts`) read the same list, so the D↔M
+ * toggle and the page keep one membership.
  */
 export function resolveCcMasterAccountIds(portfolioGroupSlug: string): number[] {
-  if (portfolioGroupSlug === "liabilities_credit_card" || portfolioGroupSlug === "liabilities") {
-    return listLiabilitiesTabAccountRows("credit_card").map((r) =>
-      r.account_id
-    );
-  }
-  return [];
+  const cards = listLiabilitiesTabAccountRows("credit_card").map((r) => r.account_id);
+  if (portfolioGroupSlug === "liabilities") return cards;
+  const group = db
+    .prepare(`SELECT id, liability_kind FROM liability_groups WHERE slug = ?`)
+    .get(portfolioGroupSlug) as { id: number; liability_kind: string | null } | undefined;
+  if (group == null || group.liability_kind !== "credit_card") return [];
+  const members = new Set(
+    (
+      db
+        .prepare(
+          `WITH RECURSIVE sub(id) AS (
+             SELECT ?
+             UNION SELECT i.child_group_id FROM liability_group_items i JOIN sub ON i.group_id = sub.id
+             WHERE i.item_kind = 'group'
+           )
+           SELECT i.account_id FROM liability_group_items i JOIN sub ON i.group_id = sub.id
+           WHERE i.item_kind = 'account'`
+        )
+        .all(group.id) as { account_id: number }[]
+    ).map((r) => r.account_id)
+  );
+  return cards.filter((id) => members.has(id));
 }
 
 const CLOSE_SOURCE_RANK: Record<CcCloseSource, number> = {

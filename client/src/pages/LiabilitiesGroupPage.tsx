@@ -40,7 +40,6 @@ export function LiabilitiesGroupPage() {
     [sidebarNav, pathname]
   );
   const portfolioGroup = navMatchNode?.slug ?? "liabilities_credit_card";
-  const shapeEnabled = Boolean(navMatchNode);
 
   const page = usePortfolioPageData({
     portfolioGroup,
@@ -54,9 +53,15 @@ export function LiabilitiesGroupPage() {
   const { data, error: queryError } = page.bundle;
   const { contentLoading, accounts, accountsTreeRoot } = page;
 
-  // A section mounts while its ledger loads (empty ledger, dimmed).
-  const { data: ccLedger, isPending: ccLedgerPending } = usePortfolioGroupCcLedger(portfolioGroup, shapeEnabled);
-  const ccLanesQuery = usePortfolioGroupCcLanes(portfolioGroup, shapeEnabled);
+  // A section mounts while its ledger loads (empty ledger, dimmed). The route names the group, so
+  // the ledger and the lanes start loading before the nav answers and their surfaces mount at once.
+  const { data: ccLedger, isPending: ccLedgerPending } = usePortfolioGroupCcLedger(portfolioGroup);
+  const ccLanesQuery = usePortfolioGroupCcLanes(portfolioGroup);
+  const ccLanesError = queryLoadError(ccLanesQuery)
+    ? ccLanesQuery.error instanceof Error
+      ? ccLanesQuery.error.message
+      : t("common.loadFailed")
+    : null;
 
   const tableAccounts = useMemo(
     () => accounts.map((a) => ({ id: a.id, name: a.name, category_slug: a.category_slug })),
@@ -92,6 +97,7 @@ export function LiabilitiesGroupPage() {
           portfolioGroup={portfolioGroup}
           lanes={ccLanesQuery.data}
           lanesLoading={queryShowsLoading(ccLanesQuery)}
+          lanesError={ccLanesError}
           ccLedger={ccLedger ?? emptyCcLedger(0)}
           ccLedgerLoading={ccLedgerPending}
         />

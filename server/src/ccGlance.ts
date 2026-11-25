@@ -345,7 +345,8 @@ export function buildCcGlanceForAccount(accountId: number, billingCurrency: stri
 
 /**
  * `qty` of `currency` in the billing currency at `today`'s debt-side rate (credit at the asset
- * side): the one conversion the glance and the group lanes (`ccGroupLanes.ts`) total a card with.
+ * side): the conversion the glance totals a card's sides with (`total_owed`), and the Liabilities page
+ * values the cards' owed with (`liabilitiesGlance.ts`).
  */
 export function billingCurrencyConverter(today: string, billingCurrency: string): (qty: number, currency: string) => number {
   return (qty, currency) => {

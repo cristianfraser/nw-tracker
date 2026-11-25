@@ -34,12 +34,6 @@ export function CcUpcomingPaymentsList({ data, loading }: { data: CcGroupLanesRe
     <div className={styles.frame}>
       <ol className={styles.list}>
         {months.map((m) => {
-          // Each card's amount in the month (its kinds summed), for the line under the bar.
-          const byCard = new Map<number, { amount: number; estimate: boolean }>();
-          for (const p of m.parts) {
-            const cur = byCard.get(p.account_id) ?? { amount: 0, estimate: false };
-            byCard.set(p.account_id, { amount: cur.amount + p.amount, estimate: cur.estimate || p.kind === "open" });
-          }
           return (
             <li key={m.month} className={styles.row}>
               <span className={styles.month}>{formatYearMonthLabel(m.month)}</span>
@@ -62,7 +56,8 @@ export function CcUpcomingPaymentsList({ data, loading }: { data: CcGroupLanesRe
               </span>
               <b className={`${styles.total} mono`}>{money(m.total)}</b>
               <span className={styles.parts}>
-                {[...byCard.entries()].map(([id, v]) => {
+                {m.by_card.map((v) => {
+                  const id = v.account_id;
                   const card = cardOf(id);
                   return (
                     <span key={id} className={styles.part}>
