@@ -609,6 +609,14 @@ describe("racional cash in and out the ledger already holds", () => {
     expect(twice.duplicate_of).toBeNull();
     expect(twice.requires_manual).toMatch(/mirror-pairs/);
   });
+
+  it("claims each ledger row once: a second same-day deposit of the amount stays manual", () => {
+    const id = seed({ from: bank, to: clp, amount: 1_000_000, currency: "clp", day: "2097-12-04" });
+    const deposit = brokerMovement({ kind: "deposit", title: "Depósito", occurred_on: "2097-12-04", amount: 1_000_000, currency: "clp" });
+    const [first, second] = planRacionalMovements([deposit, { ...deposit }]).planned;
+    expect([first!.duplicate_of, second!.duplicate_of].filter((d) => d != null)).toEqual([id]);
+    expect([first, second].filter((p) => p!.duplicate_of == null)[0]!.requires_manual).toMatch(/mirror-pairs/);
+  });
 });
 
 describe("racional portfolio liquidation («Retiro» with sold amounts)", () => {
