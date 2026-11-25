@@ -216,16 +216,6 @@ export function CreditCardGroupLanes({ data, loading }: { data: CcGroupLanesResp
           <span className={styles.name} role="rowheader">
             {/* The placeholder frame (no cards yet) keeps the row's height with blank text. */}
             {n === 0 ? BLANK : n === 1 ? t("groupPage.creditCardLanes.totalOne") : t("groupPage.creditCardLanes.total", { n })}
-            <span className={styles.sub}>
-              {n === 0 ? (
-                BLANK
-              ) : (
-                <>
-                  {t("groupPage.creditCardLanes.inCuotas")}{" "}
-                  <span className="mono">{formatMoney({ value: data.total.cuotas_ahead, currency: billing })}</span>
-                </>
-              )}
-            </span>
           </span>
           {n === 0 ? <span className={styles.owed}>{BLANK}</span> : <OwedCell owedTotal={data.total.owed_total} owed={data.total.owed} billing={billing} />}
           {n === 0 ? <span className={styles.cupo}>{BLANK}</span> : <CupoCell cupo={data.total.cupo} billing={billing} withTotal />}

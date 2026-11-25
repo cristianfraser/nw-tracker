@@ -1270,7 +1270,6 @@
       "nextPayment": "Próximo pago",
       "billedToPay": "{{month}} facturado, por pagar",
       "paidMonth": "{{month}} pagado",
-      "inCuotas": "en cuotas",
       "overdue": "vencido",
       "estimateHint": "La facturación abierta hasta hoy: puede cambiar antes del cierre",
       "cupoOf": "de {{total}}",

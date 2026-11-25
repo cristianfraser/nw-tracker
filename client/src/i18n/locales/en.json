@@ -1270,7 +1270,6 @@
       "nextPayment": "Next payment",
       "billedToPay": "{{month}} billed, to pay",
       "paidMonth": "{{month}} paid",
-      "inCuotas": "in cuotas",
       "overdue": "overdue",
       "estimateHint": "The open bill so far: it can still change before it closes",
       "cupoOf": "of {{total}}",

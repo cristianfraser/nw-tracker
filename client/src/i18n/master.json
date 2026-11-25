@@ -4000,10 +4000,6 @@
         "en": "{{month}} paid",
         "es": "{{month}} pagado"
       },
-      "inCuotas": {
-        "en": "in cuotas",
-        "es": "en cuotas"
-      },
       "overdue": {
         "en": "overdue",
         "es": "vencido"
