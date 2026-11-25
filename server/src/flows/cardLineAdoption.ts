@@ -22,7 +22,12 @@ import { statementLineDateIso } from "../ccInstallmentPayBy.js";
 import { adoptFlow, flowExists, rowFlowId } from "./flowAdoption.js";
 import { ensureFlowForKey, flowIdForKey } from "./flowIdentity.js";
 import { FLOW_HOLDING_TABLES } from "./flowTriggerSpecs.js";
-import { cardLineFirstSeenForAccount, dropFlowFirstSeenRecordedOn, keepEarlierFlowFirstSeen } from "./flowFirstSeen.js";
+import {
+  cardLineFirstSeenForAccount,
+  dropFlowFirstSeenRecordedOn,
+  keepEarlierFlowFirstSeen,
+  type FirstSeenStamp,
+} from "./flowFirstSeen.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { lineAmountClpSql, lineAmountUsdSql } from "../cards/lineAmountSql.js";
 
@@ -390,10 +395,11 @@ export type CardLineCapture = {
   accountId: number;
   lines: CcLineRef[];
   /**
-   * The day each line's flow first reached the ledger, by line id: a bare flow goes with its row
-   * on a re-import, so the day is read before the write and carried onto the line that replaces it.
+   * When each line's flow first reached the ledger (day, time, write order), by line id: a bare flow
+   * goes with its row on a re-import, so the stamp is read before the write and carried onto the
+   * line that replaces it.
    */
-  firstSeenByLineId: Map<number, string>;
+  firstSeenByLineId: Map<number, FirstSeenStamp>;
   /** The Chile day the re-import runs: the day its inserts record as first seen. */
   importDay: string;
 };
@@ -453,7 +459,7 @@ export function adoptReimportedCardLines(capture: CardLineCapture): ReimportedCa
 }
 
 /**
- * A replacing line's flow carries the first-seen day of the line it replaces: the earlier of the
+ * A replacing line's flow carries the first-seen stamp of the line it replaces: the earlier of the
  * two when that line had one (it may have arrived long before; its flow may already be gone), and
  * none when it had none — a line on file from before migration 310 is not new today, so the day
  * this import's insert recorded goes (else a full re-import would date every old credit today).
@@ -465,8 +471,8 @@ function carryFirstSeenOntoReplacingLines(moves: readonly CcLineMove[], capture:
     if (move.from.installment || move.to.installment) continue;
     const flow = rowFlowId("cc_statement_lines", move.to.lineId);
     if (flow == null) continue;
-    const day = capture.firstSeenByLineId.get(move.from.lineId);
-    if (day) keepEarlierFlowFirstSeen(flow, day);
+    const stamp = capture.firstSeenByLineId.get(move.from.lineId);
+    if (stamp) keepEarlierFlowFirstSeen(flow, stamp);
     else dropFlowFirstSeenRecordedOn(flow, capture.importDay);
   }
 }

@@ -676,6 +676,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "cc_annulled_purchases",
   "cc_plan_prepayments",
   "broker_instruments",
+  "flow_event_times",
 ];
 
 /**

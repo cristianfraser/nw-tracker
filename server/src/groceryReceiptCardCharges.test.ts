@@ -19,6 +19,7 @@ const receipt = (purchase_ymd: string, card_paid_clp: number, extra: Partial<Car
   account_id: 1,
   purchase_ymd,
   card_paid_clp,
+  purchased_at: null,
   branch_merchant: BRANCH_MERCHANT,
   ...extra,
 });

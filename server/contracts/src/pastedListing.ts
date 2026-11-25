@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { currencyCodeSchema } from "./formats/index.js";
+import { listingOrderSchema } from "./listingOrder.js";
 
 /**
  * A card's movements pasted by hand from the issuer's web table (`POST /parse/card.web_paste`).
@@ -29,6 +30,8 @@ export const cardPastedListingSchema = z
     lines: z.array(pastedListingLineSchema),
     /** Lines that could not be read, said in the user's language (shown under the paste box). */
     errors: z.array(z.string()),
+    /** The order `lines` are listed in, when not the default (`listingOrder.ts`). */
+    listing_order: listingOrderSchema.optional(),
   })
   .strict();
 

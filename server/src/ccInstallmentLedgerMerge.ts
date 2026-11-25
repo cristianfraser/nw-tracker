@@ -1,3 +1,4 @@
+import type { ListingOrder } from "nw-tracker-contracts";
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf } from "./ccStatementSourceKind.js";
@@ -545,6 +546,8 @@ export function mergeCardStatements(
     replaceStatementKeys?: Set<string>;
     /** A listing import (paste, feed, planted line): its batch kind, for the planted-payment pass. */
     listingBatchKind?: string;
+    /** A listing import: the order it prints its lines in (`listingOrder.ts`). */
+    listingOrder?: ListingOrder;
   }
 ): CcAccountImportMergeResult {
   return withCardLineSession(accountId, "this statement import", () => mergeInSession(accountId, statements, opts));
@@ -558,6 +561,7 @@ function mergeInSession(
     replaceLedger?: boolean;
     replaceStatementKeys?: Set<string>;
     listingBatchKind?: string;
+    listingOrder?: ListingOrder;
   }
 ): CcAccountImportMergeResult {
   const replaceKeys = opts?.replaceStatementKeys;
@@ -625,6 +629,7 @@ function mergeInSession(
     replaceStatementKeys: effectiveReplaceKeys,
     skipGlobalDedupeKeys: true,
     ...(opts?.listingBatchKind ? { listingBatchKind: opts.listingBatchKind } : {}),
+    ...(opts?.listingOrder ? { listingOrder: opts.listingOrder } : {}),
     ...opts?.statements,
   });
   // A statement for a close the card feed already observed must bill exactly the feed's

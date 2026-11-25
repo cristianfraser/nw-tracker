@@ -12,6 +12,7 @@ import { db } from "../db.js";
 import { expenseKeySql } from "../expenseKeys.js";
 import { expenseKeyParts, resolveExpenseKey, type FlowSourceRow } from "./flowKeyResolve.js";
 import { carryFlowFirstSeen } from "./flowFirstSeen.js";
+import { carryFlowEventTime } from "./flowEventTimes.js";
 
 export { expenseKeyParts };
 
@@ -99,6 +100,7 @@ export function ensureFlowForKey(key: string, dbHandle: Database = db): number {
     // A facturado payment charge (migration 297) names the purchase by its flow: it follows it.
     dbHandle.prepare(`UPDATE cc_facturado_payment_charges SET flow_id = ? WHERE flow_id = ?`).run(target, other);
     carryFlowFirstSeen(other, target, dbHandle);
+    carryFlowEventTime(other, target, dbHandle);
     // A refund link on the folded flow follows it (the target's own link stays).
     moveCardRefundLinks(other, target, "to", dbHandle);
     dbHandle.prepare(`DELETE FROM flows WHERE id = ? AND legacy_key IS NULL`).run(other);
@@ -198,6 +200,7 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
   dbHandle.prepare(`UPDATE OR IGNORE flow_links SET counterpart_flow_id = ? WHERE counterpart_flow_id = ?`).run(to, from);
   // The day the purchase first reached the ledger: the earlier of the two.
   carryFlowFirstSeen(from, to, dbHandle);
+  carryFlowEventTime(from, to, dbHandle);
   dbHandle.prepare(`DELETE FROM flows WHERE id = ?`).run(from);
 }
 

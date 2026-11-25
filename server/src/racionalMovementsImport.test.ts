@@ -766,6 +766,22 @@ describe("racional portfolio liquidation («Retiro» with sold amounts)", () => 
     expect(applyRacionalMovements(again, "movements-vitest-liq-2.json").inserted).toBe(0);
   });
 
+  it("records a row's own instant as its flow's event time; a dateless row records none", () => {
+    const timed = { ...sell, occurred_at: "2097-10-20T14:32:05.000-03:00" };
+    applyRacionalMovements(planRacionalMovements([timed, cajaOut]), "movements-vitest-liq-time.json");
+    const eventTime = (amount: number) =>
+      (
+        db
+          .prepare(
+            `SELECT e.occurred_at, e.source FROM movements m JOIN flow_event_times e ON e.flow_id = m.flow_id
+             WHERE m.occurred_on = '2097-10-20' AND m.to_account_id = ? AND m.amount = ?`
+          )
+          .get(clp.id, amount) as { occurred_at: string; source: string } | undefined
+      ) ?? null;
+    expect(eventTime(2_600_000)).toEqual({ occurred_at: "2097-10-20T17:32:05.000Z", source: "racional_movements" });
+    expect(eventTime(40_000)).toBeNull();
+  });
+
   it("recognises a liquidation booked by hand as already present", () => {
     // The real one (2026-10-20) was booked by hand as a stock_sell and a caja transfer before the importer could.
     const sold = Number(

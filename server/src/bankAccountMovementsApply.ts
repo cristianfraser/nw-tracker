@@ -125,7 +125,8 @@ export function applyBankAccountMovements(
       amount_clp: m.amount,
       document_no: m.document_no ?? "",
     })),
-    { fetchedAt }
+    { fetchedAt },
+    payload.listing_order
   );
   const batch_id = createImportBatch("checking_recent_xlsx", sourceRef, {
     format: "ultimos_movimientos",

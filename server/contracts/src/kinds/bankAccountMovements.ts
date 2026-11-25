@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { amountFitsCurrency, currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
+import { listingOrderSchema } from "../listingOrder.js";
 
 export const bankAccountCurrencySchema = currencyCodeSchema;
 export type BankAccountCurrency = z.infer<typeof bankAccountCurrencySchema>;
@@ -43,6 +44,12 @@ export const bankAccountMovementSchema = z
      * money a wire notice books (`bank_account.incoming_wires`), never a deposit of its own.
      */
     wire_reference: z.string().trim().min(1).max(64).nullable(),
+    /**
+     * When the bank says the movement happened, on its own clock: «YYYY-MM-DD HH:MM», Chile wall
+     * time (the day can be earlier than `date`, the posting day: a row after the 14:00 cutoff or on
+     * a weekend posts on the next business day). Absent when the listing prints no time.
+     */
+    occurred_at_chile: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/).optional(),
   })
   .strict()
   .refine((m) => amountFitsCurrency(m.amount, m.currency), {
@@ -71,6 +78,8 @@ export const bankAccountMovementsKind = defineIngestKind({
       account: issuerBankAccountSchema,
       movements: z.array(bankAccountMovementSchema),
       rejected_rows: z.array(z.string().min(1)),
+      /** The order `movements` are listed in, when not the default (`listingOrder.ts`). */
+      listing_order: listingOrderSchema.optional(),
     })
     .strict()
     .refine((p) => p.movements.every((m) => m.currency === p.account.currency), {

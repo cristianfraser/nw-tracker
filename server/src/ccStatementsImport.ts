@@ -1,3 +1,4 @@
+import { DEFAULT_LISTING_ORDER, listedOldestFirst, type ListingOrder } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { recordCardLineFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
@@ -131,6 +132,11 @@ export type CcStatementsMergeOpts = {
    * are skipped. Unset for statement imports.
    */
   listingBatchKind?: string;
+  /**
+   * A listing import: the order it prints its lines in (`listingOrder.ts`; unset = the default).
+   * A statement prints its lines oldest first.
+   */
+  listingOrder?: ListingOrder;
 };
 
 const findStmtId = db.prepare(
@@ -323,6 +329,7 @@ export function importCcStatementsMerge(
 
     const seenDedupeInBatch = new Set<string>();
     const statementLabel = ccStatementLabel(statementDate, currency);
+    const stampOrder: number[] = [];
 
     for (const line of lines) {
       const inst = line.installment != null;
@@ -409,9 +416,7 @@ export function importCcStatementsMerge(
       });
       const statementLineId = Number(ins.lastInsertRowid);
       if (plantedSource && !inst && columns.amount > 0) recordPlantedChargeLine(statementLineId, accountId, plantedSource);
-      // The day the purchase reached the ledger (kept when its flow already has one: a cuota line of
-      // a plan on file, or a re-import whose adoption below carries the vanished line's day).
-      recordCardLineFlowFirstSeen(statementLineId);
+      stampOrder.push(statementLineId);
       const writtenHere = insertedLineIdsByStatement.get(statementId) ?? new Set<number>();
       writtenHere.add(statementLineId);
       insertedLineIdsByStatement.set(statementId, writtenHere);
@@ -427,6 +432,13 @@ export function importCcStatementsMerge(
       linesInserted += 1;
       inserted_flows.push(flowItem);
     }
+    // When each purchase reached the ledger (kept when its flow already has a stamp: a cuota line of
+    // a plan on file, or a re-import whose adoption carries the vanished line's stamp), stamped in
+    // the document's time order: a listing as it declares (`listingOrder.ts`), a statement oldest
+    // first.
+    const listing = isListingSourceKind(ccStatementSourceKindOf(sourcePdf));
+    const order: ListingOrder = listing ? (opts?.listingOrder ?? DEFAULT_LISTING_ORDER) : "oldest_first";
+    for (const lineId of listedOldestFirst(stampOrder, order)) recordCardLineFlowFirstSeen(lineId);
   }
 
   const restored = restoreLineCategories(accountId, categorySnap);

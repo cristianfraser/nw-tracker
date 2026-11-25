@@ -53,6 +53,22 @@ describe("insertMovement", () => {
     });
   });
 
+  it("stamps the movement's flow as first seen now, in write order", () => {
+    rolledBack(() => {
+      const stamp = (id: number) =>
+        db
+          .prepare(
+            `SELECT f.first_seen_at AS at, f.first_seen_seq AS seq FROM movements m
+             JOIN flow_first_seen f ON f.flow_id = m.flow_id WHERE m.id = ?`
+          )
+          .get(id) as { at: string; seq: number } | undefined;
+      const first = stamp(insertMovement({ accountId: a!, amount: -10, currency: "clp", ...day }));
+      const second = stamp(insertMovement({ accountId: a!, amount: -20, currency: "clp", ...day }));
+      expect(first?.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(second!.seq).toBeGreaterThan(first!.seq);
+    });
+  });
+
   it("refuses the shapes the table's CHECKs refuse, before writing", () => {
     const count = () => (db.prepare(`SELECT COUNT(*) AS n FROM movements`).get() as { n: number }).n;
     const before = count();

@@ -11,6 +11,7 @@ import { coreCurrencyCodes, currencyMinorDigits, roundToCurrency } from "./displ
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import { convertFlow } from "./rates.js";
 import type { FlowCcExpenseLineRowDraft } from "./expenseLineTypes.js";
+import { recordFlowFirstSeen } from "./flows/flowFirstSeen.js";
 
 const EXCEL_TOTAL_CATEGORY = "Total mensual (Gasto)";
 
@@ -168,10 +169,16 @@ function requireEditableManualExpense(id: number): void {
 
 export function createManualExpense(input: ManualExpenseInput): { id: number } {
   const v = validManualExpense(input);
-  const result = db
-    .prepare(`INSERT INTO expense_entries (amount, currency, spent_on, category, note, merchant) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(v.amount, v.currency, v.spentOn, v.category, v.note, v.merchant);
-  return { id: Number(result.lastInsertRowid) };
+  return db.transaction(() => {
+    const result = db
+      .prepare(`INSERT INTO expense_entries (amount, currency, spent_on, category, note, merchant) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(v.amount, v.currency, v.spentOn, v.category, v.note, v.merchant);
+    const id = Number(result.lastInsertRowid);
+    // The flow row is the insert trigger's; it is stamped first seen now («Últimos movimientos» order).
+    const { flow_id: flowId } = db.prepare(`SELECT flow_id FROM expense_entries WHERE id = ?`).get(id) as { flow_id: number };
+    recordFlowFirstSeen(flowId);
+    return { id };
+  })();
 }
 
 export function updateManualExpense(id: number, input: ManualExpenseInput): void {

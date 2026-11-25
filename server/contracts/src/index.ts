@@ -35,6 +35,7 @@ export * from "./kinds/utilityBill.js";
 export * from "./kinds/mortgagePaymentReceipt.js";
 export * from "./kinds/mortgageLenderStatement.js";
 export * from "./pastedListing.js";
+export * from "./listingOrder.js";
 export * from "./tasks.js";
 export * from "./jobs.js";
 export * from "./santander.js";

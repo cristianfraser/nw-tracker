@@ -9,6 +9,8 @@ import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from ".
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
 import { checkingMovementFlowKind } from "./checkingBankCharges.js";
+import { maxFirstSeenSeq, orderListingStamps } from "./flows/flowFirstSeen.js";
+import { DEFAULT_LISTING_ORDER, type ListingOrder } from "nw-tracker-contracts";
 import {
   confirmTransferNoticeMovement,
   confirmTransferNoticeMovementForTransferLeg,
@@ -86,17 +88,20 @@ export function listingFetchDay(fetch: PartialListingFetch): string {
 export function importCheckingPartialMovements(
   accountId: number,
   movements: PartialBankMovement[],
-  fetch: PartialListingFetch
+  fetch: PartialListingFetch,
+  /** The order `movements` are listed in (`listingOrder.ts`); its new rows are stamped oldest first. */
+  listingOrder: ListingOrder = DEFAULT_LISTING_ORDER
 ): PartialMovementsImportResult {
   const fetchDay = listingFetchDay(fetch);
   // One movement write: the expense deposit links re-sync once, when the listing is in.
-  return movementWrite(() => importPartialMovements(accountId, movements, fetchDay));
+  return movementWrite(() => importPartialMovements(accountId, movements, fetchDay, listingOrder));
 }
 
 function importPartialMovements(
   accountId: number,
   movements: PartialBankMovement[],
-  fetchDay: string
+  fetchDay: string,
+  listingOrder: ListingOrder
 ): PartialMovementsImportResult {
   let inserted = 0;
   let skipped_duplicate = 0;
@@ -113,7 +118,9 @@ function importPartialMovements(
     amount_clp: mv.amount_clp,
   });
 
+  const insertedIds: number[] = [];
   const tx = db.transaction(() => {
+    const stampsSince = maxFirstSeenSeq();
     for (const mv of movements) {
       const note = partialMovementNote(mv);
       if (noteExists.get(accountId, note)) {
@@ -164,8 +171,15 @@ function importPartialMovements(
       });
       if (occurredOn !== mv.occurred_on) recordBankPosting(id, accountId, mv.occurred_on, db, "fetch");
       inserted += 1;
+      insertedIds.push(id);
       inserted_flows.push(flowOf(mv));
     }
+    // Written in printed order; stamped in the listing's time order.
+    const flowIdOf = db.prepare(`SELECT flow_id FROM movements WHERE id = ?`);
+    const flowIds = insertedIds
+      .map((id) => (flowIdOf.get(id) as { flow_id: number | null } | undefined)?.flow_id)
+      .filter((f): f is number => f != null);
+    orderListingStamps(flowIds, listingOrder, stampsSince);
   });
   tx();
   return {

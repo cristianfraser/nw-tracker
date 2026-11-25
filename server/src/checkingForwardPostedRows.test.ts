@@ -218,3 +218,33 @@ describe("re-dating rows stored before the fetch-day rule", () => {
     }
   });
 });
+
+describe("a listing's new rows are stamped in the listing's time order", () => {
+  const seqOf = (accountId: number, mv: PartialBankMovement) =>
+    (
+      db
+        .prepare(
+          `SELECT f.first_seen_seq AS seq FROM movements m JOIN flow_first_seen f ON f.flow_id = m.flow_id
+           WHERE m.account_id = ? AND m.note = ?`
+        )
+        .get(accountId, partialMovementNote(mv)) as { seq: number }
+    ).seq;
+
+  it("newest first by default: the bottom row is the oldest write", () => {
+    cleanup();
+    const account = checkingId();
+    const newer = row("1801-04-10", -1_000, "order newer");
+    const older = row("1801-04-10", -2_000, "order older");
+    importCheckingPartialMovements(account, [newer, older], readOnChileDay("1801-04-10"));
+    expect(seqOf(account, older)).toBeLessThan(seqOf(account, newer));
+  });
+
+  it("a feeder that lists oldest first says so", () => {
+    cleanup();
+    const account = checkingId();
+    const older = row("1801-04-11", -1_000, "order older");
+    const newer = row("1801-04-11", -2_000, "order newer");
+    importCheckingPartialMovements(account, [older, newer], readOnChileDay("1801-04-11"), "oldest_first");
+    expect(seqOf(account, older)).toBeLessThan(seqOf(account, newer));
+  });
+});

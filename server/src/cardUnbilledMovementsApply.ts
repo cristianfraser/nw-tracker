@@ -331,9 +331,10 @@ function applyCardListing(
     accountId,
     { lines, errors: [] },
     batchKind,
-    applied
-      ? { targetBillingMonth: applied.close.rows_billing_month, lineBillingMonths: applied.lineBillingMonths }
-      : undefined
+    {
+      ...(applied ? { targetBillingMonth: applied.close.rows_billing_month, lineBillingMonths: applied.lineBillingMonths } : {}),
+      ...(card.listing_order ? { listingOrder: card.listing_order } : {}),
+    }
   );
   const tagged = tagFeedCuotaPurchaseLines(accountId, lines);
   const planPrepayments = recordPlanPrepayments(accountId, lines, prepaymentMatches);

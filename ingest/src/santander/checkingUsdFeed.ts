@@ -142,7 +142,7 @@ export function decodeCurrentAccountTransactions(response: unknown): DecodedUsdM
     const signed = cents;
     const balance_cents = parseImpliedCentsAmount(r.newBalance, `movements[${i}].newBalance`);
     const date = isoDate(r.accountingDate, "accountingDate", i);
-    isoDate(r.transactionDate, "transactionDate", i);
+    const transactionDate = isoDate(r.transactionDate, "transactionDate", i);
     const time = /^(\d{2})(\d{2})$/.exec(r.operationTime.trim());
     if (!time) throw new Error(`movements[${i}].operationTime: not HHMM: «${r.operationTime}»`);
     const movement_number = Number(r.movementNumber.trim());
@@ -168,6 +168,8 @@ export function decodeCurrentAccountTransactions(response: unknown): DecodedUsdM
       balance_cents,
       movement_number,
       operation_time: `${time[1]}:${time[2]}`,
+      // The operation time is on the transaction day (a row after the cutoff posts a day later).
+      occurred_at_chile: `${transactionDate} ${time[1]}:${time[2]}`,
     };
     return mv;
   });

@@ -56,9 +56,12 @@ export async function importCcWebPaste(accountId: number, text: string) {
   if (answer.result.kind !== CARD_PASTED_LISTING.kind || answer.result.schema_version !== CARD_PASTED_LISTING.schema_version) {
     throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${CARD_PASTED_LISTING.kind}`);
   }
+  const listing = cardPastedListingSchema.parse(answer.result.payload);
   return insertLines(
     accountId,
-    webPasteLinesFromPastedListing(cardPastedListingSchema.parse(answer.result.payload), creditCardMasterMetaForAccount(accountId).cardGroup)
+    webPasteLinesFromPastedListing(listing, creditCardMasterMetaForAccount(accountId).cardGroup),
+    "cc_web_paste",
+    listing.listing_order ? { listingOrder: listing.listing_order } : undefined
   );
 }
 

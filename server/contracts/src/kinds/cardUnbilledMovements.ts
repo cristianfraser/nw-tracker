@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { amountFitsCurrency, isoDateSchema, currencyCodeSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
+import { listingOrderSchema } from "../listingOrder.js";
 
 const currency = currencyCodeSchema;
 
@@ -101,6 +102,8 @@ export const cardListingSchema = z
     account: issuerCardAccountSchema,
     close: observedCloseSchema.nullable(),
     lines: z.array(cardListingLineSchema),
+    /** The order `lines` are listed in, when not the default (`listingOrder.ts`). */
+    listing_order: listingOrderSchema.optional(),
   })
   .strict();
 

@@ -183,7 +183,11 @@ export function insertLines(
       parsed.lines,
       opts
     );
-    const merged = mergeCardStatements(accountId, statements, { replaceLedger: false, listingBatchKind: batchKind });
+    const merged = mergeCardStatements(accountId, statements, {
+      replaceLedger: false,
+      listingBatchKind: batchKind,
+      ...(opts?.listingOrder ? { listingOrder: opts.listingOrder } : {}),
+    });
 
     // A pasted line that re-lists a manual plan's upcoming cuota is import-skipped as an overlap,
     // but it is evidence of the plan's real first-cuota month. Pin it (write-once) so the open

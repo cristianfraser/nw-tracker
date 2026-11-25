@@ -1,3 +1,4 @@
+import type { ListingOrder } from "nw-tracker-contracts";
 import { legacyAmountColumn } from "./cards/statementStorage.js";
 import { currencyMinorDigits, isHomeCurrency } from "./displayUnits.js";
 import crypto from "node:crypto";
@@ -158,6 +159,8 @@ export function webPasteListingDedupeKeys(cardGroup: string, lines: readonly CcL
 }
 
 export type CcListingStatementsOpts = {
+  /** The order the listing prints its lines in (`listingOrder.ts`); unset = the default. */
+  listingOrder?: ListingOrder;
   /**
    * Put every line in this facturación's bucket instead of the open month. The card feed passes
    * the month after its own SALDO INICIAL close: everything it lists after a close is unbilled by

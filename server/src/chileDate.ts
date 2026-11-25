@@ -141,6 +141,18 @@ export function dateAtTimeZoneWallClock(
   return new Date(ms);
 }
 
+/**
+ * The instant a Chile wall clock reading names: «YYYY-MM-DD HH:MM[:SS]» (or with a «T»), as the
+ * receipts and mails print it — no offset, the zone's own (DST-aware) one applies. Throws on any
+ * other shape.
+ */
+export function chileWallTimeToInstant(wall: string): Date {
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(wall.trim());
+  if (!m) throw new Error(`not a Chile wall time: «${wall}»`);
+  const at = dateAtTimeZoneWallClock(m[1]!, Number(m[2]), Number(m[3]), "America/Santiago");
+  return new Date(at.getTime() + Number(m[4] ?? 0) * 1000);
+}
+
 let todayYmdCache: { atSecond: number; ymd: string } | null = null;
 
 export function chileCalendarTodayYmd(): string {

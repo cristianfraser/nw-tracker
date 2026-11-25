@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { FlowsOverviewIncome } from "./flowsOverview.js";
+import type { LatestRowRef, LatestRowTimes } from "./latestMovementOrder.js";
 import { latestMovementRows } from "./latestMovements.js";
 import { movementOn } from "./expenseLineDay.js";
 import { lineMoneyFromBuilderFields } from "./lineMoney.js";
@@ -149,6 +150,41 @@ describe("latestMovementRows", () => {
     });
     const inUsd = latestMovementRows([], income, known, 10, today, new Set([7]), [], "usd");
     expect(inUsd[0]).toMatchObject({ kind: "income", income: { converted: { value: 5_000, currency: "usd", rate_source: "native" } } });
+  });
+
+  it("orders a day's rows by the moment the sources give, then write order, then id", () => {
+    const income: FlowsOverviewIncome = {
+      ...noIncome,
+      lines: [
+        { movement_id: 40, account_id: 2, account_label: "Corriente", received_on: "2026-09-20", amount_clp: 100_000, amount_usd: null, description: "Transf", source: "checking" },
+      ],
+    };
+    const lines = [
+      line({ statement_line_id: 1, flow_id: 101, purchase_on: "2026-09-20" }),
+      line({ statement_line_id: 2, flow_id: 102, purchase_on: "2026-09-20" }),
+      line({ statement_line_id: 3, flow_id: 103, purchase_on: "2026-09-20" }),
+      line({ statement_line_id: 4, flow_id: 104, purchase_on: "2026-09-19" }),
+    ];
+    const at = (hhmm: string) => Date.parse(`2026-09-20T${hhmm}:00-03:00`);
+    const byFlow: Record<number, LatestRowTimes> = {
+      // Written by the 22:00 read, but the processor receipt says 09:15.
+      101: { stated: [at("09:15")], bounds: [at("22:00")], seq: 8 },
+      // Two rows of the 13:00 read: the listing put 102 below 103 (older).
+      102: { stated: [], bounds: [at("13:00")], seq: 5 },
+      103: { stated: [], bounds: [at("13:00")], seq: 6 },
+      104: { stated: [], bounds: [Date.parse("2026-09-21T10:00:00-03:00")], seq: 9 },
+    };
+    const rowTimes = (refs: readonly LatestRowRef[]): LatestRowTimes[] =>
+      refs.map((r) =>
+        r.kind === "line"
+          ? byFlow[r.line.flow_id!]!
+          : r.kind === "movement"
+            ? { stated: [], bounds: [at("11:00")], seq: 7 } // a transfer mail sent 11:00
+            : { stated: [], bounds: [], seq: null }
+      );
+    const rows = latestMovementRows(lines, income, known, 10, today, noDollars, [], "clp", undefined, rowTimes);
+    // The day still leads: line 4 was written last but is a day older.
+    expect(ids(rows)).toEqual(["cc:3@2026-09-20", "cc:2@2026-09-20", "checking:40@2026-09-20", "cc:1@2026-09-20", "cc:4@2026-09-19"]);
   });
 
   it("throws on a category the catalog does not know", () => {

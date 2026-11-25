@@ -76,6 +76,7 @@ describe("decodeCurrentAccountTransactions", () => {
         balance_cents: 113853,
         movement_number: 2,
         operation_time: "12:46",
+        occurred_at_chile: "2026-10-08 12:46",
       },
       {
         date: "2026-10-09",
@@ -87,6 +88,7 @@ describe("decodeCurrentAccountTransactions", () => {
         balance_cents: 0,
         movement_number: 3,
         operation_time: "13:14",
+        occurred_at_chile: "2026-10-09 13:14",
       },
     ]);
   });
@@ -161,8 +163,8 @@ describe("captures on disk", () => {
     expect(payload).toEqual({
       account: { issuer: "santander", product: "checking", currency: "usd", number: USD_NUMBER },
       movements: [
-        { date: "2026-10-08", description: "Rec Or de Pago REC OR DE PAGO 202600000042", currency: "usd", amount: 1138.53, document_no: null, wire_reference: "202600000042" },
-        { date: "2026-10-09", description: "Giro en Efectivo por Caja", currency: "usd", amount: -1138.53, document_no: null, wire_reference: null },
+        { date: "2026-10-08", description: "Rec Or de Pago REC OR DE PAGO 202600000042", currency: "usd", amount: 1138.53, document_no: null, wire_reference: "202600000042", occurred_at_chile: "2026-10-08 12:46" },
+        { date: "2026-10-09", description: "Giro en Efectivo por Caja", currency: "usd", amount: -1138.53, document_no: null, wire_reference: null, occurred_at_chile: "2026-10-09 13:14" },
       ],
       rejected_rows: [],
     });

@@ -41,6 +41,11 @@ export type CardPaidReceipt = {
   account_id: number;
   purchase_ymd: string;
   card_paid_clp: number;
+  /**
+   * The printed purchase time, Chile wall clock («YYYY-MM-DD HH:MM:SS»); null for a receipt whose
+   * time was not printed (stored at midnight: a date from the card line or the photo).
+   */
+  purchased_at: string | null;
   /** The bank merchant of the receipt's branch; null when the branch has none. */
   branch_merchant: string | null;
 };
@@ -93,12 +98,19 @@ export function loadCardPaidReceipts(accountIds: ReadonlySet<number>): CardPaidR
   const rows = db
     .prepare(
       `SELECT store_chain, branch, card_line_account_id AS account_id,
-              substr(purchased_at, 1, 10) AS purchase_ymd, card_paid_clp
+              substr(purchased_at, 1, 10) AS purchase_ymd, purchased_at, card_paid_clp
        FROM grocery_receipts
        WHERE card_paid_clp > 0 AND card_line_account_id IS NOT NULL
        ORDER BY purchased_at, id`
     )
-    .all() as { store_chain: string; branch: string; account_id: number; purchase_ymd: string; card_paid_clp: number }[];
+    .all() as {
+    store_chain: string;
+    branch: string;
+    account_id: number;
+    purchase_ymd: string;
+    purchased_at: string;
+    card_paid_clp: number;
+  }[];
   const merchants = new Map<string, string | null>();
   const out: CardPaidReceipt[] = [];
   for (const r of rows) {
@@ -109,8 +121,19 @@ export function loadCardPaidReceipts(accountIds: ReadonlySet<number>): CardPaidR
       account_id: r.account_id,
       purchase_ymd: r.purchase_ymd,
       card_paid_clp: r.card_paid_clp,
+      purchased_at: r.purchased_at.endsWith(" 00:00:00") ? null : r.purchased_at,
       branch_merchant: merchants.get(key) ?? null,
     });
+  }
+  return out;
+}
+
+/** Card line (`statement_line_id`) → its grocery receipt's printed purchase time (Chile wall clock). */
+export function groceryReceiptTimeByCardLine(lines: readonly ReceiptChargeLine[]): Map<number, string> {
+  const accountIds = new Set(lines.filter((l) => l.source === "cc").map((l) => l.account_id));
+  const out = new Map<number, string>();
+  for (const { receipt, line } of pairReceiptsWithCardLines(loadCardPaidReceipts(accountIds), lines)) {
+    if (receipt.purchased_at) out.set(line.statement_line_id, receipt.purchased_at);
   }
   return out;
 }

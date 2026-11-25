@@ -1,3 +1,5 @@
+import { recordFlowEventTimeForMovement } from "./flows/flowEventTimes.js";
+import { chileWallTimeToInstant } from "./chileDate.js";
 import { isForeignCashAccountIn } from "./foreignCashAccounts.js";
 import type { BankAccountMovement, ForeignAccountMovementsApplyDetails } from "nw-tracker-contracts";
 
@@ -48,6 +50,9 @@ export function confirmForeignAccountMovements(
       if (legId != null) {
         consumed.add(legId);
         claimTransferLegForBankRow(legId, accountId, mv.date);
+        if (mv.occurred_at_chile) {
+          recordFlowEventTimeForMovement(legId, chileWallTimeToInstant(mv.occurred_at_chile).toISOString(), "santander_account_feed", sourceRef);
+        }
         confirmed_flows.push({ occurred_on: mv.date, description: mv.description, amount: mv.amount, movement_id: legId });
         if (earliestConfirmed === null || mv.date < earliestConfirmed) earliestConfirmed = mv.date;
         continue;

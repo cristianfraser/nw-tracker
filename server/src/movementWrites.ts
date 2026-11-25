@@ -20,6 +20,7 @@ import { db } from "./db.js";
 import { recordBankPosting, type OccurredOnBasis } from "./movementBankPostings.js";
 import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { adoptRetiredMovementFlow, type RetiredMovementAdoption } from "./flows/flowAdoption.js";
+import { recordMovementFlowFirstSeen } from "./flows/flowFirstSeen.js";
 
 /** Runs an import's movement writes; the expense deposit links re-sync once when it ends. */
 export function movementWrite<T>(body: () => T): T {
@@ -81,8 +82,9 @@ function insertStatement(dbHandle: Database): Statement {
 /**
  * Inserts one movement and returns its id: the one INSERT on `movements`
  * (`movementWritesGuard.test.ts`). The shape the table's CHECKs require is checked here, so a bad
- * row fails naming what is wrong. It writes the row and nothing else: the flow row is the
- * `flow_movements_ai` trigger's, and a posting, an evidence record or a link sync is the caller's.
+ * row fails naming what is wrong. It writes the row and its flow's first-seen stamp
+ * (`flows/flowFirstSeen.ts`) and nothing else: the flow row is the `flow_movements_ai` trigger's,
+ * and a posting, an evidence record or a link sync is the caller's.
  */
 export function insertMovement(row: MovementInsert, dbHandle: Database = db): number {
   if (!Number.isFinite(row.amount)) throw new Error(`movement: amount ${row.amount} is not a number`);
@@ -120,7 +122,9 @@ export function insertMovement(row: MovementInsert, dbHandle: Database = db): nu
       row.occurredOn, row.note ?? null, row.unitsDelta ?? null, null, row.flowKind ?? null,
     ];
   }
-  return Number(insertStatement(dbHandle).run(...params).lastInsertRowid);
+  const id = Number(insertStatement(dbHandle).run(...params).lastInsertRowid);
+  recordMovementFlowFirstSeen(id, dbHandle);
+  return id;
 }
 
 /**

@@ -145,7 +145,7 @@ describe("applyBankAccountMovements for a dollar account", () => {
         account: { ...account_, number: NUMBER },
         movements: [
           row("2097-10-08", 1138.53, "Rec Or de Pago REC OR DE PAGO 1", "1"),
-          row("2097-10-09", -1138.53, "Giro en Efectivo por Caja"),
+          { ...row("2097-10-09", -1138.53, "Giro en Efectivo por Caja"), occurred_at_chile: "2097-10-09 11:41" },
           row("2097-10-12", 500, "Rec Or de Pago REC OR DE PAGO 2", "2"),
           row("2097-10-12", -0.08, "Comision mantencion"),
         ],
@@ -166,6 +166,12 @@ describe("applyBankAccountMovements for a dollar account", () => {
     expect(
       db.prepare(`SELECT posted_on FROM movement_bank_postings WHERE movement_id = ? AND account_id = ?`).get(Number(wire.lastInsertRowid), usdAccountId)
     ).toEqual({ posted_on: "2097-10-08" });
+    // The bank's operation time is the confirmed leg's event time (Chile wall clock → UTC).
+    expect(
+      db
+        .prepare(`SELECT e.occurred_at, e.source FROM movements m JOIN flow_event_times e ON e.flow_id = m.flow_id WHERE m.id = ?`)
+        .get(Number(payment.lastInsertRowid))
+    ).toEqual({ occurred_at: "2097-10-09T14:41:00.000Z", source: "santander_account_feed" });
     // Sent again: the same legs match on their recorded posting day, nothing changes.
     const again = applyBankAccountMovements(
       { account: { ...account_, number: NUMBER }, movements: [row("2097-10-08", 1138.53, "Rec Or de Pago REC OR DE PAGO 1", "1")], rejected_rows: [] },

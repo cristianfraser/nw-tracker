@@ -29,6 +29,7 @@ import { clpCashBalanceLive } from "./clpCashAccounts.js";
 import { brokerCleanThrough, recordBrokerCleanRead } from "./brokerReadCoverage.js";
 import { db } from "./db.js";
 import { insertMovement } from "./movementWrites.js";
+import { recordFlowEventTimeForMovement } from "./flows/flowEventTimes.js";
 import { brokerAdapter, pairDividendPayout, racionalCashAccountId, racionalEquityAccountId } from "./brokerAdapter.js";
 import {
   dividendMovementCurrency,
@@ -504,12 +505,21 @@ export function applyRacionalMovements(result: RacionalImportResult, sourceRef: 
       } else {
         throw new Error(`Planned Racional movement has no accounts: ${p.note}`);
       }
+      // The row's creation instant, when the list states one (a list row without a time is dated
+      // at UTC midnight by the decoder: no moment).
+      if (!p.source.occurred_at.endsWith("T00:00:00.000Z")) {
+        recordFlowEventTimeForMovement(movementId, p.source.occurred_at, "racional_movements", sourceRef);
+      }
       if (p.source.dividend) {
         const { outcome } = upsertMovementDividendDetail(dividendDetailInput(movementId, p.source.dividend, sourceRef));
         details.push({ movement_id: movementId, outcome });
       }
     }
     for (const p of result.planned) {
+      // A row already on file (from the mail) takes the list's instant as well.
+      if (p.duplicate_of != null && !p.source.occurred_at.endsWith("T00:00:00.000Z")) {
+        recordFlowEventTimeForMovement(p.duplicate_of, p.source.occurred_at, "racional_movements", sourceRef);
+      }
       if (p.duplicate_of == null || !p.source.dividend) continue;
       const { outcome } = upsertMovementDividendDetail(dividendDetailInput(p.duplicate_of, p.source.dividend, sourceRef));
       details.push({ movement_id: p.duplicate_of, outcome });

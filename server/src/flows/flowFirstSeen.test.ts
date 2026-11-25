@@ -54,6 +54,13 @@ function firstSeen(flowId: number): string | null {
   );
 }
 
+function stamp(flowId: number): { on: string; at: string | null; seq: number | null } | null {
+  const row = db
+    .prepare(`SELECT first_seen_on AS "on", first_seen_at AS at, first_seen_seq AS seq FROM flow_first_seen WHERE flow_id = ?`)
+    .get(flowId) as { on: string; at: string | null; seq: number | null } | undefined;
+  return row ?? null;
+}
+
 function setFirstSeen(flowId: number, day: string): void {
   db.prepare(`UPDATE flow_first_seen SET first_seen_on = ? WHERE flow_id = ?`).run(day, flowId);
 }
@@ -75,6 +82,25 @@ describe("flow_first_seen", () => {
     importCcStatementsWipeAndReload(accountId, parsedStatements([record("a")]));
     const [line] = lines(accountId);
     expect(firstSeen(line!.flow_id)).toBe(chileCalendarTodayYmd());
+  });
+
+  it("stamps a new line's flow with the time and the write order", () => {
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("t1", "VITEST FS T ONE", 1000), record("t2", "VITEST FS T TWO", 2000)]));
+    const [one, two] = lines(accountId).map((l) => stamp(l.flow_id)!);
+    expect(one.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    // A statement (not a listing) is stamped in printed order.
+    expect(two.seq).toBeGreaterThan(one.seq!);
+  });
+
+  it("a re-import keeps the replaced line's time and write order", () => {
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("r")]));
+    const flow = lines(accountId)[0]!.flow_id;
+    db.prepare(`UPDATE flow_first_seen SET first_seen_at = ?, first_seen_seq = ? WHERE flow_id = ?`).run("2020-03-04T12:00:00.000Z", 1, flow);
+    setFirstSeen(flow, "2020-03-04");
+    importCcStatementsWipeAndReload(accountId, parsedStatements([record("r2")]));
+    const [line] = lines(accountId);
+    expect(line!.parser_row_id).toBe("r2");
+    expect(stamp(line!.flow_id)).toEqual({ on: "2020-03-04", at: "2020-03-04T12:00:00.000Z", seq: 1 });
   });
 
   it("a re-import that gives the line a new row keeps its earlier first-seen day", () => {

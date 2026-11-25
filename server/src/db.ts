@@ -62,6 +62,8 @@ import { runOptionContracts304 } from "./migrationHooks/optionContracts304.js";
 import { runMortgagePaymentReceipts307 } from "./migrationHooks/mortgagePaymentReceipts307.js";
 import { runMortgageLenderQuotes308 } from "./migrationHooks/mortgageLenderQuotes308.js";
 import { runFlowFirstSeen310 } from "./migrationHooks/flowFirstSeen310.js";
+import { runFlowFirstSeenTime367 } from "./migrationHooks/flowFirstSeenTime367.js";
+import { runFlowEventTimes368 } from "./migrationHooks/flowEventTimes368.js";
 import { runCardToCardPayments311 } from "./migrationHooks/cardToCardPayments311.js";
 import { runBrokerInstruments361 } from "./migrationHooks/brokerInstruments361.js";
 import { runCardRefundLinks365 } from "./migrationHooks/cardRefundLinks365.js";
@@ -431,6 +433,8 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "361_broker_instruments.sql": runBrokerInstruments361,
   "365_card_refund_links.sql": runCardRefundLinks365,
   "366_card_refund_links_hold_flows.sql": runCardRefundLinksHold366,
+  "367_flow_first_seen_time.sql": runFlowFirstSeenTime367,
+  "368_flow_event_times.sql": runFlowEventTimes368,
   "363_vendor_catalog_checking_names.sql": runVendorCatalog363,
 };
 

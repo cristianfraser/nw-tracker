@@ -32,6 +32,13 @@ import { toWireExpenseLine } from "./wireExpenseLine.js";
 import { cardPaymentEvidence, latestCardPayment, loadCardPaymentTransfers, type CardPaymentTransfer } from "./latestCardPayments.js";
 import { isPaymentLine } from "./expensePaymentNames.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import {
+  compareLatestRowOrderKeys,
+  latestRowOrderKey,
+  type LatestRowRef,
+  type LatestRowTimesResolver,
+} from "./latestMovementOrder.js";
+import { latestRowTimes } from "./latestMovementTimes.js";
 import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
 import { checkingMovementShownName, loadDisplayNameContext } from "./expenseDisplayNames.js";
 import { textShownName } from "./expenseShownName.js";
@@ -109,13 +116,14 @@ function incomeMovements(
   foreignAccountIds: ReadonlySet<number>,
   unit: string,
   names: IncomeCreditNames | undefined
-): { on: string; income: LatestIncomeMovement; id: number }[] {
-  const out: { on: string; income: LatestIncomeMovement; id: number }[] = [];
+): { on: string; income: LatestIncomeMovement; id: number; accountId: number | null }[] {
+  const out: { on: string; income: LatestIncomeMovement; id: number; accountId: number | null }[] = [];
   for (const l of income.lines) {
     const key = `checking:${l.movement_id}`;
     out.push({
       on: l.received_on,
       id: l.movement_id,
+      accountId: l.account_id,
       income: {
         key,
         source: "checking",
@@ -130,6 +138,7 @@ function incomeMovements(
     out.push({
       on: m.received_on,
       id: m.id,
+      accountId: null,
       income: {
         key: `manual:${m.id}`,
         source: "manual",
@@ -163,9 +172,11 @@ export function latestMovementRows(
   /** The display unit every row's `converted` is in. */
   unit: string = "clp",
   /** Each checking credit's payer and shown name; none = the bank's description alone. */
-  incomeNames?: IncomeCreditNames
+  incomeNames?: IncomeCreditNames,
+  /** The moments of the rows (`latestMovementOrder.ts`); none = a day's rows keep the id order. */
+  rowTimes?: LatestRowTimesResolver
 ): LatestMovementRow[] {
-  type Ranked = { row: LatestMovementRow; tie: number };
+  type Ranked = { row: LatestMovementRow; ref: LatestRowRef; tie: number };
   const ranked: Ranked[] = [];
   const evidence = cardPaymentEvidence(cardPayments, lines, (l) => isPaymentLine(l as never));
   const evidenceIdx = new Set([...evidence.values()].flat());
@@ -174,21 +185,40 @@ export function latestMovementRows(
     const ownIdx = evidence.get(t.movement_id)!;
     const own = ownIdx.map((i) => toWireExpenseLine(lines[i]!, unit));
     const payment = latestCardPayment(t, own, unit, ownIdx.map((i) => lines[i]!));
-    ranked.push({ row: { kind: "card_payment", on: t.occurred_on, payment }, tie: t.movement_id * 1000 });
+    ranked.push({
+      row: { kind: "card_payment", on: t.occurred_on, payment },
+      // The money left the paying account: its transfer mail names that side.
+      ref: { kind: "movement", movementId: t.movement_id, accountId: t.from_account_id },
+      tie: t.movement_id * 1000,
+    });
   }
   for (const [i, line] of lines.entries()) {
     if (evidenceIdx.has(i)) continue;
     if (!listedAsLatestMovement(line)) continue;
     const on = movementOn(line, todayYmd);
     if (on > todayYmd) continue;
-    ranked.push({ row: { kind: "expense", on, line: toWireExpenseLine(line, unit) }, tie: line.statement_line_id * 1000 + (line.piece_seq ?? 0) });
+    ranked.push({
+      row: { kind: "expense", on, line: toWireExpenseLine(line, unit) },
+      ref: { kind: "line", line },
+      tie: line.statement_line_id * 1000 + (line.piece_seq ?? 0),
+    });
   }
   for (const m of incomeMovements(income, foreignAccountIds, unit, incomeNames)) {
     if (m.on > todayYmd) continue;
-    ranked.push({ row: { kind: "income", on: m.on, income: m.income }, tie: m.id * 1000 });
+    ranked.push({
+      row: { kind: "income", on: m.on, income: m.income },
+      ref: m.accountId != null ? { kind: "movement", movementId: m.id, accountId: m.accountId } : { kind: "none" },
+      tie: m.id * 1000,
+    });
   }
+  // The days first; then only the days the list reaches are put in order by moment.
   ranked.sort((a, b) => b.row.on.localeCompare(a.row.on) || b.tie - a.tie);
-  const rows = ranked.slice(0, limit).map((r) => r.row);
+  const lastDay = ranked[Math.min(limit, ranked.length) - 1]?.row.on;
+  const shown = lastDay === undefined ? [] : ranked.filter((r) => r.row.on >= lastDay);
+  const times = rowTimes?.(shown.map((r) => r.ref));
+  const keyed = shown.map((r, i) => ({ ...r, key: times ? latestRowOrderKey(r.row.on, times[i]!) : { atMs: null, seq: null } }));
+  keyed.sort((a, b) => b.row.on.localeCompare(a.row.on) || compareLatestRowOrderKeys(a.key, b.key) || b.tie - a.tie);
+  const rows = keyed.slice(0, limit).map((r) => r.row);
   for (const r of rows) {
     if (r.kind === "expense" && !knownCategories.has(r.line.category_slug)) {
       throw new Error(
@@ -225,7 +255,8 @@ export function buildLatestMovements(limit: number, unit: string = "clp"): Lates
       new Set(listForeignCheckingAccountIds()),
       loadCardPaymentTransfers(),
       unit,
-      checkingCreditNames()
+      checkingCreditNames(),
+      latestRowTimes
     ),
     categories,
     big_groups: listCcExpenseBigGroups(),
