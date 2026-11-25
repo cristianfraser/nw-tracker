@@ -1,0 +1,26 @@
+/* «Posición»: one position's figures as label / value pairs. As many columns as fit the tile
+   (never under 9.5rem each, or the tile's width on a phone), so it never scrolls sideways. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 0;
+}
+
+.facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.facts dt {
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}

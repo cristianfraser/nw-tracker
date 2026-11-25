@@ -23,6 +23,7 @@ import {
   useAccountMovementForm,
 } from "./accountSurfaces";
 import { MONTHLY_PERF_COLLAPSED } from "./shared";
+import styles from "./StandardAccountDetailPage.module.css";
 
 type Props = {
   data: AccountDetailPageData;
@@ -119,70 +120,66 @@ export function StandardAccountDetailPage({ data }: Props) {
       {showPositionBlock ? (
         <PageGridTile id="position" className={loadableClass(loading)} aria-busy={loading || undefined}>
           <h2>{t("accountDetail.position.title")}</h2>
-          <Table
-            header={
-              <thead>
-                <tr>
-                  <th>{t("accountDetail.position.colTicker")}</th>
-                  <th>{t("accountDetail.position.colUnits")}</th>
-                  <th>
-                    {showEquityReturnColumns
-                      ? t("accountDetail.equityPosition.depositedPocket")
-                      : t("accountDetail.position.colDeposited")}
-                  </th>
-                  {showEquityReturnColumns ? (
-                    <th>{t("accountDetail.equityPosition.dividends")}</th>
-                  ) : null}
-                  <th>{t("accountDetail.position.colValueToday")}</th>
-                  <th>{t("accountDetail.position.colValueDate")}</th>
-                  <th>{t("accountDetail.position.colValuePerUnit")}</th>
-                  {showEquityReturnColumns ? (
-                    <>
-                      <th>{t("accountDetail.equityPosition.totalReturn")}</th>
-                      <th>{t("accountDetail.equityPosition.returnOnDeposited")}</th>
-                    </>
-                  ) : null}
-                </tr>
-              </thead>
-            }
-          >
-            <tr>
-              <td className="mono">
-                {summary.position?.ticker ?? summary.ticker ?? "—"}
-              </td>
-              <td className="mono">
+          {/* One position: its figures as label / value pairs that wrap to the tile's width. */}
+          <dl className={styles.facts}>
+            <div>
+              <dt>{t("accountDetail.position.colTicker")}</dt>
+              <dd className="mono">{summary.position?.ticker ?? summary.ticker ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>{t("accountDetail.position.colUnits")}</dt>
+              <dd className="mono">
                 {summary.position?.units != null && Number.isFinite(summary.position.units)
                   ? formatInstrumentUnits(
                     summary.position.units,
                     summary.position.units_kind ?? summary.units_kind ?? "shares"
                   )
                   : "—"}
-              </td>
-              <td className="mono">{money(summary.position ? summary.position.deposited : summary.deposits)}</td>
-              {showEquityReturnColumns ? (
-                <td className="mono">{money(summary.position?.dividends ?? 0)}</td>
-              ) : null}
-              <td className="mono">{money(summary.position?.value ?? summary.latest_valuation)}</td>
-              <td className="muted">
-                {summary.position?.value_as_of ?? summary.latest_valuation_date ?? "—"}
-              </td>
-              <td className="mono">
-                {money(summary.position?.value_per_unit)}
-              </td>
-              {showEquityReturnColumns ? (
-                <>
-                  <td className="mono">
-                    {money(summary.position?.total_return)}
-                  </td>
-                  <td className="mono">
+              </dd>
+            </div>
+            <div>
+              <dt>
+                {showEquityReturnColumns
+                  ? t("accountDetail.equityPosition.depositedPocket")
+                  : t("accountDetail.position.colDeposited")}
+              </dt>
+              <dd className="mono">{money(summary.position ? summary.position.deposited : summary.deposits)}</dd>
+            </div>
+            {showEquityReturnColumns ? (
+              <div>
+                <dt>{t("accountDetail.equityPosition.dividends")}</dt>
+                <dd className="mono">{money(summary.position?.dividends ?? 0)}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>{t("accountDetail.position.colValueToday")}</dt>
+              <dd className="mono">{money(summary.position?.value ?? summary.latest_valuation)}</dd>
+            </div>
+            <div>
+              <dt>{t("accountDetail.position.colValueDate")}</dt>
+              <dd className="muted">{summary.position?.value_as_of ?? summary.latest_valuation_date ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>{t("accountDetail.position.colValuePerUnit")}</dt>
+              <dd className="mono">{money(summary.position?.value_per_unit)}</dd>
+            </div>
+            {showEquityReturnColumns ? (
+              <>
+                <div>
+                  <dt>{t("accountDetail.equityPosition.totalReturn")}</dt>
+                  <dd className="mono">{money(summary.position?.total_return)}</dd>
+                </div>
+                <div>
+                  <dt>{t("accountDetail.equityPosition.returnOnDeposited")}</dt>
+                  <dd className="mono">
                     {summary.position?.return_on_deposited_pct != null
                       ? formatPct(summary.position.return_on_deposited_pct * 100)
                       : "—"}
-                  </td>
-                </>
-              ) : null}
-            </tr>
-          </Table>
+                  </dd>
+                </div>
+              </>
+            ) : null}
+          </dl>
           {brokerHoldings.length >= 2 ? (
             <>
               <h3>{t("accountDetail.brokerHoldings.title")}</h3>
