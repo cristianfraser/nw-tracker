@@ -6,10 +6,11 @@
  * - the cards' owed = the credit-card group's lanes total (`ccGroupLanes.ts`), each currency at
  *   today's debt rate (`billingCurrencyConverter`, the conversion the lanes total a card with);
  * - the loans' balance = the mortgage group's glance (`mortgageGroupGlance.ts`);
- * - the financing-cost strip = the mortgage glance's strip plus each card's dashboard row (the
- *   card's P/L is its cost of financing, the same row its page's strip reads);
- * - upcoming payments: the cards' months as the lanes put them (a payment on its pay month, later
- *   facturaciones' cuotas on their pay-bys) and each loan's cuotas as «Próximos pagos» lists them
+ * - the financing-cost strip = the mortgage glance's strip plus the cards' dashboard rows (a card's
+ *   P/L is its cost of financing, the same row its page's strip reads); a leg either group lacks is
+ *   null, never a partial sum;
+ * - upcoming payments: each card's month sum as the lanes put it (`by_card`: its payment on its pay
+ *   month, later facturaciones' billed cuotas on their pay-bys) and each loan's cuotas as «Próximos pagos» lists them
  *   (`mortgageUpcomingMonthsByLoan`), both over that panel's horizon at today's mid rate, an overdue
  *   payment in the current month.
  *
@@ -47,6 +48,12 @@ function addLeg(a: number | null, b: number | null): number | null {
 
 function addStrips(a: Strip, b: Strip): Strip {
   return { day: addLeg(a.day, b.day), month: addLeg(a.month, b.month), year: addLeg(a.year, b.year), total: addLeg(a.total, b.total) };
+}
+
+/** Σ of the groups' strips: a leg is null when any group's is, never a partial sum (the mortgage group's rule). */
+function addGroupStrips(a: Strip, b: Strip): Strip {
+  const leg = (x: number | null, y: number | null) => (x == null || y == null ? null : x + y);
+  return { day: leg(a.day, b.day), month: leg(a.month, b.month), year: leg(a.year, b.year), total: leg(a.total, b.total) };
 }
 
 /** Σ of the cards' dashboard rows (in `unit`): each card's financing cost per period. */
@@ -94,7 +101,7 @@ export async function buildLiabilitiesGlance(slug: string, unit: TsUnit): Promis
   // Cards: the credit-card group page's lanes.
   const cardIds = listLiabilitiesTabAccountRows("credit_card").map((r) => r.account_id);
   let cards: LiabilitiesGlanceDto["cards"] = null;
-  let strip: Strip = { day: null, month: null, year: null, total: null };
+  let strip: Strip | null = null;
   if (cardIds.length > 0) {
     const lanes = ccGroupLanesResponse(CREDIT_CARD_GROUP_SLUG);
     const toUnit = billingCurrencyConverter(today, unit);
@@ -105,23 +112,24 @@ export async function buildLiabilitiesGlance(slug: string, unit: TsUnit): Promis
     for (const um of lanes.upcoming_months) {
       const m = monthOf(um.month);
       if (m == null) continue;
-      for (const p of um.parts) {
-        const card = cardOf.get(p.account_id);
-        if (card == null) throw new Error(`liabilities glance: an upcoming payment of card ${p.account_id}, which has no lane`);
-        const amount = midInUnit(p.amount, lanes.billing_currency);
-        const prev = m.cards.find((x) => x.account_id === p.account_id);
+      for (const b of um.by_card) {
+        const card = cardOf.get(b.account_id);
+        if (card == null) throw new Error(`liabilities glance: an upcoming payment of card ${b.account_id}, which has no lane`);
+        const amount = midInUnit(b.amount, lanes.billing_currency);
+        const prev = m.cards.find((x) => x.account_id === b.account_id);
         if (prev) {
+          // An overdue month folded into the current one.
           prev.amount = roundToCurrency(prev.amount + amount, unit);
-          prev.estimate ||= p.kind === "open";
+          prev.estimate ||= b.estimate;
         } else {
           m.cards.push({
             kind: "card",
-            account_id: p.account_id,
+            account_id: b.account_id,
             name: card.name,
             color_rgb: card.color_rgb,
             amount,
             amount_max: null,
-            estimate: p.kind === "open",
+            estimate: b.estimate,
           });
         }
       }
@@ -134,7 +142,8 @@ export async function buildLiabilitiesGlance(slug: string, unit: TsUnit): Promis
     const glance = await buildMortgageGroupGlance(MORTGAGE_GROUP_SLUG, unit);
     if (glance == null) throw new Error(`liabilities glance: ${MORTGAGE_GROUP_SLUG} is not a mortgage group`);
     mortgage = { slug: MORTGAGE_GROUP_SLUG, balance: glance.balance, share: 0, count: glance.loans.length };
-    strip = addStrips(strip, { day: glance.strip.day, month: glance.strip.month, year: glance.strip.year, total: glance.strip.total });
+    const loansStrip: Strip = { day: glance.strip.day, month: glance.strip.month, year: glance.strip.year, total: glance.strip.total };
+    strip = strip == null ? loansStrip : addGroupStrips(strip, loansStrip);
     const loanOf = new Map(glance.loans.map((l) => [l.account_id, l]));
     for (const { loanAccountId, months: loanMonths } of mortgageUpcomingMonthsByLoan(today, unit)) {
       const loan = loanOf.get(loanAccountId);
@@ -176,16 +185,12 @@ export async function buildLiabilitiesGlance(slug: string, unit: TsUnit): Promis
   if (cards) cards.share = shareOf(cards.owed);
   if (mortgage) mortgage.share = shareOf(mortgage.balance);
 
+  const leg = (v: number | null | undefined) => (v == null ? null : roundToCurrency(v, unit));
   return {
     unit,
     as_of: today,
     total,
-    strip: {
-      day: strip.day == null ? null : roundToCurrency(strip.day, unit),
-      month: strip.month == null ? null : roundToCurrency(strip.month, unit),
-      year: strip.year == null ? null : roundToCurrency(strip.year, unit),
-      total: strip.total == null ? null : roundToCurrency(strip.total, unit),
-    },
+    strip: { day: leg(strip?.day), month: leg(strip?.month), year: leg(strip?.year), total: leg(strip?.total) },
     cards,
     mortgage,
     upcoming_months,

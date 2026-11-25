@@ -48,6 +48,12 @@ describe("liabilities glance", () => {
       if (unit === "clp") {
         const lanesTotal = lanesInHorizon.reduce((a, m) => a + m.total, 0);
         expect(g.upcoming_months.reduce((a, m) => a + m.total, 0)).toBe(lanesTotal);
+        // Each card's part is the lanes' own month sum for that card (`by_card`).
+        for (const lm of lanesInHorizon.filter((m) => m.month >= first)) {
+          const gm = g.upcoming_months.find((m) => m.month === lm.month)!;
+          if (lm.month === first && lanesInHorizon.some((m) => m.month < first)) continue;
+          expect(gm.parts.map((p) => ({ account_id: p.account_id, amount: p.amount, estimate: p.estimate }))).toEqual(lm.by_card);
+        }
       }
 
       const rows = listLiabilitiesTabAccountRows("credit_card").map((r) => buildDashboardAccountRow(r.account_id, unit)!);
