@@ -251,13 +251,6 @@ export function CreditCardGroupLanes({ data, loading }: { data: CcGroupLanesResp
                 ) : (
                   t("groupPage.creditCardLanes.billedToPay", { month: formatMonthShortLabel(card.previous.billing_month) })
                 )}
-                {card.cuotas_ahead > 0 ? (
-                  <>
-                    {card.previous != null ? " · " : null}
-                    {t("groupPage.creditCardLanes.inCuotas")}{" "}
-                    <span className="mono">{formatMoney({ value: card.cuotas_ahead, currency: billing })}</span>
-                  </>
-                ) : null}
               </span>
             </span>
             <OwedCell owedTotal={card.owed_total} owed={card.owed} billing={billing} />
