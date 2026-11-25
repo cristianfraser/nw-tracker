@@ -870,8 +870,6 @@ export interface DeptoMortgageGlanceDto {
   balance: DeptoBalanceBandDto;
   /** Null when the loan has no regular cuota yet (no rate to project with). */
   projection: DeptoProjectionDto | null;
-  /** Movements on the account (the folded «movimientos (N)» list). */
-  movement_count: number;
 }
 
 interface DeptoGlanceBase {

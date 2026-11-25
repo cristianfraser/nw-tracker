@@ -261,13 +261,8 @@ function CostRail({ cost, unit }: { cost: DeptoCostBandDto; unit: string }) {
   );
 }
 
-/** «movimientos (N)»: opens the account's movements under the bands. */
+/** «movimientos (N)» on the property's rail: opens the account's movements under the bands. */
 function MovementsGroup({ count, onToggle }: { count: number; onToggle: () => void }) {
-  return <DeptoMovementsToggle count={count} onToggle={onToggle} />;
-}
-
-/** The «movimientos (N)» link (the property's rail, the mortgage page under its payments). */
-export function DeptoMovementsToggle({ count, onToggle }: { count: number; onToggle: () => void }) {
   const { t } = useTranslation();
   return (
     <div className={styles.grp}>

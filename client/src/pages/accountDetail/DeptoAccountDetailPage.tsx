@@ -6,7 +6,7 @@ import { AccountFlowsSection } from "../../components/account/AccountFlowsSectio
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { MortgagePaymentForm } from "../../components/account/MortgagePaymentForm";
 import { DeptoHeader } from "../../components/depto/DeptoHeader";
-import { DeptoMovementsToggle, DeptoPropertyBands } from "../../components/depto/DeptoPropertyGlance";
+import { DeptoPropertyBands } from "../../components/depto/DeptoPropertyGlance";
 import { DeptoBalanceBand, DeptoProjection } from "../../components/depto/DeptoMortgageGlance";
 import { DeptoPaymentsList } from "../../components/depto/DeptoPaymentsList";
 import { Modal } from "../../components/ui/Modal";
@@ -18,7 +18,8 @@ import type { AccountDetailPageData } from "./useAccountDetailPageData";
 /**
  * A property or its mortgage (server `depto_glance`, `deptoGlance.ts`): one header (the hero in the
  * loan currency, the día / mes / año / total strip), then the property's value, P/L and
- * cost-of-living bands, or the mortgage's payments list, balance band and payoff projection. The
+ * cost-of-living bands, or the mortgage's payments list, balance band and payoff projection (every
+ * movement on a loan is a payment of that list, so the mortgage has no movements list of its own). The
  * page only picks and formats. While the bundle is pending the frames render dimmed (the page kind
  * from the account's category); a loan with no ledger rows (`depto_glance` null) shows that.
  */
@@ -102,18 +103,6 @@ export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }
             >
               <MortgagePaymentForm accountId={summary.account_id} displayUnit={displayUnit} schema={paymentCreate} />
             </Modal>
-          ) : null}
-          {mortgage ? (
-            <PageGridTile id="depto-movements">
-              <DeptoMovementsToggle count={mortgage.movement_count} onToggle={() => setFlowsOpen((v) => !v)} />
-            </PageGridTile>
-          ) : null}
-          {flowsOpen ? (
-            <AccountFlowsSection
-              addMovementsForm={addMovementsForm}
-              accountId={summary.account_id}
-              unitsKind={summary.units_kind}
-            />
           ) : null}
         </>
       ) : (

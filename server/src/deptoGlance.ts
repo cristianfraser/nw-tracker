@@ -557,7 +557,6 @@ function buildMortgage(
     payments,
     balance,
     projection: nextScenario == null ? null : deptoProjection({ ledger, next: nextScenario, unit, asOf }),
-    movement_count: accountMovementCount(accountId),
   };
 }
 
