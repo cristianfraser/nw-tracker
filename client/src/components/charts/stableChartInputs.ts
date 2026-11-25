@@ -8,7 +8,7 @@ import { useStructuralValue } from "../../useStructuralValue";
  * (Recharts' default is 1500 ms, the app's 90–300 ms). An animation can still outlast it — a chart
  * first drawn in a hidden tab, where requestAnimationFrame does not run — and a series switched to
  * `isAnimationActive={false}` mid-animation jumps to its last frame but never reports its end, so
- * Recharts keeps its `isAnimating` (its labels hidden) for good. Hence the remount on stopping.
+ * Recharts keeps its `isAnimating` (its labels hidden) for good. Hence such a series remounts.
  */
 const ANIMATION_WINDOW_MS = 2000;
 
@@ -25,6 +25,23 @@ type AxisSlot = {
 };
 
 type Row = Record<string, unknown>;
+
+type SeriesProps = {
+  dataKey?: unknown;
+  isAnimationActive?: boolean;
+  onAnimationStart?: () => void;
+  onAnimationEnd?: () => void;
+};
+
+/** A series' animation state across renders, and the stable callbacks that keep it. */
+type SeriesSlot = {
+  running: boolean;
+  epoch: number;
+  onStart: (() => void) | undefined;
+  onEnd: (() => void) | undefined;
+  start: () => void;
+  end: () => void;
+};
 
 function isShareable(v: unknown): boolean {
   if (Array.isArray(v)) return true;
@@ -95,7 +112,8 @@ export function useStableChartInputs<D>(
   const rows = dataRows(stableData);
   const slots = useRef(new Map<string, AxisSlot>());
   const shape = useRef<{ key: string | null; until: number }>({ key: null, until: 0 });
-  const still = useRef<{ animating: boolean; epoch: number }>({ animating: true, epoch: 0 });
+  const series = useRef(new Map<string, SeriesSlot>());
+  const wasAnimate = useRef(true);
 
   let xKey: string | null = null;
   const seriesKeys: string[] = [];
@@ -114,12 +132,52 @@ export function useStableChartInputs<D>(
   const now = performance.now();
   if (shape.current.key !== key) shape.current = { key, until: now + ANIMATION_WINDOW_MS };
   const animate = now < shape.current.until;
-  // Each switch from animating to still remounts the series once (a new key): a remounted series
-  // starts with no animation state, so one cut off mid-way cannot stay "animating". The key does
-  // not change when animating starts again, so a change of shape still tweens from what is drawn.
-  if (still.current.animating && !animate) still.current = { animating: false, epoch: still.current.epoch + 1 };
-  else if (!still.current.animating && animate) still.current = { animating: true, epoch: still.current.epoch };
-  const epoch = still.current.epoch;
+  // A series switched to still while its animation is running (an animation can outlast the
+  // window, e.g. one first drawn in a hidden tab) gets a new key and remounts with no animation
+  // state, so it cannot stay "animating". Only those: a remounted Line has not measured its path
+  // yet, so the next change of shape would wipe it in from the left instead of tweening.
+  if (wasAnimate.current && !animate) {
+    for (const slot of series.current.values()) {
+      if (slot.running) {
+        slot.running = false;
+        slot.epoch += 1;
+      }
+    }
+  }
+  wasAnimate.current = animate;
+
+  const seriesSeen = new Map<string, number>();
+  const stabilizeSeries = (el: ReactElement): ReactElement => {
+    const props = el.props as SeriesProps;
+    const base = el.key ?? `series:${String(props.dataKey ?? "")}`;
+    const n = seriesSeen.get(base) ?? 0;
+    seriesSeen.set(base, n + 1);
+    const id = `${base}:${n}`;
+    let slot = series.current.get(id);
+    if (slot == null) {
+      const created: SeriesSlot = { running: false, epoch: 0, onStart: undefined, onEnd: undefined, start: () => {}, end: () => {} };
+      // One function per series for good: Recharts restarts an animation when its callbacks change.
+      created.start = () => {
+        created.running = true;
+        created.onStart?.();
+      };
+      created.end = () => {
+        created.running = false;
+        created.onEnd?.();
+      };
+      series.current.set(id, created);
+      slot = created;
+    }
+    slot.onStart = props.onAnimationStart;
+    slot.onEnd = props.onAnimationEnd;
+    const next: Partial<SeriesProps> & { key: string } = {
+      key: `${el.key ?? ""}|e${slot.epoch}`,
+      onAnimationStart: slot.start,
+      onAnimationEnd: slot.end,
+    };
+    if (!animate) next.isAnimationActive = false;
+    return cloneElement(el as ReactElement<SeriesProps>, next);
+  };
 
   const seen = new Map<string, number>();
   const stabilizeAxis = (el: ReactElement, isX: boolean): ReactElement => {
@@ -161,13 +219,7 @@ export function useStableChartInputs<D>(
       if (!isValidElement(child)) return child;
       if (child.type === XAxis) return stabilizeAxis(child, true);
       if (child.type === YAxis) return stabilizeAxis(child, false);
-      if (isSeries(child.type)) {
-        const keyed = { key: `${child.key ?? ""}|e${epoch}` };
-        return cloneElement(
-          child as ReactElement<{ isAnimationActive?: boolean }>,
-          animate ? keyed : { ...keyed, isAnimationActive: false }
-        );
-      }
+      if (isSeries(child.type)) return stabilizeSeries(child);
       // Fragments are walked; any other element is the chart's own component, left as it is.
       if (child.type !== Fragment) return child;
       return cloneElement(child, undefined, map((child.props as { children?: ReactNode }).children));
