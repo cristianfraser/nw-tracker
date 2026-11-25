@@ -73,8 +73,19 @@ describe("card issuers as data", () => {
       const closed = closedBillingMonthsFromStatements([stmt("2026-01", "usd", "2026-01-20")], "usd", new Set(["usd"]), null);
       expect([...closed]).toEqual(["2026-01"]);
     });
-    it("a month with only a secondary statement never closes", () => {
-      expect(closedBillingMonthsFromStatements([stmt("2026-01", "usd", "2026-01-20")], "clp", new Set(["clp", "usd"]), "2026-03-01").size).toBe(0);
+    it("a month with only a secondary statement closes once a later bank close proves the primary is not coming", () => {
+      const rows = [stmt("2026-01", "usd", "2026-01-20")];
+      const required = new Set(["clp", "usd"]);
+      // A lone twin of the newest month waits for its primary.
+      expect(closedBillingMonthsFromStatements(rows, "clp", required, null).size).toBe(0);
+      expect(closedBillingMonthsFromStatements(rows, "clp", required, "2026-01-20").size).toBe(0);
+      expect([...closedBillingMonthsFromStatements(rows, "clp", required, "2026-03-01")]).toEqual(["2026-01"]);
+      // Dollar lines estimated from receipts, before the card's first peso statement.
+      const estimate = stmt("2016-02", "usd", "2016-02-22", "statement_other");
+      expect([...closedBillingMonthsFromStatements([estimate, stmt("2017-04", "clp", "2017-04-24")], "clp", required, "2017-05-25")]).toEqual([
+        "2016-02",
+        "2017-04",
+      ]);
     });
     it("waits for a required secondary until a later bank close proves it is not coming", () => {
       const rows = [stmt("2026-01", "clp", "2026-01-20")];

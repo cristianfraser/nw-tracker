@@ -451,8 +451,11 @@ export function assertOneStatementPerFacturacion(
  * currency, a feed-observed close, or an announced close that has passed) a twin still missing
  * was never issued, because the cycle had no activity in that currency, and the month closes on
  * the rest. Without it every secondary-quiet cycle stayed «open» for good — the retired ·0161's
- * peso-only 2025 months, which flagged those months open on the group pages too. A month with no
- * primary statement never closes.
+ * peso-only 2025 months, which flagged those months open on the group pages too. The same proof
+ * closes a month with no primary statement at all: one whose only statements are in another
+ * currency (a dollar statement, or the dollar lines estimated from receipts for a month before the
+ * card's first peso statement — ·0161's 2016–17, which read «open» for good) closes once a later
+ * close is on record. Never on its own: a lone twin of the newest month waits for its primary.
  */
 export function closedBillingMonthsFromStatements(
   statements: readonly CcStatementRow[],
@@ -462,21 +465,27 @@ export function closedBillingMonthsFromStatements(
 ): Set<string> {
   // One statement per currency per month, or the merge below would keep one close and drop the other.
   if (statements.length > 0) assertOneStatementPerFacturacion(statements, `Account ${statements[0]!.account_id}`);
-  const byMonth = new Map<string, { currencies: Set<string>; primaryCloseIso: string | null }>();
+  const byMonth = new Map<
+    string,
+    { currencies: Set<string>; primaryCloseIso: string | null; latestCloseIso: string | null }
+  >();
   for (const st of statements) {
     if (!isStatementSourceKind(st.source_kind)) continue;
     const bm = st.billing_month;
     if (!bm) continue;
     let month = byMonth.get(bm);
-    if (!month) byMonth.set(bm, (month = { currencies: new Set(), primaryCloseIso: null }));
+    if (!month) byMonth.set(bm, (month = { currencies: new Set(), primaryCloseIso: null, latestCloseIso: null }));
     month.currencies.add(st.currency);
-    if (st.currency === primary) month.primaryCloseIso = statementOwnCloseIso(st);
+    const close = statementOwnCloseIso(st);
+    if (st.currency === primary) month.primaryCloseIso = close;
+    if (close != null && (month.latestCloseIso == null || close > month.latestCloseIso)) month.latestCloseIso = close;
   }
   const closed = new Set<string>();
-  for (const [bm, { currencies, primaryCloseIso }] of byMonth) {
-    if (!currencies.has(primary)) continue;
-    const twinsNotComing =
-      primaryCloseIso != null && latestBankClose != null && latestBankClose > primaryCloseIso;
+  for (const [bm, { currencies, primaryCloseIso, latestCloseIso }] of byMonth) {
+    // The month's own close: its primary statement's, else the latest of its other statements'.
+    const closeIso = currencies.has(primary) ? primaryCloseIso : latestCloseIso;
+    const twinsNotComing = closeIso != null && latestBankClose != null && latestBankClose > closeIso;
+    if (!currencies.has(primary) && !twinsNotComing) continue;
     let pending = false;
     for (const currency of required) {
       if (!currencies.has(currency) && !twinsNotComing) pending = true;
