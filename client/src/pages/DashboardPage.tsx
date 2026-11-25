@@ -26,7 +26,6 @@ import {
   useDashboardBundle,
   useDashboardNavSnapshot,
   useDashboardOverviewDaily,
-  useInversionesPerfDaily,
   useSidebarNav,
 } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -44,6 +43,7 @@ import { DASHBOARD_COLD_STRIP } from "../coldPageShape";
 import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import {
+  monthYearSurfacePeriod,
   useSurfaceAreaMode,
   useSurfaceCompositionView,
   useSurfacePercentMode,
@@ -221,8 +221,9 @@ export function DashboardPage() {
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const overviewIsDaily = overviewPrefs.period === "day";
-  const combosIsDaily = combosPrefs.period === "day";
-  const combosIsYearly = combosPrefs.period === "year";
+  // Month and year only: a stored «day» (from when the chart offered it) reads as month.
+  const combosPeriod = monthYearSurfacePeriod(combosPrefs.period);
+  const combosIsYearly = combosPeriod === "year";
   const isYearly = combosIsYearly;
 
   // Day view: the net-worth chart swaps to the daily series (overview-daily fetch).
@@ -311,21 +312,7 @@ export function DashboardPage() {
     );
   }, [inversionesPerfPoints, isYearly, combosPrefs.range]);
 
-  // Day mode: the server's day combo (retirement + brokerage day bars and deposits, running
-  // levels anchored on the monthly consolidation).
-  const inversionesDaily = useInversionesPerfDaily(
-    displayUnit,
-    timeRangeToDays(combosPrefs.range),
-    combosIsDaily && belowFoldShown
-  );
-  const combosDailyPending = dailyPayloadPending(combosIsDaily, inversionesDaily);
-  const combosLoading = contentLoading || combosDailyPending;
-  // Diario: the day combo once it is this unit's, else no points (the pending frame).
-  const dailyRetirementBrokeragePoints = useMemo((): ComboRow[] | null => {
-    if (!combosIsDaily) return null;
-    if (combosDailyPending) return [];
-    return (inversionesDaily.data?.points ?? []).map((p) => ({ ...p }));
-  }, [combosIsDaily, combosDailyPending, inversionesDaily.data]);
+  const combosLoading = contentLoading;
 
   // Each valuation chart rolls up (or not) per its OWN period control.
   const overviewBlock = useMemo((): TimeseriesBlock | null => {
@@ -396,15 +383,12 @@ export function DashboardPage() {
     : (ts.allocation_proportional ?? null);
 
   // The P/L + deposits combo keeps its `home.combos` control (period + range).
-  const combosXAxis = combosIsDaily
-    ? ("day" as const)
-    : combosIsYearly
-      ? ("year" as const)
-      : ("month" as const);
+  const combosXAxis = combosIsYearly ? ("year" as const) : ("month" as const);
   const combosControls = (
     <SurfaceControls
-      period={combosPrefs.period}
+      period={combosPeriod}
       onPeriodChange={combosPrefs.setPeriod}
+      periodOptions={["month", "year"]}
       range={combosPrefs.range}
       onRangeChange={combosPrefs.setRange}
     />
@@ -434,27 +418,19 @@ export function DashboardPage() {
   // The «%» view: the same granularity, the server's return fields in place of the money ones.
   const perfPctView = perfPercent.percent;
   const perfChartPoints: ComboRow[] = perfPctView
-    ? combosIsDaily
-      ? (dailyRetirementBrokeragePoints ?? [])
-      : isYearly
-        ? yearlyPctPoints
-        : retirementBrokerageForCharts
-    : (dailyRetirementBrokeragePoints ?? retirementBrokerageForCharts);
-  const pctRetirementName = combosIsDaily
-    ? t("dashboard.percentMode.retirementDaily")
-    : isYearly
-      ? t("dashboard.percentMode.retirementYearly")
-      : t("dashboard.percentMode.retirementMonthly");
-  const pctBrokerageName = combosIsDaily
-    ? t("dashboard.percentMode.brokerageDaily")
-    : isYearly
-      ? t("dashboard.percentMode.brokerageYearly")
-      : t("dashboard.percentMode.brokerageMonthly");
-  const pctCombinedName = combosIsDaily
-    ? t("dashboard.percentMode.combinedDaily")
-    : isYearly
-      ? t("dashboard.percentMode.combinedYearly")
-      : t("dashboard.percentMode.combinedMonthly");
+    ? isYearly
+      ? yearlyPctPoints
+      : retirementBrokerageForCharts
+    : retirementBrokerageForCharts;
+  const pctRetirementName = isYearly
+    ? t("dashboard.percentMode.retirementYearly")
+    : t("dashboard.percentMode.retirementMonthly");
+  const pctBrokerageName = isYearly
+    ? t("dashboard.percentMode.brokerageYearly")
+    : t("dashboard.percentMode.brokerageMonthly");
+  const pctCombinedName = isYearly
+    ? t("dashboard.percentMode.combinedYearly")
+    : t("dashboard.percentMode.combinedMonthly");
 
   const dashboardCharts = (
     <>

@@ -12,8 +12,8 @@ import { rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVERVIEW_TOTALS } from "../..
 import { useTranslation } from "../../i18n";
 import { useFlowsOverview } from "../../queries/hooks";
 import type { DisplayUnit } from "../../queries/keys";
-import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
-import { clipMonthsThenRollup, clipPointsToTimeRange, timeRangeToDays } from "../../timeRange";
+import { monthYearSurfacePeriod, useSurfacePrefs } from "../../surfaceDisplayPrefs";
+import { clipMonthsThenRollup } from "../../timeRange";
 import type { FlowsOverviewRow } from "../../types";
 import { useCcInstallmentGastosMode } from "../../useCcInstallmentGastosMode";
 import { persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
@@ -171,31 +171,22 @@ export function DashboardFlowsChart({
 }) {
   const { t } = useTranslation();
   const prefs = useSurfacePrefs("dashboard.flows", "month", "1y");
-  const granularity = prefs.period;
-  const isDaily = granularity === "day";
+  // Month and year only: a stored «day» (from when the chart offered it) reads as month.
+  const granularity = monthYearSurfacePeriod(prefs.period);
   const { installmentMode } = useCcInstallmentGastosMode();
-  const overview = useFlowsOverview(
-    displayUnit,
-    installmentMode,
-    isDaily ? timeRangeToDays(prefs.range) : undefined
-  );
+  const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
   const data = overview.data;
   const loading = !data || overview.isPlaceholderData;
 
   // Structurally shared: a refetch that changes only totals or another grain keeps the points.
   const builtChartPoints = useMemo(() => {
     if (!data) return [];
-    let rows: readonly FlowsOverviewRow[];
-    if (isDaily) {
-      rows = clipPointsToTimeRange(data.days ?? [], prefs.range);
-    } else {
-      rows = clipMonthsThenRollup(
-        data.months,
-        granularity === "year" ? "year" : "month",
-        prefs.range,
-        rollupFlowsOverviewRowsByYear
-      );
-    }
+    const rows: readonly FlowsOverviewRow[] = clipMonthsThenRollup(
+      data.months,
+      granularity,
+      prefs.range,
+      rollupFlowsOverviewRowsByYear
+    );
     return rows.map((r) => ({
       as_of_date: r.as_of_date,
       income: r.income,
@@ -203,7 +194,7 @@ export function DashboardFlowsChart({
       deposits: r.deposits,
       pl: r.pl,
     }));
-  }, [data, granularity, isDaily, prefs.range]);
+  }, [data, granularity, prefs.range]);
   const chartPoints = useStructuralValue(builtChartPoints);
 
   return (
@@ -217,8 +208,9 @@ export function DashboardFlowsChart({
         title={t("flows.overview.chartTitle")}
         controls={
           <SurfaceControls
-            period={prefs.period}
+            period={granularity}
             onPeriodChange={prefs.setPeriod}
+            periodOptions={["month", "year"]}
             range={prefs.range}
             onRangeChange={prefs.setRange}
           />
