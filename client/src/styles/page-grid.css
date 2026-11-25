@@ -98,10 +98,12 @@
   }
 
   /* The rail is one column of full-width tiles, not a subgrid: it is the size container the
-     rail tables query, and size containment makes `subgrid` compute to `none` anyway. It is a
-     container on both axes, so its content adds nothing to the row's height: the row is as tall
-     as the main stack (cards and net-worth chart), the rail stretches to it, and its last tile
-     («Últimos movimientos», `.dashboard-rail-fill`) takes what the others leave and scrolls. */
+     rail tables query, and size containment makes `subgrid` compute to `none` anyway. It
+     stretches to the band's row, and its last tile («Últimos movimientos», `.dashboard-rail-fill`)
+     takes what the others leave: the list's rows add nothing to the row's height (their scroll
+     box is size-contained), so the band is as tall as the main stack (cards and net-worth chart)
+     unless the rail's other tiles, the list's heading and its 12rem floor need more — then the
+     band grows to them, and nothing spills onto the row below. */
   .page-rail {
     align-self: stretch;
     grid-template-rows: auto minmax(0, 1fr);
@@ -115,22 +117,24 @@
        reserves no strip for it on this tier: the rail starts below it and its bottom border. */
     padding-top: calc(var(--market-ticker-height) + 1px + var(--space-xs));
     grid-template-columns: minmax(0, 1fr);
-    container-type: size;
+    container-type: inline-size;
     container-name: rail;
   }
 
   .page-rail>.dashboard-rail-fill {
+    align-self: stretch;
     display: flex;
     flex-direction: column;
     min-height: 0;
-    height: 100%;
   }
 
-  /* The heading stays put; the rows and «show more» scroll under it. Never shorter than a few
-     rows, should the main stack ever be shorter than the rail's other tiles. */
+  /* The heading stays put; the rows and «show more» scroll under it. Size-contained (its width
+     comes from the tile it stretches across), so the rows do not size the band; never shorter
+     than a few rows. */
   .dashboard-rail-fill__scroll {
     flex: 1 1 0;
     min-height: 12rem;
+    contain: size;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
