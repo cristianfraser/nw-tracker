@@ -12,7 +12,12 @@ import { rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVERVIEW_TOTALS } from "../..
 import { useTranslation } from "../../i18n";
 import { useFlowsOverview } from "../../queries/hooks";
 import type { DisplayUnit } from "../../queries/keys";
-import { monthYearSurfacePeriod, useSurfacePrefs } from "../../surfaceDisplayPrefs";
+import {
+  MONTH_YEAR_RANGE_OPTIONS,
+  monthYearSurfacePeriod,
+  monthYearSurfaceRange,
+  useSurfacePrefs,
+} from "../../surfaceDisplayPrefs";
 import { clipMonthsThenRollup } from "../../timeRange";
 import type { FlowsOverviewRow } from "../../types";
 import { useCcInstallmentGastosMode } from "../../useCcInstallmentGastosMode";
@@ -173,6 +178,7 @@ export function DashboardFlowsChart({
   const prefs = useSurfacePrefs("dashboard.flows", "month", "1y");
   // Month and year only: a stored «day» (from when the chart offered it) reads as month.
   const granularity = monthYearSurfacePeriod(prefs.period);
+  const range = monthYearSurfaceRange(prefs.range, "1y");
   const { installmentMode } = useCcInstallmentGastosMode();
   const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
   const data = overview.data;
@@ -184,7 +190,7 @@ export function DashboardFlowsChart({
     const rows: readonly FlowsOverviewRow[] = clipMonthsThenRollup(
       data.months,
       granularity,
-      prefs.range,
+      range,
       rollupFlowsOverviewRowsByYear
     );
     return rows.map((r) => ({
@@ -194,7 +200,7 @@ export function DashboardFlowsChart({
       deposits: r.deposits,
       pl: r.pl,
     }));
-  }, [data, granularity, prefs.range]);
+  }, [data, granularity, range]);
   const chartPoints = useStructuralValue(builtChartPoints);
 
   return (
@@ -211,7 +217,8 @@ export function DashboardFlowsChart({
             period={granularity}
             onPeriodChange={prefs.setPeriod}
             periodOptions={["month", "year"]}
-            range={prefs.range}
+            range={range}
+            rangeOptions={MONTH_YEAR_RANGE_OPTIONS}
             onRangeChange={prefs.setRange}
           />
         }

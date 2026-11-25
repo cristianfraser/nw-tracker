@@ -37,6 +37,9 @@ export const GROUP_GLANCE_SPARK_MAX_POINTS = 60;
 /** The sparkline's window: a year ending today (today included). */
 export const GROUP_GLANCE_SPARK_DAYS = 365;
 
+/** A sparkline coordinate (0..1) to 3 decimals: finer than any drawn pixel, a third of the JSON. */
+const sparkCoord = (v: number) => Math.round(v * 1000) / 1000;
+
 /** What the payload already holds for an account: its dashboard row (in the payload's unit). */
 export type GroupGlanceAccountRow = {
   account_id: number;
@@ -115,9 +118,9 @@ export function groupGlanceSpark(values: readonly (number | null)[]): { x: numbe
   const hi = Math.max(...sampled.map((p) => p.v));
   const last = values.length - 1;
   return sampled.map((p) => ({
-    x: last > 0 ? p.i / last : 1,
+    x: sparkCoord(last > 0 ? p.i / last : 1),
     // Flat: a zero line sits at the bottom (worth nothing), any other at the middle.
-    y: hi > lo ? (p.v - lo) / (hi - lo) : hi === 0 ? 0 : 0.5,
+    y: sparkCoord(hi > lo ? (p.v - lo) / (hi - lo) : hi === 0 ? 0 : 0.5),
   }));
 }
 
@@ -175,10 +178,10 @@ export function groupGlancePerfSparks(
     const last = values.length - 1;
     return sampleIndices(known.length, GROUP_GLANCE_SPARK_MAX_POINTS).map((k) => {
       const p = known[k]!;
-      return { x: last > 0 ? p.i / last : 1, y: yOf(p.v) };
+      return { x: sparkCoord(last > 0 ? p.i / last : 1), y: sparkCoord(yOf(p.v)) };
     });
   });
-  return { sparks, zeroY: yOf(0) };
+  return { sparks, zeroY: sparkCoord(yOf(0)) };
 }
 
 /** Held ones heaviest first (then label), then sold-out ones by total P/L magnitude (then label). */
@@ -270,6 +273,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       held,
       spark,
       perf_spark: [],
+      members_perf_zero_y: null,
       members: [],
     }, perf);
   };
@@ -316,6 +320,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       held,
       spark,
       perf_spark: [],
+      members_perf_zero_y: null,
       members,
     }, perf);
   };
@@ -403,15 +408,21 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     held: groupHeld,
     spark: totalSparks.spark,
     perf_spark: [],
+    members_perf_zero_y: null,
     members: [],
   }, totalSparks.perf);
 
-  // Every row's performance line on one scale, so the rows compare.
-  const allRows = [total, ...rows.flatMap((r) => [r, ...r.members])];
-  const perf = groupGlancePerfSparks(allRows.map((r) => perfByRow.get(r)!));
-  allRows.forEach((r, i) => {
-    r.perf_spark = perf.sparks[i]!;
-  });
+  // Performance lines on one scale per level drawn together, so a level's rows compare and a
+  // hidden level never flattens a visible one: the total with the page's rows, each row's members.
+  const scaleTogether = (level: readonly GroupGlanceRowDto[]): number => {
+    const perf = groupGlancePerfSparks(level.map((r) => perfByRow.get(r)!));
+    level.forEach((r, i) => {
+      r.perf_spark = perf.sparks[i]!;
+    });
+    return perf.zeroY;
+  };
+  const perfZeroY = scaleTogether([total, ...rows]);
+  for (const r of rows) if (r.members.length > 0) r.members_perf_zero_y = scaleTogether(r.members);
 
   return {
     slug: inp.slug,
@@ -423,7 +434,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     periods,
     total,
     rows,
-    perf_zero_y: perf.zeroY,
+    perf_zero_y: perfZeroY,
   };
 }
 

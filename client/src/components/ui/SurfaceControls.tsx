@@ -43,6 +43,8 @@ export type SurfaceControlsProps = {
   periodOptions?: readonly SurfacePeriod[];
   range?: TimeRange;
   onRangeChange?: (r: TimeRange) => void;
+  /** Restrict the offered Rangos (e.g. month/year-only charts). Default: all. */
+  rangeOptions?: readonly TimeRange[];
   style?: CSSProperties;
 };
 
@@ -61,6 +63,7 @@ export function SurfaceControls({
   periodOptions = ALL_PERIODS,
   range,
   onRangeChange,
+  rangeOptions = TIME_RANGE_OPTIONS,
   style,
 }: SurfaceControlsProps) {
   const { t } = useTranslation();
@@ -104,7 +107,7 @@ export function SurfaceControls({
       ) : null}
       {range != null && onRangeChange ? (
         <span className="surface-controls__set" role="group" aria-label={t("dashboard.rangeLabel")}>
-          {TIME_RANGE_OPTIONS.map((r) => (
+          {rangeOptions.map((r) => (
             <button
               key={r}
               type="button"

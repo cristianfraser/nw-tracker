@@ -221,7 +221,9 @@ function GlanceRow({
         <Spark
           points={sparkView.mode === "perf" ? row.perf_spark : row.spark}
           zeroY={sparkView.mode === "perf" ? sparkView.zeroY : undefined}
-          className={variant === "total" ? undefined : styles.sparkChild}
+          className={
+            variant !== "total" ? styles.sparkChild : sparkView.mode === "perf" ? styles.sparkTotalPerf : undefined
+          }
         />
       </span>
       <span role="cell" className={cn("mono", styles.num, styles.value)}>
@@ -400,7 +402,17 @@ export function GroupGlanceTable({
                   />
                   {hasMembers && open
                     ? row.members.map((m) => (
-                        <GlanceRow key={rowKey(m)} row={m} color={color} variant="member" sparkView={sparkView} />
+                        <GlanceRow
+                          key={rowKey(m)}
+                          row={m}
+                          color={color}
+                          variant="member"
+                          sparkView={
+                            sparkView.mode === "perf" && row.members_perf_zero_y != null
+                              ? { mode: "perf", zeroY: row.members_perf_zero_y }
+                              : sparkView
+                          }
+                        />
                       ))
                     : null}
                 </div>

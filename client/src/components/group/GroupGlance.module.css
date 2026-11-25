@@ -162,7 +162,12 @@ a.name:hover {
   stroke: var(--accent);
 }
 
-/* The 0 % line of the performance sparkline (shared scale). */
+/* The total's performance line takes no sign colour: it may run under 0 %. */
+.spark.sparkTotalPerf polyline {
+  stroke: var(--text);
+}
+
+/* The 0 % line of the performance sparkline (one scale per level). */
 .spark .sparkZero {
   stroke: var(--muted);
   stroke-width: 1;
@@ -238,6 +243,22 @@ a.name:hover {
 
 .totalRow .deposits {
   color: var(--text);
+}
+
+/* Middle frame (a small desktop's tile): the nine columns need ~63rem with large figures, so día,
+   año and aportes give way and the line, value, share, mes and total stay. */
+@container group-glance (max-width: 64rem) {
+  .table {
+    grid-template-columns:
+      minmax(7rem, 1.1fr) minmax(4rem, 1fr) max-content minmax(6rem, 0.9fr)
+      max-content max-content;
+  }
+
+  .day,
+  .year,
+  .deposits {
+    display: none;
+  }
 }
 
 /* Narrow frame: name, value, mes and total on one line. */

@@ -284,6 +284,22 @@ describe("group_glance on the nav-context payload", () => {
         expect(p.y).toBeLessThanOrEqual(1);
       }
     }
+    // One scale per level drawn together: each level's own lines reach its scale's ends (0 % kept
+    // inside), so a hidden level never sets a visible one's.
+    const spansItsScale = (level: typeof g.rows, zeroY: number) => {
+      const ys = [...level.flatMap((r) => r.perf_spark.map((p) => p.y)), zeroY];
+      expect(Math.min(...ys)).toBe(0);
+      expect(Math.max(...ys)).toBe(1);
+    };
+    spansItsScale([g.total, ...g.rows], g.perf_zero_y);
+    for (const r of g.rows) {
+      if (r.members.length === 0) {
+        expect(r.members_perf_zero_y).toBeNull();
+        continue;
+      }
+      expect(r.members_perf_zero_y).not.toBeNull();
+      if (r.members.some((m) => m.perf_spark.length > 1)) spansItsScale(r.members, r.members_perf_zero_y!);
+    }
   });
 
   it("gives a sold-out group its composition on the last day it held something", async () => {

@@ -43,7 +43,9 @@ import { DASHBOARD_COLD_STRIP } from "../coldPageShape";
 import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import {
+  MONTH_YEAR_RANGE_OPTIONS,
   monthYearSurfacePeriod,
+  monthYearSurfaceRange,
   useSurfaceAreaMode,
   useSurfaceCompositionView,
   useSurfacePercentMode,
@@ -223,6 +225,7 @@ export function DashboardPage() {
   const overviewIsDaily = overviewPrefs.period === "day";
   // Month and year only: a stored «day» (from when the chart offered it) reads as month.
   const combosPeriod = monthYearSurfacePeriod(combosPrefs.period);
+  const combosRange = monthYearSurfaceRange(combosPrefs.range, "3y");
   const combosIsYearly = combosPeriod === "year";
   const isYearly = combosIsYearly;
 
@@ -307,10 +310,10 @@ export function DashboardPage() {
     if (!inversionesPerfPoints.length) return [];
     if (!isYearly) return inversionesPerfPoints;
     // Months cut at the combos' Rango first, then rolled up: a partial first year.
-    return clipMonthsThenRollup(inversionesPerfPoints, "year", combosPrefs.range, (months) =>
+    return clipMonthsThenRollup(inversionesPerfPoints, "year", combosRange, (months) =>
       rollupPerfPointsYearly(months, COMBINED_PERF_YEARLY)
     );
-  }, [inversionesPerfPoints, isYearly, combosPrefs.range]);
+  }, [inversionesPerfPoints, isYearly, combosRange]);
 
   const combosLoading = contentLoading;
 
@@ -389,7 +392,8 @@ export function DashboardPage() {
       period={combosPeriod}
       onPeriodChange={combosPrefs.setPeriod}
       periodOptions={["month", "year"]}
-      range={combosPrefs.range}
+      range={combosRange}
+      rangeOptions={MONTH_YEAR_RANGE_OPTIONS}
       onRangeChange={combosPrefs.setRange}
     />
   );
@@ -504,7 +508,7 @@ export function DashboardPage() {
               displayUnit={displayUnit}
               valueFormat={perfPctView ? "percent" : "money"}
               xAxisGranularity={combosXAxis}
-              timeRange={combosPrefs.range}
+              timeRange={combosRange}
               controls={perfControls}
               barSeries={perfPctView ? [
                 // Each class's own return, side by side (no stack).
@@ -528,7 +532,7 @@ export function DashboardPage() {
                   stackId: "pl",
                 },
               ]}
-              // The YTD area always shows; «Total acumulado» adds the all-time P/L as a line.
+              // The YTD area always shows; the «Total» toggle adds the all-time P/L as a line.
               areaKey={perfPctView ? "ytd_pct" : "ytd_combined"}
               areaName={
                 isYearly ? t("dashboard.sections.yearTotalCombined") : t("dashboard.sections.ytdCombined")

@@ -164,10 +164,13 @@ export interface GroupGlanceRowDto {
   spark: { x: number; y: number }[];
   /**
    * The same year as performance: the row's daily returns (the ones its % cells compound) chained
-   * from its first held day in the window, on the table's shared scale (`perf_zero_y` is 0 %); no
-   * point before it first held something or after it sold out.
+   * from its first held day in the window, on one scale per level drawn together — the total with
+   * the page's rows (`perf_zero_y` is 0 %), a row's members with each other (that row's
+   * `members_perf_zero_y`); no point before it first held something or after it sold out.
    */
   perf_spark: { x: number; y: number }[];
+  /** Where 0 % sits on the scale of this row's members' `perf_spark` (0..1); null without members. */
+  members_perf_zero_y: number | null;
   /**
    * One level under a child row: a basket's member accounts, any other child group's own rows (its
    * sub-groups and accounts, as its page lists them, without members of their own); empty for an
@@ -193,7 +196,7 @@ export interface GroupGlanceDto {
   total: GroupGlanceRowDto;
   /** Children: held ones heaviest first, then sold-out ones (by total P/L magnitude). */
   rows: GroupGlanceRowDto[];
-  /** Where 0 % sits on the shared performance scale of every row's `perf_spark` (0..1, from the bottom). */
+  /** Where 0 % sits on the scale of the total's and the rows' `perf_spark` (0..1, from the bottom). */
   perf_zero_y: number;
 }
 
@@ -309,7 +312,7 @@ export interface DashboardPageBundleResponse {
 }
 
 /**
- * One period of the home «Δ mensual por clase (inversiones)» combo, built on the server
+ * One period of the home «PL inversiones» combo, built on the server
  * (`inversionesPerfSeries.ts`): class P/L bars, Σ Δ, the YTD and all-time running P/L.
  */
 export interface InversionesPerfPoint {

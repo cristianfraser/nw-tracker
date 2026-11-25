@@ -32,8 +32,9 @@ function parseOpenChoices(raw: string | null): OpenChoices {
   return out;
 }
 
+/** A tracked place (`exp.<slug>`) is a leaf like an account: it links to its expenses page. */
 function isGroup(node: NavTreeNodeDto): boolean {
-  return node.account_id == null;
+  return node.account_id == null && node.expense_account_id == null;
 }
 
 /**
@@ -67,6 +68,14 @@ function NavAccountsTreeNode({
 }) {
   const { t } = useTranslation();
   const label = resolveNavTreeLabel(node);
+
+  if (node.expense_account_id != null) {
+    return (
+      <li className={styles.leaf}>
+        <Link to={node.route_path}>{label}</Link>
+      </li>
+    );
+  }
 
   if (!isGroup(node)) {
     return (
@@ -131,8 +140,9 @@ export type NavAccountsTreeProps = {
 
 /**
  * The nav tree as a collapsible nested list: a group opens and closes from its chevron (its name
- * stays the link to its page), guide rails mark each level, accounts read «#id name». Groups of
- * groups start open and groups holding accounts closed; the viewer's choices are kept per tree root.
+ * stays the link to its page), guide rails mark each level, accounts read «#id name» and tracked
+ * places their name. The root and groups of groups start open, groups holding accounts closed; the
+ * viewer's choices are kept per tree root.
  */
 export function NavAccountsTree({
   root,
@@ -158,10 +168,12 @@ export function NavAccountsTree({
   );
 
   const groupIds = useMemo(() => groupNodeIds(root), [root]);
+  // The root always starts open (as «collapse all» leaves it), even on a page whose group lists accounts.
+  const defaultOpen = (node: NavTreeNodeDto) => node.node_id === root.node_id || openByDefault(node);
   const ctx: TreeContext = {
-    isOpen: (node) => open[node.node_id] ?? openByDefault(node),
+    isOpen: (node) => open[node.node_id] ?? defaultOpen(node),
     toggle: (node) => {
-      const current = open[node.node_id] ?? openByDefault(node);
+      const current = open[node.node_id] ?? defaultOpen(node);
       save({ ...open, [node.node_id]: !current });
     },
     idPrefix,
