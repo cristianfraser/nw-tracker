@@ -3768,6 +3768,30 @@
     "barsTitle": {
       "en": "Your return (top) and {{benchmark}}'s (bottom) over the period, on the row's own scale",
       "es": "Tu rentabilidad (arriba) y la de {{benchmark}} (abajo) en el período, a la escala de la fila"
+    },
+    "empty": {
+      "en": "No return yet: there is not enough history.",
+      "es": "Aún no hay rentabilidad: falta historia."
+    },
+    "srReturn": {
+      "en": "Return",
+      "es": "Rentabilidad"
+    },
+    "srPl": {
+      "en": "Profit or loss",
+      "es": "Ganancia o pérdida"
+    },
+    "srIrr": {
+      "en": "IRR",
+      "es": "TIR"
+    },
+    "srBench": {
+      "en": "{{benchmark}}, {{figure}}",
+      "es": "{{benchmark}}, {{figure}}"
+    },
+    "srDelta": {
+      "en": "Difference in profit against {{benchmark}}",
+      "es": "Diferencia de ganancia frente a {{benchmark}}"
     }
   },
   "benchmarks": {

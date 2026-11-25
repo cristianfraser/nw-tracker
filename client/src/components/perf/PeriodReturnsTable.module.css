@@ -265,3 +265,10 @@
   color: var(--muted);
   font-size: var(--font-size-card-meta);
 }
+
+/* A list with no period carrying a figure (e.g. an account opened this month). */
+.empty {
+  margin: 0.5rem 0 0;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}

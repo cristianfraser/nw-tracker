@@ -1200,7 +1200,13 @@
     "colIrr": "IRR",
     "colDelta": "Δ P/L",
     "annualizedValue": "{{pct}} p.a.",
-    "barsTitle": "Your return (top) and {{benchmark}}'s (bottom) over the period, on the row's own scale"
+    "barsTitle": "Your return (top) and {{benchmark}}'s (bottom) over the period, on the row's own scale",
+    "empty": "No return yet: there is not enough history.",
+    "srReturn": "Return",
+    "srPl": "Profit or loss",
+    "srIrr": "IRR",
+    "srBench": "{{benchmark}}, {{figure}}",
+    "srDelta": "Difference in profit against {{benchmark}}"
   },
   "benchmarks": {
     "mortgage": "Mortgage (UF + {{rate}})",

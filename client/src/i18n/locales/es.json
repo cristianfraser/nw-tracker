@@ -1200,7 +1200,13 @@
     "colIrr": "TIR",
     "colDelta": "Δ P/L",
     "annualizedValue": "{{pct}} a.a.",
-    "barsTitle": "Tu rentabilidad (arriba) y la de {{benchmark}} (abajo) en el período, a la escala de la fila"
+    "barsTitle": "Tu rentabilidad (arriba) y la de {{benchmark}} (abajo) en el período, a la escala de la fila",
+    "empty": "Aún no hay rentabilidad: falta historia.",
+    "srReturn": "Rentabilidad",
+    "srPl": "Ganancia o pérdida",
+    "srIrr": "TIR",
+    "srBench": "{{benchmark}}, {{figure}}",
+    "srDelta": "Diferencia de ganancia frente a {{benchmark}}"
   },
   "benchmarks": {
     "mortgage": "Hipoteca (UF + {{rate}})",

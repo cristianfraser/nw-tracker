@@ -36,6 +36,13 @@ const COMPACT_PENDING_PERIODS: readonly PeriodReturnKey[] = ["d1", "w1", "mtd", 
 const FULL_PENDING_PERIODS: readonly PeriodReturnKey[] = ["d1", "w1", "mtd", "ytd", "y1", "total"];
 
 const BLANK = " ";
+/** A figure the server sent as null once its payload is in (blank is only for «still loading»). */
+const DASH = "—";
+
+/** A figure's name for a screen reader (the column labels are visual only). */
+function SrLabel({ children }: { children: string }) {
+  return <span className="visually-hidden">{children} </span>;
+}
 
 function toneClass(n: number | null | undefined): string | undefined {
   if (n == null || !Number.isFinite(n) || n === 0) return undefined;
@@ -57,8 +64,10 @@ type ListRow = {
 };
 
 /**
- * One line per period the payload has a return for (a period with no data is left out); while the
- * payload loads, the `pending` periods with blank figures.
+ * One line per period carrying a figure of its own — a % or a P/L (a period with neither, e.g. 5Y
+ * on a two-year history, is left out; a null % then prints «—»); while the payload loads, the
+ * `pending` periods with blank figures. The set does not depend on the comparison, so it does not
+ * change when that lands.
  */
 function listRows(
   data: PeriodReturnsPayload | null,
@@ -69,7 +78,7 @@ function listRows(
   for (const c of comparison.data?.periods ?? []) benchByPeriod.set(c.period, c);
   if (data == null) return pending.map((period) => ({ period, cell: null, bench: undefined }));
   return data.periods
-    .filter((c) => c.pct != null)
+    .filter((c) => c.pct != null || c.nominal_pl != null)
     .map((cell) => ({ period: cell.period, cell, bench: benchByPeriod.get(cell.period) }));
 }
 
@@ -190,9 +199,12 @@ function PeriodReturnsFullList({
   const benchLabel = selected ? benchmarkOptionLabel(t, selected) : "";
   const benchPending = comparison.data == null;
   const benchDim = cn(benchPending && !loading && styles.pending);
-  const money = (n: number | null | undefined) =>
-    n != null ? formatMoney({ value: n, currency: displayUnit }) : BLANK;
-  const pctText = (n: number | null | undefined) => (n != null ? formatPct(n * 100) : BLANK);
+  const money = (n: number | null | undefined) => (n != null ? formatMoney({ value: n, currency: displayUnit }) : null);
+  const pctText = (n: number | null | undefined) => (n != null ? formatPct(n * 100) : null);
+  // Own figures are blank only on a pending row (no cell); the benchmark's while the comparison loads.
+  const own = (cell: PeriodReturnCell | null, s: string | null) => (cell == null ? BLANK : (s ?? DASH));
+  const benchFig = (s: string | null) => (benchPending ? BLANK : (s ?? DASH));
+  const srBench = (figure: string) => t("periodReturns.srBench", { benchmark: benchLabel, figure });
   const perYear = (n: number) => t("periodReturns.annualizedValue", { pct: formatPct(n * 100) });
   const yearly = (n: number | null | undefined) =>
     n != null ? (
@@ -202,7 +214,7 @@ function PeriodReturnsFullList({
     ) : null;
   // The IRR columns (their label names them): the rate, «p.a.» when it is yearly.
   const irrCell = (n: number | null | undefined, annual: boolean | undefined) =>
-    n == null ? BLANK : annual ? perYear(n) : formatPct(n * 100);
+    n == null ? null : annual ? perYear(n) : formatPct(n * 100);
   // The narrow detail line names the IRR itself.
   const irrText = (n: number | null | undefined, annual: boolean | undefined) =>
     n == null ? null : t(annual ? "periodReturns.irrAnnual" : "periodReturns.irr", { pct: formatPct(n * 100) });
@@ -225,7 +237,8 @@ function PeriodReturnsFullList({
   return (
     <>
       <ReturnsHeading title={title} titleAs={titleAs} comparison={comparison} />
-      <div className={styles.frame}>
+      {rows.length === 0 ? <p className={styles.empty}>{t("periodReturns.empty")}</p> : null}
+      <div className={styles.frame} hidden={rows.length === 0}>
         <div role="list" className={loadableClass(loading, styles.full)} aria-busy={loading || undefined}>
           <div className={cn(styles.fullRow, styles.colHead)} aria-hidden>
             <span />
@@ -242,28 +255,34 @@ function PeriodReturnsFullList({
             <span>{t("periodReturns.colDelta")}</span>
           </div>
           {rows.map(({ period, cell, bench: b }) => {
+            // The narrow line's benchmark figures, each named for a screen reader and kept whole
+            // (the line wraps only between them).
             const shadowDetail = [
-              b?.benchmark_pct != null ? formatPct(b.benchmark_pct * 100) : null,
-              b?.benchmark_annualized_pct != null ? perYear(b.benchmark_annualized_pct) : null,
-              b?.shadow_pl != null ? money(b.shadow_pl) : null,
-              irrText(b?.shadow_irr_pct, b?.irr_annualized),
+              [t("periodReturns.srReturn"), pctText(b?.benchmark_pct)],
+              [t("periodReturns.annualizedTitle"), b?.benchmark_annualized_pct != null ? perYear(b.benchmark_annualized_pct) : null],
+              [t("periodReturns.srPl"), money(b?.shadow_pl)],
+              [t("periodReturns.srIrr"), irrText(b?.shadow_irr_pct, b?.irr_annualized)],
             ]
-              .filter((s) => s != null)
-              // Each figure stays whole; the line wraps only between them.
-              .map((s) => s.replace(/ /g, "\u00a0"));
+              .filter((piece): piece is [string, string] => piece[1] != null)
+              .map(([label, text]) => [label, text.replace(/ /g, "\u00a0")] as const);
             return (
               <div key={period} role="listitem" className={cn(styles.fullRow, period === "total" && styles.total)}>
                 <span className={styles.label}>{t(PERIOD_LABEL_KEY[period])}</span>
                 <span className={cn("mono", styles.num)} title={cellTitle(cell)}>
-                  <span className={toneClass(cell?.pct)}>{pctText(cell?.pct)}</span>
+                  <SrLabel>{t("periodReturns.srReturn")}</SrLabel>
+                  <span className={toneClass(cell?.pct)}>{own(cell, pctText(cell?.pct))}</span>
                   {yearly(cell?.annualized_pct)}
                 </span>
-                <span className={cn("mono", styles.num, toneClass(cell?.nominal_pl))}>{money(cell?.nominal_pl)}</span>
+                <span className={cn("mono", styles.num, toneClass(cell?.nominal_pl))}>
+                  <SrLabel>{t("periodReturns.srPl")}</SrLabel>
+                  {own(cell, money(cell?.nominal_pl))}
+                </span>
                 <span
                   className={cn("mono", styles.num, styles.muted, styles.wideOnly, benchDim)}
                   title={t("periodReturns.irrTitle")}
                 >
-                  {irrCell(b?.real_irr_pct, b?.irr_annualized)}
+                  <SrLabel>{t("periodReturns.srIrr")}</SrLabel>
+                  {benchFig(irrCell(b?.real_irr_pct, b?.irr_annualized))}
                 </span>
                 <GapBars
                   you={cell?.pct ?? null}
@@ -272,28 +291,40 @@ function PeriodReturnsFullList({
                   title={t("periodReturns.barsTitle", { benchmark: benchLabel })}
                 />
                 <span className={cn("mono", styles.num, styles.muted, styles.wideOnly, benchDim)} title={benchTitle(b)}>
-                  <span>{pctText(b?.benchmark_pct)}</span>
+                  <SrLabel>{srBench(t("periodReturns.srReturn"))}</SrLabel>
+                  <span>{benchFig(pctText(b?.benchmark_pct))}</span>
                   {yearly(b?.benchmark_annualized_pct)}
                 </span>
                 <span className={cn("mono", styles.num, styles.muted, styles.wideOnly, benchDim)} title={benchTitle(b)}>
-                  {money(b?.shadow_pl)}
+                  <SrLabel>{srBench(t("periodReturns.srPl"))}</SrLabel>
+                  {benchFig(money(b?.shadow_pl))}
                 </span>
                 <span
                   className={cn("mono", styles.num, styles.muted, styles.wideOnly, benchDim)}
                   title={t("periodReturns.irrTitle")}
                 >
-                  {irrCell(b?.shadow_irr_pct, b?.irr_annualized)}
+                  <SrLabel>{srBench(t("periodReturns.srIrr"))}</SrLabel>
+                  {benchFig(irrCell(b?.shadow_irr_pct, b?.irr_annualized))}
                 </span>
                 <span className={cn("mono", styles.num, styles.delta, toneClass(b?.delta_pl), benchDim)}>
-                  {b?.delta_pl != null ? t("periodReturns.delta", { amount: money(b.delta_pl) }) : BLANK}
+                  <SrLabel>{t("periodReturns.srDelta", { benchmark: benchLabel })}</SrLabel>
+                  {benchFig(b?.delta_pl != null ? t("periodReturns.delta", { amount: money(b.delta_pl) }) : null)}
                 </span>
                 <span className={cn("mono", styles.detail, benchDim)}>
                   <span title={t("periodReturns.irrTitle")}>
-                    {irrText(b?.real_irr_pct, b?.irr_annualized) ?? BLANK}
+                    {benchFig(irrText(b?.real_irr_pct, b?.irr_annualized))}
                   </span>
                   <span className={styles.detailBench} title={benchTitle(b)}>
                     <span className={styles.swatch} />
-                    {shadowDetail.length ? shadowDetail.join(" · ") : BLANK}
+                    {shadowDetail.length
+                      ? shadowDetail.map(([label, text], i) => (
+                          <span key={label}>
+                            {i > 0 ? <span aria-hidden>{" · "}</span> : null}
+                            <SrLabel>{srBench(label)}</SrLabel>
+                            {text}
+                          </span>
+                        ))
+                      : benchFig(null)}
                   </span>
                 </span>
               </div>
@@ -328,25 +359,39 @@ function PeriodReturnsCompactList({
 }) {
   const { t } = useTranslation();
   const rows = listRows(data, comparison, COMPACT_PENDING_PERIODS);
+  const selected = comparison.options.find((o) => o.slug === comparison.selected);
+  const benchLabel = selected ? benchmarkOptionLabel(t, selected) : "";
+  const benchPending = comparison.data == null;
   return (
     <>
       <ReturnsHeading title={title} titleAs={titleAs} comparison={comparison} />
-      <div role="list" className={loadableClass(loading, styles.compactList)} aria-busy={loading || undefined}>
-        {rows.map(({ period, cell, bench: b }) => (
-          <div key={period} role="listitem" className={cn(styles.compactRow, period === "total" && styles.total)}>
-            <span className={styles.label}>{t(PERIOD_LABEL_KEY[period])}</span>
-            <span className={cn("mono", styles.num, toneClass(cell?.pct))}>
-              {cell?.pct != null ? formatPct(cell.pct * 100) : BLANK}
-            </span>
-            <span className={cn("mono", styles.num, toneClass(cell?.nominal_pl))}>
-              {cell?.nominal_pl != null ? formatMoney({ value: cell.nominal_pl, currency: displayUnit }) : BLANK}
-            </span>
-            <span className={cn("mono", styles.num, styles.compactBench)}>
-              {b?.benchmark_pct != null ? formatPct(b.benchmark_pct * 100) : BLANK}
-            </span>
-          </div>
-        ))}
-      </div>
+      {rows.length === 0 ? (
+        <p className={styles.empty}>{t("periodReturns.empty")}</p>
+      ) : (
+        <div role="list" className={loadableClass(loading, styles.compactList)} aria-busy={loading || undefined}>
+          {rows.map(({ period, cell, bench: b }) => (
+            <div key={period} role="listitem" className={cn(styles.compactRow, period === "total" && styles.total)}>
+              <span className={styles.label}>{t(PERIOD_LABEL_KEY[period])}</span>
+              <span className={cn("mono", styles.num, toneClass(cell?.pct))}>
+                <SrLabel>{t("periodReturns.srReturn")}</SrLabel>
+                {cell == null ? BLANK : cell.pct != null ? formatPct(cell.pct * 100) : DASH}
+              </span>
+              <span className={cn("mono", styles.num, toneClass(cell?.nominal_pl))}>
+                <SrLabel>{t("periodReturns.srPl")}</SrLabel>
+                {cell == null
+                  ? BLANK
+                  : cell.nominal_pl != null
+                    ? formatMoney({ value: cell.nominal_pl, currency: displayUnit })
+                    : DASH}
+              </span>
+              <span className={cn("mono", styles.num, styles.compactBench)}>
+                <SrLabel>{t("periodReturns.srBench", { benchmark: benchLabel, figure: t("periodReturns.srReturn") })}</SrLabel>
+                {benchPending ? BLANK : b?.benchmark_pct != null ? formatPct(b.benchmark_pct * 100) : DASH}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
