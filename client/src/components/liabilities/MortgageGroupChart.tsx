@@ -100,8 +100,10 @@ export function MortgageGroupChart({ glance, w, h }: { glance: MortgageGroupGlan
         const i = chart.dates.indexOf(p.date);
         if (si < 0 || i <= 0) return null;
         const px = xs[i]!;
-        const yFrom = y(tops[si]![i - 1]!);
+        // The drop is the prepago's own step (its label), ending at the loan's layer that day: the
+        // stacked sum since the previous chart date also holds cuotas and UF drift.
         const yTo = y(tops[si]![i]!);
+        const yFrom = y(tops[si]![i]! - p.step);
         return (
           <g key={`${p.account_id}-${p.date}`}>
             <line x1={px} x2={px} y1={yFrom} y2={yTo} style={{ stroke: "var(--depto-amber)" }} strokeWidth={2.4} />

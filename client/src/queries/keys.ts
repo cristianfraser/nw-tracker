@@ -154,9 +154,10 @@ export const queryKeys = {
   ccFacturadoFinancingLinks: () => ["ccFacturadoFinancingLinks"] as const,
   portfolioGroup: (group: string, unit: DisplayUnit) =>
     withEntity(["portfolioGroup", group, unit] as const, 2),
-  /** Under the group's prefix, so what refreshes a group page reaches it. */
+  /** The mortgage group page; its own prefix, so a loan's writes refresh every unit of it. */
   mortgageGroupGlance: (group: string, unit: DisplayUnit) =>
-    withEntity(["portfolioGroup", group, unit, "mortgageGlance"] as const, 2),
+    withEntity(["mortgageGroupGlance", group, unit] as const, 2),
+  mortgageGroupGlanceAll: () => ["mortgageGroupGlance"] as const,
   /** Under the group's prefix, so what refreshes a group page reaches it. */
   liabilitiesGlance: (group: string, unit: DisplayUnit) =>
     withEntity(["portfolioGroup", group, unit, "liabilitiesGlance"] as const, 2),

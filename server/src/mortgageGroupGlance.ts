@@ -141,21 +141,27 @@ function rescaleBar(bar: DeptoPaymentBarDto, from: number, to: number, paidLoan:
   return { segments: bar.segments.map((s) => ({ part: s.part, share: (s.share * from) / to })), clipped: bar.clipped };
 }
 
+/** True when the loans differ in loan or payment currency: their payments lists are not one list. */
+function paymentsCurrenciesDiffer(loans: readonly { glance: MortgageGlance }[]): boolean {
+  return loans.some(
+    (l) => l.glance.loan_currency !== loans[0]!.glance.loan_currency || l.glance.payment_currency !== loans[0]!.glance.payment_currency
+  );
+}
+
 /**
  * The loan pages' payments lists as one (`MortgageGroupPaymentsDto`): every row and next cuota is
- * its loan page's, keyed by account, on the largest scale; the Σ row adds the loans' Σ rows.
+ * its loan page's, keyed by account, on the largest scale; the Σ row adds the loans' Σ rows. The
+ * loans must share their loan and payment currencies (the list's figures are in them).
  */
 function mergedPayments(loans: readonly { accountId: number; name: string; glance: MortgageGlance }[]): MortgageGroupPaymentsDto | null {
   if (loans.length === 0) return null;
+  if (paymentsCurrenciesDiffer(loans)) {
+    throw new Error(
+      `mortgage group payments: the loans are in ${[...new Set(loans.map((l) => `${l.glance.loan_currency}/${l.glance.payment_currency}`))].join(", ")}`
+    );
+  }
   const loanCurrency = loans[0]!.glance.loan_currency;
   const paymentCurrency = loans[0]!.glance.payment_currency;
-  for (const l of loans) {
-    if (l.glance.loan_currency !== loanCurrency || l.glance.payment_currency !== paymentCurrency) {
-      throw new Error(
-        `mortgage group payments: account ${l.accountId} is in ${l.glance.loan_currency}/${l.glance.payment_currency}, the group's first loan in ${loanCurrency}/${paymentCurrency}`
-      );
-    }
-  }
   const several = loans.length > 1;
   const tag = (l: (typeof loans)[number]) => (several ? { account_id: l.accountId, name: l.name, color_rgb: getAccountColorRgb(l.accountId) } : null);
   const scale = Math.max(...loans.map((l) => l.glance.mortgage.payments.bar_scale_loan));
@@ -281,6 +287,7 @@ export async function buildMortgageGroupGlance(slug: string, unit: TsUnit): Prom
     for (const y of glance.mortgage.balance.financing_cost.years) years.set(y.year, (years.get(y.year) ?? 0) + y.cost);
   }
   const days = withLedger.map((x) => x.glance.header.strip.day);
+  const paymentsMixed = withLedger.length > 0 && paymentsCurrenciesDiffer(withLedger);
 
   const nextOnes = withLedger.filter((x) => x.glance.mortgage.payments.next != null);
   let next: MortgageGroupNextDto | null = null;
@@ -303,14 +310,16 @@ export async function buildMortgageGroupGlance(slug: string, unit: TsUnit): Prom
     as_of: asOf,
     balance: balanceTotal,
     strip: {
-      day: days.every((d) => d == null) ? null : days.reduce<number>((a, d) => a + (d ?? 0), 0),
+      // A loan with no day figure (opened today) leaves the day unknown, never a partial sum.
+      day: days.some((d) => d == null) ? null : days.reduce<number>((a, d) => a + d!, 0),
       month: sum((g) => g.header.strip.month),
       year: sum((g) => g.header.strip.year),
       total: sum((g) => g.header.strip.total),
     },
     next,
     loans,
-    payments: mergedPayments(withLedger),
+    payments: paymentsMixed ? null : mergedPayments(withLedger),
+    payments_mixed_currencies: paymentsMixed,
     loans_without_ledger: withoutLedger,
     total:
       loans.length > 1

@@ -224,6 +224,7 @@
   },
   "liabilities": {
     "mortgageGroup": {
+      "paymentsMixedCurrencies": "The loans are in different currencies, so their payments are not one list: each loan's page has its own.",
       "loanCount": "{{count}} loans",
       "nextPayment": "next payment",
       "nextPayments": "next payments",

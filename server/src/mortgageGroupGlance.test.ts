@@ -128,6 +128,7 @@ describe("mortgage group glance", () => {
     let total = 0;
     let costTotal = 0;
     let paymentRows = 0;
+    const days: (number | null)[] = [];
     let paidPay = 0;
     for (const loan of g.loans) {
       const page = (await cachedAccountDetailBundle(loan.account_id, unit, "monthly"))?.depto_glance;
@@ -142,6 +143,7 @@ describe("mortgage group glance", () => {
       total += page.header.strip.total;
       costTotal += page.mortgage.balance.financing_cost.total;
       paymentRows += page.mortgage.payments.rows.length;
+      days.push(page.header.strip.day);
       paidPay += page.mortgage.payments.totals.paid_pay;
       // Each loan's rows are its page's, keyed by account, tagged with the loan.
       const mine = g.payments!.rows.filter((r) => r.loan?.account_id === loan.account_id);
@@ -156,6 +158,10 @@ describe("mortgage group glance", () => {
     expect(g.payments!.totals.paid_pay).toBeCloseTo(paidPay, 6);
     expect(g.balance).toBeCloseTo(balance, 6);
     expect(g.strip.total).toBeCloseTo(total, 6);
+    // The day: Σ the loans' when every loan has one, else unknown (never a partial sum).
+    if (days.some((d) => d == null)) expect(g.strip.day).toBeNull();
+    else expect(g.strip.day).toBeCloseTo(days.reduce<number>((a, d) => a + d!, 0), 6);
+    expect(g.payments_mixed_currencies).toBe(false);
     expect(g.rail.financing_cost.total).toBeCloseTo(costTotal, 6);
     expect(g.rail.financing_cost.years.reduce((a, y) => a + y.cost, 0)).toBeCloseTo(costTotal, 4);
     expect(g.rail.paid + g.rail.left).toBeCloseTo(g.rail.original, 4);

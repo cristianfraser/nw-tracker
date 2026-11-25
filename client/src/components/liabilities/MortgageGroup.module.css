@@ -1,7 +1,7 @@
 /* The mortgage group page (MortgageGroupPage.tsx): the depto header and balance band
    (Depto.module.css) over the group's sums, a «next payments» line and the loan list. The list is
    one rendering at every width: wide rows are subgrids of the list under a header; below 44rem of
-   its frame a loan is four lines (name + balance, the paid bar, rate + next cuota, payoff), each
+   its frame a loan is four lines (name + balance, the paid bar, next cuota + rate, payoff), each
    figure naming itself. */
 
 .next {
@@ -127,7 +127,7 @@
     grid-template-areas:
       "name bal"
       "paid paid"
-      "rate next"
+      "next rate"
       "payoff payoff";
     row-gap: 5px;
     column-gap: 10px;
@@ -146,13 +146,14 @@
     grid-area: paid;
   }
 
-  .cRate {
-    grid-area: rate;
+  /* The next cuota on the left, the rate on the right: the order they come in. */
+  .cNext {
+    grid-area: next;
     text-align: left;
   }
 
-  .cNext {
-    grid-area: next;
+  .cRate {
+    grid-area: rate;
   }
 
   .cPayoff {

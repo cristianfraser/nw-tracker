@@ -659,6 +659,10 @@
   },
   "liabilities": {
     "mortgageGroup": {
+      "paymentsMixedCurrencies": {
+        "en": "The loans are in different currencies, so their payments are not one list: each loan's page has its own.",
+        "es": "Los créditos están en monedas distintas, así que sus dividendos no forman una lista: cada crédito tiene la suya en su página."
+      },
       "loanCount": {
         "en": "{{count}} loans",
         "es": "{{count}} créditos"

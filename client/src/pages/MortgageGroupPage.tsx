@@ -58,9 +58,12 @@ export function MortgageGroupPage() {
     <main>
       <MortgageGroupHeader title={title} glance={glance} loading={loading} />
       <div className={cn("page-grid", depto.scope)}>
-        <PageGridTile id="mortgage-next">
-          <NextPayments glance={glance} loading={loading} />
-        </PageGridTile>
+        {/* No tile when no loan has a cuota ahead (an empty tile adds a row gap); a frame while loading. */}
+        {glance == null || glance.next != null ? (
+          <PageGridTile id="mortgage-next">
+            <NextPayments glance={glance} loading={loading} />
+          </PageGridTile>
+        ) : null}
         <PageGridTile id="mortgage-loans">
           <div className={loadableClass(loading, styles.frame)}>
             <MortgageLoanList glance={glance} />
@@ -96,7 +99,6 @@ function MortgageGroupHeader({
 function NextPayments({ glance, loading }: { glance: MortgageGroupGlanceDto | undefined; loading: boolean }) {
   const { t } = useTranslation();
   const next = glance?.next;
-  if (glance && next == null) return null;
   const unit = glance?.unit;
   return (
     <div className={loadableClass(loading, cn("mono", styles.next))}>
@@ -183,11 +185,13 @@ function BalanceBand({ glance, loading }: { glance: MortgageGroupGlanceDto | und
 function PaymentsTile({ slug, glance, loading }: { slug: string; glance: MortgageGroupGlanceDto | undefined; loading: boolean }) {
   const { t } = useTranslation();
   const payments = glance?.payments;
-  if (glance && payments == null) return null;
+  const mixed = glance?.payments_mixed_currencies === true;
+  if (glance && payments == null && !mixed) return null;
   return (
     <PageGridTile id="mortgage-payments">
       <h2>{t("accountDetail.depto.paymentsTitle")}</h2>
       <div className={loadableClass(loading)} aria-busy={loading || undefined}>
+        {mixed ? <p className="muted">{t("liabilities.mortgageGroup.paymentsMixedCurrencies")}</p> : null}
         {glance && payments ? (
           <DeptoPaymentsList
             scope={{ portfolioGroup: slug }}

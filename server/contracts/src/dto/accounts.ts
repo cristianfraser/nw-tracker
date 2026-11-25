@@ -1008,12 +1008,20 @@ export interface MortgageGroupGlanceDto {
   as_of: string;
   /** Σ today's balances. */
   balance: number;
-  /** Día / mes / año / total financing cost (Σ the loan pages' strips; negative = cost). */
+  /**
+   * Día / mes / año / total financing cost (Σ the loan pages' strips; negative = cost). `day` is
+   * null when any loan's is (a loan opened today has none), never a partial sum.
+   */
   strip: { day: number | null; month: number; year: number; total: number };
   next: MortgageGroupNextDto | null;
   loans: MortgageGroupLoanDto[];
-  /** Every loan's payments as one list; null when no loan has a ledger. */
+  /** Every loan's payments as one list; null when no loan has a ledger or `payments_mixed_currencies`. */
   payments: MortgageGroupPaymentsDto | null;
+  /**
+   * The loans differ in loan or payment currency, so their payments lists are not merged (each
+   * stays on its loan's page); the rest of the page is in the unit and unaffected.
+   */
+  payments_mixed_currencies: boolean;
   /** Mortgage accounts with no ledger row yet (listed, no figures). */
   loans_without_ledger: { account_id: number; name: string }[];
   /** The list's total row; null with one loan. */

@@ -224,6 +224,7 @@
   },
   "liabilities": {
     "mortgageGroup": {
+      "paymentsMixedCurrencies": "Los créditos están en monedas distintas, así que sus dividendos no forman una lista: cada crédito tiene la suya en su página.",
       "loanCount": "{{count}} créditos",
       "nextPayment": "próximo dividendo",
       "nextPayments": "próximos dividendos",

@@ -32,6 +32,8 @@ describe("resources", () => {
     expect(keysOf(resources.accountMovements(42, "usd"))).toEqual([
       queryKeys.accountDetail("42", "usd", "monthly"),
       queryKeys.accountFlowsAll(),
+      queryKeys.mortgageGroupGlanceAll(),
+      queryKeys.deptoPrepaymentsAll(),
       queryKeys.dashboard("usd"),
       queryKeys.dashboardNav("usd"),
     ]);
