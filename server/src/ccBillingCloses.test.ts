@@ -533,6 +533,26 @@ describe("credit-card close evidence", () => {
     expect(merchantsIn(bucketId("2026-10"))).toEqual(["CLINICA VITEST", "PENDIENTE VITEST"]);
   });
 
+  it("builds the glance on a close day whose next cycle holds more credit than purchases", () => {
+    vi.setSystemTime(new Date("2026-09-25T00:30:00Z")); // 21:30 Chile on the 24/09 close day
+    const restoreFx = pinFx("2026-08-20", "2026-10-15", 950);
+    onTestFinished(restoreFx);
+    const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
+    insertBucketLine(sept, "2026-09-03", "SUPERMERCADO VITEST", 10_000);
+    const oct = insertStatement({ source: "import:web-paste|open|2026-10", date: "20/10/2026", currency: "clp" });
+    insertBucketLine(oct, "2026-09-24", "CLINICA VITEST", 10_000);
+    insertBucketLine(oct, "2026-09-24", "NOTA DE CREDITO VITEST", -15_000);
+
+    const facturaciones = buildFacturaciones(accountId, ccInstallmentsDbApiPayload(accountId).months);
+    expect(facturaciones.find((f) => f.billing_month === "2026-10")).toMatchObject({ is_next_cycle: true });
+    const clp = buildCcGlanceForAccount(accountId, "clp")!.sides[0]!;
+    // The next cycle's −5.000 comes off September's purchases; no October purchases segment.
+    expect(clp.segments!.filter((s) => s.kind === "purchases").map((s) => [s.billing_month, s.amount])).toEqual([
+      ["2026-09", 5_000],
+    ]);
+    expect(clp.segments!.reduce((sum, x) => sum + x.amount, 0)).toBe(clp.used);
+  });
+
   it("routes each feed row by its own cycle, never before the feed's month, and refuses a row without a date", () => {
     // Santander: the next cycle starts ON the close day (the August statement prints 25/08 → 25/08).
     expect(
@@ -983,6 +1003,17 @@ describe("credit-card close evidence", () => {
     expect(repairMisplacedOpenWebPasteBuckets(accountId).lines_moved).toBe(1);
     expect(merchantsIn(bucketId("2026-09"))).toEqual(["SUPERMERCADO VITEST"]);
     expect(merchantsIn(bucketId("2026-10"))).toEqual(["TAXI VITEST"]);
+  });
+
+  it("keeps a hand paste in an open month whose close is only estimated, past the estimate", () => {
+    // September closed on its announced 24/09; no statement has announced October's close, so it is
+    // the 24th carried forward — an estimate the bank may overrun.
+    vi.setSystemTime(new Date("2026-10-25T15:00:00Z"));
+    expect(billingMonthForManualLedgerPurchase(accountId)).toBe("2026-10");
+    expect(closeEvidenceForBillingMonth(accountId, "2026-10").source).toBe("estimated");
+    const { statements } = listingStatements(accountId, CARD_GROUP, LAST4, [webLine("2026-10-25", "TARDE VITEST", 4_000)]);
+    expect(statements.map((st) => st.document)).toEqual(["import:web-paste|open|2026-10"]);
+    expect(billingMonthForLedgerPurchase(accountId, { purchase_date: "2026-10-25", source: "manual" })).toBe("2026-10");
   });
 
   it("settles the buckets against September's statement: billed lines go, unbilled ones move on", () => {

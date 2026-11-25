@@ -31,6 +31,7 @@ import {
 } from "./dashboardCcUpcomingPayments.js";
 import {
   facturadoForeignIn,
+  nextCycleOneShotNetClp,
   pendingCuotaPurchaseLines,
   type CcFacturacionRow,
   type CcPendingCuotaPurchase,
@@ -122,6 +123,11 @@ export type CcGlanceInputs = {
   /** The unbilled plan principal by billing month after the latest close (`installmentRemainderByFacturacionClp`). */
   remainderByMonth: readonly { billing_month: string; amount_clp: number }[];
   pendingCuotaPurchases: readonly CcPendingCuotaPurchase[];
+  /**
+   * The next cycle's net one-shot pesos per month (`nextCycleOneShotNetClp`, a Santander close
+   * day): never clamped, so the segments add up to the cupo frame's lines.
+   */
+  nextCycles: readonly { billing_month: string; net: number }[];
   /** The configured cupo per currency, the issuer's currencies first (`getCreditCardAccountConfig().cupo`). */
   cupos: readonly { currency: string; value: number | null }[];
   /** `qty` of `currency` in the billing currency at today's debt-side rate (credit at the asset side). */
@@ -184,16 +190,33 @@ export function ccGlanceFromInputs(inp: CcGlanceInputs): CcGlance | null {
   if (purchases !== 0) segAmounts.push({ kind: "purchases", billing_month: open.billing_month, amount: purchases });
   for (const m of cuotaMonths) segAmounts.push({ kind: "cuotas", billing_month: m.billing_month, amount: m.amount_clp });
   // On a Santander close day a purchase dated that day already bills the next cycle: its own
-  // purchases segment, right after the open facturación's segments (outside its bracket).
-  for (const next of inp.facturaciones.filter((f) => f.is_next_cycle)) {
-    const amount = (next.facturado ?? 0) - (next.cuota_a_pagar ?? 0);
-    if (amount === 0) continue;
-    let at = 0;
-    segAmounts.forEach((s, i) => {
-      if (s.kind === "previous" || s.billing_month === open.billing_month) at = i + 1;
-    });
-    segAmounts.splice(at, 0, { kind: "purchases", billing_month: next.billing_month, amount });
+  // purchases segment, right after the open facturación's segments (outside its bracket). A
+  // cycle whose credits outweigh its purchases lowers what is owed before it: the open cycle's
+  // purchases first, then the previous facturación's unpaid part.
+  for (const next of inp.nextCycles) {
+    if (next.net > 0) {
+      let at = 0;
+      segAmounts.forEach((s, i) => {
+        if (s.kind === "previous" || s.billing_month === open.billing_month) at = i + 1;
+      });
+      segAmounts.splice(at, 0, { kind: "purchases", billing_month: next.billing_month, amount: next.net });
+      continue;
+    }
+    let credit = -next.net;
+    for (const kind of ["purchases", "previous"] as const) {
+      const seg = segAmounts.find((s) => s.kind === kind && (kind === "previous" || s.billing_month === open.billing_month));
+      if (!seg || credit === 0) continue;
+      const used = Math.min(seg.amount, credit);
+      seg.amount -= used;
+      credit -= used;
+    }
+    if (credit !== 0) {
+      throw new Error(
+        `Account ${inp.accountId}: the next cycle ${next.billing_month}'s credits (${-next.net}) exceed the open and previous facturaciones`
+      );
+    }
   }
+  for (let i = segAmounts.length - 1; i >= 0; i--) if (segAmounts[i]!.amount === 0) segAmounts.splice(i, 1);
   const negative = segAmounts.find((s) => s.amount < 0);
   if (negative) {
     throw new Error(
@@ -312,6 +335,9 @@ export function buildCcGlanceForAccount(accountId: number, billingCurrency: stri
     owed,
     remainderByMonth: installmentRemainderByFacturacionClp(accountId, owed.last_closed_billing_month, today),
     pendingCuotaPurchases: pendingCuotaPurchaseLines(accountId),
+    nextCycles: facturaciones
+      .filter((f) => f.is_next_cycle)
+      .map((f) => ({ billing_month: f.billing_month, net: nextCycleOneShotNetClp(accountId, f.billing_month) })),
     cupos: getCreditCardAccountConfig(accountId).cupo,
     toBillingCurrency: billingCurrencyConverter(today, billingCurrency),
   });

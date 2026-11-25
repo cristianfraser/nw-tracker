@@ -96,6 +96,7 @@ function inputs(over: Partial<CcGlanceInputs>): CcGlanceInputs {
     owed: owedFrame(600_000 - 2_000_000, 50 - 300),
     remainderByMonth,
     pendingCuotaPurchases: [],
+    nextCycles: [],
     cupos: [
       { currency: "clp", value: 3_000_000 },
       { currency: "usd", value: 1_000 },
@@ -135,6 +136,47 @@ describe("ccGlanceFromInputs", () => {
     expect(usd).toMatchObject({ currency: "usd", used: 50, total: 1_000, free: 950, segments: null, bracket: null });
     expect(usd!.used_share).toBeCloseTo(0.05);
     expect(g.total_owed).toBe(1_250_000);
+  });
+
+  it("a close day: the next cycle's purchases are their own segment, outside the open bracket", () => {
+    // November closes today (2026-11-24); 10.000 of purchases dated today already sit in December.
+    const december = fact({ billing_month: "2026-12", close_date_iso: "2026-12-24", is_next_cycle: true, facturado: 210_000, cuota_a_pagar: 200_000 });
+    const g = ccGlanceFromInputs(
+      inputs({
+        facturaciones: [october, november, december],
+        owed: owedFrame(610_000 - 2_000_000, 50 - 300),
+        nextCycles: [{ billing_month: "2026-12", net: 10_000 }],
+      })
+    )!;
+    expect(g.open.billing_month).toBe("2026-11");
+    const clp = g.sides[0]!;
+    expect(clp.segments!.map((s) => [s.kind, s.billing_month, s.amount])).toEqual([
+      ["purchases", "2026-11", 600_000],
+      ["cuotas", "2026-11", 300_000],
+      ["purchases", "2026-12", 10_000],
+      ["cuotas", "2026-12", 200_000],
+      ["cuotas", "2027-01", 100_000],
+    ]);
+    expect(clp.used).toBe(1_210_000);
+    expect(clp.bracket!.share).toBeCloseTo(0.3);
+  });
+
+  it("a close day whose next cycle holds more credit than purchases lowers the open cycle's purchases", () => {
+    // A 15.000 nota beside 10.000 of purchases: the cycle nets −5.000 (its facturado clamps to the cuota).
+    const december = fact({ billing_month: "2026-12", close_date_iso: "2026-12-24", is_next_cycle: true, facturado: 200_000, cuota_a_pagar: 200_000 });
+    const g = ccGlanceFromInputs(
+      inputs({
+        facturaciones: [october, november, december],
+        owed: owedFrame(595_000 - 2_000_000, 50 - 300),
+        nextCycles: [{ billing_month: "2026-12", net: -5_000 }],
+      })
+    )!;
+    expect(g.sides[0]!.segments!.map((s) => [s.kind, s.billing_month, s.amount])).toEqual([
+      ["purchases", "2026-11", 595_000],
+      ["cuotas", "2026-11", 300_000],
+      ["cuotas", "2026-12", 200_000],
+      ["cuotas", "2027-01", 100_000],
+    ]);
   });
 
   it("previous facturación unpaid: a grey segment first, what it owes per currency and its pay-by", () => {

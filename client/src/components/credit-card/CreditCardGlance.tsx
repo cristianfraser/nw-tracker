@@ -101,10 +101,13 @@ function bracketOnWidened(
  */
 function SegmentedBar({
   side,
+  openBillingMonth,
   figure,
   onLabelLines,
 }: {
   side: CcGlanceSideDto;
+  /** The open facturación (`glance.open.billing_month`): its purchases read «compras», a later cycle's its month. */
+  openBillingMonth: string;
   figure: ReactNode;
   /** How many text lines the labels row took (2 with a segment label, 1 with only the free amount, 0 empty). */
   onLabelLines: (lines: LabelLines) => void;
@@ -112,9 +115,6 @@ function SegmentedBar({
   const { t } = useTranslation();
   const segments = side.segments ?? [];
   let cuotaIndex = 0;
-  // The open cycle's purchases come first; a later purchases segment (the next cycle's, on a close
-  // day) is named by its month.
-  const openPurchasesMonth = segments.find((s) => s.kind === "purchases")?.billing_month ?? null;
   const looks: SegmentLook[] = segments.map((s: CcGlanceSegmentDto) => {
     if (s.kind === "previous") {
       return {
@@ -129,7 +129,8 @@ function SegmentedBar({
         background: "var(--accent)",
         color: "var(--accent)",
         name:
-          s.billing_month === openPurchasesMonth
+          // The next cycle's purchases (on a close day) are named by their month.
+          s.billing_month === openBillingMonth
             ? t("accountDetail.creditCard.glance.purchases")
             : formatMonthShortLabel(s.billing_month),
         kindName: t("accountDetail.creditCard.glance.purchases"),
@@ -458,7 +459,7 @@ export function CreditCardGlance({ accountId, glance }: { accountId: number; gla
         </div>
       </div>
       <div className={styles.cupo}>
-        {main ? <SegmentedBar side={main} figure={<UsedOfTotal side={main} accent={false} />} onLabelLines={setLabelLines} /> : null}
+        {main ? <SegmentedBar side={main} openBillingMonth={glance.open.billing_month} figure={<UsedOfTotal side={main} accent={false} />} onLabelLines={setLabelLines} /> : null}
         {others.map((side) => (
           <Fragment key={side.currency}>
             <div className={styles.thinBar}>

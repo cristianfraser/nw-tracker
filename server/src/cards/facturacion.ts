@@ -616,7 +616,8 @@ export function targetBillingMonthForManualImports(
  * ({@link billingMonthContainingPurchase}), never earlier than the open facturación (a line pasted
  * late, a hand-entered plan bought long ago). On a Santander close day the open facturación is
  * still the closing one, while a purchase dated that day already bills the next — so this, not the
- * open month, is where a hand paste, a pasted line or a manual plan goes.
+ * open month, is where a hand paste, a pasted line or a manual plan goes. While the open month's
+ * close is only estimated it keeps everything entered: the real close may come later.
  */
 export function billingMonthForPurchaseFromOpen(
   accountId: number,
@@ -625,7 +626,13 @@ export function billingMonthForPurchaseFromOpen(
   statements: readonly CcStatementRow[] = listCcStatementsForAccount(accountId)
 ): string {
   const own = billingMonthContainingPurchase(accountId, purchaseIso, statements);
-  return ymCompare(own, openBillingMonth) > 0 ? own : openBillingMonth;
+  if (ymCompare(own, openBillingMonth) <= 0) return openBillingMonth;
+  // An open month whose close is only estimated (its statement has not announced it yet) may
+  // close later than the estimate: what is entered stays in it until the bank says otherwise.
+  if (closeEvidenceForBillingMonth(accountId, openBillingMonth, statements).source === "estimated") {
+    return openBillingMonth;
+  }
+  return own;
 }
 
 /** Card last4 for a credit-card master account (`credit_card_account_config.card_last4` —

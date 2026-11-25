@@ -11,7 +11,7 @@ import {
   type CcBillingMonthBalanceRow,
   type CcOwedNative,
 } from "./ccBillingBalances.js";
-import { debtCardLineAmountClp, debtFrameClp, debtFrameClpPerUnit, debtFrameRates, REAL_DEBT_FRAME_RATES, type DebtFrameRates } from "./ccExpenseAmountClp.js";
+import { cardLineNativeAmount, debtCardLineAmountClp, debtFrameClp, debtFrameClpPerUnit, debtFrameRates, REAL_DEBT_FRAME_RATES, type DebtFrameRates } from "./ccExpenseAmountClp.js";
 import {
   accountHasStatementsIn,
   cardForeignCurrencies,
@@ -19,7 +19,7 @@ import {
   type FacturacionForeignRateSource,
 } from "./ccFacturacionForeignRate.js";
 import { currencyMinorDigits, isHomeCurrency } from "./displayUnits.js";
-import { withCcOneShotScanCache, planCount } from "./cards/purchases.js";
+import { billedOneShotLines, withCcOneShotScanCache, planCount } from "./cards/purchases.js";
 import {
   primaryStatementOfSlot,
   statementSlotsByBillingMonth,
@@ -33,7 +33,7 @@ import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { parseOpenWebPasteBillingMonth } from "./cards/openWebPasteSource.js";
 import { linesOfStatement, openCycleCuotaPurchaseLines, type OpenCycleCuotaPurchaseLine } from "./cards/purchases.js";
-import { isCardPaymentLine } from "./ccPaymentLines.js";
+import { isCardDebtTransferLine, isCardPaymentLine } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { derivedPayByIso, resolveInstallmentPayByIso, statementLineDateIso } from "./ccInstallmentPayBy.js";
@@ -512,6 +512,27 @@ function cuotaPurchaseLinesClpByBucketMonth(accountId: number): Map<string, numb
     out.set(p.billing_month, (out.get(p.billing_month) ?? 0) + p.amount);
   }
   return out;
+}
+
+/**
+ * What a next-cycle facturación (a Santander close day's purchases, see `is_next_cycle`) adds to
+ * the card's peso debt beside its payments: its one-shot peso lines, credits netted and never
+ * clamped — the same lines `ccOwedByCurrency` adds — less its feed-typed cuota purchases, which
+ * the glance counts on their own. Payments and debt transfers stay out: they settle earlier
+ * facturaciones, by date.
+ */
+export function nextCycleOneShotNetClp(accountId: number, billingMonth: string): number {
+  let sum = 0;
+  withCcOneShotScanCache(() => {
+    for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {
+      for (const r of billedOneShotLines(accountId, stmtDate)) {
+        if (isCardPaymentLine(r) || isCardDebtTransferLine(r)) continue;
+        const native = cardLineNativeAmount({ ...r, installment_flag: 0 });
+        if (native && isHomeCurrency(native.currency)) sum += Math.round(native.amount);
+      }
+    }
+  });
+  return sum - (cuotaPurchaseLinesClpByBucketMonth(accountId).get(billingMonth) ?? 0);
 }
 
 /**
