@@ -21,6 +21,13 @@ import { requestNamesUsdAccount, transactionsRequestAccount } from "./checkingUs
 
 /** `additionalInfo` code the bank answers with on success. */
 const OK_CODE = "00";
+/**
+ * «NO EXISTEN DATOS»: the account had no movement inside the window the request asked for (about
+ * 41 days). First seen 2026-11-19, once the dormant account's last row (2026-10-09) left the
+ * window; treated as an error it failed the nightly step every night and held back every later
+ * capture, since all staged captures are decoded before any is sent.
+ */
+const NO_DATA_CODE = "BGE0071";
 /** The wording Santander files an incoming wire under; its observation carries the order number. */
 const INCOMING_WIRE_CODE = /^rec\.?\s*or\.?\s*de\s*pago$/i;
 const INCOMING_WIRE_OBSERVATION = /^REC\s+OR\s+DE\s+PAGO\s+(\d+)$/i;
@@ -96,8 +103,9 @@ export type DecodedUsdMovement = BankAccountMovement & {
 };
 
 /**
- * The movements of one Apigee transactions answer, oldest first. Throws on anything it cannot
- * account for: the bank's own error code, a shape change, a flag that disagrees with the sign,
+ * The movements of one Apigee transactions answer, oldest first; none when the bank answers that
+ * the window holds no data (`NO_DATA_CODE`). Throws on anything it cannot account for: any other
+ * error code of the bank, a shape change, a flag that disagrees with the sign,
  * or balances that do not chain from one row to the next (a row the answer left out).
  */
 export function decodeCurrentAccountTransactions(response: unknown): DecodedUsdMovement[] {
@@ -107,6 +115,15 @@ export function decodeCurrentAccountTransactions(response: unknown): DecodedUsdM
     const code = info.find((e) => isRecord(e) && e.key === "code-ms");
     const message = info.find((e) => isRecord(e) && e.key === "message-ms");
     const codeValue = isRecord(code) ? String(code.value ?? "") : null;
+    if (codeValue === NO_DATA_CODE) {
+      // The bank's answer for a window with no movements: the codes alone, no `movements` at all.
+      // A no-data answer that also lists rows contradicts itself.
+      const listed = response.movements;
+      if (listed !== undefined && !(Array.isArray(listed) && listed.length === 0)) {
+        throw new Error(`the bank answered code ${NO_DATA_CODE} (no data) and listed movements`);
+      }
+      return [];
+    }
     if (codeValue !== null && codeValue !== OK_CODE) {
       throw new Error(`the bank answered code ${codeValue}: ${isRecord(message) ? String(message.value ?? "") : "(no message)"}`);
     }

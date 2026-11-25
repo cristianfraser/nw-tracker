@@ -95,6 +95,18 @@ describe("decodeCurrentAccountTransactions", () => {
     expect(decodeCurrentAccountTransactions(response([]))).toEqual([]);
   });
 
+  it("reads the bank's no-data answer as a window with no movements", () => {
+    // The 2026-11-20 answer of the dormant account: the two codes and no `movements` key.
+    const noData = {
+      additionalInfo: [
+        { key: "code-ms", value: "BGE0071" },
+        { key: "message-ms", value: "NO EXISTEN DATOS" },
+      ],
+    };
+    expect(decodeCurrentAccountTransactions(noData)).toEqual([]);
+    expect(() => decodeCurrentAccountTransactions({ ...noData, movements: [WIRE_ROW] })).toThrow(/no data.*listed movements/);
+  });
+
   it("throws on the bank's own error code", () => {
     expect(() => decodeCurrentAccountTransactions(response([], "99"))).toThrow(/code 99: Servicio no disponible/);
   });
