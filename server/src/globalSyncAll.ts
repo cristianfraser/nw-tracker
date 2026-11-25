@@ -341,6 +341,14 @@ async function runAfpUno(
   );
 }
 
+/** Every series' stored value on a day, as one comparable string. */
+function fundUnitValuesOnDay(ymd: string): string {
+  const rows = db
+    .prepare(`SELECT series_key, unit_value FROM fund_unit_daily WHERE day = ? ORDER BY series_key`)
+    .all(ymd) as { series_key: string; unit_value: number }[];
+  return rows.map((r) => `${r.series_key}:${r.unit_value}`).join("|");
+}
+
 async function runFintual(
   cl: ReturnType<typeof chileWallClockNow>,
   state: GlobalSyncStateFile,
@@ -404,6 +412,23 @@ async function runFintual(
     const line = describeFintualGoalResolution(r);
     if (line) console.log(`sync: Fintual — ${line}`);
   }
+  // An older closure day than the one already applied (2026-11-24 23:20: 11-22 after 11-23) is
+  // a statement about that older day only: its cuotas are written under it, and neither the
+  // goals snapshot nor the publish / applied markers follow Fintual backwards — they feed the
+  // settled, stale and reconcile checks, which would then read a day that is behind the series.
+  // The source stays stale, so the poll keeps asking for the day it is waiting on.
+  const appliedPublishYmd = state.fintualLastAppliedPublishYmd;
+  if (appliedPublishYmd != null && publishYmd < appliedPublishYmd) {
+    const before = fundUnitValuesOnDay(publishYmd);
+    syncFintualFundUnitsFromResolutions(resolutions, publishYmd, syncDryRun);
+    const changed = fundUnitValuesOnDay(publishYmd) !== before;
+    if (changed && !syncDryRun) invalidateMarketDataAggregations();
+    console.log(
+      `sync: Fintual — closure day ${publishYmd} is older than the applied ${appliedPublishYmd}; its cuotas ${changed ? "changed and were rewritten" : "are unchanged"}, sync state kept.`
+    );
+    return { pending: true, polled: true };
+  }
+
   const appliedRows = resolutions.map((r) => r.row);
   const picked = pickFintualApplySnapshot(appliedRows, overrides, pollCl, state, publishYmd);
   const snap = picked.snap;

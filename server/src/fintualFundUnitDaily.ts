@@ -4,6 +4,7 @@ import { assertValuationCurrency } from "./valuationValue.js";
  */
 import { fundSeriesKeyForAccount, fundSeriesKeyFromImportNotes } from "./accountFundSeriesKey.js";
 import { db } from "./db.js";
+import { dbStateMemo } from "./dbStateMemo.js";
 import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 
 export { fundSeriesKeyFromImportNotes } from "./accountFundSeriesKey.js";
@@ -129,6 +130,22 @@ export function isFintualPublishedFundUnitNote(note: string | null | undefined):
   return FINTUAL_PUBLISHED_FUND_UNIT_NOTE_PREFIXES.some(
     (prefix) => note === prefix || note.startsWith(`${prefix}|`)
   );
+}
+
+/**
+ * The latest day on which `seriesKey` holds a published cuota (never a carry or a stand-in), or
+ * null when it holds none — a series Fintual does not publish (demo data, a generated fund).
+ */
+export function latestPublishedFintualCuotaDay(seriesKey: string): string | null {
+  return dbStateMemo("fintual_latest_published_cuota_day", seriesKey, () => {
+    const rows = db
+      .prepare(`SELECT day, note FROM fund_unit_daily WHERE series_key = ? ORDER BY day DESC`)
+      .iterate(seriesKey) as IterableIterator<{ day: string; note: string | null }>;
+    for (const r of rows) {
+      if (isFintualPublishedFundUnitNote(r.note)) return r.day;
+    }
+    return null;
+  });
 }
 
 /**

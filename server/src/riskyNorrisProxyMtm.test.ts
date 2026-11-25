@@ -11,7 +11,7 @@ import {
 } from "./watchlistComposite.js";
 import {
   fintualGlobalSyncSettledForChileDay,
-  inChileHolidayProxyHold,
+  inPendingCuotaProxyHold,
   riskyNorrisProxyAppliesOnYmd,
   riskyNorrisProxyCuotaForMtm,
   shouldUseRiskyNorrisProxyMtm,
@@ -19,6 +19,7 @@ import {
 import * as marketHolidays from "./marketHolidays.js";
 import * as nyseSession from "./nyseSession.js";
 import * as fintualPublishDate from "./fintualPublishDate.js";
+import * as fintualFundUnitDaily from "./fintualFundUnitDaily.js";
 import * as fintualCertV2Reconcile from "./fintualCertV2Reconcile.js";
 import * as globalSyncState from "./globalSyncState.js";
 import * as watchlistComposite from "./watchlistComposite.js";
@@ -26,6 +27,12 @@ import { newCacheDepNode, runInCacheDepNode } from "./cacheDependencies.js";
 
 const TEST_BUCKET = RISKY_NORRIS_PROXY_BUCKET;
 const COMPOSITION_DATE = "2026-06-20";
+const APV = "fintual_cert_apv_a";
+
+/** The series' latest published cuota day — what the pending-cuota hold reads. */
+function stubLatestPublished(ymd: string | null) {
+  vi.spyOn(fintualFundUnitDaily, "latestPublishedFintualCuotaDay").mockReturnValue(ymd);
+}
 
 const HOLDINGS: CompositeHolding[] = [
   { ticker: "SPY", weight: 0.6, synced_at: COMPOSITION_DATE },
@@ -81,13 +88,7 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
       (pollYmd: string) => pollYmd === settledYmd
     );
     vi.spyOn(fintualCertV2Reconcile, "fintualCertV2PollReconciled").mockReturnValue(true);
-  }
-
-  /** The historical predicate reads only the applied publish day of the sync state. */
-  function stubAppliedPublishYmd(appliedYmd: string | null) {
-    vi.spyOn(globalSyncState, "loadGlobalSyncState").mockReturnValue(
-      appliedYmd == null ? {} : { fintualLastAppliedPublishYmd: appliedYmd }
-    );
+    stubLatestPublished(settledYmd);
   }
 
   function stubNyClock(ymd: string, hour: number, minute = 0) {
@@ -117,27 +118,30 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     // An APV mark cached while the gate said no (pre-open, settled) must go with the next tick.
     vi.spyOn(watchlistComposite, "listCompositeConstituentTickers").mockReturnValue(["SPY", "VEA"]);
     stubSettled(true);
+    stubLatestPublished("2026-06-30");
     stubNyseTrading(true);
     const node = newCacheDepNode();
-    expect(runInCacheDepNode(node, () => shouldUseRiskyNorrisProxyMtm())).toBe(false);
+    expect(runInCacheDepNode(node, () => shouldUseRiskyNorrisProxyMtm(APV))).toBe(false);
     expect([...node.tickers].sort()).toEqual(["SPY", "VEA"]);
     expect(node.fx.has("USD_CLP")).toBe(true);
   });
 
   it("is false when NYSE is not trading today (and the last session was a Chile business day)", () => {
     stubSettled(false);
+    stubLatestPublished("2026-06-26"); // Friday's cuota is in
     stubNyseTrading(false);
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockReturnValue(true);
     vi.spyOn(marketHolidays, "priorNyseSessionYmd").mockReturnValue("2026-06-26");
-    expect(shouldUseRiskyNorrisProxyMtm(new Date())).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date())).toBe(false);
   });
 
   it("is false on a normal business day once the Fintual evening sync is settled", () => {
     stubSettled(true);
+    stubLatestPublished("2026-06-30");
     stubNyseTrading(true);
     stubToday("2026-06-30"); // Tue, business day
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockReturnValue(true);
-    expect(shouldUseRiskyNorrisProxyMtm(new Date())).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date())).toBe(false);
   });
 
   it("is true during the session on a Chile holiday — overrides the flat settled cuota", () => {
@@ -148,7 +152,7 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     stubToday("2026-06-29"); // Mon, Chile holiday
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation((ymd: string) => ymd !== "2026-06-29");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(false);
-    expect(shouldUseRiskyNorrisProxyMtm(new Date())).toBe(true);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date())).toBe(true);
   });
 
   it("does not hold before NYSE open on the holiday itself (last official cuota shown)", () => {
@@ -157,7 +161,7 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     stubToday("2026-06-29");
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation((ymd: string) => ymd !== "2026-06-29");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(true);
-    expect(shouldUseRiskyNorrisProxyMtm(new Date())).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date())).toBe(false);
   });
 
   // Chile runs ahead of New York (1h since Chile's 2026-09-06 spring-forward, 2h once New York
@@ -172,7 +176,7 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     expect(chileDate.chileWallClockAt(now).ymd).toBe("2026-09-11");
     expect(nyseSession.nyseWallClock(now).ymd).toBe("2026-09-10");
     expect(nyseSession.isBeforeNyseRegularOpen(now)).toBe(false);
-    expect(shouldUseRiskyNorrisProxyMtm(now)).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, now)).toBe(false);
   });
 
   it("keeps the official cuota in the Chile-midnight gap into a weekend (Friday session, settled)", () => {
@@ -184,18 +188,18 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     expect(chileDate.chileWallClockAt(now).ymd).toBe("2026-09-12");
     expect(marketHolidays.isChileBusinessDay("2026-09-12")).toBe(false);
     expect(nyseSession.nyseWallClock(now).ymd).toBe("2026-09-11");
-    expect(inChileHolidayProxyHold(now)).toBe(false);
-    expect(shouldUseRiskyNorrisProxyMtm(now)).toBe(false);
+    expect(inPendingCuotaProxyHold(APV, now)).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, now)).toBe(false);
   });
 
   it("re-arms at the next NYSE open, not at Chile midnight", () => {
     stubSettledForDay("2026-09-10");
     const preOpen = new Date("2026-09-11T13:29:00Z"); // Fri 09:29 New York
     expect(nyseSession.isBeforeNyseRegularOpen(preOpen)).toBe(true);
-    expect(shouldUseRiskyNorrisProxyMtm(preOpen)).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, preOpen)).toBe(false);
     const open = new Date("2026-09-11T13:30:00Z"); // Fri 09:30 New York: the 09-10 settle no longer covers the session
     expect(nyseSession.isBeforeNyseRegularOpen(open)).toBe(false);
-    expect(shouldUseRiskyNorrisProxyMtm(open)).toBe(true);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, open)).toBe(true);
   });
 
   it("keeps the holiday hold across the Chile-midnight gap while New York is on the holiday session", () => {
@@ -210,8 +214,8 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     expect(chileDate.chileWallClockAt(now).ymd).toBe("2026-12-09");
     expect(nyseSession.nyseWallClock(now).ymd).toBe("2026-12-08");
     expect(marketHolidays.isNyseTradingDay("2026-12-08")).toBe(true);
-    expect(inChileHolidayProxyHold(now)).toBe(true);
-    expect(shouldUseRiskyNorrisProxyMtm(now)).toBe(true);
+    expect(inPendingCuotaProxyHold(APV, now)).toBe(true);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, now)).toBe(true);
   });
 
   it("holds Friday's close through the weekend after a Friday holiday until Monday's cuota lands", () => {
@@ -232,27 +236,27 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
       ["2026-09-21T14:00:00Z", true], // Mon 11:00 Chile: live session
     ];
     for (const [iso, expected] of probes) {
-      expect(shouldUseRiskyNorrisProxyMtm(new Date(iso)), iso).toBe(expected);
+      expect(shouldUseRiskyNorrisProxyMtm(APV, new Date(iso)), iso).toBe(expected);
     }
     // Monday's evening poll lands the first cuota that saw Friday's session.
     stubSettledForDay("2026-09-21");
-    expect(inChileHolidayProxyHold(new Date("2026-09-21T05:00:00Z"))).toBe(false);
-    expect(shouldUseRiskyNorrisProxyMtm(new Date("2026-09-21T23:00:00Z"))).toBe(false); // Mon 20:00 Chile
+    expect(inPendingCuotaProxyHold(APV, new Date("2026-09-21T05:00:00Z"))).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date("2026-09-21T23:00:00Z"))).toBe(false); // Mon 20:00 Chile
   });
 
   it("values every day of a held block through the proxy until the catch-up cuota is applied (historical marks)", () => {
-    stubAppliedPublishYmd("2026-09-20"); // forward-published flat carries through Sunday; Monday not polled
-    expect(riskyNorrisProxyAppliesOnYmd("2026-09-17")).toBe(false); // Thu: business day, official bar
-    expect(riskyNorrisProxyAppliesOnYmd("2026-09-18")).toBe(true); // Fri holiday: flat carry ≠ session
-    expect(riskyNorrisProxyAppliesOnYmd("2026-09-19")).toBe(true); // Sat: reflects Friday's session
-    expect(riskyNorrisProxyAppliesOnYmd("2026-09-20")).toBe(true); // Sun
-    expect(riskyNorrisProxyAppliesOnYmd("2026-09-21")).toBe(false); // Mon: its own bar reflects Friday+Monday
+    stubLatestPublished("2026-09-20"); // forward-published flat carries through Sunday; Monday not polled
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-09-17")).toBe(false); // Thu: business day, official bar
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-09-18")).toBe(true); // Fri holiday: flat carry ≠ session
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-09-19")).toBe(true); // Sat: reflects Friday's session
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-09-20")).toBe(true); // Sun
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-09-21")).toBe(true); // Mon: its own cuota is not in either
     // A normal weekend after a Chile business day reads the official bars.
-    expect(riskyNorrisProxyAppliesOnYmd("2026-09-12")).toBe(false);
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-09-12")).toBe(false);
     // Monday's evening poll applies the catch-up cuota: the block reverts to the official bars.
-    stubAppliedPublishYmd("2026-09-21");
-    for (const ymd of ["2026-09-18", "2026-09-19", "2026-09-20"]) {
-      expect(riskyNorrisProxyAppliesOnYmd(ymd), ymd).toBe(false);
+    stubLatestPublished("2026-09-21");
+    for (const ymd of ["2026-09-18", "2026-09-19", "2026-09-20", "2026-09-21"]) {
+      expect(riskyNorrisProxyAppliesOnYmd(APV, ymd), ymd).toBe(false);
     }
   });
 
@@ -261,28 +265,53 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     // poll re-signed, so the live settled check (caught-up + reconcile) answered false for every
     // day it was asked about — and the per-date hold then re-valued 2025-05-01 (a Chile holiday
     // NYSE traded) through today's basket, whose SPYM had no 2025 bar: a 500 on every daily view.
-    stubAppliedPublishYmd("2026-09-20");
+    stubLatestPublished("2026-09-20");
     vi.spyOn(fintualPublishDate, "fintualPollDayCaughtUp").mockReturnValue(false);
     vi.spyOn(fintualCertV2Reconcile, "fintualCertV2PollReconciled").mockReturnValue(false);
     expect(fintualGlobalSyncSettledForChileDay("2025-05-02")).toBe(false); // the live check is unsettled…
-    expect(riskyNorrisProxyAppliesOnYmd("2025-05-01")).toBe(false); // …but a 2025 block is long applied
-    expect(riskyNorrisProxyAppliesOnYmd("2025-09-18")).toBe(false); // Thu holiday, NYSE open, catch-up Mon 09-22
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2025-05-01")).toBe(false); // …but a 2025 block is long applied
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2025-09-18")).toBe(false); // Thu holiday, NYSE open, catch-up Mon 09-22
     // The current block still holds: its catch-up cuota (Monday's) is not applied yet.
-    expect(riskyNorrisProxyAppliesOnYmd("2026-09-18")).toBe(true);
-    expect(riskyNorrisProxyAppliesOnYmd("2026-09-20")).toBe(true);
-    // A state with no applied publish day at all holds every block (nothing is in hand).
-    stubAppliedPublishYmd(null);
-    expect(riskyNorrisProxyAppliesOnYmd("2026-09-18")).toBe(true);
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-09-18")).toBe(true);
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-09-20")).toBe(true);
+    // A series with no published cuota at all is not one Fintual publishes: nothing is pending.
+    stubLatestPublished(null);
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-09-18")).toBe(false);
+  });
+
+  it("holds a business day's close past midnight and the next morning while its cuota is late", () => {
+    // 2026-11-24 (Tue, Chile business day; Chile UTC−3, New York EST UTC−5): Fintual published no
+    // cuota that evening. Wednesday 00:30 read Tuesday's proxy against Monday's official bar and
+    // showed Tuesday's move as Wednesday's; from New York midnight the proxy turned off and the
+    // move left the screen until the open.
+    stubSettledForDay("2026-11-23"); // Monday's cuota is the latest published
+    const probes: [string, boolean][] = [
+      ["2026-11-24T12:00:00Z", false], // Tue 09:00 Chile, pre-open: Monday's cuota
+      ["2026-11-24T15:00:00Z", true], // Tue 12:00 Chile: live session
+      ["2026-11-25T03:30:00Z", true], // Wed 00:30 Chile, New York still on Tuesday
+      ["2026-11-25T08:00:00Z", true], // Wed 05:00 Chile, pre-open: Tuesday's close is still held
+      ["2026-11-25T15:00:00Z", true], // Wed 12:00 Chile: live session
+    ];
+    for (const [iso, expected] of probes) {
+      expect(shouldUseRiskyNorrisProxyMtm(APV, new Date(iso)), iso).toBe(expected);
+    }
+    // Yesterday is valued through the same proxy, so Wednesday's day P/L is its own.
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-11-23")).toBe(false);
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-11-24")).toBe(true);
+    // Tuesday's cuota lands on Wednesday morning: Tuesday reads its official bar, pre-open too.
+    stubSettledForDay("2026-11-24");
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-11-24")).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date("2026-11-25T08:00:00Z"))).toBe(false);
   });
 
   it("does not hold on a normal weekend (Friday was a Chile business day)", () => {
     stubSettledForDay("2026-09-11");
-    expect(shouldUseRiskyNorrisProxyMtm(new Date("2026-09-12T18:00:00Z"))).toBe(false); // Sat 15:00 Chile
-    expect(shouldUseRiskyNorrisProxyMtm(new Date("2026-09-13T18:00:00Z"))).toBe(false); // Sun 15:00 Chile
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date("2026-09-12T18:00:00Z"))).toBe(false); // Sat 15:00 Chile
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date("2026-09-13T18:00:00Z"))).toBe(false); // Sun 15:00 Chile
   });
 });
 
-describe("inChileHolidayProxyHold", () => {
+describe("inPendingCuotaProxyHold", () => {
   function stubSettled(settled: boolean) {
     vi.spyOn(fintualPublishDate, "fintualPollDayCaughtUp").mockReturnValue(settled);
     vi.spyOn(fintualCertV2Reconcile, "fintualCertV2PollReconciled").mockReturnValue(settled);
@@ -301,6 +330,7 @@ describe("inChileHolidayProxyHold", () => {
 
   it("keeps the proxy pre-open the morning after a holiday (prior session was a Chile holiday)", () => {
     stubSettled(false);
+    stubLatestPublished("2026-06-29"); // the holiday's flat carry
     vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue("2026-06-30"); // Tue business
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation(
       (ymd: string) => ymd !== "2026-06-29"
@@ -308,21 +338,23 @@ describe("inChileHolidayProxyHold", () => {
     vi.spyOn(marketHolidays, "priorNyseSessionYmd").mockReturnValue("2026-06-29"); // Mon holiday
     stubNyYmd("2026-06-30");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(true);
-    expect(inChileHolidayProxyHold(new Date())).toBe(true);
+    expect(inPendingCuotaProxyHold(APV, new Date())).toBe(true);
   });
 
   it("does not hold pre-open on a normal morning (prior session was a business day)", () => {
     stubSettled(false);
+    stubLatestPublished("2026-06-29");
     vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue("2026-06-30");
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockReturnValue(true);
     vi.spyOn(marketHolidays, "priorNyseSessionYmd").mockReturnValue("2026-06-29");
     stubNyYmd("2026-06-30");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(true);
-    expect(inChileHolidayProxyHold(new Date())).toBe(false);
+    expect(inPendingCuotaProxyHold(APV, new Date())).toBe(false);
   });
 
-  it("stops holding once the post-holiday business day's sync has settled", () => {
+  it("stops holding once the post-holiday business day's cuota is published", () => {
     stubSettled(true);
+    stubLatestPublished("2026-06-30");
     vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue("2026-06-30");
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation(
       (ymd: string) => ymd !== "2026-06-29"
@@ -330,7 +362,7 @@ describe("inChileHolidayProxyHold", () => {
     vi.spyOn(marketHolidays, "priorNyseSessionYmd").mockReturnValue("2026-06-29");
     stubNyYmd("2026-06-30");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(true);
-    expect(inChileHolidayProxyHold(new Date())).toBe(false);
+    expect(inPendingCuotaProxyHold(APV, new Date())).toBe(false);
   });
 });
 

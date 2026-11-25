@@ -100,12 +100,12 @@ function fintualCertPositionMeta(
   });
 
   // Today: the live/held proxy window. A historical date: the per-date hold — a day whose
-  // official bar is a holiday flat carry the catch-up cuota has not yet superseded is valued
+  // session's cuota is not in the database yet (a holiday flat carry, a late cuota) is valued
   // through the same held proxy as today, so the day P/L inside a held block is 0.
   const proxyApplies =
     !goalsCuotaUnreconciled &&
     isRiskyNorrisProxyMtmSeries(seriesKey) &&
-    (asOfYmd === today ? shouldUseRiskyNorrisProxyMtm(now) : riskyNorrisProxyAppliesOnYmd(asOfYmd));
+    (asOfYmd === today ? shouldUseRiskyNorrisProxyMtm(seriesKey, now) : riskyNorrisProxyAppliesOnYmd(seriesKey, asOfYmd));
   if (proxyApplies) {
     px = riskyNorrisProxyCuotaForMtm(seriesKey, now, asOfYmd === today ? undefined : asOfYmd);
     pxDay = asOfYmd;

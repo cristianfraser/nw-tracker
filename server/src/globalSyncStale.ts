@@ -712,10 +712,11 @@ export function keepUserForcedStaleAfterSuccess(source: GlobalSyncSource, cl: Ch
 /**
  * Sources whose accounts dim at `cl`. Our own staleness (a missed or failed poll, a due sync not
  * yet run, a signature mismatch, a forced run) always dims. A publisher's lag dims only once the
- * value is OVERDUE — from the source's publish hour until it lands; before that the display holds
- * everything the publisher has (pre-open, the live proxy, the post-close hold), so nothing is
- * behind (2026-09-21). The window is wall-clock: a value still missing at midnight reads normal
- * again from 00:00 and dims from the publish hour the next day, until it is applied.
+ * value is OVERDUE — from the source's publish hour on the day it is expected, until it lands;
+ * before that the display holds everything the publisher has (pre-open, the live proxy, the
+ * post-close hold), so nothing is behind (2026-09-21). A value still missing at midnight stays
+ * overdue: an expected day before today dims at any hour (2026-11-25; until then the figures read
+ * normal again from 00:00 while Tuesday's cuota was still pending).
  */
 export function staleDimmingSources(rows: SyncSourceStatusRow[], cl: ChileWallClock): GlobalSyncSource[] {
   return rows
@@ -724,7 +725,7 @@ export function staleDimmingSources(rows: SyncSourceStatusRow[], cl: ChileWallCl
       if (r.publisher_lag == null) return true;
       const lag = SYNC_SOURCES[r.source].publisherLag;
       if (!lag) throw new Error(`sync: ${r.source} carries a publisher lag but declares no publish hour`);
-      return cl.hour >= lag.overdueHourChile;
+      return r.publisher_lag.expected_ymd < cl.ymd || cl.hour >= lag.overdueHourChile;
     })
     .map((r) => r.source);
 }
@@ -737,8 +738,8 @@ export function syncStatusPayload(): {
   /**
    * The sources whose accounts the dashboard dims right now (`staleDimmingSources`): every stale
    * source whose staleness is ours, plus a source waiting on its publisher once the value is
-   * overdue (from its publish hour). Before that hour a publisher-lag source holds everything the
-   * publisher has, so its accounts are not behind anything.
+   * overdue (from its publish hour on the expected day, and on every later day). Before that a
+   * publisher-lag source holds everything the publisher has, so its accounts are not behind anything.
    */
   stale_dimming: GlobalSyncSource[];
   sources: SyncSourceStatusRow[];

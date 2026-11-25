@@ -83,7 +83,7 @@ function validPrice(p: number | null | undefined): p is number {
 function fundPriceAt(seriesKey: string, ymd: string, isToday: boolean, now: Date): HoldingPrice | null {
   const proxyApplies =
     isRiskyNorrisProxyMtmSeries(seriesKey) &&
-    (isToday ? shouldUseRiskyNorrisProxyMtm(now) : riskyNorrisProxyAppliesOnYmd(ymd));
+    (isToday ? shouldUseRiskyNorrisProxyMtm(seriesKey, now) : riskyNorrisProxyAppliesOnYmd(seriesKey, ymd));
   if (proxyApplies) {
     // The basket proxy is built in pesos (the observado frame): only for a peso series.
     assertFundSeriesClp(seriesKey, "holdingPrices (Risky Norris proxy)");

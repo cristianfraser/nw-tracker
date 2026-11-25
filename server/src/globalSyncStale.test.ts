@@ -264,7 +264,7 @@ describe("fintualPublisherLag", () => {
     ).toBeNull();
   });
 
-  it("keeps the source in `stale` (the scheduler still polls) but out of the dimming list before 18:00", () => {
+  it("keeps a cuota still pending the morning after dimmed (overdue since the evening before)", () => {
     const rows = allSyncSourceStatuses(tuesdayMorning, waitingOnMonday, {
       bcentralConfigured: true,
       fintualLastCheckedAt: "2026-09-15T14:13:00Z",
@@ -274,11 +274,12 @@ describe("fintualPublisherLag", () => {
     expect(fintual?.stale).toBe(true);
     expect(fintual?.status).toBe("stale");
     expect(fintual?.publisher_lag?.expected_ymd).toBe("2026-09-14");
-    expect(staleDimmingSources(rows, tuesdayMorning)).not.toContain("fintual");
-
-    // Pre-open hours are normal too: the rule is the wall clock, not the live-proxy window.
-    const preOpen = wallClock("2026-09-15", 8);
-    expect(staleDimmingSources(rows, preOpen)).not.toContain("fintual");
+    // Monday's cuota was due Monday 18:00: Tuesday does not start normal at 00:00.
+    expect(staleDimmingSources(rows, wallClock("2026-09-15", 0, 5))).toContain("fintual");
+    expect(staleDimmingSources(rows, tuesdayMorning)).toContain("fintual");
+    // On the expected day itself nothing is overdue before the publish hour.
+    expect(staleDimmingSources(rows, wallClock("2026-09-14", 12))).not.toContain("fintual");
+    expect(staleDimmingSources(rows, wallClock("2026-09-14", 18))).toContain("fintual");
 
     const missedPollRows = allSyncSourceStatuses(tuesdayMorning, waitingOnMonday, {
       bcentralConfigured: true,
@@ -370,7 +371,7 @@ describe("afcCicPublisherLag", () => {
     expect(afcCicPublisherLag(mondayEvening, printed, { latestDbDay: "2026-10-04", nowMs })).toBeNull();
   });
 
-  it("dims an AFC publisher-lag source only from 18:00", () => {
+  it("dims an AFC publisher-lag source while its expected day is past, at any hour", () => {
     const row = {
       source: "afc_cic" as const,
       status: "stale" as const,
@@ -380,8 +381,8 @@ describe("afcCicPublisherLag", () => {
       next_sync_imminent: true,
       today_day_kind: "open" as const,
     };
-    expect(staleDimmingSources([row], wallClock("2026-10-05", 0, 3))).not.toContain("afc_cic");
-    expect(staleDimmingSources([row], wallClock("2026-10-05", 12))).not.toContain("afc_cic");
+    expect(staleDimmingSources([row], wallClock("2026-10-05", 0, 3))).toContain("afc_cic");
+    expect(staleDimmingSources([row], wallClock("2026-10-05", 12))).toContain("afc_cic");
     expect(staleDimmingSources([row], wallClock("2026-10-05", 18))).toContain("afc_cic");
     expect(staleDimmingSources([{ ...row, publisher_lag: null }], wallClock("2026-10-05", 0, 3))).toContain("afc_cic");
   });
