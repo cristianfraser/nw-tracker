@@ -158,9 +158,10 @@ export const queryKeys = {
   mortgageGroupGlance: (group: string, unit: DisplayUnit) =>
     withEntity(["mortgageGroupGlance", group, unit] as const, 2),
   mortgageGroupGlanceAll: () => ["mortgageGroupGlance"] as const,
-  /** Under the group's prefix, so what refreshes a group page reaches it. */
+  /** The Liabilities page; its own prefix, so a loan's or a card's writes refresh every unit of it. */
   liabilitiesGlance: (group: string, unit: DisplayUnit) =>
-    withEntity(["portfolioGroup", group, unit, "liabilitiesGlance"] as const, 2),
+    withEntity(["liabilitiesGlance", group, unit] as const, 2),
+  liabilitiesGlanceAll: () => ["liabilitiesGlance"] as const,
   groupPageShell: (portfolioGroup: string, unit: DisplayUnit) =>
     withEntity(["groupPageShell", portfolioGroup, unit] as const, 2),
   /** Prefix: every account page bundle (without `id`), or one account's in every unit. */
@@ -174,6 +175,7 @@ export const queryKeys = {
   /** The credit-card group page's lanes and upcoming payments (billing currency, no unit). */
   portfolioGroupCcLanes: (slug: string) =>
     withEntity(["portfolioGroupCcLanes", slug] as const, 2),
+  portfolioGroupCcLanesAll: () => ["portfolioGroupCcLanes"] as const,
   /** One loan's ledger on a mortgage group page (`loanAccountId` null: the group's one loan). */
   groupFlows: (slug: string, filtersKey: string) =>
     withEntity(["groupFlows", slug, filtersKey] as const, 2),

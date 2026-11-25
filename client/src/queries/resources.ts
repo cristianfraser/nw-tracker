@@ -44,13 +44,16 @@ export const resources = {
   /**
    * One account's page bundle (monthly) in a unit, and the blocks fetched apart: the
    * prepaid-vs-invested ones of every mortgage, since a property and its mortgage share one
-   * ledger and a payment is written or edited from either page, and the mortgage group page,
-   * which reads every loan's page.
+   * ledger and a payment is written or edited from either page, and the pages that read every
+   * loan's or card's page: the mortgage group, the card lanes (credit-card group and Liabilities)
+   * and the Liabilities page.
    */
   accountPage: (accountId: string | number, unit: DisplayUnit): Invalidation[] => [
     { queryKey: queryKeys.accountDetail(String(accountId), unit, "monthly") },
     { queryKey: queryKeys.deptoPrepaymentsAll() },
     { queryKey: queryKeys.mortgageGroupGlanceAll() },
+    { queryKey: queryKeys.liabilitiesGlanceAll() },
+    { queryKey: queryKeys.portfolioGroupCcLanesAll() },
   ],
   accountFlows: (): Invalidation[] => [{ queryKey: queryKeys.accountFlowsAll() }],
   accountValuations: (accountId: number | string): Invalidation[] => [
@@ -70,6 +73,8 @@ export const resources = {
     { queryKey: queryKeys.dashboardAll() },
     { queryKey: queryKeys.portfolioGroupAll() },
     { queryKey: queryKeys.mortgageGroupGlanceAll() },
+    { queryKey: queryKeys.liabilitiesGlanceAll() },
+    { queryKey: queryKeys.portfolioGroupCcLanesAll() },
     { queryKey: queryKeys.accountDetailAll() },
     { queryKey: queryKeys.accountMonthlyPerformanceAll() },
   ],
@@ -83,8 +88,9 @@ export const resources = {
   accountMovements: (accountId: string | number, unit: DisplayUnit): Invalidation[] => [
     { queryKey: queryKeys.accountDetail(String(accountId), unit, "monthly") },
     { queryKey: queryKeys.accountFlowsAll() },
-    // A mortgage payment edited or deleted from a loan's movements moves the mortgage group page.
+    // A movement on a loan's or a card's page moves the mortgage group and Liabilities pages.
     { queryKey: queryKeys.mortgageGroupGlanceAll() },
+    { queryKey: queryKeys.liabilitiesGlanceAll() },
     { queryKey: queryKeys.deptoPrepaymentsAll() },
     { queryKey: queryKeys.dashboard(unit) },
     { queryKey: queryKeys.dashboardNav(unit) },
