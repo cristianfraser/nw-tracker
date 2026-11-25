@@ -22,6 +22,7 @@
 }
 
 .surface-controls__set > button {
+  position: relative;
   padding: 0 0 1px;
   border: 0;
   border-bottom: 1px solid transparent;
@@ -29,6 +30,14 @@
   color: var(--muted);
   font: inherit;
   cursor: pointer;
+}
+
+/* A 24px-tall hit area around the ~13px text, as wide as the gap between buttons allows
+   (5px each side meets the neighbour's), without moving anything drawn. */
+.surface-controls__set > button::before {
+  content: "";
+  position: absolute;
+  inset: -6px -5px;
 }
 
 .surface-controls__set > button:hover {

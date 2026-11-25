@@ -12,7 +12,7 @@ const VIEW_LABEL_KEYS: Record<SurfaceCompositionView, string> = {
   map: "valueMap.viewMap",
 };
 
-/** Full period names: the buttons' hover titles. */
+/** Full period names: the buttons' hover titles and accessible names. */
 const PERIOD_LABEL_KEYS: Record<SurfacePeriod, string> = {
   day: "dashboard.daily",
   month: "dashboard.monthly",
@@ -98,6 +98,7 @@ export function SurfaceControls({
               className={p === period ? "is-on" : undefined}
               aria-pressed={p === period}
               title={periodKind === "return" ? undefined : t(PERIOD_LABEL_KEYS[p])}
+              aria-label={periodKind === "return" ? undefined : t(PERIOD_LABEL_KEYS[p])}
               onClick={() => onPeriodChange(p)}
             >
               {t((periodKind === "return" ? RETURN_PERIOD_LABEL_KEYS : PERIOD_SHORT_KEYS)[p])}
@@ -113,6 +114,8 @@ export function SurfaceControls({
               type="button"
               className={r === range ? "is-on" : undefined}
               aria-pressed={r === range}
+              title={t(`surfaceControls.rangeName.${r}`)}
+              aria-label={t(`surfaceControls.rangeName.${r}`)}
               onClick={() => onRangeChange(r)}
             >
               {t(`surfaceControls.shortRange.${r}`)}

@@ -3680,6 +3680,16 @@
       "5y": { "en": "5y", "es": "5a" },
       "10y": { "en": "10y", "es": "10a" },
       "total": { "en": "total", "es": "total" }
+    },
+    "rangeName": {
+      "30d": { "en": "Last 30 days", "es": "Últimos 30 días" },
+      "60d": { "en": "Last 60 days", "es": "Últimos 60 días" },
+      "90d": { "en": "Last 90 days", "es": "Últimos 90 días" },
+      "1y": { "en": "Last year", "es": "Último año" },
+      "3y": { "en": "Last 3 years", "es": "Últimos 3 años" },
+      "5y": { "en": "Last 5 years", "es": "Últimos 5 años" },
+      "10y": { "en": "Last 10 years", "es": "Últimos 10 años" },
+      "total": { "en": "Whole history", "es": "Todo el historial" }
     }
   },
   "periodReturns": {

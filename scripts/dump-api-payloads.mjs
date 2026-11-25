@@ -246,7 +246,7 @@ async function main() {
     await get(`/api/flows/overview${qs({ unit, installment_mode: "total" })}`);
     await get(`/api/flows/overview${qs({ unit, installment_mode: "split", days })}`);
     const spentBase = { unit, mode: "split", level: "category", exclude_big_groups: "" };
-    await get(`/api/flows/expenses/spent${qs({ ...spentBase, range: "6m" })}`);
+    await get(`/api/flows/expenses/spent${qs({ ...spentBase, range: "90d" })}`);
     await get(`/api/flows/expenses/spent${qs({ ...spentBase, range: "1y", mode: "total", include_pre_tax: 1 })}`);
     const summary = await get(`/api/flows/expenses/summary${qs({ unit })}`);
     await get(`/api/flows/expenses/financing-candidates${qs({ unit })}`);

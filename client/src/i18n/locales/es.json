@@ -1172,6 +1172,16 @@
       "5y": "5a",
       "10y": "10a",
       "total": "total"
+    },
+    "rangeName": {
+      "30d": "Últimos 30 días",
+      "60d": "Últimos 60 días",
+      "90d": "Últimos 90 días",
+      "1y": "Último año",
+      "3y": "Últimos 3 años",
+      "5y": "Últimos 5 años",
+      "10y": "Últimos 10 años",
+      "total": "Todo el historial"
     }
   },
   "periodReturns": {
