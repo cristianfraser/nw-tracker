@@ -416,26 +416,26 @@ describe("Amazon shipment and order mails", () => {
 
   it("reads each shipment layout's total and what shipped", () => {
     expect(
-      ship.decode(m('Shipped: "OXO Good Grips 3 Piece..."', "Your package was shipped! Order # \u00e2\u00ab114-1740488-6053012 Track package OXO Good Grips 3 Piece Silicone S... Quantity: 1 $ 20 86 Pan Two Quantity: 2 $ 3 00 Total $26.86 Keep shopping for $16.95")),
-    ).toMatchObject({ processor: "amazon", amount: 26.86, currency: "usd", order_ref: "114-1740488-6053012", concept: "OXO Good Grips 3 Piece Silicone S... × 1 · Pan Two × 2" });
+      ship.decode(m('Shipped: "Acme Kitchen Spatula..."', "Your package was shipped! Order # \u00e2\u00ab111-0000001-0000001 Track package Acme Kitchen Spatula Set Silico... Quantity: 1 $ 20 86 Bowl Two Quantity: 2 $ 3 00 Total $26.86 Keep shopping for $16.95")),
+    ).toMatchObject({ processor: "amazon", amount: 26.86, currency: "usd", order_ref: "111-0000001-0000001", concept: "Acme Kitchen Spatula Set Silico... × 1 · Bowl Two × 2" });
     expect(
-      ship.decode(m('Your Amazon.com order of "Layrite Natural Matte Cream..." and 1 more item has shipped!', "ON THE WAY Order #114-9735675-5002632 SHIP TO Camila SHIPMENT TOTAL $38.93 Return or replace")),
-    ).toMatchObject({ amount: 38.93, concept: "Layrite Natural Matte Cream... and 1 more item" });
-    expect(ship.decode(m("Your Amazon.com order #112-3580852-0243415 has shipped", "Order #112-3580852-0243415 SHIPMENT TOTAL $30.34"))).toMatchObject({ amount: 30.34, concept: null });
-    expect(ship.decode(m('Shipped: "Butchers Twine..."', "Order # 112-7026039-1170642 Track package Butchers Twine Quantity: 1 $ 6 99 Total $0.00"))).toBeNull();
+      ship.decode(m('Your Amazon.com order of "Acme Hair Paste Matte..." and 1 more item has shipped!', "ON THE WAY Order #111-0000002-0000002 SHIP TO Camila SHIPMENT TOTAL $38.93 Return or replace")),
+    ).toMatchObject({ amount: 38.93, concept: "Acme Hair Paste Matte... and 1 more item" });
+    expect(ship.decode(m("Your Amazon.com order #111-0000003-0000003 has shipped", "Order #111-0000003-0000003 SHIPMENT TOTAL $30.34"))).toMatchObject({ amount: 30.34, concept: null });
+    expect(ship.decode(m('Shipped: "Cotton String..."', "Order # 111-0000004-0000004 Track package Cotton String Quantity: 1 $ 6 99 Total $0.00"))).toBeNull();
     expect(ship.decode(m("Now arriving today: Your Amazon package will be delivered today.", "…"))).toBeNull();
-    expect(() => ship.decode(m("Your Amazon.com order #1 has shipped", "Order #112-3580852-0243415 nothing"))).toThrow(/shipment total/);
+    expect(() => ship.decode(m("Your Amazon.com order #1 has shipped", "Order #111-0000003-0000003 nothing"))).toThrow(/shipment total/);
   });
 
   it("reads an order confirmation's total and items, and skips the currency-converter ones", () => {
     expect(
-      order.decode(m('Ordered: "MORFY Portable Blanket..."', "Order # \u00e2\u00ab112-6739429-2553830 View or edit order MORFY Portable Blanket Warmer, Co... Quantity: 1 $ 79 99 Grand Total: $95.19")),
-    ).toMatchObject({ processor: "amazon_order", amount: 95.19, concept: "MORFY Portable Blanket Warmer, Co... × 1" });
+      order.decode(m('Ordered: "Acme Portable Heater..."', "Order # \u00e2\u00ab111-0000005-0000005 View or edit order Acme Portable Heater, Compact... Quantity: 1 $ 79 99 Grand Total: $95.19")),
+    ).toMatchObject({ processor: "amazon_order", amount: 95.19, concept: "Acme Portable Heater, Compact... × 1" });
     expect(
-      order.decode(m('Your Amazon.com order of "KES Bathroom Shelf Tempered..." and 1 more item.', "Ship to: Camila Santiago, Region Metropolitana Order # 114-1740488-6053012 View or manage order OXO Good Grips 3 Piece Sili... Qty : 1 Arriving: March 24 Ship to: Camila Santiago, Region Metropolitana Order # 114-1740488-6053012 View or manage order KES Bathroom Shelf Tempered... Qty : 1 Order Total: $72.10")),
-    ).toMatchObject({ amount: 72.1, concept: "OXO Good Grips 3 Piece Sili... × 1 · KES Bathroom Shelf Tempered... × 1" });
-    expect(order.decode(m("Amazon.com order of Clea (Alexandria Quartet).", "Order # 109-8207594-6525020 Order Total: CLP 18.413"))).toBeNull();
-    expect(order.decode(m('Your Amazon.com order of "Hygie Rinse..." and 2 more item(s) has been canceled.', "…"))).toBeNull();
-    expect(order.decode(m("Your Amazon.com Order #114-6110261-6152233", "…"))).toBeNull();
+      order.decode(m('Your Amazon.com order of "Acme Wall Shelf Glass..." and 1 more item.', "Ship to: Camila Santiago, Region Metropolitana Order # 111-0000001-0000001 View or manage order Acme Kitchen Spatula Set... Qty : 1 Arriving: March 24 Ship to: Camila Santiago, Region Metropolitana Order # 111-0000001-0000001 View or manage order Acme Wall Shelf Glass... Qty : 1 Order Total: $72.10")),
+    ).toMatchObject({ amount: 72.1, concept: "Acme Kitchen Spatula Set... × 1 · Acme Wall Shelf Glass... × 1" });
+    expect(order.decode(m("Amazon.com order of A Novel (Book Four).", "Order # 111-0000006-0000006 Order Total: CLP 18.413"))).toBeNull();
+    expect(order.decode(m('Your Amazon.com order of "Acme Mouthwash..." and 2 more item(s) has been canceled.', "…"))).toBeNull();
+    expect(order.decode(m("Your Amazon.com Order #111-0000007-0000007", "…"))).toBeNull();
   });
 });
