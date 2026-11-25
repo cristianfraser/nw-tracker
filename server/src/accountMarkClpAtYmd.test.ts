@@ -59,8 +59,35 @@ function paymentRow(): DeptoDividendosPaymentRow {
 
 let fixturePropertyId: number | null = null;
 let fixtureMortgageId: number | null = null;
+const fixtureUfDates: string[] = [];
+
+/**
+ * The base test database is generated once and its UF runs only some weeks past that day, while
+ * this fixture is dated from today: extend the UF from its last stored day through today (moving
+ * a little every day, as the synthetic market does), so today and the prior month-end each read
+ * their own UF however old the database is. Rows written here are removed in `afterAll`.
+ */
+function ensureUfThroughToday(): void {
+  const today = chileCalendarTodayYmd();
+  const last = db.prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date DESC LIMIT 1`).get() as
+    | { date: string; clp_per_uf: number }
+    | undefined;
+  if (!last) throw new Error("test database holds no UF");
+  const ins = db.prepare(`INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`);
+  let ymd = last.date;
+  let uf = last.clp_per_uf;
+  while (ymd < today) {
+    const d = new Date(`${ymd}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    ymd = d.toISOString().slice(0, 10);
+    uf = Math.round(uf * 1.0001 * 100) / 100;
+    ins.run(ymd, uf);
+    fixtureUfDates.push(ymd);
+  }
+}
 
 beforeAll(() => {
+  ensureUfThroughToday();
   // The Vitest person rents: it tracks no depto and no mortgage, so this file's fixture is
   // the only property/loan pair and every test below runs against it.
   const existing = db
@@ -190,6 +217,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  const delUf = db.prepare(`DELETE FROM uf_daily WHERE date = ?`);
+  for (const ymd of fixtureUfDates.splice(0)) delUf.run(ymd);
   for (const id of [fixturePropertyId, fixtureMortgageId]) {
     if (id == null) continue;
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(id);
