@@ -339,13 +339,10 @@
     "percentMode": {
       "retirementMonthly": "Monthly retirement %",
       "retirementYearly": "Annual retirement %",
-      "retirementDaily": "Daily retirement %",
       "brokerageMonthly": "Monthly brokerage %",
       "brokerageYearly": "Annual brokerage %",
-      "brokerageDaily": "Daily brokerage %",
       "combinedMonthly": "Monthly investments %",
       "combinedYearly": "Annual investments %",
-      "combinedDaily": "Daily investments %",
       "accumulated": "All-time total %"
     },
     "combinedMonthlyDelta": "Σ monthly Δ",

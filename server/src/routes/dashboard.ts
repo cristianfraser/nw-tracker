@@ -13,7 +13,6 @@ import { attachNetWorthAth } from "../netWorthAllTimeHigh.js";
 import {
   getDashboardValuationTimeseries,
 } from "../valuationTimeseries.js";
-import { buildInversionesPerfDaily } from "../inversionesPerfSeries.js";
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
 import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
@@ -131,20 +130,6 @@ app.get("/api/dashboard/overview-daily", asyncHandler(async (req, res) => {
     return;
   }
   res.json(getDashboardOverviewDaily(unit, days));
-}));
-
-/**
- * Home «Δ mensual y depósitos por clase» in day mode: retirement + brokerage day bars, deposits
- * and the YTD / accumulated levels anchored on the monthly inversiones consolidation.
- */
-app.get("/api/dashboard/inversiones-perf-daily", asyncHandler(async (req, res) => {
-  const unit = requestDisplayUnit(req.query, { surface: "/api/dashboard/inversiones-perf-daily" });
-  const days = req.query.days != null ? Number(req.query.days) : OVERVIEW_DAILY_DEFAULT_DAYS;
-  if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {
-    res.status(400).json({ error: `days must be 0..${DAILY_SERIES_MAX_DAYS}` });
-    return;
-  }
-  res.json(buildInversionesPerfDaily(unit, days));
 }));
 
 /**

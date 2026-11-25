@@ -1047,13 +1047,10 @@
     "percentMode": {
       "retirementMonthly": { "en": "Monthly retirement %", "es": "% retiro mensual" },
       "retirementYearly": { "en": "Annual retirement %", "es": "% retiro anual" },
-      "retirementDaily": { "en": "Daily retirement %", "es": "% retiro diario" },
       "brokerageMonthly": { "en": "Monthly brokerage %", "es": "% brokerage mensual" },
       "brokerageYearly": { "en": "Annual brokerage %", "es": "% brokerage anual" },
-      "brokerageDaily": { "en": "Daily brokerage %", "es": "% brokerage diario" },
       "combinedMonthly": { "en": "Monthly investments %", "es": "% inversiones mensual" },
       "combinedYearly": { "en": "Annual investments %", "es": "% inversiones anual" },
-      "combinedDaily": { "en": "Daily investments %", "es": "% inversiones diario" },
       "accumulated": { "en": "All-time total %", "es": "Total acumulado %" }
     },
     "combinedMonthlyDelta": {

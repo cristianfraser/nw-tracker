@@ -2,8 +2,8 @@
  * Performance proof for the valuation core steps 2–3 (docs/untangle-valuation-core.md): the
  * payloads value and P/L feed, in pesos, dollars and UF — every account's monthly rows, detail
  * bundle and 400-day daily series with perf levels; every group's period returns, valuation series
- * and 400-day daily series; the flows overview and deposits page; the card ledgers; the
- * inversiones day combo; every benchmark row. Each figure is computed in-process.
+ * and 400-day daily series; the flows overview and deposits page; the card ledgers; every
+ * benchmark row. Each figure is computed in-process.
  *
  *   npx tsx scripts/dump-valuation-perf.ts --db=/abs/copy.db --out=/abs/out.json [--at=2026-11-07T18:00]
  *
@@ -50,7 +50,6 @@ const { buildFlowsOverviewPayload } = await import("../src/flowsOverview.js");
 const { buildFlowsDepositsResponse } = await import("../src/flowsDeposits.js");
 const { creditCardInstallmentsResponse } = await import("../src/creditCardInstallments.js");
 const { creditCardGroupLedgerResponse } = await import("../src/creditCardGroupLedger.js");
-const { buildInversionesPerfDaily } = await import("../src/inversionesPerfSeries.js");
 const { listBenchmarks } = await import("../src/benchmarkLevels.js");
 const { benchmarkComparisonForAccount, benchmarkComparisonForGroup } = await import("../src/benchmarkComparison.js");
 const { groupHasPeriodReturns } = await import("../src/portfolioGroupTree.js");
@@ -140,9 +139,6 @@ out.flows = flows;
 out.cards = Object.fromEntries(await Promise.all(cards.map(async (id) => [id, await attempt(() => creditCardInstallmentsResponse(id))])));
 out.cardGroups = Object.fromEntries(
   await Promise.all(liabilityGroups.map(async (g) => [g, await attempt(() => creditCardGroupLedgerResponse(g))]))
-);
-out.inversiones = Object.fromEntries(
-  await Promise.all(UNITS.map(async (u) => [u, await attempt(() => buildInversionesPerfDaily(u, DAYS))]))
 );
 
 writeFileSync(outArg, JSON.stringify(out, null, 1));

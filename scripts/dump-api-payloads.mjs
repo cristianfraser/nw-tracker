@@ -239,7 +239,6 @@ async function main() {
     await get(`/api/dashboard/nav-snapshot${qs({ unit })}`);
     await get(`/api/dashboard/valuation-timeseries${qs({ unit })}`);
     await get(`/api/dashboard/overview-daily${qs({ unit, days })}`);
-    await get(`/api/dashboard/inversiones-perf-daily${qs({ unit, days })}`);
     await get(`/api/dashboard/latest-movements${qs({ limit: 15, unit })}`);
     await get(`/api/dashboard/latest-movements${qs({ limit: 100, unit })}`);
 

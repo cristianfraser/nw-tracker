@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
-import { buildInversionesPerfDaily, buildInversionesPerfMonthly } from "./inversionesPerfSeries.js";
+import { buildInversionesPerfMonthly } from "./inversionesPerfSeries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -49,12 +49,6 @@ describe("inversiones % view vs detalle and Rentabilidad", () => {
       same(last.ytd_pct, cells.get("ytd"), "YTD");
       same(last.accumulated_pct, cells.get("total"), "TOTAL");
       same(block.yearly_pct.at(-1)!.accumulated_pct, cells.get("total"), "TOTAL (yearly)");
-
-      const daily = buildInversionesPerfDaily(unit, 45);
-      const lastDay = daily.points.at(-1)!;
-      same(lastDay.ytd_pct, cells.get("ytd"), "YTD (daily)");
-      same(lastDay.accumulated_pct, cells.get("total"), "TOTAL (daily)");
-      same(lastDay.pct_combined, cells.get("d1"), "1D (daily)");
     }, 600_000);
   }
 });

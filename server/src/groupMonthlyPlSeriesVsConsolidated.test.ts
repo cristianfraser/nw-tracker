@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { getNetWorthNavGroupNode, type NavTreeNodeDto } from "./navTree.js";
 import { getGroupConsolidatedMonthlyRows } from "./groupConsolidatedTables.js";
 import { getGroupMonthlyPlSeries } from "./groupMonthlyPlSeries.js";
-import { buildInversionesPerfDaily, buildInversionesPerfMonthly } from "./inversionesPerfSeries.js";
+import { buildInversionesPerfMonthly } from "./inversionesPerfSeries.js";
 import { anchorDailyLevels } from "./dailyPerfLevels.js";
 import { buildInversionesConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { isResolvablePortfolioGroupSlug } from "./portfolioGroupTree.js";
-import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
@@ -86,36 +86,6 @@ describe("group monthly P/L series vs consolidated monthly table", () => {
         expect(Math.abs(pt.delta_brokerage - num(brkByMonth.get(mk)?.nominal_pl))).toBeLessThan(tol);
         expect(Math.abs(pt.delta_retirement + pt.delta_brokerage - pt.delta_combined)).toBeLessThan(tol);
       });
-    }, 600_000);
-
-    it(`home day combo meets the monthly chart at the window's first month-end (${unit})`, () => {
-      const rowsAsc = [...buildInversionesConsolidatedMonthly(unit)].reverse();
-      const tol = unit === "usd" ? 0.011 : 1.01;
-      for (const days of [45, 400]) {
-        const daily = buildInversionesPerfDaily(unit, days);
-        expect(daily.points.length).toBe(days);
-        const start = daily.points[0]!.as_of_date;
-        const startMk = monthKeyFromYmd(start);
-        const anchorDay = [...daily.points]
-          .filter((p) => p.as_of_date <= monthEndUtcYmd(startMk))
-          .at(-1)!;
-        const monthRow = rowsAsc.filter((r) => monthKeyFromYmd(r.as_of_date) <= startMk).at(-1);
-        expect(Math.abs(anchorDay.accumulated_earnings - num(monthRow?.cumulative_nominal_pl))).toBeLessThan(tol);
-        if (monthRow && monthKeyFromYmd(monthRow.as_of_date) === startMk) {
-          expect(Math.abs(anchorDay.ytd_combined - num(monthRow.ytd_nominal_pl))).toBeLessThan(tol);
-        }
-        for (let i = 0; i < daily.points.length; i++) {
-          const p = daily.points[i]!;
-          expect(Math.abs(p.delta_retirement + p.delta_brokerage - p.delta_combined)).toBeLessThan(1e-6);
-          if (i > 0) {
-            const prev = daily.points[i - 1]!;
-            expect(Math.abs(p.accumulated_earnings - prev.accumulated_earnings - p.delta_combined)).toBeLessThan(1e-6);
-            // YTD restarts on January 1st inside the window.
-            const expectYtd = p.as_of_date.endsWith("-01-01") ? p.delta_combined : prev.ytd_combined + p.delta_combined;
-            expect(Math.abs(p.ytd_combined - expectYtd)).toBeLessThan(1e-6);
-          }
-        }
-      }
     }, 600_000);
   }
 });

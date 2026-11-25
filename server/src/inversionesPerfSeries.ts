@@ -1,16 +1,12 @@
 /**
  * The home dashboard's «Δ mensual por clase (inversiones)» combo, built on the
- * server at both grains so the client only picks.
+ * server so the client only picks (monthly and yearly only; there is no day mode).
  *
  * Monthly: one point per month of the inversiones consolidation (`buildInversionesConsolidatedMonthly`,
  * Σ of the retirement and brokerage bucket consolidations): `delta_combined` / `ytd_combined` /
  * `accumulated_earnings` are its `nominal_pl` / `ytd_nominal_pl` / `cumulative_nominal_pl`, the
  * two class bars each bucket's own consolidated `nominal_pl`, so the chart equals the Inversiones
  * «Detalle por mes» table by construction.
- *
- * Daily: the two buckets' own daily series (the `pg:` builds their group pages share) give the
- * day bars; the running levels are anchored on the monthly consolidation so the day-mode area
- * equals the monthly chart at the end of the window's first month (`dailyPerfLevels.ts`).
  *
  * The % view (2026-11-05): every point also carries the period's return of each class and of
  * Inversiones, its YTD and its all-time return, all the scope's daily returns compounded
@@ -21,12 +17,8 @@
  */
 
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { runningGrowth } from "./perfKernel.js";
 import { chainDailyPct, withDailyChainedMonthPct, type DailyPctPoint } from "./periodPctDailyChain.js";
-import { dailyPerfLevelsFromMonthly } from "./dailyPerfLevels.js";
-import type { BucketDailySeries } from "./dailySeries.js";
 import { groupDailyPctPoints } from "./dailyPctSeries.js";
-import { resolveGroupDailySeries } from "./groupDailySeries.js";
 import {
   getGroupConsolidatedMonthlyPerfForRows,
   type ConsolidatedMonthlyPerfRow,
@@ -36,10 +28,10 @@ import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
 export type InversionesPerfPoint = {
   as_of_date: string;
-  /** Retirement / brokerage P/L of the period (each bucket's own consolidation or daily series). */
+  /** Retirement / brokerage P/L of the period (each bucket's own consolidation). */
   delta_retirement: number;
   delta_brokerage: number;
-  /** Σ Δ: the inversiones consolidation's `nominal_pl` (monthly) or the two day bars' sum (daily). */
+  /** Σ Δ: the inversiones consolidation's `nominal_pl`. */
   delta_combined: number;
   /** Running P/L of the calendar year through the period. */
   ytd_combined: number;
@@ -68,7 +60,6 @@ export type InversionesPerfMonthly = {
   points: InversionesPerfPoint[];
   yearly_pct: InversionesPerfYearPct[];
 };
-export type InversionesPerfDaily = { unit: TsUnit; days: number; points: InversionesPerfPoint[] };
 
 /** The full-history daily returns of retirement, brokerage and Inversiones (shared `pg:` builds). */
 function classDailyPoints(unit: TsUnit): {
@@ -149,61 +140,4 @@ export function buildInversionesPerfMonthly(unit: TsUnit): InversionesPerfMonthl
     };
   });
   return { unit, points, yearly_pct };
-}
-
-/** @heavy Two bucket daily series (shared with the group pages' day view) + the monthly anchor. */
-export function buildInversionesPerfDaily(unit: TsUnit, days: number): InversionesPerfDaily {
-  const ret = resolveGroupDailySeries("retirement", unit, days);
-  const brk = resolveGroupDailySeries("brokerage", unit, days);
-  const grid = (ret ?? brk)?.points.map((p) => p.as_of_date) ?? [];
-  for (const s of [ret, brk]) {
-    if (!s) continue;
-    const dates = s.points.map((p) => p.as_of_date);
-    if (dates.length !== grid.length || dates.some((d, i) => d !== grid[i])) {
-      throw new Error("buildInversionesPerfDaily: retirement and brokerage daily grids differ");
-    }
-  }
-  const plOf = (s: BucketDailySeries | null, i: number): number => finiteOr0(s?.points[i]?.pl);
-  const deltas = grid.map((_, i) => plOf(ret, i) + plOf(brk, i));
-
-  const monthlyAsc = [...buildInversionesConsolidatedMonthly(unit)].reverse();
-  const levels = dailyPerfLevelsFromMonthly(grid, deltas, monthlyAsc);
-  const daily = classDailyPoints(unit);
-  const pctByDate = (pts: readonly DailyPctPoint[]) => new Map(pts.map((p) => [p.as_of_date, p.pct]));
-  const dayRet = pctByDate(daily.retirement);
-  const dayBrk = pctByDate(daily.brokerage);
-  const dayComb = pctByDate(daily.combined);
-  // Running compounds over the full history, read at each grid day.
-  const ytdByDate = new Map<string, number | null>();
-  const accByDate = new Map<string, number | null>();
-  const combined = daily.combined;
-  const acc = runningGrowth(combined.map((p) => p.pct));
-  for (let i = 0; i < combined.length; ) {
-    // The YTD compound restarts each calendar year.
-    const year = combined[i]!.as_of_date.slice(0, 4);
-    let j = i;
-    while (j < combined.length && combined[j]!.as_of_date.slice(0, 4) === year) j += 1;
-    const ytd = runningGrowth(combined.slice(i, j).map((p) => p.pct));
-    for (let k = i; k < j; k++) {
-      const d = combined[k]!.as_of_date;
-      accByDate.set(d, acc[k]!.any ? acc[k]!.factor - 1 : null);
-      ytdByDate.set(d, ytd[k - i]!.any ? ytd[k - i]!.factor - 1 : null);
-    }
-    i = j;
-  }
-  const at = (m: Map<string, number | null>, d: string): number | null => m.get(d) ?? null;
-  const points: InversionesPerfPoint[] = grid.map((d, i) => ({
-    as_of_date: d,
-    delta_retirement: plOf(ret, i),
-    delta_brokerage: plOf(brk, i),
-    delta_combined: deltas[i]!,
-    ytd_combined: levels.ytd[i]!,
-    accumulated_earnings: levels.accumulated[i]!,
-    pct_retirement: at(dayRet, d),
-    pct_brokerage: at(dayBrk, d),
-    pct_combined: at(dayComb, d),
-    ytd_pct: at(ytdByDate, d),
-    accumulated_pct: at(accByDate, d),
-  }));
-  return { unit, days, points };
 }

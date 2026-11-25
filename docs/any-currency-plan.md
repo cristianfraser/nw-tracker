@@ -89,7 +89,7 @@ DTOs (`NavCardPeriodMetricsDto`, `NavCardAmountDto`, `NavPctCell`), the value ma
 ## Stream 3 — valuation, daily series, performance, Rentabilidad, benchmarks, export
 
 `/api/dashboard/valuation-timeseries`, `/api/daily-series`, `/api/dashboard/overview-daily`,
-`/inversiones-perf-daily`, the group consolidated tables / period returns / consolidated monthly /
+the group consolidated tables / period returns / consolidated monthly /
 performance monthly, the account detail bundle's series and performance, `/api/benchmark-comparison`,
 the XLSX export. Server: `valuationTimeseries.ts` (USD milestones keep `level_currency: "usd"` — a
 milestone's level is fixed in dollars and converts into the unit), `dailySeries.ts`,

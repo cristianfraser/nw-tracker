@@ -189,14 +189,6 @@ export const api = {
       `/api/dashboard/overview-daily?${q.toString()}`
     );
   },
-  inversionesPerfDaily: (unit: DisplayUnit, days: number) => {
-    const q = new URLSearchParams();
-    if (!isHomeCurrency(unit)) q.set("unit", unit);
-    q.set("days", String(days));
-    return j<import("./types").InversionesPerfDailyResponse>(
-      `/api/dashboard/inversiones-perf-daily?${q.toString()}`
-    );
-  },
   dailySeries: (
     unit: DisplayUnit,
     scope: { portfolioGroup?: string; accountId?: number },

@@ -57,16 +57,6 @@ export function useDashboardOverviewDaily(unit: DisplayUnit, days: number, enabl
   });
 }
 
-/** Home P/L + deposits combo in day mode (retirement + brokerage, levels anchored server-side). */
-export function useInversionesPerfDaily(unit: DisplayUnit, days: number, enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.inversionesPerfDaily(unit, days),
-    queryFn: () => api.inversionesPerfDaily(unit, days),
-    enabled,
-    ...displayUnitQueryBehaviorFor(queryKeys.inversionesPerfDaily(unit, days)),
-  });
-}
-
 /** Daily series for one group page or account (day period view: chart + detalle por día). */
 export function useDailySeries(
   scope: { portfolioGroup?: string; accountId?: number },

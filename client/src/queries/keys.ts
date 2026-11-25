@@ -57,8 +57,6 @@ export const queryKeys = {
   dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,
   dashboardOverviewDaily: (unit: DisplayUnit, days: number) =>
     withEntity(["dashboardOverviewDaily", unit, days] as const, 1),
-  inversionesPerfDaily: (unit: DisplayUnit, days: number) =>
-    withEntity(["inversionesPerfDaily", unit, days] as const, 1),
   /** `variant` "perf" carries the day-mode P/L levels (`perf_levels`); a separate entity, so
    * neither variant is ever held as the other's placeholder. */
   dailySeries: (scope: string, variant: "base" | "perf", unit: DisplayUnit, days: number) =>

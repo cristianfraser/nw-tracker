@@ -346,13 +346,6 @@ export interface InversionesPerfMonthlyResponse {
   yearly_pct: InversionesYearlyPctPoint[];
 }
 
-/** `GET /api/dashboard/inversiones-perf-daily` — the same combo, one point per day. */
-export interface InversionesPerfDailyResponse {
-  unit: DisplayUnitCode;
-  days: number;
-  points: InversionesPerfPoint[];
-}
-
 export type ConsolidatedMonthlyPerfRow = {
   as_of_date: string;
   closing_value: number;
