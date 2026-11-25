@@ -74,10 +74,13 @@
    the left, its date and amount on the right. One grid for every month (the months, their lists
    and lines are subgrids of it): the name with its leader, the date, a spacer, the amount — so
    the dates line up in one right-aligned column (their day numbers with them) and so do the
-   amounts. Past cards.css's 4-up columns (one class more than `.cards.cards--list`). */
+   amounts. Past cards.css's 4-up columns (one class more than `.cards.cards--list`). The end
+   padding is the expense row's ⋯ column and its gap (`CreditCardExpenseLinesTable.module.css`
+   `.row`), so these amounts end on the same line as «Últimos movimientos»' below them. */
 :global(.cards.cards--list).upcoming {
   --due-soon-blue: oklch(0.6 0.15 255);
   grid-template-columns: minmax(0, 1fr) auto 1.1rem auto;
+  padding-inline-end: calc(1.75rem + 0.6rem);
 }
 
 :global(.cards.cards--list).upcoming>.period,
