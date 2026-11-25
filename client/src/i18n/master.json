@@ -3988,10 +3988,6 @@
         "en": "Total · 1 card",
         "es": "Total · 1 tarjeta"
       },
-      "nextPayment": {
-        "en": "Next payment",
-        "es": "Próximo pago"
-      },
       "billedToPay": {
         "en": "{{month}} billed, to pay",
         "es": "{{month}} facturado, por pagar"

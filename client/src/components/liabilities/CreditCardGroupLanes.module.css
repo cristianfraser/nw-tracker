@@ -131,16 +131,6 @@
   min-width: 0;
 }
 
-.nextCol {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.next b {
-  color: var(--text);
-  font-weight: 600;
-}
-
 /* The head's date ticks, over the lanes' column. */
 .headTicks {
   position: relative;

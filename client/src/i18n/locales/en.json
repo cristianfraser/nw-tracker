@@ -1267,7 +1267,6 @@
       "colCupo": "Credit line",
       "total": "Total · {{n}} cards",
       "totalOne": "Total · 1 card",
-      "nextPayment": "Next payment",
       "billedToPay": "{{month}} billed, to pay",
       "paidMonth": "{{month}} paid",
       "overdue": "overdue",

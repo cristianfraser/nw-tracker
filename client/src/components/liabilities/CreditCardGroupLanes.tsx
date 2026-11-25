@@ -9,21 +9,8 @@ import type {
   CcGroupLaneCardDto,
   CcGroupLaneEventDto,
   CcGroupLanesResponse,
-  CcGroupNextPaymentDto,
 } from "../../types";
 import styles from "./CreditCardGroupLanes.module.css";
-
-/** A count of days as copy («today», «in N days», «N days ago»): the card glance's wording. */
-function useDaysLabel(): (days: number) => string {
-  const { t } = useTranslation();
-  return (days) => {
-    if (days === 0) return t("accountDetail.creditCard.glance.today");
-    if (days === 1) return t("accountDetail.creditCard.glance.inOneDay");
-    if (days > 1) return t("accountDetail.creditCard.glance.inDays", { n: days });
-    if (days === -1) return t("accountDetail.creditCard.glance.oneDayAgo");
-    return t("accountDetail.creditCard.glance.daysAgo", { n: -days });
-  };
-}
 
 /** Owed per currency: the billing currency plain, the others in the accent colour after « + ». */
 function OwedSplit({ owed, billing }: { owed: readonly CcGlanceAmountDto[]; billing: string }) {
@@ -75,33 +62,6 @@ function CupoCell({ cupo, billing, withTotal }: { cupo: CcGroupLaneCardDto["cupo
   );
 }
 
-/** «Next payment: <card> $X by YYYY-MM-DD · in N days», the estimate marked «≈». */
-function NextPaymentLine({
-  next,
-  cardName,
-  billing,
-}: {
-  next: CcGroupNextPaymentDto;
-  cardName: string;
-  billing: string;
-}) {
-  const { t } = useTranslation();
-  const daysLabel = useDaysLabel();
-  return (
-    <span className={styles.next}>
-      {t("groupPage.creditCardLanes.nextPayment")}: <b>{cardName}</b>{" "}
-      <span className="mono" title={next.estimate ? t("groupPage.creditCardLanes.estimateHint") : undefined}>
-        {next.estimate ? "≈ " : ""}
-        {formatMoney({ value: next.amount, currency: billing })}
-      </span>{" "}
-      · {t("accountDetail.creditCard.glance.payBy")} <b className="mono">{next.pay_by_iso}</b> ·{" "}
-      <span className={next.days < 0 ? styles.overdue : undefined}>
-        {next.days < 0 ? t("groupPage.creditCardLanes.overdue") : daysLabel(next.days)}
-      </span>
-    </span>
-  );
-}
-
 const BLANK = "\u00a0";
 
 /** Where a label sits against its dot: centred, or held inside the lane at either edge. */
@@ -127,14 +87,11 @@ function Lane({
 }) {
   const { t } = useTranslation();
   const color = `rgb(${card.color_rgb})`;
-  let prevShare = -1;
-  let prevTier = 1;
-  const placed = card.events.map((e) => {
-    const tier = e.share - prevShare < 0.16 && prevTier === 0 ? 1 : 0;
-    prevShare = e.share;
-    prevTier = tier;
-    return { e, tier };
-  });
+  const placed: { e: CcGroupLaneEventDto; tier: 0 | 1 }[] = [];
+  for (const e of card.events) {
+    const prev = placed[placed.length - 1];
+    placed.push({ e, tier: prev != null && prev.tier === 0 && e.share - prev.e.share < 0.16 ? 1 : 0 });
+  }
   const kindLabel = (e: CcGroupLaneEventDto) =>
     e.kind === "close"
       ? t("accountDetail.creditCard.glance.closes")
@@ -184,9 +141,6 @@ export function CreditCardGroupLanes({ data, loading }: { data: CcGroupLanesResp
   const { t } = useTranslation();
   const billing = data.billing_currency;
   const n = data.cards.length;
-  const nextCard = data.total.next_payment
-    ? data.cards.find((c) => c.account_id === data.total.next_payment!.account_id)
-    : undefined;
   if (n === 0 && !loading) return <p className="muted">{t("groupPage.creditCardLanes.noCards")}</p>;
   return (
     <div className={styles.frame}>
@@ -219,11 +173,6 @@ export function CreditCardGroupLanes({ data, loading }: { data: CcGroupLanesResp
           </span>
           {n === 0 ? <span className={styles.owed}>{BLANK}</span> : <OwedCell owedTotal={data.total.owed_total} owed={data.total.owed} billing={billing} />}
           {n === 0 ? <span className={styles.cupo}>{BLANK}</span> : <CupoCell cupo={data.total.cupo} billing={billing} withTotal />}
-          <span className={cn(styles.laneCol, styles.nextCol)}>
-            {data.total.next_payment && nextCard ? (
-              <NextPaymentLine next={data.total.next_payment} cardName={nextCard.name} billing={billing} />
-            ) : null}
-          </span>
         </div>
 
         {data.cards.map((card) => (
