@@ -43,9 +43,9 @@ import { DASHBOARD_COLD_STRIP } from "../coldPageShape";
 import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import {
-  MONTH_YEAR_RANGE_OPTIONS,
+  LONG_RANGE_OPTIONS,
   monthYearSurfacePeriod,
-  monthYearSurfaceRange,
+  longSurfaceRange,
   useSurfaceAreaMode,
   useSurfaceCompositionView,
   useSurfacePercentMode,
@@ -223,16 +223,17 @@ export function DashboardPage() {
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const overviewIsDaily = overviewPrefs.period === "day";
+  const overviewRange = longSurfaceRange(overviewPrefs.range, "3y");
   // Month and year only: a stored «day» (from when the chart offered it) reads as month.
   const combosPeriod = monthYearSurfacePeriod(combosPrefs.period);
-  const combosRange = monthYearSurfaceRange(combosPrefs.range, "3y");
+  const combosRange = longSurfaceRange(combosPrefs.range, "3y");
   const combosIsYearly = combosPeriod === "year";
   const isYearly = combosIsYearly;
 
   // Day view: the net-worth chart swaps to the daily series (overview-daily fetch).
   const overviewDaily = useDashboardOverviewDaily(
     displayUnit,
-    timeRangeToDays(overviewPrefs.range),
+    timeRangeToDays(overviewRange),
     overviewIsDaily
   );
   const overviewDailyData = overviewDaily.data;
@@ -393,7 +394,7 @@ export function DashboardPage() {
       onPeriodChange={combosPrefs.setPeriod}
       periodOptions={["month", "year"]}
       range={combosRange}
-      rangeOptions={MONTH_YEAR_RANGE_OPTIONS}
+      rangeOptions={LONG_RANGE_OPTIONS}
       onRangeChange={combosPrefs.setRange}
     />
   );
@@ -462,7 +463,7 @@ export function DashboardPage() {
           xAxisGranularity={
             overviewIsDaily ? "day" : overviewPrefs.period === "year" ? "year" : "month"
           }
-          timeRange={overviewPrefs.range}
+          timeRange={overviewRange}
           athMarker={
             overviewIsDaily
               ? dailyOverviewBlock
@@ -476,8 +477,9 @@ export function DashboardPage() {
             <SurfaceControls
               period={overviewPrefs.period}
               onPeriodChange={overviewPrefs.setPeriod}
-              range={overviewPrefs.range}
+              range={overviewRange}
               onRangeChange={overviewPrefs.setRange}
+              rangeOptions={LONG_RANGE_OPTIONS}
             />
           }
           loading={valuationChartsLoading}

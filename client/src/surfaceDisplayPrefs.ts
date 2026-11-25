@@ -52,15 +52,18 @@ export function monthYearSurfacePeriod(period: SurfacePeriod): "month" | "year" 
   return period === "year" ? "year" : "month";
 }
 
-/** The Rangos an M/Y-only chart offers: a day window would leave it one or two bars. */
-export const MONTH_YEAR_RANGE_OPTIONS: readonly TimeRange[] = ["1y", "3y", "5y", "10y", "total"];
+/**
+ * The Rangos of a chart that offers no day windows (a year and up): the M/Y-only charts, where a
+ * day window would leave one or two bars, and the home net-worth chart.
+ */
+export const LONG_RANGE_OPTIONS: readonly TimeRange[] = ["1y", "3y", "5y", "10y", "total"];
 
 /**
- * An M/Y-only chart's Rango: a stored day window (written while the chart still had Diario)
- * reads as the surface's default; like {@link monthYearSurfacePeriod}, the stored value is left as is.
+ * Such a chart's Rango: a stored day window (written while the chart still offered one) reads as
+ * the surface's default; like {@link monthYearSurfacePeriod}, the stored value is left as is.
  */
-export function monthYearSurfaceRange(range: TimeRange, defaultRange: TimeRange): TimeRange {
-  return MONTH_YEAR_RANGE_OPTIONS.includes(range) ? range : defaultRange;
+export function longSurfaceRange(range: TimeRange, defaultRange: TimeRange): TimeRange {
+  return LONG_RANGE_OPTIONS.includes(range) ? range : defaultRange;
 }
 
 export function parseSurfacePeriod(raw: unknown): SurfacePeriod | null {

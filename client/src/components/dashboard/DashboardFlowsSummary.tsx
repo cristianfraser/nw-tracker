@@ -13,9 +13,9 @@ import { useTranslation } from "../../i18n";
 import { useFlowsOverview } from "../../queries/hooks";
 import type { DisplayUnit } from "../../queries/keys";
 import {
-  MONTH_YEAR_RANGE_OPTIONS,
+  LONG_RANGE_OPTIONS,
   monthYearSurfacePeriod,
-  monthYearSurfaceRange,
+  longSurfaceRange,
   useSurfacePrefs,
 } from "../../surfaceDisplayPrefs";
 import { clipMonthsThenRollup } from "../../timeRange";
@@ -178,7 +178,7 @@ export function DashboardFlowsChart({
   const prefs = useSurfacePrefs("dashboard.flows", "month", "1y");
   // Month and year only: a stored «day» (from when the chart offered it) reads as month.
   const granularity = monthYearSurfacePeriod(prefs.period);
-  const range = monthYearSurfaceRange(prefs.range, "1y");
+  const range = longSurfaceRange(prefs.range, "1y");
   const { installmentMode } = useCcInstallmentGastosMode();
   const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
   const data = overview.data;
@@ -218,7 +218,7 @@ export function DashboardFlowsChart({
             onPeriodChange={prefs.setPeriod}
             periodOptions={["month", "year"]}
             range={range}
-            rangeOptions={MONTH_YEAR_RANGE_OPTIONS}
+            rangeOptions={LONG_RANGE_OPTIONS}
             onRangeChange={prefs.setRange}
           />
         }
