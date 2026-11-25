@@ -9,6 +9,7 @@ import { mortgageLedgerRowDto } from "../mortgageLedgerDto.js";
 import { buildMortgageUfReminder } from "../mortgageUfReminder.js";
 import { writeHandler } from "../inputError.js";
 import { buildMortgageGroupGlance, mortgageGroupPrepayBlock } from "../mortgageGroupGlance.js";
+import { buildLiabilitiesGlance } from "../liabilitiesGlance.js";
 import { requestDisplayUnit } from "../displayUnits.js";
 import { timeHeavyAsync } from "../heavyWork.js";
 import { accountIdFromReq, asyncHandler } from "./shared.js";
@@ -27,6 +28,18 @@ app.get("/api/portfolio-groups/:slug/mortgage-glance", asyncHandler(async (req, 
   const payload = await timeHeavyAsync(`mortgage.group_glance ${slug} ${unit}`, () => buildMortgageGroupGlance(slug, unit));
   if (!payload) {
     res.status(404).json({ error: "not a mortgage group" });
+    return;
+  }
+  res.json(payload);
+}));
+
+// The Liabilities page (`liabilitiesGlance.ts`): the card and mortgage groups' totals in `unit`.
+app.get("/api/portfolio-groups/:slug/liabilities-glance", asyncHandler(async (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  const unit = requestDisplayUnit(req.query, { surface: "/api/portfolio-groups/:slug/liabilities-glance" });
+  const payload = await timeHeavyAsync(`liabilities.glance ${slug} ${unit}`, () => buildLiabilitiesGlance(slug, unit));
+  if (!payload) {
+    res.status(404).json({ error: "not the liabilities root" });
     return;
   }
   res.json(payload);

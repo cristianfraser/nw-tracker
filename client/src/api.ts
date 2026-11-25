@@ -230,12 +230,6 @@ export const api = {
     j<import("./types").CcGroupLanesResponse>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/cc-lanes`
     ),
-  portfolioGroupMortgageLedger: (slug: string, loanAccountId: number | null) =>
-    j<import("./types").PortfolioGroupMortgageLedgerResponse>(
-      `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger${
-        loanAccountId != null ? `?account_id=${loanAccountId}` : ""
-      }`
-    ),
   /** The mortgage group page (`mortgageGroupGlance.ts`), every sum in `unit`. */
   mortgageGroupGlance: (slug: string, unit: DisplayUnit) => {
     const q = new URLSearchParams();
@@ -243,6 +237,15 @@ export const api = {
     const qs = q.toString();
     return j<import("./types").MortgageGroupGlanceDto>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-glance${qs ? `?${qs}` : ""}`
+    );
+  },
+  /** The Liabilities page (`liabilitiesGlance.ts`): its head and upcoming payments, in `unit`. */
+  liabilitiesGlance: (slug: string, unit: DisplayUnit) => {
+    const q = new URLSearchParams();
+    if (!isHomeCurrency(unit)) q.set("unit", unit);
+    const qs = q.toString();
+    return j<import("./types").LiabilitiesGlanceDto>(
+      `/api/portfolio-groups/${encodeURIComponent(slug)}/liabilities-glance${qs ? `?${qs}` : ""}`
     );
   },
   creditCardConfig: (id: string | number) =>

@@ -690,6 +690,26 @@ function automaticRecurringDto(o: AutomaticRecurringOccurrence): UpcomingPayment
 }
 
 /**
+ * Each loan's cuotas as «Próximos pagos» lists them (the same items, horizon and conversion into
+ * `unit`), by loan: the Liabilities page's upcoming payments read the mortgage from here.
+ */
+export function mortgageUpcomingMonthsByLoan(
+  todayYmd: string,
+  unit: CurrencyCode
+): { loanAccountId: number; months: UpcomingPaymentsMonthInUnit[] }[] {
+  const horizonEnd = addCalendarMonths(todayYmd.slice(0, 7), UPCOMING_PAYMENTS_HORIZON_MONTHS - 1);
+  const uf = ufProjector();
+  return mortgageInputs(todayYmd).map((input) => ({
+    loanAccountId: input.loanAccountId,
+    months: upcomingMonthsInUnit(
+      groupUpcomingByMonth(mortgageUpcomingItems(input, todayYmd, horizonEnd, uf.ufOn), todayYmd),
+      unit,
+      todayYmd
+    ),
+  }));
+}
+
+/**
  * The dashboard's «Próximos pagos»: every source's items, grouped by pay month within the horizon.
  * Each amount is a money value in the currency the bill states; `unit` adds each one converted
  * (`*_in_unit`, rounded to the unit's smallest coin).

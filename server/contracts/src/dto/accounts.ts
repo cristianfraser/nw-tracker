@@ -950,6 +950,55 @@ export interface MortgageGroupChartDto {
   prepagos: { date: string; account_id: number; step: number }[];
 }
 
+/** One debt's payment in a month of the Liabilities page's «Upcoming payments», in the payload's unit. */
+export interface LiabilitiesUpcomingPartDto {
+  kind: "card" | "mortgage";
+  account_id: number;
+  name: string;
+  color_rgb: string;
+  /** A card: its payments of the month (bill and cuotas); a loan: its cuota's minimum. */
+  amount: number;
+  /** A loan's maximum cuota; null for a card. */
+  amount_max: number | null;
+  /** A card's open bill so far (not yet billed); a loan's projected cuota. */
+  estimate: boolean;
+}
+
+/** A pay month of the Liabilities page: every card and loan payment due in it. */
+export interface LiabilitiesUpcomingMonthDto {
+  month: string;
+  /** Σ amounts (each loan at its minimum). */
+  total: number;
+  /** Σ with each loan at its maximum; null when no loan pays in the month. */
+  total_max: number | null;
+  /** Loans first, then cards, each in its section's order. */
+  parts: LiabilitiesUpcomingPartDto[];
+}
+
+/**
+ * `GET /api/portfolio-groups/liabilities/liabilities-glance?unit=` (`liabilitiesGlance.ts`): the Liabilities page's head and
+ * «Upcoming payments», built from the credit-card group's lanes and the mortgage group's glance so
+ * its figures are those two pages'. Every figure is in `unit`.
+ */
+export interface LiabilitiesGlanceDto {
+  unit: DisplayUnitCode;
+  as_of: string;
+  /** Σ owed: the cards' owed at today's debt rate plus the loans' balance. */
+  total: number;
+  /**
+   * Día / mes / año / total financing cost of every card and loan (negative = cost): Σ the members
+   * that have the period (a card with no monthly rows has none), null when none has it — the
+   * group cards' rule (`cardMetricsFromRows`).
+   */
+  strip: { day: number | null; month: number | null; year: number | null; total: number | null };
+  /** The credit-card group (its lanes' owed, every currency at today's debt rate); null without cards. `share` of `total`. */
+  cards: { slug: string; owed: number; share: number; count: number } | null;
+  /** The mortgage group (its glance's balance); null without loans. `share` of `total`. */
+  mortgage: { slug: string; balance: number; share: number; count: number } | null;
+  /** From the current month through the «Próximos pagos» horizon; an overdue payment counts in the current month. */
+  upcoming_months: LiabilitiesUpcomingMonthDto[];
+}
+
 /**
  * `GET /api/portfolio-groups/:slug/mortgage-glance?unit=`: the mortgage group page. Every figure
  * not suffixed `_loan` is in `unit`; sums are over `loans`.

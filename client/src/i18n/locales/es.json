@@ -242,6 +242,19 @@
       "inCuotas": "{{amount}} en cuotas",
       "financingCost": "costo de financiamiento"
     },
+    "page": {
+      "upcomingTitle": "Próximos pagos",
+      "upcomingEmpty": "Nada por pagar en los próximos meses",
+      "nextPayments": "próximos pagos",
+      "paymentCount": "{{count}} pagos",
+      "paymentCountOne": "{{count}} pago",
+      "cardCount": "{{count}} tarjetas",
+      "cardCountOne": "{{count}} tarjeta",
+      "loanCount": "{{count}} créditos",
+      "loanCountOne": "{{count}} crédito",
+      "estimateHint": "Estimado: la cuenta abierta hasta hoy, o una cuota proyectada",
+      "upToMax": "hasta {{amount}}"
+    },
     "mortgage": "hipoteca",
     "creditCard": "tarjeta de crédito",
     "ref": {
@@ -850,58 +863,6 @@
     "flowsEmpty": "No hay flujos.",
     "flowsFilteredEmpty": "Ningún flujo coincide con el filtro.",
     "flowsPersonalOnly": "Solo aportes propios",
-    "deptoSummary": {
-      "mortgage": {
-        "currentBalance": "Saldo actual",
-        "lastPayment": "Último pago",
-        "nextPayment": "Próximo pago"
-      },
-      "property": {
-        "value": "Valor",
-        "deposited": "Depositado",
-        "plYtd": "P/L YTD",
-        "plTotal": "P/L total"
-      }
-    },
-    "mortgageSheet": {
-      "titleProperty": "Hipoteca / dividendos",
-      "titleMortgage": "Dividendos hipoteca",
-      "proxAbbrev": "próx.",
-      "quotedAbbrev": "cotización banco",
-      "referenceMinMax": "Referencia: cuota mín / máx (UF)",
-      "cards": {
-        "viviendaHoja": "Vivienda (tasación)",
-        "hipotecaTrasPie": "Hipoteca tras pie",
-        "pieClpUf": "Pie (CLP / UF)",
-        "filasDePago": "Filas de pago"
-      },
-      "terms": {
-        "years": "{{n}} años",
-        "years30Min": "30 años (mín.)",
-        "max": "Máx. (~80 UF)"
-      },
-      "cols": {
-        "cuota": "Cuota",
-        "fecha": "Fecha",
-        "pago": "Pago",
-        "credito": "Crédito",
-        "minUf": "Min UF",
-        "maxUf": "Máx UF",
-        "incendio": "Incendio",
-        "desgravamen": "Desgravamen",
-        "amortizacion": "Amortización",
-        "amortExt": "Amort. ext",
-        "interes": "Interés",
-        "prepaymentCharge": "Comisión de prepago",
-        "min": "Mín",
-        "max": "Máx",
-        "cuotaPago": "Cuota · pago",
-        "minMaxUf": "Mín · máx UF",
-        "segurosInteres": "Seguros · interés",
-        "amortizaciones": "Amortización · extra"
-      },
-      "cardLinesWithoutPayment": "Cargos en la tarjeta sin cuota en el ledger (registra la cuota):"
-    },
     "import": {
       "sectionTitle": "Importar movimientos y documentos",
       "pastePlaceholder": "Pegar movimientos copiados del sitio web del banco (fecha, comercio, monto por línea o tabulado)",
@@ -1013,10 +974,6 @@
       }
     },
     "creditCard": {
-      "lastFacturado": "Último facturado",
-      "openFacturacion": "Facturación abierta",
-      "cupo": "Cupo",
-      "deudaEnCuotas": "Deuda en cuotas",
       "saldoTotal": "Saldo total",
       "historialTitle": "Historial",
       "historialCurrentMonth": "Mes actual",
@@ -1028,7 +985,6 @@
       "tooltipCloseOn": "Cierre {{date}}",
       "historialOpenMonth": "Facturación abierta",
       "historialProjectionStart": "Hoy",
-      "accAreaName": "Accumulated earnings",
       "configTitle": "Configuración de la tarjeta",
       "configCardLabel": "Tarjeta",
       "configCupoClpLabel": "Cupo CLP",
@@ -1320,11 +1276,7 @@
     },
     "pasivos": {
       "creditCardSectionTitle": "Tarjetas de crédito",
-      "mortgageSectionTitle": "Hipoteca",
-      "mortgagePerfTitle": "Rendimiento mensual (calculado)",
-      "mortgageYtdChartTitle": "P/L mensual vs YTD (coste financiero)",
-      "mortgageAccChartTitle": "Coste financiero mensual y acumulado",
-      "mortgageBarMonthlyCost": "Coste financiero mes"
+      "mortgageSectionTitle": "Hipoteca"
     },
     "accountsTable": {
       "account": "Cuenta",

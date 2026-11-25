@@ -828,15 +828,6 @@ export {
   useUnlinkCardRefundMutation,
 } from "./mutations";
 
-export function useAccountMonthlyPerformance(id: string | undefined, unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.accountMonthlyPerformance(id ?? "", unit),
-    queryFn: () => api.accountMonthlyPerformance(id!, unit),
-    enabled: Boolean(id),
-    ...displayUnitQueryBehaviorFor(queryKeys.accountMonthlyPerformance(id ?? "", unit)),
-  });
-}
-
 export function usePortfolioGroupCcLedger(slug: string | undefined, enabled = true) {
   return useQuery({
     queryKey: queryKeys.portfolioGroupCcLedger(slug ?? ""),
@@ -856,27 +847,22 @@ export function usePortfolioGroupCcLanes(slug: string | undefined, enabled = tru
   });
 }
 
-/** One loan's ledger on a mortgage group page; `loanAccountId` null asks for the group's one loan. */
-export function usePortfolioGroupMortgageLedger(
-  slug: string | undefined,
-  loanAccountId: number | null,
-  enabled = true
-) {
-  return useQuery({
-    queryKey: queryKeys.portfolioGroupMortgageLedger(slug ?? "", loanAccountId),
-    queryFn: () => api.portfolioGroupMortgageLedger(slug!, loanAccountId),
-    enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupMortgageLedger(slug ?? "", loanAccountId)),
-  });
-}
-
-
 export function useMortgageGroupGlance(slug: string | undefined, unit: DisplayUnit) {
   return useQuery({
     queryKey: queryKeys.mortgageGroupGlance(slug ?? "", unit),
     queryFn: () => api.mortgageGroupGlance(slug!, unit),
     enabled: Boolean(slug),
     ...displayUnitQueryBehaviorFor(queryKeys.mortgageGroupGlance(slug ?? "", unit)),
+  });
+}
+
+/** The Liabilities page's head and upcoming payments (`liabilitiesGlance.ts`). */
+export function useLiabilitiesGlance(slug: string | undefined, unit: DisplayUnit) {
+  return useQuery({
+    queryKey: queryKeys.liabilitiesGlance(slug ?? "", unit),
+    queryFn: () => api.liabilitiesGlance(slug!, unit),
+    enabled: Boolean(slug),
+    ...displayUnitQueryBehaviorFor(queryKeys.liabilitiesGlance(slug ?? "", unit)),
   });
 }
 

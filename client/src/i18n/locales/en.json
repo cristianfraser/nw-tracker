@@ -242,6 +242,19 @@
       "inCuotas": "{{amount}} in payments",
       "financingCost": "financing cost"
     },
+    "page": {
+      "upcomingTitle": "Upcoming payments",
+      "upcomingEmpty": "Nothing due in the coming months",
+      "nextPayments": "next payments",
+      "paymentCount": "{{count}} payments",
+      "paymentCountOne": "{{count}} payment",
+      "cardCount": "{{count}} cards",
+      "cardCountOne": "{{count}} card",
+      "loanCount": "{{count}} loans",
+      "loanCountOne": "{{count}} loan",
+      "estimateHint": "Estimate: an open bill so far, or a projected cuota",
+      "upToMax": "up to {{amount}}"
+    },
     "mortgage": "mortgage",
     "creditCard": "credit card",
     "ref": {
@@ -850,58 +863,6 @@
     "flowsEmpty": "No flows.",
     "flowsFilteredEmpty": "No flows match the filter.",
     "flowsPersonalOnly": "Own contributions only",
-    "deptoSummary": {
-      "mortgage": {
-        "currentBalance": "Current balance",
-        "lastPayment": "Last payment",
-        "nextPayment": "Next payment"
-      },
-      "property": {
-        "value": "Value",
-        "deposited": "Deposited",
-        "plYtd": "P/L YTD",
-        "plTotal": "Total P/L"
-      }
-    },
-    "mortgageSheet": {
-      "titleProperty": "Mortgage / payments",
-      "titleMortgage": "Mortgage payments",
-      "proxAbbrev": "next",
-      "quotedAbbrev": "bank quote",
-      "referenceMinMax": "Reference: min / max installment (UF)",
-      "cards": {
-        "viviendaHoja": "Home (appraisal)",
-        "hipotecaTrasPie": "Mortgage after down payment",
-        "pieClpUf": "Down payment (CLP / UF)",
-        "filasDePago": "Payment rows"
-      },
-      "terms": {
-        "years": "{{n}} years",
-        "years30Min": "30 years (min.)",
-        "max": "Max (~80 UF)"
-      },
-      "cols": {
-        "cuota": "Installment",
-        "fecha": "Date",
-        "pago": "Payment",
-        "credito": "Credit",
-        "minUf": "Min UF",
-        "maxUf": "Max UF",
-        "incendio": "Fire ins.",
-        "desgravamen": "Life ins.",
-        "amortizacion": "Amortization",
-        "amortExt": "Extra amort.",
-        "interes": "Interest",
-        "prepaymentCharge": "Prepayment charge",
-        "min": "Min",
-        "max": "Max",
-        "cuotaPago": "Installment · payment",
-        "minMaxUf": "Min · max UF",
-        "segurosInteres": "Insurance · interest",
-        "amortizaciones": "Amortization · extra"
-      },
-      "cardLinesWithoutPayment": "Card charges with no cuota in the ledger (enter the cuota):"
-    },
     "import": {
       "sectionTitle": "Import movements and documents",
       "pastePlaceholder": "Paste movements copied from the bank's website (date, merchant, amount per line or tab-separated)",
@@ -1013,10 +974,6 @@
       }
     },
     "creditCard": {
-      "lastFacturado": "Last billed",
-      "openFacturacion": "Open billing",
-      "cupo": "Credit line",
-      "deudaEnCuotas": "Installment debt",
       "saldoTotal": "Total balance",
       "historialTitle": "History",
       "historialCurrentMonth": "Current month",
@@ -1028,7 +985,6 @@
       "tooltipCloseOn": "Close {{date}}",
       "historialOpenMonth": "Open billing month",
       "historialProjectionStart": "Today",
-      "accAreaName": "Accumulated earnings",
       "configTitle": "Card configuration",
       "configCardLabel": "Card",
       "configCupoClpLabel": "CLP limit",
@@ -1320,11 +1276,7 @@
     },
     "pasivos": {
       "creditCardSectionTitle": "Credit cards",
-      "mortgageSectionTitle": "Mortgage",
-      "mortgagePerfTitle": "Monthly performance (computed)",
-      "mortgageYtdChartTitle": "Monthly P/L vs YTD (financing cost)",
-      "mortgageAccChartTitle": "Monthly and accumulated financing cost",
-      "mortgageBarMonthlyCost": "Month financing cost"
+      "mortgageSectionTitle": "Mortgage"
     },
     "accountsTable": {
       "account": "Account",

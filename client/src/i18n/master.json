@@ -728,6 +728,52 @@
         "es": "costo de financiamiento"
       }
     },
+    "page": {
+      "upcomingTitle": {
+        "en": "Upcoming payments",
+        "es": "Próximos pagos"
+      },
+      "upcomingEmpty": {
+        "en": "Nothing due in the coming months",
+        "es": "Nada por pagar en los próximos meses"
+      },
+      "nextPayments": {
+        "en": "next payments",
+        "es": "próximos pagos"
+      },
+      "paymentCount": {
+        "en": "{{count}} payments",
+        "es": "{{count}} pagos"
+      },
+      "paymentCountOne": {
+        "en": "{{count}} payment",
+        "es": "{{count}} pago"
+      },
+      "cardCount": {
+        "en": "{{count}} cards",
+        "es": "{{count}} tarjetas"
+      },
+      "cardCountOne": {
+        "en": "{{count}} card",
+        "es": "{{count}} tarjeta"
+      },
+      "loanCount": {
+        "en": "{{count}} loans",
+        "es": "{{count}} créditos"
+      },
+      "loanCountOne": {
+        "en": "{{count}} loan",
+        "es": "{{count}} crédito"
+      },
+      "estimateHint": {
+        "en": "Estimate: an open bill so far, or a projected cuota",
+        "es": "Estimado: la cuenta abierta hasta hoy, o una cuota proyectada"
+      },
+      "upToMax": {
+        "en": "up to {{amount}}",
+        "es": "hasta {{amount}}"
+      }
+    },
     "mortgage": {
       "en": "mortgage",
       "es": "hipoteca"
@@ -2785,172 +2831,6 @@
       "en": "Own contributions only",
       "es": "Solo aportes propios"
     },
-    "deptoSummary": {
-      "mortgage": {
-        "currentBalance": {
-          "en": "Current balance",
-          "es": "Saldo actual"
-        },
-        "lastPayment": {
-          "en": "Last payment",
-          "es": "Último pago"
-        },
-        "nextPayment": {
-          "en": "Next payment",
-          "es": "Próximo pago"
-        }
-      },
-      "property": {
-        "value": {
-          "en": "Value",
-          "es": "Valor"
-        },
-        "deposited": {
-          "en": "Deposited",
-          "es": "Depositado"
-        },
-        "plYtd": {
-          "en": "P/L YTD",
-          "es": "P/L YTD"
-        },
-        "plTotal": {
-          "en": "Total P/L",
-          "es": "P/L total"
-        }
-      }
-    },
-    "mortgageSheet": {
-      "titleProperty": {
-        "en": "Mortgage / payments",
-        "es": "Hipoteca / dividendos"
-      },
-      "titleMortgage": {
-        "en": "Mortgage payments",
-        "es": "Dividendos hipoteca"
-      },
-      "proxAbbrev": {
-        "en": "next",
-        "es": "próx."
-      },
-      "quotedAbbrev": {
-        "en": "bank quote",
-        "es": "cotización banco"
-      },
-      "referenceMinMax": {
-        "en": "Reference: min / max installment (UF)",
-        "es": "Referencia: cuota mín / máx (UF)"
-      },
-      "cards": {
-        "viviendaHoja": {
-          "en": "Home (appraisal)",
-          "es": "Vivienda (tasación)"
-        },
-        "hipotecaTrasPie": {
-          "en": "Mortgage after down payment",
-          "es": "Hipoteca tras pie"
-        },
-        "pieClpUf": {
-          "en": "Down payment (CLP / UF)",
-          "es": "Pie (CLP / UF)"
-        },
-        "filasDePago": {
-          "en": "Payment rows",
-          "es": "Filas de pago"
-        }
-      },
-      "terms": {
-        "years": {
-          "en": "{{n}} years",
-          "es": "{{n}} años"
-        },
-        "years30Min": {
-          "en": "30 years (min.)",
-          "es": "30 años (mín.)"
-        },
-        "max": {
-          "en": "Max (~80 UF)",
-          "es": "Máx. (~80 UF)"
-        }
-      },
-      "cols": {
-        "cuota": {
-          "en": "Installment",
-          "es": "Cuota"
-        },
-        "fecha": {
-          "en": "Date",
-          "es": "Fecha"
-        },
-        "pago": {
-          "en": "Payment",
-          "es": "Pago"
-        },
-        "credito": {
-          "en": "Credit",
-          "es": "Crédito"
-        },
-        "minUf": {
-          "en": "Min UF",
-          "es": "Min UF"
-        },
-        "maxUf": {
-          "en": "Max UF",
-          "es": "Máx UF"
-        },
-        "incendio": {
-          "en": "Fire ins.",
-          "es": "Incendio"
-        },
-        "desgravamen": {
-          "en": "Life ins.",
-          "es": "Desgravamen"
-        },
-        "amortizacion": {
-          "en": "Amortization",
-          "es": "Amortización"
-        },
-        "amortExt": {
-          "en": "Extra amort.",
-          "es": "Amort. ext"
-        },
-        "interes": {
-          "en": "Interest",
-          "es": "Interés"
-        },
-        "prepaymentCharge": {
-          "en": "Prepayment charge",
-          "es": "Comisión de prepago"
-        },
-        "min": {
-          "en": "Min",
-          "es": "Mín"
-        },
-        "max": {
-          "en": "Max",
-          "es": "Máx"
-        },
-        "cuotaPago": {
-          "en": "Installment · payment",
-          "es": "Cuota · pago"
-        },
-        "minMaxUf": {
-          "en": "Min · max UF",
-          "es": "Mín · máx UF"
-        },
-        "segurosInteres": {
-          "en": "Insurance · interest",
-          "es": "Seguros · interés"
-        },
-        "amortizaciones": {
-          "en": "Amortization · extra",
-          "es": "Amortización · extra"
-        }
-      },
-      "cardLinesWithoutPayment": {
-        "en": "Card charges with no cuota in the ledger (enter the cuota):",
-        "es": "Cargos en la tarjeta sin cuota en el ledger (registra la cuota):"
-      }
-    },
     "import": {
       "sectionTitle": {
         "en": "Import movements and documents",
@@ -3350,22 +3230,6 @@
       }
     },
     "creditCard": {
-      "lastFacturado": {
-        "en": "Last billed",
-        "es": "Último facturado"
-      },
-      "openFacturacion": {
-        "en": "Open billing",
-        "es": "Facturación abierta"
-      },
-      "cupo": {
-        "en": "Credit line",
-        "es": "Cupo"
-      },
-      "deudaEnCuotas": {
-        "en": "Installment debt",
-        "es": "Deuda en cuotas"
-      },
       "saldoTotal": {
         "en": "Total balance",
         "es": "Saldo total"
@@ -3409,10 +3273,6 @@
       "historialProjectionStart": {
         "en": "Today",
         "es": "Hoy"
-      },
-      "accAreaName": {
-        "en": "Accumulated earnings",
-        "es": "Accumulated earnings"
       },
       "configTitle": {
         "en": "Card configuration",
@@ -4161,22 +4021,6 @@
       "mortgageSectionTitle": {
         "en": "Mortgage",
         "es": "Hipoteca"
-      },
-      "mortgagePerfTitle": {
-        "en": "Monthly performance (computed)",
-        "es": "Rendimiento mensual (calculado)"
-      },
-      "mortgageYtdChartTitle": {
-        "en": "Monthly P/L vs YTD (financing cost)",
-        "es": "P/L mensual vs YTD (coste financiero)"
-      },
-      "mortgageAccChartTitle": {
-        "en": "Monthly and accumulated financing cost",
-        "es": "Coste financiero mensual y acumulado"
-      },
-      "mortgageBarMonthlyCost": {
-        "en": "Month financing cost",
-        "es": "Coste financiero mes"
       }
     },
     "accountsTable": {

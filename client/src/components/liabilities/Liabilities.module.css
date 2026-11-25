@@ -1,0 +1,62 @@
+/* The Liabilities page (LiabilitiesPage.tsx): under the debt header, the split of what is owed
+   (mortgage | cards) and the next payments line; the upcoming list's loan ranges. The sections
+   below are the two group pages' own components and styles. */
+
+.split {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.splitBar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+}
+
+.splitBar i {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+}
+
+.splitLabels {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 16px;
+  font-size: 0.76rem;
+}
+
+.splitLabels a {
+  color: var(--text);
+}
+
+.swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* A loan's room from its minimum cuota up to its maximum: its colour, hatched. */
+.range {
+  background: repeating-linear-gradient(90deg, var(--range-color) 0 2px, transparent 2px 5px);
+  opacity: 0.7;
+}
+
+.totalMax {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.sectionTitle a {
+  color: inherit;
+}

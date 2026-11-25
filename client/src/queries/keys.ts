@@ -157,6 +157,9 @@ export const queryKeys = {
   /** Under the group's prefix, so what refreshes a group page reaches it. */
   mortgageGroupGlance: (group: string, unit: DisplayUnit) =>
     withEntity(["portfolioGroup", group, unit, "mortgageGlance"] as const, 2),
+  /** Under the group's prefix, so what refreshes a group page reaches it. */
+  liabilitiesGlance: (group: string, unit: DisplayUnit) =>
+    withEntity(["portfolioGroup", group, unit, "liabilitiesGlance"] as const, 2),
   groupPageShell: (portfolioGroup: string, unit: DisplayUnit) =>
     withEntity(["groupPageShell", portfolioGroup, unit] as const, 2),
   /** Prefix: every account page bundle (without `id`), or one account's in every unit. */
@@ -171,8 +174,6 @@ export const queryKeys = {
   portfolioGroupCcLanes: (slug: string) =>
     withEntity(["portfolioGroupCcLanes", slug] as const, 2),
   /** One loan's ledger on a mortgage group page (`loanAccountId` null: the group's one loan). */
-  portfolioGroupMortgageLedger: (slug: string, loanAccountId: number | null) =>
-    withEntity(["portfolioGroupMortgageLedger", slug, loanAccountId] as const, 3),
   groupFlows: (slug: string, filtersKey: string) =>
     withEntity(["groupFlows", slug, filtersKey] as const, 2),
   accountFlowsAll: () => ["accountFlows"] as const,
