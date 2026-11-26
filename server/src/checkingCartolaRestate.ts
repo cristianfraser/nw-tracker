@@ -1,7 +1,6 @@
 /**
- * A checking account's rows restated by the cartola that lists them (keep-rows, phase 2): the row on
- * file stays and becomes the cartola's row, instead of a cartola row being inserted and the daily
- * row deleted with its flow handed over (`prunePartialMovementsSupersededByCartola`).
+ * A checking account's rows restated by the cartola that lists them: the row on file stays and
+ * becomes the cartola's row.
  *
  * {@link restateMovementFromCartola}: the row keeps its id, its flow (assignments, links, arrival
  * stamp, event time), its amount (the cartola lists the same pesos: the match requires it) and its
@@ -101,7 +100,7 @@ function alreadyThisCartolaRow(r: CartolaRestate, dbHandle: Database): boolean {
   const posted = (dbHandle.prepare(`SELECT ${BANK_POSTED_ON_SQL} AS d FROM movements m ${BANK_POSTING_JOIN_SQL} WHERE m.id = ?`).get(r.accountId, r.movementId) as { d: string }).d;
   return (
     f != null && f.bank_day === r.listed.bank_day && f.description === r.listed.description && f.document_no === r.listed.document_no &&
-    f.period_month === r.listed.period_month && posted === r.listed.bank_day
+    f.period_month === r.listed.period_month && f.branch === r.listed.branch && f.position === r.listed.position && posted === r.listed.bank_day
   );
 }
 

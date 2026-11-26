@@ -1,9 +1,10 @@
 import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
+import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { syncExpenseLinksNow } from "./expenseAssignmentWrites.js";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
-import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
+import { checkingCartolaPurchaseKeyOf } from "./checkingCartolaParse.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { buildDepositsReconciliationPayload } from "./flowsDepositsReconciliation.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
@@ -53,6 +54,7 @@ function insertCartolaMovement(
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amountClp, occurredOn, note);
+  stateListingFactsOfFixtures();
   cartolaFixtures.push({ accountId, occurredOn, amountClp, idx, month });
   return Number(ins.lastInsertRowid);
 }
@@ -80,12 +82,8 @@ function cleanupFixtureRows(): void {
       `DELETE FROM movements WHERE account_id = ? AND occurred_on = ? AND note LIKE ?`
     ).run(f.accountId, f.occurredOn, `import:cartola|%|idx:${f.idx}`);
     for (const portion of ["gastos", "deposit"] as const) {
-      const key = checkingCartolaStablePurchaseKey(
-        f.accountId,
-        `import:cartola|${f.month}|x|d|on:${f.occurredOn}|amt:${f.amountClp}|idx:${f.idx}`,
-        portion
-      );
-      if (key) {
+      const key = checkingCartolaPurchaseKeyOf(f.accountId, { periodMonth: f.month, occurredOn: f.occurredOn, amountClp: f.amountClp, cartolaIndex: f.idx }, portion);
+      {
         db.prepare(`DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE purchase_key = ?)`).run(key);
         deleteDepositLinks("purchase_key = ?", key);
       }

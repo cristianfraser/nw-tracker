@@ -12,12 +12,6 @@ import {
 } from "./ccPlantedCharges.js";
 import { isPlantingBatchKind } from "./ccPlantedPayments.js";
 import { applyAdditionalCardNoCuentaForLine } from "./ccAdditionalCardExpenseMatch.js";
-import {
-  adoptReimportedCardLines,
-  captureCardLines,
-  restoreLineCategories,
-  snapshotLineCategories,
-} from "./flows/cardLineAdoption.js";
 import { ccLineDedupeKeyExistsOnAccount, patchCcLineOriginCardOnDedupeHit } from "./ccExpenseLineDedupe.js";
 import { insertStoredCardLine, storedDocumentLine } from "./cards/lineRowWrites.js";
 import {
@@ -132,22 +126,13 @@ export type CcStatementsMergeResult = {
 };
 
 export type CcStatementsMergeOpts = {
-  /** Wipe all statements for the account before import (`import:cc-parsed --wipe`). */
-  replaceAll?: boolean;
-  /** Replace only these statement keys (`card_group\\tsource_pdf\\tstatement_date`). */
-  replaceStatementKeys?: Set<string>;
-  /** Skip line when dedupe_key already exists on any statement for this account. */
-  skipGlobalDedupeKeys?: boolean;
   /**
-   * A listing import's batch kind: a planting source's lines are registered as planted charges
+   * The listing's batch kind: a planting source's lines are registered as planted charges
    * (`ccPlantedCharges.ts`); any other listing's lines that are a planted charge's later listing
-   * are skipped. Unset for statement imports.
+   * are skipped.
    */
   listingBatchKind?: string;
-  /**
-   * A listing import: the order it prints its lines in (`listingOrder.ts`; unset = the default).
-   * A statement prints its lines oldest first.
-   */
+  /** The order the listing prints its lines in (`listingOrder.ts`; unset = the default). */
   listingOrder?: ListingOrder;
 };
 
@@ -300,30 +285,22 @@ export function statementsByLedgerKey(
   return byStmt;
 }
 
+/**
+ * A listing's lines (paste, feed, planted payment, a receipt's line) into its open buckets: each line
+ * is written unless it repeats a line on file (its dedupe key, a plan's purchase, a fuzzy duplicate:
+ * same day, pesos and merchant) or is a planted charge's later listing. Statements never come here:
+ * they import as a plan applied (`importStatementDocuments`).
+ */
 export function importCcStatementsMerge(
   accountId: number,
   statements: readonly CardCanonicalStatement[],
   opts?: CcStatementsMergeOpts
 ): CcStatementsMergeResult {
-  const categorySnap = snapshotLineCategories(accountId);
-
-  const replaceAll = opts?.replaceAll === true;
-  const replaceKeys = opts?.replaceStatementKeys;
-  const skipGlobalDedupe = opts?.skipGlobalDedupeKeys !== false;
-
-  if (replaceAll) {
-    db.prepare(
-      `DELETE FROM cc_statement_lines WHERE statement_id IN (
-        SELECT id FROM cc_statements WHERE account_id = ?
-      )`
-    ).run(accountId);
-    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+  const statementDocument = statements.find((st) => !isListingSourceKind(ccStatementSourceKindOf(st.document)));
+  if (statementDocument) {
+    throw new Error(`listing import: ${statementDocument.document} is a statement — statements import through importStatementDocuments`);
   }
-
   const byStmt = statementsByLedgerKey(statements);
-
-  const delLinesForStmt = db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`);
-
 
   let statementCount = 0;
   let lineCount = 0;
@@ -339,8 +316,8 @@ export function importCcStatementsMerge(
   const inserted_flows: CcImportFlowItem[] = [];
   const skipped_flows: SkippedCcImportFlowItem[] = [];
 
-  // A listing's charges: a planting source registers what it writes; the bank's own listing skips
-  // the later-day listing of a purchase a planting source already wrote.
+  // A planting source registers what it writes; the bank's own listing skips the later-day listing
+  // of a purchase a planting source already wrote.
   const listingKind = opts?.listingBatchKind ?? null;
   const plantedSource = isPlantedChargeSource(listingKind) ? listingKind : null;
   const absorber =
@@ -355,35 +332,16 @@ export function importCcStatementsMerge(
         )
       : null;
 
-  for (const [key, { statement, lines }] of byStmt) {
+  for (const { statement, lines } of byStmt.values()) {
     const stored = storedStatementColumns(statement);
     const { card_group: cardGroup, source_pdf: sourcePdf, statement_date: statementDate, currency } = stored;
-    // A PDF/JSON statement import must not count open web-paste bucket lines as existing
-    // evidence: `reconcileOpenWebPasteAfterPdfImports` deletes the bucket's in-period lines
-    // right after this loop, so a skip against one destroys the purchase from both places
-    // (2026-08 ·0101: 9 lines / 1.xxx.xxx CLP vanished). Web-paste imports keep full scans —
-    // deduping a re-paste against its own bucket and against PDF lines is their whole point.
-    const dedupeScanOpts = { excludeWebPasteSources: !isListingSourceKind(ccStatementSourceKindOf(sourcePdf)) };
-
-    // The synthesized header PAGO is dated evidence like any line (see `normalizedPostCloseLines`),
-    // so it too can contradict a stamp written after that day.
-    const paidOn = stored.monto_pagado_anterior_date;
-    if (paidOn && (earliestInsertedTxDate == null || paidOn < earliestInsertedTxDate)) {
-      earliestInsertedTxDate = paidOn;
-    }
-
     const cardLast4 = stored.card_last4;
-    const header = upsertCcStatementHeader(accountId, statement, lines);
-    const statementId = header.statementId;
-    if (header.existed && (replaceKeys?.has(key) || replaceAll)) {
-      delLinesForStmt.run(statementId);
-    }
+    const statementId = upsertCcStatementHeader(accountId, statement, lines).statementId;
     statementCount += 1;
 
     const seenDedupeInBatch = new Set<string>();
     const statementLabel = ccStatementLabel(statementDate, currency);
     const stampOrder: number[] = [];
-    const listing = isListingSourceKind(ccStatementSourceKindOf(sourcePdf));
 
     for (const line of lines) {
       const inst = line.installment != null;
@@ -391,9 +349,9 @@ export function importCcStatementsMerge(
       const amountClp = columns.amount_clp;
       const flowItem = ccImportFlowItemFromLine(line, statementLabel);
       // All keys seen (parser key included) = a truly redundant repeat: skip. A colliding
-      // computed key with a fresh parser key is a genuine same-statement twin (identical
-      // merchant+amount+date twice, e.g. a double PAT charge): occurrence-suffixed so both twins
-      // import and re-imports stay idempotent (`takeBatchDedupeKeys`).
+      // computed key with a fresh parser key is a genuine same-listing twin (identical
+      // merchant+amount+date twice): occurrence-suffixed so both twins import and re-imports stay
+      // idempotent (`takeBatchDedupeKeys`).
       const taken = takeBatchDedupeKeys(seenDedupeInBatch, canonicalLineDedupeKeys(cardGroup, line));
       if (taken === "repeat") {
         linesSkippedDuplicate += 1;
@@ -402,20 +360,16 @@ export function importCcStatementsMerge(
       }
       const dedupeKeys = taken;
 
-      if (dedupeKeys.length > 0) {
-        if (skipGlobalDedupe && ccLineDedupeKeyExistsOnAccount(accountId, dedupeKeys, dedupeScanOpts)) {
-          const originCardLast4 = columns.origin_card_last4;
-          const patch = patchCcLineOriginCardOnDedupeHit(accountId, dedupeKeys, originCardLast4, dedupeScanOpts);
-          if (patch.patched) linesOriginCardPatched += 1;
-          if (patch.lineId != null) {
-            if (maybeApplyAdditionalCardNoCuenta(accountId, patch.lineId, originCardLast4, cardLast4)) {
-              additionalCardCategoriesApplied += 1;
-            }
-          }
-          linesSkippedDuplicate += 1;
-          skipped_flows.push({ ...flowItem, reason: "duplicate" });
-          continue;
+      if (dedupeKeys.length > 0 && ccLineDedupeKeyExistsOnAccount(accountId, dedupeKeys)) {
+        const originCardLast4 = columns.origin_card_last4;
+        const patch = patchCcLineOriginCardOnDedupeHit(accountId, dedupeKeys, originCardLast4);
+        if (patch.patched) linesOriginCardPatched += 1;
+        if (patch.lineId != null && maybeApplyAdditionalCardNoCuenta(accountId, patch.lineId, originCardLast4, cardLast4)) {
+          additionalCardCategoriesApplied += 1;
         }
+        linesSkippedDuplicate += 1;
+        skipped_flows.push({ ...flowItem, reason: "duplicate" });
+        continue;
       }
 
       const lineDateIso = line.transaction_date ?? line.posting_date;
@@ -426,13 +380,12 @@ export function importCcStatementsMerge(
           skipped_flows.push({ ...flowItem, reason: "installment_overlap" });
           continue;
         }
-        // A #dup-keyed row is a parser-affirmed same-statement twin — its sibling in
-        // the DB is exactly what the fuzzy match would find, so skip that check.
+        // A #dup-keyed row is an affirmed same-listing twin — its sibling in the DB is exactly what
+        // the fuzzy match would find, so skip that check.
         const isSameStatementTwin = dedupeKeys.some((k) => k.includes("#dup"));
         if (
           !isSameStatementTwin &&
           oneShotLineFuzzyMatchExists(accountId, merchant, lineDateIso, amountClp, {
-            ...dedupeScanOpts,
             excludeLineIds: insertedLineIdsByStatement.get(statementId),
           })
         ) {
@@ -451,9 +404,8 @@ export function importCcStatementsMerge(
         storedDocumentLine(statementId, statement, line, dedupeKeys[dedupeKeys.length - 1] ?? null, `CC statement import (${sourcePdf})`)
       );
       if (plantedSource && !inst && columns.amount > 0) recordPlantedChargeLine(statementLineId, accountId, plantedSource);
-      // A statement's cuota line bills a plan's month: never a new movement, so it gets no stamp
-      // (`FlowArrival`). A listing's lines are all arrivals (a cuota purchase listed at its price).
-      if (!(inst && !listing)) stampOrder.push(statementLineId);
+      // Every listed line is an arrival (a cuota purchase listed at its price too).
+      stampOrder.push(statementLineId);
       const writtenHere = insertedLineIdsByStatement.get(statementId) ?? new Set<number>();
       writtenHere.add(statementLineId);
       insertedLineIdsByStatement.set(statementId, writtenHere);
@@ -461,7 +413,7 @@ export function importCcStatementsMerge(
         additionalCardCategoriesApplied += 1;
       }
       // Earliest date this import actually ADDED evidence for — dedupe-skipped rows change
-      // nothing, so re-importing the same statement contradicts no stamp.
+      // nothing, so re-sending the same listing contradicts no stamp.
       if (lineDateIso && (earliestInsertedTxDate == null || lineDateIso < earliestInsertedTxDate)) {
         earliestInsertedTxDate = lineDateIso;
       }
@@ -469,14 +421,9 @@ export function importCcStatementsMerge(
       linesInserted += 1;
       inserted_flows.push(flowItem);
     }
-    // When each purchase reached the ledger (the adoption that follows keeps the older arrival when
-    // the line replaces one on file: `olderArrival`), stamped in the document's time order: a
-    // listing as it declares (`listingOrder.ts`), a statement oldest first.
-    const order: ListingOrder = listing ? (opts?.listingOrder ?? DEFAULT_LISTING_ORDER) : "oldest_first";
-    for (const lineId of listedOldestFirst(stampOrder, order)) recordCardLineFlowFirstSeen(lineId);
+    // When each purchase reached the ledger, stamped in the listing's time order (`listingOrder.ts`).
+    for (const lineId of listedOldestFirst(stampOrder, opts?.listingOrder ?? DEFAULT_LISTING_ORDER)) recordCardLineFlowFirstSeen(lineId);
   }
-
-  const restored = restoreLineCategories(accountId, categorySnap);
 
   return {
     statementCount,
@@ -489,7 +436,7 @@ export function importCcStatementsMerge(
     linesSkippedInstallmentOverlap,
     linesOriginCardPatched,
     additionalCardCategoriesApplied,
-    categoriesRestored: restored,
+    categoriesRestored: 0,
     earliestInsertedTxDate,
     planted_same_purchase: absorber?.absorbed ?? [],
     inserted_flows,
@@ -505,20 +452,4 @@ function chargeFacts(statement: CardCanonicalStatement, line: CardCanonicalLine)
     merchant: columns.merchant,
     date: line.transaction_date ?? line.posting_date ?? null,
   };
-}
-
-/** Full account wipe + reload (CLI `import:cc-parsed --wipe`). */
-export function importCcStatementsWipeAndReload(
-  accountId: number,
-  statements: readonly CardCanonicalStatement[]
-): CcStatementsMergeResult {
-  return db.transaction(() => {
-    const expenseLines = captureCardLines(accountId);
-    const result = importCcStatementsMerge(accountId, statements, {
-      replaceAll: true,
-      skipGlobalDedupeKeys: false,
-    });
-    adoptReimportedCardLines(expenseLines);
-    return result;
-  })();
 }

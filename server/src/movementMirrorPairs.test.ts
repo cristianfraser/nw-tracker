@@ -1,4 +1,5 @@
 import { FLOW_CATEGORY_ROWS_SQL, uniqueCategoryInsert } from "./test/flowFixtures.js";
+import { withFixtureFacts } from "./test/dailyListingFacts.js";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import { convertMirrorPairs } from "./movementMirrorConvert.js";
@@ -48,7 +49,7 @@ function groupId(slugLike: string): number | undefined {
 }
 
 function insLeg(accountId: number, amount: number, ymd: string, units: number | null = null, note = NOTE): number {
-  return Number(
+  return withFixtureFacts(
     db
       .prepare(
         `INSERT INTO movements (account_id, amount, currency, occurred_on, units_delta, note) VALUES (?,?,'clp',?,?,?)`

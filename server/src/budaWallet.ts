@@ -8,9 +8,6 @@ import {
 import {
   type DepositMatchCandidate,
 } from "./checkingCartolaLoaders.js";
-import {
-  cartolaDescriptionFromNote,
-} from "./checkingDescriptionPredicates.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaAccounts.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { EXPENSE_DEPOSIT_LINKS_SQL } from "./flows/flowLinks.js";
@@ -64,7 +61,7 @@ export function checkingCreditLooksLikeBudaRetiro(description: string): boolean 
  * never claims another account's retiro.
  */
 export function checkingCreditMatchesBudaRetiro(
-  credit: { occurred_on: string; amount_clp: number; note?: string | null },
+  credit: { occurred_on: string; amount_clp: number; description: string },
   ledgerOutflows: readonly DepositMatchCandidate[],
   opts: {
     budaAccountId: number;
@@ -72,8 +69,7 @@ export function checkingCreditMatchesBudaRetiro(
     consumedLedgerOutflowKeys?: Set<string>;
   }
 ): boolean {
-  const description = cartolaDescriptionFromNote(credit.note ?? null);
-  if (!checkingCreditLooksLikeBudaRetiro(description)) return false;
+  if (!checkingCreditLooksLikeBudaRetiro(credit.description)) return false;
   const want = Math.round(credit.amount_clp);
   if (want <= 0) return false;
   const maxDayGap = opts.maxDayGap ?? NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP;

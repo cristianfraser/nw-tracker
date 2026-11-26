@@ -35,6 +35,8 @@
  *   npx tsx scripts/rebuild-checking-gap-from-mails.ts --plan=<cfraser json> [--apply]
  */
 import { putFlowCategory } from "../src/flows/flowCategories.js";
+import { stateMovementDescription } from "../src/movementListingFacts.js";
+import { mailDescription372 } from "../src/migrationHooks/bankRowFacts372.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -249,9 +251,18 @@ const mailRef = (m: Mail) => `correo Santander ${m.sent_at_chile}`;
 /** A corriente row's note: the document prefix `listCheckingMovements` reads, the mail's time, the description. */
 const mailNote = (m: Mail, description: string) => `import:santander-mail|${m.sent_at_chile}|${description}`;
 
-const insSingle = db.prepare(
-  `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
-);
+/** Inserts a single-leg row written from a mail and states its description on its evidence (runtime never reads the note). */
+function mailRowInsert(sql: string) {
+  const stmt = db.prepare(sql);
+  return {
+    run: (accountId: number, amount: number, day: string, note: string) => {
+      const r = stmt.run(accountId, amount, day, note);
+      stateMovementDescription(Number(r.lastInsertRowid), mailDescription372(note), db);
+      return r;
+    },
+  };
+}
+const insSingle = mailRowInsert(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`);
 const setCategory = {
   run: (account: number, key: string, category: number | null) => putFlowCategory(account, key, category, "replace"),
 };

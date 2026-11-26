@@ -5,6 +5,7 @@
  * contribution) is a deposit event at its dollars.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
 import { listForeignCheckingAccountIds, listForeignCheckingMovements } from "./checkingCartolaLoaders.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -34,6 +35,7 @@ describe("a dollar checking account in the flows", () => {
         .run(accountId, Math.abs(usd), day, note, usd > 0 ? "fx_purchase" : "withdrawal").lastInsertRowid
     );
     ids.push(id);
+    stateListingFactsOfFixtures();
     return id;
   };
 

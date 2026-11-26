@@ -26,7 +26,7 @@ import {
   type PartialBankMovement,
 } from "./checkingPartialMovementsImport.js";
 import { partialDescriptionsMatch } from "./checkingCartolaPartialReconcile.js";
-import { cartolaNoteContent } from "./checkingCartolaParse.js";
+import { movementDescription } from "./bankRowFacts.js";
 import { movementSourceKindInSql } from "./flows/flowEvidence.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
@@ -104,7 +104,7 @@ export function planForwardPostedRedates(listings: readonly ReadListing[]): Forw
 
   const partialByNote = db.prepare(`SELECT id, occurred_on FROM movements WHERE account_id = ? AND note = ?`);
   const cartolaRows = db.prepare(
-    `SELECT m.id, m.occurred_on, m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
+    `SELECT m.id, m.occurred_on FROM movements m ${BANK_POSTING_JOIN_SQL}
      WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
        AND ${movementSourceKindInSql("m", ["cartola"])}`
   );
@@ -133,15 +133,8 @@ export function planForwardPostedRedates(listings: readonly ReadListing[]): Forw
       continue;
     }
     const official = (
-      cartolaRows.all(c.account_id, c.account_id, c.row.occurred_on, c.row.amount_clp) as {
-        id: number;
-        occurred_on: string;
-        note: string;
-      }[]
-    ).filter((r) => {
-      const content = cartolaNoteContent(r.note);
-      return content != null && partialDescriptionsMatch(c.row.description, content.description);
-    });
+      cartolaRows.all(c.account_id, c.account_id, c.row.occurred_on, c.row.amount_clp) as { id: number; occurred_on: string }[]
+    ).filter((r) => partialDescriptionsMatch(c.row.description, movementDescription(r.id)));
     if (official.length === 0) {
       skip("not_found", "no daily row with its note and no cartola row with its bank date, pesos and description");
       continue;

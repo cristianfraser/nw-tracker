@@ -8,7 +8,7 @@ import { fixtureMovement } from "../test/flowFixtures.js";
 /** Movements ids no fixture of the synthetic DB uses. */
 const ID = 9_870_001;
 const NOTE = "import:cartola|2099-01|2099-01-15|-4321|VITEST RETIREMENT ROW|doc:1";
-const LISTED = { bank_day: "2099-01-15", description: "VITEST RETIREMENT ROW", document_no: "1", period_month: "2099-01" };
+const LISTED = { bank_day: "2099-01-15", description: "VITEST RETIREMENT ROW", document_no: "1", period_month: "2099-01", branch: "—", position: 0 };
 
 const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
 const flowRow = (id: number) =>

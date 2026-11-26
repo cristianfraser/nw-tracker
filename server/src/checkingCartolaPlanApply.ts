@@ -46,17 +46,6 @@ export type CheckingCartolaPlanApplyResult = {
   flow_adoptions: NonNullable<RetiredMovementAdoption>[];
 };
 
-/** Throws, naming the daily rows, when the plan holds more identical daily rows than movements. */
-export function assertCartolaPlanPairs(cartola: ParsedCheckingCartola, plan: CheckingCartolaPlan): void {
-  const unpaired = plan.ambiguous.filter((a) => a.movement < 0);
-  if (unpaired.length > 0) {
-    throw new Error(
-      `Cartola ${cartola.period_month} (${cartola.source_file}): cannot pair the daily rows one to one, nothing was written: ` +
-        unpaired.map((a) => a.what).join("; ")
-    );
-  }
-}
-
 /** Applies `plan` (planned for `cartola` on `accountId`, see the module doc), in one transaction. */
 export function applyCheckingCartolaPlan(
   accountId: number,
@@ -65,7 +54,6 @@ export function applyCheckingCartolaPlan(
   dbHandle: Database = db,
   opts?: { replaceMonth?: boolean }
 ): CheckingCartolaPlanApplyResult {
-  assertCartolaPlanPairs(cartola, plan);
   assertCheckingCartolaSaldoIdentity(cartola);
   const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
   if (chainErr) throw new Error(`Cartola ${cartola.period_month} (${cartola.source_file}): ${chainErr}`);
@@ -76,7 +64,6 @@ export function applyCheckingCartolaPlan(
     // Folds first: a cartola row on file that folds into an earlier-seen daily row goes before that
     // row takes its note.
     for (const f of plan.fold) {
-      if (f.into_row_id == null) throw new Error(`keep-rows apply: daily row ${f.row_id} folds into no row`);
       const listed = cartola.movements[f.movement]!;
       const key = checkingCartolaPurchaseKeyOf(accountId, {
         periodMonth: cartola.period_month,
@@ -93,7 +80,7 @@ export function applyCheckingCartolaPlan(
         amountClp: mv.amount_clp,
         cartolaIndex: index,
       });
-      const listed = cartolaListingFacts(cartola.period_month, mv);
+      const listed = cartolaListingFacts(cartola.period_month, mv, index);
       const flowKind = checkingMovementFlowKind(mv.description, mv.amount_clp);
       const keep = plan.keep.find((k) => k.movement === index);
       if (keep) {

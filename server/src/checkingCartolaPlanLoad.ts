@@ -87,7 +87,7 @@ export function loadCheckingCartolaPlanInput(
       amountClp: mv.amount_clp,
       cartolaIndex: index,
     });
-    const facts = cartolaListingFacts(cartola.period_month, mv);
+    const facts = cartolaListingFacts(cartola.period_month, mv, index);
     return {
       ...mv,
       index,

@@ -22,6 +22,8 @@
  * - the account never goes below zero and ends at exactly 0.
  */
 import { deleteFlowCategory } from "../src/flows/flowCategories.js";
+import { stateMovementDescription } from "../src/movementListingFacts.js";
+import { mailDescription372 } from "../src/migrationHooks/bankRowFacts372.js";
 import fs from "node:fs";
 import { db } from "../src/db.js";
 import { markCheckingExpenseRefund } from "../src/checkingExpenseRefunds.js";
@@ -31,6 +33,18 @@ import { setCcExpensePurchaseBigGroup } from "../src/ccExpenseBigGroups.js";
 import { getCcExpenseCategoryBySlug } from "../src/ccExpenseCategories.js";
 import { clearAggregationCache } from "../src/cacheRegistry.js";
 import { recordBankPosting } from "../src/movementBankPostings.js";
+
+/** Inserts a single-leg row written from a mail and states its description on its evidence (runtime never reads the note). */
+function mailRowInsert(sql: string) {
+  const stmt = db.prepare(sql);
+  return {
+    run: (accountId: number, amount: number, day: string, note: string) => {
+      const r = stmt.run(accountId, amount, day, note);
+      stateMovementDescription(Number(r.lastInsertRowid), mailDescription372(note), db);
+      return r;
+    },
+  };
+}
 
 
 type Row = {
@@ -93,7 +107,7 @@ const tx = db.transaction(() => {
   if (unexplained.length) throw new Error(`ledger rows the app does not list: ${unexplained.map((l) => `${l.id} ${l.occurred_on} ${l.amt}`).join("; ")}`);
 
   // 3. The app's own rows.
-  const ins = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`);
+  const ins = mailRowInsert(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`);
   const label: Record<string, string> = { paid_to: "Pago enviado a", paid_by: "Pago recibido de", card_purchase: "Compra" };
   let written = 0;
   for (const r of rows.filter((r) => r.kind === "paid_to" || r.kind === "paid_by" || r.kind === "card_purchase")) {

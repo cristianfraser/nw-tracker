@@ -44,9 +44,9 @@ export function liderMasterAccountId(): number {
  *
  * Same card, same day, same exact peso amount is overwhelmingly the same purchase, so the feed
  * yields to whatever is already recorded. The cost of being wrong is bounded and self-correcting:
- * these lines live in the open web-paste bucket, which the month's PDF statement supersedes
- * wholesale (`reconcileOpenWebPasteAfterPdfImports`) — and the PDF, not this feed, is what the
- * facturación is ultimately reconciled against.
+ * these lines live in the open web-paste bucket, which the month's statement settles (each billed
+ * line restated as the statement's, `planBucketSettlement`) — and the statement, not this feed, is
+ * what the facturación is ultimately reconciled against.
  */
 export function findLedgerLineSameDayAndAmount(
   accountId: number,

@@ -1,4 +1,4 @@
-import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
+import type { BankRowText } from "./bankRowFacts.js";
 import { loadCheckingExpenseRefunds } from "./checkingExpenseRefunds.js";
 import { db } from "./db.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
@@ -24,7 +24,6 @@ import {
   loadNetWorthCapitalReturnLedgerOutflows,
 } from "./checkingCartolaLoaders.js";
 import {
-  cartolaDescriptionFromNote,
   isExcludedCheckingInflow,
 } from "./checkingDescriptionPredicates.js";
 import { checkingCreditMatchesBudaRetiro, loadBudaBufferAccountId } from "./budaWallet.js";
@@ -114,21 +113,21 @@ export type FlowsCheckingIncomePayload = {
   refund_lines: (FlowCheckingIncomeLine & { category_slug: string })[];
 };
 
-type CheckingCreditWithId = {
+type CheckingCreditWithId = BankRowText & {
   movement_id: number;
   account_id: number;
   occurred_on: string;
   amount_clp: number;
-  note: string | null;
 };
 
+/** The account's bank-listed credits (never a ledger anchor: `listCheckingMovements` lists bank rows only). */
 function loadCheckingCreditsWithId(accountId: number): CheckingCreditWithId[] {
-  return listCheckingMovements(accountId, "in").map((m) => ({
-    movement_id: m.id,
+  return listCheckingMovements(accountId, "in").map(({ id, occurred_on, amount_clp, ...text }) => ({
+    movement_id: id,
     account_id: accountId,
-    occurred_on: m.occurred_on,
-    amount_clp: m.amount_clp,
-    note: m.note,
+    occurred_on,
+    amount_clp,
+    ...text,
   }));
 }
 
@@ -200,11 +199,7 @@ function classifyCheckingCreditForIncome(
   credit: CheckingCreditWithId,
   ctx: IncomeFilterContext
 ): IncomeAutoFilterReason | null {
-  if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) {
-    throw new Error(`anchor cartola credit ${credit.movement_id} must not reach income classifier`);
-  }
-
-  const description = cartolaDescriptionFromNote(credit.note);
+  const description = credit.description;
 
   // Buda buffer retiros arrive under Buda's commercial name ("BUDA COM SPA" / "SURBTC SPA"), which
   // isExcludedCheckingInflow drops as a generic transfer. Match them first so the retiro outflow key
@@ -297,7 +292,7 @@ function toCheckingIncomeLine(
     received_on: credit.occurred_on,
     amount_clp,
     amount_usd: null,
-    description: cartolaDescriptionFromNote(credit.note),
+    description: credit.description,
     source: "checking",
   };
 }
@@ -342,7 +337,6 @@ function computeCheckingIncome(): CheckingIncomeComputation {
     for (const credit of loadCheckingCreditsWithId(accountId)) {
       if (excludedMovementIds.has(credit.movement_id)) continue;
       if (refundCategoryByMovementId.has(credit.movement_id)) continue;
-      if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
       creditsForBatching.push(credit);
     }
   }
@@ -370,7 +364,6 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   for (const accountId of accountIds) {
     for (const credit of loadCheckingCreditsWithId(accountId)) {
       if (excludedMovementIds.has(credit.movement_id)) continue;
-      if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
       // The user's classification wins over the auto filters: a refund is neither income nor a
       // capital return, and must not consume a redemption another credit should claim.
       const refundCategory = refundCategoryByMovementId.get(credit.movement_id);
@@ -393,7 +386,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
           received_on: credit.occurred_on,
           amount_clp,
           amount_usd: null,
-          description: cartolaDescriptionFromNote(credit.note),
+          description: credit.description,
           filter_reason: filterReason,
         });
         continue;
@@ -420,7 +413,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
         amount_clp: m.amount_clp,
         amount_usd: m.amount_usd,
         ...(m.currency === "usd" ? {} : { native: { currency: m.currency, amount: m.amount_native } }), // convention-ok: a dollar credit is the own-dollars slot (amount_usd)
-        description: cartolaDescriptionFromNote(m.note),
+        description: m.description,
       };
       const refundCategory = refundCategoryByMovementId.get(m.id);
       if (refundCategory != null) {
@@ -463,7 +456,6 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   for (const accountId of accountIds) {
     for (const credit of loadCheckingCreditsWithId(accountId)) {
       if (!excludedMovementIds.has(credit.movement_id)) continue;
-      if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
       classifyCheckingCreditForIncome(credit, filterCtx);
     }
   }

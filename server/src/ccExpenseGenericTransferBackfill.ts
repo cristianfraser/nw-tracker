@@ -1,5 +1,6 @@
 import { getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { db } from "./db.js";
+import { movementDescription } from "./bankRowFacts.js";
 import {
   isGenericTransferMerchantKey,
   loadCcStatementLineExpenseCtx,
@@ -9,9 +10,6 @@ import {
 import {
   checkingGastosMovementPurchaseKey,
 } from "./flowsCheckingGastos.js";
-import {
-  cartolaDescriptionFromNote,
-} from "./checkingDescriptionPredicates.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 
@@ -69,13 +67,13 @@ export function backfillGenericTransferUniquePurchases(): {
   if (checkingId != null) {
     const movements = db
       .prepare(
-        `SELECT id, note FROM movements
+        `SELECT id FROM movements
          WHERE account_id = ? AND ${MOVEMENT_CLP_LEG_SQL} < 0`
       )
-      .all(checkingId) as { id: number; note: string | null }[];
+      .all(checkingId) as { id: number }[];
 
     for (const mv of movements) {
-      const description = cartolaDescriptionFromNote(mv.note);
+      const description = movementDescription(mv.id);
       const merchantKey = normalizeCcExpenseMerchantKey(description);
       if (!isGenericTransferMerchantKey(merchantKey)) continue;
 

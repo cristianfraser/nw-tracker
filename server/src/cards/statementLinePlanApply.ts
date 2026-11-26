@@ -4,7 +4,8 @@
  * document line ends on, and the rows follow the plan — a row on file the statement bills is
  * restated in place, never deleted and written again. {@link importStatementDocuments} is the
  * production entry (`replaceStatementLines`, the statement JSON write, the PDF upload); listings
- * (paste, feed, planted lines) keep the listing merge (`mergeCardStatements`).
+ * (paste, feed, planted lines) never replace a row and import through the listing merge
+ * (`mergeListingStatements`).
  *
  * The steps that are not about which row a document line ends on run as the merge runs them: the
  * reconcile gate, the headers, the JSON closes a PDF takes over, the feed-close and
@@ -23,8 +24,8 @@
  *    into that line's), the annulment goes; one the statement refunds with a real credit keeps the
  *    purchase and drops its synthetic refund (`bank_credit`, annulled on the credit's day).
  *
- * Ambiguity (GUIDELINES: no guesses): a re-import identity group whose counts differ keeps today's
- * defined outcome — the vanished lines are removed (their flows retired with what was on them,
+ * Ambiguity (GUIDELINES: no guesses): a re-import identity group whose counts differ has a defined
+ * outcome — the vanished lines are removed (their flows retired with what was on them,
  * reported as `unpaired`) and the document lines written; anything else the plan cannot pair one to
  * one fails the import of the document with a message naming the rows, before anything is written.
  *
@@ -46,12 +47,7 @@ import {
 } from "../ccStatementsImport.js";
 import { canonicalLineDedupeKeys, storedStatementColumns, takeBatchDedupeKeys } from "./statementStorage.js";
 import { ccCardGroupOrDefault } from "../ccIssuers.js";
-import {
-  jsonStatementsSupersededByPdf,
-  mergeInstallmentLedgerFromStatements,
-  runBucketPasses,
-  type CcAccountImportMergeResult,
-} from "../ccInstallmentLedgerMerge.js";
+import { jsonStatementsSupersededByPdf, mergeInstallmentLedgerFromStatements, runBucketPasses } from "../ccInstallmentLedgerMerge.js";
 import { assertCcImportReconcilesOrThrow } from "../ccStatementImportReconcile.js";
 import { deleteJsonStatementsByIds } from "../ccStatementJsonSource.js";
 import { assertFeedClosesMatchStatements } from "../ccBillingCloses.js";
@@ -69,9 +65,7 @@ import {
   listAnnulledPurchases,
   markAnnulledPurchaseBankCredited,
 } from "../ccAnnulledPurchases.js";
-import type { CcAnnulmentSettled } from "../ccAnnulmentWriters.js";
-import { moveOpenBucketLinesToBillingMonth, parseOpenWebPasteBillingMonth } from "../ccOpenWebPasteRepair.js";
-import type { CcOpenWebPastePdfReconcileResult } from "../ccOpenWebPastePdfReconcile.js";
+import { moveOpenBucketLinesToBillingMonth } from "../ccOpenWebPasteRepair.js";
 import { carryPlanPrepaymentLines } from "../ccPlanPrepayments.js";
 import { confirmManualPaymentForPlanted, listPlantedPaymentLines } from "../ccPlantedPayments.js";
 import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
@@ -83,7 +77,6 @@ import {
   ccLineRefFromRow,
   restoreLineCategories,
   snapshotLineCategories,
-  type ReimportedCardLinesResult,
 } from "../flows/cardLineAdoption.js";
 import {
   noteCardLineEvidence,
@@ -388,7 +381,7 @@ function applyInSession(
     const refs = (db.prepare(`${CC_LINE_REF_SELECT} WHERE l.id IN (?, ?)`).all(i.copies_classification_from, to) as Parameters<typeof ccLineRefFromRow>[0][]).map(ccLineRefFromRow);
     const fromRef = refs.find((r) => r.lineId === i.copies_classification_from)!;
     const toRef = refs.find((r) => r.lineId === to)!;
-    adoptCardLineMoves([{ from: fromRef, to: toRef, by: "fan_out", copy: true, classificationOnly: true }]);
+    adoptCardLineMoves([{ from: fromRef, to: toRef, by: "fan_out", copy: true }]);
   }
 
   assertFeedClosesMatchStatements(accountId);
@@ -491,7 +484,17 @@ export function statementPlanWritesNothing(
   return true;
 }
 
-export type StatementDocumentsImportResult = CcAccountImportMergeResult & {
+export type StatementDocumentsImportResult = {
+  statements: CcStatementsMergeResult;
+  ledger: ReturnType<typeof mergeInstallmentLedgerFromStatements>;
+  /** One-shot lines the plan ledger superseded. */
+  overlap_removed: number;
+  manual_installment_reconcile: ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport>;
+  /** Grocery receipts flagged `pending_branch` on this card that the lines just written paired with. */
+  grocery_branch_learning: ReturnType<typeof learnGroceryBranchesFromCardLines>;
+  bucket: ReturnType<typeof runBucketPasses>;
+  /** (close, currency) pairs where an incoming PDF took over the JSON-written statement. */
+  json_closes_superseded_by_pdf: string[];
   /** What the plan did with the rows on file (`statementLinePlan.ts`); `wrote` false: nothing changed. */
   keep_rows: {
     wrote: boolean;
@@ -503,6 +506,8 @@ export type StatementDocumentsImportResult = CcAccountImportMergeResult & {
     moved: number[];
     annulments_billed: number[];
     annulments_credited: number[];
+    /** New lines that copied the category and big group of the kept lines of their identity. */
+    copied: number;
     /** Vanished lines of a re-import identity group whose counts differ: removed, their flows retired. */
     unpaired: number[];
   };
@@ -531,36 +536,22 @@ export function importStatementDocuments(
   if (readOnly.headers_on_file) {
     const { plan, unpaired } = plannedOn(readOnly);
     if (unpaired.length === 0 && statementPlanWritesNothing(accountId, statements, readOnly, plan)) {
-      return importResult(statements, readOnly, plan, null, [], []);
+      return importResult(statements, plan, null, [], []);
     }
   }
   return withCardLineSession(accountId, "this statement import", () => {
     const input = readOnly.headers_on_file ? readOnly : loadCardStatementLinePlanInput(accountId, statements, opts);
     const { plan, unpaired } = plannedOn(input);
-    const bucketMonth = bucketMonthsOfLines(accountId);
     const closes = jsonStatementsSupersededByPdf(accountId, statements).json_closes_superseded_by_pdf;
     const applied = applyInSession(accountId, statements, plan, opts);
-    return importResult(statements, input, plan, { applied, bucketMonth }, unpaired, closes);
+    return importResult(statements, plan, applied, unpaired, closes);
   });
-}
-
-/** Each card line's open-bucket month (lines on a bucket statement only), read before the apply. */
-function bucketMonthsOfLines(accountId: number): Map<number, string> {
-  const out = new Map<number, string>();
-  for (const r of db
-    .prepare(`SELECT l.id, s.source_pdf FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?`)
-    .all(accountId) as { id: number; source_pdf: string }[]) {
-    const bm = parseOpenWebPasteBillingMonth(r.source_pdf);
-    if (bm) out.set(r.id, bm);
-  }
-  return out;
 }
 
 function importResult(
   statements: readonly CardCanonicalStatement[],
-  input: CardStatementLinePlanInput,
   plan: CardStatementLinePlan,
-  done: { applied: StatementLinePlanApplyResult; bucketMonth: Map<number, string> } | null,
+  applied: StatementLinePlanApplyResult | null,
   unpaired: number[],
   jsonClosesSuperseded: string[]
 ): StatementDocumentsImportResult {
@@ -610,7 +601,7 @@ function importResult(
     return line.transaction_date ?? line.posting_date ?? null;
   });
   const earliestInserted = insertedDays.filter((d): d is string => d != null).sort()[0] ?? null;
-  const a = done?.applied ?? null;
+  const a = applied;
   const statementsResult: CcStatementsMergeResult = {
     statementCount: byStmt.size,
     lineCount: plan.insert.length,
@@ -628,56 +619,20 @@ function importResult(
     inserted_flows,
     skipped_flows,
   };
-  // The bucket's settlement per closed facturación, attributed by the bucket a line sat in.
-  const bm = done?.bucketMonth ?? new Map<number, string>();
-  const restatedIds = new Set(plan.keep.filter((k) => !isDuplicateKeep(k) && k.row.kind === "line").map((k) => k.row.id));
-  const web_paste_pdf_reconcile: CcOpenWebPastePdfReconcileResult[] = input.closed_months.map((m) => {
-    const inMonth = (id: number) => bm.get(id) === m.billing_month;
-    const deleted = [
-      ...plan.remove.filter((r) => r.why !== "superseded_by_plan" && r.why !== "replaced_statement_line_gone" && inMonth(r.row.id)).map((r) => r.row.id),
-      ...plan.fold.filter((f) => f.row.kind === "line" && inMonth(f.row.id)).map((f) => f.row.id),
-    ];
-    const settled: CcAnnulmentSettled[] = [];
-    return {
-      billing_month: m.billing_month,
-      currencies: m.fully_closed ? ["clp", "usd"] : [...m.statement_currencies].sort(), // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
-      deleted_count: deleted.length,
-      deleted_line_ids: deleted,
-      earliest_deleted_iso: null,
-      moved_count: plan.move_to_open.filter((x) => inMonth(x.line_id)).length,
-      moved_line_ids: plan.move_to_open.filter((x) => inMonth(x.line_id)).map((x) => x.line_id),
-      annulled_line_ids: plan.annul.filter((x) => x.billing_month === m.billing_month).map((x) => x.line_id),
-      annulments_settled: settled,
-      kept_plan_prepayment_line_ids: plan.kept_plan_prepayment.filter(inMonth),
-      restated_line_ids: [...restatedIds].filter(inMonth),
-      skipped: false,
-      skip_reason: null,
-    };
-  });
-  const rekey: ReimportedCardLinesResult = {
-    adopted: 0,
-    copied: plan.insert.filter((i) => i.copies_classification_from != null).length,
-    pairings: [],
-    conflicts: [],
-    unpaired: unpaired.map((lineId) => ({ lineId, parserRowId: null, reason: "ambiguous" as const })),
-  };
   return {
     statements: statementsResult,
     ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0 },
     overlap_removed: a?.overlap_removed ?? 0,
     manual_installment_reconcile: a?.manual_installment_reconcile ?? emptyManualReconcile(),
-    web_paste_repair: { lines_moved: 0, target_billing_month: input.open_billing_month ?? "" },
-    web_paste_pdf_reconcile,
     json_closes_superseded_by_pdf: jsonClosesSuperseded,
     grocery_branch_learning: a?.grocery_branch_learning ?? { learned: [], ambiguous: [] },
-    expense_line_rekey: rekey,
     bucket: a?.bucket ?? {
       truncated_merchant_dedupe: [],
       planted_payments: { replaced: [], confirmed_in_place: [], ambiguous: [], removed_from_date: null },
       recurring_pending: { replaced: [], ambiguous: [], removed_from_date: null },
     },
     keep_rows: {
-      wrote: done != null,
+      wrote: a != null,
       restated: a?.restated ?? [],
       inserted: a?.inserted ?? [],
       folded: a?.folded ?? [],
@@ -686,6 +641,7 @@ function importResult(
       moved: a?.moved ?? [],
       annulments_billed: a?.annulments_billed ?? [],
       annulments_credited: a?.annulments_credited ?? [],
+      copied: plan.insert.filter((i) => i.copies_classification_from != null).length,
       unpaired,
     },
   };

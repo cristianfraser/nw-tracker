@@ -3,7 +3,8 @@ import { syncExpenseLinksNow } from "./expenseAssignmentWrites.js";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
-import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
+import { cartolaRowPurchaseKey } from "./bankRowFacts.js";
+import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 import { buildDepositsReconciliationPayload } from "./flowsDepositsReconciliation.js";
 import { deleteDepositLinks, selectDepositLinks } from "./test/flowFixtures.js";
@@ -45,7 +46,8 @@ function insertAssertedWithdrawal(
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(checkingId, amountClp, occurredOn, note);
-  const purchaseKey = checkingCartolaStablePurchaseKey(checkingId, note, "gastos");
+  stateListingFactsOfFixtures();
+  const purchaseKey = cartolaRowPurchaseKey(Number(ins.lastInsertRowid), checkingId, "gastos");
   if (!purchaseKey) throw new Error("fixture purchase key not derivable");
   uniqueCategoryInsert.run(checkingId, purchaseKey, depositsCategoryId);
   fixtureKeys.push(purchaseKey);
@@ -65,7 +67,8 @@ function insertCartolaWithdrawal(
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(checkingId, amountClp, occurredOn, note);
-  const purchaseKey = checkingCartolaStablePurchaseKey(checkingId, note, "gastos");
+  stateListingFactsOfFixtures();
+  const purchaseKey = cartolaRowPurchaseKey(Number(ins.lastInsertRowid), checkingId, "gastos");
   if (purchaseKey) fixtureKeys.push(purchaseKey);
   return Number(ins.lastInsertRowid);
 }

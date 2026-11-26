@@ -1,44 +1,11 @@
 import { billingMonthForCcStatement } from "./cards/statementMonth.js";
-import { ccStatementSourceKindOf, isListingSourceKind, isStatementSourceKind } from "./ccStatementSourceKind.js";
-import { applyCardLinePlan } from "./ccCrossImportDedupe.js";
-import { noteCardLineWritten, withCardLineSession } from "./cards/lineWriteSession.js";
-import {
-  hasEveryStatementTwinForBillingMonth,
-  statementSlotsByBillingMonth,
-} from "./ccBillingStatementSlots.js";
-import { requiredStatementCurrenciesForAccount, billingMonthForManualLedgerPurchase } from "./cards/facturacion.js";
-import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
-import {
-  moveOpenBucketLinesToBillingMonth,
-  parseOpenWebPasteBillingMonth,
-} from "./ccOpenWebPasteRepair.js";
+import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
-import {
-  confirmManualPaymentForPlanted,
-  listPlantedPaymentLines,
-  plantedPaymentMatchesStatementLine,
-  type PlantedPaymentRow,
-} from "./ccPlantedPayments.js";
+import { plantedPaymentMatchesStatementLine, type PlantedPaymentRow } from "./ccPlantedPayments.js";
 import type { CardCanonicalStatement } from "nw-tracker-contracts";
-import {
-  listCcStatementLinesForStatement,
-  listCcStatementsForAccount,
-  type CcStatementLineRow,
-  type CcStatementRow,
-} from "./ccStatementsDb.js";
+import type { CcStatementLineRow, CcStatementRow } from "./ccStatementsDb.js";
 import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
-import { annulOpenBucketLines } from "./ccAnnulledPurchases.js";
-import {
-  bucketLineAnnullableGiven,
-  bucketLineCuotaPurchaseKind,
-  settleAnnulmentsAgainstStatement,
-  statementLineRestatingBucketLine,
-  type CcAnnulmentSettled,
-  type StatementChargeLike,
-} from "./ccAnnulmentWriters.js";
-import { findPlanForOneShotLine } from "./cards/purchases.js";
-import { carryPlanPrepaymentLines } from "./ccPlanPrepayments.js";
-import { planPrepaymentRows } from "./ccPlanPrepaymentsRead.js";
+import { bucketLineAnnullableGiven, statementLineRestatingBucketLine, type StatementChargeLike } from "./ccAnnulmentWriters.js";
 import { listingLineCurrency } from "./ccFeedCuotaPurchases.js";
 import { isHomeCurrency } from "./displayUnits.js";
 import { sameCoin } from "./matching/money.js";
@@ -68,150 +35,6 @@ export function closedPeriodIsoRange(
     if (t && (to == null || t > to)) to = t;
   }
   return from && to ? { from, to } : null;
-}
-
-export type CcOpenWebPastePdfReconcileResult = {
-  billing_month: string;
-  /**
-   * Bucket currencies settled: every line once the month is fully closed, else only the lines in
-   * a currency whose statement is in (one twin arriving before the other).
-   */
-  currencies: string[];
-  deleted_count: number;
-  deleted_line_ids: number[];
-  /** Earliest purchase date among the deleted lines — evidence the owed walk must re-read from. */
-  earliest_deleted_iso: string | null;
-  /** Bucket lines the statement did not bill (after its cycle) moved to the open facturación. */
-  moved_count: number;
-  moved_line_ids: number[];
-  /**
-   * Bucket lines inside the billed cycle that the statement neither bills nor restates: the bank
-   * dropped them, so they are kept as annulled purchases (a subset of `deleted_line_ids`).
-   */
-  annulled_line_ids: number[];
-  /** Annulled purchases the statement billed after all or refunded with a real credit. */
-  annulments_settled: CcAnnulmentSettled[];
-  /**
-   * Bucket lines of a plan the bank paid off at once (the prepayment, its refund credit) that the
-   * statement does not print: kept, never deleted or annulled — they are no purchases (`ccPlanPrepayments.ts`).
-   */
-  kept_plan_prepayment_line_ids: number[];
-  /** Bucket lines a statement line restated in place (`statementLinePlanApply.ts`). */
-  restated_line_ids: number[];
-  skipped: boolean;
-  skip_reason: string | null;
-};
-
-/**
- * Supersede the `open|{M}` web-paste bucket once a statement closes billing month M.
- *
- * The bucket is a placeholder for the in-progress cycle; the statement is authoritative once it
- * arrives. Each bucket line is settled against it:
- *
- *  - **On the statement** (same merchant, amount to the unit, date within a day — see
- *    {@link webPasteLineMatchesStatementLine}) → deleted, the statement carries it.
- *  - **Inside the billed cycle but not on the statement** → web-paste amounts are
- *    pre-authorization snapshots that don't line up one-to-one with settled lines (several
- *    grocery pre-auths collapse into one charge), so a statement line of the same currency within
- *    four days that has a matching merchant (another amount) or the same amount (another name)
- *    means the statement carries it under another shape → deleted. With no such line the bank
- *    voided the purchase and billed nothing for it: it is kept as an ANNULLED purchase (basis
- *    `statement_close`, annulled on the close day; `ccAnnulledPurchases.ts`) instead of deleted.
- *    A cuota line, a line tagged as a cuota purchase, a line a plan covers and any credit or
- *    payment keep the delete (the statement's plan or its own line supersedes them).
- *  - **A previously annulled purchase** the statement bills after all → the annulment goes and its
- *    flow folds into the statement line; one the statement refunds with a real credit keeps the
- *    purchase and drops its synthetic refund (`settleAnnulmentsAgainstStatement`).
- *  - **Outside the billed cycle and not on the statement** → moved to the open facturación: the
- *    bank did not bill it at this close. The cycle ends BEFORE the next cycle's first day
- *    (`nextPeriodStartIsoForBillingMonth`), which is the close day itself on Santander — a
- *    purchase dated the close day bills next month (24/09/2026 rows sat in «por facturar» the day
- *    after the September close) — and the day after it on BCI. Deleting on the close day, as the
- *    old inclusive window did, dropped those purchases until the next feed re-listed them.
- *
- * Lines already filed in a LATER bucket (the post-close feed moved them forward) are only
- * deleted when the statement carries them after all. Falls back to exact matching alone when the
- * statement lacks a parseable period.
- *
- * Before the month is fully closed (one twin in, the other pending) only the lines in the
- * statement's own currency are settled; the rest wait for their statement.
- */
-export function reconcileOpenWebPasteAfterPdfClose(
-  accountId: number,
-  billingMonth: string,
-  opts?: { dryRun?: boolean }
-): CcOpenWebPastePdfReconcileResult {
-  const statements = listCcStatementsForAccount(accountId);
-  const pdfStatements = statements.filter(
-    (st) => st.billing_month === billingMonth && isStatementSourceKind(st.source_kind)
-  );
-  if (pdfStatements.length === 0) {
-    return {
-      billing_month: billingMonth,
-      currencies: [],
-      deleted_count: 0,
-      deleted_line_ids: [],
-      earliest_deleted_iso: null,
-      moved_count: 0,
-      moved_line_ids: [],
-      annulled_line_ids: [],
-      annulments_settled: [],
-      kept_plan_prepayment_line_ids: [],
-      restated_line_ids: [],
-      skipped: true,
-      skip_reason: "no_pdf_lines_for_billing_month",
-    };
-  }
-  const plan = planBucketSettlement(loadBucketSettlementInput(accountId, billingMonth, statements, pdfStatements));
-  const { toDelete, toMove, toAnnul, settledBy, plantedConfirmations, keptPrepaymentLines, matchable } = plan;
-  const planted = new Map(listPlantedPaymentLines(accountId).map((p) => [p.line_id, p]));
-  let annulmentsSettled = settleAnnulmentsAgainstStatement(accountId, matchable, new Set(), { dryRun: true });
-
-  if (!opts?.dryRun) {
-    // A planted payment the statement prints is confirmed; one deleted unmatched is not (the
-    // manual payment's overdue check then surfaces it).
-    const deleting = new Set(toDelete);
-    for (const c of plantedConfirmations) {
-      if (deleting.has(c.lineId)) confirmManualPaymentForPlanted(planted.get(c.lineId)!, c.merchant);
-    }
-    // A card-line write (the statement import's, when it runs inside one): the settled lines'
-    // assignments carried onto the statement's lines, then deleted; the unbilled ones moved on.
-    withCardLineSession(accountId, "statement bucket reconcile", () => {
-      // Annulment rows first: they snapshot the lines the plan below deletes.
-      if (toAnnul.length > 0) {
-        const evidence = pdfStatements[0]!.source_pdf;
-        for (const { id, annulledOn } of toAnnul) {
-          annulOpenBucketLines(accountId, [id], { annulledOn, basis: "statement_close", evidence });
-        }
-      }
-      annulmentsSettled = settleAnnulmentsAgainstStatement(accountId, matchable, new Set());
-      // The prepayment and its credit follow their line onto the statement line that bills it.
-      carryPlanPrepaymentLines(accountId, settledBy);
-      applyCardLinePlan(accountId, { deleteLineIds: toDelete, carry: settledBy });
-      if (toMove.length > 0) {
-        const openBm = billingMonthForManualLedgerPurchase(accountId);
-        if (!openBm) throw new Error(`Account ${accountId}: no open facturación to move lines into`);
-        moveOpenBucketLinesToBillingMonth(accountId, toMove, openBm);
-        noteCardLineWritten(accountId);
-      }
-    });
-  }
-
-  return {
-    billing_month: billingMonth,
-    currencies: plan.fullyClosed ? ["clp", "usd"] : [...plan.statementCurrencies].sort(), // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
-    deleted_count: toDelete.length,
-    deleted_line_ids: toDelete,
-    earliest_deleted_iso: plan.earliestDeletedIso,
-    moved_count: toMove.length,
-    moved_line_ids: toMove,
-    annulled_line_ids: toAnnul.map((a) => a.id),
-    annulments_settled: annulmentsSettled,
-    kept_plan_prepayment_line_ids: keptPrepaymentLines,
-    restated_line_ids: [],
-    skipped: false,
-    skip_reason: null,
-  };
 }
 
 /** A bucket or statement line as the settlement reads it (`CcStatementLineRow`'s matching columns). */
@@ -271,10 +94,39 @@ export type BucketSettlementPlan = {
 };
 
 /**
- * The bucket's settlement against the month's statements (pure; the rule is
- * {@link reconcileOpenWebPasteAfterPdfClose}'s). `reconcileOpenWebPasteAfterPdfClose` runs it on the
- * lines on file once the statement's lines are written; the statement-line planner
- * (`cards/statementLinePlan.ts`) runs it on the lines as they will be.
+ * The bucket's settlement against the month's statements (pure): the `open|{M}` bucket is a
+ * placeholder for the in-progress cycle; the statement is authoritative once it arrives, and each
+ * bucket line is settled against it:
+ *
+ *  - **On the statement** (same merchant, amount to the unit, date within a day — see
+ *    {@link webPasteLineMatchesStatementLine}) → the statement line's row (`settledBy`).
+ *  - **Inside the billed cycle but not on the statement** → web-paste amounts are
+ *    pre-authorization snapshots that don't line up one-to-one with settled lines (several
+ *    grocery pre-auths collapse into one charge), so a statement line of the same currency within
+ *    four days that has a matching merchant (another amount) or the same amount (another name)
+ *    means the statement carries it under another shape → that line's row (`restatedBy`). With no
+ *    such line the bank voided the purchase and billed nothing for it: it is kept as an ANNULLED
+ *    purchase (basis `statement_close`, annulled on the close day; `ccAnnulledPurchases.ts`).
+ *    A cuota line, a line tagged as a cuota purchase, a line a plan covers and any credit or
+ *    payment are removed (the statement's plan or its own line supersedes them).
+ *  - **A previously annulled purchase** (`matchable`, for `planAnnulmentSettlements`) the
+ *    statement bills after all → the annulment goes and its flow is the statement line's; one the
+ *    statement refunds with a real credit keeps the purchase and drops its synthetic refund.
+ *  - **Outside the billed cycle and not on the statement** → moved to the open facturación: the
+ *    bank did not bill it at this close. The cycle ends BEFORE the next cycle's first day
+ *    (`nextPeriodStartIsoForBillingMonth`), which is the close day itself on Santander — a
+ *    purchase dated the close day bills next month (24/09/2026 rows sat in «por facturar» the day
+ *    after the September close) — and the day after it on BCI.
+ *
+ * Lines already filed in a LATER bucket (the post-close feed moved them forward) are only
+ * settled when the statement carries them after all. Falls back to exact matching alone when the
+ * statement lacks a parseable period.
+ *
+ * Before the month is fully closed (one twin in, the other pending) only the lines in the
+ * statement's own currency are settled; the rest wait for their statement.
+ *
+ * The statement-line planner (`cards/statementLinePlan.ts`) runs it on the lines as the import will
+ * leave them.
  */
 export function planBucketSettlement<L extends BucketSettlementLine>(input: BucketSettlementInput<L>): BucketSettlementPlan {
   const { fullyClosed, statementCurrencies, closedPeriod, nextStart, statementLines, billingMonth } = input;
@@ -396,65 +248,9 @@ export function planBucketSettlement<L extends BucketSettlementLine>(input: Buck
   };
 }
 
-/** {@link planBucketSettlement}'s input from the lines on file (`statements`: the account's, as listed). */
-function loadBucketSettlementInput(
-  accountId: number,
-  billingMonth: string,
-  statements: readonly CcStatementRow[],
-  pdfStatements: readonly CcStatementRow[]
-): BucketSettlementInput<CcStatementLineRow> {
-  // The month closes only once every statement currency the account carries is in, but one twin
-  // is already the bank's word on its OWN currency: settle that currency's bucket lines now and
-  // leave the others for their statement. Keeping the whole bucket until the second twin (the
-  // rule until 2026-09-26) counted the first twin's lines twice meanwhile — the September 2026
-  // ·0781 USD statement arrived hours before its CLP twin, and importing it alone read the
-  // month's dollar purchases twice (US$x.xxx,xx billed for US$x.xxx,xx).
-  const fullyClosed = hasEveryStatementTwinForBillingMonth(
-    statementSlotsByBillingMonth(accountId).get(billingMonth),
-    requiredStatementCurrenciesForAccount(accountId)
-  );
-  const prepaymentRoles = new Map<number, PlanPrepaymentLineRole>();
-  for (const r of planPrepaymentRows(accountId)) {
-    if (r.line_id != null) prepaymentRoles.set(r.line_id, "prepayment");
-    if (r.credit_line_id != null) prepaymentRoles.set(r.credit_line_id, "credit");
-  }
-  const buckets = statements
-    .map((st) => ({ st, bm: parseOpenWebPasteBillingMonth(st.source_pdf) }))
-    .filter((b): b is { st: CcStatementRow; bm: string } => b.bm != null)
-    .sort((a, b) => a.bm.localeCompare(b.bm))
-    .map(({ st, bm }) => ({ billingMonth: bm, sourceKind: st.source_kind, lines: listCcStatementLinesForStatement(st.id) }));
-  return {
-    billingMonth,
-    fullyClosed,
-    statementCurrencies: new Set<string>(pdfStatements.map((st) => st.currency)),
-    closedPeriod: closedPeriodIsoRange(pdfStatements),
-    nextStart: nextPeriodStartIsoForBillingMonth(accountId, billingMonth, statements).iso,
-    statementLines: statementLinesForMatching(pdfStatements),
-    buckets,
-    planted: new Map(listPlantedPaymentLines(accountId).map((p) => [p.line_id, p])),
-    prepaymentRoles,
-    cuotaPurchaseKind: bucketLineCuotaPurchaseKind,
-    planCoversOneShot: (merchant, iso, amount) => findPlanForOneShotLine(accountId, merchant, iso, amount) != null,
-  };
-}
-
-
 /** A bucket line's currency: the one it stores. */
 function bucketLineCurrency(line: { currency: string }): string {
   return listingLineCurrency(line);
-}
-
-function statementLinesForMatching(
-  pdfStatements: readonly CcStatementRow[]
-): StatementLineForMatching<CcStatementLineRow>[] {
-  const out: StatementLineForMatching<CcStatementLineRow>[] = [];
-  for (const st of pdfStatements) {
-    for (const line of listCcStatementLinesForStatement(st.id)) {
-      if (line.installment_flag) continue;
-      out.push({ line, currency: st.currency });
-    }
-  }
-  return out;
 }
 
 /**
@@ -522,13 +318,4 @@ export function pdfClosedBillingMonthsFromImport(statements: readonly CardCanoni
     if (bm) months.add(bm);
   }
   return [...months].sort();
-}
-
-export function reconcileOpenWebPasteAfterPdfImports(
-  accountId: number,
-  statements: readonly CardCanonicalStatement[],
-  opts?: { dryRun?: boolean }
-): CcOpenWebPastePdfReconcileResult[] {
-  const months = pdfClosedBillingMonthsFromImport(statements);
-  return months.map((bm) => reconcileOpenWebPasteAfterPdfClose(accountId, bm, opts));
 }

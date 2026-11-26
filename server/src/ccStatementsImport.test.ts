@@ -1,9 +1,21 @@
 import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import {
-  importCcStatementsMerge,
-} from "./ccStatementsImport.js";
+import { importCcStatementsMerge } from "./ccStatementsImport.js";
+import { replaceStatementLines } from "./cards/lineWrites.js";
+import { importStatementDocuments } from "./cards/statementLinePlanApply.js";
+import { statementKeysOf } from "./ccInstallmentLedgerMerge.js";
+import type { CardCanonicalStatement } from "nw-tracker-contracts";
+
+/**
+ * A statement document's import: as the corpus import runs it (restating its stored copy), or, with
+ * `replace: false`, as an upload of another copy runs it (its lines against the ones on file).
+ */
+function importStatements(accountId: number, statements: CardCanonicalStatement[], opts: { replace?: boolean } = {}) {
+  return opts.replace === false
+    ? importStatementDocuments(accountId, statements).statements
+    : replaceStatementLines(accountId, statements, { replaceStatementKeys: statementKeysOf(statements) }).statements;
+}
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
@@ -19,11 +31,12 @@ function row(overrides: Partial<ParsedRecord>): ParsedRecord {
     card_product: "",
     parser_layout: "compact",
     currency: "clp",
-    statement_saldo_anterior: "1000",
-    statement_abono: "0",
-    statement_compras_cargos: "100",
-    statement_deuda_total: "1100",
-    statement_monto_facturado: "1100",
+    // No printed totals: the import reconcile gate has nothing to hold these lines to.
+    statement_saldo_anterior: "",
+    statement_abono: "",
+    statement_compras_cargos: "",
+    statement_deuda_total: "",
+    statement_monto_facturado: "",
     transaction_date: "15/06/2024",
     posting_date: "",
     place: "",
@@ -40,7 +53,7 @@ function row(overrides: Partial<ParsedRecord>): ParsedRecord {
   };
 }
 
-describe("importCcStatementsMerge CLP vs USD", () => {
+describe("statement import: CLP vs USD", () => {
   it("keeps separate statements for same close date when currency differs", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
@@ -61,12 +74,17 @@ describe("importCcStatementsMerge CLP vs USD", () => {
       merchant: "USD ONLY",
       amount_clp: "",
       amount_usd: "50,00",
-      statement_monto_facturado: "50,00",
       row_id: "usd-1",
     });
 
-    importCcStatementsMerge(accountId, parsedStatements([clp]), { skipGlobalDedupeKeys: true });
-    importCcStatementsMerge(accountId, parsedStatements([usd]), { skipGlobalDedupeKeys: true });
+    // The dollar statement's facturado is billed in pesos at the stored rate before its pay-by.
+    const restoreFx = overrideFxDaily([["2024-06-20", 950]]);
+    try {
+      importStatements(accountId, parsedStatements([clp]));
+      importStatements(accountId, parsedStatements([usd]));
+    } finally {
+      restoreFx();
+    }
 
     const stmts = db
       .prepare(
@@ -85,7 +103,7 @@ describe("importCcStatementsMerge CLP vs USD", () => {
   });
 });
 
-describe("importCcStatementsMerge fuzzy dedup", () => {
+describe("statement import: fuzzy dedup", () => {
   it("skips re-import when merchant is truncated but date+amount+stem match (METLIFE case)", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
@@ -107,10 +125,10 @@ describe("importCcStatementsMerge fuzzy dedup", () => {
       row_id: "met-2",
     });
 
-    const r1 = importCcStatementsMerge(accountId, parsedStatements([firstImport]), { skipGlobalDedupeKeys: true });
+    const r1 = importStatements(accountId, parsedStatements([firstImport]));
     expect(r1.linesInserted).toBe(1);
 
-    const r2 = importCcStatementsMerge(accountId, parsedStatements([secondImport]), { skipGlobalDedupeKeys: true });
+    const r2 = importStatements(accountId, parsedStatements([secondImport]), { replace: false });
     expect(r2.linesInserted).toBe(0);
     expect(r2.linesSkippedFuzzyDuplicate).toBe(1);
 
@@ -126,7 +144,7 @@ describe("importCcStatementsMerge fuzzy dedup", () => {
   });
 });
 
-describe("importCcStatementsMerge same-statement lines", () => {
+describe("statement import: same-statement lines", () => {
   it("keeps two lines one statement prints, even when their merchants fuzzy-match", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
@@ -142,17 +160,15 @@ describe("importCcStatementsMerge same-statement lines", () => {
       transaction_date: "08/06/2024",
       row_id: "cafe-2",
     });
-    const r = importCcStatementsMerge(accountId, parsedStatements([a, b]), { skipGlobalDedupeKeys: true });
+    const r = importStatements(accountId, parsedStatements([a, b]));
     expect(r.linesInserted).toBe(2);
     expect(r.linesSkippedFuzzyDuplicate).toBe(0);
   });
 });
 
-describe("importCcStatementsMerge vs open web-paste bucket", () => {
-  // Regression for the 2026-08 ·0101 facturación: 9 statement rows were skipped as
-  // duplicates of open web-paste bucket lines, and the merge's supersede then deleted
-  // those bucket lines — the purchases vanished from both places. A PDF import must
-  // never count web-paste lines as existing evidence.
+describe("statement import vs open web-paste bucket", () => {
+  // A bucket line the statement bills is no duplicate of its line: the statement restates it, so
+  // the purchase stays on its row and the statement's figures win.
   function wipe(accountId: number): void {
     db.prepare(
       `DELETE FROM cc_statement_lines WHERE statement_id IN (SELECT id FROM cc_statements WHERE account_id = ?)`
@@ -160,7 +176,7 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
   }
 
-  it("imports the PDF row over a fuzzy web-paste twin (truncated merchant)", () => {
+  it("restates a fuzzy web-paste twin (truncated merchant) as the PDF row", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
     wipe(accountId);
@@ -174,23 +190,30 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
       statement_monto_facturado: "",
       row_id: "wp-fuzzy-1",
     });
-    const rPaste = importCcStatementsMerge(accountId, parsedStatements([paste]), { skipGlobalDedupeKeys: true });
+    const rPaste = importCcStatementsMerge(accountId, parsedStatements([paste]));
     expect(rPaste.linesInserted).toBe(1);
 
     const pdf = row({
       source_pdf: "2025-06-23 estado de cuenta tarjeta 4141.pdf",
       statement_date: "23/06/2025",
+      period_from: "24/05/2025",
+      period_to: "23/06/2025",
+      pay_by: "10/07/2025",
       merchant: "TOKU *METLIFE HIPOTECAR,SANTIAGO",
       amount_clp: "753333",
       transaction_date: "11/06/2025",
       row_id: "pdf-fuzzy-1",
     });
-    const rPdf = importCcStatementsMerge(accountId, parsedStatements([pdf]), { skipGlobalDedupeKeys: true });
+    const rPdf = importStatements(accountId, parsedStatements([pdf]));
     expect(rPdf.linesSkippedFuzzyDuplicate).toBe(0);
-    expect(rPdf.linesInserted).toBe(1);
+    expect(rPdf.linesInserted).toBe(0);
+    expect(rPdf.linesRestated).toBe(1);
+    expect(db.prepare(`SELECT l.merchant FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?`).all(accountId)).toEqual([
+      { merchant: "TOKU *METLIFE HIPOTECAR,SANTIAGO" },
+    ]);
   });
 
-  it("imports the PDF row over an identical-key web-paste twin", () => {
+  it("restates an identical-key web-paste twin as the PDF row", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
     wipe(accountId);
@@ -204,19 +227,23 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
       statement_monto_facturado: "",
       row_id: "wp-key-1",
     });
-    importCcStatementsMerge(accountId, parsedStatements([paste]), { skipGlobalDedupeKeys: true });
+    importCcStatementsMerge(accountId, parsedStatements([paste]));
 
     const pdf = row({
       source_pdf: "2025-06-23 estado de cuenta tarjeta 4141.pdf",
       statement_date: "23/06/2025",
+      period_from: "24/05/2025",
+      period_to: "23/06/2025",
+      pay_by: "10/07/2025",
       merchant: "EXPRESS LYON, SANTIAGO",
       amount_clp: "19310",
       transaction_date: "06/06/2025",
       row_id: "pdf-key-1",
     });
-    const rPdf = importCcStatementsMerge(accountId, parsedStatements([pdf]), { skipGlobalDedupeKeys: true });
+    const rPdf = importStatements(accountId, parsedStatements([pdf]));
     expect(rPdf.linesSkippedDuplicate).toBe(0);
-    expect(rPdf.linesInserted).toBe(1);
+    expect(rPdf.linesInserted).toBe(0);
+    expect(rPdf.linesRestated).toBe(1);
   });
 
   it("web-paste imports still dedupe against PDF statement lines (reverse direction)", () => {
@@ -227,12 +254,15 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
     const pdf = row({
       source_pdf: "2025-06-23 estado de cuenta tarjeta 4141.pdf",
       statement_date: "23/06/2025",
+      period_from: "24/05/2025",
+      period_to: "23/06/2025",
+      pay_by: "10/07/2025",
       merchant: "EXPRESS LYON, SANTIAGO",
       amount_clp: "19310",
       transaction_date: "06/06/2025",
       row_id: "pdf-rev-1",
     });
-    importCcStatementsMerge(accountId, parsedStatements([pdf]), { skipGlobalDedupeKeys: true });
+    importStatements(accountId, parsedStatements([pdf]));
 
     const paste = row({
       source_pdf: "import:web-paste|open|2025-06",
@@ -243,18 +273,21 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
       statement_monto_facturado: "",
       row_id: "wp-rev-1",
     });
-    const rPaste = importCcStatementsMerge(accountId, parsedStatements([paste]), { skipGlobalDedupeKeys: true });
+    const rPaste = importCcStatementsMerge(accountId, parsedStatements([paste]));
     expect(rPaste.linesInserted).toBe(0);
     expect(rPaste.linesSkippedDuplicate).toBe(1);
   });
 });
 
-describe("importCcStatementsMerge origin currency", () => {
+describe("statement import: origin currency", () => {
   // The parser writes MONTO MONEDA ORIGEN as printed and never a currency; the import labels it.
   const usdLine = (overrides: Partial<ParsedRecord>): ParsedRecord =>
     row({
       source_pdf: "2031-03-20 estado de cuenta tarjeta usd 4141.pdf",
       statement_date: "20/03/2031",
+      period_from: "21/02/2031",
+      period_to: "20/03/2031",
+      pay_by: "10/04/2031",
       currency: "usd",
       parser_layout: "international_usd",
       transaction_date: "14/03/2031",
@@ -272,7 +305,7 @@ describe("importCcStatementsMerge origin currency", () => {
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
     const restoreFx = overrideFxDaily([["2031-03-14", 950]]);
     try {
-      importCcStatementsMerge(
+      importStatements(
         accountId,
         parsedStatements([
           // Pesos from a GB-coded merchant: the old reader stored 18,25 and called it pounds.
@@ -280,8 +313,7 @@ describe("importCcStatementsMerge origin currency", () => {
           usdLine({ merchant: "TIENDA DOLARES", country: "US", amount_orig: "4,25", amount_usd: "4,25", row_id: "o-2" }),
           usdLine({ merchant: "TIENDA REALES", country: "BR", amount_orig: "15,00", amount_usd: "2,90", row_id: "o-3" }),
           usdLine({ merchant: "ABONO DE DIVISAS", country: "CH", amount_orig: "0,00", amount_usd: "-30,00", row_id: "o-4" }),
-        ]),
-        { skipGlobalDedupeKeys: true }
+        ])
       );
     } finally {
       restoreFx();
@@ -304,10 +336,9 @@ describe("importCcStatementsMerge origin currency", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
     expect(() =>
-      importCcStatementsMerge(
+      importStatements(
         accountId,
-        parsedStatements([usdLine({ merchant: "CON ETIQUETA", amount_orig: "5,00", amount_usd: "4,95", orig_currency: "CLP", row_id: "o-5" })]),
-        { skipGlobalDedupeKeys: true }
+        parsedStatements([usdLine({ merchant: "CON ETIQUETA", amount_orig: "5,00", amount_usd: "4,95", orig_currency: "CLP", row_id: "o-5" })])
       )
     ).toThrow(/labeled on import/);
   });

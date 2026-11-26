@@ -16,7 +16,6 @@ import {
   listOverdueUnconfirmedSyntheticCcPayments,
   syntheticCcPaymentMovementIdForMessageId,
 } from "./santanderSyntheticCcPayments.js";
-import { prunePartialMovementsSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { bankPostedOn } from "./movementBankPostings.js";
@@ -150,33 +149,6 @@ describe("santanderCcPaymentReceipts", () => {
       (db.prepare(`SELECT occurred_on FROM movements WHERE id = ?`).get(id) as { occurred_on: string }).occurred_on
     ).toBe("2026-08-31");
     expect(bankPostedOn(id, checkingAccountId())).toBe("2026-09-01");
-  });
-
-  it("cartola prune carries a receipt re-date onto the official row", () => {
-    const checkingId = checkingAccountId();
-    // A re-dated partial: row date 07, note keeps the bank date 10.
-    db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
-       VALUES (?, -111222, 'clp', '2026-08-07', 'import:cartola-partial|2026-08-10|-111222|VITEST PAGO TARJETA')`
-    ).run(checkingId);
-    created.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
-    // The official cartola row, inserted by the cartola import at the bank date.
-    db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
-       VALUES (?, -111222, 'clp', '2026-08-10', 'import:cartola|2026-08|401|VITEST PAGO TARJETA|on:2026-08-10')`
-    ).run(checkingId);
-    const officialId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
-    created.push(officialId);
-
-    const pruned = prunePartialMovementsSupersededByCartola(checkingId, [
-      { occurred_on: "2026-08-10", amount_clp: -111222, description: "VITEST PAGO TARJETA", document_no: "" },
-    ] as never);
-    expect(pruned.removed).toBe(1);
-    const official = db
-      .prepare(`SELECT occurred_on FROM movements WHERE id = ?`)
-      .get(officialId) as { occurred_on: string };
-    expect(official.occurred_on).toBe("2026-08-07");
-    expect(bankPostedOn(officialId, checkingId)).toBe("2026-08-10");
   });
 });
 

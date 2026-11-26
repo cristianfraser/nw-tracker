@@ -69,7 +69,7 @@ describe("importCcStatementsMerge", () => {
     ];
 
     try {
-      const first = importCcStatementsMerge(accountId, parsedStatements(records), { replaceAll: false });
+      const first = importCcStatementsMerge(accountId, parsedStatements(records));
       expect(first.linesInserted).toBe(1);
       expect(first.inserted_flows).toEqual([
         {
@@ -84,7 +84,7 @@ describe("importCcStatementsMerge", () => {
       ]);
       expect(first.skipped_flows).toEqual([]);
 
-      const second = importCcStatementsMerge(accountId, parsedStatements(records), { replaceAll: false });
+      const second = importCcStatementsMerge(accountId, parsedStatements(records));
       expect(second.linesInserted).toBe(0);
       expect(second.linesSkippedDuplicate).toBe(1);
       expect(second.inserted_flows).toEqual([]);
@@ -135,7 +135,7 @@ describe("importCcStatementsMerge", () => {
         },
       ];
 
-      const r = importCcStatementsMerge(accountId, parsedStatements(records), { replaceAll: false });
+      const r = importCcStatementsMerge(accountId, parsedStatements(records));
       expect(r.linesInserted).toBe(0);
       expect(r.linesSkippedInstallmentOverlap).toBe(1);
       expect(r.skipped_flows).toHaveLength(1);
@@ -179,7 +179,7 @@ describe("importCcStatementsMerge", () => {
     ];
 
     try {
-      const first = importCcStatementsMerge(accountId, parsedStatements(records), { replaceAll: false });
+      const first = importCcStatementsMerge(accountId, parsedStatements(records));
       expect(first.linesInserted).toBe(1);
       expect(first.additionalCardCategoriesApplied).toBe(1);
 
@@ -202,7 +202,7 @@ describe("importCcStatementsMerge", () => {
 
       db.prepare(`UPDATE cc_statement_lines SET origin_card_last4 = NULL WHERE id = ?`).run(line.id);
 
-      const second = importCcStatementsMerge(accountId, parsedStatements(records), { replaceAll: false });
+      const second = importCcStatementsMerge(accountId, parsedStatements(records));
       expect(second.linesInserted).toBe(0);
       expect(second.linesSkippedDuplicate).toBe(1);
       expect(second.linesOriginCardPatched).toBe(1);

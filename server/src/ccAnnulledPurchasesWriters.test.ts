@@ -6,7 +6,7 @@ import { db } from "./db.js";
 import { applyListing, balanceRow, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import { judgeLatestBankCupoCapture } from "./ccBankCupoCheck.js";
 import { annulledPurchaseOwedEvents, listAnnulledPurchases, annulOpenBucketLines } from "./ccAnnulledPurchases.js";
-import { reconcileOpenWebPasteAfterPdfClose } from "./ccOpenWebPastePdfReconcile.js";
+import { importStatementOnFile } from "./test/statementOnFile.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js";
 import { snapshotTables } from "./test/snapshotTables.js";
@@ -348,18 +348,18 @@ describe("annulled purchases: the writers", () => {
     });
   }
 
-  it("annuls an unbilled bucket line at the close but deletes a re-settled one", () => {
+  it("annuls an unbilled bucket line at the close; a re-settled one becomes the statement's line", () => {
     vi.setSystemTime(new Date("2026-09-26T15:00:00Z"));
     const sept = bucket();
     const voided = insertLine(sept, "2026-09-04", "VITEST ANULADO", 20_000);
     const resettled = insertLine(sept, "2026-09-05", "VITEST AJUSTADO", 10_000);
     const stmt = septemberStatement();
     insertLine(stmt, "2026-09-05", "VITEST AJUSTADO", 10_500);
-    const result = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-09");
-    expect(result.annulled_line_ids).toEqual([voided]);
-    expect(result.deleted_line_ids.sort()).toEqual([voided, resettled].sort());
+    const { result } = importStatementOnFile(accountId, [stmt]);
+    expect(result.keep_rows.annulled).toEqual([voided]);
+    expect(result.keep_rows.restated).toEqual([resettled]);
     expect(lineExists(voided)).toBe(false);
-    expect(lineExists(resettled)).toBe(false);
+    expect(db.prepare(`SELECT amount FROM cc_statement_lines WHERE id = ?`).get(resettled)).toEqual({ amount: 10_500 });
     expect(annulments()).toHaveLength(1);
     expect(annulments()[0]).toMatchObject({ merchant: "VITEST ANULADO", basis: "statement_close", annulled_on: "2026-09-24", purchase_date: "2026-09-04" });
   });
@@ -373,14 +373,12 @@ describe("annulled purchases: the writers", () => {
     applyLinePlan(accountId, "vitest annul", plan);
     expect(annulled[0]!.flow_id).not.toBeNull();
     const stmt = septemberStatement();
-    const billed = insertLine(stmt, "2026-09-07", "VITEST FACTURADO", 5_000); // another day: another key, another flow
-    const result = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-09");
-    expect(result.annulments_settled).toEqual([
-      { annulled_purchase_id: annulled[0]!.id, outcome: "billed", statement_line_id: billed, folded: true },
-    ]);
+    const written = insertLine(stmt, "2026-09-07", "VITEST FACTURADO", 5_000); // another day: another key, another flow
+    const { result, lineId } = importStatementOnFile(accountId, [stmt]);
+    expect(result.keep_rows.annulments_billed).toEqual([annulled[0]!.id]);
     expect(annulments()).toEqual([]);
     // The user's flow now answers for the billed line.
-    const billedFlow = (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(billed) as { flow_id: number }).flow_id;
+    const billedFlow = (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(lineId(written)) as { flow_id: number }).flow_id;
     expect(billedFlow).toBe(annulled[0]!.flow_id);
   });
 
@@ -391,11 +389,9 @@ describe("annulled purchases: the writers", () => {
     const { plan, annulled } = annulOpenBucketLines(accountId, [was], { annulledOn: "2026-09-12", basis: "feed_drop", evidence: "vitest" });
     applyLinePlan(accountId, "vitest annul", plan);
     const stmt = septemberStatement();
-    const credit = insertLine(stmt, "2026-09-15", "VITEST REEMBOLSADO", -7_000);
-    const result = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-09");
-    expect(result.annulments_settled).toEqual([
-      { annulled_purchase_id: annulled[0]!.id, outcome: "bank_credit", statement_line_id: credit, folded: false },
-    ]);
+    insertLine(stmt, "2026-09-15", "VITEST REEMBOLSADO", -7_000);
+    const { result } = importStatementOnFile(accountId, [stmt]);
+    expect(result.keep_rows.annulments_credited).toEqual([annulled[0]!.id]);
     expect(annulments()[0]).toMatchObject({ bank_credit: 1, annulled_on: "2026-09-15" });
     // Only the purchase leg: the credit line is the refund.
     expect(annulledPurchaseOwedEvents(accountId).map((e) => [e.leg, e.date, e.amount])).toEqual([["purchase", "2026-09-06", 7_000]]);

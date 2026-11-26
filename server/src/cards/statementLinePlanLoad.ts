@@ -223,7 +223,6 @@ export function loadCardStatementLinePlanInput(
     json_superseded_statement_ids: [...json.supersededJsonStatementIds],
     replaced_statement_ids: [...replacedStatementIds].filter((id) => !json.supersededJsonStatementIds.includes(id)),
     file_lines,
-    max_line_id_outside_replaced: maxLineIdOutside(replacedStatementIds),
     bucket_repair_moves: afterHeaders.bucketRepairMoves,
     incoming,
     plans_before: listPlansForLineMatching(accountId),
@@ -240,13 +239,6 @@ export function loadCardStatementLinePlanInput(
 /** A statement's close as a takeover compares it: its ISO close day and its currency. */
 function closeKey(statementDate: string, currency: string): string {
   return `${parseDdMmYyToIso(statementDate.trim()) ?? statementDate.trim()}\t${currency}`;
-}
-
-/** The highest line id in the table outside `statementIds` (0 when none). */
-function maxLineIdOutside(statementIds: ReadonlySet<number>): number {
-  const ids = [...statementIds];
-  const where = ids.length > 0 ? `WHERE statement_id NOT IN (${ids.map(() => "?").join(",")})` : "";
-  return (db.prepare(`SELECT MAX(id) AS m FROM cc_statement_lines ${where}`).get(...ids) as { m: number | null }).m ?? 0;
 }
 
 /**

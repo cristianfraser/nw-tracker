@@ -10,16 +10,11 @@ import {
   normalizeCcExpenseMerchantKey,
   resolveMerchantCategorySlug,
 } from "../ccExpenseCategories.js";
-import { importCcStatementsWipeAndReload } from "../ccStatementsImport.js";
+import { importStatementDocumentsReplacing } from "../test/statementOnFile.js";
 import { buildFlowsExpensesPayload } from "../flowsExpenses.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "../test/vitestDbSeed.js";
 
-/**
- * All statements/rules here live on the ISOLATED vitest fixture master.
- * `importCcStatementsWipeAndReload` has replaceAll semantics — pointing it at a shared
- * santander master (as this file once did) wipes that account's statements, which on the
- * generated test DB destroyed the demo card's data for every later run.
- */
+/** All statements/rules here live on the ISOLATED vitest fixture master. */
 function fixtureAccountId(): number {
   const row = db
     .prepare(`SELECT id FROM accounts WHERE notes = ?`)
@@ -77,8 +72,8 @@ describe("line categories across a statement re-import", () => {
     cleanupFixtureAccount(accountId);
   });
 
-  it("restores per-line override after reimport via parser_row_id", () => {
-    importCcStatementsWipeAndReload(accountId, parsedStatements([seedRecord()]));
+  it("keeps a per-line override on the row a re-import keeps", () => {
+    importStatementDocumentsReplacing(accountId, parsedStatements([seedRecord()]));
     const line = db
       .prepare(
         `SELECT l.id FROM cc_statement_lines l
@@ -97,7 +92,7 @@ describe("line categories across a statement re-import", () => {
     const snap = snapshotLineCategories(accountId);
     expect(snap.byParserRowId.get(PARSER_ROW_ID)).toBe(supermarket.id);
 
-    importCcStatementsWipeAndReload(accountId, parsedStatements([seedRecord()]));
+    importStatementDocumentsReplacing(accountId, parsedStatements([seedRecord()]));
 
     const newLine = db
       .prepare(
@@ -106,7 +101,7 @@ describe("line categories across a statement re-import", () => {
          WHERE s.account_id = ? AND l.parser_row_id = ?`
       )
       .get(accountId, PARSER_ROW_ID) as { id: number } | undefined;
-    expect(newLine).toBeDefined();
+    expect(newLine?.id).toBe(line!.id);
 
     const cat = db
       .prepare(
@@ -118,8 +113,8 @@ describe("line categories across a statement re-import", () => {
     expect(cat?.slug).toBe("supermarket");
   });
 
-  it("category rules survive statement reimport", () => {
-    importCcStatementsWipeAndReload(accountId, parsedStatements([seedRecord()]));
+  it("category rules survive the statement's lines", () => {
+    importStatementDocumentsReplacing(accountId, parsedStatements([seedRecord()]));
     const line = db
       .prepare(
         `SELECT l.id, l.merchant FROM cc_statement_lines l
@@ -139,7 +134,8 @@ describe("line categories across a statement re-import", () => {
     const before = resolveMerchantCategorySlug(merchantKey, loadCcExpenseCategoryMaps([accountId]).merchantRules);
     expect(before).toBe("fun");
 
-    importCcStatementsWipeAndReload(accountId, parsedStatements([]));
+    // The statement's lines go (a statement deleted); the rule is the merchant's, not the line's.
+    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
 
     const after = resolveMerchantCategorySlug(merchantKey, loadCcExpenseCategoryMaps([accountId]).merchantRules);
     expect(after).toBe("fun");

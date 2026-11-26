@@ -25,17 +25,6 @@ const dbCheckDedupeKey = db.prepare(
    LIMIT 1`
 );
 
-// Web-paste bucket lines are no twins of a statement's lines: the statement settles its bucket
-// (the billed bucket line restated by its statement line), so a statement-side scan skips them.
-// The listing kinds are `ccStatementSourceKind.ts`'s.
-const dbCheckDedupeKeyNoWebPaste = db.prepare(
-  `SELECT 1 AS o FROM cc_statement_lines l
-   JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND l.dedupe_key = ? AND l.dedupe_key IS NOT NULL AND l.dedupe_key != ''
-     AND s.source_kind NOT IN ('listing_open', 'listing_other')
-   LIMIT 1`
-);
-
 const dbFindLineByDedupeKey = db.prepare(
   `SELECT l.id, l.origin_card_last4 FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
@@ -195,23 +184,18 @@ export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
 
 export type CcLineDedupeScanOpts = {
   /**
-   * Ignore lines on `import:web-paste%` statements. Every PDF statement import must pass
-   * this: its own supersede deletes the open bucket's in-period lines right after the line
-   * loop, so a bucket line must never justify skipping the PDF row that replaces it.
+   * Ignore lines on listing (open-bucket) statements: a statement's dedupe hit names the line of
+   * a statement on file, never a bucket line (the bucket line the statement bills is restated, the
+   * plan's settlement decides it).
    */
   excludeWebPasteSources?: boolean;
 };
 
-export function ccLineDedupeKeyExistsOnAccount(
-  accountId: number,
-  keys: readonly string[],
-  opts?: CcLineDedupeScanOpts
-): boolean {
+export function ccLineDedupeKeyExistsOnAccount(accountId: number, keys: readonly string[]): boolean {
   if (keys.length === 0) return false;
-  const stmt = opts?.excludeWebPasteSources ? dbCheckDedupeKeyNoWebPaste : dbCheckDedupeKey;
   for (const key of keys) {
     if (!key) continue;
-    const row = stmt.get(accountId, key) as { o: number } | undefined;
+    const row = dbCheckDedupeKey.get(accountId, key) as { o: number } | undefined;
     if (row) return true;
   }
   return false;

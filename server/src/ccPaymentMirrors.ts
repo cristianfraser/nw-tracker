@@ -43,7 +43,7 @@ import {
 } from "./ccPaymentMirrorEvidence.js";
 import { db } from "./db.js";
 import { deleteMovements, insertMovement } from "./movementWrites.js";
-import { listedFactsOfMovement, mirrorLegListingOf } from "./movementListingFacts.js";
+import { listedFactsOfMovement, mirrorLegListingColumns, mirrorLegListingOf } from "./movementListingFacts.js";
 import { MOVEMENT_CLP_LEG_SQL, requireMovementClp, type MovementAmountFields } from "./movementAmounts.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
@@ -363,8 +363,8 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
        transfer_movement_id,
        out_movement_id, out_occurred_on, out_amount, out_currency, out_units_delta, out_note,
        in_movement_id, in_statement_line_id, in_statement_id, in_occurred_on, in_amount, in_currency, in_note,
-       out_listed_on, out_listed_description, out_listed_document_no, out_listed_period
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ${mirrorLegListingColumns("out")}
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const delIncomeOverride = db.prepare(
     `DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`

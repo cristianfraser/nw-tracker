@@ -154,15 +154,13 @@ function applyStatements(
       row.lines_skipped_installment_overlap = merged.statements.linesSkippedInstallmentOverlap;
       row.purchase_upserts = merged.ledger.purchaseUpserts;
       row.payment_upserts = merged.ledger.paymentUpserts;
-      const rk = merged.expense_line_rekey;
-      if (rk.adopted + rk.copied + rk.conflicts.length + rk.unpaired.length > 0) {
+      const kr = merged.keep_rows;
+      if (kr.folded.length + kr.copied + kr.unpaired.length > 0) {
         report.push(
-          `# account ${accountId}: re-imported lines took over their flows: ${rk.adopted} adopted, ${rk.copied} copied, ` +
-            `conflicts ${rk.conflicts.length}, unpaired ${rk.unpaired.length}`
+          `# account ${accountId}: ${kr.restated.length} line(s) restated, ${kr.folded.length} folded into a kept line, ` +
+            `${kr.copied} copied a kept twin's category, unpaired ${kr.unpaired.length}`
         );
-        for (const p of rk.pairings) report.push(`#   paired by ${p.by}: line ${p.from_line_id} → ${p.to_line_id}`);
-        for (const c of rk.conflicts) report.push(`#   conflict line ${c.from_line_id} → ${c.to_line_id}: ${c.tables.join(", ")} (the new line's kept)`);
-        for (const u of rk.unpaired) report.push(`#   unpaired (${u.reason}) line ${u.lineId} ${u.parserRowId ?? ""}`);
+        for (const id of kr.unpaired) report.push(`#   unpaired line ${id} (removed, its flow retired with what was on it)`);
       }
       report.push(
         `Account ${accountId}: ${row.purchase_upserts} purchases, ${row.payment_upserts} payments, statements ${merged.statements.statementCount} ` +

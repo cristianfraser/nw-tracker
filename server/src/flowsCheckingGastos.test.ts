@@ -1,7 +1,7 @@
 import { FLOW_CATEGORY_ROWS_SQL } from "./test/flowFixtures.js";
+import { rowTextOfFixtureNote, stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { describe, expect, it } from "vitest";
-import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
 import { db } from "./db.js";
 import {
   autoMatchCategorySlugForDeposit,
@@ -24,8 +24,6 @@ import {
   type DepositMatchCandidate,
 } from "./checkingCartolaLoaders.js";
 import {
-  cartolaDescriptionFromNote,
-  cartolaDocumentFromNote,
   checkingOutflowIsAtmWithdrawal,
   checkingWithdrawalMayAutoMatchDeposit,
   isCheckingCorrienteVistaTraspasoOutflow,
@@ -62,6 +60,7 @@ function insertCheckingCartolaWithdrawal(
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amountClp, occurredOn, note);
+  stateListingFactsOfFixtures();
   return Number(ins.lastInsertRowid);
 }
 
@@ -155,17 +154,6 @@ describe("flowsCheckingGastos", () => {
     }
   });
 
-  it("parses cartola description from movement note", () => {
-    const note =
-      "import:cartola|2024-03|Las Condes|TRASPASO A FINTUAL|doc:123";
-    expect(cartolaDescriptionFromNote(note)).toBe("TRASPASO A FINTUAL");
-    expect(cartolaDocumentFromNote(note)).toBe("123");
-    const withMeta =
-      "import:cartola|2023-02|Agustinas|Transf. Internet a otro Bancos|on:2023-02-03|amt:-555000|idx:1";
-    expect(cartolaDescriptionFromNote(withMeta)).toBe("Transf. Internet a otro Bancos");
-    expect(cartolaDocumentFromNote(withMeta)).toBeNull();
-  });
-
   it("detects mercado capitales cargo and DAP abono descriptions", () => {
     expect(isMercadoCapitalesCargoDescription("Cargo Mercado Capitales")).toBe(true);
     expect(isMercadoCapitalesCargoDescription("00350323026433811444")).toBe(true);
@@ -179,22 +167,22 @@ describe("flowsCheckingGastos", () => {
       {
         occurred_on: "2024-03-11",
         amount_clp: 30_621_285,
-        note: "import:cartola|2024-03|PENALOLEN|DAP 026433811444 ABONADO|doc:3811444",
+        ...rowTextOfFixtureNote("import:cartola|2024-03|PENALOLEN|DAP 026433811444 ABONADO|doc:3811444"),
       },
       {
         occurred_on: "2024-03-18",
         amount_clp: 43_728_153,
-        note: "import:cartola|2024-03|PENALOLEN|DAP 026434101963 ABONADO|doc:4101963",
+        ...rowTextOfFixtureNote("import:cartola|2024-03|PENALOLEN|DAP 026434101963 ABONADO|doc:4101963"),
       },
       {
         occurred_on: "2024-03-25",
         amount_clp: 53_880_515,
-        note: "import:cartola|2024-03|PENALOLEN|DAP 026434299119 ABONADO|doc:4299119",
+        ...rowTextOfFixtureNote("import:cartola|2024-03|PENALOLEN|DAP 026434299119 ABONADO|doc:4299119"),
       },
       {
         occurred_on: "2024-04-02",
         amount_clp: 57_960_336,
-        note: "import:cartola|2024-04|PENALOLEN|DAP 026434575337 ABONADO|doc:4575337",
+        ...rowTextOfFixtureNote("import:cartola|2024-04|PENALOLEN|DAP 026434575337 ABONADO|doc:4575337"),
       },
     ];
     expect(
@@ -202,7 +190,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-03-04",
           amount_clp: -30_589_409,
-          note: "import:cartola|2024-03|O.Gerencia|00350323026433811444|doc:3811444",
+          ...rowTextOfFixtureNote("import:cartola|2024-03|O.Gerencia|00350323026433811444|doc:3811444"),
         },
         credits
       )
@@ -212,7 +200,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-03-11",
           amount_clp: -43_682_633,
-          note: "import:cartola|2024-03|O.Gerencia|Cargo Mercado Capitales|doc:4101963",
+          ...rowTextOfFixtureNote("import:cartola|2024-03|O.Gerencia|Cargo Mercado Capitales|doc:4101963"),
         },
         credits
       )
@@ -222,7 +210,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-03-18",
           amount_clp: -53_823_153,
-          note: "import:cartola|2024-03|O.Gerencia|Cargo Mercado Capitales|doc:4299119",
+          ...rowTextOfFixtureNote("import:cartola|2024-03|O.Gerencia|Cargo Mercado Capitales|doc:4299119"),
         },
         credits
       )
@@ -232,7 +220,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-03-26",
           amount_clp: -57_900_000,
-          note: "import:cartola|2024-03|O.Gerencia|Cargo Mercado Capitales|doc:4575337",
+          ...rowTextOfFixtureNote("import:cartola|2024-03|O.Gerencia|Cargo Mercado Capitales|doc:4575337"),
         },
         credits
       )
@@ -244,7 +232,7 @@ describe("flowsCheckingGastos", () => {
       {
         occurred_on: "2024-09-09",
         amount_clp: 903_255,
-        note: "import:cartola|2024-09|PENALOLEN|DAP 026438818234 ABONADO|doc:8818234",
+        ...rowTextOfFixtureNote("import:cartola|2024-09|PENALOLEN|DAP 026438818234 ABONADO|doc:8818234"),
       },
     ];
     expect(
@@ -252,7 +240,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-08-09",
           amount_clp: -900_000,
-          note: "import:cartola|2024-08|O.Gerencia|00350323026438818234|doc:8818234",
+          ...rowTextOfFixtureNote("import:cartola|2024-08|O.Gerencia|00350323026438818234|doc:8818234"),
         },
         credits
       )
@@ -265,13 +253,13 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-08-23",
           amount_clp: -4_140_553,
-          note: "import:cartola|2024-08|O.Gerencia|Cargo Mercado Capitales|doc:9204418",
+          ...rowTextOfFixtureNote("import:cartola|2024-08|O.Gerencia|Cargo Mercado Capitales|doc:9204418"),
         },
         [
           {
             occurred_on: "2024-10-04",
             amount_clp: 4_160_842,
-            note: "import:cartola|2024-10|PENALOLEN|DAP 026439204418 ABONADO|doc:9204418",
+            ...rowTextOfFixtureNote("import:cartola|2024-10|PENALOLEN|DAP 026439204418 ABONADO|doc:9204418"),
           },
         ]
       )
@@ -282,14 +270,14 @@ describe("flowsCheckingGastos", () => {
     const cargo = {
       occurred_on: "2024-08-23",
       amount_clp: -4_140_553,
-      note: "import:cartola|2024-08|O.Gerencia|Cargo Mercado Capitales|doc:9204418",
+      ...rowTextOfFixtureNote("import:cartola|2024-08|O.Gerencia|Cargo Mercado Capitales|doc:9204418"),
     };
     expect(
       withdrawalIsReversedByDapAbono(cargo, [
         {
           occurred_on: "2024-08-20",
           amount_clp: 4_200_000,
-          note: "import:cartola|2024-08|PENALOLEN|DAP 026439204418 ABONADO|doc:9204418",
+          ...rowTextOfFixtureNote("import:cartola|2024-08|PENALOLEN|DAP 026439204418 ABONADO|doc:9204418"),
         },
       ])
     ).toBe(false);
@@ -298,7 +286,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-09-23",
           amount_clp: 4_300_000,
-          note: "import:cartola|2024-09|PENALOLEN|DAP 026439204418 ABONADO|doc:9204418",
+          ...rowTextOfFixtureNote("import:cartola|2024-09|PENALOLEN|DAP 026439204418 ABONADO|doc:9204418"),
         },
       ])
     ).toBe(false);
@@ -307,7 +295,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2025-08-23",
           amount_clp: 4_600_000,
-          note: "import:cartola|2025-08|PENALOLEN|DAP 026439204418 ABONADO|doc:9204418",
+          ...rowTextOfFixtureNote("import:cartola|2025-08|PENALOLEN|DAP 026439204418 ABONADO|doc:9204418"),
         },
       ])
     ).toBe(false);
@@ -316,7 +304,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-09-23",
           amount_clp: 4_200_000,
-          note: "import:cartola|2024-09|PENALOLEN|DAP 026439999999 ABONADO|doc:9999999",
+          ...rowTextOfFixtureNote("import:cartola|2024-09|PENALOLEN|DAP 026439999999 ABONADO|doc:9999999"),
         },
       ])
     ).toBe(false);
@@ -326,14 +314,14 @@ describe("flowsCheckingGastos", () => {
     const cargo = {
       occurred_on: "2024-01-01",
       amount_clp: -1_000_000,
-      note: "import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:5000",
+      ...rowTextOfFixtureNote("import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:5000"),
     };
     expect(
       withdrawalIsReversedByDapAbono(cargo, [
         {
           occurred_on: "2024-01-08",
           amount_clp: 1_010_000,
-          note: "import:cartola|2024-01|PENALOLEN|DAP 02645000 ABONADO|doc:5000",
+          ...rowTextOfFixtureNote("import:cartola|2024-01|PENALOLEN|DAP 02645000 ABONADO|doc:5000"),
         },
       ])
     ).toBe(true);
@@ -342,7 +330,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-12-30",
           amount_clp: 1_099_000,
-          note: "import:cartola|2024-12|PENALOLEN|DAP 02645000 ABONADO|doc:5000",
+          ...rowTextOfFixtureNote("import:cartola|2024-12|PENALOLEN|DAP 02645000 ABONADO|doc:5000"),
         },
       ])
     ).toBe(true);
@@ -351,7 +339,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-12-30",
           amount_clp: 1_120_000,
-          note: "import:cartola|2024-12|PENALOLEN|DAP 02645000 ABONADO|doc:5000",
+          ...rowTextOfFixtureNote("import:cartola|2024-12|PENALOLEN|DAP 02645000 ABONADO|doc:5000"),
         },
       ])
     ).toBe(false);
@@ -361,14 +349,14 @@ describe("flowsCheckingGastos", () => {
     const cargo = {
       occurred_on: "2024-01-10",
       amount_clp: -1_000_000,
-      note: "import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:1000",
+      ...rowTextOfFixtureNote("import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:1000"),
     };
     expect(
       withdrawalIsReversedByDapAbono(cargo, [
         {
           occurred_on: "2024-01-17",
           amount_clp: 1_001_000,
-          note: "import:cartola|2024-01|PENALOLEN|DAP 02641001001 ABONADO|doc:1001",
+          ...rowTextOfFixtureNote("import:cartola|2024-01|PENALOLEN|DAP 02641001001 ABONADO|doc:1001"),
         },
       ])
     ).toBe(true);
@@ -377,7 +365,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-01-17",
           amount_clp: 1_001_000,
-          note: "import:cartola|2024-01|PENALOLEN|DAP 02641001002 ABONADO|doc:1002",
+          ...rowTextOfFixtureNote("import:cartola|2024-01|PENALOLEN|DAP 02641001002 ABONADO|doc:1002"),
         },
       ])
     ).toBe(true);
@@ -389,13 +377,13 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2024-08-23",
           amount_clp: -4_140_553,
-          note: "import:cartola|2024-08|O.Gerencia|Cargo Mercado Capitales|doc:9204418",
+          ...rowTextOfFixtureNote("import:cartola|2024-08|O.Gerencia|Cargo Mercado Capitales|doc:9204418"),
         },
         [
           {
             occurred_on: "2024-10-04",
             amount_clp: 4_160_842,
-            note: "import:cartola|2024-10|PENALOLEN|COBRO VVISTA 026439204418-0000|doc:9204418",
+            ...rowTextOfFixtureNote("import:cartola|2024-10|PENALOLEN|COBRO VVISTA 026439204418-0000|doc:9204418"),
           },
         ]
       )
@@ -408,12 +396,12 @@ describe("flowsCheckingGastos", () => {
       {
         occurred_on: "2099-03-11",
         amount_clp: 30_621_285,
-        note: "import:cartola|2099-03|PENALOLEN|DAP 026433811444 ABONADO|doc:3811444",
+        ...rowTextOfFixtureNote("import:cartola|2099-03|PENALOLEN|DAP 026433811444 ABONADO|doc:3811444"),
       },
       {
         occurred_on: "2099-09-09",
         amount_clp: 903_255,
-        note: "import:cartola|2099-09|PENALOLEN|DAP 026438818234 ABONADO|doc:8818234",
+        ...rowTextOfFixtureNote("import:cartola|2099-09|PENALOLEN|DAP 026438818234 ABONADO|doc:8818234"),
       },
     ];
 
@@ -476,22 +464,22 @@ describe("flowsCheckingGastos", () => {
       {
         occurred_on: "2024-01-02",
         amount_clp: -7_500_000,
-        note: "import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:1783095",
+        ...rowTextOfFixtureNote("import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:1783095"),
       },
       {
         occurred_on: "2024-01-09",
         amount_clp: -13_000_000,
-        note: "import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:2070963",
+        ...rowTextOfFixtureNote("import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:2070963"),
       },
       {
         occurred_on: "2024-01-25",
         amount_clp: -6_514_000,
-        note: "import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:2588709",
+        ...rowTextOfFixtureNote("import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:2588709"),
       },
       {
         occurred_on: "2024-01-31",
         amount_clp: -3_000_000,
-        note: "import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:2786306",
+        ...rowTextOfFixtureNote("import:cartola|2024-01|O.Gerencia|Cargo Mercado Capitales|doc:2786306"),
       },
     ];
     const deposits: DepositMatchCandidate[] = [
@@ -981,8 +969,7 @@ describe("flowsCheckingGastos", () => {
         {
           occurred_on: "2099-07-15",
           amount_clp: 365_970,
-          note:
-            "import:cartola|2099-07|401|Traspaso Internet desde Cta.Ct|on:2099-07-15|amt:365970|idx:10",
+          ...rowTextOfFixtureNote("import:cartola|2099-07|401|Traspaso Internet desde Cta.Ct|on:2099-07-15|amt:365970|idx:10"),
         },
       ],
     });
@@ -1358,19 +1345,14 @@ describe("flowsCheckingGastos", () => {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(legacyId);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(acctId);
     }
-    // A cartola row → the stable key built from its note.
+    // A cartola row → the stable key built from its listing facts.
     const corrienteId = checkingAccountId();
     const cartolaId = insertCheckingCartolaWithdrawal(corrienteId, "2099-02-03", -7_000, "Compra ACME STORE", {
       cartolaMonth: "2099-02",
       idx: 9998835,
     });
     try {
-      const full = db
-        .prepare(`SELECT account_id, note FROM movements WHERE id = ?`)
-        .get(cartolaId) as { account_id: number; note: string };
-      const key = checkingGastosMovementPurchaseKey(cartolaId);
-      expect(key).toBe(`checking-cartola:${corrienteId}:2099-02:2099-02-03:-7000:9998835`);
-      expect(key).toBe(checkingCartolaStablePurchaseKey(full.account_id, full.note));
+      expect(checkingGastosMovementPurchaseKey(cartolaId)).toBe(`checking-cartola:${corrienteId}:2099-02:2099-02-03:-7000:9998835`);
     } finally {
       deleteCheckingMovements([cartolaId]);
     }
@@ -1464,7 +1446,7 @@ describe("flowsCheckingGastos", () => {
     expect(checkingGastosMovementBelongs(Number(withdrawalId)).ok).toBe(false);
 
     const credits = loadCheckingCredits(accountId);
-    expect(credits.some((c) => c.note === checkingLedgerAnchorNote("2099-02"))).toBe(false);
+    expect(credits.some((c) => c.description === "saldo final")).toBe(false);
 
     deleteCheckingMovements([Number(depositId), Number(withdrawalId)]);
   });

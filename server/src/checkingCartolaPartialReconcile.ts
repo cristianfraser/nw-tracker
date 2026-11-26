@@ -1,56 +1,13 @@
+/**
+ * How a daily-listing row and a cartola row are told to be one movement: the same day and pesos and
+ * a description that matches once case, marks and truncation are set aside (`partialDescriptionsMatch`),
+ * on the facts each row's listing stated (`movementListingFacts.ts`).
+ */
 import type { Database } from "better-sqlite3";
-
-
-import { movementSourceKindInSql } from "./flows/flowEvidence.js";
-import { deleteMovements, redateMovementKeepingBankDay, repointMovementReferences } from "./movementWrites.js";
 import { db } from "./db.js";
-import {
-  cartolaMovementMatchesImportedRow,
-  checkingCartolaStablePurchaseKey,
-  type ParsedCheckingMovement,
-} from "./checkingCartolaParse.js";
-import { adoptMovementFlow } from "./flows/flowIdentity.js";
-import { buildExpenseKey } from "./expenseKeys.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
-import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, occurredOnBasis } from "./movementBankPostings.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import type { PartialBankMovement } from "./partialBankMovement.js";
-
-export const PARTIAL_NOTE_PREFIX = "import:cartola-partial|";
-
-export function isCheckingPartialWithdrawalNote(note: string | null | undefined): boolean {
-  return String(note ?? "").trim().startsWith(PARTIAL_NOTE_PREFIX);
-}
-
-export type ParsedPartialMovementNote = {
-  occurred_on: string;
-  amount_clp: number;
-  description: string;
-  document_no: string;
-};
-
-export function parsePartialMovementNote(note: string): ParsedPartialMovementNote | null {
-  if (!note.startsWith(PARTIAL_NOTE_PREFIX)) return null;
-  const rest = note.slice(PARTIAL_NOTE_PREFIX.length);
-  const firstBar = rest.indexOf("|");
-  if (firstBar < 0) return null;
-  const occurred_on = rest.slice(0, firstBar).trim();
-  const afterDate = rest.slice(firstBar + 1);
-  const secondBar = afterDate.indexOf("|");
-  if (secondBar < 0) return null;
-  const amount_clp = Number(afterDate.slice(0, secondBar).trim());
-  if (!Number.isFinite(amount_clp)) return null;
-
-  let tail = afterDate.slice(secondBar + 1).trim();
-  let document_no = "";
-  const docMatch = tail.match(/\|doc:([^|]+)$/);
-  if (docMatch) {
-    document_no = docMatch[1]!.trim();
-    tail = tail.slice(0, docMatch.index).trim();
-  }
-  const description = tail.replace(/\s+/g, " ").trim();
-  if (!occurred_on || !description) return null;
-  return { occurred_on, amount_clp, description, document_no };
-}
 
 /**
  * The two sources render the same movement differently: the "últimos movimientos" web view
@@ -103,121 +60,4 @@ export function partialMovementSupersededByCartola(
   // Tolerant compare on what the cartola printed (its listing facts) — the últimos web view and the
   // cartola render descriptions differently (case, truncation, markers), see partialDescriptionsMatch.
   return rows.some((row) => row.description != null && partialDescriptionsMatch(mv.description, row.description));
-}
-
-/** Official cartola movement note in DB matching parsed cartola row content. */
-export function findMatchingCartolaMovementNoteInDb(
-  accountId: number,
-  mv: ParsedCheckingMovement,
-  dbHandle: Database = db
-): string | null {
-  const rows = dbHandle
-    .prepare(
-      `SELECT m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
-       WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
-         AND ${movementSourceKindInSql("m", ["cartola"])}`
-    )
-    .all(accountId, accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
-  for (const row of rows) {
-    if (cartolaMovementMatchesImportedRow(mv, row.note)) return row.note;
-  }
-  return null;
-}
-
-/** Delete `import:cartola-partial` rows superseded by movements from a parsed cartola. */
-export function prunePartialMovementsSupersededByCartola(
-  accountId: number,
-  movements: readonly ParsedCheckingMovement[],
-  dbHandle: Database = db
-): { removed: number; removed_ids: number[] } {
-  if (movements.length === 0) return { removed: 0, removed_ids: [] };
-
-  const partialRows = dbHandle
-    .prepare(
-      `SELECT id, note, occurred_on FROM movements
-       WHERE account_id = ? AND ${movementSourceKindInSql("movements", ["daily_listing"])}`
-    )
-    .all(accountId) as { id: number; note: string; occurred_on: string }[];
-
-  const removed_ids: number[] = [];
-
-  for (const partial of partialRows) {
-    const parsed = parsePartialMovementNote(partial.note);
-    if (!parsed) continue;
-    const matchingMv = movements.find((mv) => checkingMovementContentMatches(mv, parsed));
-    if (!matchingMv) continue;
-    const cartolaNote = findMatchingCartolaMovementNoteInDb(accountId, matchingMv, dbHandle);
-    if (cartolaNote) {
-      const official = dbHandle
-        .prepare(
-          `SELECT id FROM movements
-           WHERE account_id = ? AND note = ? AND occurred_on = ? LIMIT 1`
-        )
-        .get(accountId, cartolaNote, matchingMv.occurred_on) as { id: number } | undefined;
-      if (official) {
-        // A partial row whose occurred_on differs from its note's bank date was deliberately
-        // re-dated (payment-receipt evidence: the real payment day, not the bank's next-workday
-        // posting). The cartola prints the bank date, so the official row it just inserted must
-        // inherit the corrected date — with the bank date as its posting day — or the receipt
-        // evidence is silently lost every month.
-        if (partial.occurred_on !== parsed.occurred_on) {
-          redateMovementKeepingBankDay(
-            {
-              movementId: official.id,
-              accountId,
-              occurredOn: partial.occurred_on,
-              bankPostedOn: matchingMv.occurred_on,
-              basis: occurredOnBasis(partial.id, accountId, dbHandle),
-            },
-            dbHandle
-          );
-        }
-        adoptPartialIntoCartolaRow(accountId, partial.id, official.id, cartolaNote, dbHandle);
-      }
-    }
-    deleteMovements([partial.id], dbHandle);
-    removed_ids.push(partial.id);
-  }
-
-  return { removed: removed_ids.length, removed_ids };
-}
-
-/** The key the official row's expense line carries: its cartola identity, else its movement id. */
-function officialRowKey(accountId: number, officialId: number, cartolaNote: string): string {
-  return (
-    checkingCartolaStablePurchaseKey(accountId, cartolaNote) ??
-    buildExpenseKey({ kind: "checking_mv", movementId: officialId, portion: "gastos" })
-  );
-}
-
-/**
- * Adoption on arrival (F9 step 4): the cartola row takes over the daily row's flow, and with it every
- * assignment on the flow — category, «Único», note, big group, pieces, links, refund mark, income
- * classification (bug 2: the refund mark used to go with the deleted row); the flow answers to the
- * cartola row's key. A payslip names the daily row by id, so it moves to the cartola row.
- */
-export function adoptPartialIntoCartolaRow(
-  accountId: number,
-  partialId: number,
-  officialId: number,
-  cartolaNote: string,
-  dbHandle: Database = db
-): void {
-  adoptMovementFlow(partialId, officialId, officialRowKey(accountId, officialId, cartolaNote), dbHandle);
-  repointMovementReferences(partialId, officialId, dbHandle);
-}
-
-/** Prune superseded partial rows and refresh balance/aggregation caches when needed. */
-export function reconcileCartolaPartialImports(
-  accountId: number,
-  movements: readonly ParsedCheckingMovement[],
-  dbHandle: Database = db
-): { removed: number } {
-  const { removed } = prunePartialMovementsSupersededByCartola(accountId, movements, dbHandle);
-  if (removed === 0) return { removed: 0 };
-  let minOn = movements[0]!.occurred_on;
-  for (const mv of movements) {
-    if (mv.occurred_on < minOn) minOn = mv.occurred_on;
-  }
-  return { removed };
 }

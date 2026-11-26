@@ -4,6 +4,7 @@
  * debits, which the expense lines show.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { getCcExpensePurchaseNote, setCcExpensePurchaseNote } from "./ccExpensePurchaseNotes.js";
 import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import {
@@ -39,6 +40,7 @@ describe("a dollar checking account's refunds and notes", () => {
         .run(accountId, Math.abs(usd), day, note, usd > 0 ? "fx_purchase" : "withdrawal").lastInsertRowid
     );
     ids.push(id);
+    stateListingFactsOfFixtures();
     return id;
   };
 

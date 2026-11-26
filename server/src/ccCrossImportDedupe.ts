@@ -51,18 +51,6 @@ const dbOneShotCandidates = db.prepare<[number, number]>(
    WHERE s.account_id = ? AND l.installment_flag = 0 AND ${lineAmountClpSql("l")} = ?`
 );
 
-// PDF statement imports scan with web-paste statements excluded: the merge's own supersede
-// deletes the open bucket's in-period lines right after the line loop, so a bucket line must
-// never count as "already imported" — the 2026-08 ·0101 facturación lost 9 purchases
-// (1.xxx.xxx CLP) to exactly that skip+delete pair. The listing kinds are `ccStatementSourceKind.ts`'s.
-const dbOneShotCandidatesNoWebPaste = db.prepare<[number, number]>(
-  `SELECT l.id, l.merchant, l.transaction_date, l.posting_date
-   FROM cc_statement_lines l
-   JOIN cc_statements s ON s.id = l.statement_id
-   WHERE s.account_id = ? AND l.installment_flag = 0 AND ${lineAmountClpSql("l")} = ?
-     AND s.source_kind NOT IN ('listing_open', 'listing_other')`
-);
-
 /**
  * Returns true when an existing one-shot line has the same date, same CLP amount, and a
  * fuzzy-matching merchant — catches re-imports where the bank truncated the merchant name.
@@ -77,11 +65,10 @@ export function oneShotLineFuzzyMatchExists(
   merchant: string | null,
   purchaseDateIso: string | null,
   amountClp: number,
-  opts?: { excludeWebPasteSources?: boolean; excludeLineIds?: ReadonlySet<number> }
+  opts?: { excludeLineIds?: ReadonlySet<number> }
 ): boolean {
   if (!purchaseDateIso || amountClp <= 0) return false;
-  const stmt = opts?.excludeWebPasteSources ? dbOneShotCandidatesNoWebPaste : dbOneShotCandidates;
-  const rows = stmt.all(accountId, amountClp) as {
+  const rows = dbOneShotCandidates.all(accountId, amountClp) as {
     id: number;
     merchant: string | null;
     transaction_date: string | null;

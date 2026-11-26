@@ -25,6 +25,8 @@
  * (mail archive, card and corriente rows) and the categories; the script checks every one of them.
  */
 import { deleteFlowCategory, FLOW_CATEGORIES_SQL } from "../src/flows/flowCategories.js";
+import { stateMovementDescription } from "../src/movementListingFacts.js";
+import { mailDescription372 } from "../src/migrationHooks/bankRowFacts372.js";
 import fs from "node:fs";
 import { db } from "../src/db.js";
 import { setExpenseCategoryRule } from "../src/expenseCategoryRules.js";
@@ -36,6 +38,18 @@ import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey, resolveCcExp
 import { FLOW_KIND_CARGA_TARJETA } from "../src/movementFlowType.js";
 import { checkingGastosMovementPurchaseKey } from "../src/flowsCheckingGastos.js";
 import { lineAmountClpSql } from "../src/cards/lineAmountSql.js";
+
+/** Inserts a single-leg row written from a mail and states its description on its evidence (runtime never reads the note). */
+function mailRowInsert(sql: string) {
+  const stmt = db.prepare(sql);
+  return {
+    run: (accountId: number, amount: number, day: string, note: string) => {
+      const r = stmt.run(accountId, amount, day, note);
+      stateMovementDescription(Number(r.lastInsertRowid), mailDescription372(note), db);
+      return r;
+    },
+  };
+}
 
 type Plan = {
   mail_archive: string;
@@ -165,7 +179,7 @@ try {
       account: { account_type: "clp_cash", name: "MACH", bucket_slug: "checking_accounts", category_slug: "mach", exclude_from_group_totals: false },
     });
 
-    const single = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`);
+    const single = mailRowInsert(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`);
     const transfer = db.prepare(
       `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, flow_kind)
        VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?)`

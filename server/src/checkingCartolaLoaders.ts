@@ -18,11 +18,8 @@ import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 
 import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaAccounts.js";
 import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
-import {
-  CHECKING_GASTOS_CASH_GROUP,
-  cartolaDescriptionFromNote,
-  isCheckingOwnTraspasoInflow,
-} from "./checkingDescriptionPredicates.js";
+import { CHECKING_GASTOS_CASH_GROUP, isCheckingOwnTraspasoInflow } from "./checkingDescriptionPredicates.js";
+import { bankRowText, movementDescription, type BankRowText } from "./bankRowFacts.js";
 import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
@@ -39,17 +36,16 @@ import {
  * is decided by `listCheckingMovements` alone: consumers ask for the account's inflows or
  * outflows, never for a source.
  */
-export type CheckingMovementRow = {
+export type CheckingMovementRow = BankRowText & {
   id: number;
   occurred_on: string;
   amount_clp: number;
-  note: string | null;
 };
 
-export type CheckingCredit = {
+/** A bank-listed row as the matchers read it: its day, pesos and text (`bankRowFacts.ts`, never its note). */
+export type CheckingCredit = BankRowText & {
   occurred_on: string;
   amount_clp: number;
-  note: string | null;
 };
 
 export type CheckingWithdrawal = CheckingCredit;
@@ -91,8 +87,7 @@ function checkingOwnTraspasoFlag(
 ): { checking_own_traspaso?: boolean } {
   if (!checkingIds.has(accountId)) return {};
   if (movementId == null) return { checking_own_traspaso: false };
-  const row = db.prepare(`SELECT note FROM movements WHERE id = ?`).get(movementId) as { note: string | null } | undefined;
-  return { checking_own_traspaso: isCheckingOwnTraspasoInflow(cartolaDescriptionFromNote(row?.note)) };
+  return { checking_own_traspaso: isCheckingOwnTraspasoInflow(movementDescription(movementId)) };
 }
 
 /** Claim identity + movement row of a merged deposit event (see {@link DepositMatchCandidate}). */
@@ -153,7 +148,7 @@ function uniqueDepositCandidatesByClaimKey(candidates: readonly DepositMatchCand
 export function listCheckingMovements(accountId: number, direction: "in" | "out"): CheckingMovementRow[] {
   const rows = db
     .prepare(
-      `SELECT m.id, m.occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, m.note, e.source_kind AS kind, ${LISTED_FACTS_COLUMNS_SQL}
+      `SELECT m.id, m.occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, e.source_kind AS kind, ${LISTED_FACTS_COLUMNS_SQL}
        FROM movements m
        LEFT JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id
        WHERE m.account_id = ?
@@ -161,7 +156,7 @@ export function listCheckingMovements(accountId: number, direction: "in" | "out"
          AND ${movementSourceKindInSql("m", CHECKING_LISTED_SOURCE_KINDS)}
        ORDER BY m.occurred_on, m.id`
     )
-    .all(accountId) as (CheckingMovementRow & ListedFactsEvidence & { kind: string | null })[];
+    .all(accountId) as ({ id: number; occurred_on: string; amount_clp: number } & ListedFactsEvidence & { kind: string | null })[];
   return rows
     .filter((row) => {
       if (row.kind !== "daily_listing") return true;
@@ -173,7 +168,7 @@ export function listCheckingMovements(accountId: number, direction: "in" | "out"
         document_no: listed.document_no,
       });
     })
-    .map(({ id, occurred_on, amount_clp, note }) => ({ id, occurred_on, amount_clp, note }) as CheckingMovementRow);
+    .map(({ id, occurred_on, amount_clp }) => ({ id, occurred_on, amount_clp, ...bankRowText(id) }));
 }
 
 /**
@@ -220,13 +215,13 @@ export function listForeignCheckingMovements(accountId: number, direction: "in" 
   const rows = db
     .prepare(
       `SELECT id, account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
-              occurred_on, note, units_delta, flow_kind
+              occurred_on, units_delta, flow_kind
        FROM movements
        WHERE account_id = ?
          AND ${movementSourceKindInSql("movements", CHECKING_LISTED_SOURCE_KINDS)}
        ORDER BY occurred_on, id`
     )
-    .all(accountId) as (MovementTransferRow & { id: number; occurred_on: string; note: string | null })[];
+    .all(accountId) as (MovementTransferRow & { id: number; occurred_on: string })[];
   const out: ForeignCheckingMovementRow[] = [];
   for (const r of rows) {
     const native = signedNativeDeltaForAccountMovement(r, accountId, currency);
@@ -242,7 +237,7 @@ export function listForeignCheckingMovements(accountId: number, direction: "in" 
       currency,
       amount_native: Math.abs(native),
       amount_usd: Math.abs(foreignCheckingAmountIn(native, currency, "usd", r.occurred_on, what)),
-      note: r.note,
+      ...bankRowText(r.id),
     });
   }
   return out;
@@ -258,7 +253,7 @@ export function isCheckingCredit(movementId: number): boolean {
 }
 
 export function loadCheckingCredits(accountId: number): CheckingCredit[] {
-  return listCheckingMovements(accountId, "in").map(({ occurred_on, amount_clp, note }) => ({ occurred_on, amount_clp, note }));
+  return listCheckingMovements(accountId, "in").map(({ id: _id, ...row }) => row);
 }
 
 export function loadMovementBalanceCashCredits(accountIds = listMovementBalanceCashAccountIds()): CheckingCredit[] {
@@ -275,7 +270,7 @@ export function loadMovementBalanceCashCredits(accountIds = listMovementBalanceC
 }
 
 export function loadCheckingWithdrawals(accountId: number): CheckingWithdrawal[] {
-  return listCheckingMovements(accountId, "out").map(({ occurred_on, amount_clp, note }) => ({ occurred_on, amount_clp, note }));
+  return listCheckingMovements(accountId, "out").map(({ id: _id, ...row }) => row);
 }
 
 export function loadAllCheckingWithdrawals(): CheckingWithdrawalWithAccount[] {

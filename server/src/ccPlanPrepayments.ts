@@ -190,9 +190,8 @@ export function recordPlanPrepayments(
 }
 
 /**
- * A statement settled bucket lines (`reconcileOpenWebPasteAfterPdfClose`): the prepayment and the
- * credit follow their line onto the statement line that bills it, before the bucket line is
- * deleted.
+ * Bucket lines folded into the line that stays for their charge (`statementLinePlanApply.ts`): the
+ * prepayment and the credit follow each folded line onto the kept one, before the folded line goes.
  */
 export function carryPlanPrepaymentLines(accountId: number, settled: readonly { fromLineId: number; toLineId: number }[]): void {
   if (settled.length === 0) return;

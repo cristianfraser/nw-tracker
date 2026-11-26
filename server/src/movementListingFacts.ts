@@ -1,11 +1,12 @@
 /**
- * What a bank listing printed for a row it wrote, in columns (migration 370): a cartola or a
+ * What a bank listing printed for a row it wrote, in columns (migrations 370, 372): a cartola or a
  * daily-listing movement's evidence (`flow_evidence`, `source_table = 'movements'`) states the bank
  * day it was listed on (`stated_on`), its signed amount (`stated_amount`), its description
- * (`stated_description`), its document number (`stated_document_no`, '' when it printed none) and
- * the cartola month it came from (`stated_period`, NULL for a daily-listing row). The importers write
- * them with the row (`insertBankPesoMovement`); the daily↔cartola match reads them, never the note
- * (the note stays human provenance).
+ * (`stated_description`), its document number (`stated_document_no`, '' when it printed none), the
+ * cartola month it came from (`stated_period`, NULL for a daily-listing row) and, for a cartola row,
+ * its branch and its position in the cartola (`stated_branch`, `stated_position`). The importers
+ * write them with the row (`insertBankPesoMovement`); runtime reads them (`bankRowFacts.ts`), never
+ * the note (the note stays human provenance).
  *
  * The description and document are the ones the importers matched on before these columns existed:
  * a daily row's description as its note kept it (bars turned into slashes, cut at 120 characters,
@@ -32,6 +33,9 @@ export type BankListingFacts = {
   document_no: string;
   /** The cartola month (null for a daily-listing row). */
   period_month: string | null;
+  /** A cartola row's branch and position in its cartola (null for a daily-listing row). */
+  branch: string | null;
+  position: number | null;
 };
 
 /** A daily-listing row's facts. */
@@ -41,16 +45,20 @@ export function dailyListingFacts(mv: PartialBankMovement): BankListingFacts {
     description: mv.description.replace(/\|/g, "/").slice(0, 120).replace(/\s+/g, " ").trim(),
     document_no: String(mv.document_no ?? "").trim(),
     period_month: null,
+    branch: null,
+    position: null,
   };
 }
 
-/** A cartola row's facts. */
-export function cartolaListingFacts(periodMonth: string, mv: ParsedCheckingMovement): BankListingFacts {
+/** A cartola row's facts (`position`: the movement's place in its cartola). */
+export function cartolaListingFacts(periodMonth: string, mv: ParsedCheckingMovement, position: number): BankListingFacts {
   return {
     bank_day: mv.occurred_on,
     description: mv.description.slice(0, 180).trim(),
     document_no: String(mv.document_no ?? "").trim(),
     period_month: periodMonth,
+    branch: mv.branch || "—",
+    position,
   };
 }
 
@@ -66,17 +74,20 @@ export function recordBankListingFacts(movementId: number, facts: BankListingFac
   if (facts.period_month != null && !/^\d{4}-\d{2}$/.test(facts.period_month)) {
     throw new Error(`movement ${movementId}: cartola month «${facts.period_month}» is not YYYY-MM`);
   }
+  if ((facts.period_month != null) !== (facts.position != null && facts.branch != null)) {
+    throw new Error(`movement ${movementId}: a cartola row states its month, branch and position; a daily-listing row none of them`);
+  }
   const changes = dbHandle
     .prepare(
-      `UPDATE flow_evidence SET stated_on = ?, stated_description = ?, stated_document_no = ?, stated_period = ?
+      `UPDATE flow_evidence SET stated_on = ?, stated_description = ?, stated_document_no = ?, stated_period = ?, stated_branch = ?, stated_position = ?
        WHERE source_table = 'movements' AND source_row_id = ? AND source_kind IN ('cartola', 'daily_listing')`
     )
-    .run(facts.bank_day, facts.description, facts.document_no, facts.period_month, movementId).changes;
+    .run(facts.bank_day, facts.description, facts.document_no, facts.period_month, facts.branch, facts.position, movementId).changes;
   if (changes !== 1) throw new Error(`movement ${movementId}: no cartola or daily-listing evidence to state its listing on`);
 }
 
 /** The evidence columns {@link listedFactsOfEvidence} reads (alias `e`). */
-export const LISTED_FACTS_COLUMNS_SQL = `e.stated_on, e.stated_amount, e.stated_description, e.stated_document_no, e.stated_period`;
+export const LISTED_FACTS_COLUMNS_SQL = `e.stated_on, e.stated_amount, e.stated_description, e.stated_document_no, e.stated_period, e.stated_branch, e.stated_position`;
 
 export type ListedFactsEvidence = {
   stated_on: string | null;
@@ -84,6 +95,8 @@ export type ListedFactsEvidence = {
   stated_description: string | null;
   stated_document_no: string | null;
   stated_period: string | null;
+  stated_branch: string | null;
+  stated_position: number | null;
 };
 
 /**
@@ -116,7 +129,16 @@ export function listedFactsOfMovement(movementId: number, dbHandle: Database): B
     .get(movementId) as (ListedFactsEvidence & { kind: string }) | undefined;
   if (!e) throw new Error(`movement ${movementId}: no evidence`);
   const f = listedFactsOfEvidence(movementId, e.kind, e);
-  return f == null ? null : { bank_day: f.bank_day, description: f.description, document_no: f.document_no, period_month: f.period_month };
+  return f == null
+    ? null
+    : {
+        bank_day: f.bank_day,
+        description: f.description,
+        document_no: f.document_no,
+        period_month: f.period_month,
+        branch: e.kind === "cartola" ? e.stated_branch : null,
+        position: e.kind === "cartola" ? e.stated_position : null,
+      };
 }
 
 /**
@@ -129,12 +151,26 @@ export type MirrorLegListing = {
   listed_description: string | null;
   listed_document_no: string | null;
   listed_period: string | null;
+  listed_branch: string | null;
+  listed_position: number | null;
 };
+
+/** The merge-row columns of one side, in {@link mirrorLegListingOf}'s order. */
+export function mirrorLegListingColumns(side: "out" | "in"): string {
+  return ["on", "description", "document_no", "period", "branch", "position"].map((c) => `${side}_listed_${c}`).join(", ");
+}
 
 export function mirrorLegListingOf(facts: BankListingFacts | null): MirrorLegListing {
   return facts == null
-    ? { listed_on: null, listed_description: null, listed_document_no: null, listed_period: null }
-    : { listed_on: facts.bank_day, listed_description: facts.description, listed_document_no: facts.document_no, listed_period: facts.period_month };
+    ? { listed_on: null, listed_description: null, listed_document_no: null, listed_period: null, listed_branch: null, listed_position: null }
+    : {
+        listed_on: facts.bank_day,
+        listed_description: facts.description,
+        listed_document_no: facts.document_no,
+        listed_period: facts.period_month,
+        listed_branch: facts.branch,
+        listed_position: facts.position,
+      };
 }
 
 /**
@@ -154,5 +190,33 @@ export function restoreMirrorLegListing(movementId: number, kept: MirrorLegListi
   if (kept.listed_on == null || kept.listed_description == null || kept.listed_document_no == null) {
     throw new Error(`movement ${movementId}: a restored ${kind} leg whose conversion kept no listing facts`);
   }
-  recordBankListingFacts(movementId, { bank_day: kept.listed_on, description: kept.listed_description, document_no: kept.listed_document_no, period_month: kept.listed_period }, dbHandle);
+  recordBankListingFacts(
+    movementId,
+    {
+      bank_day: kept.listed_on,
+      description: kept.listed_description,
+      document_no: kept.listed_document_no,
+      period_month: kept.listed_period,
+      branch: kept.listed_branch,
+      position: kept.listed_position,
+    },
+    dbHandle
+  );
+}
+
+/** The evidence kinds whose description a writer states (a mail-written row's, a ledger anchor's). */
+const DESCRIBED_KINDS = ["mail_notice", "mail_rebuilt", "cartola_anchor"] as const;
+
+/**
+ * States the description of a row written from a mail or of a ledger anchor on its evidence (its
+ * note is provenance). Throws when the row is of no such kind.
+ */
+export function stateMovementDescription(movementId: number, description: string, dbHandle: Database): void {
+  const changes = dbHandle
+    .prepare(
+      `UPDATE flow_evidence SET stated_description = ?
+       WHERE source_table = 'movements' AND source_row_id = ? AND source_kind IN (${DESCRIBED_KINDS.map((k) => `'${k}'`).join(", ")})`
+    )
+    .run(description, movementId).changes;
+  if (changes !== 1) throw new Error(`movement ${movementId}: not a mail-written row or a ledger anchor`);
 }

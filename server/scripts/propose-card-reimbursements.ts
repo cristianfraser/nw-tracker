@@ -81,11 +81,13 @@ function loadCredits(): CreditRow[] {
   const overrides = db.prepare(
     `SELECT o.income_kind, o.is_excluded FROM flow_income_overrides o JOIN movements m ON m.flow_id = o.flow_id WHERE m.id = ?`
   );
+  // The payer token is searched in the row's note: this report reads the bank's text as a person would.
+  const noteOf = db.prepare(`SELECT note FROM movements WHERE id = ?`);
   const all: CreditRow[] = listMovementBalanceCashAccountIds()
     .flatMap((accountId) => listCheckingMovements(accountId, "in"))
     .map((m) => {
       const o = overrides.get(m.id) as { income_kind: string | null; is_excluded: number | null } | undefined;
-      return { id: m.id, occurred_on: m.occurred_on, amount_clp: m.amount_clp, note: String(m.note ?? ""), income_kind: o?.income_kind ?? null, is_excluded: o?.is_excluded ?? null };
+      return { id: m.id, occurred_on: m.occurred_on, amount_clp: m.amount_clp, note: String((noteOf.get(m.id) as { note: string | null }).note ?? ""), income_kind: o?.income_kind ?? null, is_excluded: o?.is_excluded ?? null };
     });
   if (explicitIds.length > 0) {
     const byId = new Map(all.map((r) => [r.id, r]));

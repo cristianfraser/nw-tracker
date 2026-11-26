@@ -1,51 +1,42 @@
 /**
- * The card statement-line planner (pure; docs: none yet — the rule text comes with the switch).
+ * The card statement-line planner (pure; the rule: `.claude/rules/cards.md` «A statement keeps the
+ * rows on file»).
  *
- * Contract. Given a statement import as it will be written — the statements' canonical lines, read
- * by the loader into the columns the import stores — and the card lines on file it can relate to,
- * the planner says, before anything is written, what today's import ends with, as row outcomes:
+ * Given a statement import — the statements' canonical lines, read by the loader into the columns
+ * the import stores — and the card lines on file it can relate to, the planner says, before
+ * anything is written, which row each document line ends on, as row outcomes:
  *
- *  - `keep`: a row on file and the document line that will restate it (one-to-one), and why;
+ *  - `keep`: a row on file and the document line that restates it (one-to-one), and why;
  *  - `fold`: a row on file that is the same charge as a kept row and folds into it;
  *  - `insert`: a document line no row on file is;
  *  - `remove`: a row on file the document supersedes with no counterpart, and why;
  *  - the card-only outcomes: a bucket line annulled (kept as an annulled purchase), moved to the open
  *    facturación, a plan-prepayment line kept, an annulment the statement settles;
  *  - `skip`: a document line that writes no row (a repeat of another, a plan's line);
- *  - `ambiguous`: what today's pipeline pairs in a way no one-to-one outcome expresses.
+ *  - `ambiguous`: what cannot be paired one to one.
  *
- * It is the import's own matching moved before the write — the same steps in the same order, each
- * through the predicate the import uses (`takeBatchDedupeKeys`, `findPlanAmong`,
+ * The steps, in order, each through the card's own matcher (`takeBatchDedupeKeys`, `findPlanAmong`,
  * `oneShotFuzzyMatchAmong`, `oneShotLinesSupersededAmong` / `supersededLinesLessPlanSources`,
  * `planBucketSettlement`, `planAnnulmentSettlements`, `planCcLineMoves` / `fanOutUniformGroupsGiven`):
  *
- *  1. a JSON close a PDF takes over goes first; a statement the import replaces (replace keys) loses
- *     its lines when the import reaches it, just before its own are written (ids follow from that);
+ *  1. a JSON close a PDF takes over gives up its lines; a statement the import replaces (replace keys)
+ *     gives up its lines when the import reaches it;
  *  2. each document line in order: a repeat inside its statement, a dedupe-key hit, a plan on file
  *     that is the one-shot line's purchase, a fuzzy duplicate (same day, pesos, merchant) — else
  *     written;
- *  3. the one-shot lines a plan (on file or the document's) supersedes go, the line's arrival onto
- *     the plan;
- *  4. each closed facturación settles its bucket (`planBucketSettlement`), the annulments settle;
- *  5. the re-import adoption pairs what vanished with what appeared (`planCcLineMoves`).
+ *  3. the one-shot lines a plan (on file or the document's) supersedes go;
+ *  4. each closed facturación settles its bucket (`planBucketSettlement`): a bucket line the
+ *     statement bills (the same purchase, or under another shape: `statementRestatesBucketLine`) is
+ *     its line's row; the annulments settle;
+ *  5. what a replaced statement gave up pairs with its document lines (`planCcLineMoves`: the same
+ *     parser row, then identity; a split re-parse fans out), then a source takeover pairs what is
+ *     left of one close by the settle figures and the merchant's rendering.
  *
- * Steps 4 and 5 move flows (the settled line's flow onto the statement line, a vanished line's onto
- * its replacement): the planner follows them as groups, the survivor flow first, which is today's
- * end state ({@link CardStatementLinePlan.today}). The plan departs from it in two declared ways
- * (`today: "differs"` on the entry): a bucket line a statement line carries under another shape
- * («carried under another shape», `statementRestatesBucketLine`) is kept by that line, where today
- * deletes it; and of several rows of one charge the earliest seen is the kept one — the oldest
- * arrival (`olderArrival`: a row with no stamp was on file before the stamps), ties by the lower row
- * id — where today the survivor is the one the adoption order leaves; and a replaced line that comes
- * back under its own id and parser row (the statement's lines held the highest ids, SQLite hands them
- * out again) is kept, where today's adoption — which tells lines apart by id and parser row — sees
- * no change, leaves the old flow retired and the line on a new one.
+ * Steps 4 and 5 join rows into groups (one charge); of a group's rows the earliest seen is the kept
+ * one — the oldest arrival (`compareArrival`: a row with no stamp was on file before the stamps),
+ * ties by the lower row id — and the others fold into it.
  *
- * Out of scope (the planner refuses or ignores, and the comparison report shows a disagreement if a
- * case depends on it): listing imports (paste, feed: the planted-charge absorber), the manual-plan
- * reconcile and a plan the statement updates under the same canonical row, the bucket passes after
- * the adoption (truncated twins, pending automatic payments), the classification-only copies onto a
- * new sibling (reported on the insert).
+ * Listing imports (paste, feed: the planted-charge absorber) are refused: they never replace a row.
  */
 import { findPlanAmong, oneShotLinesSupersededAmong, type CardPlanForMatching } from "./purchases.js";
 import { oneShotFuzzyMatchAmong, supersededLinesLessPlanSources } from "../ccCrossImportDedupe.js";
@@ -157,13 +148,6 @@ export type CardStatementLinePlanInput = {
   replaced_statement_ids: number[];
   /** Every card line of the account, by id. */
   file_lines: PlanFileLine[];
-  /**
-   * The highest line id in the whole table outside the account's replaced and superseded statements
-   * (0 when none). A written line takes the highest id left at that moment plus one (SQLite's rowid
-   * rule), so a replaced statement's lines can come back under their old ids — which the re-import
-   * adoption reads as no change.
-   */
-  max_line_id_outside_replaced: number;
   /** Bucket lines the bucket repair moves: line id → the bucket statement it lands in (an id of `statements`, or a new bucket's negative id). */
   bucket_repair_moves: { line_id: number; to_statement_id: number; to_billing_month: string }[];
   incoming: PlanDocStatement[];
@@ -206,8 +190,6 @@ export type CardPlanKeep = {
   row: FileRowRef;
   doc: DocLineRef;
   why: KeepReason;
-  /** Whether today's import ends with this row's flow on this line ("differs": see the module doc). */
-  today: "same" | "differs";
 };
 
 export type CardPlanFold = {
@@ -216,14 +198,13 @@ export type CardPlanFold = {
   /** The document line that restates `into`; null for a removed copy folding into a line that stays. */
   doc: DocLineRef | null;
   why: KeepReason | "survivor_copy";
-  today: "same" | "differs";
 };
 
 export type CardPlanInsert = {
   doc: DocLineRef;
   /** A statement's cuota line gets no arrival stamp; any other line arrives now. */
   arrival: "stamp" | "none";
-  /** A new line beside kept lines of its identity: today copies their category and big group onto it. */
+  /** A new line beside kept lines of its identity: it copies their category and big group. */
   copies_classification_from: number | null;
 };
 
@@ -265,25 +246,6 @@ export type CardStatementLinePlan = {
     credit_iso: string;
   }[];
   ambiguous: { what: string; rows: FileRowRef[]; docs: DocLineRef[] }[];
-  /** Today's end state, for the comparison report (`statementLinePlanCompare.ts`). */
-  today: CardTodayEndState;
-};
-
-/** What today's import leaves, per document line and per row on file. */
-export type CardTodayEndState = {
-  /** Each document line's row: the row on file whose flow it ends with, else `new`; or no row. */
-  docs: {
-    doc: DocLineRef;
-    /** The statement row the line is written on and its stored dedupe key (written lines only). */
-    statement_id?: number;
-    dedupe_key?: string | null;
-    outcome: { row: "new" } | { row: FileRowRef } | { skipped: CardPlanSkip["why"]; same_as_row?: number };
-  }[];
-  /**
-   * Each row on file the import touches: its flow on a document line (the survivor), merged into
-   * another flow, kept on an annulled purchase, or gone with nothing; a moved or untouched line.
-   */
-  rows: { row: FileRowRef; fate: "on_doc_line" | "merged" | "annulled" | "retired" | "moved" | "untouched" }[];
 };
 
 // ── the planner ──────────────────────────────────────────────────────────────────────────────────
@@ -309,15 +271,10 @@ class FlowGroups {
     const s = this.find(survivor);
     if (a !== s) this.parent.set(a, s);
   }
-  clone(): FlowGroups {
-    const c = new FlowGroups();
-    c.parent = new Map(this.parent);
-    return c;
-  }
 }
 
 type LiveLine = PlanLineColumns & {
-  /** File id, or a virtual id above every file id for a written document line. */
+  /** File id, or a virtual id above every file id for a written document line (in document order). */
   id: number;
   statement_id: number;
   dedupe_key: string | null;
@@ -365,8 +322,8 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     }
     live.set(l.id, { ...l, listing: listingStatement(l.statement_id), doc: null });
   }
-  /** The id the next written line gets: the highest id in the table now, plus one. */
-  const nextId = (): number => Math.max(input.max_line_id_outside_replaced, ...live.keys()) + 1;
+  /** Written document lines get virtual ids above every row on file, in document order. */
+  let nextVirtualId = Math.max(0, ...input.file_lines.map((l) => l.id)) + 1;
   const docOfVirtual = new Map<number, DocLineRef>();
   const virtualOfDoc = new Map<string, number>();
   const plan: CardStatementLinePlan = {
@@ -380,7 +337,6 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     kept_plan_prepayment: [],
     annulments_credited: [],
     ambiguous: [],
-    today: { docs: [], rows: [] },
   };
   const skips = new Map<string, CardPlanSkip & { same_as_row?: number }>();
   /** Document lines a dedupe or fuzzy hit pairs with a row on file. */
@@ -439,7 +395,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
           }
         }
       }
-      const id = nextId();
+      const id = nextVirtualId++;
       live.set(id, {
         ...line,
         id,
@@ -511,7 +467,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
 
   // 4. Each closed facturación settles its bucket.
   const groups = new FlowGroups();
-  /** A line as it stands now: a written document line (its id may be a replaced line's), else a line on file. */
+  /** A line as it stands now: a written document line, else a line on file. */
   const tokenOf = (id: number): Token => (live.get(id)?.doc ? docToken(id) : lineToken(id));
   const restated: { from: number; to: number }[] = [];
   const settledFrom = new Map<number, { to: number; by: string }>();
@@ -600,7 +556,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     for (const d of planAnnulmentSettlements(ordered, settlement.matchable, new Set())) {
       const a = d.annulment as (typeof annulments)[number];
       if (d.outcome === "billed") {
-        // The statement line's flow folds into the annulment's (`settleAnnulmentsAgainstStatement`).
+        // The statement line's flow folds into the annulment's (`planAnnulmentSettlements`).
         if (a.flow_id != null) groups.fold(tokenOf(d.statement_line_id), a.token);
         billedAnnulments.set(a.id, d.statement_line_id);
         annulments.splice(annulments.indexOf(a), 1);
@@ -618,7 +574,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     openBucketId -= 1;
   }
 
-  // 5. The re-import adoption: what vanished against what appeared.
+  // 5. What a replaced statement gave up, against its document lines.
   const ref = (l: PlanLineColumns & { id: number; statement_id: number }): CcLineRef => {
     const st = statementById.get(l.statement_id);
     const legacy = l.currency === "clp" ? { amount_clp: l.amount, amount_usd: null } : l.currency === "usd" ? { amount_clp: 0, amount_usd: l.amount } : { amount_clp: null, amount_usd: null }; // convention-ok: the identity reads the legacy peso/dollar slots (`lineAmountClpSql`)
@@ -641,34 +597,15 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       }),
     };
   };
-  // The adoption tells lines apart by id and parser row (`adoptReimportedCardLines`): a written line
-  // under the id and parser row of the line it replaces is no change to it — the old line's flow
-  // stays retired and the written line keeps its own new one («hidden» below).
-  const sig = (id: number, prid: string | null) => `${id}|${prid ?? ""}`;
-  const parserRow = (l: PlanLineColumns) => {
-    const t = String(l.parser_row_id ?? "").trim();
-    return t && !t.startsWith("synthetic:") ? t : null;
-  };
-  const beforeSigs = new Set(input.file_lines.map((l) => sig(l.id, parserRow(l))));
-  const afterSigs = new Set([...live.values()].map((l) => sig(l.id, parserRow(l))));
-  const hidden: { from: number; to: number }[] = [];
-  for (const id of vanished) {
-    const l = fileById.get(id)!;
-    if (afterSigs.has(sig(id, parserRow(l)))) hidden.push({ from: id, to: id });
-  }
-  const hiddenIds = new Set(hidden.map((h) => h.from));
-  const vanishedRefs = [...vanished]
-    .filter((id) => !hiddenIds.has(id))
-    .sort((a, b) => a - b)
-    .map((id) => ref(fileById.get(id)!));
-  const appearedRefs = [...live.values()].filter((l) => l.doc && !beforeSigs.has(sig(l.id, parserRow(l)))).map(ref);
-  const survivorRefs = [...live.values()].filter((l) => !l.doc || beforeSigs.has(sig(l.id, parserRow(l)))).map((l) => ref(l));
+  const vanishedRefs = [...vanished].sort((a, b) => a - b).map((id) => ref(fileById.get(id)!));
+  const appearedRefs = [...live.values()].filter((l) => l.doc).map(ref);
+  const survivorRefs = [...live.values()].filter((l) => !l.doc).map(ref);
   const moves = planCcLineMoves(vanishedRefs, appearedRefs, survivorRefs);
   const signature = (r: CcLineRef): string | null => fileById.get(r.lineId)?.assignment_signature ?? null;
   const fan = fanOutUniformGroupsGiven(moves.ambiguousGroups, signature);
   const adoptions: CcLineMove[] = [...moves.moves, ...fan.moves].filter((m) => !m.copy && !m.from.installment && !m.to.installment);
-  // A statement's cuota line that comes back under its parser row is the same line (today's
-  // adoption leaves cuota lines alone: their flow is their plan's): the plan keeps it.
+  // A statement's cuota line that comes back under its parser row is the same line (its flow is its
+  // plan's, so only the parser row pairs it).
   const cuotaKeeps = [...moves.moves, ...fan.moves].filter((m) => !m.copy && m.from.installment && m.to.installment && m.by === "parser_row_id");
   const adoptedBy = new Map<number, CcLineMove["by"]>();
   for (const m of adoptions) {
@@ -683,23 +620,23 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   for (const r of moves.ambiguous.filter((r) => !fan.fannedOut.has(r.lineId))) {
     plan.ambiguous.push({ what: "re-import identity group whose counts differ (left unpaired)", rows: [{ kind: "line", id: r.lineId }], docs: [] });
   }
+  // A new line beside kept lines of its identity copies their classification: a kept line is the row
+  // on file its document line restates (paired by parser row), read for what its flow carries.
+  const fileLineOf = new Map(moves.moves.filter((m) => m.by === "parser_row_id").map((m) => [m.to.lineId, m.from]));
   const copiesFrom = new Map<number, number>();
   for (const { survivors, news } of moves.besideSurvivors) {
-    const sigs = survivors.map(signature);
+    const kept = survivors.map((r) => fileLineOf.get(r.lineId) ?? r);
+    const sigs = kept.map(signature);
     if (sigs[0] == null || sigs.some((x) => x !== sigs[0])) continue;
-    for (const n of news) copiesFrom.set(n.lineId, survivors[0]!.lineId);
+    for (const n of news) copiesFrom.set(n.lineId, kept[0]!.lineId);
   }
 
-  // Today's end state, then the plan (another-shape lines kept by their statement line).
-  const today = groups;
-  const planned = groups.clone();
-  // The plan keeps a replaced line its own re-written line restates (today misses it, see `hidden`).
-  for (const h of hidden) planned.fold(docToken(h.to), lineToken(h.from));
   for (const m of cuotaKeeps) {
-    planned.fold(docToken(m.to.lineId), lineToken(m.from.lineId));
+    groups.fold(docToken(m.to.lineId), lineToken(m.from.lineId));
     adoptedBy.set(m.from.lineId, "parser_row_id");
   }
-  for (const r of restated) planned.fold(tokenOf(r.to), lineToken(r.from));
+  // A bucket line a statement line carries under another shape is that line's row.
+  for (const r of restated) groups.fold(tokenOf(r.to), lineToken(r.from));
   // A source takeover of the same close (a JSON close its PDF takes over, a statement re-sent):
   // what the exact pairing left on both sides pairs one to one, in line order, by the bucket's
   // settle figures (currency, amount to the coin, day within a day) and a merchant that matches or
@@ -712,11 +649,11 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   const takeoverFrom = new Set<number>();
   const closeOfDoc = new Map(input.incoming.map((st) => [st.key, st]));
   const candidates = [...live.values()]
-    .filter((d) => d.doc && !d.installment_flag && !beforeSigs.has(sig(d.id, parserRow(d))))
+    .filter((d) => d.doc && !d.installment_flag)
     .sort((a, b) => a.id - b.id);
   const gone = [...vanished]
     .sort((a, b) => a - b)
-    .filter((id) => !hiddenIds.has(id) && !pairedFrom.has(id) && removeWhy.get(id)?.why === "replaced_statement_line_gone" && !fileById.get(id)!.installment_flag);
+    .filter((id) => !pairedFrom.has(id) && removeWhy.get(id)?.why === "replaced_statement_line_gone" && !fileById.get(id)!.installment_flag);
   const sameMerchant = (a: string | null, b: string | null) => String(a ?? "").trim().toUpperCase() === String(b ?? "").trim().toUpperCase();
   const renderingMatch = (a: string | null, b: string | null) => {
     const ra = merchantRenderingKey(String(a ?? ""));
@@ -735,7 +672,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       if (!target) continue;
       pairedTo.add(target.id);
       takeoverFrom.add(id);
-      planned.fold(docToken(target.id), lineToken(id));
+      groups.fold(docToken(target.id), lineToken(id));
     }
   }
   if (takeoverFrom.size > 0) {
@@ -754,9 +691,9 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     ...input.file_lines.map((l) => lineToken(l.id)),
     ...input.annulments.map((a) => annulToken(a.id)),
   ];
-  const membersOf = (g: FlowGroups, docVid: number): Token[] => {
-    const root = g.find(docToken(docVid));
-    return fileTokens.filter((t) => g.find(t) === root);
+  const membersOf = (docVid: number): Token[] => {
+    const root = groups.find(docToken(docVid));
+    return fileTokens.filter((t) => groups.find(t) === root);
   };
   const arrivalOf = (row: FileRowRef): FlowArrival =>
     row.kind === "line" ? fileById.get(row.id)!.arrival : input.annulments.find((a) => a.id === row.id)!.arrival;
@@ -768,39 +705,27 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     const settled = settledFrom.get(row.id);
     if (settled && settled.to === docVid) return settled.by as KeepReason;
     if (restated.some((r) => r.from === row.id && r.to === docVid)) return "another_shape";
-    if (hiddenIds.has(row.id)) return "reimport_parser_row";
     if (takeoverFrom.has(row.id)) return "source_takeover";
     const by = adoptedBy.get(row.id);
     if (by === "parser_row_id") return "reimport_parser_row";
     if (by === "fan_out") return "reimport_fan_out";
     return "reimport_identity";
   };
-  const sameSet = (a: Token[], b: Token[]): boolean => a.length === b.length && a.every((t) => b.includes(t));
   const claimed = new Set<string>();
   const docsByRoot = new Map<Token, DocLineRef[]>();
   for (const doc of inserted) {
-    const root = planned.find(docToken(virtualOfDoc.get(refOf(doc))!));
+    const root = groups.find(docToken(virtualOfDoc.get(refOf(doc))!));
     docsByRoot.set(root, [...(docsByRoot.get(root) ?? []), doc]);
   }
   for (const doc of inserted) {
     const vid = virtualOfDoc.get(refOf(doc))!;
-    const sharing = docsByRoot.get(planned.find(docToken(vid)))!;
-    const todayMembers = membersOf(today, vid);
-    const todaySurvivorToken = today.find(docToken(vid));
-    const todayRow = fileRowOfToken(todaySurvivorToken);
-    const written = live.get(vid)!;
-    plan.today.docs.push({
-      doc,
-      statement_id: written.statement_id,
-      dedupe_key: written.dedupe_key,
-      outcome: todayRow ? { row: todayRow } : { row: "new" },
-    });
-    const members = membersOf(planned, vid)
+    const sharing = docsByRoot.get(groups.find(docToken(vid)))!;
+    const members = membersOf(vid)
       .map(fileRowOfToken)
       .filter((r): r is FileRowRef => r != null)
       .sort(earliestFirst);
     if (sharing.length > 1 && refOf(sharing[0]!) !== refOf(doc)) {
-      // Today's adoption leaves this line on the flow another document line ends with.
+      // Two document lines would end on one row.
       plan.ambiguous.push({
         what: `two document lines end on one flow (with ${refOf(sharing[0]!).replace(/\t/g, " | ")})`,
         rows: members,
@@ -817,14 +742,10 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       });
       continue;
     }
-    const same = sameSet(members.map((r) => (r.kind === "line" ? lineToken(r.id) : annulToken(r.id))), todayMembers);
     const keptRow = members[0]!;
-    const keptToday = same && todayRow != null && todayRow.kind === keptRow.kind && todayRow.id === keptRow.id;
-    plan.keep.push({ row: keptRow, doc, why: whyOf(keptRow, vid), today: keptToday ? "same" : "differs" });
+    plan.keep.push({ row: keptRow, doc, why: whyOf(keptRow, vid) });
     for (const r of members) claimed.add(`${r.kind}:${r.id}`);
-    for (const r of members.slice(1)) {
-      plan.fold.push({ row: r, into: keptRow, doc, why: whyOf(r, vid), today: same ? "same" : "differs" });
-    }
+    for (const r of members.slice(1)) plan.fold.push({ row: r, into: keptRow, doc, why: whyOf(r, vid) });
   }
   // A vanished line whose flow folds into a line that stayed (a removed duplicate copy).
   for (const m of adoptions.filter((m) => m.by === "survivor")) {
@@ -835,7 +756,6 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       into: { kind: "line", id: m.to.lineId },
       doc: null,
       why: "survivor_copy",
-      today: "same",
     });
   }
   // A settlement by a statement line already on file (its twin's statement arrived first, a late
@@ -847,7 +767,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     const key = `${row.kind}:${row.id}`;
     if (claimed.has(key)) return;
     claimed.add(key);
-    plan.fold.push({ row, into: { kind: "line", id: into }, doc: null, why, today: "same" });
+    plan.fold.push({ row, into: { kind: "line", id: into }, doc: null, why });
   };
   for (const [from, s] of settledFrom) if (settledOnFile(s.to)) foldOnFile({ kind: "line", id: from }, s.to, s.by as KeepReason);
   for (const r of restated) if (settledOnFile(r.to)) foldOnFile({ kind: "line", id: r.from }, r.to, "another_shape");
@@ -866,10 +786,9 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     if (claimed.has(key)) continue;
     settledDocs.add(refOf(k.doc));
     claimed.add(key);
-    plan.keep.push({ row: { kind: "line", id: k.row }, doc: k.doc, why: k.why, today: "same" });
+    plan.keep.push({ row: { kind: "line", id: k.row }, doc: k.doc, why: k.why });
   }
   for (const s of skips.values()) {
-    plan.today.docs.push({ doc: s.doc, outcome: { skipped: s.why, ...(s.same_as_row != null ? { same_as_row: s.same_as_row } : {}) } });
     if (settledDocs.has(refOf(s.doc))) continue;
     plan.skip.push(s);
   }
@@ -898,28 +817,6 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     plan.remove.push({ row: { kind: "line", id }, why, ...(r.plan_id != null ? { plan_id: r.plan_id } : {}) });
   }
 
-  // Today's fate of each row on file the import touched.
-  const docRoots = new Set([...virtualOfDoc.values()].map((vid) => today.find(docToken(vid))));
-  const annulRoots = new Set(annulments.map((a) => today.find(a.token)));
-  for (const t of fileTokens) {
-    const row = fileRowOfToken(t)!;
-    const isLine = row.kind === "line";
-    const touched =
-      (isLine && (vanished.has(row.id) || movedLines.has(row.id))) || (!isLine && billedAnnulments.has(row.id));
-    if (!touched) {
-      if (isLine) plan.today.rows.push({ row, fate: "untouched" });
-      continue;
-    }
-    if (isLine && movedLines.has(row.id)) {
-      plan.today.rows.push({ row, fate: "moved" });
-      continue;
-    }
-    const root = today.find(t);
-    if (root !== t) plan.today.rows.push({ row, fate: "merged" });
-    else if (docRoots.has(root)) plan.today.rows.push({ row, fate: "on_doc_line" });
-    else if (annulRoots.has(root)) plan.today.rows.push({ row, fate: "annulled" });
-    else plan.today.rows.push({ row, fate: "retired" });
-  }
   assertExclusiveOutcomes(plan, input, { touched: new Set([...vanished, ...movedLines.keys(), ...keptPrepayment]) });
   return plan;
 }

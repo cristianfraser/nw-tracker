@@ -5,7 +5,8 @@ import type { ParsedCheckingCartola, ParsedCheckingMovement } from "./checkingCa
 import { partialMovementNote } from "./checkingPartialMovementsImport.js";
 import { insertBankPesoMovement, insertMovement, redateMovementKeepingBankDay, restateBankRowDocument } from "./movementWrites.js";
 import { deleteTempCardMaster } from "./test/tempCardMaster.js";
-import { compareCheckingCartolaImport } from "./checkingCartolaPlanCompare.js";
+import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
+import { planCheckingCartola } from "./checkingCartolaPlan.js";
 import { dailyListingFacts, LISTED_FACTS_COLUMNS_SQL, listedFactsOfEvidence, type ListedFactsEvidence } from "./movementListingFacts.js";
 
 const PERIOD = "1803-04";
@@ -48,7 +49,7 @@ const mv = (occurred_on: string, amount_clp: number, description: string, docume
   document_no,
 });
 
-describe("cartola planner against today's import", () => {
+describe("cartola planner", () => {
   let checking = 0;
   let other = 0;
 
@@ -76,26 +77,24 @@ describe("cartola planner against today's import", () => {
     });
   }
 
-  function expectAgrees(c: ParsedCheckingCartola) {
-    const r = compareCheckingCartolaImport(checking, c);
-    expect(r.disagreements).toEqual([]);
-    return r;
+  function planFor(c: ParsedCheckingCartola) {
+    return { plan: planCheckingCartola(loadCheckingCartolaPlanInput(checking, c)) };
   }
 
   it("keeps the daily row the cartola lists, its description cut and uppercased", () => {
     const row = daily("1803-04-03", -45_000, "TRANSFERENCIA A JUAN PEREZ SOTO");
-    const { plan } = expectAgrees(cartola([mv("1803-04-03", -45_000, "Transferencia A Juan Perez"), mv("1803-04-05", -1_000, "Comision")]));
-    expect(plan.keep).toEqual([{ row_id: row, movement: 0, why: "daily_listing", redate: null, today: "same" }]);
-    expect(plan.insert).toEqual([{ movement: 1, retired_flow_id: null, today: "same" }]);
+    const { plan } = planFor(cartola([mv("1803-04-03", -45_000, "Transferencia A Juan Perez"), mv("1803-04-05", -1_000, "Comision")]));
+    expect(plan.keep).toEqual([{ row_id: row, movement: 0, why: "daily_listing", redate: null }]);
+    expect(plan.insert).toEqual([{ movement: 1, retired_flow_id: null }]);
   });
 
   it("carries a daily row's receipt-corrected day onto the cartola row", () => {
     const row = daily("1803-04-10", -120_000, "PAGO TARJETA CREDITO");
     // A receipt says the payment was made on the 9th; the bank posted it the 10th.
     redateMovementKeepingBankDay({ movementId: row, accountId: checking, occurredOn: "1803-04-09", bankPostedOn: "1803-04-10" });
-    const { plan } = expectAgrees(cartola([mv("1803-04-10", -120_000, "Pago Tarjeta Credito")]));
+    const { plan } = planFor(cartola([mv("1803-04-10", -120_000, "Pago Tarjeta Credito")]));
     expect(plan.keep).toEqual([
-      { row_id: row, movement: 0, why: "daily_listing", redate: { occurred_on: "1803-04-09", bank_day: "1803-04-10" }, today: "same" },
+      { row_id: row, movement: 0, why: "daily_listing", redate: { occurred_on: "1803-04-09", bank_day: "1803-04-10" } },
     ]);
   });
 
@@ -110,7 +109,7 @@ describe("cartola planner against today's import", () => {
       written,
       checking
     );
-    const { plan } = expectAgrees(cartola([mv("1803-04-12", -77_000, "Transf A Otro Banco")]));
+    const { plan } = planFor(cartola([mv("1803-04-12", -77_000, "Transf A Otro Banco")]));
     expect(plan.confirm).toEqual([{ row_id: written, movement: 0, why: "mail_notice" }]);
     expect(plan.insert).toEqual([]);
   });
@@ -118,7 +117,7 @@ describe("cartola planner against today's import", () => {
   it("confirms a transfer leg the cartola lists, and the daily row of it goes", () => {
     const leg = insertMovement({ fromAccountId: checking, toAccountId: other, amount: 300_000, currency: "clp", occurredOn: "1803-04-15" });
     const row = daily("1803-04-15", -300_000, "TRASPASO A CUENTA PROPIA");
-    const { plan } = expectAgrees(cartola([mv("1803-04-15", -300_000, "Traspaso A Cuenta Propia")]));
+    const { plan } = planFor(cartola([mv("1803-04-15", -300_000, "Traspaso A Cuenta Propia")]));
     expect(plan.confirm).toEqual([{ row_id: leg, movement: 0, why: "transfer_leg" }]);
     expect(plan.remove).toEqual([{ row_id: row, movement: 0, why: "listed_by_transfer_leg" }]);
   });
@@ -128,28 +127,22 @@ describe("cartola planner against today's import", () => {
     importCheckingCartola(checking, c);
     const ids = (db.prepare(`SELECT id FROM movements WHERE account_id = ? ORDER BY id`).all(checking) as { id: number }[]).map((r) => r.id);
     const leftover = daily("1803-04-21", -6_000, "COMPRA COMERCIO DOS");
-    const { plan } = expectAgrees(c);
+    const { plan } = planFor(c);
     expect(plan.keep.map((k) => [k.row_id, k.movement, k.why])).toEqual([
       [ids[0], 0, "document_key"],
       [ids[1], 1, "document_key"],
     ]);
-    // The cartola row is on file before the daily row's stamp: it is kept; today the daily row's flow survives on it.
-    expect(plan.fold).toEqual([{ row_id: leftover, into_row_id: ids[1], movement: 1, why: "daily_listing", today: "differs" }]);
+    // The cartola row is on file before the daily row's stamp: it is kept, the daily row folds into it.
+    expect(plan.fold).toEqual([{ row_id: leftover, into_row_id: ids[1], movement: 1, why: "daily_listing" }]);
   });
 
-  it("identical twin daily rows pair one-to-one with identical twin movements (today both take the first)", () => {
+  it("identical twin daily rows pair one-to-one with identical twin movements", () => {
     const a = daily("1803-04-22", -3_500, "PEAJE AUTOPISTA CENTRAL");
     const b = daily("1803-04-22", -3_500, "PEAJE AUTOPISTA CENTRAL");
-    const { plan } = expectAgrees(cartola([mv("1803-04-22", -3_500, "Peaje Autopista Central"), mv("1803-04-22", -3_500, "Peaje Autopista Central")]));
-    // Today: both daily rows adopt into movement #0's row (two charges on one flow; b's survives) and
-    // #1's row starts a new flow — the comparison above checks that this is what the import does.
-    expect(plan.today.daily_rows).toEqual([
-      { row_id: a, fate: "merged" },
-      { row_id: b, fate: "on_cartola_row" },
-    ]);
+    const { plan } = planFor(cartola([mv("1803-04-22", -3_500, "Peaje Autopista Central"), mv("1803-04-22", -3_500, "Peaje Autopista Central")]));
     expect(plan.keep).toEqual([
-      { row_id: a, movement: 0, why: "daily_listing", redate: null, today: "differs" },
-      { row_id: b, movement: 1, why: "daily_listing", redate: null, today: "differs" },
+      { row_id: a, movement: 0, why: "daily_listing", redate: null },
+      { row_id: b, movement: 1, why: "daily_listing", redate: null },
     ]);
     expect(plan.fold).toEqual([]);
     expect(plan.insert).toEqual([]);

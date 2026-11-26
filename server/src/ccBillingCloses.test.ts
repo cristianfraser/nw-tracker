@@ -18,7 +18,7 @@ import { buildCcGlanceForAccount } from "./ccGlance.js";
 import { openAndLatestClosedFacturacion } from "./dashboardCcUpcomingPayments.js";
 import { foreignBilledFromStatementLines } from "./ccForeignStatementBilled.js";
 import { applyListing, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
-import { reconcileOpenWebPasteAfterPdfClose } from "./ccOpenWebPastePdfReconcile.js";
+import { importStatementOnFile } from "./test/statementOnFile.js";
 import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./cards/facturacionByStatementDate.js";
 import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
@@ -1016,7 +1016,7 @@ describe("credit-card close evidence", () => {
     expect(billingMonthForLedgerPurchase(accountId, { purchase_date: "2026-10-25", source: "manual" })).toBe("2026-10");
   });
 
-  it("settles the buckets against September's statement: billed lines go, unbilled ones move on", () => {
+  it("settles the buckets against September's statement: billed lines become its lines, unbilled ones move on", () => {
     const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
     insertBucketLine(sept, "2026-09-03", "SUPERMERCADO VITEST", 10_000); // on the statement
     insertBucketLine(sept, "2026-09-23", "FARMACIA VITEST", 4_990); // pre-auth, settled as 5.000
@@ -1040,11 +1040,11 @@ describe("credit-card close evidence", () => {
     insertLine(clp, { date: "22/09/2026", merchant: "PENDIENTE VITEST", clp: 7_000 });
     insertStatement({ source: "vitest 2026-09-24 usd.pdf", date: "24/09/2026", from: "25/08/2026", to: "24/09/2026", currency: "usd" });
 
-    const result = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-09");
-    expect(result.skipped).toBe(false);
-    expect(result.moved_line_ids).toEqual([taxi]);
-    expect(result.deleted_line_ids).toContain(lateBilled);
-    expect(result.deleted_count).toBe(3);
+    const { result } = importStatementOnFile(accountId, [clp]);
+    expect(result.keep_rows.moved).toEqual([taxi]);
+    expect(result.keep_rows.restated).toContain(lateBilled);
+    expect(result.keep_rows.restated).toHaveLength(3);
+    expect(result.keep_rows.inserted).toEqual([]);
     expect(merchantsIn(bucketId("2026-09"))).toEqual([]);
     expect(merchantsIn(bucketId("2026-10"))).toEqual(["SWITCH VITEST", "TAXI VITEST"]);
     expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(nextCycle)).toBeDefined();
@@ -1069,12 +1069,10 @@ describe("credit-card close evidence", () => {
     insertLine(usd, { date: "01/09/2026", merchant: "APPLE.COM/BILL", usd: 13.93 });
     insertLine(usd, { date: "02/09/2026", merchant: "KIOSCO VITEST SETTLED", usd: 7 });
 
-    const first = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-09");
-    expect(first).toMatchObject({ skipped: false, currencies: ["usd"] });
-    // Dollar lines: the billed one and the pre-auth go, the close-day purchase moves to October.
-    expect(first.deleted_line_ids.sort()).toEqual([apple, preAuth].sort());
-    expect(first.earliest_deleted_iso).toBe("2026-08-30");
-    expect(first.moved_line_ids).toEqual([closeDay]);
+    const first = importStatementOnFile(accountId, [usd]).result.keep_rows;
+    // Dollar lines: the billed one and the pre-auth are its lines now, the close-day purchase moves to October.
+    expect(first.restated.sort()).toEqual([apple, preAuth].sort());
+    expect(first.moved).toEqual([closeDay]);
     // Peso lines wait for their own statement.
     expect(merchantsIn(bucketId("2026-09"))).toEqual(["SUPERMERCADO VITEST"]);
     expect(merchantsIn(bucketId("2026-10"))).toContain("ANTHROPIC VITEST");
@@ -1096,8 +1094,8 @@ describe("credit-card close evidence", () => {
       nextTo: "23/10/2026",
     });
     insertLine(clp, { date: "03/09/2026", merchant: "SUPERMERCADO VITEST", clp: 10_000 });
-    const second = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-09");
-    expect(second).toMatchObject({ skipped: false, currencies: ["clp", "usd"], deleted_line_ids: [supermercado] });
+    const second = importStatementOnFile(accountId, [clp]).result.keep_rows;
+    expect(second.restated).toEqual([supermercado]);
     expect(merchantsIn(bucketId("2026-09"))).toEqual([]);
   });
 

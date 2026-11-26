@@ -114,7 +114,11 @@ const changed = db
   )
   .run(checkingId, note, movementId, row.from_account_id, checkingId).changes;
 if (changed !== 1) throw new Error(`expected to rewrite exactly one row, changed ${changed}`);
-recordBankListingFacts(movementId, { bank_day: listed.bank_day, description: listed.description, document_no: listed.document_no, period_month: null }, db);
+recordBankListingFacts(
+  movementId,
+  { bank_day: listed.bank_day, description: listed.description, document_no: listed.document_no, period_month: null, branch: null, position: null },
+  db
+);
 
 
 const after = db.prepare(`SELECT * FROM movements WHERE id = ?`).get(movementId) as Row;

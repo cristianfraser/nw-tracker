@@ -60,7 +60,14 @@ export function renderUsStatementRows(ledger: Ledger): RenderedUsStatementRow[] 
     const amtCents = Math.round(r.amount * 100);
     const documentNo = String(doc++).padStart(9, "0");
     const note = `import:cartola|${m}|${us.bank.branch}|${r.description}|doc:${documentNo}|on:${r.date}|amt:${amtCents}|idx:${idx}`;
-    const listed: BankListingFacts = { bank_day: r.date, description: r.description.slice(0, 180).trim(), document_no: documentNo, period_month: m };
+    const listed: BankListingFacts = {
+      bank_day: r.date,
+      description: r.description.slice(0, 180).trim(),
+      document_no: documentNo,
+      period_month: m,
+      branch: us.bank.branch,
+      position: idx,
+    };
     return { date: r.date, amount: r.amount, note, listed, transfer: r.transfer === true };
   });
 }

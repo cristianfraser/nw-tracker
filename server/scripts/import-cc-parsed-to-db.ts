@@ -15,18 +15,15 @@
  * `--full` to force every statement through again, which is the periodic from-scratch
  * reconciliation and is worth running deliberately after any parser change.
  *
- * Pass `--wipe` to delete all statements and reload the installment ledger for the account(s).
- * Pass `--replace-ledger` to refresh installment purchases/payments only (statements kept).
+ * Pass `--replace-ledger` to refresh installment purchases/payments only (statements kept): it
+ * replaces the account's `cc_installment_*` rows from the CSV, after merging duplicate PDF
+ * contracts that shared different `canonical_row_id` (same card, purchase day, merchant and cuota
+ * count; the contract amount is the largest of `amount_clp`, `monto_origen_operacion_clp` and
+ * `monto_total_a_pagar_clp`, so a «03 CUOTAS COMERC» summary row lines up with its single cuotas).
  *
- * Requires migration `020_cc_installment_ledger.sql` applied (`npm run migrate`).
- *
- * With `--wipe`, replaces all `cc_installment_*` rows for the given account (full reload from CSV),
- * after merging duplicate PDF contracts that shared different `canonical_row_id` (same tarjeta,
- * misma fecha de compra, mismo comercio, mismo nº de cuotas; el monto del contrato se toma como el máximo entre
- * `amount_clp`, `monto_origen_operacion_clp` y `monto_total_a_pagar_clp` para alinear filas resumen «03 CUOTAS COMERC» con cuotas sueltas).
- *
- * After a successful load, upserts month-end `valuations` for this account from the same PDF-derived
- * balances (so Liabilities / patrimonio charts read `valuations`, not a separate runtime series).
+ * There is no statement wipe: a statement import restates the rows on file (`--full` re-plans every
+ * statement); deleting the account's statements and importing them again would give every line a
+ * new row and flow.
  */
 import path from "node:path";
 
@@ -34,14 +31,10 @@ import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { canonicalStatementsFromParsedRecords, type CardCanonicalStatement } from "nw-tracker-contracts";
 import { applyCanonicalCardStatements } from "../src/ccParsedStatementsApply.js";
-import { importCcStatementsWipeAndReload } from "../src/ccStatementsImport.js";
 import {
   groupInstallmentLoanChains,
   mergeInstallmentLedgerFromStatements,
 } from "../src/ccInstallmentLedgerMerge.js";
-import { relinkCcTraspasoDeudaLinksForAccount } from "../src/ccTraspasoDeudaLinks.js";
-import { cardLineWrite } from "../src/cards/lineWrites.js";
-import { noteCardLineWritten } from "../src/cards/lineWriteSession.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { cardAccountsForStatements, type CardStatementAccounts } from "../src/cards/documentAccount.js";
 import {
@@ -95,18 +88,12 @@ function main() {
   const santander = process.argv.includes("--santander");
   const accountIdArg = Number(arg("account-id"));
   const dry = process.argv.includes("--dry-run");
-  const wipe = process.argv.includes("--wipe");
   /** Re-import and re-reconcile every statement, ignoring fingerprints (periodic sanity check). */
   const fullReimport = process.argv.includes("--full");
   const replaceLedgerOnly = process.argv.includes("--replace-ledger");
   if (process.argv.includes("--merge")) {
     console.warn("# --merge is the default since 2026-05; flag is optional.");
   }
-  if (wipe && replaceLedgerOnly) {
-    console.error("Use either --wipe or --replace-ledger, not both.");
-    process.exit(1);
-  }
-  const replaceAccount = wipe;
   const csvPath = arg("csv") ?? path.join(resolveCfraserCsvDir(), "cc-statements-parsed-all.csv");
 
   const records = readCommaCsvRecords(csvPath);
@@ -120,8 +107,8 @@ function main() {
     Number.isFinite(accountIdArg) && accountIdArg > 0 ? accountIdArg : undefined;
 
   // The merge (default) is the same apply the nightly reaches through ingest
-  // (`card.parsed_statements`); this script keeps it for manual runs and the two reload modes.
-  if (!wipe && !replaceLedgerOnly) {
+  // (`card.parsed_statements`); this script keeps it for manual runs and the ledger reload.
+  if (!replaceLedgerOnly) {
     const details = applyCanonicalCardStatements(statements, {
       dryRun: dry,
       full: fullReimport,
@@ -159,7 +146,7 @@ function main() {
 
   if (!dry) {
     console.log(
-      `# import-cc-parsed mode: ${wipe ? "wipe (full account reload)" : replaceLedgerOnly ? "replace-ledger (installment ledger only)" : "merge (default)"}`
+      `# import-cc-parsed mode: replace-ledger (installment ledger only)`
     );
     logAccountRouting(discovery, accountIds, dry);
   }
@@ -167,10 +154,7 @@ function main() {
 
   let totalPurchases = 0;
   let totalPayments = 0;
-  let totalStatements = 0;
-  let totalLines = 0;
   let totalGap = 0;
-  let totalCategoriesRestored = 0;
   const importRunAccounts: CcStatementImportAccountLog[] = [];
 
   for (const accountId of accountIds) {
@@ -184,42 +168,14 @@ function main() {
     let purchaseUpserts = 0;
     let paymentUpserts = 0;
     let gapFilled = 0;
-    let statementCount = 0;
-    let statementLineCount = 0;
-    let categoriesRestored = 0;
-    let linesSkippedDuplicate = 0;
-    let linesSkippedInstallmentOverlap = 0;
 
     if (!dry) {
-      if (replaceAccount) {
-        // One card-line write, so a reload that drops a converted payment's evidence (new
-        // statement and line ids are fine — the pairing finds its payment by card, date and
-        // amount) rolls back instead of leaving the account wiped.
-        const st = cardLineWrite(accountId, "the --wipe reload", () => {
-          const reloaded = importCcStatementsWipeAndReload(accountId, accountRecords);
-          relinkCcTraspasoDeudaLinksForAccount(accountId);
-          noteCardLineWritten(accountId);
-          return reloaded;
-        });
-        statementCount = st.statementCount;
-        statementLineCount = st.linesInserted;
-        linesSkippedDuplicate = st.linesSkippedDuplicate;
-        linesSkippedInstallmentOverlap = st.linesSkippedInstallmentOverlap;
-        categoriesRestored += st.categoriesRestored;
-        const ledger = mergeInstallmentLedgerFromStatements(accountId, accountRecords, {
-          replaceLedger: true,
-        });
-        purchaseUpserts = ledger.purchaseUpserts;
-        paymentUpserts = ledger.paymentUpserts;
-        gapFilled = ledger.gapFilled;
-      } else if (replaceLedgerOnly) {
-        const ledger = mergeInstallmentLedgerFromStatements(accountId, accountRecords, {
-          replaceLedger: true,
-        });
-        purchaseUpserts = ledger.purchaseUpserts;
-        paymentUpserts = ledger.paymentUpserts;
-        gapFilled = ledger.gapFilled;
-      }
+      const ledger = mergeInstallmentLedgerFromStatements(accountId, accountRecords, {
+        replaceLedger: true,
+      });
+      purchaseUpserts = ledger.purchaseUpserts;
+      paymentUpserts = ledger.paymentUpserts;
+      gapFilled = ledger.gapFilled;
     } else {
       const chains = groupInstallmentLoanChains(accountRecords);
       purchaseUpserts = chains.size;
@@ -230,11 +186,11 @@ function main() {
 
     importRunAccounts.push(
       buildCcStatementImportAccountLog(accountId, accountLabelForId(accountId), accountRecords, {
-        statements_merged: statementCount,
-        lines_inserted: statementLineCount,
+        statements_merged: 0,
+        lines_inserted: 0,
         lines_restated: 0,
-        lines_skipped_duplicate: linesSkippedDuplicate,
-        lines_skipped_installment_overlap: linesSkippedInstallmentOverlap,
+        lines_skipped_duplicate: 0,
+        lines_skipped_installment_overlap: 0,
         purchase_upserts: purchaseUpserts,
         payment_upserts: paymentUpserts,
       })
@@ -243,15 +199,12 @@ function main() {
     console.log(
       dry
         ? `[dry-run] account ${accountId}: ~${purchaseUpserts} purchases, ~${paymentUpserts} payments, ${accountLineCount} csv rows`
-        : `Account ${accountId}: ${purchaseUpserts} purchases, ${paymentUpserts} payments, statements ${statementCount} (${statementLineCount} lines), categories restored ${categoriesRestored}, gap-fill ${gapFilled}.`
+        : `Account ${accountId}: ${purchaseUpserts} purchases, ${paymentUpserts} payments, gap-fill ${gapFilled}.`
     );
 
     totalPurchases += purchaseUpserts;
     totalPayments += paymentUpserts;
-    totalStatements += statementCount;
-    totalLines += statementLineCount;
     totalGap += gapFilled;
-    totalCategoriesRestored += categoriesRestored;
   }
 
   if (importRunAccounts.length > 0) {
@@ -262,7 +215,7 @@ function main() {
     console.log(
       dry
         ? `[dry-run] total: ~${totalPurchases} purchases, ~${totalPayments} payments from ${csvPath}`
-        : `Import done (${accountIds.length} cards): ${totalPurchases} purchases, ${totalPayments} payments, ${totalStatements} statements (${totalLines} lines), categories restored ${totalCategoriesRestored}, gap-fill ${totalGap}.`
+        : `Import done (${accountIds.length} cards): ${totalPurchases} purchases, ${totalPayments} payments, gap-fill ${totalGap}.`
     );
   }
 }

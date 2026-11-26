@@ -23,7 +23,7 @@ import {
   checkingGastosMovementPurchaseKey,
 } from "./flowsCheckingGastos.js";
 import { isCheckingExpenseRefund, setCheckingExpenseRefundCategory } from "./checkingExpenseRefunds.js";
-import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
+import { movementDescription } from "./bankRowFacts.js";
 import { clearExpenseCategoryRule, setExpenseCategoryRule, type CategoryRuleLink } from "./expenseCategoryRules.js";
 import { annulledPurchaseOfLineId, annulledPurchaseRowsForAccount } from "./ccAnnulledPurchasesRead.js";
 import { purchaseIdFromPlanGastosLineId } from "./ccInstallmentPlanGastosLines.js";
@@ -178,11 +178,10 @@ export function assignFlowExpenseLineCategory(opts: AssignOpts & {
     const slug = opts.clearCategory ? "unclassified" : (opts.categorySlug ?? "unclassified");
     setCheckingExpenseRefundCategory(opts.lineId, slug);
     requestExpenseLinkSync();
-    const note = (db.prepare(`SELECT note FROM movements WHERE id = ?`).get(opts.lineId) as { note: string | null }).note;
     return {
       category_slug: slug,
       unique: true,
-      merchant_key: normalizeCcExpenseMerchantKey(cartolaDescriptionFromNote(note)),
+      merchant_key: normalizeCcExpenseMerchantKey(movementDescription(opts.lineId)),
       purchase_key: checkingGastosMovementPurchaseKey(opts.lineId),
     };
   }

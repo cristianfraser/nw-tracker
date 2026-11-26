@@ -8,7 +8,6 @@ import { db } from "../db.js";
 import { snapshotTables } from "../test/snapshotTables.js";
 import { createTempCardMaster, deleteTempCardMaster } from "../test/tempCardMaster.js";
 import { openWebPasteSourcePdf } from "../ccOpenWebPasteRepair.js";
-import { compareCardStatementImport } from "./statementLinePlanCompare.js";
 import { loadCardStatementLinePlanInput } from "./statementLinePlanLoad.js";
 import { compareArrival, planCardStatementLines, type CardStatementLinePlanInput, type PlanFileLine } from "./statementLinePlan.js";
 import type { FlowArrival } from "../flows/flowFirstSeen.js";
@@ -70,7 +69,7 @@ function statement(lines: CardCanonicalLine[], currency: "clp" | "usd" = "clp"):
   };
 }
 
-describe("card statement-line planner against today's import", () => {
+describe("card statement-line planner", () => {
   let accountId = 0;
   let bucketId = 0;
 
@@ -126,10 +125,8 @@ describe("card statement-line planner against today's import", () => {
     return id;
   }
 
-  function expectAgrees(statements: CardCanonicalStatement[]) {
-    const r = compareCardStatementImport(accountId, statements);
-    expect(r.disagreements).toEqual([]);
-    return r;
+  function planFor(statements: CardCanonicalStatement[]) {
+    return { plan: planCardStatementLines(loadCardStatementLinePlanInput(accountId, statements, { replaceStatementKeys: statementKeysOf(statements) })) };
   }
 
   const doc = (statements: CardCanonicalStatement[], s: number, index: number) => ({
@@ -140,35 +137,34 @@ describe("card statement-line planner against today's import", () => {
   it("keeps a listing line the statement bills as it is (same merchant, amount, day)", () => {
     const listed = bucketLine("2026-06-02", "ACME STORE", 12_000);
     const sts = [statement([line("2026-06-02", "ACME STORE", 12_000)])];
-    const { plan } = expectAgrees(sts);
-    expect(plan.keep).toEqual([{ row: { kind: "line", id: listed }, doc: doc(sts, 0, 0), why: "same_purchase", today: "same" }]);
+    const { plan } = planFor(sts);
+    expect(plan.keep).toEqual([{ row: { kind: "line", id: listed }, doc: doc(sts, 0, 0), why: "same_purchase" }]);
     expect(plan.insert).toEqual([]);
   });
 
   it("keeps a listing line the statement prints under other wording a day later", () => {
     const listed = bucketLine("2026-06-03", "FARMACIA CENTRAL", 8_500);
     const sts = [statement([line("2026-06-04", "FARMACIA CENTRAL (T)", 8_500)])];
-    const { plan } = expectAgrees(sts);
-    expect(plan.keep).toEqual([{ row: { kind: "line", id: listed }, doc: doc(sts, 0, 0), why: "same_purchase", today: "same" }]);
+    const { plan } = planFor(sts);
+    expect(plan.keep).toEqual([{ row: { kind: "line", id: listed }, doc: doc(sts, 0, 0), why: "same_purchase" }]);
   });
 
-  it("two pre-authorisations billed as one charge: the earliest seen is kept, the other folds (today deletes both)", () => {
+  it("two pre-authorisations billed as one charge: the earliest seen is kept, the other folds", () => {
     const later = bucketLine("2026-06-05", "SUPERMERCADO SUR", 5_000, { stamp: "2026-06-06T10:00:00.000Z" });
     const earlier = bucketLine("2026-06-05", "SUPERMERCADO SUR", 7_000, { stamp: "2026-06-05T10:00:00.000Z" });
     const sts = [statement([line("2026-06-05", "SUPERMERCADO SUR", 12_000)])];
-    const r = expectAgrees(sts);
-    expect(r.plan.keep).toEqual([{ row: { kind: "line", id: earlier }, doc: doc(sts, 0, 0), why: "another_shape", today: "differs" }]);
+    const r = planFor(sts);
+    expect(r.plan.keep).toEqual([{ row: { kind: "line", id: earlier }, doc: doc(sts, 0, 0), why: "another_shape" }]);
     expect(r.plan.fold).toEqual([
-      { row: { kind: "line", id: later }, into: { kind: "line", id: earlier }, doc: doc(sts, 0, 0), why: "another_shape", today: "differs" },
+      { row: { kind: "line", id: later }, into: { kind: "line", id: earlier }, doc: doc(sts, 0, 0), why: "another_shape" },
     ]);
     expect(r.plan.annul).toEqual([]);
-    expect(r.deviations).toHaveLength(2);
   });
 
   it("annuls an in-cycle listing line the statement does not bill", () => {
     const dropped = bucketLine("2026-06-10", "TIENDA ONLINE", 84_800);
     const sts = [statement([line("2026-06-01", "OTRO COMERCIO", 3_300)])];
-    const { plan } = expectAgrees(sts);
+    const { plan } = planFor(sts);
     expect(plan.annul).toEqual([{ line_id: dropped, billing_month: "2026-06", annulled_on: "2026-06-19" }]);
     expect(plan.insert).toEqual([{ doc: doc(sts, 0, 0), arrival: "stamp", copies_classification_from: null }]);
   });
@@ -176,7 +172,7 @@ describe("card statement-line planner against today's import", () => {
   it("moves a listing line dated after the cycle to the open facturación", () => {
     const after = bucketLine("2026-06-22", "CAFE DEL BARRIO", 4_200);
     const sts = [statement([line("2026-06-01", "OTRO COMERCIO", 3_300)])];
-    const { plan } = expectAgrees(sts);
+    const { plan } = planFor(sts);
     expect(plan.move_to_open.map((m) => m.line_id)).toEqual([after]);
     expect(plan.remove).toEqual([]);
   });
@@ -187,7 +183,7 @@ describe("card statement-line planner against today's import", () => {
       installment: { number: 1, count: 3, cuota_amount: 100_000, total_amount: 300_000, interest_rate_text: null, cuota_type: null, plan_id: "vitest-kr-plan-1" },
     });
     const sts = [statement([cuota])];
-    const { plan } = expectAgrees(sts);
+    const { plan } = planFor(sts);
     expect(plan.remove).toEqual([{ row: { kind: "line", id: listed }, why: "superseded_by_plan", plan_id: expect.any(Number) }]);
     expect(plan.insert).toEqual([{ doc: doc(sts, 0, 0), arrival: "none", copies_classification_from: null }]);
   });
@@ -196,7 +192,7 @@ describe("card statement-line planner against today's import", () => {
     const a = bucketLine("2026-06-12", "PEAJE NORTE", 2_100);
     const b = bucketLine("2026-06-12", "PEAJE NORTE", 2_100);
     const sts = [statement([line("2026-06-12", "PEAJE NORTE", 2_100), line("2026-06-12", "PEAJE NORTE", 2_100)])];
-    const { plan } = expectAgrees(sts);
+    const { plan } = planFor(sts);
     expect(plan.keep.map((k) => [k.row.id, k.doc.index])).toEqual([
       [a, 0],
       [b, 1],
@@ -211,7 +207,7 @@ describe("card statement-line planner against today's import", () => {
       replaceStatementKeys: new Set(),
     });
     const sts = [statement([line("2026-06-09", "APP STORE", 9.99, { currency: "usd" })], "usd")];
-    const { plan } = expectAgrees(sts);
+    const { plan } = planFor(sts);
     expect(plan.keep.map((k) => k.row.id)).toEqual([usdLine]);
     expect(plan.annul).toEqual([]);
     expect(plan.remove.map((x) => x.row.id)).not.toContain(clpLine);
@@ -229,31 +225,29 @@ describe("card statement-line planner against today's import", () => {
         line("2026-06-04", "PANADERIA", 1_200, { id: "kr-d" }),
       ]),
     ];
-    const { plan } = expectAgrees(second);
-    // The statement's lines held the highest ids, so they come back under them: today's adoption sees
-    // no change and the lines start new flows — the plan keeps them.
-    expect(plan.keep.map((k) => [k.row.id, k.doc.index, k.why, k.today])).toEqual([
-      [byPrid.get("kr-a"), 0, "reimport_parser_row", "differs"],
-      [byPrid.get("kr-b"), 1, "reimport_parser_row", "differs"],
+    const { plan } = planFor(second);
+    expect(plan.keep.map((k) => [k.row.id, k.doc.index, k.why])).toEqual([
+      [byPrid.get("kr-a"), 0, "reimport_parser_row"],
+      [byPrid.get("kr-b"), 1, "reimport_parser_row"],
     ]);
     expect(plan.insert.map((i) => i.doc.index)).toEqual([2]);
     expect(plan.remove).toEqual([{ row: { kind: "line", id: byPrid.get("kr-c") }, why: "replaced_statement_line_gone" }]);
   });
 
-  it("re-imported statement whose lines no longer hold the highest ids: the adoption pairs them by parser row", () => {
+  it("re-imported statement with lines written after it: its lines pair by parser row", () => {
     const first = [statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kr-e" }), line("2026-06-02", "CINE", 6_000, { id: "kr-f" })])];
     replaceStatementLines(accountId, first, { replaceStatementKeys: statementKeysOf(first) });
-    bucketLine("2026-06-24", "KIOSCO", 900); // written after: the re-written lines get new ids
+    bucketLine("2026-06-24", "KIOSCO", 900); // a line written after the statement
     const byPrid = new Map(
       (db.prepare(`SELECT id, parser_row_id FROM cc_statement_lines WHERE parser_row_id LIKE 'kr-%'`).all() as { id: number; parser_row_id: string }[]).map(
         (r) => [r.parser_row_id, r.id]
       )
     );
     const second = [statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kr-e" }), line("2026-06-02", "CINE", 6_000, { id: "kr-f" })])];
-    const { plan } = expectAgrees(second);
-    expect(plan.keep.map((k) => [k.row.id, k.why, k.today])).toEqual([
-      [byPrid.get("kr-e"), "reimport_parser_row", "same"],
-      [byPrid.get("kr-f"), "reimport_parser_row", "same"],
+    const { plan } = planFor(second);
+    expect(plan.keep.map((k) => [k.row.id, k.why])).toEqual([
+      [byPrid.get("kr-e"), "reimport_parser_row"],
+      [byPrid.get("kr-f"), "reimport_parser_row"],
     ]);
   });
 
@@ -272,12 +266,12 @@ describe("card statement-line planner against today's import", () => {
       `INSERT INTO cc_plan_prepayments (purchase_id, account_id, paid_on, amount_clp, line_id, credit_line_id) VALUES (?, ?, '2026-06-10', 80000, ?, ?)`
     ).run(planId, accountId, prepayment, credit);
     const sts = [statement([line("2026-06-10", "PREPAGO EN CUOTAS", 80_000)])];
-    const { plan } = expectAgrees(sts);
-    expect(plan.keep).toEqual([{ row: { kind: "line", id: prepayment }, doc: doc(sts, 0, 0), why: "plan_prepayment", today: "same" }]);
+    const { plan } = planFor(sts);
+    expect(plan.keep).toEqual([{ row: { kind: "line", id: prepayment }, doc: doc(sts, 0, 0), why: "plan_prepayment" }]);
     expect(plan.kept_plan_prepayment).toEqual([credit]);
   });
 
-  it("a first-time import on an account with low-id lines writes above the table's highest id", () => {
+  it("a first-time import keeps a low-id listing line it bills", () => {
     // A line of the account under a low id (a gap below the table's highest), as on a ledger with years of lines.
     const gap = (
       db
@@ -287,14 +281,12 @@ describe("card statement-line planner against today's import", () => {
     const low = bucketLine("2026-06-02", "ACME STORE", 12_000, { id: gap });
     if (gap != null) expect(low).toBe(gap);
     const sts = [statement([line("2026-06-02", "ACME STORE", 12_000), line("2026-06-03", "LIBRERIA", 5_000)])];
-    const input = loadCardStatementLinePlanInput(accountId, sts, { replaceStatementKeys: statementKeysOf(sts) });
-    expect(input.max_line_id_outside_replaced).toBe((db.prepare(`SELECT MAX(id) AS m FROM cc_statement_lines`).get() as { m: number }).m);
-    const { plan } = expectAgrees(sts);
-    expect(plan.keep).toEqual([{ row: { kind: "line", id: low }, doc: doc(sts, 0, 0), why: "same_purchase", today: "same" }]);
+    const { plan } = planFor(sts);
+    expect(plan.keep).toEqual([{ row: { kind: "line", id: low }, doc: doc(sts, 0, 0), why: "same_purchase" }]);
     expect(plan.insert.map((i) => i.doc.index)).toEqual([1]);
   });
 
-  it("re-imported twin statements: each statement's lines go when the import reaches it, so ids are not handed out again", () => {
+  it("re-imported twin statements: each statement's lines pair with its own", () => {
     const twins = () => [
       statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kr-g" })]),
       statement([line("2026-06-02", "APP STORE", 9.99, { currency: "usd", id: "kr-h" })], "usd"),
@@ -306,11 +298,10 @@ describe("card statement-line planner against today's import", () => {
         (r) => [r.parser_row_id, r.id]
       )
     );
-    const { plan } = expectAgrees(twins());
-    // The pesos are re-written above the dollars (still on file), the dollars above those: both pair by parser row.
-    expect(plan.keep.map((k) => [k.row.id, k.why, k.today])).toEqual([
-      [byPrid.get("kr-g"), "reimport_parser_row", "same"],
-      [byPrid.get("kr-h"), "reimport_parser_row", "same"],
+    const { plan } = planFor(twins());
+    expect(plan.keep.map((k) => [k.row.id, k.why])).toEqual([
+      [byPrid.get("kr-g"), "reimport_parser_row"],
+      [byPrid.get("kr-h"), "reimport_parser_row"],
     ]);
   });
 
@@ -331,7 +322,7 @@ describe("card statement-line planner against today's import", () => {
       installment: { number: 1, count: 3, cuota_amount: 30_000, total_amount: 90_000, interest_rate_text: null, cuota_type: null, plan_id: "vitest-kr-plan-x" },
     });
     const sts = [statement([line("2026-05-10", "TIENDA MUEBLES", 90_000, { id: "kr-x" }), cuota])];
-    const { plan } = expectAgrees(sts);
+    const { plan } = planFor(sts);
     expect(plan.keep).toEqual([]);
     expect(plan.skip).toEqual([{ doc: doc(sts, 0, 0), why: "dedupe_key", same_as_row: oneShot }]);
     expect(plan.remove).toEqual([{ row: { kind: "line", id: oneShot }, why: "superseded_by_plan", plan_id: expect.any(Number) }]);
@@ -378,7 +369,6 @@ describe("planCardStatementLines (pure)", () => {
       json_superseded_statement_ids: [],
       replaced_statement_ids: [],
       file_lines: file,
-      max_line_id_outside_replaced: 99,
       bucket_repair_moves: [],
       incoming: [
         {
@@ -447,7 +437,7 @@ describe("planCardStatementLines (pure)", () => {
     i.incoming[0]!.lines.push({ ...i.incoming[0]!.lines[1]! });
     const plan = planCardStatementLines(i);
     const doc = (index: number) => ({ statement_key: "santander\tst.pdf\t20/06/2026", index });
-    expect(plan.keep).toEqual([{ row: { kind: "line", id: 1 }, doc: doc(0), why: "same_purchase", today: "same" }]);
+    expect(plan.keep).toEqual([{ row: { kind: "line", id: 1 }, doc: doc(0), why: "same_purchase" }]);
     expect(plan.insert).toEqual([{ doc: doc(1), arrival: "stamp", copies_classification_from: null }]);
     expect(plan.skip).toEqual([{ doc: doc(2), why: "repeat_in_statement" }]);
     expect(plan.annul).toEqual([{ line_id: 2, billing_month: "2026-06", annulled_on: "2026-06-20" }]);
@@ -464,9 +454,8 @@ describe("planCardStatementLines (pure)", () => {
         [{ day: "05/06/2026", iso: "2026-06-05", merchant: "SUPERMERCADO SUR", amount: 12_000 }]
       )
     );
-    expect(plan.keep.map((k) => [k.row.id, k.why, k.today])).toEqual([[6, "another_shape", "differs"]]);
+    expect(plan.keep.map((k) => [k.row.id, k.why])).toEqual([[6, "another_shape"]]);
     expect(plan.fold.map((f) => [f.row.id, f.into.id])).toEqual([[5, 6]]);
-    expect(plan.today.docs[0]!.outcome).toEqual({ row: "new" });
   });
 
   it("refuses a listing import", () => {

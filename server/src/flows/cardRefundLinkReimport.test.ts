@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "../db.js";
-import { importCcStatementsWipeAndReload } from "../ccStatementsImport.js";
+import { importStatementDocumentsReplacing } from "../test/statementOnFile.js";
 import { parsedStatements } from "../test/parsedStatementRecords.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "../test/vitestDbSeed.js";
 
@@ -66,16 +66,17 @@ describe("a card refund link through a statement re-import", () => {
   });
   afterAll(() => cleanup(accountId));
 
-  it("holds both flows, so the re-imported lines carry the link", () => {
+  it("stays on the rows a re-import keeps", () => {
     const purchase = "VITEST REFUND LINK SHOP";
     const credit = "VITEST REFUND LINK CREDIT";
-    importCcStatementsWipeAndReload(accountId, parsedStatements([record("p", purchase, 50_000), record("c", credit, -12_000)]));
+    importStatementDocumentsReplacing(accountId, parsedStatements([record("p", purchase, 50_000), record("c", credit, -12_000)]));
     const before = lineFlows(accountId);
     db.prepare(`INSERT INTO card_refund_links (flow_id, purchase_flow_id) VALUES (?, ?)`).run(before.get(credit)!, before.get(purchase)!);
 
-    // The same printed lines under new parser row ids: new line rows, the old ones deleted.
-    importCcStatementsWipeAndReload(accountId, parsedStatements([record("p2", purchase, 50_000), record("c2", credit, -12_000)]));
+    // The same printed lines under new parser row ids: paired by identity, the rows and flows stay.
+    importStatementDocumentsReplacing(accountId, parsedStatements([record("p2", purchase, 50_000), record("c2", credit, -12_000)]));
     const after = lineFlows(accountId);
+    expect(after).toEqual(before);
     const link = db.prepare(`SELECT purchase_flow_id AS p FROM card_refund_links WHERE flow_id = ?`).get(after.get(credit)!) as
       | { p: number }
       | undefined;

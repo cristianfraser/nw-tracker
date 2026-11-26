@@ -10,16 +10,13 @@ import { loadCardStatementLinePlanInput } from "./statementLinePlanLoad.js";
 import { planCardStatementLines, type CardStatementLinePlan } from "./statementLinePlan.js";
 import { applyStatementLinePlan, resolveStatementPlanAmbiguity } from "./statementLinePlanApply.js";
 import { applyLinePlan, replaceStatementLines } from "./lineWrites.js";
-import { mergeCardStatements } from "../ccInstallmentLedgerMerge.js";
 import { annulOpenBucketLines } from "../ccAnnulledPurchases.js";
 
 /**
- * The statement-line plan applied (`applyStatementLinePlan`) against the import it replaced
- * (`mergeCardStatements`: insert every line, then settle and adopt — kept until keep-rows phase 4), each run on its own copy of the same fixture (a rolled-back
- * transaction): the same ledger facts — the lines and what they state, the statements, the
- * billing-month figures, the annulled purchases, the plans, each line's flow facts and assignments —
- * and only the intended differences: a kept row keeps its id, its flow and its arrival stamp, and
- * the listing it came from stays on its flow as history.
+ * The statement-line plan applied (`applyStatementLinePlan`, and the import through
+ * `replaceStatementLines`): a kept row keeps its id, its flow and its arrival stamp and states the
+ * document's line, the listing it came from stays on its flow as history; what the plan inserts,
+ * folds, removes, annuls and moves is what the ledger ends with.
  */
 const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_metrics"]);
 afterAll(() => restoreDerivedCardState());
@@ -92,7 +89,7 @@ function rolledBack<T>(fn: () => T): T {
   return out!;
 }
 
-describe("statement-line plan applied, against today's import", () => {
+describe("statement-line plan applied", () => {
   let accountId = 0;
   let bucketId = 0;
 
@@ -149,47 +146,15 @@ describe("statement-line plan applied, against today's import", () => {
     return cat;
   }
 
-  /** What a statement import leaves, without row or flow ids. */
-  function ledgerFacts() {
-    const lines = (
-      db
-        .prepare(
-          `SELECT s.source_pdf || ' | ' || s.statement_date AS statement, l.transaction_date, l.posting_date, l.place, l.merchant,
-                  l.description_merged, l.country, l.amount_orig, l.orig_currency, l.amount, l.currency, l.installment_flag,
-                  l.nro_cuota_current, l.nro_cuota_total, l.cuota_amount, l.interest_rate_text, l.tipo_cuota, l.dedupe_key,
-                  l.parser_row_id, l.raw_line, l.origin_card_last4, l.cuota_purchase_kind, l.kind,
-                  f.kind AS flow_kind, f.occurred_on AS flow_on, f.amount AS flow_amount, f.currency AS flow_currency,
-                  f.description AS flow_description, f.legacy_key,
-                  (SELECT group_concat(portion || ':' || piece_seq || ':' || category_id) FROM flow_categories c WHERE c.flow_id = l.flow_id) AS categories,
-                  (SELECT category_id FROM cc_expense_line_categories x WHERE x.statement_line_id = l.id) AS line_category,
-                  e.source_kind AS evidence_kind, e.document_key, e.stated_on, e.stated_amount, e.stated_description, e.authority
-           FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
-           LEFT JOIN flows f ON f.id = l.flow_id
-           LEFT JOIN flow_evidence e ON e.source_table = 'cc_statement_lines' AND e.source_row_id = l.id
-           WHERE s.account_id = ?`
-        )
-        .all(accountId) as Record<string, unknown>[]
-    )
-      .map((r) => JSON.stringify(r))
-      .sort();
-    const statements = (
-      db
-        .prepare(`SELECT source_pdf, statement_date, currency, monto_facturado, deuda_total FROM cc_statements WHERE account_id = ? ORDER BY source_pdf, statement_date, currency`)
-        .all(accountId) as Record<string, unknown>[]
-    ).map((r) => JSON.stringify(r));
-    const metrics = db
+  /** The account's lines as the import leaves them: statement, wording, amount, the flow's category. */
+  function lineFacts() {
+    return db
       .prepare(
-        `SELECT billing_month, as_of_date, as_of_kind, metric, currency, amount FROM cc_billing_month_metrics WHERE account_id = ?
-         ORDER BY billing_month, as_of_date, as_of_kind, metric, currency`
+        `SELECT l.id, s.source_pdf, l.transaction_date, l.merchant, l.amount, l.currency, l.installment_flag,
+                (SELECT group_concat(portion || ':' || piece_seq || ':' || category_id) FROM flow_categories c WHERE c.flow_id = l.flow_id) AS categories
+         FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? ORDER BY l.id`
       )
-      .all(accountId);
-    const annulled = db
-      .prepare(`SELECT merchant, amount, currency, purchase_date, annulled_on FROM cc_annulled_purchases WHERE account_id = ? ORDER BY purchase_date, merchant`)
-      .all(accountId);
-    const plans = db
-      .prepare(`SELECT purchase_date, total_amount_clp, cuotas_totales, merchant FROM cc_installment_purchases WHERE account_id = ? ORDER BY purchase_date, merchant`)
-      .all(accountId);
-    return { lines, statements, metrics, annulled, plans };
+      .all(accountId) as { id: number; source_pdf: string; transaction_date: string; merchant: string; amount: number; currency: string; installment_flag: number; categories: string | null }[];
   }
 
   type RowState = { id: number; flow_id?: number | null; first_seen_on?: string | null; first_seen_at?: string | null; first_seen_seq?: number | null };
@@ -205,102 +170,91 @@ describe("statement-line plan applied, against today's import", () => {
     }));
   }
 
-  /** Today's import and the applied plan on two copies of the fixture; the plan and both outcomes. */
-  function both(sts: CardCanonicalStatement[]) {
+  /** Plans and applies the import of `sts` (restating their stored copies); the plan, the result and the rows after. */
+  function importPlan(sts: CardCanonicalStatement[]) {
     const replaceStatementKeys = statementKeysOf(sts);
     const plan = planCardStatementLines(loadCardStatementLinePlanInput(accountId, sts, { replaceStatementKeys }));
     const kept = plan.keep.filter((k) => k.why !== "dedupe_key" && k.why !== "fuzzy_duplicate").map((k) => k.row.id);
     const keptBefore = rowsOf(kept);
-    const today = rolledBack(() => {
-      mergeCardStatements(accountId, sts, { replaceLedger: false, replaceStatementKeys, reference: true });
-      return ledgerFacts();
-    });
-    const applied = rolledBack(() => {
-      const result = applyStatementLinePlan(accountId, sts, plan, { replaceStatementKeys });
-      const history = db
-        .prepare(
-          `SELECT e.source_kind, e.stated_description, e.stated_amount, e.authority FROM flow_evidence e
-           WHERE e.source_table = 'restated:cc_statement_lines' AND e.flow_id IN (SELECT l.flow_id FROM cc_statement_lines l
-             JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?)
-           ORDER BY e.stated_description, e.stated_amount`
-        )
-        .all(accountId);
-      const insertedStamped = rowsOf(result.inserted).map((x) => x.first_seen_on != null);
-      return { facts: ledgerFacts(), kept: rowsOf(kept), result, history, insertedStamped };
-    });
-    return { plan, today, applied, keptBefore };
+    const result = applyStatementLinePlan(accountId, sts, plan, { replaceStatementKeys });
+    const history = db
+      .prepare(
+        `SELECT e.source_kind, e.stated_description, e.stated_amount, e.authority FROM flow_evidence e
+         WHERE e.source_table = 'restated:cc_statement_lines' AND e.flow_id IN (SELECT l.flow_id FROM cc_statement_lines l
+           JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?)
+         ORDER BY e.stated_description, e.stated_amount`
+      )
+      .all(accountId);
+    const insertedStamped = rowsOf(result.inserted).map((x) => x.first_seen_on != null);
+    return { plan, result, kept: rowsOf(kept), keptBefore, history, insertedStamped, lines: lineFacts() };
   }
 
-  /** The ledger facts agree; the kept rows keep id, flow and stamp. */
-  function expectSame(r: ReturnType<typeof both>, opts: { lines?: "differ" } = {}) {
-    if (opts.lines !== "differ") expect(r.applied.facts.lines).toEqual(r.today.lines);
-    expect(r.applied.facts.statements).toEqual(r.today.statements);
-    expect(r.applied.facts.metrics).toEqual(r.today.metrics);
-    expect(r.applied.facts.annulled).toEqual(r.today.annulled);
-    expect(r.applied.facts.plans).toEqual(r.today.plans);
-    expect(r.applied.kept).toEqual(r.keptBefore);
-  }
+  const annulledFacts = () =>
+    db.prepare(`SELECT merchant, amount, currency, purchase_date, annulled_on FROM cc_annulled_purchases WHERE account_id = ? ORDER BY purchase_date, merchant`).all(accountId);
+  const planFacts = () =>
+    db.prepare(`SELECT purchase_date, total_amount_clp, cuotas_totales, merchant FROM cc_installment_purchases WHERE account_id = ? ORDER BY purchase_date, merchant`).all(accountId);
 
   it("a listing line the statement bills is restated in place: same ledger, same row, flow and stamp; the listing stays as history", () => {
     const listed = bucketLine("2026-06-03", "FARMACIA CENTRAL", 8_500, { stamp: "2026-06-03T12:00:00.000Z" });
     const category = categorize(listed);
-    const r = both([statement([line("2026-06-04", "FARMACIA CENTRAL (T)", 8_500)])]);
+    const r = importPlan([statement([line("2026-06-04", "FARMACIA CENTRAL (T)", 8_500)])]);
     expect(r.plan.keep.map((k) => k.row.id)).toEqual([listed]);
-    expectSame(r);
-    expect(r.applied.result.restated).toEqual([listed]);
-    expect(r.applied.facts.lines.some((l) => l.includes(`"categories":"gastos:-1:${category}"`))).toBe(true);
-    expect(r.applied.history).toEqual([{ source_kind: "listing_open", stated_description: "FARMACIA CENTRAL", stated_amount: 8_500, authority: 2 }]);
+    expect(r.result.restated).toEqual([listed]);
+    expect(r.kept).toEqual(r.keptBefore);
+    expect(r.lines).toEqual([
+      { id: listed, source_pdf: PDF_CLP, transaction_date: "04/06/2026", merchant: "FARMACIA CENTRAL (T)", amount: 8_500, currency: "clp", installment_flag: 0, categories: `gastos:-1:${category}` },
+    ]);
+    expect(r.history).toEqual([{ source_kind: "listing_open", stated_description: "FARMACIA CENTRAL", stated_amount: 8_500, authority: 2 }]);
   });
 
   it("an unstamped listing line (on file before the stamps) stays unstamped when restated", () => {
     const listed = bucketLine("2026-06-02", "ACME STORE", 12_000);
-    const r = both([statement([line("2026-06-02", "ACME STORE", 12_000)])]);
-    expectSame(r);
-    expect(r.applied.kept).toEqual([{ id: listed, flow_id: r.keptBefore[0]!.flow_id, first_seen_on: null, first_seen_at: null, first_seen_seq: null }]);
+    const r = importPlan([statement([line("2026-06-02", "ACME STORE", 12_000)])]);
+    expect(r.lines.map((l) => [l.id, l.source_pdf])).toEqual([[listed, PDF_CLP]]);
+    expect(r.kept).toEqual([{ id: listed, flow_id: r.keptBefore[0]!.flow_id, first_seen_on: null, first_seen_at: null, first_seen_seq: null }]);
   });
 
-  it("annuls, moves, inserts and supersedes as today", () => {
-    bucketLine("2026-06-10", "TIENDA ONLINE", 84_800);
-    bucketLine("2026-06-22", "CAFE DEL BARRIO", 4_200);
-    bucketLine("2026-06-08", "ELECTRO HOGAR", 300_000);
+  it("annuls, moves, inserts and supersedes", () => {
+    const dropped = bucketLine("2026-06-10", "TIENDA ONLINE", 84_800);
+    const after = bucketLine("2026-06-22", "CAFE DEL BARRIO", 4_200);
+    const listedPlan = bucketLine("2026-06-08", "ELECTRO HOGAR", 300_000);
     const cuota = line("2026-06-08", "ELECTRO HOGAR", 100_000, {
       installment: { number: 1, count: 3, cuota_amount: 100_000, total_amount: 300_000, interest_rate_text: null, cuota_type: null, plan_id: "vitest-kra-plan-1" },
     });
-    const r = both([statement([line("2026-06-01", "OTRO COMERCIO", 3_300), cuota])]);
-    expect(r.plan.annul).toHaveLength(1);
-    expect(r.plan.move_to_open).toHaveLength(1);
-    expect(r.plan.remove.map((x) => x.why)).toEqual(["superseded_by_plan"]);
-    expectSame(r);
+    const r = importPlan([statement([line("2026-06-01", "OTRO COMERCIO", 3_300), cuota])]);
+    expect(r.plan.annul.map((a) => a.line_id)).toEqual([dropped]);
+    expect(r.plan.move_to_open.map((m) => m.line_id)).toEqual([after]);
+    expect(r.plan.remove.map((x) => [x.row.id, x.why])).toEqual([[listedPlan, "superseded_by_plan"]]);
+    expect(r.lines.map((l) => [l.source_pdf, l.merchant, l.amount, l.installment_flag])).toEqual([
+      [openWebPasteSourcePdf("2026-07"), "CAFE DEL BARRIO", 4_200, 0],
+      [PDF_CLP, "OTRO COMERCIO", 3_300, 0],
+      [PDF_CLP, "ELECTRO HOGAR", 100_000, 1],
+    ]);
+    expect(annulledFacts()).toEqual([{ merchant: "TIENDA ONLINE", amount: 84_800, currency: "clp", purchase_date: "2026-06-10", annulled_on: "2026-06-19" }]);
+    expect(planFacts()).toEqual([{ purchase_date: "2026-06-08", total_amount_clp: 300_000, cuotas_totales: 3, merchant: "ELECTRO HOGAR" }]);
     // The statement's one-shot line is a new arrival; its cuota line arrives with no stamp.
-    expect(r.applied.insertedStamped).toEqual([true, false]);
+    expect(r.insertedStamped).toEqual([true, false]);
   });
 
   it("two pre-authorisations billed as one charge: the earliest seen is kept and restated, the other folds into it", () => {
     const later = bucketLine("2026-06-05", "SUPERMERCADO SUR", 5_000, { stamp: "2026-06-06T10:00:00.000Z" });
     const earlier = bucketLine("2026-06-05", "SUPERMERCADO SUR", 7_000, { stamp: "2026-06-05T10:00:00.000Z" });
     const category = categorize(later);
-    const r = both([statement([line("2026-06-05", "SUPERMERCADO SUR", 12_000)])]);
+    const r = importPlan([statement([line("2026-06-05", "SUPERMERCADO SUR", 12_000)])]);
     expect(r.plan.fold.map((f) => [f.row.id, f.into.id])).toEqual([[later, earlier]]);
-    // Today deletes both listing lines and the statement line starts a flow of its own (its stamp
-    // this import's, no category); the plan keeps the earlier one, the later one's category on it.
-    expectSame(r, { lines: "differ" });
-    expect(r.today.lines).toHaveLength(1);
-    expect(r.applied.facts.lines).toHaveLength(1);
-    const strip = (s: string) => {
-      const { categories: _c, legacy_key: _k, ...rest } = JSON.parse(s) as Record<string, unknown>;
-      return rest;
-    };
-    expect(strip(r.applied.facts.lines[0]!)).toEqual(strip(r.today.lines[0]!));
-    expect(JSON.parse(r.today.lines[0]!).categories).toBeNull();
-    expect(JSON.parse(r.applied.facts.lines[0]!).categories).toBe(`gastos:-1:${category}`);
-    expect(r.applied.result.folded).toEqual([later]);
-    expect(r.applied.history.map((h) => (h as { stated_amount: number }).stated_amount)).toEqual([5_000, 7_000]);
+    // The earlier row stays, states the billed charge and carries the later one's category.
+    expect(r.lines).toEqual([
+      { id: earlier, source_pdf: PDF_CLP, transaction_date: "05/06/2026", merchant: "SUPERMERCADO SUR", amount: 12_000, currency: "clp", installment_flag: 0, categories: `gastos:-1:${category}` },
+    ]);
+    expect(r.kept).toEqual(r.keptBefore);
+    expect(r.result.folded).toEqual([later]);
+    expect(r.history.map((h) => (h as { stated_amount: number }).stated_amount)).toEqual([5_000, 7_000]);
   });
 
   it("a re-imported statement: changed lines restated in place, a new one inserted, a vanished one removed", () => {
     const first = [statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kra-a" }), line("2026-06-02", "CINE", 6_000, { id: "kra-b" }), line("2026-06-03", "TAXI", 7_000, { id: "kra-c" })])];
     replaceStatementLines(accountId, first, { replaceStatementKeys: statementKeysOf(first) });
-    bucketLine("2026-06-24", "KIOSCO", 900);
+    const kiosco = bucketLine("2026-06-24", "KIOSCO", 900);
     const byPrid = new Map(
       (db.prepare(`SELECT id, parser_row_id FROM cc_statement_lines WHERE parser_row_id LIKE 'kra-%'`).all() as { id: number; parser_row_id: string }[]).map(
         (x) => [x.parser_row_id, x.id]
@@ -309,12 +263,19 @@ describe("statement-line plan applied, against today's import", () => {
     const second = [
       statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kra-a" }), line("2026-06-02", "CINE", 6_500, { id: "kra-b" }), line("2026-06-04", "PANADERIA", 1_200, { id: "kra-d" })]),
     ];
-    const r = both(second);
+    const r = importPlan(second);
     expect(r.plan.keep.map((k) => k.row.id).sort()).toEqual([byPrid.get("kra-a"), byPrid.get("kra-b")].sort());
-    expectSame(r);
-    expect(r.applied.result.removed).toEqual([byPrid.get("kra-c")]);
+    expect(r.kept).toEqual(r.keptBefore);
+    expect(r.result.removed).toEqual([byPrid.get("kra-c")]);
+    const panaderia = r.result.inserted[0]!;
+    expect(r.lines.map((l) => [l.id, l.source_pdf, l.merchant, l.amount])).toEqual([
+      [byPrid.get("kra-a"), PDF_CLP, "LIBRERIA", 5_000],
+      [byPrid.get("kra-b"), PDF_CLP, "CINE", 6_500],
+      [kiosco, openWebPasteSourcePdf("2026-07"), "KIOSCO", 900],
+      [panaderia, PDF_CLP, "PANADERIA", 1_200],
+    ]);
     // A re-import of the same document writes no history.
-    expect(r.applied.history).toEqual([]);
+    expect(r.history).toEqual([]);
   });
 
   const changesNow = () => ({

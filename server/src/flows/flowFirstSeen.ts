@@ -192,19 +192,6 @@ export function carryFlowFirstSeen(from: number, to: number, dbHandle: Database 
   dbHandle.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(from);
 }
 
-/** Stamps of the card lines of an account, by line id (lines whose flow has one). */
-export function cardLineFirstSeenForAccount(accountId: number, dbHandle: Database = db): Map<number, FirstSeenStamp> {
-  const rows = dbHandle
-    .prepare(
-      `SELECT l.id, f.first_seen_on, f.first_seen_at, f.first_seen_seq FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       JOIN flow_first_seen f ON f.flow_id = l.flow_id
-       WHERE s.account_id = ?`
-    )
-    .all(accountId) as (StampRow & { id: number })[];
-  return new Map(rows.map((r) => [r.id, stampOf(r)]));
-}
-
 /** First-seen days of every card line, by line id (lines whose flow has one). */
 export function cardLineFirstSeenByLineId(dbHandle: Database = db): Map<number, string> {
   const rows = dbHandle

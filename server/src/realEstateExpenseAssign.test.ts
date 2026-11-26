@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { withFixtureFacts } from "./test/dailyListingFacts.js";
 import { BILL_LINKS_SQL, billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { fixtureMovement } from "./test/flowFixtures.js";
@@ -201,7 +202,7 @@ describe("listRealEstateUnlinkedPurchases", () => {
     expect(vistaId).not.toBeNull();
     // Two cartola purchases of its own on the cuenta vista; a bill links the first.
     const insertPurchase = (description: string, amount: number, idx: number) =>
-      Number(
+      withFixtureFacts(
         db
           .prepare(
             `INSERT INTO movements (account_id, amount, currency, occurred_on, note)

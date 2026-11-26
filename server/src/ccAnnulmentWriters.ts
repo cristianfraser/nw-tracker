@@ -13,8 +13,6 @@ import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
 import type { CardLinePlan } from "./cards/lineWriteSession.js";
 import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
-import { adoptFlow, flowExists, rowFlowId } from "./flows/flowAdoption.js";
-import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import {
   bucketLineMatchesFeedLine,
   bucketLinePurchaseIso,
@@ -35,7 +33,6 @@ import {
   annulOpenBucketLines,
   deleteAnnulledPurchase,
   listAnnulledPurchases,
-  markAnnulledPurchaseBankCredited,
   type CcAnnulledPurchase,
 } from "./ccAnnulledPurchases.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
@@ -189,72 +186,27 @@ export function statementLineRestatingBucketLine<S extends StatementChargeLike>(
   });
 }
 
-export type CcAnnulmentSettled = {
-  annulled_purchase_id: number;
-  outcome: "billed" | "bank_credit";
-  statement_line_id: number;
-  /** `billed`: the annulment's flow (category, note, …) folded into the statement line's flow. */
-  folded: boolean;
-};
-
-/**
- * A closed statement against the card's annulled purchases:
- *  - it bills the purchase after all (a charge of the same currency and amount, a matching
- *    merchant, within `MATCH_WINDOWS.feed_mirror` days of the purchase day) → the annulment is
- *    deleted and its flow folds into the statement line's, so the user's category, note and big
- *    group follow the purchase onto the billed line;
- *  - it carries a real credit for it (a nota de crédito: a credit of the same currency and amount,
- *    a matching merchant, dated on/after the purchase and within 180 days) → the bank refunded with
- *    a real line, so the annulment is kept as the PURCHASE and its synthetic refund is dropped
- *    (`bank_credit`, `annulled_on` = the credit's day): purchase + one refund, never two refunds.
- * Each statement line settles at most one annulment and vice versa; `usedLineIds` (statement lines
- * a bucket line already matched) are never taken. Writes unless `dryRun`; a flow whose fold is not
- * possible (the annulment kept no flow) is reported `folded: false`.
- */
-export function settleAnnulmentsAgainstStatement(
-  accountId: number,
-  statementLines: readonly StatementChargeLike[],
-  usedLineIds: ReadonlySet<number>,
-  opts?: { dryRun?: boolean }
-): CcAnnulmentSettled[] {
-  const open = listAnnulledPurchases(accountId);
-  const out: CcAnnulmentSettled[] = [];
-  for (const s of planAnnulmentSettlements(open, statementLines, usedLineIds)) {
-    const a = s.annulment;
-    if (s.outcome === "billed") {
-      let folded = false;
-      if (!opts?.dryRun) {
-        const survivor = a.flow_id;
-        const arriving = rowFlowId("cc_statement_lines", s.statement_line_id);
-        if (flowExists(survivor) && flowExists(arriving) && survivor !== arriving) {
-          adoptFlow(
-            { survivor, arriving },
-            { prefer: "survivor", key: resolveCcExpensePurchaseKey(s.statement_line_id), previousKey: a.purchase_key }
-          );
-          folded = true;
-        }
-        deleteAnnulledPurchase(a.id);
-      }
-      out.push({ annulled_purchase_id: a.id, outcome: "billed", statement_line_id: s.statement_line_id, folded });
-      continue;
-    }
-    if (!opts?.dryRun) markAnnulledPurchaseBankCredited(a.id, s.credit_iso);
-    out.push({ annulled_purchase_id: a.id, outcome: "bank_credit", statement_line_id: s.statement_line_id, folded: false });
-  }
-  return out;
-}
-
 /** An annulled purchase as the statement settlement reads it. */
 export type AnnulmentForSettlement = Pick<CcAnnulledPurchase, "id" | "currency" | "amount" | "merchant" | "purchase_date" | "bank_credit" | "flow_id" | "purchase_key">;
 
-/** What a statement does to one annulment ({@link settleAnnulmentsAgainstStatement}). */
+/** What a statement does to one annulment ({@link planAnnulmentSettlements}). */
 export type AnnulmentSettlementDecision<A extends AnnulmentForSettlement> =
   | { annulment: A; outcome: "billed"; statement_line_id: number }
   | { annulment: A; outcome: "bank_credit"; statement_line_id: number; credit_iso: string };
 
 /**
- * The settlement rule of {@link settleAnnulmentsAgainstStatement}, pure: `annulments` in the order
- * the card lists them (purchase day, then id); bank-credited ones are skipped.
+ * A closed statement against the card's annulled purchases (pure; the statement import applies it,
+ * `cards/statementLinePlanApply.ts`):
+ *  - it bills the purchase after all (a charge of the same currency and amount, a matching
+ *    merchant, within `MATCH_WINDOWS.feed_mirror` days of the purchase day) → the annulment goes
+ *    and the billed line takes its flow, so the user's category, note and big group follow;
+ *  - it carries a real credit for it (a nota de crédito: a credit of the same currency and amount,
+ *    a matching merchant, dated on/after the purchase and within 180 days) → the bank refunded with
+ *    a real line, so the annulment is kept as the PURCHASE and its synthetic refund is dropped
+ *    (`bank_credit`, `annulled_on` = the credit's day): purchase + one refund, never two refunds.
+ * Each statement line settles at most one annulment and vice versa; `usedLineIds` (statement lines
+ * a bucket line already matched) are never taken. `annulments` in the order the card lists them
+ * (purchase day, then id); bank-credited ones are skipped.
  */
 export function planAnnulmentSettlements<A extends AnnulmentForSettlement>(
   annulments: readonly A[],

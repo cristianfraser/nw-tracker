@@ -3,6 +3,7 @@ import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { movementNotAnchorSql } from "./flows/flowEvidence.js";
 import { db } from "./db.js";
 import { deleteAccountMovementsByNote, insertMovement, restateMovementAmount } from "./movementWrites.js";
+import { stateMovementDescription } from "./movementListingFacts.js";
 import { cacheKeyCheckingBalance } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { isCartolaDesdeBoundaryPhantomMonth, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
@@ -115,6 +116,17 @@ export function clearCheckingAccountValuations(accountId: number, dbHandle: Data
 }
 
 const ANCHOR_NOTE_PREFIX = "import:cartola|anchor|";
+/** A ledger anchor's description, stated on its evidence (`stateMovementDescription`). */
+const ANCHOR_DESCRIPTION = "saldo final";
+
+/** Writes the anchor row (in place when one is on file) and states its description. */
+function writeAnchorRow(accountId: number, existingId: number | null, row: { amount: number; occurredOn: string; note: string }, dbHandle: Database): void {
+  const id =
+    existingId != null
+      ? (restateMovementAmount(existingId, { amount: row.amount, currency: HOME_CURRENCY, occurredOn: row.occurredOn, note: row.note }, dbHandle), existingId)
+      : insertMovement({ accountId, amount: row.amount, currency: HOME_CURRENCY, occurredOn: row.occurredOn, note: row.note }, dbHandle);
+  stateMovementDescription(id, ANCHOR_DESCRIPTION, dbHandle);
+}
 
 
 export type CheckingLedgerAnchorDto = {
@@ -142,7 +154,7 @@ export type EnsureCheckingLedgerAnchorResult = {
 };
 
 export function checkingLedgerAnchorNote(periodMonth: string): string {
-  return `${ANCHOR_NOTE_PREFIX}${periodMonth}|saldo final`;
+  return `${ANCHOR_NOTE_PREFIX}${periodMonth}|${ANCHOR_DESCRIPTION}`;
 }
 
 export function isCheckingLedgerAnchorNote(note: string | null | undefined): boolean {
@@ -409,11 +421,7 @@ export function upsertCheckingLedgerAnchor(
     )
     .get(accountId, `${ANCHOR_NOTE_PREFIX}%`) as { id: number } | undefined;
 
-  if (existing) {
-    restateMovementAmount(existing.id, { amount, currency: HOME_CURRENCY, occurredOn, note }, dbHandle);
-  } else {
-    insertMovement({ accountId, amount, currency: HOME_CURRENCY, occurredOn, note }, dbHandle);
-  }
+  writeAnchorRow(accountId, existing?.id ?? null, { amount, occurredOn, note }, dbHandle);
   return getCheckingLedgerAnchor(accountId, dbHandle);
 }
 
@@ -487,7 +495,7 @@ export function ensureCheckingLedgerAnchor(
         anchor_period_month: periodMonth,
       };
     }
-    restateMovementAmount(existing.id, { amount, currency: HOME_CURRENCY, occurredOn, note }, dbHandle);
+    writeAnchorRow(accountId, existing.id, { amount, occurredOn, note }, dbHandle);
     return {
       inserted: false,
       updated: true,
@@ -498,7 +506,7 @@ export function ensureCheckingLedgerAnchor(
     };
   }
 
-  insertMovement({ accountId, amount, currency: HOME_CURRENCY, occurredOn, note }, dbHandle);
+  writeAnchorRow(accountId, null, { amount, occurredOn, note }, dbHandle);
   return {
     inserted: true,
     updated: false,

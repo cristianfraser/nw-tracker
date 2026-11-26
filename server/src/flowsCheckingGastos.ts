@@ -5,7 +5,7 @@ import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
+import { bankRowText, cartolaRowPurchaseKey, isCheckingGastosBankRow, type BankRowText } from "./bankRowFacts.js";
 import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { cartolaCashAccountId, isMovementBalanceCashCategory, listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
@@ -35,9 +35,7 @@ import {
   CHECKING_CORRIENTE_INTERNET_TRANSFER_RE,
   CHECKING_GASTOS_CASH_GROUP,
   DAP_ABONO_MAX_DAY_GAP,
-  cartolaDescriptionFromNote,
   cartolaDocsMatchForDapAbono,
-  cartolaDocumentFromNote,
   checkingCreditLooksLikeFintualIncomingWire,
   checkingCreditLooksLikeMonthBucketCashReturn,
   checkingCreditMayAutoMatchNetWorthCapitalReturn,
@@ -48,7 +46,6 @@ import {
   dapReferenceFromDescription,
   isCheckingCorrienteVistaTraspasoOutflow,
   isCheckingOwnTraspasoOutflow,
-  isCheckingGastosWithdrawalNote,
   isDapReturnCreditDescription,
   isExcludedCheckingWithdrawal,
   isInvestmentDepositTarget,
@@ -80,14 +77,10 @@ export function checkingGastosMovementPurchaseKey(
   movementId: number,
   portion: "gastos" | "deposit" = "gastos"
 ): string {
-  const row = db
-    .prepare(`SELECT account_id, note FROM movements WHERE id = ?`)
-    .get(movementId) as { account_id: number; note: string | null } | undefined;
-  if (row?.note) {
-    const stable = checkingCartolaStablePurchaseKey(row.account_id, row.note, portion);
-    if (stable) return stable;
-  }
-  return checkingMovementPurchaseKey(movementId, portion);
+  const row = db.prepare(`SELECT account_id FROM movements WHERE id = ?`).get(movementId) as { account_id: number | null } | undefined;
+  // A cartola row is keyed by its cartola identity (its listing facts), any other row by its id.
+  const stable = row?.account_id != null ? cartolaRowPurchaseKey(movementId, row.account_id, portion) : null;
+  return stable ?? checkingMovementPurchaseKey(movementId, portion);
 }
 
 export function checkingGastosMovementBelongs(movementId: number): {
@@ -102,12 +95,12 @@ export function checkingGastosMovementBelongs(movementId: number): {
 
   const rawRow = db
     .prepare(
-      `SELECT account_id, occurred_on, amount, currency, counter_amount, counter_currency, note
+      `SELECT account_id, occurred_on, amount, currency, counter_amount, counter_currency
        FROM movements
        WHERE id = ?`
     )
     .get(movementId) as
-    | (MovementAmountFields & { account_id: number; occurred_on: string; note: string | null })
+    | (MovementAmountFields & { account_id: number; occurred_on: string })
     | undefined;
 
   const row = rawRow
@@ -115,19 +108,18 @@ export function checkingGastosMovementBelongs(movementId: number): {
         account_id: rawRow.account_id,
         occurred_on: rawRow.occurred_on,
         amount_clp: movementClpLegOrZero(rawRow),
-        note: rawRow.note,
+        ...bankRowText(movementId),
       }
     : undefined;
   if (!row || !checkingIds.has(row.account_id) || row.amount_clp >= 0) {
     return { ok: false };
   }
 
-  const note = String(row.note ?? "").trim();
-  if (!isCheckingGastosWithdrawalNote(note)) {
+  if (!isCheckingGastosBankRow(movementId)) {
     return { ok: false };
   }
 
-  const description = cartolaDescriptionFromNote(row.note);
+  const description = row.description;
   if (isExcludedCheckingWithdrawal(description)) {
     return { ok: false };
   }
@@ -147,7 +139,7 @@ export function checkingGastosMovementBelongs(movementId: number): {
   }
   if (
     withdrawalIsReversedByDapAbono(
-      { occurred_on: row.occurred_on, amount_clp: row.amount_clp, note: row.note },
+      row,
       loadMovementBalanceCashCredits()
     )
   ) {
@@ -159,7 +151,7 @@ export function checkingGastosMovementBelongs(movementId: number): {
   if (
     expenseMonth &&
     internalMcMonths.has(expenseMonth) &&
-    isMercadoCapitalesCargoDescription(cartolaDescriptionFromNote(row.note))
+    isMercadoCapitalesCargoDescription(row.description)
   ) {
     return { ok: false };
   }
@@ -177,7 +169,7 @@ function foreignCheckingGastosMovementBelongs(movementId: number): { ok: boolean
   if (row?.account_id == null || !listForeignCheckingAccountIds().includes(row.account_id)) return null;
   const listed = listForeignCheckingMovements(row.account_id, "out").find((m) => m.id === movementId);
   if (!listed) return { ok: false };
-  const description = cartolaDescriptionFromNote(listed.note);
+  const description = listed.description;
   if (isExcludedCheckingWithdrawal(description)) return { ok: false };
   return { ok: true, account_id: row.account_id, merchant_key: normalizeCcExpenseMerchantKey(description) };
 }
@@ -321,9 +313,9 @@ export function computeMercadoCapitalesInternalTransferMonths(
 
   const mcByMonth = new Map<string, number>();
   for (const row of withdrawals) {
-    const desc = cartolaDescriptionFromNote(row.note);
+    const desc = row.description;
     if (!isMercadoCapitalesCargoDescription(desc)) continue;
-    if (withdrawalIsReversedByDapAbono({ occurred_on: row.occurred_on, amount_clp: row.amount_clp, note: row.note }, credits)) {
+    if (withdrawalIsReversedByDapAbono(row, credits)) {
       continue;
     }
     const month = monthKeyFromYmd(row.occurred_on);
@@ -352,18 +344,18 @@ export function computeMercadoCapitalesInternalTransferMonths(
  * (annulled money order or DAP maturity with principal + small interest).
  */
 export function withdrawalIsReversedByDapAbono(
-  withdrawal: { occurred_on: string; amount_clp: number; note: string | null },
+  withdrawal: { occurred_on: string; amount_clp: number } & BankRowText,
   checkingCredits: readonly CheckingCredit[],
   maxDayGap = DAP_ABONO_MAX_DAY_GAP
 ): boolean {
-  const desc = cartolaDescriptionFromNote(withdrawal.note);
+  const desc = withdrawal.description;
   if (!isMercadoCapitalesCargoDescription(desc)) return false;
-  const doc = cartolaDocumentFromNote(withdrawal.note);
+  const doc = withdrawal.document_no;
   if (!doc) return false;
   for (const credit of checkingCredits) {
-    const creditDesc = cartolaDescriptionFromNote(credit.note);
+    const creditDesc = credit.description;
     if (!isDapReturnCreditDescription(creditDesc)) continue;
-    const creditDoc = cartolaDocumentFromNote(credit.note);
+    const creditDoc = credit.document_no;
     const dapRef = dapReferenceFromDescription(creditDesc);
     if (!cartolaDocsMatchForDapAbono(doc, creditDoc, dapRef)) continue;
     const dayGap = daysBetweenIso(withdrawal.occurred_on, credit.occurred_on);
@@ -382,14 +374,14 @@ export function creditIsReversingMercadoCapitalesCargo(
   checkingWithdrawals: readonly CheckingWithdrawal[],
   maxDayGap = DAP_ABONO_MAX_DAY_GAP
 ): boolean {
-  const creditDesc = cartolaDescriptionFromNote(credit.note);
+  const creditDesc = credit.description;
   if (!isDapReturnCreditDescription(creditDesc)) return false;
-  const creditDoc = cartolaDocumentFromNote(credit.note);
+  const creditDoc = credit.document_no;
   const dapRef = dapReferenceFromDescription(creditDesc);
   for (const withdrawal of checkingWithdrawals) {
-    const desc = cartolaDescriptionFromNote(withdrawal.note);
+    const desc = withdrawal.description;
     if (!isMercadoCapitalesCargoDescription(desc)) continue;
-    const doc = cartolaDocumentFromNote(withdrawal.note);
+    const doc = withdrawal.document_no;
     if (!doc) continue;
     if (!cartolaDocsMatchForDapAbono(doc, creditDoc, dapRef)) continue;
     const dayGap = daysBetweenIso(withdrawal.occurred_on, credit.occurred_on);
@@ -402,7 +394,7 @@ export function creditIsReversingMercadoCapitalesCargo(
 
 /** Abono that pairs with a sibling checking withdrawal classified as internal transfer. */
 export function checkingCreditMatchesInternalWithdrawal(
-  credit: { occurred_on: string; amount_clp: number; note: string | null },
+  credit: { occurred_on: string; amount_clp: number } & BankRowText,
   creditAccountId: number,
   checkingWithdrawals: readonly CheckingWithdrawalWithAccount[],
   deposits: readonly DepositMatchCandidate[],
@@ -415,7 +407,7 @@ export function checkingCreditMatchesInternalWithdrawal(
   for (const row of checkingWithdrawals) {
     if (Math.round(Math.abs(row.amount_clp)) !== want) continue;
     if (Math.abs(daysBetweenIso(credit.occurred_on, row.occurred_on)) > maxDayGap) continue;
-    const wDesc = cartolaDescriptionFromNote(row.note);
+    const wDesc = row.description;
     const withdrawal = {
       occurred_on: row.occurred_on,
       amount_clp: row.amount_clp,
@@ -439,7 +431,7 @@ export function checkingCreditMatchesInternalWithdrawal(
       row.account_id !== creditAccountId &&
       isCheckingCorrienteVistaTraspasoOutflow(wDesc) &&
       CHECKING_CORRIENTE_INTERNET_TRANSFER_RE.test(
-        stripCheckingBranchPrefix(cartolaDescriptionFromNote(credit.note)).trim()
+        stripCheckingBranchPrefix(credit.description).trim()
       )
     ) {
       return true;
@@ -477,7 +469,7 @@ export function outflowFlowClaimKey(accountId: number, flowId: number): string {
 }
 
 function checkingCreditMatchesCheckingOutflowCapitalReturn(
-  credit: { occurred_on: string; amount_clp: number; note?: string | null },
+  credit: { occurred_on: string; amount_clp: number } & BankRowText,
   checkingWithdrawals: readonly CheckingWithdrawalWithAccount[],
   opts: {
     maxDayGap: number;
@@ -486,12 +478,12 @@ function checkingCreditMatchesCheckingOutflowCapitalReturn(
 ): boolean {
   const want = Math.round(credit.amount_clp);
   const description =
-    credit.note != null ? cartolaDescriptionFromNote(credit.note) : "";
+    credit.description;
   if (!checkingCreditMayAutoMatchNetWorthCapitalReturn(description)) return false;
 
   for (const withdrawal of checkingWithdrawals) {
     if (Math.round(Math.abs(withdrawal.amount_clp)) !== want) continue;
-    if (!checkingWithdrawalFundsInvestmentCapital(withdrawal.note)) continue;
+    if (!checkingWithdrawalFundsInvestmentCapital(withdrawal.description)) continue;
     const dayGap = daysBetweenIso(withdrawal.occurred_on, credit.occurred_on);
     if (dayGap < 0 || dayGap > opts.maxDayGap) continue;
     const key = checkingWithdrawalPairKey(withdrawal);
@@ -504,7 +496,7 @@ function checkingCreditMatchesCheckingOutflowCapitalReturn(
 
 /** Fintual incoming wire paired with a brokerage/retirement ledger retiro (not AFP). */
 export function checkingCreditMatchesLedgerNetWorthCapitalReturn(
-  credit: { occurred_on: string; amount_clp: number; note?: string | null },
+  credit: { occurred_on: string; amount_clp: number } & BankRowText,
   ledgerOutflows: readonly DepositMatchCandidate[],
   opts?: {
     maxDayGap?: number;
@@ -515,7 +507,7 @@ export function checkingCreditMatchesLedgerNetWorthCapitalReturn(
   const want = Math.round(credit.amount_clp);
   if (want <= 0) return false;
   const description =
-    credit.note != null ? cartolaDescriptionFromNote(credit.note) : "";
+    credit.description;
   if (!checkingCreditLooksLikeFintualIncomingWire(description)) return false;
 
   return ledgerNetWorthCapitalReturnMatchesAmount(
@@ -535,27 +527,22 @@ export type FintualIncomingWireBatch = {
   total_clp: number;
 };
 
-function fintualIncomingWireBatchGroupKey(credit: {
-  account_id: number;
-  occurred_on: string;
-  note: string | null;
-}): string | null {
-  const description = cartolaDescriptionFromNote(credit.note);
+function fintualIncomingWireBatchGroupKey(credit: { account_id: number; occurred_on: string } & BankRowText): string | null {
+  const description = credit.description;
   if (!checkingCreditLooksLikeFintualIncomingWire(description)) return null;
   const descKey = normalizeCcExpenseMerchantKey(description.trim());
-  const doc = cartolaDocumentFromNote(credit.note);
+  const doc = credit.document_no;
   return `${credit.account_id}|${credit.occurred_on}|${descKey}|${doc ?? ""}`;
 }
 
 /** Same-day split Fintual wires (e.g. 3M + 7M) that sum to one ledger retiro. */
 export function buildFintualIncomingWireBatches(
-  credits: readonly {
+  credits: readonly ({
     movement_id: number;
     account_id: number;
     occurred_on: string;
     amount_clp: number;
-    note: string | null;
-  }[]
+  } & BankRowText)[]
 ): {
   batches: FintualIncomingWireBatch[];
   batchByMovementId: Map<number, FintualIncomingWireBatch>;
@@ -620,7 +607,7 @@ function ledgerNetWorthCapitalReturnMatchesAmount(
 
 /** Depósito en Efectivo paired with a month-end cuenta ahorro ledger retiro (same month). */
 export function checkingCreditMatchesMonthBucketLedgerCapitalReturn(
-  credit: { occurred_on: string; amount_clp: number; note?: string | null },
+  credit: { occurred_on: string; amount_clp: number } & BankRowText,
   ledgerOutflows: readonly DepositMatchCandidate[],
   opts?: {
     maxDayGap?: number;
@@ -631,7 +618,7 @@ export function checkingCreditMatchesMonthBucketLedgerCapitalReturn(
   const want = Math.round(credit.amount_clp);
   if (want <= 0) return false;
   const description =
-    credit.note != null ? cartolaDescriptionFromNote(credit.note) : "";
+    credit.description;
   if (!checkingCreditLooksLikeMonthBucketCashReturn(description)) return false;
 
   for (const outflow of ledgerOutflows) {
@@ -680,7 +667,7 @@ export function checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalRetu
  * Path C: Depósito en Efectivo + same-month cuenta ahorro month-end ledger retiro.
  */
 export function checkingCreditMatchesNetWorthCapitalReturn(
-  credit: { occurred_on: string; amount_clp: number; note?: string | null },
+  credit: { occurred_on: string; amount_clp: number } & BankRowText,
   checkingWithdrawals: readonly CheckingWithdrawalWithAccount[],
   opts?: {
     maxDayGap?: number;
@@ -1194,7 +1181,7 @@ function buildForeignCheckingGastosLines(
   const lines: FlowCcExpenseLineRowDraft[] = [];
   // Newest first, as the gastos lines are listed.
   for (const row of listForeignCheckingMovements(accountId, "out").reverse()) {
-    const description = cartolaDescriptionFromNote(row.note);
+    const description = row.description;
     if (isExcludedCheckingWithdrawal(description)) continue;
     const expenseMonth = monthKeyFromYmd(row.occurred_on);
     if (!expenseMonth) throw new Error(`${row.currency.toUpperCase()} checking movement ${row.id}: no month for ${row.occurred_on}`);
@@ -1435,14 +1422,14 @@ function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions
   };
 
   const processRow = (row: (typeof rows)[number]): void => {
-    const description = cartolaDescriptionFromNote(row.note);
+    const description = row.description;
     if (isExcludedCheckingWithdrawal(description)) {
       // Fintual / reserva investment-funding transfers are excluded from the gastos list, but must
       // still emit their deposit-portion line so the funded net-worth deposit gets linked through the
       // SAME matcher + shared pool as every other deposit (no parallel post-pass; the shared pool also
       // stops two same-amount outflows from both claiming one deposit). Other exclusions stay dropped.
       const em = monthKeyFromYmd(row.occurred_on);
-      if (em && checkingWithdrawalFundsInvestmentCapital(row.note)) {
+      if (em && checkingWithdrawalFundsInvestmentCapital(row.description)) {
         const split = splitCheckingWithdrawalAgainstDeposits(
           { occurred_on: row.occurred_on, amount_clp: row.amount_clp, description },
           deposits,
@@ -1466,10 +1453,7 @@ function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions
       return;
     }
     if (
-      withdrawalIsReversedByDapAbono(
-        { occurred_on: row.occurred_on, amount_clp: row.amount_clp, note: row.note },
-        checkingCredits
-      )
+      withdrawalIsReversedByDapAbono(row, checkingCredits)
     ) {
       return;
     }

@@ -8,7 +8,7 @@ import {
   type ExpenseKey,
 } from "./expenseKeys.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
-import { checkingCartolaStablePurchaseKey, movementNote } from "./checkingCartolaParse.js";
+import { checkingCartolaPurchaseKeyOf } from "./checkingCartolaParse.js";
 
 /** One case per family (and per optional segment): the text, and the key it parses to. */
 const CASES: [string, ExpenseKey][] = [
@@ -88,7 +88,8 @@ describe("expense keys", () => {
         merchant: "Express Plaza L",
       })
     ).toBe("installment-h:32:2026-06-30:3:1267034:EXPRESS PLAZA L");
-    const note = movementNote("2026-05", "SUC", "Compra", "123", { occurredOn: "2026-05-04", amountClp: -15000, cartolaIndex: 3 });
-    expect(checkingCartolaStablePurchaseKey(22, note, "deposit")).toBe("checking-cartola:22:2026-05:2026-05-04:-15000:3:deposit");
+    expect(checkingCartolaPurchaseKeyOf(22, { periodMonth: "2026-05", occurredOn: "2026-05-04", amountClp: -15000, cartolaIndex: 3 }, "deposit")).toBe(
+      "checking-cartola:22:2026-05:2026-05-04:-15000:3:deposit"
+    );
   });
 });

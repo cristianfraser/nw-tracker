@@ -2,9 +2,7 @@ import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { db } from "./db.js";
 import { movementFlowId } from "./flows/flowIdentity.js";
 import { isCheckingCredit } from "./checkingCartolaLoaders.js";
-import {
-  cartolaDescriptionFromNote,
-} from "./checkingDescriptionPredicates.js";
+import { movementDescription } from "./bankRowFacts.js";
 import { incomeKindByMovementId } from "./flowsPayrollWorkEarnings.js";
 
 
@@ -294,7 +292,6 @@ export function loadExcludedCheckingIncomeLines(): FlowExcludedCheckingIncomeLin
          m.account_id,
          m.occurred_on AS received_on,
          ${MOVEMENT_CLP_LEG_SQL} AS amount_clp,
-         m.note AS cartola_note,
          o.note AS override_note,
          a.name AS account_label
        FROM ${INCOME_OVERRIDES_BY_MOVEMENT} o
@@ -308,7 +305,6 @@ export function loadExcludedCheckingIncomeLines(): FlowExcludedCheckingIncomeLin
     account_id: number;
     received_on: string;
     amount_clp: number;
-    cartola_note: string | null;
     override_note: string | null;
     account_label: string;
   }[];
@@ -323,7 +319,7 @@ export function loadExcludedCheckingIncomeLines(): FlowExcludedCheckingIncomeLin
       amount_clp,
       // A peso credit has no dollars of its own: the unit conversion reads its pesos at the day's rate.
       amount_usd: null,
-      description: cartolaDescriptionFromNote(row.cartola_note),
+      description: movementDescription(row.movement_id),
       note: row.override_note,
     };
   });

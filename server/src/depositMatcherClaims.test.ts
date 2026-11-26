@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { db } from "./db.js";
 import {
   buildCheckingGastosLines,
@@ -24,6 +25,7 @@ const movementIds: number[] = [];
 function insertMovement(sql: string, ...args: unknown[]): number {
   const id = Number(db.prepare(sql).run(...args).lastInsertRowid);
   movementIds.push(id);
+  stateListingFactsOfFixtures();
   return id;
 }
 

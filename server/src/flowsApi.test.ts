@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { withFixtureFacts } from "./test/dailyListingFacts.js";
 import { db } from "./db.js";
 import {
   applyFlowFilters,
@@ -118,7 +119,7 @@ describe("net-worth flows without spending (exclude_spending)", () => {
     const day = addCalendarMonths(chileCalendarTodayYmd().slice(0, 7), -1) + "-12";
     const month = day.slice(0, 7);
     const insert = (amount: number, description: string, idx: number): number =>
-      Number(
+      withFixtureFacts(
         db
           .prepare(
             `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
@@ -313,7 +314,7 @@ describe("what a bank movement's flows row shows", () => {
     const accountId = checkingAccountId();
     const day = addCalendarMonths(chileCalendarTodayYmd().slice(0, 7), -1) + "-13";
     const insert = (amount: number, note: string): number =>
-      Number(
+      withFixtureFacts(
         db
           .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`)
           .run(accountId, amount, day, note).lastInsertRowid

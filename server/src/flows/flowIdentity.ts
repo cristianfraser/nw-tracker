@@ -213,11 +213,11 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
 }
 
 /**
- * A row that replaces another (the cartola row a daily row was a preview of) takes over its flow:
- * the new row's own flow is merged into the old one (the old flow's assignments win: the user made
- * them), and the old flow answers to the new row's key. Bug 2: the refund mark, the income
- * classification and every key-named assignment follow the flow instead of being dropped with the
- * old row.
+ * A row that replaces another under a new flow (a manual transfer that is the money a bank row
+ * listed: `checkingTransferLegReconcile.ts`) takes over its flow: the new row's own flow is merged
+ * into the old one (the old flow's assignments win: the user made them), and the old flow answers to
+ * the new row's key — the refund mark, the income classification and every key-named assignment
+ * follow the flow instead of being dropped with the old row.
  */
 export function adoptMovementFlow(fromMovementId: number, toMovementId: number, newKey: string, dbHandle: Database = db): void {
   const flowOf = (id: number) =>

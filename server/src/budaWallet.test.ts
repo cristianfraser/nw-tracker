@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { rowTextOfFixtureNote } from "./test/dailyListingFacts.js";
 import {
   checkingCreditLooksLikeBudaRetiro,
   checkingCreditMatchesBudaRetiro,
@@ -38,7 +39,7 @@ describe("budaWallet retiro recognition", () => {
       {
         occurred_on: "2025-02-04",
         amount_clp: 3_000_000,
-        note: creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA"),
+        ...rowTextOfFixtureNote(creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA")),
       },
       outflows,
       { budaAccountId: BUDA_ID, consumedLedgerOutflowKeys: consumed }
@@ -54,7 +55,7 @@ describe("budaWallet retiro recognition", () => {
     const args = {
       occurred_on: "2025-02-04",
       amount_clp: 3_000_000,
-      note: creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA"),
+      ...rowTextOfFixtureNote(creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA")),
     };
     const opts = { budaAccountId: BUDA_ID, consumedLedgerOutflowKeys: consumed };
     expect(checkingCreditMatchesBudaRetiro(args, outflows, opts)).toBe(true);
@@ -69,7 +70,7 @@ describe("budaWallet retiro recognition", () => {
     const args = {
       occurred_on: "2025-02-04",
       amount_clp: 3_000_000,
-      note: creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA"),
+      ...rowTextOfFixtureNote(creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA")),
     };
     expect(checkingCreditMatchesBudaRetiro(args, outflows, { budaAccountId: BUDA_ID, consumedLedgerOutflowKeys: consumed })).toBe(true);
     expect(checkingCreditMatchesBudaRetiro(args, outflows, { budaAccountId: BUDA_ID, consumedLedgerOutflowKeys: consumed })).toBe(false);
@@ -81,7 +82,7 @@ describe("budaWallet retiro recognition", () => {
       {
         occurred_on: "2025-02-04",
         amount_clp: 3_000_000,
-        note: creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA"),
+        ...rowTextOfFixtureNote(creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA")),
       },
       [otherAccountRetiro],
       { budaAccountId: BUDA_ID, consumedLedgerOutflowKeys: new Set() }
@@ -97,7 +98,7 @@ describe("budaWallet retiro recognition", () => {
         {
           occurred_on: "2025-02-04",
           amount_clp: 3_000_000,
-          note: creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA"),
+          ...rowTextOfFixtureNote(creditNote("2025-02-04", 3_000_000, "0764155289 Transf. BUDA COM SPA")),
         },
         outflows,
         { budaAccountId: BUDA_ID, consumedLedgerOutflowKeys: new Set() }

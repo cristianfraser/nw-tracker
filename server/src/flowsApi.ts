@@ -24,7 +24,7 @@ import { paginate, type Paginated } from "./pagination.js";
 import { checkingMovementKey, checkingSpendingMovementKeys } from "./checkingSpendingMovements.js";
 import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
 import { checkingMovementDisplayNames, loadDisplayNameContext, type DisplayNameContext } from "./expenseDisplayNames.js";
-import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
+import { movementDescription } from "./bankRowFacts.js";
 import { shownNameFields, shownNameSearchText, textShownName } from "./expenseShownName.js";
 import type { ShownName, ShownNameDetail } from "nw-tracker-contracts/dto/flows";
 
@@ -197,7 +197,7 @@ function withShownNames(rows: RawFlowsApiRow[]): FlowsApiRow[] {
     const counterparty =
       counterparties.get(`${r.id}|${r.account_id}`) ??
       (r.counterpart_account_id != null ? counterparties.get(`${r.id}|${r.counterpart_account_id}`) : undefined);
-    const description = cartolaDescriptionFromNote(note);
+    const description = movementDescription(r.id);
     if (!counterparty && description === note) return { ...r, name: textShownName(note) };
     ctx ??= loadDisplayNameContext([]);
     const names = checkingMovementDisplayNames(description, r.account_id, counterparty, ctx);

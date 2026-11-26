@@ -1,29 +1,25 @@
 /**
- * Report only: what the keep-rows planners say an import does, against the import the plan replaced
- * (`mergeCardStatements` / `importCheckingCartolaInsertThenPrune`, kept until keep-rows phase 4 as
- * the reference). Plans the documents, runs the old import inside a transaction that is rolled
- * back, and prints the plan (counts per outcome, then each row) and every disagreement between the
- * planner's account of the old end state and the real one. Exits 1 on any disagreement. Never writes.
+ * Report only: what importing a document would write, on a snapshot copy. Runs the production
+ * import as its entry point does — card statements through `importStatementDocuments` with the
+ * statements' replace keys (after printing their plan: `cards/statementLinePlan.ts`), a cartola
+ * through `applyBankAccountStatements`, the ingest kind's apply (the cuenta vista's month split,
+ * the pruning of months a document no longer covers, a forced re-import's rules) — inside a
+ * transaction that is rolled back, and prints the rows restated / inserted / folded / removed, the
+ * arrival stamps created, whether the card-line session finish ran and the rows changed in all.
+ * The tool for validating a statement or cartola before deploying. Never writes.
  *
- * `--apply-new`: instead, runs the production import as its entry point does
- * (`importStatementDocuments` with the statements' replace keys / `applyBankAccountStatements`,
- * the ingest kind's apply, for a `bank_account.statements` payload or one cartola month wrapped as
- * `--product=checking|demand_deposit` [`--force`]) inside a rolled-back transaction and prints what it would write: rows restated / inserted / folded / removed, arrival
- * stamps created, whether the card-line session finish ran, the rows changed in all. The tool for
- * validating a statement or cartola on a snapshot copy before deploying.
+ *   npx tsx scripts/report-document-import.ts --db=<snapshot copy> --account=<id> --statements=<file.json> [--migrate]
+ *   npx tsx scripts/report-document-import.ts --db=<snapshot copy> --account=<id> --cartola=<file.json> [--product=checking|demand_deposit] [--force] [--migrate]
  *
- *   npx tsx scripts/report-keep-rows-plan.ts --db=<snapshot copy> --account=<id> --statements=<file.json> [--apply-new] [--migrate]
- *   npx tsx scripts/report-keep-rows-plan.ts --db=<snapshot copy> --account=<id> --cartola=<file.json> [--apply-new] [--migrate]
- *
- * `--statements`: the canonical statements the import hands `mergeCardStatements` (an array of
- * `CardCanonicalStatement`, or a `card.statement` payload in its canonical format —
- * `{ "format": "canonical", "statements": [...] }`, what the ingest parser answers for a PDF; an
- * issuer-format statement JSON is converted by its importer first). They are imported as the statement paths do,
- * replacing the stored copies of the same statements. `--cartola`: one parsed cartola month
- * (`ParsedCheckingCartola`). `--db` is required: run it on a COPY of a snapshot, never on the
- * running primary — today's import runs whole (with the card-line write's recompute) inside one
- * write transaction, which would hold the database past the server's busy timeout. The checkout's
- * own `data/nw-tracker.db` is refused unless `--allow-live` is passed. A database with pending
+ * `--statements`: canonical card statements (an array of `CardCanonicalStatement`, or a
+ * `card.statement` payload in its canonical format — `{ "format": "canonical", "statements": [...] }`,
+ * what the ingest parser answers for a PDF; an issuer-format statement JSON is converted by its
+ * importer first), imported replacing the stored copies of the same statements. `--cartola`: a
+ * `bank_account.statements` payload, or one parsed cartola month (`ParsedCheckingCartola`) wrapped
+ * as a statement of `--product` (`--force`: a forced re-import). `--db` is required: run it on a
+ * COPY of a snapshot, never on the running primary — the import runs whole inside one write
+ * transaction, which would hold the database past the server's busy timeout. The checkout's own
+ * `data/nw-tracker.db` is refused unless `--allow-live` is passed. A database with pending
  * migrations is refused unless `--migrate` is passed.
  */
 import fs from "node:fs";
@@ -69,8 +65,6 @@ process.env.BACKGROUND_JOBS_ENABLED ??= "0";
 const readJson = (f: string): unknown => JSON.parse(fs.readFileSync(f, "utf8"));
 console.log(`database: ${file}`);
 console.log(`account: ${accountId}`);
-let disagreements: string[];
-let deviations: string[];
 
 async function readStatements(f: string) {
   const { cardCanonicalStatementSchema } = await import("nw-tracker-contracts");
@@ -124,11 +118,13 @@ function readCartola(f: string): import("../src/checkingCartolaParse.js").Parsed
   return cartola;
 }
 
-if (flag("apply-new")) {
+{
   const { db } = await import("../src/db.js");
   await import("../src/cards/lineWrites.js");
   await import("../src/expenseAssignmentWrites.js");
   const { importStatementDocuments } = await import("../src/cards/statementLinePlanApply.js");
+  const { loadCardStatementLinePlanInput } = await import("../src/cards/statementLinePlanLoad.js");
+  const { planCardStatementLines } = await import("../src/cards/statementLinePlan.js");
   const { statementKeysOf } = await import("../src/ccInstallmentLedgerMerge.js");
   const { applyBankAccountStatements, bankStatementAccountId } = await import("../src/bankAccountStatementsApply.js");
   const statements = statementsFile ? await readStatements(statementsFile) : null;
@@ -151,11 +147,12 @@ if (flag("apply-new")) {
       const changes0 = totalChanges();
       const stamps0 = stamps();
       if (statements) {
+        printCardPlan(planCardStatementLines(loadCardStatementLinePlanInput(accountId, statements, { replaceStatementKeys: statementKeysOf(statements) })));
         const r = importStatementDocuments(accountId, statements, { replaceStatementKeys: statementKeysOf(statements) });
         const k = r.keep_rows;
         console.log(`statements: ${statements.map((s) => `${s.document} ${s.close} ${s.currency} (${s.lines.length} lines)`).join("; ")}`);
         console.log(
-          `the new import would write: restated ${k.restated.length} · inserted ${k.inserted.length} · folded ${k.folded.length} · removed ${k.removed.length} · ` +
+          `the import would write: restated ${k.restated.length} · inserted ${k.inserted.length} · folded ${k.folded.length} · removed ${k.removed.length} · ` +
             `annulled ${k.annulled.length} · moved ${k.moved.length} · annulments billed ${k.annulments_billed.length} · credited ${k.annulments_credited.length} · unpaired ${k.unpaired.length}`
         );
         for (const [what, ids] of Object.entries({ restated: k.restated, inserted: k.inserted, folded: k.folded, removed: k.removed, annulled: k.annulled, moved: k.moved, unpaired: k.unpaired })) {
@@ -177,7 +174,7 @@ if (flag("apply-new")) {
         const folded = goneRows.filter(([, r]) => liveFlows.has(r.flow_id));
         const removed = goneRows.filter(([, r]) => !liveFlows.has(r.flow_id));
         console.log(
-          `the new import would write: restated ${restatedRows.length} · inserted ${insertedRows.length} · folded ${folded.length} · removed ${removed.length}`
+          `the import would write: restated ${restatedRows.length} · inserted ${insertedRows.length} · folded ${folded.length} · removed ${removed.length}`
         );
         for (const [id, r] of restatedRows) console.log(`  restate row ${id}: «${before.get(id)!.note}» → «${r.note}»`);
         for (const [id, r] of insertedRows) console.log(`  insert  row ${id}: «${r.note}»`);
@@ -194,21 +191,16 @@ if (flag("apply-new")) {
   process.exit(0);
 }
 
-if (statementsFile) {
-  const statements = await readStatements(statementsFile);
-  const { compareCardStatementImport } = await import("../src/cards/statementLinePlanCompare.js");
-  const r = compareCardStatementImport(accountId, statements);
-  const p = r.plan;
+function printCardPlan(p: import("../src/cards/statementLinePlan.js").CardStatementLinePlan): void {
   const doc = (d: { statement_key: string; index: number } | null) => (d ? `${d.statement_key.split("\t")[1]} #${d.index}` : "—");
   const row = (x: { kind: string; id: number }) => (x.kind === "line" ? `line ${x.id}` : `annulled purchase ${x.id}`);
-  console.log(`statements: ${statements.map((s) => `${s.document} ${s.close} ${s.currency} (${s.lines.length} lines)`).join("; ")}`);
   console.log(
     `plan: keep ${p.keep.length} · fold ${p.fold.length} · insert ${p.insert.length} · remove ${p.remove.length} · skip ${p.skip.length} · ` +
       `annul ${p.annul.length} · move ${p.move_to_open.length} · kept prepayment ${p.kept_plan_prepayment.length} · ` +
       `annulments credited ${p.annulments_credited.length} · ambiguous ${p.ambiguous.length}`
   );
-  for (const k of p.keep) console.log(`  keep   ${row(k.row)} ↔ ${doc(k.doc)}  (${k.why}${k.today === "differs" ? "; today differs" : ""})`);
-  for (const f of p.fold) console.log(`  fold   ${row(f.row)} → ${row(f.into)} on ${doc(f.doc)}  (${f.why}${f.today === "differs" ? "; today differs" : ""})`);
+  for (const k of p.keep) console.log(`  keep   ${row(k.row)} ↔ ${doc(k.doc)}  (${k.why})`);
+  for (const f of p.fold) console.log(`  fold   ${row(f.row)} → ${row(f.into)} on ${doc(f.doc)}  (${f.why})`);
   for (const i of p.insert) console.log(`  insert ${doc(i.doc)}  (arrival ${i.arrival}${i.copies_classification_from != null ? `; copies classification of line ${i.copies_classification_from}` : ""})`);
   for (const x of p.remove) console.log(`  remove ${row(x.row)}  (${x.why}${x.plan_id != null ? ` → plan ${x.plan_id}` : ""})`);
   for (const s of p.skip) console.log(`  skip   ${doc(s.doc)}  (${s.why}${s.same_as ? ` = ${doc(s.same_as)}` : ""}${s.plan_id != null ? ` → plan ${s.plan_id}` : ""})`);
@@ -217,37 +209,4 @@ if (statementsFile) {
   for (const id of p.kept_plan_prepayment) console.log(`  keep   line ${id}  (plan prepayment, stays in its bucket)`);
   for (const c of p.annulments_credited) console.log(`  credit ${c.annulled_purchase_id != null ? `annulled purchase ${c.annulled_purchase_id}` : `line ${c.bucket_line_id} (annulled now)`} by ${doc(c.doc)}`);
   for (const a of p.ambiguous) console.log(`  AMBIGUOUS ${a.what}: ${a.rows.map(row).join(", ")} ${a.docs.map(doc).join(", ")}`);
-  disagreements = r.disagreements;
-  deviations = r.deviations;
-} else {
-  const cartola = readCartola(cartolaFile!);
-  const { compareCheckingCartolaImport } = await import("../src/checkingCartolaPlanCompare.js");
-  const r = compareCheckingCartolaImport(accountId, cartola);
-  const p = r.plan;
-  const mv = (i: number) => {
-    if (i < 0) return "no movement";
-    const m = cartola.movements[i]!;
-    return `#${i} ${m.occurred_on} ${m.amount_clp} «${m.description}»`;
-  };
-  console.log(`cartola: ${cartola.source_file} ${cartola.period_month} (${cartola.movements.length} movements)`);
-  console.log(
-    `plan: keep ${p.keep.length} · confirm ${p.confirm.length} · insert ${p.insert.length} · fold ${p.fold.length} · remove ${p.remove.length} · ambiguous ${p.ambiguous.length}`
-  );
-  for (const k of p.keep) {
-    const redate = k.redate ? `; re-dated ${k.redate.occurred_on}, bank day ${k.redate.bank_day}` : "";
-    console.log(`  keep    row ${k.row_id} ↔ ${mv(k.movement)}  (${k.why}${redate}${k.today === "differs" ? "; today differs" : ""})`);
-  }
-  for (const c of p.confirm) console.log(`  confirm row ${c.row_id} ↔ ${mv(c.movement)}  (${c.why})`);
-  for (const i of p.insert) console.log(`  insert  ${mv(i.movement)}${i.retired_flow_id != null ? `  (takes retired flow ${i.retired_flow_id})` : ""}${i.today === "differs" ? "  (today differs)" : ""}`);
-  for (const f of p.fold) console.log(`  fold    row ${f.row_id} → row ${f.into_row_id} on ${mv(f.movement)}${f.today === "differs" ? "  (today differs)" : ""}`);
-  for (const x of p.remove) console.log(`  remove  row ${x.row_id}  (${x.why}; ${mv(x.movement)})`);
-  for (const a of p.ambiguous) console.log(`  AMBIGUOUS ${a.what}: ${mv(a.movement)} flows ${a.flow_ids.join(", ")}`);
-  disagreements = r.disagreements;
-  deviations = r.deviations;
 }
-
-console.log(`\ndeclared deviations from today (${deviations.length}):`);
-for (const d of deviations) console.log(`  ${d}`);
-console.log(`\ndisagreements with today's import (${disagreements.length}):`);
-for (const d of disagreements) console.log(`  ${d}`);
-process.exit(disagreements.length > 0 ? 1 : 0);

@@ -16,7 +16,7 @@ import { latestMovementRows } from "./latestMovements.js";
 import { assignFlowExpenseLineCategory } from "./expenseAssignmentWrites.js";
 import { listCcExpenseCategories } from "./ccExpenseCategories.js";
 import { planPrepaymentRows } from "./ccPlanPrepaymentsRead.js";
-import { reconcileOpenWebPasteAfterPdfClose } from "./ccOpenWebPastePdfReconcile.js";
+import { importStatementOnFile } from "./test/statementOnFile.js";
 import { webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import type { FlowsOverviewIncome } from "./flowsOverview.js";
@@ -267,11 +267,12 @@ describe("a plan the bank prepaid", () => {
       const [row] = planPrepaymentRows(accountId);
       const st = statement();
       insertLine(st, "2026-11-08", "VITEST OTRA TIENDA", 9_000);
-      const result = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-11");
-      expect(result.kept_plan_prepayment_line_ids.sort()).toEqual([row!.line_id!, row!.credit_line_id!].sort());
-      expect(result.annulled_line_ids).toEqual([]);
-      expect(result.deleted_line_ids).not.toContain(row!.line_id);
-      expect(result.deleted_line_ids).not.toContain(row!.credit_line_id);
+      const kept = importStatementOnFile(accountId, [st]).result.keep_rows;
+      expect(kept.annulled).toEqual([]);
+      for (const id of [row!.line_id!, row!.credit_line_id!]) {
+        expect(kept.removed).not.toContain(id);
+        expect(kept.restated).not.toContain(id);
+      }
       expect(planPrepaymentRows(accountId)).toEqual([row]);
       expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(row!.line_id)).toBeDefined();
     });
@@ -281,12 +282,12 @@ describe("a plan the bank prepaid", () => {
       feed([notaRow(), prepagoRow()]);
       const [row] = planPrepaymentRows(accountId);
       const st = statement();
-      const printedPrepago = insertLine(st, PAID, "VITEST MERCADOPAGO NT", PRINCIPAL);
-      const printedNota = insertLine(st, PURCHASE, "VITEST MERCADOPAGO NT", -PRINCIPAL);
-      const result = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-11");
-      expect(result.deleted_line_ids.sort()).toEqual([row!.line_id!, row!.credit_line_id!].sort());
-      const [after] = planPrepaymentRows(accountId);
-      expect(after).toMatchObject({ line_id: printedPrepago, credit_line_id: printedNota, purchase_id: row!.purchase_id });
+      insertLine(st, PAID, "VITEST MERCADOPAGO NT", PRINCIPAL);
+      insertLine(st, PURCHASE, "VITEST MERCADOPAGO NT", -PRINCIPAL);
+      const kept = importStatementOnFile(accountId, [st]).result.keep_rows;
+      // The bucket's two lines are the statement's now, and stay the prepayment's.
+      expect(kept.restated.sort()).toEqual([row!.line_id!, row!.credit_line_id!].sort());
+      expect(planPrepaymentRows(accountId)[0]).toMatchObject({ line_id: row!.line_id, credit_line_id: row!.credit_line_id, purchase_id: row!.purchase_id });
     });
 
     it("hands both lines over under the statement's own wording, and gastos shows the refund once", () => {
@@ -294,12 +295,13 @@ describe("a plan the bank prepaid", () => {
       feed([notaRow(), prepagoRow()]);
       const [row] = planPrepaymentRows(accountId);
       const st = statement();
-      const printedPrepago = insertLine(st, PAID, "PREPAGO EN CUOTAS", PRINCIPAL);
-      const printedNota = insertLine(st, PURCHASE, "NOTA DE CREDITO", -PRINCIPAL);
-      const result = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-11");
-      expect(result.deleted_line_ids.sort()).toEqual([row!.line_id!, row!.credit_line_id!].sort());
-      expect(result.kept_plan_prepayment_line_ids).toEqual([]);
-      expect(planPrepaymentRows(accountId)[0]).toMatchObject({ line_id: printedPrepago, credit_line_id: printedNota });
+      insertLine(st, PAID, "PREPAGO EN CUOTAS", PRINCIPAL);
+      insertLine(st, PURCHASE, "NOTA DE CREDITO", -PRINCIPAL);
+      const kept = importStatementOnFile(accountId, [st]).result.keep_rows;
+      expect(kept.restated.sort()).toEqual([row!.line_id!, row!.credit_line_id!].sort());
+      const printedNota = row!.credit_line_id!;
+      expect(planPrepaymentRows(accountId)[0]).toMatchObject({ line_id: row!.line_id, credit_line_id: printedNota });
+      expect(db.prepare(`SELECT merchant FROM cc_statement_lines WHERE id = ?`).get(printedNota)).toEqual({ merchant: "NOTA DE CREDITO" });
       const lines = buildFlowsExpenseLines([accountId]).filter((l) => l.account_id === accountId);
       expect(lines.filter((l) => l.amount!.value < 0).map((l) => l.statement_line_id)).toEqual([printedNota]);
       expect(lines.filter((l) => l.amount!.value > 0).map((l) => l.line_role)).toEqual(["installment_purchase_total"]);

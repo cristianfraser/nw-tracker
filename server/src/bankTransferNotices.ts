@@ -33,6 +33,7 @@ import { storeOnce } from "./ingestReceiver.js";
 import { listOverdueTransferNoticeMovements } from "./transferNoticeMovements.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { insertMovement, redateMovementKeepingBankDay } from "./movementWrites.js";
+import { stateMovementDescription } from "./movementListingFacts.js";
 import { recordBankPosting, type OccurredOnBasis } from "./movementBankPostings.js";
 
 const WINDOW_DAYS = MATCH_WINDOWS.transfer_notice.daysAfter;
@@ -266,14 +267,18 @@ const MAILER_NOTE_PREFIX: Record<string, string> = {
 export function transferNoticeMovementNote(issuer: string, n: TransferNotice): string {
   const prefix = MAILER_NOTE_PREFIX[issuer];
   if (!prefix) throw new Error(`no note prefix for transfer mails from "${issuer}"`);
+  return `${prefix}${n.sent_at_chile}|${transferNoticeMovementDescription(n)}`;
+}
+
+/** The description of a movement written from a mail (stated on its evidence; its note repeats it). */
+export function transferNoticeMovementDescription(n: TransferNotice): string {
   const head =
     n.kind === "incoming"
       ? `Transf. de ${n.from.name ?? "?"}`
       : n.kind === "between_own_products"
         ? "Transferencia entre productos"
         : `Transf a ${n.to.name ?? "?"}`;
-  const description = `${head}${n.comment ? ` — ${n.comment}` : ""}`.replace(/\|/g, "/");
-  return `${prefix}${n.sent_at_chile}|${description}`;
+  return `${head}${n.comment ? ` — ${n.comment}` : ""}`.replace(/\|/g, "/");
 }
 
 const COLUMNS = [
@@ -426,6 +431,7 @@ function writeMovementsFromMails(
               note,
             }),
           ];
+    stateMovementDescription(movementId, transferNoticeMovementDescription(n).trim(), db);
     insRecord.run(n.message_id, movementId, account, signed, day);
     out.push({ message_id: n.message_id, movement_id: movementId, account_id: account, date: day, amount: signed });
   }

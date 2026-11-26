@@ -1,11 +1,11 @@
 import { isCartolaDesdeBoundaryPhantomMonth } from "./calendarMonth.js";
 import type { RetiredMovementAdoption } from "./flows/flowAdoption.js";
-import { deleteAccountMovements, deleteAccountMovementsByNote } from "./movementWrites.js";
+import { deleteAccountMovements, deleteMovements } from "./movementWrites.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { planCheckingCartola } from "./checkingCartolaPlan.js";
 import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
-import { applyCheckingCartolaPlan, assertCartolaPlanPairs } from "./checkingCartolaPlanApply.js";
+import { applyCheckingCartolaPlan } from "./checkingCartolaPlanApply.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import {
   fileLogFromCartola,
@@ -47,39 +47,24 @@ function cartolaSourceFileBasename(sourceFile: string): string {
   return t.split(/[/\\]/).pop() ?? t;
 }
 
-/** Remove all registry rows + movements for every month imported from the same PDF. */
-export function deleteCheckingCartolaImportsForSourceFile(
-  accountId: number,
-  sourceFile: string,
-  dbHandle: Database = db
-): { movements: number; imports: number } {
-  const base = cartolaSourceFileBasename(sourceFile);
-  if (!base) return { movements: 0, imports: 0 };
-  const rows = dbHandle
-    .prepare(
-      `SELECT period_month, source_file FROM checking_cartola_imports WHERE account_id = ?`
-    )
-    .all(accountId) as { period_month: string; source_file: string }[];
-  let movements = 0;
-  let imports = 0;
-  for (const row of rows) {
-    if (cartolaSourceFileBasename(row.source_file) !== base) continue;
-    const r = deleteCheckingCartolaMonthImport(accountId, row.period_month, dbHandle);
-    movements += r.movements;
-    imports += r.imports;
-  }
-  return { movements, imports };
-}
-
 /** Remove imported cartola registry + movement rows for one period (re-import after parser fix). */
 export function deleteCheckingCartolaMonthImport(
   accountId: number,
   periodMonth: string,
   dbHandle: Database = db
 ): { movements: number; imports: number } {
-  // The month's rows go; a flow something hangs off is retired with its document (migration 290),
-  // and the re-imported row with the same identity takes it back (`insertBankPesoMovement`).
-  const movements = deleteAccountMovementsByNote(accountId, `import:cartola|${periodMonth}|%`, dbHandle);
+  // The month's rows (its cartola rows by their listing facts) go; a flow something hangs off is
+  // retired with its document (migration 290), and the re-imported row with the same identity takes
+  // it back (`insertBankPesoMovement`).
+  const ids = (
+    dbHandle
+      .prepare(
+        `SELECT m.id FROM movements m JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id
+         WHERE m.account_id = ? AND e.source_kind = 'cartola' AND e.stated_period = ?`
+      )
+      .all(accountId, periodMonth) as { id: number }[]
+  ).map((r) => r.id);
+  const movements = deleteMovements(ids, dbHandle);
   const delImp = dbHandle
     .prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
     .run(accountId, periodMonth);
@@ -222,7 +207,6 @@ export function importCheckingCartola(
   opts?: { replaceMonth?: boolean }
 ): CheckingCartolaImportResult {
   const plan = planCheckingCartola({ ...loadCheckingCartolaPlanInput(accountId, cartola, dbHandle), replace_month: opts?.replaceMonth === true });
-  assertCartolaPlanPairs(cartola, plan);
   const changesBefore = totalChanges(dbHandle);
   const applied = applyCheckingCartolaPlan(accountId, cartola, plan, dbHandle, { replaceMonth: opts?.replaceMonth === true });
   const flowOf = (index: number): ImportFlowItem => {

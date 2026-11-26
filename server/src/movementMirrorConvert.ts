@@ -24,7 +24,13 @@ import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
 
 import { db } from "./db.js";
 import { deleteMovements, insertMovement } from "./movementWrites.js";
-import { listedFactsOfMovement, mirrorLegListingOf, restoreMirrorLegListing, type MirrorLegListing } from "./movementListingFacts.js";
+import {
+  listedFactsOfMovement,
+  mirrorLegListingColumns,
+  mirrorLegListingOf,
+  restoreMirrorLegListing,
+  type MirrorLegListing,
+} from "./movementListingFacts.js";
 import { listMirrorPairCandidates, mirrorLegIsMonthPrecision, resolveMirrorPairRef } from "./movementMirrorPairs.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { type MovementAmountFields } from "./movementAmounts.js";
@@ -96,9 +102,9 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
        transfer_movement_id,
        out_movement_id, out_occurred_on, out_amount, out_currency, out_units_delta, out_note,
        in_movement_id, in_occurred_on, in_amount, in_currency, in_units_delta, in_note,
-       out_listed_on, out_listed_description, out_listed_document_no, out_listed_period,
-       in_listed_on, in_listed_description, in_listed_document_no, in_listed_period
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ${mirrorLegListingColumns("out")},
+       ${mirrorLegListingColumns("in")}
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   // Income include/exclude overrides describe the single-leg row as an income candidate; once
   // converted to a transfer the row is internal by construction and the override is moot.
@@ -219,6 +225,8 @@ function keptListing(merge: Record<string, unknown>, side: "out" | "in"): Mirror
     listed_description: merge[`${side}_listed_description`] as string | null,
     listed_document_no: merge[`${side}_listed_document_no`] as string | null,
     listed_period: merge[`${side}_listed_period`] as string | null,
+    listed_branch: merge[`${side}_listed_branch`] as string | null,
+    listed_position: merge[`${side}_listed_position`] as number | null,
   };
 }
 
@@ -263,10 +271,14 @@ export function undoMirrorConversion(transferMovementId: number): {
         out_listed_description: string | null;
         out_listed_document_no: string | null;
         out_listed_period: string | null;
+        out_listed_branch: string | null;
+        out_listed_position: number | null;
         in_listed_on: string | null;
         in_listed_description: string | null;
         in_listed_document_no: string | null;
         in_listed_period: string | null;
+        in_listed_branch: string | null;
+        in_listed_position: number | null;
       }
     | undefined;
   if (!merge) {

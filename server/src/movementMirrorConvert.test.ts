@@ -207,7 +207,7 @@ describe("convertMirrorPairs", () => {
       "import:cartola|2026-06|Ag|Transf|on:2026-06-15|amt:-8181811|idx:0"
     );
     // A cartola row states its listing (as the cartola import writes it).
-    recordBankListingFacts(outId, { bank_day: "2026-06-15", description: "Transf", document_no: "", period_month: "2026-06" }, db);
+    recordBankListingFacts(outId, { bank_day: "2026-06-15", description: "Transf", document_no: "", period_month: "2026-06", branch: "Ag", position: 0 }, db);
     const depId = insLeg(fundId, 8_181_811, "2026-06-16", 2.5, NOTE);
     insertDepositLink({
       account_id: fundId,

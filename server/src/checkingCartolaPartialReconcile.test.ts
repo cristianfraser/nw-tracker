@@ -17,13 +17,7 @@ import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
 import { createRealEstatePlace } from "./flowsRealEstateExpenses.js";
 import { insertBankPesoMovement } from "./movementWrites.js";
 import { dailyListingFacts } from "./movementListingFacts.js";
-import {
-  checkingMovementContentMatches,
-  parsePartialMovementNote,
-  partialDescriptionsMatch,
-  prunePartialMovementsSupersededByCartola,
-  reconcileCartolaPartialImports,
-} from "./checkingCartolaPartialReconcile.js";
+import { checkingMovementContentMatches, partialDescriptionsMatch } from "./checkingCartolaPartialReconcile.js";
 
 function testCheckingAccountId(): number | null {
   const row = db
@@ -36,28 +30,36 @@ function testCheckingAccountId(): number | null {
   return row?.id ?? null;
 }
 
-describe("checkingCartolaPartialReconcile", () => {
-  it("parses partial movement notes", () => {
-    expect(
-      parsePartialMovementNote("import:cartola-partial|2026-05-27|-27282|COM.MANTENCION PLAN")
-    ).toEqual({
-      occurred_on: "2026-05-27",
-      amount_clp: -27282,
-      description: "COM.MANTENCION PLAN",
-      document_no: "",
-    });
-    expect(
-      parsePartialMovementNote(
-        "import:cartola-partial|2026-05-11|-77621|0560112904 Transf a COMUNIDAD EDIFICIO|doc:5592808"
-      )
-    ).toEqual({
-      occurred_on: "2026-05-11",
-      amount_clp: -77621,
-      description: "0560112904 Transf a COMUNIDAD EDIFICIO",
-      document_no: "5592808",
-    });
-  });
+/** A cartola month of `movements` (saldos that add up). */
+function cartolaOf(periodMonth: string, movements: ParsedCheckingCartola["movements"]): ParsedCheckingCartola {
+  return {
+    source_file: `vitest-partial-${periodMonth}.xlsx`,
+    period_month: periodMonth,
+    period_from: `${periodMonth}-01`,
+    period_to: `${periodMonth}-28`,
+    saldo_inicial_clp: 500_000,
+    saldo_final_clp: 500_000 + movements.reduce((n, m) => n + m.amount_clp, 0),
+    movements,
+    skipped: [],
+    notes: [],
+  };
+}
 
+/** A daily-listing row as the daily listing's import writes it. */
+function dailyRow(accountId: number, mv: { occurred_on: string; amount_clp: number; description: string; document_no: string }): number {
+  return insertBankPesoMovement({ accountId, amount: mv.amount_clp, occurredOn: mv.occurred_on, note: partialMovementNote(mv), flowKind: null, listed: dailyListingFacts(mv) });
+}
+
+function removeMonth(accountId: number, periodMonth: string, notes: string[]): void {
+  db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(accountId, periodMonth);
+  db.prepare(`DELETE FROM movements WHERE account_id = ? AND (note LIKE ? OR note IN (${notes.map(() => "?").join(",") || "''"}))`).run(
+    accountId,
+    `import:cartola|${periodMonth}|%`,
+    ...notes
+  );
+}
+
+describe("checkingCartolaPartialReconcile", () => {
   it("matches últimos-vs-cartola description variants (June 2026 regression pairs)", () => {
     // Real pairs from the June 2026 import where the strict matcher left duplicates.
     // case only
@@ -271,83 +273,6 @@ describe("checkingCartolaPartialReconcile", () => {
     }
   });
 
-  it("reconciles partial rows on skipped cartola re-import", () => {
-    const accountId = testCheckingAccountId();
-    if (accountId == null) return;
-
-    const periodMonth = "2099-07";
-    const occurredOn = "2099-07-27";
-    const amountClp = -27_282;
-    const description = "COM.MANTENCION PLAN";
-    const partialNote = partialMovementNote({
-      occurred_on: occurredOn,
-      amount_clp: amountClp,
-      description,
-      document_no: "",
-    });
-    const officialNote = movementNote(periodMonth, "Agustinas", description, "", {
-      occurredOn,
-      amountClp,
-      cartolaIndex: 0,
-    });
-
-    db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(
-      accountId,
-      periodMonth
-    );
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND (note = ? OR note = ?)`).run(
-      accountId,
-      partialNote,
-      officialNote
-    );
-
-    db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-       VALUES (?, ?, 'clp', ?, ?, NULL), (?, ?, 'clp', ?, ?, NULL)`
-    ).run(
-      accountId,
-      amountClp,
-      occurredOn,
-      officialNote,
-      accountId,
-      amountClp,
-      occurredOn,
-      partialNote
-    );
-    db.prepare(
-      `INSERT INTO checking_cartola_imports (
-         account_id, period_month, source_file, movement_count,
-         saldo_final_clp, saldo_inicial_clp, period_from, period_to
-       ) VALUES (?, ?, ?, 1, 22000, 50000, '2099-07-01', '2099-07-31')`
-    ).run(accountId, periodMonth, "vitest-already-imported.xlsx");
-
-    const { removed } = reconcileCartolaPartialImports(accountId, [
-      {
-        occurred_on: occurredOn,
-        amount_clp: amountClp,
-        branch: "Agustinas",
-        description,
-        document_no: "",
-      },
-    ]);
-    expect(removed).toBe(1);
-    expect(
-      db.prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ?`).get(
-        accountId,
-        partialNote
-      )
-    ).toBeUndefined();
-
-    db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(
-      accountId,
-      periodMonth
-    );
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = ?`).run(
-      accountId,
-      officialNote
-    );
-  });
-
   it("skips partial import when matching cartola movement exists", () => {
     const accountId = testCheckingAccountId();
     if (accountId == null) return;
@@ -389,160 +314,59 @@ describe("checkingCartolaPartialReconcile", () => {
     );
   });
 
-  it("prunePartialMovementsSupersededByCartola leaves unrelated partial rows", () => {
+  it("a cartola leaves a daily row it does not list", () => {
     const accountId = testCheckingAccountId();
     if (accountId == null) return;
-
-    const unrelatedNote = partialMovementNote({
-      occurred_on: "2099-09-01",
-      amount_clp: -1000,
-      description: "Unrelated partial only",
-      document_no: "",
-    });
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = ?`).run(
-      accountId,
-      unrelatedNote
-    );
-    db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-       VALUES (?, -1000, 'clp', '2099-09-01', ?, NULL)`
-    ).run(accountId, unrelatedNote);
-
-    const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
-      {
-        occurred_on: "2099-09-02",
-        amount_clp: -2000,
-        branch: "",
-        description: "Other cartola move",
-        document_no: "",
-      },
-    ]);
-    expect(removed).toBe(0);
-    expect(
-      db.prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ?`).get(
-        accountId,
-        unrelatedNote
-      )
-    ).toBeDefined();
-
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = ?`).run(
-      accountId,
-      unrelatedNote
-    );
+    const unrelated = { occurred_on: "1800-05-01", amount_clp: -1000, description: "Unrelated partial only", document_no: "" };
+    removeMonth(accountId, "1800-05", [partialMovementNote(unrelated)]);
+    const row = dailyRow(accountId, unrelated);
+    try {
+      const r = importCheckingCartola(accountId, cartolaOf("1800-05", [{ occurred_on: "1800-05-02", amount_clp: -2000, branch: "", description: "Other cartola move", document_no: "" }]));
+      expect([r.movementsInserted, r.partialsRestated, r.partialsRemoved]).toEqual([1, 0, 0]);
+      expect(db.prepare(`SELECT note FROM movements WHERE id = ?`).get(row)).toEqual({ note: partialMovementNote(unrelated) });
+    } finally {
+      removeMonth(accountId, "1800-05", [partialMovementNote(unrelated)]);
+    }
   });
 
-  it("migrates Único category from partial to official cartola on reconcile", () => {
+  it("keeps a daily row's Único category on the cartola row it becomes", () => {
     const accountId = testCheckingAccountId();
     const bills = getCcExpenseCategoryBySlug("bills");
     if (accountId == null || bills == null) return;
-
     const periodMonth = "1800-03";
-    const occurredOn = "1800-03-15";
-    const amountClp = -76_282;
-    const description = "0560112904 TRANSF A COMUNIDAD EDIFICIO";
-    const partialNote = partialMovementNote({
-      occurred_on: occurredOn,
-      amount_clp: amountClp,
-      description,
-      document_no: "0560112904",
-    });
-    const officialNote = movementNote(periodMonth, "Agustinas", description, "0560112904", {
-      occurredOn,
-      amountClp,
-      cartolaIndex: 0,
-    });
-
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note IN (?, ?)`).run(
-      accountId,
-      partialNote,
-      officialNote
-    );
-
-    const partialInsert = db
-      .prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-         VALUES (?, ?, 'clp', ?, ?, NULL)`
-      )
-      .run(accountId, amountClp, occurredOn, partialNote);
-    const partialId = Number(partialInsert.lastInsertRowid);
-
-    db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-       VALUES (?, ?, 'clp', ?, ?, NULL)`
-    ).run(accountId, amountClp, occurredOn, officialNote);
-
+    const listed = { occurred_on: "1800-03-15", amount_clp: -76_282, description: "0560112904 TRANSF A COMUNIDAD EDIFICIO", document_no: "0560112904" };
+    removeMonth(accountId, periodMonth, [partialMovementNote(listed)]);
+    const partialId = dailyRow(accountId, listed);
     uniqueCategoryInsert.run(accountId, checkingMovementPurchaseKey(partialId), bills.id);
-
-    const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
-      {
-        occurred_on: occurredOn,
-        amount_clp: amountClp,
-        branch: "Agustinas",
-        description,
-        document_no: "0560112904",
-      },
-    ]);
-    expect(removed).toBe(1);
-
-    const stableKey = `checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:0`;
-    const migrated = db
-      .prepare(
-        `SELECT c.slug FROM ${FLOW_CATEGORY_ROWS_SQL} up
-         JOIN cc_expense_categories c ON c.id = up.category_id
-         WHERE up.account_id = ? AND up.purchase_key = ?`
-      )
-      .get(accountId, stableKey) as { slug: string } | undefined;
-    expect(migrated?.slug).toBe("bills");
-    expect(
-      db.prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ?`).get(
-        accountId,
-        partialNote
-      )
-    ).toBeUndefined();
-
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = ?`).run(
-      accountId,
-      officialNote
-    );
-    db.prepare(
-      `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
-    ).run(accountId, stableKey);
+    const stableKey = `checking-cartola:${accountId}:${periodMonth}:${listed.occurred_on}:${listed.amount_clp}:0`;
+    try {
+      const r = importCheckingCartola(accountId, cartolaOf(periodMonth, [{ ...listed, branch: "Agustinas" }]));
+      expect(r.partialsRestated).toBe(1);
+      const migrated = db
+        .prepare(
+          `SELECT c.slug FROM ${FLOW_CATEGORY_ROWS_SQL} up
+           JOIN cc_expense_categories c ON c.id = up.category_id
+           WHERE up.account_id = ? AND up.purchase_key = ?`
+        )
+        .get(accountId, stableKey) as { slug: string } | undefined;
+      expect(migrated?.slug).toBe("bills");
+      expect(db.prepare(`SELECT note LIKE 'import:cartola|%' AS cartola FROM movements WHERE id = ?`).get(partialId)).toEqual({ cartola: 1 });
+    } finally {
+      db.prepare(
+        `DELETE FROM flow_categories WHERE rowid IN (SELECT rid FROM ${FLOW_CATEGORY_ROWS_SQL} WHERE account_id = ? AND purchase_key = ?)`
+      ).run(accountId, stableKey);
+      removeMonth(accountId, periodMonth, [partialMovementNote(listed)]);
+    }
   });
 
-  it("moves a place bill's link from the partial row onto the cartola row", () => {
+  it("keeps a place bill's link on the cartola row a daily row becomes", () => {
     const accountId = testCheckingAccountId();
     if (accountId == null) return;
-
     const periodMonth = "1800-04";
-    const occurredOn = "1800-04-15";
-    const amountClp = -81_103;
-    const description = "TRANSF A COMUNIDAD EDIFICIO VITEST";
-    const partialNote = partialMovementNote({
-      occurred_on: occurredOn,
-      amount_clp: amountClp,
-      description,
-      document_no: "0560112904",
-    });
-    const officialNote = movementNote(periodMonth, "Agustinas", description, "0560112904", {
-      occurredOn,
-      amountClp,
-      cartolaIndex: 0,
-    });
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note IN (?, ?)`).run(accountId, partialNote, officialNote);
+    const listed = { occurred_on: "1800-04-15", amount_clp: -81_103, description: "TRANSF A COMUNIDAD EDIFICIO VITEST", document_no: "0560112904" };
+    removeMonth(accountId, periodMonth, [partialMovementNote(listed)]);
     db.prepare(`DELETE FROM expense_accounts WHERE slug = 'vitest_cartola_place'`).run();
-
-    const partialId = Number(
-      db
-        .prepare(
-          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-           VALUES (?, ?, 'clp', ?, ?, NULL)`
-        )
-        .run(accountId, amountClp, occurredOn, partialNote).lastInsertRowid
-    );
-    db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-       VALUES (?, ?, 'clp', ?, ?, NULL)`
-    ).run(accountId, amountClp, occurredOn, officialNote);
+    const partialId = dailyRow(accountId, listed);
     createRealEstatePlace({ slug: "vitest_cartola_place", label: "Vitest cartola" });
     const entryId = Number(
       db
@@ -554,21 +378,18 @@ describe("checkingCartolaPartialReconcile", () => {
         .run().lastInsertRowid
     );
     insertBillLink(entryId, checkingMovementPurchaseKey(partialId), "manual");
-
     try {
-      const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
-        { occurred_on: occurredOn, amount_clp: amountClp, branch: "Agustinas", description, document_no: "0560112904" },
-      ]);
-      expect(removed).toBe(1);
-      expect(billLinkPurchaseKey(entryId)).toBe(`checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:0`);
+      const r = importCheckingCartola(accountId, cartolaOf(periodMonth, [{ ...listed, branch: "Agustinas" }]));
+      expect(r.partialsRestated).toBe(1);
+      expect(billLinkPurchaseKey(entryId)).toBe(`checking-cartola:${accountId}:${periodMonth}:${listed.occurred_on}:${listed.amount_clp}:0`);
     } finally {
       db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
       db.prepare(`DELETE FROM expense_accounts WHERE slug = 'vitest_cartola_place'`).run();
-      db.prepare(`DELETE FROM movements WHERE account_id = ? AND note IN (?, ?)`).run(accountId, partialNote, officialNote);
+      removeMonth(accountId, periodMonth, [partialMovementNote(listed)]);
     }
   });
 
-  it("partial withdrawals appear in gastos until superseded by cartola", () => {
+  it("daily-listing withdrawals appear in gastos", () => {
     const accountId = testCheckingAccountId();
     if (accountId == null) return;
 

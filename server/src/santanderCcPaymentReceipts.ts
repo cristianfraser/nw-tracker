@@ -23,9 +23,9 @@
  * Either way the payment is dated when it happened, across a month boundary too; the bank's
  * posting day lives in `movement_bank_postings`, which is what the cartola checks read (a
  * payment on the 30th that the bank posts on the 1st counts in September's display and in
- * October's cartola). The re-dated row's NOTE keeps the bank's date as well — it is the xlsx
- * dedupe identity — and `prunePartialMovementsSupersededByCartola` carries the payment day and
- * the posting onto the official cartola row when the cartola replaces the partial.
+ * October's cartola). The row's listing facts keep the bank's day (the daily listing's dedupe
+ * identity), and the cartola that lists the row restates it in place, its payment day kept and the
+ * cartola's day its posting (`checkingCartolaRestate.ts`).
  *
  * Matching is deliberately narrow (same spirit as ccPaymentMirrors): single-leg checking debit,
  * exact pesos, bank date inside the posting window of the payment date

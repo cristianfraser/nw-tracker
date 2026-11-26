@@ -13,7 +13,6 @@ import { describe, expect, it } from "vitest";
  */
 const RAW_TABLE_READERS: Record<string, string> = {
   // Writers and migrations: they own the rows.
-  "ccStatementsImport.ts": "raw: the line importer (writes lines, owns dedupe keys and fingerprints)",
   "migrationHooks/cardLineKind276.ts": "raw: migration 276 hook (fills the stored kind)",
   "migrationHooks/flowEvidenceEstimate295.ts": "raw: migration 295 hook (re-kinds the estimate statements' lines' evidence)",
   "migrationHooks/expenseKeyLegacyRewrite273.ts": "raw: migration 273 hook (frozen)",
@@ -39,7 +38,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccExpenseLineDedupe.ts": "raw: import dedupe (exact and fuzzy twins)",
   "ccCrossImportDedupe.ts": "raw: import-time fuzzy line lookup and the superseded-line remover",
   "ccTruncatedMerchantDedupe.ts": "raw: pending vs settled bucket lines",
-  "flows/cardLineAdoption.ts": "raw: adoption on arrival — the line recogniser (parser_row_id, identity) and line categories",
+  "flows/cardLineAdoption.ts": "raw: the line recogniser (parser_row_id, identity), adoption by a replacing line, line categories",
   "ccRecurringPendingLines.ts": "raw: pending listing under another name",
   "ccManualInstallmentStatementReconcile.ts": "raw: manual plan replaced by its statement twin",
   "cardStatementCrossCheck.ts": "raw: JSON vs ledger cross-check",
@@ -61,6 +60,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "test/vitestDbSeed.ts": "test seed",
   "test/flowFixtures.ts": "test fixture lines",
   "test/tempCardMaster.ts": "test fixture card cleanup",
+  "test/statementOnFile.ts": "test: a fixture statement read back as its document",
   "vitest.setup.ts": "per-file check that the person's card lines are unchanged",
 };
 

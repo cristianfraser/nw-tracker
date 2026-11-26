@@ -6,12 +6,6 @@
  * keeps regex knowledge out of the matcher.
  */
 import { daysBetweenIso, isCcPaymentMerchant } from "nw-tracker-contracts";
-import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
-import {
-  isCheckingPartialWithdrawalNote,
-  parsePartialMovementNote,
-} from "./checkingCartolaPartialReconcile.js";
-import { stripTrailingCartolaNoteTags } from "./checkingCartolaParse.js";
 import {
   isGenericTransferMerchantKey,
   normalizeCcExpenseMerchantKey,
@@ -44,26 +38,6 @@ export function checkingOutflowIsAtmWithdrawal(description: string): boolean {
  */
 export function isInvestmentDepositTarget(groupSlug: string): boolean {
   return isInvestmentDepositTargetGroup(groupSlug);
-}
-
-/**
- * A movement written from an issuer's mails: `import:<issuer>-mail|<mail time or "residual" /
- * "standin" …>|<description>` — the Santander cuenta corriente's lost months
- * (scripts/rebuild-checking-gap-from-mails.ts), the MACH account, which never had statements
- * (scripts/build-mach-account-from-mails.ts), and an incoming transfer's credit written from its
- * mail before the bank feed lists it (`transfer_notice_movements`; Santander or Banco de Chile).
- */
-export const MAIL_REBUILT_NOTE_PREFIXES = ["import:santander-mail|", "import:mach-mail|", "import:bancochile-mail|"] as const;
-
-export function isMailRebuiltCheckingNote(note: string | null | undefined): boolean {
-  const n = String(note ?? "").trim();
-  return MAIL_REBUILT_NOTE_PREFIXES.some((p) => n.startsWith(p));
-}
-
-export function isCheckingGastosWithdrawalNote(note: string | null | undefined): boolean {
-  const n = String(note ?? "").trim();
-  if (!n || isCheckingLedgerAnchorNote(n)) return false;
-  return n.startsWith("import:cartola|") || isCheckingPartialWithdrawalNote(n) || isMailRebuiltCheckingNote(n);
 }
 
 /** The owner's own transfers («<owner> - SANTANDER»): the owner's name is `owner_identity`, never a literal. */
@@ -105,13 +79,10 @@ export function isPayrollRemuneracionCheckingInflow(description: string): boolea
   return PAYROLL_REMUNERACION_INFLOW_RE.test(d);
 }
 
-/** Payroll deposit on cartola — REMUNERACION may live in branch or description segment of the note. */
-export function isPayrollRemuneracionCartolaCredit(credit: {
-  note: string | null;
-}): boolean {
-  const n = String(credit.note ?? "").trim();
-  if (PAYROLL_REMUNERACION_INFLOW_RE.test(n)) return true;
-  return isPayrollRemuneracionCheckingInflow(cartolaDescriptionFromNote(credit.note));
+/** A payroll deposit: REMUNERACION in the description, or in the branch a cartola printed it under. */
+export function isPayrollRemuneracionCartolaCredit(credit: { description: string; branch: string | null }): boolean {
+  if (PAYROLL_REMUNERACION_INFLOW_RE.test(credit.description) || PAYROLL_REMUNERACION_INFLOW_RE.test(credit.branch ?? "")) return true;
+  return isPayrollRemuneracionCheckingInflow(credit.description);
 }
 
 /** Vista ↔ corriente internet traspaso (both directions on cartola). */
@@ -221,37 +192,6 @@ export function dapAbonoAmountMatchesCargo(cargoAmount: number, abonoAmount: num
   return abono <= Math.round(cargo * (1 + maxPremium));
 }
 
-/** Parse withdrawal description from official cartola, partial import or mail-rebuilt notes. */
-export function cartolaDescriptionFromNote(note: string | null | undefined): string {
-  const n = String(note ?? "").trim();
-  const partial = parsePartialMovementNote(n);
-  if (partial) return partial.description;
-  // `import:<issuer>-mail|<mail time or marker>|<description>` (see `isMailRebuiltCheckingNote`).
-  const mail = /^import:(?:santander|mach|bancochile)-mail\|[^|]*\|(.*)$/.exec(n);
-  if (mail) return mail[1]!.trim();
-  if (!n.startsWith("import:cartola|")) return n;
-  const rest = n.slice("import:cartola|".length);
-  const firstBar = rest.indexOf("|");
-  if (firstBar < 0) return rest;
-  const afterPeriod = rest.slice(firstBar + 1);
-  const secondBar = afterPeriod.indexOf("|");
-  if (secondBar < 0) return afterPeriod.trim();
-  let desc = afterPeriod.slice(secondBar + 1).trim();
-  if (desc.startsWith("doc:")) desc = "";
-  return stripTrailingCartolaNoteTags(desc);
-}
-
-/** Document number from `import:cartola|…|description|doc:NNNN`. */
-export function cartolaDocumentFromNote(note: string | null | undefined): string | null {
-  const n = String(note ?? "").trim();
-  const idx = n.lastIndexOf("|doc:");
-  if (idx < 0) return null;
-  let doc = n.slice(idx + "|doc:".length).trim();
-  const meta = doc.search(/\|(on:|amt:|idx:)/);
-  if (meta >= 0) doc = doc.slice(0, meta).trim();
-  return doc.length > 0 ? doc : null;
-}
-
 export function isMercadoCapitalesCargoDescription(description: string): boolean {
   const d = description.trim();
   if (!d) return false;
@@ -285,9 +225,9 @@ export function isExcludedCheckingInflow(description: string): boolean {
   return bankDescriptionMatchesUnion("excluded_inflow", d);
 }
 
-/** Wires from checking into Fintual / reserva (capital funding, not consumption). */
-export function checkingWithdrawalFundsInvestmentCapital(note: string | null): boolean {
-  const d = stripCheckingBranchPrefix(cartolaDescriptionFromNote(note)).trim();
+/** Wires from checking into Fintual / reserva (capital funding, not consumption), by the row's description. */
+export function checkingWithdrawalFundsInvestmentCapital(description: string): boolean {
+  const d = stripCheckingBranchPrefix(description).trim();
   return bankDescriptionMatchesUnion("funds_investment_capital", d);
 }
 

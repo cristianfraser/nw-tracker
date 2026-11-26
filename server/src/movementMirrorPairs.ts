@@ -34,7 +34,7 @@ import { daysBetweenIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { movementIdOnFlowOfKey } from "./flows/flowIdentity.js";
-import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
+import { cartolaRowPurchaseKey } from "./bankRowFacts.js";
 import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
@@ -225,8 +225,7 @@ function loadSpendingCategorizedOutflowIds(
   const ids = new Set<number>();
   for (const out of outs) {
     if (!checkingIds.has(out.account_id)) continue;
-    const key =
-      checkingCartolaStablePurchaseKey(out.account_id, out.note) ?? checkingMovementPurchaseKey(out.id);
+    const key = cartolaRowPurchaseKey(out.id, out.account_id) ?? checkingMovementPurchaseKey(out.id);
     if (spendingKeys.has(key) || splitIds.has(out.id)) ids.add(out.id);
   }
   return ids;

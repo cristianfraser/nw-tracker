@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { rowTextOfFixtureNote } from "./test/dailyListingFacts.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import {
@@ -64,8 +65,7 @@ describe("checkingCreditMatchesMonthBucketLedgerCapitalReturn", () => {
     const credit = {
       occurred_on: "2021-12-09",
       amount_clp: 800_000,
-      note:
-        "import:cartola|2021-12|Villanelo|Depósito en Efectivo|on:2021-12-09|amt:800000|idx:5",
+      ...rowTextOfFixtureNote("import:cartola|2021-12|Villanelo|Depósito en Efectivo|on:2021-12-09|amt:800000|idx:5"),
     };
     const ledgerRetiro = {
       occurred_on: "2021-12-31",
@@ -96,8 +96,7 @@ describe("checkingCreditMatchesMonthBucketLedgerCapitalReturn", () => {
     const credit = {
       occurred_on: "2024-03-13",
       amount_clp: 10_100_000,
-      note:
-        "import:cartola|2024-03|CENTRO EXP|Depósito con Vales Vista|on:2024-03-13|amt:10100000|idx:13",
+      ...rowTextOfFixtureNote("import:cartola|2024-03|CENTRO EXP|Depósito con Vales Vista|on:2024-03-13|amt:10100000|idx:13"),
     };
     const ledgerRetiro = {
       occurred_on: "2024-03-31",
@@ -129,8 +128,7 @@ describe("checkingCreditMatchesLedgerNetWorthCapitalReturn", () => {
     const fintualCredit = {
       occurred_on: "2099-04-02",
       amount_clp: 3_500_000,
-      note:
-        "import:cartola|2099-04|401|0768106274 Transf.|on:2099-04-02|amt:3500000|idx:1",
+      ...rowTextOfFixtureNote("import:cartola|2099-04|401|0768106274 Transf.|on:2099-04-02|amt:3500000|idx:1"),
     };
     const ledgerRetiro = {
       occurred_on: "2099-03-30",
@@ -152,8 +150,7 @@ describe("checkingCreditMatchesLedgerNetWorthCapitalReturn", () => {
     const namedCredit = {
       occurred_on: "2099-04-02",
       amount_clp: 3_500_000,
-      note:
-        "import:cartola|2099-04|Agustinas|0012345678 Transf. Pedro Pablo Perez|on:2099-04-02|amt:3500000|idx:2",
+      ...rowTextOfFixtureNote("import:cartola|2099-04|Agustinas|0012345678 Transf. Pedro Pablo Perez|on:2099-04-02|amt:3500000|idx:2"),
     };
     expect(
       checkingCreditMatchesLedgerNetWorthCapitalReturn(namedCredit, [ledgerRetiro], {
@@ -173,7 +170,7 @@ describe("checkingCreditMatchesLedgerNetWorthCapitalReturn", () => {
     const fintualAgfCredit = {
       occurred_on: "2099-05-07",
       amount_clp: 5_500_000,
-      note: `import:cartola|2099-05|Agustinas|${description}|on:2099-05-07|amt:5500000|idx:4`,
+      ...rowTextOfFixtureNote(`import:cartola|2099-05|Agustinas|${description}|on:2099-05-07|amt:5500000|idx:4`),
     };
     const reservaRetiro = {
       occurred_on: "2099-05-06",
@@ -200,16 +197,14 @@ describe("checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalReturn", (
         account_id: 22,
         occurred_on: "2099-05-11",
         amount_clp: 6_000_000,
-        note:
-          "import:cartola|2099-05|Agustinas|0768106274 Transf.|doc:9250424|on:2099-05-11|amt:6000000|idx:1",
+        ...rowTextOfFixtureNote("import:cartola|2099-05|Agustinas|0768106274 Transf.|doc:9250424|on:2099-05-11|amt:6000000|idx:1"),
       },
       {
         movement_id: 2,
         account_id: 22,
         occurred_on: "2099-05-11",
         amount_clp: 7_000_000,
-        note:
-          "import:cartola|2099-05|Agustinas|0768106274 Transf.|doc:9250424|on:2099-05-11|amt:7000000|idx:2",
+        ...rowTextOfFixtureNote("import:cartola|2099-05|Agustinas|0768106274 Transf.|doc:9250424|on:2099-05-11|amt:7000000|idx:2"),
       },
     ]).batches[0]!;
     expect(batch.total_clp).toBe(13_000_000);
@@ -251,14 +246,13 @@ describe("checkingCreditMatchesNetWorthCapitalReturn", () => {
     const genericCredit = {
       occurred_on: "2099-02-10",
       amount_clp: 3_500_000,
-      note:
-        "import:cartola|2099-02|Agustinas|ABONO TRANSFERENCIA ELECTRONICA|on:2099-02-10|amt:3500000|idx:1",
+      ...rowTextOfFixtureNote("import:cartola|2099-02|Agustinas|ABONO TRANSFERENCIA ELECTRONICA|on:2099-02-10|amt:3500000|idx:1"),
     };
     const unrelatedWithdrawal = {
       account_id: 1,
       occurred_on: "2099-02-05",
       amount_clp: -3_500_000,
-      note: "import:cartola|2099-02|Agustinas|REMUNERACION EMPRESA|on:2099-02-05|amt:-3500000|idx:1",
+      ...rowTextOfFixtureNote("import:cartola|2099-02|Agustinas|REMUNERACION EMPRESA|on:2099-02-05|amt:-3500000|idx:1"),
     };
     expect(
       checkingCreditMatchesNetWorthCapitalReturn(genericCredit, [unrelatedWithdrawal])
@@ -268,10 +262,9 @@ describe("checkingCreditMatchesNetWorthCapitalReturn", () => {
       account_id: 1,
       occurred_on: "2099-02-07",
       amount_clp: -3_500_000,
-      note:
-        "import:cartola|2099-02|Agustinas|0768106274 Transf a FINTUAL ADMINISTRADORA G|on:2099-02-07|amt:-3500000|idx:2",
+      ...rowTextOfFixtureNote("import:cartola|2099-02|Agustinas|0768106274 Transf a FINTUAL ADMINISTRADORA G|on:2099-02-07|amt:-3500000|idx:2"),
     };
-    expect(checkingWithdrawalFundsInvestmentCapital(fintualWithdrawal.note)).toBe(true);
+    expect(checkingWithdrawalFundsInvestmentCapital(fintualWithdrawal.description)).toBe(true);
     expect(
       checkingCreditMatchesNetWorthCapitalReturn(genericCredit, [fintualWithdrawal])
     ).toBe(true);
@@ -279,8 +272,7 @@ describe("checkingCreditMatchesNetWorthCapitalReturn", () => {
     const namedCredit = {
       occurred_on: "2099-02-10",
       amount_clp: 3_500_000,
-      note:
-        "import:cartola|2099-02|Agustinas|0012345678 Transf. Pedro Pablo Perez|on:2099-02-10|amt:3500000|idx:3",
+      ...rowTextOfFixtureNote("import:cartola|2099-02|Agustinas|0012345678 Transf. Pedro Pablo Perez|on:2099-02-10|amt:3500000|idx:3"),
     };
     expect(checkingCreditMatchesNetWorthCapitalReturn(namedCredit, [fintualWithdrawal])).toBe(
       false
@@ -291,8 +283,7 @@ describe("checkingCreditMatchesNetWorthCapitalReturn", () => {
     const fintualCredit = {
       occurred_on: "2099-04-02",
       amount_clp: 3_500_000,
-      note:
-        "import:cartola|2099-04|401|0768106274 Transf.|on:2099-04-02|amt:3500000|idx:4",
+      ...rowTextOfFixtureNote("import:cartola|2099-04|401|0768106274 Transf.|on:2099-04-02|amt:3500000|idx:4"),
     };
     const ledgerRetiro = {
       occurred_on: "2099-03-30",

@@ -27,7 +27,7 @@ import { requestExpenseLinkSync } from "../expenseLinkSync.js";
 // Registers the expense-link sync the finish asks for.
 import "../expenseAssignmentWrites.js";
 import type { CardCanonicalStatement } from "nw-tracker-contracts";
-import { mergeCardStatements } from "../ccInstallmentLedgerMerge.js";
+import { mergeListingStatements } from "../ccInstallmentLedgerMerge.js";
 import { importStatementDocuments, type StatementDocumentsImportResult } from "./statementLinePlanApply.js";
 import type { CcImportFlowItem, SkippedCcImportFlowItem } from "../ccStatementsImport.js";
 import {
@@ -183,8 +183,7 @@ export function insertLines(
       parsed.lines,
       opts
     );
-    const merged = mergeCardStatements(accountId, statements, {
-      replaceLedger: false,
+    const merged = mergeListingStatements(accountId, statements, {
       listingBatchKind: batchKind,
       ...(opts?.listingOrder ? { listingOrder: opts.listingOrder } : {}),
     });

@@ -8,8 +8,8 @@
  * web-paste bucket the same day, under the merchant the card's statement prints for the lender
  * (`LENDER_CARD_MERCHANT`), so the card balance and the mortgage card-match check read the payment
  * at once. The statement settles the planted line when it prints the same charge
- * (`reconcileOpenWebPasteAfterPdfClose`: same merchant once BCI's « (T)» is stripped, same pesos,
- * the same day). The card's own unbilled listing (`card.unbilled_movements`, the Lider site) shows
+ * (`planBucketSettlement`: same merchant once BCI's « (T)» is stripped, same pesos, the same day),
+ * restating it as its line. The card's own unbilled listing (`card.unbilled_movements`, the Lider site) shows
  * the same charge under its cut name («TOKU *METLIFE HIPOTE»), the same pesos, the same day: the
  * listing import skips it as the planted line's fuzzy twin (`oneShotLineFuzzyMatchExists`, the
  * installment stem rule: one name a prefix of the other), so the planted line stays the card's

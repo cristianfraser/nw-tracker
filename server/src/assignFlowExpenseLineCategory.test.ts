@@ -1,3 +1,4 @@
+import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { fixtureCardLine, fixtureMovement } from "./test/flowFixtures.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
@@ -14,11 +15,12 @@ describe("assignFlowExpenseLineCategory", () => {
   const cleanups: (() => void)[] = [];
   beforeAll(() => {
     cleanups.push(fixtureMovement(SHARED_ID, -4321, "2021-11-22"), fixtureCardLine(SHARED_ID));
-    // A cartola row, so the checking reader takes it as a withdrawal (the cartola identity is still its note).
+    // A cartola row (its listing facts stated), so the checking reader takes it as a withdrawal.
     db.prepare(`UPDATE movements SET note = ? WHERE id = ?`).run(
       "import:cartola|2021-11|Agustinas|COMPRA VITEST FIXTURE|on:2021-11-22|amt:-4321|idx:0",
       SHARED_ID
     );
+    stateListingFactsOfFixtures();
     expect(checkingGastosMovementBelongs(SHARED_ID).ok).toBe(true);
     expect(ccStatementLineBelongsToCreditCardGroup(SHARED_ID).ok).toBe(true);
   });

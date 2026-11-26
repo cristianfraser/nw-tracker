@@ -77,7 +77,7 @@ import { foreignPaymentLineClpResolver, type CcForeignPaymentLine } from "./ccFa
 import { isCcForeignPaymentLine } from "./ccForeignStatementBilled.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import { loadCheckingExpenseRefunds } from "./checkingExpenseRefunds.js";
-import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
+import { movementDescription } from "./bankRowFacts.js";
 
 
 
@@ -683,7 +683,7 @@ function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
 function checkingExpenseRefundLineDrafts(): FlowCcExpenseLineRowDraft[] {
   return loadCheckingExpenseRefunds().map((r) => {
     const month = monthKeyFromYmd(r.received_on);
-    const description = cartolaDescriptionFromNote(r.note);
+    const description = movementDescription(r.movement_id);
     return {
       source: "checking",
       statement_line_id: r.movement_id,

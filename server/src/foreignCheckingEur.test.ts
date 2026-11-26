@@ -43,7 +43,7 @@ describe("a euro checking account on the bank side", () => {
         .run(checkingEur, Math.abs(eur), on, note, eur > 0 ? "deposit" : "withdrawal").lastInsertRowid
     );
     // A statement row states its listing, as the cartola import writes it.
-    recordBankListingFacts(id, { bank_day: on, description, document_no: `vitest-eur${idx}`, period_month: on.slice(0, 7) }, db);
+    recordBankListingFacts(id, { bank_day: on, description, document_no: `vitest-eur${idx}`, period_month: on.slice(0, 7), branch: "Madrid", position: 980 + idx }, db);
     movements.push(id);
     return id;
   };

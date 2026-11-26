@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
-import { importCheckingCartolaInsertThenPrune } from "./checkingCartolaLegacyImport.js";
 import { movementNote, type ParsedCheckingCartola, type ParsedCheckingMovement } from "./checkingCartolaParse.js";
 import { partialMovementNote } from "./checkingPartialMovementsImport.js";
 import { insertBankPesoMovement, insertMovement, redateMovementKeepingBankDay } from "./movementWrites.js";
@@ -16,12 +15,10 @@ import { putFlowCategory } from "./flows/flowCategories.js";
 import { buildExpenseKey } from "./expenseKeys.js";
 
 /**
- * The cartola plan applied (`applyCheckingCartolaPlan`) against today's import
- * it replaced (`importCheckingCartolaInsertThenPrune`, kept until keep-rows phase 4), each on its own copy of the same fixture (a rolled-back transaction):
- * the same movements (day, amount, note, kind, bank posting), the same month record and balance,
- * the same assignments per movement; a kept daily row keeps its id, flow and arrival stamp, its
- * listing staying on the flow as history; its flow states the cartola's wording (today the daily
- * note's).
+ * The cartola plan applied (`applyCheckingCartolaPlan`), in a rolled-back transaction: the
+ * movements it ends with (day, amount, note, bank posting, category), the month record and balance;
+ * a kept daily row keeps its id, flow and arrival stamp, its listing staying on the flow as history,
+ * and its flow states the cartola's wording.
  */
 const PERIOD = "1803-05";
 
@@ -79,7 +76,7 @@ function rolledBack<T>(fn: () => T): T {
   return out!;
 }
 
-describe("cartola plan applied, against today's import", () => {
+describe("cartola plan applied", () => {
   let checking = 0;
   let other = 0;
 
@@ -105,28 +102,16 @@ describe("cartola plan applied, against today's import", () => {
     return cat;
   }
 
-  function ledgerFacts() {
-    const movements = (
-      db
-        .prepare(
-          `SELECT m.occurred_on, m.amount, m.currency, m.note, m.flow_kind, m.units_delta,
-                  (SELECT posted_on || ':' || occurred_on_basis FROM movement_bank_postings bp WHERE bp.movement_id = m.id AND bp.account_id = m.account_id) AS posting,
-                  f.kind AS flow_kind_of_flow, f.occurred_on AS flow_on, f.amount AS flow_amount, f.legacy_key,
-                  (SELECT group_concat(portion || ':' || category_id) FROM flow_categories c WHERE c.flow_id = m.flow_id) AS categories,
-                  e.source_kind, e.document_key, e.stated_on, e.stated_amount, e.stated_description, e.stated_document_no, e.stated_period, e.authority
-           FROM movements m LEFT JOIN flows f ON f.id = m.flow_id
-           LEFT JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id
-           WHERE m.account_id = ? OR m.from_account_id = ? OR m.to_account_id = ?`
-        )
-        .all(checking, checking, checking) as Record<string, unknown>[]
-    )
-      .map((r) => JSON.stringify(r))
-      .sort();
-    const month = db
-      .prepare(`SELECT period_month, source_file, movement_count, saldo_final_clp, saldo_inicial_clp FROM checking_cartola_imports WHERE account_id = ?`)
-      .all(checking);
-    const balance = (db.prepare(`SELECT COALESCE(SUM(amount), 0) AS b FROM movements WHERE account_id = ?`).get(checking) as { b: number }).b;
-    return { movements, month, balance };
+  /** The account's movements: id, day, amount, note, bank posting, the flow's category. */
+  function movementsNow() {
+    return db
+      .prepare(
+        `SELECT m.id, m.occurred_on, m.amount, m.note,
+                (SELECT posted_on FROM movement_bank_postings bp WHERE bp.movement_id = m.id AND bp.account_id = m.account_id) AS posted_on,
+                (SELECT group_concat(portion || ':' || category_id) FROM flow_categories c WHERE c.flow_id = m.flow_id) AS categories
+         FROM movements m WHERE m.account_id = ? ORDER BY m.id`
+      )
+      .all(checking) as { id: number; occurred_on: string; amount: number; note: string; posted_on: string | null; categories: string | null }[];
   }
 
   const rowState = (id: number) =>
@@ -134,15 +119,12 @@ describe("cartola plan applied, against today's import", () => {
       .prepare(`SELECT m.id, m.flow_id, f.first_seen_on, f.first_seen_seq FROM movements m LEFT JOIN flow_first_seen f ON f.flow_id = m.flow_id WHERE m.id = ?`)
       .get(id);
 
-  function both(c: ParsedCheckingCartola) {
+  /** Plans and applies `c`, rolled back; the plan, the result, the rows after and the month record. */
+  function applied(c: ParsedCheckingCartola) {
     const plan = planCheckingCartola(loadCheckingCartolaPlanInput(checking, c));
     const kept = plan.keep.map((k) => k.row_id);
     const keptBefore = kept.map(rowState);
-    const today = rolledBack(() => {
-      importCheckingCartolaInsertThenPrune(checking, c);
-      return ledgerFacts();
-    });
-    const applied = rolledBack(() => {
+    const after = rolledBack(() => {
       const result = applyCheckingCartolaPlan(checking, c, plan);
       const history = db
         .prepare(
@@ -150,29 +132,32 @@ describe("cartola plan applied, against today's import", () => {
            AND flow_id IN (SELECT flow_id FROM movements WHERE account_id = ?) ORDER BY stated_on, stated_description`
         )
         .all(checking);
-      return { facts: ledgerFacts(), kept: kept.map(rowState), result, history };
+      const month = db.prepare(`SELECT period_month, movement_count FROM checking_cartola_imports WHERE account_id = ?`).all(checking);
+      return { movements: movementsNow(), kept: kept.map(rowState), result, history, month };
     });
-    return { plan, today, applied, keptBefore };
+    return { plan, keptBefore, ...after };
   }
 
-  /** Today's movements with the flow's wording dropped (the flow states the cartola's under the plan). */
-  const sameExceptFlowWording = (r: ReturnType<typeof both>) => {
-    expect(r.applied.facts.month).toEqual(r.today.month);
-    expect(r.applied.facts.balance).toEqual(r.today.balance);
-    expect(r.applied.facts.movements).toEqual(r.today.movements);
-    expect(r.applied.kept).toEqual(r.keptBefore);
+  const noteOf = (c: ParsedCheckingCartola, index: number) => {
+    const m = c.movements[index]!;
+    return movementNote(c.period_month, m.branch, m.description, m.document_no, { occurredOn: m.occurred_on, amountClp: m.amount_clp, cartolaIndex: index });
   };
 
   it("a daily row the cartola lists is restated in place: the same ledger, its row, flow, stamp and category kept", () => {
     const row = daily("1803-05-03", -45_000, "TRANSFERENCIA A JUAN PEREZ SOTO");
     const category = categorize(row);
-    const r = both(cartola([mv("1803-05-03", -45_000, "Transferencia A Juan Perez"), mv("1803-05-05", -1_000, "Comision")]));
+    const c = cartola([mv("1803-05-03", -45_000, "Transferencia A Juan Perez"), mv("1803-05-05", -1_000, "Comision")]);
+    const r = applied(c);
     expect(r.plan.keep.map((k) => k.row_id)).toEqual([row]);
-    sameExceptFlowWording(r);
-    expect(r.applied.result.restated).toEqual([row]);
-    expect(r.applied.facts.movements.filter((m) => m.includes(`"categories":"gastos:${category}"`))).toHaveLength(1);
-    expect(r.applied.history).toEqual([{ source_kind: "daily_listing", stated_on: "1803-05-03", stated_description: "TRANSFERENCIA A JUAN PEREZ SOTO" }]);
-    // The flow states the cartola's wording; today it kept the daily note.
+    expect(r.result.restated).toEqual([row]);
+    expect(r.kept).toEqual(r.keptBefore);
+    expect(r.movements).toEqual([
+      { id: row, occurred_on: "1803-05-03", amount: -45_000, note: noteOf(c, 0), posted_on: null, categories: `gastos:${category}` },
+      { id: r.result.inserted[0], occurred_on: "1803-05-05", amount: -1_000, note: noteOf(c, 1), posted_on: null, categories: null },
+    ]);
+    expect(r.month).toEqual([{ period_month: PERIOD, movement_count: 2 }]);
+    expect(r.history).toEqual([{ source_kind: "daily_listing", stated_on: "1803-05-03", stated_description: "TRANSFERENCIA A JUAN PEREZ SOTO" }]);
+    // The flow states the cartola's wording.
     const flowDescription = rolledBack(() => {
       applyCheckingCartolaPlan(checking, cartola([mv("1803-05-03", -45_000, "Transferencia A Juan Perez"), mv("1803-05-05", -1_000, "Comision")]), r.plan);
       return (db.prepare(`SELECT f.description FROM movements m JOIN flows f ON f.id = m.flow_id WHERE m.id = ?`).get(row) as { description: string }).description;
@@ -183,41 +168,49 @@ describe("cartola plan applied, against today's import", () => {
   it("a receipt-corrected day stays, the cartola's day its bank posting", () => {
     const row = daily("1803-05-10", -120_000, "PAGO TARJETA CREDITO");
     redateMovementKeepingBankDay({ movementId: row, accountId: checking, occurredOn: "1803-05-09", bankPostedOn: "1803-05-10" });
-    const r = both(cartola([mv("1803-05-10", -120_000, "Pago Tarjeta Credito")]));
-    sameExceptFlowWording(r);
+    const c = cartola([mv("1803-05-10", -120_000, "Pago Tarjeta Credito")]);
+    const r = applied(c);
+    expect(r.kept).toEqual(r.keptBefore);
+    expect(r.movements).toEqual([{ id: row, occurred_on: "1803-05-09", amount: -120_000, note: noteOf(c, 0), posted_on: "1803-05-10", categories: null }]);
   });
 
   it("a transfer leg the cartola lists is confirmed and the daily row of it goes", () => {
-    insertMovement({ fromAccountId: checking, toAccountId: other, amount: 300_000, currency: "clp", occurredOn: "1803-05-15" });
+    const leg = insertMovement({ fromAccountId: checking, toAccountId: other, amount: 300_000, currency: "clp", occurredOn: "1803-05-15" });
     const row = daily("1803-05-15", -300_000, "TRASPASO A CUENTA PROPIA");
-    const r = both(cartola([mv("1803-05-15", -300_000, "Traspaso A Cuenta Propia")]));
-    sameExceptFlowWording(r);
-    expect(r.applied.result.removed).toEqual([row]);
+    const r = applied(cartola([mv("1803-05-15", -300_000, "Traspaso A Cuenta Propia")]));
+    expect(r.result.removed).toEqual([row]);
+    expect(r.result.confirmed).toEqual([leg]);
+    expect(r.movements).toEqual([]);
+    expect(r.month).toEqual([{ period_month: PERIOD, movement_count: 1 }]);
   });
 
-  it("a cartola imported again keeps every row; a daily row left over folds into the cartola row (today: its flow survives there)", () => {
+  it("a cartola imported again keeps every row; a daily row left over folds into the cartola row", () => {
     const c = cartola([mv("1803-05-20", -5_000, "Compra Comercio Uno"), mv("1803-05-21", -6_000, "Compra Comercio Dos")]);
     importCheckingCartola(checking, c);
+    const ids = movementsNow().map((m) => m.id);
     const leftover = daily("1803-05-21", -6_000, "COMPRA COMERCIO DOS");
-    const r = both(c);
+    const r = applied(c);
     expect(r.plan.fold.map((f) => f.row_id)).toEqual([leftover]);
-    // The rows end the same; the surviving flow is the cartola row's (today the daily row's, so its
-    // arrival stamp, this import's day, would sit on the cartola row): the stamps differ.
-    const strip = (rows: string[]) => rows.map((s) => JSON.parse(s) as Record<string, unknown>);
-    expect(strip(r.applied.facts.movements)).toEqual(strip(r.today.movements));
-    expect(r.applied.kept).toEqual(r.keptBefore);
-    expect(r.applied.result.folded).toEqual([leftover]);
+    expect(r.movements.map((m) => [m.id, m.note])).toEqual([
+      [ids[0], noteOf(c, 0)],
+      [ids[1], noteOf(c, 1)],
+    ]);
+    expect(r.kept).toEqual(r.keptBefore);
+    expect(r.result.folded).toEqual([leftover]);
   });
 
-  it("identical twin daily rows each restate their own movement (today both take the first, the second starts a flow)", () => {
+  it("identical twin daily rows each restate their own movement", () => {
     const a = daily("1803-05-22", -3_500, "PEAJE AUTOPISTA CENTRAL");
     const b = daily("1803-05-22", -3_500, "PEAJE AUTOPISTA CENTRAL");
-    const r = both(cartola([mv("1803-05-22", -3_500, "Peaje Autopista Central"), mv("1803-05-22", -3_500, "Peaje Autopista Central")]));
-    expect(r.applied.result.restated).toEqual([a, b]);
-    expect(r.applied.facts.month).toEqual(r.today.month);
-    expect(r.applied.facts.balance).toEqual(r.today.balance);
-    expect(r.applied.facts.movements).toHaveLength(r.today.movements.length);
-    expect(r.applied.kept).toEqual(r.keptBefore);
+    const c = cartola([mv("1803-05-22", -3_500, "Peaje Autopista Central"), mv("1803-05-22", -3_500, "Peaje Autopista Central")]);
+    const r = applied(c);
+    expect(r.result.restated).toEqual([a, b]);
+    expect(r.movements.map((m) => [m.id, m.note])).toEqual([
+      [a, noteOf(c, 0)],
+      [b, noteOf(c, 1)],
+    ]);
+    expect(r.month).toEqual([{ period_month: PERIOD, movement_count: 2 }]);
+    expect(r.kept).toEqual(r.keptBefore);
   });
 
   it("a restated row's history neither holds its flow nor stops its retirement when the row goes", () => {
@@ -250,7 +243,7 @@ describe("cartola plan applied, against today's import", () => {
       note: movementNote(c.period_month, m.branch, m.description, m.document_no, { occurredOn: m.occurred_on, amountClp: m.amount_clp, cartolaIndex: 0 }),
       amount: m.amount_clp,
       flowKind: null,
-      listed: cartolaListingFacts(c.period_month, m),
+      listed: cartolaListingFacts(c.period_month, m, 0),
       cartolaIndex: 0,
     };
   };

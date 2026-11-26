@@ -52,7 +52,7 @@ import { kindSlugForAccount } from "./portfolioGroupTree.js";
 import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
 import { checkingMovementShownName, checkingTransferParty, loadDisplayNameContext } from "./expenseDisplayNames.js";
 import { shownNameSearchText } from "./expenseShownName.js";
-import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
+import { movementDescription } from "./bankRowFacts.js";
 import {
   listMovementRowsForAccount,
   signedClpDeltaForAccountMovement,
@@ -250,7 +250,7 @@ function loadLedger(accountId: number, withNames = true): Ledger {
     let party: CheckingStatementRowDto["party"] = null;
     if (!transfer && names != null) {
       const { counterparties, nameContext } = names;
-      const merchant = cartolaDescriptionFromNote(r.note);
+      const merchant = movementDescription(r.id);
       const counterparty = counterparties.get(`${r.id}|${accountId}`);
       vendor = {
         ...checkingMovementShownName(merchant, accountId, counterparty, nameContext, `movement ${r.id}`),
