@@ -46,6 +46,11 @@
   font-size: var(--font-size-ui);
 }
 
+.titleSecondary {
+  font-size: var(--font-size-ui);
+  color: var(--muted);
+}
+
 /* Instrument name · price · session; two rows on a phone (name / price and session). */
 .sub {
   display: flex;

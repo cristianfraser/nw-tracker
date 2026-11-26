@@ -337,7 +337,8 @@
 }
 
 .tag,
-.linkLabel {
+.linkLabel,
+.side {
   margin-left: 8px;
   font-size: 0.72rem;
   color: var(--muted);
@@ -426,6 +427,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* A conversion's other side, a trade's units: on the type's line here, not beside the target. */
+  .what > .sideWide {
+    display: none;
   }
 
   /* The type has its own line: none before the target. */

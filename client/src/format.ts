@@ -117,7 +117,7 @@ export function currencyFormatInfo(code: string): CurrencyFormatInfo {
   if (code === "usd") return { symbol: "US$", minorDigits: 2, displayDigits: 2, symbolAfter: false }; // convention-ok: built-in rows until /api/currencies answers
   if (code === "uf") return { symbol: "UF", minorDigits: 4, displayDigits: 2, symbolAfter: true }; // convention-ok: built-in rows until /api/currencies answers
   const iso = code.toUpperCase();
-  let minorDigits = 2;
+  let minorDigits: number;
   try {
     minorDigits =
       new Intl.NumberFormat("en", { style: "currency", currency: iso }).resolvedOptions().maximumFractionDigits ?? 2;

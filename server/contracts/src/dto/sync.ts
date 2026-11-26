@@ -67,12 +67,43 @@ export interface ImportSyncDocumentAccount {
   cc_statement_currency?: CcStatementCoverageCurrency;
 }
 
+/**
+ * What a month's cell shows (server-decided); `before_first` = before the column's first document,
+ * `not_due` = the month in progress with no document yet. Neither counts in a year's figures.
+ */
+export type ImportSyncDocumentCellState =
+  | "imported"
+  | "imported_no_file"
+  | "no_movements"
+  | "file_not_imported"
+  | "missing"
+  | "not_due"
+  | "before_first";
+
 export interface ImportSyncDocumentCell {
   imported: boolean;
   /** Absolute local path to the source PDF/XLSX when present on disk. */
   file_path: string | null;
   /** PDF text includes `** CARTOLA SIN MOVIMIENTOS **`. */
   file_sin_movimientos?: boolean;
+  state: ImportSyncDocumentCellState;
+}
+
+/** One year of the matrix: its months and, per column, the months counted and imported. */
+export interface ImportSyncDocumentYear {
+  year: number;
+  /** Indexes into `months` / `cells` of this year's months, newest first. */
+  month_indexes: number[];
+  /**
+   * Per column of `accounts`; null = the column has no document by this year. `counted` 0 = its
+   * only month this year is the one in progress.
+   */
+  columns: ({ counted: number; imported: number } | null)[];
+  /** Columns with a counted month this year, and those with every counted month imported. */
+  columns_counted: number;
+  columns_complete: number;
+  /** The columns short of a month this year, in column order. */
+  incomplete_columns: number[];
 }
 
 /** `GET /api/import-sync/document-coverage` */
@@ -80,6 +111,8 @@ export interface ImportSyncDocumentCoverageResponse {
   months: string[];
   accounts: ImportSyncDocumentAccount[];
   cells: ImportSyncDocumentCell[][];
+  /** The matrix by year, newest first. */
+  years: ImportSyncDocumentYear[];
 }
 
 export interface ExpenseGenericUniqueMerchantRow {
@@ -173,4 +206,6 @@ export interface JobQueueResponse {
   running: JobView[];
   queued: JobView[];
   recent: JobView[];
+  /** How many of `recent` the page shows before «Show more…». */
+  recent_shown: number;
 }

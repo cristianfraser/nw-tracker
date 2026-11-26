@@ -29,10 +29,10 @@ proposed split into one-session work items.
 | `/real_estate` | `GroupInfoPage` → generic `GroupInfoBase` | **old** (item A) |
 | `/liabilities`, `/liabilities/mortgage`, `/liabilities/:subgroup` | `LiabilitiesPage`, `MortgageGroupPage`, `LiabilitiesGroupPage` | redesigned |
 | `/account/:id` card | `CreditCardAccountDetailPage` | redesigned |
-| `/account/:id` cuenta corriente / vista | `CheckingAccountDetailPage` | redesigned |
+| `/account/:id` cuenta corriente / vista, and every other cash ledger (a broker's peso or dollar cash, the exchange's peso wallet, a foreign-currency account; item B1, done) | `CheckingAccountDetailPage` | redesigned |
 | `/account/:id` property, mortgage | `DeptoAccountDetailPage` | redesigned |
 | `/account/:id` stock, coin, fund (AFP funds included) | `PositionAccountDetailPage` | redesigned |
-| `/account/:id` everything else: APV, AFC, broker and exchange cash, foreign-currency checking | `StandardAccountDetailPage` | **old** (items B1, B2) |
+| `/account/:id` everything else: APV, AFC | `StandardAccountDetailPage` | **old** (item B2) |
 | `/flows` | `FlowsOverviewPage` | **old**, mild (item J) |
 | `/flows/income`, `/flows/expenses`, `/flows/expenses/groceries`, `/flows/expenses/real_estate[/:slug]`, `/flows/deposits`, `/flows/pl` | income, expenses, groceries, flows tables | redesigned |
 | `/flows/deposits/reconciliation` | `DepositsReconciliationPage` | **old** (item E) |
@@ -52,6 +52,12 @@ proposed split into one-session work items.
 ## What is wrong, page by page
 
 ### A. `/real_estate` — generic group page
+
+> **Done (2026-11-26):** `RealEstateGroupPage` on `real-estate-glance` (`realEstateGroupGlance.ts`).
+> The user's steer after the first mockups: the page is the property account page for every
+> property together, not a new design — one property shows that property's page block untouched,
+> several show each property's header as a row and the page's three bands added up. Rent is left
+> out (the property page has no rent figure; no per-place monthly rent series exists yet).
 
 - Renders `GroupInfoBase`: a «Total» card and one card per account with Today / Month / Year /
   Total rows, then «Valuation and contributions», «Current value by account», «Δ by account /
@@ -204,7 +210,7 @@ item is a group, the group page with a single account shows that account page's 
 | # | Item | Server | Main files |
 |---|---|---|---|
 | A | Real-estate group page | Yes: a `real-estate-glance` on the model of `mortgage-glance` (`mortgageGroupGlance.ts`), composed from each property's own cached `depto_glance` so the group's figures are the pages' figures: appraisal, debt, net equity, loan-to-value, equity over time, rent and running costs per property | new `RealEstateGroupPage`, new server module, one dispatch branch in `GroupInfoPage.tsx` |
-| B1 | Cash accounts onto the checking page | Yes: extend `CHECKING_PAGE_KIND_SLUGS` and the checking payload to broker / exchange cash and foreign-currency checking (balance in the account's `cash_currency`) | `AccountDetailPage.tsx`, `CheckingAccountDetailPage.tsx`, checking payload builder |
+| B1 (done) | Cash accounts onto the checking page | Done: `isCheckingPageAccount` (`checkingStatement.ts`) and the checking payload cover every cash ledger: broker cash and foreign-currency checking, balance in the account's `cash_currency`. The exchange's peso wallet is a peso cash ledger by its kind (`buda_clp`) | `AccountDetailPage.tsx`, `CheckingAccountDetailPage.tsx`, checking payload builder |
 | B2 | Every remaining account onto the position page: the demo's APV / AFC accounts get units; valuation-on-date accounts get a glance without the price blocks | Yes: demo generator (`server/src/demoData/`, `scripts/generate-demo-data.ts`); `positionGlance.ts` builds a no-price glance for an account valued by stored valuations | `AccountDetailPage.tsx`, `PositionAccountDetailPage.tsx`, `components/account/PositionGlance`; then delete `StandardAccountDetailPage` |
 | C | Cash group pages wired into the existing group page | Yes: the nav flag that sends a group to `InvestmentGroupPage` (`investment_glance`, `navTreeTypes.ts`) and its `group_glance` (`groupGlance.ts`) extended to cash groups: balance per account in its own currency and the display unit, no price or return columns | `groupGlance.ts`, `GroupInfoPage.tsx`, `InvestmentGroupPage.tsx`, `components/group/GroupGlance`; then delete `GroupInfoBase` |
 | D | Rates page | Yes: today's glance per pair and the recent-entries tail built server-side (drop `ratesDailyTailClip.ts`); coverage message as structured data | `RatesPage.tsx`, `components/rates/`, rates route |

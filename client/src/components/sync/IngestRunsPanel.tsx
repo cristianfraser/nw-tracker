@@ -6,23 +6,17 @@ import { Button } from "@crfrsr/ui";
 import type { IngestRunSummary, IngestRunsStatusResponse } from "../../types";
 import { cn } from "../../cn";
 import { DEMO_BUILD } from "../../dashboardPath";
-import { formatDateTimeLabel } from "../../formatDateLabel";
 import { useStartIngestRunMutation } from "../../queries/hooks";
 import { loadableClass } from "../ui/Loadable";
-import { Table } from "../ui/Table";
+import { OpenRow, OpenRows, RowFacts, StatusWord, type StatusTone } from "../ui/OpenRows";
+import { formatWhen } from "../../storedInstant";
 import styles from "./SyncLogStatusPanel.module.css";
 
-function formatWhen(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : formatDateTimeLabel(d);
-}
-
-function statusClass(run: IngestRunSummary): string {
-  if (run.status === "done") return styles.badgeOk;
-  if (run.status === "requested") return styles.badgeWaiting;
-  if (run.status === "failed" || run.status === "lost") return styles.badgeStale;
-  return styles.badgeMuted;
+function statusTone(run: IngestRunSummary): StatusTone {
+  if (run.status === "done") return "ok";
+  if (run.status === "requested") return "active";
+  if (run.status === "failed" || run.status === "lost") return "bad";
+  return "muted";
 }
 
 /**
@@ -35,7 +29,8 @@ const LIVE_SCHEDULE = !DEMO_BUILD;
  * The ingest service's two runs (the hourly e-mail poll and the nightly) with a button to start
  * either now instead of waiting for its slot — a statement mail that just landed. The run is
  * queued (docs/job-queue-plan.md) and starts as soon as the ingest service is free; the server
- * decides what it carries.
+ * decides what it carries. One line per run (when it last ran, its outcome, its next slot) that
+ * opens into the latest run's detail.
  */
 export function IngestRunsPanel({
   status,
@@ -74,52 +69,60 @@ export function IngestRunsPanel({
   return (
     <div className={loadableClass(loading, styles.panel)}>
       <p className={cn("muted", styles.scheduleLine)}>{headline}</p>
-      <div className={styles.tableWrap}>
-        <Table
-          header={
-            <thead>
-              <tr>
-                <th>{t("importSync.ingest.colRun")}</th>
-                <th>{t("importSync.ingest.colLatest")}</th>
-                {LIVE_SCHEDULE ? <th>{t("importSync.ingest.colNext")}</th> : null}
-                <th className={styles.colActions} />
-              </tr>
-            </thead>
-          }
-        >
-          {(status?.kinds ?? []).map((row) => (
-            <tr key={row.kind}>
-              <td>{t(`importSync.ingest.kinds.${row.kind}`)}</td>
-              <td>
-                {row.latest ? (
-                  <>
-                    <span className={statusClass(row.latest)}>{t(`importSync.ingest.status.${row.latest.status}`)}</span>{" "}
-                    <span className="muted">{formatWhen(row.latest.finished_at ?? row.latest.requested_at)}</span>
-                    {row.latest.failed_steps ? (
-                      <div className={cn("muted", styles.lagDetail)}>
-                        {t("importSync.ingest.failedSteps", { n: row.latest.failed_steps })}
-                      </div>
-                    ) : null}
-                    {row.latest.error ? <div className={cn("muted", styles.lagDetail)}>{row.latest.error}</div> : null}
-                  </>
+      <OpenRows>
+        {(status?.kinds ?? []).map((row) => {
+          const latest = row.latest;
+          return (
+            <OpenRow
+              key={row.kind}
+              lead={latest ? formatWhen(latest.finished_at ?? latest.requested_at) : "—"}
+              title={t(`importSync.ingest.kinds.${row.kind}`)}
+              status={
+                latest ? (
+                  <StatusWord tone={statusTone(latest)}>{t(`importSync.ingest.status.${latest.status}`)}</StatusWord>
                 ) : (
-                  <span className="muted">{t("importSync.ingest.never")}</span>
-                )}
-              </td>
-              {LIVE_SCHEDULE ? <td className="muted">{formatWhen(row.next_slot_at)}</td> : null}
-              <td className={styles.colActions}>
-                {LIVE_SCHEDULE ? (
-                  <Button variant="secondary" disabled={!canStart} onClick={() => startRun.mutate(row.kind)}>
+                  <StatusWord tone="muted">{t("importSync.ingest.never")}</StatusWord>
+                )
+              }
+              first={
+                latest?.failed_steps
+                  ? t("importSync.ingest.failedSteps", { n: latest.failed_steps })
+                  : latest?.error
+                    ? latest.error
+                    : LIVE_SCHEDULE
+                      ? t("importSync.ingest.nextAt", { time: formatWhen(row.next_slot_at) })
+                      : ""
+              }
+              action={
+                LIVE_SCHEDULE ? (
+                  <Button variant="secondary" size="sm" disabled={!canStart} onClick={() => startRun.mutate(row.kind)}>
                     {startRun.isPending && startRun.variables === row.kind
                       ? t("importSync.ingest.runNowPending")
                       : t("importSync.ingest.runNow")}
                   </Button>
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </Table>
-      </div>
+                ) : null
+              }
+            >
+              {/* The demo has no next slot: a kind that never ran has nothing to open. */}
+              {latest || LIVE_SCHEDULE ? (
+                <RowFacts
+                  facts={[
+                    [t("importSync.ingest.factReason"), latest?.reason],
+                    [t("importSync.ingest.factRequested"), latest?.requested_at ? formatWhen(latest.requested_at) : null],
+                    [t("importSync.ingest.factFinished"), latest?.finished_at ? formatWhen(latest.finished_at) : null],
+                    [
+                      t("importSync.ingest.factFailedSteps"),
+                      latest?.failed_steps ? t("importSync.ingest.failedSteps", { n: latest.failed_steps }) : null,
+                    ],
+                    [t("importSync.ingest.factError"), latest?.error],
+                    [t("importSync.ingest.colNext"), LIVE_SCHEDULE ? formatWhen(row.next_slot_at) : null],
+                  ]}
+                />
+              ) : null}
+            </OpenRow>
+          );
+        })}
+      </OpenRows>
       {startRun.error ? <p className="error">{startRun.error.message}</p> : null}
     </div>
   );

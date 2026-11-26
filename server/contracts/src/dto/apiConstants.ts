@@ -20,3 +20,18 @@ export const HOME_CURRENCY = "clp";
 export function isHomeCurrency(code: string): boolean {
   return code === HOME_CURRENCY;
 }
+
+/**
+ * The account kinds (the leaf kind an account's `category_slug` states) whose page is the checking
+ * page: the cartola checking kinds and the cash ledger leaves. The client mounts the page from it
+ * before the detail bundle is in; the server's own rule is the account profile
+ * (`isCheckingPageAccount`, `checkingStatement.ts`), and a server test holds the two together.
+ */
+export const CHECKING_PAGE_KIND_SLUGS: readonly string[] = [
+  "cuenta_corriente",
+  "cuenta_vista",
+  "clp",
+  "usd",
+  "foreign_cash",
+  "buda_clp",
+];

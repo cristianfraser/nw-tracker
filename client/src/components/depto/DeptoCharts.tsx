@@ -123,15 +123,16 @@ export function ValueChart({
   const pxPerMonth = (w - ml - mr) / Math.max(1, months.length - 1);
   const ticks = monthTicks(months, pxPerMonth, 56);
   // A prepago's amount over its tick, left out where it would run into the previous one's.
+  const prepagoMarks: { date: string; x: number; text: string | null }[] = [];
   let lastRight = -Infinity;
-  const prepagoMarks = value.prepagos.map((p) => {
+  for (const p of value.prepagos) {
     const px = x(dayNumber(p.date));
     const text = formatCurrency(p.amount_loan, loanCurrency);
     const half = (text.length * CH * 0.9) / 2;
     const fits = px - half > lastRight + 4;
     if (fits) lastRight = px + half;
-    return { date: p.date, x: px, text: fits ? text : null };
-  });
+    prepagoMarks.push({ date: p.date, x: px, text: fits ? text : null });
+  }
   return (
     <g>
       {axis.ticks.map((t, i) => (
@@ -332,7 +333,7 @@ export function costKindColor(kind: string): string {
  * server's cap; an equity side over the cap is cut and its total printed under the bar. The rail's
  * 12 months are shaded; months after them (bills still coming) are faint.
  */
-export function CostChart({ cost, unit, w, h }: { cost: DeptoCostBandDto; unit: string; w: number; h: number }) {
+export function CostChart({ cost, unit, w, h }: { cost: Omit<DeptoCostBandDto, "place_slug">; unit: string; w: number; h: number }) {
   const months = cost.months;
   if (months.length === 0) return null;
   const tickLabels = cost.axis.ticks.map((t) => axisCompact(t, unit));

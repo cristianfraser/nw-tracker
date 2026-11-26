@@ -109,6 +109,13 @@ export function cacheEpoch(): number {
   return epoch;
 }
 
+/**
+ * Bumped by every drop (an applied change, a market-data notice, a live tick, a declared input,
+ * a transaction's end, the day rollover, a full clear), whether or not it found an entry: a build
+ * that spans yields ({@link warmAggregationInPieces}) is stored only when it did not move.
+ */
+let invalidations = 0;
+
 /** Whether a lookup happened inside a transaction that has not been seen to end yet. */
 let transactionSeen = false;
 
@@ -183,6 +190,7 @@ export function ensureCacheFresh(): void {
 }
 
 function dropAllButMarkSeries(): void {
+  invalidations += 1;
   cache.clear();
   liveTier.maps.clear();
   declaredInputs.clear();
@@ -198,6 +206,7 @@ function dropAllButMarkSeries(): void {
  */
 function dropForDayRollover(endedDay: string | null): void {
   if (endedDay == null) return dropAllButMarkSeries();
+  invalidations += 1;
   for (const [key, entry] of cache) {
     const policy = entry.family === "history" ? historyTierPolicies.get(key) : undefined;
     if (!policy) cache.delete(key);
@@ -258,6 +267,7 @@ function trimHistoryTier(from: string): void {
 }
 
 function dropWhere(drop: (entry: Entry, family: CacheFamily, key: string) => boolean): void {
+  invalidations += 1;
   for (const [key, entry] of cache) {
     if (drop(entry, CACHE_FAMILIES[entry.family]!, key)) cache.delete(key);
   }
@@ -360,6 +370,50 @@ export function getAggregationCached<T>(key: string, build: () => T): T {
   });
   if (node) linkCacheDepNode(node);
   return value as T;
+}
+
+/** How many builds in pieces a warmer tries before building in one go ({@link warmAggregationInPieces}). */
+export const WARM_IN_PIECES_ATTEMPTS = 3;
+
+/**
+ * Build `key`'s value with yields between its pieces (the cache warmer: `build` awaits between
+ * synchronous pieces, so requests and health checks run in the gaps), and store it only if nothing
+ * was dropped meanwhile. Nothing is cached while it builds: a lookup of `key` in a gap builds its
+ * own value synchronously (and stores it), which this build then leaves in place. A drop in a gap
+ * (an applied change, a market notice, a live tick, a declared input, the day rollover) may have
+ * made a piece built before it stale, so the value is thrown away and `false` returned (the
+ * caller tries again, or lets its ordinary lookup build it in one go). `refresh` runs before the check, for inputs
+ * the reader declares itself (`dropFamiliesWhenInputChanged`). Never inside a transaction.
+ *
+ * The value must be what the ordinary lookup's build returns (a plain value, not a promise).
+ * Returns whether `key` is cached afterwards by this call or an earlier one.
+ */
+export async function warmAggregationInPieces<T>(
+  key: string,
+  build: () => Promise<T>,
+  refresh?: () => void
+): Promise<boolean> {
+  const [name, family] = familyOfKey(key);
+  if (dbInTransaction()) throw new Error(`cache: ${key} warmed in pieces inside a transaction`);
+  refresh?.();
+  ensureCacheFresh();
+  if (cache.has(key)) return true;
+  const before = invalidations;
+  const node = family.untracked ? null : newCacheDepNode();
+  const value = node ? await runInCacheDepNode(node, build) : await build();
+  if (value instanceof Promise) throw new Error(`cache: ${key} warmed in pieces must build a plain value`);
+  refresh?.();
+  ensureCacheFresh();
+  if (cache.has(key)) return true;
+  if (invalidations !== before || dbInTransaction()) return false;
+  cache.set(key, {
+    value: family.response ? markJsonResponseCacheable(value) : value,
+    family: name,
+    accountId: accountIdOfKey(key, family),
+    node,
+    builtInTransaction: false,
+  });
+  return true;
 }
 
 /**

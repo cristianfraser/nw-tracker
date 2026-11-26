@@ -1,0 +1,57 @@
+/* /flows/deposits/reconciliation: deposits and redemptions, each a stack of the deposits page's
+   month lists (components/flows/FlowMonthList.tsx).
+
+   Below 880 a side vanishes (`display: contents`) and its tiles are the page's own grid items, in
+   DOM order: deposits, then redemptions. From 880 the two sides sit side by side, six columns
+   each, each its own column of rows, so a long list on one side opens no whitespace in the other
+   (the dashboard's `.page-main` / `.page-rail` rule). */
+.side {
+  display: contents;
+}
+
+.side > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+@media (min-width: 880px) {
+  .side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-column: 1 / span 6;
+    row-gap: var(--row-gap);
+    align-items: start;
+    align-content: start;
+    min-width: 0;
+  }
+
+  .sideEnd {
+    grid-column: 7 / -1;
+  }
+}
+
+/* A list's heading: title, row count, total; a long title wraps under them, never the page. */
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.count,
+.total {
+  font-size: var(--font-size-prose);
+  font-weight: 400;
+}
+
+/* The statuses with no rows, on one line; the note under the manual marks. */
+.emptyLine,
+.note {
+  margin: 0;
+  font-size: var(--font-size-prose);
+}
+
+.note {
+  margin-top: 0.5rem;
+}

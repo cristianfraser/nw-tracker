@@ -1,7 +1,10 @@
 import { levelInUnit } from "./benchmarkComparison.js";
-import { benchmarkLevelSeries, getBenchmark, type BenchmarkRow } from "./benchmarkLevels.js";
+import { benchmarkLevelSeries, type BenchmarkRow } from "./benchmarkLevels.js";
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
+import { deptoLedgerForLoan } from "./deptoLedgerFromMovements.js";
+import { mortgageLedgerRowDto } from "./mortgageLedgerDto.js";
+import { loanMonthlyRate } from "./mortgageLoanRate.js";
 import { flowEventInUnit } from "./rates.js";
 import { windowIrr } from "./irr.js";
 import type { TsUnit } from "./valuationTimeseries.js";
@@ -14,8 +17,9 @@ import type { TsUnit } from "./valuationTimeseries.js";
  * is money that could have been invested instead.
  *
  * - **prepaid** — what it is worth having gone into the mortgage: only the amortization reduced
- *   the loan, so only it stopped accruing the loan's rate and grows at the `mortgage` benchmark
- *   (UF + the loan rate); the interest a prepago carries is worth nothing on this side;
+ *   the loan, so only it stopped accruing the loan's rate and grows at the loan's currency
+ *   compounded at THAT loan's own rate (`loanMonthlyRate`, read from its ledger; two loans at
+ *   two rates each grow at their own); the interest a prepago carries is worth nothing on this side;
  * - **invested** — what the whole extra would be worth had it gone into the chosen benchmark on
  *   the same day.
  *
@@ -133,6 +137,32 @@ export function listMortgageExtraPayments(accountId: number): ExtraPayment[] {
   return out;
 }
 
+/**
+ * What a unit of the loan's debt grows into: its currency's index compounded at the loan's own
+ * yearly rate, as a level series (the shape of an `index_plus_rate` benchmark).
+ */
+function loanOwnRateLevel(accountId: number): BenchmarkRow {
+  const ledger = deptoLedgerForLoan(accountId).map(mortgageLedgerRowDto);
+  const monthly = loanMonthlyRate(ledger);
+  if (monthly == null) throw new Error(`prepayment comparison: loan ${accountId} has no regular cuota to read its rate from`);
+  const loanCurrency = ledger[0]!.loan_currency;
+  if (loanCurrency !== "uf") { // convention-ok: the index series this level is built on is the UF's (benchmarkLevels)
+    throw new Error(`prepayment comparison: loan ${accountId} is in ${loanCurrency}, only a UF loan has an index series`);
+  }
+  return {
+    slug: `loan:${accountId}`,
+    kind: "index_plus_rate",
+    label_i18n_key: null,
+    ticker: null,
+    withholding_pct: null,
+    series_key: null,
+    index_key: "uf",
+    rate_pct: ((1 + monthly) ** 12 - 1) * 100,
+    portfolio_group_slug: null,
+    sort_order: 0,
+  };
+}
+
 export function computeMortgagePrepaymentComparison(input: {
   accountId: number;
   benchmark: BenchmarkRow;
@@ -145,9 +175,7 @@ export function computeMortgagePrepaymentComparison(input: {
   if (payments.length === 0) return null;
 
   const todayYmd = chileWallClockAt(now).ymd;
-  const mortgage = getBenchmark("mortgage");
-  if (!mortgage) throw new Error("benchmarks: no `mortgage` row");
-  const prepaidLevel = levelInUnit(benchmarkLevelSeries(mortgage, todayYmd, now, unit), unit, now);
+  const prepaidLevel = levelInUnit(benchmarkLevelSeries(loanOwnRateLevel(accountId), todayYmd, now, unit), unit, now);
   const investedLevel = levelInUnit(benchmarkLevelSeries(benchmark, todayYmd, now, unit), unit, now);
 
   const grow = (level: (ymd: string) => number | null, amount: number, date: string): number | null => {

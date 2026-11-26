@@ -3,6 +3,8 @@ import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { noteSyncDimmingRead } from "./cacheDependencies.js";
 import { cacheKeyDashboardAccountRows, cacheKeyDashboardNav } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
+import { billingDetailBaseForAccount } from "./ccBillingDetailCache.js";
+import type { WarmSlicer } from "./apiRequestsInFlight.js";
 import { chainedGroupPctResolver, withDailyChainedAccountRowPcts } from "./periodPctDailyChain.js";
 import type { DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
@@ -248,6 +250,48 @@ export function buildDashboardAccountRow(accountId: number, unit: TsUnit): Dashb
 }
 
 /**
+ * Build `unit`'s account rows ahead of the listing (the cache warmer): account by account, a
+ * card's billing detail base, its monthly performance rows (each its own entry) and then its row, as many steps per stretch as
+ * `slicer`'s budget allows, then `slicer()` gives the event loop back. Each stretch reads its own
+ * tree index, valuation memo and listing context, so nothing read before a gap reaches an entry
+ * built after it; the listing then finds every row cached.
+ */
+export async function warmDashboardAccountRows(unit: TsUnit, slicer: WarmSlicer): Promise<void> {
+  type Step = (ctx: DashboardAccountRowsContext) => void;
+  const steps: Step[] = listDashboardSourceAccounts().flatMap((listed): Step[] => {
+    const rowOf = (ctx: DashboardAccountRowsContext) => ctx.accounts.find((x) => x.id === listed.id);
+    return [
+      // A card's billing detail base, which its chart dates and owed walk read.
+      (ctx) => {
+        const a = rowOf(ctx);
+        if (a && accountBucketKindSlug(a.bucket_slug) === "credit_card") billingDetailBaseForAccount(a.id);
+      },
+      (ctx) => {
+        const a = rowOf(ctx);
+        if (!a || !rowReadsMonthlyPerfRows(a)) return;
+        monthlyPerfRowsForAccount(a.id, a.bucket_slug, "clp");
+        if (!isHomeCurrency(unit)) monthlyPerfRowsForAccount(a.id, a.bucket_slug, unit);
+      },
+      (ctx) => {
+        const a = rowOf(ctx);
+        if (a) pageBundleCachedSync(`account_row|${a.id}|${unit}`, () => buildDashboardAccountRowFor(ctx, a, unit));
+      },
+    ];
+  });
+  let next = 0;
+  while (next < steps.length) {
+    withPortfolioGroupIndex(() =>
+      withAccountValuationTsCache(() => {
+        const ctx = dashboardAccountRowsContext(unit);
+        do steps[next++]!(ctx);
+        while (next < steps.length && !slicer.due());
+      })
+    );
+    await slicer();
+  }
+}
+
+/**
  * `build()` cached with the account rows (`dashboard_account_rows` family: built afresh inside a
  * transaction, where a report-only import reads rows it then rolls back).
  */
@@ -356,6 +400,16 @@ type RowFrame = {
   current_value: number | null;
 };
 
+/** Whether the row tracks asset metrics: its metric group (dashboard bucket, else leaf) is a net-worth bucket. */
+function rowTracksAssetMetrics(a: DashboardSourceAccount): boolean {
+  return isNwBucketSlug(bucketOfAccount(a.id) ?? a.bucket_slug);
+}
+
+/** Whether the row reads its account's monthly performance rows (`monthlyPerfRowsForAccount`). */
+function rowReadsMonthlyPerfRows(a: DashboardSourceAccount): boolean {
+  return rowTracksAssetMetrics(a) || accountIsDebt(a.id);
+}
+
 /** One account's dashboard row; `sync_stale` is a placeholder the list sets. */
 function buildDashboardAccountRowFor(
   ctx: DashboardAccountRowsContext,
@@ -369,8 +423,7 @@ function buildDashboardAccountRowFor(
   const isCcRow = kindSlug === "credit_card";
   const portfolioLeafSlug = leafSlugByAccount.get(a.id) ?? null;
   const dashboard_bucket_slug = bucketOfAccount(a.id);
-  const metricGroup = dashboard_bucket_slug ?? leafSlug;
-  const trackAssetMetrics = isNwBucketSlug(metricGroup);
+  const trackAssetMetrics = rowTracksAssetMetrics(a);
   // The card's deposits and P/L (month, year, lifetime) are read from the same monthly
   // rows the group tables consolidate — one series, one picker, one sum — so the card and
   // the «Detalle por mes / año» table of the same scope agree by construction, in every
@@ -379,7 +432,7 @@ function buildDashboardAccountRowFor(
   // its cost of financing per calendar month, `creditCardMonthPerf`, the account page's
   // «Detalle por mes»); their deposits are not the rows' flows — the mortgage's are the
   // depto ledger's payments, and a card's flows are not personal capital.
-  const hasPerfRows = trackAssetMetrics || accountIsDebt(a.id);
+  const hasPerfRows = rowReadsMonthlyPerfRows(a);
 
   // Today's value is the account's one today value for every row, liabilities included —
   // the today mark (`accountMarkClpAtYmd` at today reads it too), the account page header,

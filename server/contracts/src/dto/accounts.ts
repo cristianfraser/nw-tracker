@@ -164,7 +164,7 @@ export interface AccountDetailBundleResponse {
    * client placeholder bundle may leave it out (read absent as «not loaded»).
    */
   position_glance?: PositionGlanceDto | null;
-  /** A cuenta corriente / cuenta vista page's head (server `checkingStatement.ts`); null on every other account. Optional like `position_glance`. */
+  /** A checking page's head (server `checkingStatement.ts`: a cuenta corriente / cuenta vista, or any other cash ledger); null on every other account. Optional like `position_glance`. */
   checking_glance?: CheckingGlanceDto | null;
   /**
    * The property and mortgage pages (server `deptoGlance.ts`): every figure, series and bar share
@@ -433,15 +433,23 @@ export interface CartolaDerivedAnchorDto {
 
 /**
  * The checking account page's head (server `checkingStatement.ts`, built with the detail bundle for
- * a cuenta corriente / cuenta vista): today's balance and the balance strip. Every
- * amount is in the account's own currency (`currency`): a checking ledger is a document in its coin,
- * not a display-unit figure.
+ * a cuenta corriente / cuenta vista and for every other cash ledger: a broker's cash, a
+ * foreign-currency account): today's balance and the balance strip. Every amount is in the
+ * account's own currency (`currency`): a cash ledger is a document in its coin, not a display-unit
+ * figure. The one display-unit figure is `display_value`.
  */
 export interface CheckingGlanceDto {
   currency: string;
   /** Today's balance (the ledger's display read: a row the bank dates after today already counts). */
   balance: number;
   as_of: string;
+  /**
+   * Today's balance in the request's display unit (the account's own value, converted once at
+   * today's rate); null when the unit is the account's currency or the pair has no rate on file.
+   */
+  display_value: { value: number; currency: string } | null;
+  /** The filter chips this account's statement offers: the row kinds its ledger holds, in chip order. */
+  kinds: CheckingStatementKindFilter[];
   strips: CheckingBalanceStripDto[];
 }
 
@@ -465,10 +473,21 @@ export interface CheckingBalanceStripDto {
 }
 
 /** What a statement row is, from structured state only (never the description text). */
-export type CheckingStatementRowKind = "income" | "card_payment" | "own_transfer" | "fee" | "other";
+export type CheckingStatementRowKind =
+  | "income"
+  | "card_payment"
+  | "own_transfer"
+  | "fee"
+  | "other"
+  /** A purchase or sale settled in this cash (shares, contracts, coins): the counterpart is the instrument's account. */
+  | "trade"
+  /** A dividend paid into this cash by a holding's account. */
+  | "dividend"
+  /** A transfer between own accounts in two currencies (`counter` carries the other side). */
+  | "conversion";
 
-/** The statement's filter chips (`kind` query parameter). */
-export type CheckingStatementKindFilter = "income" | "card_payment" | "own_transfer" | "other" | "fee";
+/** The statement's filter chips (`kind` query parameter): every row kind. */
+export type CheckingStatementKindFilter = CheckingStatementRowKind;
 
 /** What `ExpenseVendorLabel` reads for a checking movement: its shown name, the bank text behind it, its links. */
 export interface CheckingStatementVendorDto {
@@ -504,6 +523,18 @@ export interface CheckingStatementRowDto {
    * cash withdrawal, a fee, a known merchant) and on a transfer between own accounts.
    */
   party: { direction: "in" | "out"; label: string } | null;
+  /**
+   * A conversion's other side (and a card payment's, when it paid a debt in another currency):
+   * what left or reached the other account, in its currency, and the
+   * operation's rate, the same on both accounts (home currency per unit of the foreign one; between
+   * two foreign currencies, the one whose code sorts later per unit of the other), rounded for display: two decimals from 20 up,
+   * four below. Null on every other row.
+   */
+  counter: { amount: number; currency: string; rate: number } | null;
+  /** A trade's side, from the movement's kind; null on every other row. */
+  trade_side: "buy" | "sell" | null;
+  /** A trade's units (shares, contracts, coins), unsigned; null on every other row. */
+  units: number | null;
   /** Signed: into the account positive. */
   amount: number;
   /** The balance after this row (rows run newest first; the next row's balance + this amount). */
@@ -514,7 +545,9 @@ export type CheckingMonthReconciliation =
   | { status: "matches" }
   | { status: "differs"; difference: number }
   | { status: "no_statement" }
-  | { status: "open" };
+  | { status: "open" }
+  /** The account has no bank statements to hold a month against (a broker's cash, a foreign-currency account). */
+  | { status: "none" };
 
 export interface CheckingStatementMonthDto {
   period_month: string;
@@ -522,7 +555,7 @@ export interface CheckingStatementMonthDto {
   closing_balance: number;
   money_in: number;
   money_out: number;
-  /** The month's cartola against the ledger at month-end by the bank's posting day; `open` for the current month. */
+  /** The month's cartola against the ledger at month-end by the bank's posting day; `open` for the current month; `none` on an account without cartolas. */
   reconciliation: CheckingMonthReconciliation;
   /** Rows newest first, after the request's filters. */
   rows: CheckingStatementRowDto[];
@@ -948,6 +981,90 @@ export interface MortgageGroupChartDto {
   series: { account_id: number; values: (number | null)[] }[];
   /** Each prepago's drop (negative) in the unit at its date. */
   prepagos: { date: string; account_id: number; step: number }[];
+}
+
+/** One property of the real-estate group page: what its own page opens with (`depto_glance.header`). */
+export interface RealEstateGroupPropertyDto {
+  account_id: number;
+  name: string;
+  /** The account's chart colour (`r,g,b`): its row's swatch and its layer of the value chart. */
+  color_rgb: string;
+  loan_currency: string;
+  /** Net equity today in the loan currency, and in the payload's unit. */
+  equity_loan: number;
+  equity: number;
+  /** The appraisal and what is owed on it, loan currency; `owned_share` = net equity ÷ appraisal. */
+  appraisal_loan: number;
+  owed_loan: number;
+  owned_share: number;
+  /** The property page's día / mes / año / total P/L. */
+  strip: DeptoGlanceHeaderDto["strip"];
+}
+
+/**
+ * The property pages' value bands as one, in the unit: per chart date the properties' points
+ * added up (a property counts from its first point), the net equity also per property for the
+ * stack. The rail's figures are the pages' rails added up.
+ */
+export interface RealEstateGroupValueBandDto {
+  /** Every property's chart dates (month-ends and today), ascending. */
+  dates: string[];
+  /** One net-equity value per property per date; null before the property's first point. */
+  series: { account_id: number; equity: (number | null)[] }[];
+  /** Σ the properties' points per date: appraisal value, mortgage, deposited, net equity. */
+  totals: { value: number; mortgage: number; deposited: number; equity: number }[];
+  /** Today: net equity (Σ the pages' heroes) against what is owed (Σ the charts' last mortgage), shares of their sum. */
+  ownership: { owned: number; owed: number; owned_share: number; owed_share: number };
+  /** Σ the appraisals' value today. */
+  appraisal: number;
+  /** Σ the appraisals' value at each purchase, and the move since (`revaluation_pct` of that sum). */
+  purchase: { value: number; revaluation: number; revaluation_pct: number };
+  /** Σ the pies, each at its own day's rate. */
+  pie: number;
+}
+
+/** The real-estate group page with two or more properties: the property page's blocks, summed in the unit. */
+export interface RealEstateGroupSummedDto {
+  /** Σ net equity today (the hero). */
+  equity: number;
+  /**
+   * Σ the properties' strips. `day` is null when any property has none, never a partial sum;
+   * `total_pct` = Σ total ÷ Σ deposited (the property page's rule); `year_pct` null (the pages
+   * state no base to add up).
+   */
+  strip: DeptoGlanceHeaderDto["strip"];
+  /** One row per property, in the group's account order (an account kept out of the group's totals is not on the page). */
+  properties: RealEstateGroupPropertyDto[];
+  value: RealEstateGroupValueBandDto;
+  /**
+   * The P/L band: months, years and total added up (a property counts from its first month);
+   * `this_month` adds the properties' splits, its `cuotas` every property's in property order;
+   * null when any property has none (bought this month), never a split of only the others.
+   */
+  pl: DeptoPropertyPlBandDto;
+  /** The loan currencies behind `pl.this_month.currency_part` (distinct, property order). */
+  loan_currencies: string[];
+  /**
+   * The cost of living of every property with a tracked place: the pages' months added per kind,
+   * the axis cap and the 12-month window by the property page's rule over the merged months.
+   * Null when no property has one.
+   */
+  cost: Omit<DeptoCostBandDto, "place_slug"> | null;
+}
+
+/**
+ * `GET /api/portfolio-groups/:slug/real-estate-glance?unit=` (`realEstateGroupGlance.ts`): the
+ * real-estate group page, built from each property's own page block (`depto_glance`). With one
+ * property it is that block untouched (`single`), so the group page shows the property page's
+ * figures; with several, the blocks added up (`several`). Both null when no property has a ledger.
+ */
+export interface RealEstateGroupGlanceDto {
+  unit: DisplayUnitCode;
+  as_of: string;
+  single: { account_id: number; name: string; glance: Extract<DeptoGlanceDto, { kind: "property" }> } | null;
+  several: RealEstateGroupSummedDto | null;
+  /** Property accounts with no ledger row yet (listed, in no sum). */
+  properties_without_ledger: { account_id: number; name: string }[];
 }
 
 /** One debt's payment in a month of the Liabilities page's «Upcoming payments», in the payload's unit. */

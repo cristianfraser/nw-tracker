@@ -1,0 +1,16 @@
+.name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-card-meta);
+}
+
+.addForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.addField {
+  flex: 0 1 18rem;
+  min-width: 0;
+}

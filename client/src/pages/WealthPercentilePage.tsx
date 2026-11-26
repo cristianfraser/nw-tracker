@@ -1,8 +1,7 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
 import { PageGridTile } from "../components/layout/PageGridTile";
-import { AppLineChart } from "../components/charts/AppLineChart";
+import { WealthPercentileChart } from "../components/charts/WealthPercentileChart";
 import { ChartEmptyState } from "../components/charts/ChartEmptyState";
 import { minMaxForKeys } from "../components/charts/chartLayout";
 import { percentileLogAxisFor, topPercentOf } from "../components/charts/percentileLogAxis";
@@ -389,67 +388,25 @@ export function WealthPercentilePage() {
           <ChartEmptyState loading={loading} message={t("wealthPercentile.empty")} />
         ) : (
           <Loadable loading={loading} style={{ width: "100%", height: 320 }}>
-            <AppLineChart
+            <WealthPercentileChart
               data={scaleMode === "log" ? logChartPoints : chartPoints}
-              tooltip={{
-                formatValue: (v) =>
-                  formatGroupedDecimal(scaleMode === "log" ? 100 - Number(v) : Number(v), 1),
-                formatLabel: (l) => String(l),
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="year" tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={20} />
-              {scaleMode === "log" ? (
-                <YAxis
-                  scale="log"
-                  reversed
-                  domain={logAxis.domain}
-                  ticks={logAxis.ticks}
-                  allowDataOverflow
-                  tickFormatter={(v: number) => {
-                    const p = 100 - v;
-                    return formatGroupedDecimal(p, Number.isInteger(p) ? 0 : 1);
-                  }}
-                  tick={{ fill: "var(--muted)", fontSize: 10 }}
-                  width={34}
-                />
-              ) : (
-                <YAxis
-                  domain={[0, 100]}
-                  ticks={[0, 25, 50, 75, 100]}
-                  tick={{ fill: "var(--muted)", fontSize: 10 }}
-                  width={30}
-                />
-              )}
-              <Legend itemSorter={null} />
-              <Line
-                type="monotone"
-                dataKey="total"
-                name={t("wealthPercentile.chart.seriesTotal")}
-                stroke={CL_TOTAL_STROKE}
-                strokeWidth={2}
-                dot={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="financial"
-                name={t("wealthPercentile.chart.seriesFinancial")}
-                stroke={CL_FINANCIAL_STROKE}
-                strokeWidth={2}
-                dot={false}
-              />
-              {benchmarkOrder.map((c) => (
-                <Line
-                  key={c}
-                  type="monotone"
-                  dataKey={c.toLowerCase()}
-                  name={t("wealthPercentile.chart.seriesBenchmark", { country: c })}
-                  stroke={BENCHMARK_STROKE[c]}
-                  strokeWidth={1.5}
-                  dot={false}
-                />
-              ))}
-            </AppLineChart>
+              logAxis={scaleMode === "log" ? logAxis : null}
+              lines={[
+                { dataKey: "total", name: t("wealthPercentile.chart.seriesTotal"), stroke: CL_TOTAL_STROKE, strokeWidth: 2 },
+                {
+                  dataKey: "financial",
+                  name: t("wealthPercentile.chart.seriesFinancial"),
+                  stroke: CL_FINANCIAL_STROKE,
+                  strokeWidth: 2,
+                },
+                ...benchmarkOrder.map((c) => ({
+                  dataKey: c.toLowerCase(),
+                  name: t("wealthPercentile.chart.seriesBenchmark", { country: c }),
+                  stroke: BENCHMARK_STROKE[c],
+                  strokeWidth: 1.5,
+                })),
+              ]}
+            />
           </Loadable>
         )}
       </PageGridTile>

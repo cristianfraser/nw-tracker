@@ -10,6 +10,7 @@ import { buildMortgageUfReminder } from "../mortgageUfReminder.js";
 import { writeHandler } from "../inputError.js";
 import { buildMortgageGroupGlance, mortgageGroupPrepayBlock } from "../mortgageGroupGlance.js";
 import { buildLiabilitiesGlance } from "../liabilitiesGlance.js";
+import { buildRealEstateGroupGlance } from "../realEstateGroupGlance.js";
 import { requestDisplayUnit } from "../displayUnits.js";
 import { timeHeavyAsync } from "../heavyWork.js";
 import { accountIdFromReq, asyncHandler } from "./shared.js";
@@ -28,6 +29,19 @@ app.get("/api/portfolio-groups/:slug/mortgage-glance", asyncHandler(async (req, 
   const payload = await timeHeavyAsync(`mortgage.group_glance ${slug} ${unit}`, () => buildMortgageGroupGlance(slug, unit));
   if (!payload) {
     res.status(404).json({ error: "not a mortgage group" });
+    return;
+  }
+  res.json(payload);
+}));
+
+// The real-estate group page (`realEstateGroupGlance.ts`): every property's own page block, one
+// passed through or several added up in `unit`.
+app.get("/api/portfolio-groups/:slug/real-estate-glance", asyncHandler(async (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  const unit = requestDisplayUnit(req.query, { surface: "/api/portfolio-groups/:slug/real-estate-glance" });
+  const payload = await timeHeavyAsync(`real_estate.group_glance ${slug} ${unit}`, () => buildRealEstateGroupGlance(slug, unit));
+  if (!payload) {
+    res.status(404).json({ error: "not the real-estate group" });
     return;
   }
   res.json(payload);

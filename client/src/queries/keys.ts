@@ -158,6 +158,10 @@ export const queryKeys = {
   mortgageGroupGlance: (group: string, unit: DisplayUnit) =>
     withEntity(["mortgageGroupGlance", group, unit] as const, 2),
   mortgageGroupGlanceAll: () => ["mortgageGroupGlance"] as const,
+  /** The real-estate group page; its own prefix, so a property's or a loan's writes refresh every unit of it. */
+  realEstateGroupGlance: (group: string, unit: DisplayUnit) =>
+    withEntity(["realEstateGroupGlance", group, unit] as const, 2),
+  realEstateGroupGlanceAll: () => ["realEstateGroupGlance"] as const,
   /** The Liabilities page; its own prefix, so a loan's or a card's writes refresh every unit of it. */
   liabilitiesGlance: (group: string, unit: DisplayUnit) =>
     withEntity(["liabilitiesGlance", group, unit] as const, 2),

@@ -139,6 +139,11 @@
     padding: 0;
     border: 0;
   }
+
+  /* A long hero leaves «exportar» its corner: beside the title only when both fit short of it. */
+  .heroWide {
+    margin-right: 3.5rem;
+  }
 }
 
 /* ---- bands: chart | rail ---- */

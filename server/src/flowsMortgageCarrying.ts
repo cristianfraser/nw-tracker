@@ -11,10 +11,11 @@
  * carrying lands on the depto payment day in both installment modes.
  */
 import { cacheKeyFlowsInputs } from "./cacheFamilies.js";
-import { dropFamiliesWhenInputChanged, getAggregationCached } from "./cacheRegistry.js";
+import { dropFamiliesWhenInputChanged, getAggregationCached, WARM_IN_PIECES_ATTEMPTS, warmAggregationInPieces } from "./cacheRegistry.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import {
   buildFlowsExpenseLines,
+  buildFlowsExpenseLinesInPieces,
   listCreditCardMasterAccountIds,
   type FlowCcExpenseLineRow,
 } from "./flowsExpenses.js";
@@ -100,6 +101,24 @@ export function syncFlowsInputsWithLiveUsdRates(): void {
 export function cachedFlowsExpenseLines(): FlowCcExpenseLineRow[] {
   syncFlowsInputsWithLiveUsdRates();
   return getAggregationCached(cacheKeyFlowsInputs("lines"), () => buildFlowsExpenseLines(listCreditCardMasterAccountIds()));
+}
+
+/**
+ * Warm {@link cachedFlowsExpenseLines} in pieces, `between()` awaited after each source and step
+ * (`warmAggregationInPieces`: kept only when nothing was dropped meanwhile). After
+ * {@link WARM_IN_PIECES_ATTEMPTS} builds thrown away (writes keep landing), the ordinary lookup
+ * builds the lines in one go.
+ */
+export async function warmFlowsExpenseLines(between: () => Promise<void>): Promise<void> {
+  for (let attempt = 0; attempt < WARM_IN_PIECES_ATTEMPTS; attempt += 1) {
+    const kept = await warmAggregationInPieces(
+      cacheKeyFlowsInputs("lines"),
+      () => buildFlowsExpenseLinesInPieces(listCreditCardMasterAccountIds(), between),
+      syncFlowsInputsWithLiveUsdRates
+    );
+    if (kept) return;
+  }
+  cachedFlowsExpenseLines();
 }
 
 /** {@link mortgageCarryingEvents} over the cached expense lines, per unit. */

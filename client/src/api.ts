@@ -239,6 +239,15 @@ export const api = {
       `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-glance${qs ? `?${qs}` : ""}`
     );
   },
+  /** The real-estate group page (`realEstateGroupGlance.ts`): the properties' page blocks, in `unit`. */
+  realEstateGroupGlance: (slug: string, unit: DisplayUnit) => {
+    const q = new URLSearchParams();
+    if (!isHomeCurrency(unit)) q.set("unit", unit);
+    const qs = q.toString();
+    return j<import("./types").RealEstateGroupGlanceDto>(
+      `/api/portfolio-groups/${encodeURIComponent(slug)}/real-estate-glance${qs ? `?${qs}` : ""}`
+    );
+  },
   /** The Liabilities page (`liabilitiesGlance.ts`): its head and upcoming payments, in `unit`. */
   liabilitiesGlance: (slug: string, unit: DisplayUnit) => {
     const q = new URLSearchParams();

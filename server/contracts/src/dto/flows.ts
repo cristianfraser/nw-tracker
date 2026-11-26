@@ -616,21 +616,27 @@ export interface DepositReconciliationRow {
   status: DepositReconciliationStatus;
 }
 
-export interface DepositReconciliationStatusTotals {
-  count: number;
+/** A calendar month of a reconciliation list: its rows, newest first, and their total. */
+export interface DepositReconciliationMonth<R> {
+  month: string;
   /** In the payload's unit; null when a row has no value in it. */
   total: number | null;
+  rows: R[];
 }
 
-export interface DepositReconciliationByMonth {
-  month: string;
-  /** In the payload's unit (null when a row has no value in it). */
-  linked: number | null;
-  resolved_tax_refund: number | null;
-  resolved_internal_transfer: number | null;
-  unlinked_no_checking_source: number | null;
-  unlinked_checking_present: number | null;
+/** One status' rows as the page lists them; a status with no rows has no months. */
+export interface DepositReconciliationSection<S extends string, R> {
+  status: S;
+  count: number;
   total: number | null;
+  months: DepositReconciliationMonth<R>[];
+}
+
+/** A month of «By month»: its total and each status with rows in it, in section order. */
+export interface DepositReconciliationMonthStatuses {
+  month: string;
+  total: number | null;
+  statuses: { status: DepositReconciliationStatus; total: number | null }[];
 }
 
 export type DepositRedemptionStatus =
@@ -665,15 +671,30 @@ export interface DepositManualAssertionRow {
   status: DepositManualAssertionStatus;
 }
 
-/** `GET /api/flows/deposits/reconciliation?unit=` — every amount in `unit`. */
+/**
+ * `GET /api/flows/deposits/reconciliation?unit=` — the page's display shape, every amount in
+ * `unit`: sections in the order drawn, each list by month (newest first) with counts and totals.
+ */
 export interface DepositsReconciliationPayload {
   unit: string;
-  rows: DepositReconciliationRow[];
-  by_status: Record<DepositReconciliationStatus, DepositReconciliationStatusTotals>;
-  by_month: DepositReconciliationByMonth[];
-  redemptions: DepositRedemptionRow[];
-  redemptions_by_status: Record<DepositRedemptionStatus, DepositReconciliationStatusTotals>;
-  manual_assertions: DepositManualAssertionRow[];
+  deposits: {
+    count: number;
+    total: number | null;
+    sections: DepositReconciliationSection<DepositReconciliationStatus, DepositReconciliationRow>[];
+    by_month: DepositReconciliationMonthStatuses[];
+  };
+  redemptions: {
+    count: number;
+    total: number | null;
+    sections: DepositReconciliationSection<DepositRedemptionStatus, DepositRedemptionRow>[];
+  };
+  /** Checking outflows marked as deposits with no deposit found; `linked_count` found theirs. */
+  manual_assertions: {
+    count: number;
+    total: number | null;
+    linked_count: number;
+    months: DepositReconciliationMonth<DepositManualAssertionRow>[];
+  };
   fx_conversion_error: boolean;
   fx_conversion_warnings: unknown[];
 }

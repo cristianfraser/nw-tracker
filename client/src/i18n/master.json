@@ -640,6 +640,22 @@
     }
   },
   "realEstate": {
+    "group": {
+      "propertyCount": { "en": "{{count}} properties", "es": "{{count}} propiedades" },
+      "propertiesLabel": { "en": "Properties", "es": "Propiedades" },
+      "colProperty": { "en": "property", "es": "propiedad" },
+      "colEquity": { "en": "net equity", "es": "patrimonio neto" },
+      "colOwned": { "en": "owned", "es": "propio" },
+      "ownedOf": { "en": "of {{appraisal}}", "es": "de {{appraisal}}" },
+      "noLoan": { "en": "no loan", "es": "sin crédito" },
+      "noLedger": { "en": "No payments on file yet.", "es": "Aún no tiene pagos registrados." },
+      "none": { "en": "No property has payments on file yet.", "es": "Ninguna propiedad tiene pagos registrados aún." },
+      "valueChart": { "en": "Value, mortgages and net equity by property", "es": "Valor, hipotecas y patrimonio neto por propiedad" },
+      "appraisal": { "en": "appraisal", "es": "tasación" },
+      "atPurchase": { "en": "at purchase", "es": "a la compra" },
+      "downPayment": { "en": "down payments", "es": "pies" },
+      "expensesLink": { "en": "real-estate expenses", "es": "gastos de inmuebles" }
+    },
     "propertyValue": {
       "en": "value",
       "es": "valor"
@@ -1790,10 +1806,6 @@
         "en": "Merchant name",
         "es": "Nombre del comercio"
       },
-      "colActions": {
-        "en": "Actions",
-        "es": "Acciones"
-      },
       "empty": {
         "en": "No merchants configured.",
         "es": "Sin comercios configurados."
@@ -1867,6 +1879,52 @@
       "en": "Show less…",
       "es": "Mostrar menos…"
     },
+    "docs": {
+      "allComplete": {
+        "en": "all {{n}} complete",
+        "es": "las {{n}} completas"
+      },
+      "nothingDue": {
+        "en": "nothing due yet",
+        "es": "nada pendiente aún"
+      },
+      "someComplete": {
+        "en": "{{complete}} of {{n}} complete",
+        "es": "{{complete}} de {{n}} completas"
+      },
+      "legendImported": {
+        "en": "imported, file on disk",
+        "es": "importado, archivo en disco"
+      },
+      "legendNoFile": {
+        "en": "imported, no file",
+        "es": "importado, sin archivo"
+      },
+      "legendNoMovements": {
+        "en": "statement with no movements",
+        "es": "cartola sin movimientos"
+      },
+      "legendFileOnly": {
+        "en": "file on disk, not imported",
+        "es": "archivo en disco, sin importar"
+      },
+      "legendMissing": {
+        "en": "missing",
+        "es": "falta"
+      },
+      "legendNotDue": {
+        "en": "month in progress, not due yet",
+        "es": "mes en curso, aún no corresponde"
+      },
+      "notDue": {
+        "en": "{{account}}: {{month}} is in progress, its document is not due yet",
+        "es": "{{account}}: {{month}} está en curso, su documento aún no corresponde"
+      },
+      "fileNotImported": {
+        "en": "{{account}}: {{month}} file on disk, not imported",
+        "es": "{{account}}: archivo de {{month}} en disco, sin importar"
+      }
+    },
     "sync": {
       "lastSync": {
         "en": "Last sync: {{time}} ({{ago}})",
@@ -1920,10 +1978,6 @@
         "en": "Marking…",
         "es": "Marcando…"
       },
-      "colSource": {
-        "en": "Source",
-        "es": "Fuente"
-      },
       "colNextSync": {
         "en": "Next sync",
         "es": "Próximo sync"
@@ -1931,10 +1985,6 @@
       "colHolidayToday": {
         "en": "Today",
         "es": "Hoy"
-      },
-      "colStatus": {
-        "en": "Status",
-        "es": "Estado"
       },
       "nextSyncNow": {
         "en": "Now",
@@ -2067,6 +2117,18 @@
       "agoDays": {
         "en": "{{n}} days ago",
         "es": "hace {{n}} días"
+      },
+      "nextLine": {
+        "en": "next: {{when}}",
+        "es": "próximo: {{when}}"
+      },
+      "todayIs": {
+        "en": "{{kind}} today",
+        "es": "hoy: {{kind}}"
+      },
+      "factPublisher": {
+        "en": "Publisher",
+        "es": "Publicación"
       }
     },
     "ingestRunsTitle": {
@@ -2089,14 +2151,6 @@
       "idle": {
         "en": "No run in progress.",
         "es": "Ninguna corrida en curso."
-      },
-      "colRun": {
-        "en": "Run",
-        "es": "Corrida"
-      },
-      "colLatest": {
-        "en": "Latest",
-        "es": "Última"
       },
       "colNext": {
         "en": "Next",
@@ -2153,6 +2207,30 @@
       "runNowPending": {
         "en": "Starting…",
         "es": "Iniciando…"
+      },
+      "nextAt": {
+        "en": "next {{time}}",
+        "es": "próxima {{time}}"
+      },
+      "factReason": {
+        "en": "Why",
+        "es": "Motivo"
+      },
+      "factRequested": {
+        "en": "Requested",
+        "es": "Pedida"
+      },
+      "factFinished": {
+        "en": "Finished",
+        "es": "Terminó"
+      },
+      "factFailedSteps": {
+        "en": "Failed",
+        "es": "Fallaron"
+      },
+      "factError": {
+        "en": "Error",
+        "es": "Error"
       }
     },
     "jobs": {
@@ -2167,18 +2245,6 @@
       "empty": {
         "en": "Nothing has gone through the queue yet.",
         "es": "Todavía no ha pasado nada por la cola."
-      },
-      "colJob": {
-        "en": "Job",
-        "es": "Trabajo"
-      },
-      "colStatus": {
-        "en": "Status",
-        "es": "Estado"
-      },
-      "colWhen": {
-        "en": "When",
-        "es": "Cuándo"
       },
       "colDetail": {
         "en": "Detail",
@@ -2279,6 +2345,42 @@
       "retryPending": {
         "en": "Queuing…",
         "es": "Encolando…"
+      },
+      "factReason": {
+        "en": "Why",
+        "es": "Motivo"
+      },
+      "factEnqueuedBy": {
+        "en": "Queued by",
+        "es": "Encolado por"
+      },
+      "factResources": {
+        "en": "Holds",
+        "es": "Ocupa"
+      },
+      "factWorker": {
+        "en": "Worker",
+        "es": "Ejecutor"
+      },
+      "factCreated": {
+        "en": "Queued",
+        "es": "Encolado"
+      },
+      "factNotBefore": {
+        "en": "Not before",
+        "es": "No antes de"
+      },
+      "factStarted": {
+        "en": "Started",
+        "es": "Partió"
+      },
+      "factFinished": {
+        "en": "Finished",
+        "es": "Terminó"
+      },
+      "factError": {
+        "en": "Error",
+        "es": "Error"
       }
     }
   },
@@ -3156,6 +3258,18 @@
             "en": "my accounts",
             "es": "mis cuentas"
           },
+          "conversion": {
+            "en": "currency exchange",
+            "es": "divisas"
+          },
+          "trade": {
+            "en": "trades",
+            "es": "operaciones"
+          },
+          "dividend": {
+            "en": "dividends",
+            "es": "dividendos"
+          },
           "other": {
             "en": "third parties",
             "es": "terceros"
@@ -3229,7 +3343,27 @@
           "cardPayment": {
             "en": "Card payment",
             "es": "Pago tarjeta"
+          },
+          "conversion": {
+            "en": "Currency exchange",
+            "es": "Cambio de divisas"
+          },
+          "buy": {
+            "en": "Buy",
+            "es": "Compra"
+          },
+          "sell": {
+            "en": "Sell",
+            "es": "Venta"
+          },
+          "dividend": {
+            "en": "Dividend",
+            "es": "Dividendo"
           }
+        },
+        "units": {
+          "en": "{{units}} units",
+          "es": "{{units}} uds."
         }
       }
     },
@@ -4929,22 +5063,6 @@
       "en": "Deposits reconciliation",
       "es": "Reconciliación de depósitos"
     },
-    "colDate": {
-      "en": "Date",
-      "es": "Fecha"
-    },
-    "colAccount": {
-      "en": "Account",
-      "es": "Cuenta"
-    },
-    "colCategory": {
-      "en": "Category",
-      "es": "Categoría"
-    },
-    "colAmount": {
-      "en": "Amount",
-      "es": "Monto"
-    },
     "sectionLinked": {
       "en": "Linked to an expense",
       "es": "Vinculados a gasto"
@@ -4965,77 +5083,17 @@
       "en": "Unlinked (bank statement available)",
       "es": "Sin vincular (cartola disponible)"
     },
-    "emptyLinked": {
-      "en": "No linked deposits.",
-      "es": "No hay depósitos vinculados."
-    },
-    "emptyResolvedTaxRefund": {
-      "en": "No deposits are tax refunds.",
-      "es": "Ningún depósito es una devolución de impuestos."
-    },
-    "emptyResolvedInternalTransfer": {
-      "en": "No internal transfers between net-worth accounts.",
-      "es": "No hay traspasos internos entre cuentas de patrimonio."
-    },
-    "emptyNoCheckingSource": {
-      "en": "No deposits in months without a bank statement.",
-      "es": "No hay depósitos en meses sin cartola."
-    },
-    "emptyNeedsAttention": {
-      "en": "Every deposit is linked or has no bank statement.",
-      "es": "Todos los depósitos están vinculados o sin cartola."
-    },
     "assertedTitle": {
-      "en": "Manually marked as Deposits — no match",
-      "es": "Marcados manualmente como Depósitos — sin match"
-    },
-    "assertedEmpty": {
-      "en": "No outflows marked as Deposits without a match.",
-      "es": "No hay egresos marcados como Depósitos sin match."
+      "en": "Manually marked as Deposits, no match",
+      "es": "Marcados manualmente como Depósitos, sin match"
     },
     "assertedLinkedSummary": {
-      "en": "{{count}} outflow(s) manually marked as Deposits were already linked automatically.",
-      "es": "{{count}} egreso(s) marcados manualmente como Depósitos ya quedaron vinculados automáticamente."
-    },
-    "colDescription": {
-      "en": "Description",
-      "es": "Descripción"
-    },
-    "colCandidates": {
-      "en": "Candidates",
-      "es": "Candidatos"
+      "en": "{{count}} outflows manually marked as Deposits were already linked automatically.",
+      "es": "{{count}} egresos marcados manualmente como Depósitos ya quedaron vinculados automáticamente."
     },
     "byMonth": {
       "en": "By month",
       "es": "Por mes"
-    },
-    "colMonth": {
-      "en": "Month",
-      "es": "Mes"
-    },
-    "colLinked": {
-      "en": "Linked",
-      "es": "Vinculado"
-    },
-    "colResolvedTaxRefund": {
-      "en": "Tax refund",
-      "es": "Devolución de impuestos"
-    },
-    "colResolvedInternalTransfer": {
-      "en": "Internal transfer",
-      "es": "Traspaso interno"
-    },
-    "colNoChecking": {
-      "en": "No statement",
-      "es": "Sin cartola"
-    },
-    "colUnlinked": {
-      "en": "Unlinked",
-      "es": "Sin vincular"
-    },
-    "colTotal": {
-      "en": "Total",
-      "es": "Total"
     },
     "redemptionsTitle": {
       "en": "Redemptions (net-worth outflows → account)",
@@ -5053,17 +5111,59 @@
       "en": "Unlinked (bank statement available)",
       "es": "Sin vincular (cartola disponible)"
     },
-    "redemptionEmptyLinked": {
-      "en": "No linked redemptions.",
-      "es": "No hay rescates vinculados."
+    "depositsTitle": {
+      "en": "Deposits",
+      "es": "Depósitos"
     },
-    "redemptionEmptyNoCheckingSource": {
-      "en": "No redemptions in months without a bank statement.",
-      "es": "No hay rescates en meses sin cartola."
+    "statusShort": {
+      "unlinked_checking_present": {
+        "en": "Unlinked",
+        "es": "Sin vincular"
+      },
+      "unlinked_no_checking_source": {
+        "en": "No bank statement",
+        "es": "Sin cartola"
+      },
+      "resolved_internal_transfer": {
+        "en": "Internal transfer",
+        "es": "Traspaso interno"
+      },
+      "resolved_tax_refund": {
+        "en": "Tax refund",
+        "es": "Devolución de impuestos"
+      },
+      "linked": {
+        "en": "Linked",
+        "es": "Vinculado"
+      }
     },
-    "redemptionEmptyNeedsAttention": {
-      "en": "Every redemption is linked or has no bank statement.",
-      "es": "Todos los rescates están vinculados o sin cartola."
+    "emptySections": {
+      "en": "No rows: {{list}}.",
+      "es": "Sin filas: {{list}}."
+    },
+    "rowCount": {
+      "en": "{{count}} rows",
+      "es": "{{count}} filas"
+    },
+    "rowCountOne": {
+      "en": "1 row",
+      "es": "1 fila"
+    },
+    "assertedNoCandidate": {
+      "en": "no candidate deposit",
+      "es": "sin depósito candidato"
+    },
+    "assertedCandidates": {
+      "en": "{{count}} candidate deposits",
+      "es": "{{count}} depósitos candidatos"
+    },
+    "assertedCandidatesOne": {
+      "en": "1 candidate deposit",
+      "es": "1 depósito candidato"
+    },
+    "assertedLinkedSummaryOne": {
+      "en": "1 outflow manually marked as Deposits was already linked automatically.",
+      "es": "1 egreso marcado manualmente como Depósitos ya quedó vinculado automáticamente."
     }
   },
   "expenses": {

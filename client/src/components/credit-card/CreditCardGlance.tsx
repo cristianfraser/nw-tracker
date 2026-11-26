@@ -67,7 +67,7 @@ function widenSmallSegments(shares: readonly number[], widthPx: number, minPx: n
   const min = minPx / widthPx;
   const used = shares.reduce((a, b) => a + b, 0);
   const out = shares.map((s) => (s > 0 ? Math.max(s, min) : 0));
-  let extra = out.reduce((a, b) => a + b, 0) - used - Math.max(0, 1 - used);
+  const extra = out.reduce((a, b) => a + b, 0) - used - Math.max(0, 1 - used);
   if (extra <= 0) return out;
   const room = out.reduce((a, s) => (s > min ? a + (s - min) : a), 0);
   if (room <= 0) return out;

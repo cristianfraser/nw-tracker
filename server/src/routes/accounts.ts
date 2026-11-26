@@ -25,8 +25,7 @@ import { accountHasRole } from "../accountRoles.js";
 import { HeavyWork, timeHeavy, timeHeavyAsync } from "../heavyWork.js";
 import { clearCheckingLedgerAnchor, upsertCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { getCheckingCartolaMonths } from "../checkingCartolaMonthSummary.js";
-import { buildCheckingStatement, CHECKING_PAGE_KIND_SLUGS } from "../checkingStatement.js";
-import { kindSlugForAccount } from "../portfolioGroupTree.js";
+import { buildCheckingStatement, isCheckingPageAccount } from "../checkingStatement.js";
 import { ccGroupLanesResponse } from "../ccGroupLanes.js";
 import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
@@ -366,9 +365,8 @@ app.get("/api/accounts/:id/checking-statement", (req, res) => {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const kind = kindSlugForAccount(id);
-  if (kind == null || !CHECKING_PAGE_KIND_SLUGS.has(kind)) {
-    res.status(400).json({ error: "account is not a cuenta corriente or cuenta vista" });
+  if (!isCheckingPageAccount(id)) {
+    res.status(400).json({ error: "account is not a cash ledger (a checking account, a broker's cash, a foreign-currency account)" });
     return;
   }
   const before = req.query.before;
@@ -380,7 +378,7 @@ app.get("/api/accounts/:id/checking-statement", (req, res) => {
     req,
     res,
     "kind",
-    ["all", "income", "card_payment", "own_transfer", "other", "fee"] as const,
+    ["all", "income", "card_payment", "own_transfer", "conversion", "trade", "dividend", "other", "fee"] as const,
     "all"
   );
   if (kindFilter == null) return;

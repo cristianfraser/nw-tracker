@@ -217,6 +217,22 @@
     }
   },
   "realEstate": {
+    "group": {
+      "propertyCount": "{{count}} properties",
+      "propertiesLabel": "Properties",
+      "colProperty": "property",
+      "colEquity": "net equity",
+      "colOwned": "owned",
+      "ownedOf": "of {{appraisal}}",
+      "noLoan": "no loan",
+      "noLedger": "No payments on file yet.",
+      "none": "No property has payments on file yet.",
+      "valueChart": "Value, mortgages and net equity by property",
+      "appraisal": "appraisal",
+      "atPurchase": "at purchase",
+      "downPayment": "down payments",
+      "expensesLink": "real-estate expenses"
+    },
     "propertyValue": "value",
     "mortgage": "mortgage",
     "propertyValueOfProperty": "value · {{property}}",
@@ -563,7 +579,6 @@
     "genericUniqueMerchantsTitle": "Automatic One-off merchants",
     "genericUniqueMerchants": {
       "colMerchant": "Merchant name",
-      "colActions": "Actions",
       "empty": "No merchants configured.",
       "addPlaceholder": "Merchant name (as it appears on the statement)",
       "add": "Add",
@@ -583,6 +598,19 @@
     "importedNo": "{{account}}: {{month}} document missing",
     "showMore": "Show more…",
     "showLess": "Show less…",
+    "docs": {
+      "allComplete": "all {{n}} complete",
+      "nothingDue": "nothing due yet",
+      "someComplete": "{{complete}} of {{n}} complete",
+      "legendImported": "imported, file on disk",
+      "legendNoFile": "imported, no file",
+      "legendNoMovements": "statement with no movements",
+      "legendFileOnly": "file on disk, not imported",
+      "legendMissing": "missing",
+      "legendNotDue": "month in progress, not due yet",
+      "notDue": "{{account}}: {{month}} is in progress, its document is not due yet",
+      "fileNotImported": "{{account}}: {{month}} file on disk, not imported"
+    },
     "sync": {
       "lastSync": "Last sync: {{time}} ({{ago}})",
       "lastSyncNever": "Last sync: —",
@@ -597,10 +625,8 @@
       "publisherLagDetail": "Latest cuota {{published}} · expected {{expected}} · checked {{checked}}",
       "forceStale": "Mark stale",
       "forceStalePending": "Marking…",
-      "colSource": "Source",
       "colNextSync": "Next sync",
       "colHolidayToday": "Today",
-      "colStatus": "Status",
       "nextSyncNow": "Now",
       "nextSyncDash": "—",
       "nextSyncToday": "Today, {{time}}",
@@ -636,7 +662,10 @@
       "agoHours": "{{n}} h ago",
       "agoHoursMinutes": "{{h}} h {{m}} min ago",
       "agoDay": "1 day ago",
-      "agoDays": "{{n}} days ago"
+      "agoDays": "{{n}} days ago",
+      "nextLine": "next: {{when}}",
+      "todayIs": "{{kind}} today",
+      "factPublisher": "Publisher"
     },
     "ingestRunsTitle": "Bank and e-mail runs",
     "ingest": {
@@ -644,8 +673,6 @@
       "schedulerOff": "The ingest scheduler is off on this server instance: runs can only be started from the primary one.",
       "inFlight": "Running: {{kind}} since {{time}}.",
       "idle": "No run in progress.",
-      "colRun": "Run",
-      "colLatest": "Latest",
       "colNext": "Next",
       "kinds": {
         "hourly": "E-mail poll (hourly)",
@@ -662,15 +689,18 @@
       "failedSteps": "{{n}} failed step(s)",
       "never": "never",
       "runNow": "Run now",
-      "runNowPending": "Starting…"
+      "runNowPending": "Starting…",
+      "nextAt": "next {{time}}",
+      "factReason": "Why",
+      "factRequested": "Requested",
+      "factFinished": "Finished",
+      "factFailedSteps": "Failed",
+      "factError": "Error"
     },
     "jobs": {
       "title": "Queue",
       "summary": "{{running}} running, {{queued}} waiting.",
       "empty": "Nothing has gone through the queue yet.",
-      "colJob": "Job",
-      "colStatus": "Status",
-      "colWhen": "When",
       "colDetail": "Detail",
       "kinds": {
         "ingest_nightly": "Nightly run",
@@ -701,7 +731,16 @@
       "cancel": "Cancel",
       "cancelPending": "Cancelling…",
       "retry": "Retry",
-      "retryPending": "Queuing…"
+      "retryPending": "Queuing…",
+      "factReason": "Why",
+      "factEnqueuedBy": "Queued by",
+      "factResources": "Holds",
+      "factWorker": "Worker",
+      "factCreated": "Queued",
+      "factNotBefore": "Not before",
+      "factStarted": "Started",
+      "factFinished": "Finished",
+      "factError": "Error"
     }
   },
   "detail": {
@@ -951,6 +990,9 @@
           "income": "income",
           "card_payment": "cards",
           "own_transfer": "my accounts",
+          "conversion": "currency exchange",
+          "trade": "trades",
+          "dividend": "dividends",
           "other": "third parties",
           "fee": "fees"
         },
@@ -970,8 +1012,13 @@
         "type": {
           "deposit": "Deposit",
           "withdrawal": "Withdrawal",
-          "cardPayment": "Card payment"
-        }
+          "cardPayment": "Card payment",
+          "conversion": "Currency exchange",
+          "buy": "Buy",
+          "sell": "Sell",
+          "dividend": "Dividend"
+        },
+        "units": "{{units}} units"
       }
     },
     "creditCard": {
@@ -1539,40 +1586,33 @@
   },
   "depositsReconciliation": {
     "title": "Deposits reconciliation",
-    "colDate": "Date",
-    "colAccount": "Account",
-    "colCategory": "Category",
-    "colAmount": "Amount",
     "sectionLinked": "Linked to an expense",
     "sectionResolvedTaxRefund": "Tax refunds paid into the account (no own outflow)",
     "sectionResolvedInternalTransfer": "Internal transfer between accounts (not through checking)",
     "sectionNoCheckingSource": "No bank statement (month without data)",
     "sectionNeedsAttention": "Unlinked (bank statement available)",
-    "emptyLinked": "No linked deposits.",
-    "emptyResolvedTaxRefund": "No deposits are tax refunds.",
-    "emptyResolvedInternalTransfer": "No internal transfers between net-worth accounts.",
-    "emptyNoCheckingSource": "No deposits in months without a bank statement.",
-    "emptyNeedsAttention": "Every deposit is linked or has no bank statement.",
-    "assertedTitle": "Manually marked as Deposits — no match",
-    "assertedEmpty": "No outflows marked as Deposits without a match.",
-    "assertedLinkedSummary": "{{count}} outflow(s) manually marked as Deposits were already linked automatically.",
-    "colDescription": "Description",
-    "colCandidates": "Candidates",
+    "assertedTitle": "Manually marked as Deposits, no match",
+    "assertedLinkedSummary": "{{count}} outflows manually marked as Deposits were already linked automatically.",
     "byMonth": "By month",
-    "colMonth": "Month",
-    "colLinked": "Linked",
-    "colResolvedTaxRefund": "Tax refund",
-    "colResolvedInternalTransfer": "Internal transfer",
-    "colNoChecking": "No statement",
-    "colUnlinked": "Unlinked",
-    "colTotal": "Total",
     "redemptionsTitle": "Redemptions (net-worth outflows → account)",
     "redemptionSectionLinked": "Linked to an account credit",
     "redemptionSectionNoCheckingSource": "No bank statement (month without data)",
     "redemptionSectionNeedsAttention": "Unlinked (bank statement available)",
-    "redemptionEmptyLinked": "No linked redemptions.",
-    "redemptionEmptyNoCheckingSource": "No redemptions in months without a bank statement.",
-    "redemptionEmptyNeedsAttention": "Every redemption is linked or has no bank statement."
+    "depositsTitle": "Deposits",
+    "statusShort": {
+      "unlinked_checking_present": "Unlinked",
+      "unlinked_no_checking_source": "No bank statement",
+      "resolved_internal_transfer": "Internal transfer",
+      "resolved_tax_refund": "Tax refund",
+      "linked": "Linked"
+    },
+    "emptySections": "No rows: {{list}}.",
+    "rowCount": "{{count}} rows",
+    "rowCountOne": "1 row",
+    "assertedNoCandidate": "no candidate deposit",
+    "assertedCandidates": "{{count}} candidate deposits",
+    "assertedCandidatesOne": "1 candidate deposit",
+    "assertedLinkedSummaryOne": "1 outflow manually marked as Deposits was already linked automatically."
   },
   "expenses": {
     "spent": {

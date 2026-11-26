@@ -19,13 +19,26 @@ export const FOREIGN_CASH_KIND_SLUG = "foreign_cash";
 /** The legacy cash leaves (`<key>__clp`, `<key>__usd`): the leaf kind is the code of the currency they hold. */
 const LEGACY_PESO_LEAF_KIND = "clp";
 const LEGACY_DOLLAR_LEAF_KIND = "usd";
-const LEAF_NAMED_CASH_CURRENCY: ReadonlyMap<string, string> = new Map(
-  [LEGACY_PESO_LEAF_KIND, LEGACY_DOLLAR_LEAF_KIND].map((kind) => [kind, kind])
-);
+/**
+ * The crypto exchange's peso wallet (`brokerage_crypto__buda_clp`): pesos arrive from checking and
+ * leave as coin purchases, so its balance is the sum of its peso movements like any peso ledger.
+ */
+const EXCHANGE_PESO_WALLET_LEAF_KIND = "buda_clp";
+const LEAF_NAMED_CASH_CURRENCY: ReadonlyMap<string, string> = new Map([
+  [LEGACY_PESO_LEAF_KIND, LEGACY_PESO_LEAF_KIND],
+  [LEGACY_DOLLAR_LEAF_KIND, LEGACY_DOLLAR_LEAF_KIND],
+  [EXCHANGE_PESO_WALLET_LEAF_KIND, LEGACY_PESO_LEAF_KIND],
+]);
 
 /** A cash ledger leaf kind (pesos or a foreign currency). */
 export function isCashLedgerKindSlug(kind: string): boolean {
   return kind === FOREIGN_CASH_KIND_SLUG || LEAF_NAMED_CASH_CURRENCY.has(kind);
+}
+
+/** A peso cash ledger leaf kind: the `clp` leaves and the exchange's peso wallet. */
+export function isPesoCashKindSlug(kind: string): boolean {
+  const named = LEAF_NAMED_CASH_CURRENCY.get(kind);
+  return named != null && isHomeCurrency(named);
 }
 
 /** A foreign-cash leaf kind: the `usd` leaves and the generic `foreign_cash` leaf. */

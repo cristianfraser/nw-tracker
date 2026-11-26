@@ -856,6 +856,16 @@ export function useMortgageGroupGlance(slug: string | undefined, unit: DisplayUn
   });
 }
 
+/** The real-estate group page (`realEstateGroupGlance.ts`). */
+export function useRealEstateGroupGlance(slug: string | undefined, unit: DisplayUnit) {
+  return useQuery({
+    queryKey: queryKeys.realEstateGroupGlance(slug ?? "", unit),
+    queryFn: () => api.realEstateGroupGlance(slug!, unit),
+    enabled: Boolean(slug),
+    ...displayUnitQueryBehaviorFor(queryKeys.realEstateGroupGlance(slug ?? "", unit)),
+  });
+}
+
 /** The Liabilities page's head and upcoming payments (`liabilitiesGlance.ts`). */
 export function useLiabilitiesGlance(slug: string | undefined, unit: DisplayUnit) {
   return useQuery({

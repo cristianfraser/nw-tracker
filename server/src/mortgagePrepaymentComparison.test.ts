@@ -1,12 +1,24 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { getBenchmark } from "./benchmarkLevels.js";
+import { loanAccountImportKey, propertyAccountImportKey } from "./accountIdentityKeys.js";
 import { db } from "./db.js";
+import {
+  insertLoanPaymentRow,
+  loanPaymentColumnsFromPaymentRow,
+  upsertPropertyAppraisalUf,
+  type DeptoDividendosPaymentRow,
+} from "./deptoDividendosLedger.js";
 import {
   computeMortgagePrepaymentComparison,
   listMortgageExtraPayments,
 } from "./mortgagePrepaymentComparison.js";
+import { storedPairRate } from "./rates.js";
 
 const NAME = "zz-prepayment-comparison-test";
+const KEY = "zz_prepayment_comparison_test";
+/** The fixture loan's own monthly rate: each regular cuota's interest is this share of the balance before it. */
+const MONTHLY_RATE = 0.004;
+const YEARLY = Math.pow(1 + MONTHLY_RATE, 12);
 
 function cleanup(): void {
   db.prepare(`DELETE FROM accounts WHERE name = ?`).run(NAME);
@@ -14,10 +26,51 @@ function cleanup(): void {
 
 function seed(withChargedPrepago = false): number {
   cleanup();
-  const groupId = (db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number }).id;
-  const accountId = Number(
-    db.prepare(`INSERT INTO accounts (name, asset_group_id) VALUES (?, ?)`).run(NAME, groupId).lastInsertRowid
-  );
+  const leaf = (slug: string) => (db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as { id: number }).id;
+  const account = (group: string, importKey: string) =>
+    Number(
+      db
+        .prepare(`INSERT INTO accounts (name, asset_group_id, import_key) VALUES (?, ?, ?)`)
+        .run(NAME, leaf(group), importKey).lastInsertRowid
+    );
+  const propertyId = account("real_estate__property", propertyAccountImportKey(KEY));
+  const accountId = account("liabilities__mortgage", loanAccountImportKey(KEY));
+  // The loan's ledger (the property's rows): 1000 UF after the pie, two cuotas at the fixture rate.
+  const uf = (date: string) => storedPairRate("uf", "clp", date)!.mid;
+  const ledgerRow = (r: Partial<DeptoDividendosPaymentRow> & { cuota: string; occurred_on: string }) => {
+    const row: DeptoDividendosPaymentRow = {
+      amount_clp: 1,
+      credito_restante_uf: null,
+      min_uf: null,
+      max_uf: null,
+      amortizacion_clp: null,
+      amortizacion_ext_clp: null,
+      interes_clp: null,
+      incendio_clp: null,
+      desgravamen_clp: null,
+      ...r,
+    };
+    const mid = Number(
+      db
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on) VALUES (?, ?, 'clp', ?)`)
+        .run(propertyId, row.amount_clp, row.occurred_on).lastInsertRowid
+    );
+    insertLoanPaymentRow({ movement_id: mid, loan_account_id: accountId, leg: "property", origin: "import", ...loanPaymentColumnsFromPaymentRow(row) });
+  };
+  upsertPropertyAppraisalUf(propertyId, "2025-05-01", 1500);
+  ledgerRow({ cuota: "pie", occurred_on: "2025-05-01", amount_clp: 20_000_000, credito_restante_uf: 1000 });
+  ledgerRow({
+    cuota: "1",
+    occurred_on: "2025-06-01",
+    credito_restante_uf: 990,
+    interes_clp: Math.round(1000 * MONTHLY_RATE * uf("2025-06-01")),
+  });
+  ledgerRow({
+    cuota: "2",
+    occurred_on: "2025-07-01",
+    credito_restante_uf: 985,
+    interes_clp: Math.round(990 * MONTHLY_RATE * uf("2025-07-01")),
+  });
   const pay = (
     date: string,
     cuota: string,
@@ -42,7 +95,6 @@ function seed(withChargedPrepago = false): number {
   pay("2025-06-01", "1", 1_000_000);
   pay("2025-07-01", "2", 0);
   pay("2025-08-01", "prepago 1", 5_000_000, { prepagoInterest: 40_000 });
-  pay("2025-08-01", "x", 9_000_000, { leg: "property" });
   if (withChargedPrepago) pay("2025-09-01", "prepago 2", 2_000_000, { prepagoInterest: 10_000, prepagoCharge: 30_000 });
   return accountId;
 }
@@ -69,7 +121,7 @@ describe("mortgage prepayment comparison", () => {
     });
   });
 
-  it("prepaid grows at the mortgage rate over the UF; invested in UF alone trails it by that rate", () => {
+  it("prepaid grows at the loan's own rate over the UF; invested in UF alone trails it by that rate", () => {
     const id = seed();
     const now = new Date("2026-09-01T15:00:00Z");
     const r = computeMortgagePrepaymentComparison({
@@ -84,7 +136,7 @@ describe("mortgage prepayment comparison", () => {
       const days = (Date.parse("2026-09-01T00:00:00Z") - Date.parse(`${row.date}T00:00:00Z`)) / 86_400_000;
       // The whole extra is invested; only the amortization grows on the prepaid side.
       const share = amortization[row.cuota]! / row.extra;
-      expect(row.prepaid_value! / row.invested_value!).toBeCloseTo(share * Math.pow(1.0495, days / 365), 8);
+      expect(row.prepaid_value! / row.invested_value!).toBeCloseTo(share * Math.pow(YEARLY, days / 365), 8);
     }
     expect(r.rows.find((row) => row.cuota === "1")!.delta!).toBeLessThan(0);
     expect(r.totals.extra).toBe(6_040_000);
@@ -93,7 +145,7 @@ describe("mortgage prepayment comparison", () => {
     expect(r.totals.delta_pct).toBeCloseTo(r.totals.delta! / r.totals.prepaid_value!, 10);
   });
 
-  it("without prepago interest, prepaying beats the UF alone by the mortgage rate", () => {
+  it("without prepago interest, prepaying beats the UF alone by the loan's own rate", () => {
     const id = seed();
     db.prepare(
       `UPDATE loan_payments SET interest = 0 WHERE cuota = 'prepago 1'
@@ -106,9 +158,9 @@ describe("mortgage prepayment comparison", () => {
       unit: "clp",
       now: new Date("2026-09-01T15:00:00Z"),
     })!;
-    // Prepaying earns the UF plus 4,95%: its IRR beats the UF alone by about that rate.
+    // Prepaying earns the UF plus the loan's own rate: its IRR beats the UF alone by about that rate.
     const excess = (1 + r.totals.prepaid_irr_pct!) / (1 + r.totals.invested_irr_pct!) - 1;
-    expect(excess).toBeCloseTo(0.0495, 3);
+    expect(excess).toBeCloseTo(YEARLY - 1, 3);
   });
 
   it("throws when a prepago's parts do not add up to its payment", () => {

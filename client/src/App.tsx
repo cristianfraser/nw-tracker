@@ -19,6 +19,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { GroupInfoPage } from "./pages/GroupInfoPage";
 import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
 import { MortgageGroupPage } from "./pages/MortgageGroupPage";
+import { RealEstateGroupPage } from "./pages/RealEstateGroupPage";
 import { LiabilitiesPage } from "./pages/LiabilitiesPage";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { FlowsLayout } from "./pages/FlowsLayout";
@@ -148,7 +149,7 @@ function AppTree() {
             <Route path={DASHBOARD_ALIAS_PATH} element={DEMO_BUILD ? <DemoHomePage /> : <DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
-            <Route path="/real_estate" element={<GroupInfoPage />} />
+            <Route path="/real_estate" element={<RealEstateGroupPage />} />
             <Route path="/liabilities" element={<LiabilitiesPage />} />
             <Route path="/liabilities/mortgage" element={<MortgageGroupPage />} />
             <Route path="/liabilities/:subgroup" element={<LiabilitiesGroupPage />} />

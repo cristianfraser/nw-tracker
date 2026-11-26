@@ -49,7 +49,7 @@ import type { CcFacturadoFinancingLink as S_CcFacturadoFinancingLink } from "../
 import type { ExpenseLinkLabel as S_ExpenseLinkLabel } from "../expenseDisplayNames.js";
 import type { ManualExpenseInput as S_ManualExpenseInput } from "../flowsManualExpenses.js";
 import type { ExpenseDepositLinkDto as S_ExpenseDepositLinkDto } from "../expenseDepositLinks.js";
-import type { DepositReconciliationStatus as S_DepositReconciliationStatus, DepositReconciliationUnitPayload as S_DepositReconciliationUnitPayload, DepositReconciliationUnitTotals as S_DepositReconciliationStatusTotals, DepositReconciliationUnitByMonth as S_DepositReconciliationByMonth, DepositRedemptionStatus as S_DepositRedemptionStatus, DepositManualAssertionStatus as S_DepositManualAssertionStatus } from "../flowsDepositsReconciliation.js";
+import type { DepositReconciliationStatus as S_DepositReconciliationStatus, DepositReconciliationUnitPayload as S_DepositReconciliationUnitPayload, DepositReconciliationPagePayload as S_DepositReconciliationPagePayload, DepositRedemptionStatus as S_DepositRedemptionStatus, DepositManualAssertionStatus as S_DepositManualAssertionStatus } from "../flowsDepositsReconciliation.js";
 type S_DepositReconciliationRow = S_DepositReconciliationUnitPayload["rows"][number];
 type S_DepositRedemptionRow = S_DepositReconciliationUnitPayload["redemptions"][number];
 type S_DepositManualAssertionRow = S_DepositReconciliationUnitPayload["manual_assertions"][number];
@@ -212,8 +212,7 @@ export type ServerDtosFitContracts = [
   Fits<S_ExpenseDepositLinkDto, Dto.ExpenseDepositLinkDto>,
   Fits<S_DepositReconciliationStatus, Dto.DepositReconciliationStatus>,
   Fits<S_DepositReconciliationRow, Dto.DepositReconciliationRow>,
-  Fits<S_DepositReconciliationStatusTotals, Dto.DepositReconciliationStatusTotals>,
-  Fits<S_DepositReconciliationByMonth, Dto.DepositReconciliationByMonth>,
+  Fits<S_DepositReconciliationPagePayload, Dto.DepositsReconciliationPayload>,
   Fits<S_DepositRedemptionStatus, Dto.DepositRedemptionStatus>,
   Fits<S_DepositRedemptionRow, Dto.DepositRedemptionRow>,
   Fits<S_DepositManualAssertionStatus, Dto.DepositManualAssertionStatus>,
