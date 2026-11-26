@@ -7,37 +7,45 @@ export function fintualGoalUnitsFromMovements(accountId: number): number | null 
   return fintualGoalUnitsFromMovementsThroughDate(accountId);
 }
 
+const stmtUnitsThrough = db.prepare(
+  `SELECT COALESCE(SUM(units_delta), 0) AS u FROM movements
+   WHERE account_id = ? AND units_delta IS NOT NULL AND date(occurred_on) <= date(?)`
+);
+const stmtUnitsAll = db.prepare(
+  `SELECT COALESCE(SUM(units_delta), 0) AS u FROM movements
+   WHERE account_id = ? AND units_delta IS NOT NULL`
+);
+
 /**
- * Σ Fintual cuotas through an optional as-of date (`YYYY-MM-DD`): certificate/flow rows on the
- * account plus manual `checking → fund` transfer legs (aportes/retiros entered by hand).
+ * Σ Fintual cuotas through an optional as-of date (`YYYY-MM-DD`; omitted = every row, transfer
+ * legs through today): certificate/flow rows on the account plus manual `checking → fund`
+ * transfer legs (aportes/retiros entered by hand). Null when the account holds none — an
+ * emptied (or never funded) goal. A negative sum is a ledger error (a retiro counted twice, a
+ * deposit missing) and throws, as does a malformed date.
  */
 export function fintualGoalUnitsFromMovementsThroughDate(
   accountId: number,
   asOfYmd?: string
 ): number | null {
   if (!Number.isFinite(accountId) || accountId <= 0) return null;
-  const row =
-    asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd)
-      ? (db
-          .prepare(
-            `SELECT COALESCE(SUM(units_delta), 0) AS u FROM movements
-             WHERE account_id = ? AND units_delta IS NOT NULL AND date(occurred_on) <= date(?)`
-          )
-          .get(accountId, asOfYmd) as { u: number } | undefined)
-      : (db
-          .prepare(
-            `SELECT COALESCE(SUM(units_delta), 0) AS u FROM movements
-             WHERE account_id = ? AND units_delta IS NOT NULL`
-          )
-          .get(accountId) as { u: number } | undefined);
+  if (asOfYmd !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(asOfYmd)) {
+    throw new Error(`Fintual cuotas of account ${accountId}: as-of date «${asOfYmd}» is not YYYY-MM-DD`);
+  }
+  const row = (asOfYmd !== undefined ? stmtUnitsThrough.get(accountId, asOfYmd) : stmtUnitsAll.get(accountId)) as
+    | { u: number }
+    | undefined;
   const ledger = row?.u ?? 0;
-  const asOf = asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd) ? asOfYmd : chileCalendarTodayYmd();
-  const raw = ledger + transferLegUnitsThroughDate(accountId, asOf);
-  if (!Number.isFinite(raw)) return null;
-  // Rounded before the zero test: cuotas are stored to 4 decimals, and withdrawing exactly the
+  const raw = ledger + transferLegUnitsThroughDate(accountId, asOfYmd ?? chileCalendarTodayYmd());
+  if (!Number.isFinite(raw)) throw new Error(`Fintual cuotas of account ${accountId}: the sum is ${raw}`);
+  // Rounded before the sign test: cuotas are stored to 4 decimals, and withdrawing exactly the
   // rounded holding leaves a float residue (~1e-12) that must read as an emptied account.
   const u = Math.round(raw * 1e4) / 1e4;
-  return u <= 0 ? null : u;
+  if (u < 0) {
+    throw new Error(
+      `Fintual cuotas of account ${accountId} sum to ${u}${asOfYmd ? ` through ${asOfYmd}` : ""}: the ledger holds more out than in`
+    );
+  }
+  return u === 0 ? null : u;
 }
 
 /**

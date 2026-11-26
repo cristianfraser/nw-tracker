@@ -233,7 +233,10 @@ function accountTodayValueFor(
     // A fund on a series in another currency (a 401(k)'s dollar fund): its cuotas × today's valor
     // cuota in that currency, converted once (`done`), never through pesos.
     const cuotas = afpCuotasCumulativeThroughDate(accountId, today);
-    if (!(cuotas > 1e-9)) {
+    if (cuotas < 0) {
+      throw new Error(`Account ${accountId}: its cuotas sum to ${cuotas} on ${today} — the ledger holds more out than in`);
+    }
+    if (cuotas === 0) {
       return hasCuotaLedgerUnitsEvents(accountId)
         ? done({ value: 0, currency: p.holding.quote, as_of_date: today, market: true })
         : null;
