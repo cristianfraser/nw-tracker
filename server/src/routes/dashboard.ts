@@ -46,8 +46,11 @@ import {
   asyncHandler,
   isKnownClassTabGroup,
   accountIdFromReq,
+  parseBody,
   queryFlag,
 } from "./shared.js";
+import { writeHandler } from "../inputError.js";
+import { recurringPaymentCreateSchema } from "nw-tracker-contracts/requests/dashboard";
 import { requestDisplayUnit } from "../displayUnits.js";
 
 export function registerDashboardRoutes(app: express.Express): void {
@@ -185,9 +188,10 @@ app.get("/api/upcoming-payments/recurring", (_req, res) => {
   res.json({ rows: listRecurringPayments() });
 });
 
-app.post("/api/upcoming-payments/recurring", (req, res) => {
+app.post("/api/upcoming-payments/recurring", writeHandler((req, res) => {
+  const body = parseBody(recurringPaymentCreateSchema, req);
   try {
-    res.status(201).json(createRecurringPayment((req.body ?? {}) as Record<string, unknown>));
+    res.status(201).json(createRecurringPayment(body));
   } catch (e) {
     if (e instanceof RecurringPaymentInputError) {
       res.status(400).json({ error: e.message });
@@ -195,7 +199,7 @@ app.post("/api/upcoming-payments/recurring", (req, res) => {
     }
     throw e;
   }
-});
+}));
 
 app.delete("/api/upcoming-payments/recurring/:id", (req, res) => {
   const id = Number(req.params.id);

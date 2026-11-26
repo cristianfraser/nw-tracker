@@ -7,7 +7,9 @@ import {
   TaxResidencyInputError,
   type TaxResidencyPeriod,
 } from "../taxResidency.js";
-import { asyncHandler } from "./shared.js";
+import { asyncHandler, parseBody } from "./shared.js";
+import { writeHandler } from "../inputError.js";
+import { taxResidencyDeclareSchema } from "nw-tracker-contracts/requests/dashboard";
 
 function periodDto(p: TaxResidencyPeriod) {
   return { id: p.id, jurisdiction: p.jurisdiction, from: p.fromDate, to: p.toDate, note: p.note };
@@ -23,13 +25,13 @@ export function registerTaxResidencyRoutes(app: express.Express): void {
 
   app.post(
     "/api/tax-residency",
-    asyncHandler(async (req, res) => {
-      const body = (req.body ?? {}) as Record<string, unknown>;
+    writeHandler((req, res) => {
+      const body = parseBody(taxResidencyDeclareSchema, req);
       try {
         const period = declareTaxResidency({
-          jurisdiction: String(body.jurisdiction ?? ""),
-          fromDate: String(body.from ?? ""),
-          note: typeof body.note === "string" ? body.note : null,
+          jurisdiction: body.jurisdiction,
+          fromDate: body.from,
+          note: body.note ?? null,
         });
         res.status(201).json(periodDto(period));
       } catch (e) {

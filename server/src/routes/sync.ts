@@ -20,10 +20,11 @@ import {
 import { normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import { backfillGenericTransferUniquePurchases } from "../ccExpenseGenericTransferBackfill.js";
 import { writeHandler } from "../inputError.js";
-import { queryChoice } from "./shared.js";
+import { parseBody, queryChoice } from "./shared.js";
+import { genericUniqueMerchantSchema, manualIngestRunSchema, syncForceStaleSchema } from "nw-tracker-contracts/requests/sync";
 import { lastSyncRunCreatedAt } from "../syncRunLog.js";
 import { getGlobalSyncSchedulerSnapshot, notifyGlobalSyncScheduler } from "../globalSyncScheduler.js";
-import { INGEST_RUN_KINDS, type IngestRunKind } from "nw-tracker-contracts";
+import type { IngestRunKind } from "nw-tracker-contracts";
 import { inFlightIngestRun, latestStartedIngestRun, type IngestRunRow } from "../ingestRuns.js";
 import { ingestSchedulerEnabled, startManualIngestRun } from "../ingestRunScheduler.js";
 import { nextIngestSlotsAfter } from "../ingestRunPolicy.js";
@@ -66,8 +67,8 @@ app.get("/api/sync/status", (_req, res) => {
   });
 });
 
-app.post("/api/sync/force-stale", (req, res) => {
-  const source = typeof req.body?.source === "string" ? req.body.source.trim() : "";
+app.post("/api/sync/force-stale", writeHandler((req, res) => {
+  const { source } = parseBody(syncForceStaleSchema, req);
   if (!isGlobalSyncSource(source)) {
     res.status(400).json({ error: "invalid_source" });
     return;
@@ -79,7 +80,7 @@ app.post("/api/sync/force-stale", (req, res) => {
     scheduler: getGlobalSyncSchedulerSnapshot(),
     last_sync_at: lastSyncRunCreatedAt(),
   });
-});
+}));
 
 app.get("/api/import-sync/ingest-runs", (_req, res) => {
   res.json(ingestRunsStatusPayload(new Date()));
@@ -87,19 +88,15 @@ app.get("/api/import-sync/ingest-runs", (_req, res) => {
 
 // Run the hourly poll or the nightly now (a mail that just landed): queued at once, started as
 // soon as the ingest service is free.
-app.post("/api/import-sync/ingest-runs", (req, res) => {
-  const kind = typeof req.body?.kind === "string" ? req.body.kind : "";
-  if (!(INGEST_RUN_KINDS as readonly string[]).includes(kind)) {
-    res.status(400).json({ error: `Unknown ingest run kind: ${kind || "(none)"}` });
-    return;
-  }
-  const outcome = startManualIngestRun(kind as IngestRunKind, new Date());
+app.post("/api/import-sync/ingest-runs", writeHandler((req, res) => {
+  const { kind } = parseBody(manualIngestRunSchema, req);
+  const outcome = startManualIngestRun(kind, new Date());
   if (outcome.status === "refused") {
     res.status(409).json({ error: outcome.message, reason: outcome.reason });
     return;
   }
   res.status(202).json(ingestRunsStatusPayload(new Date()));
-});
+}));
 
 // The job queue (docs/job-queue-plan.md): running, waiting (and why), recent; cancel a queued job, retry a failed run.
 app.get("/api/import-sync/jobs", (_req, res) => {
@@ -127,12 +124,7 @@ app.get("/api/import-sync/generic-unique-merchants", (_req, res) => {
 });
 
 app.post("/api/import-sync/generic-unique-merchants", writeHandler((req, res) => {
-  const raw = req.body?.merchant;
-  if (typeof raw !== "string") {
-    res.status(400).json({ error: "merchant required" });
-    return;
-  }
-  const merchantKey = normalizeCcExpenseMerchantKey(raw);
+  const merchantKey = normalizeCcExpenseMerchantKey(parseBody(genericUniqueMerchantSchema, req).merchant);
   if (!merchantKey) {
     res.status(400).json({ error: "merchant required" });
     return;
@@ -149,12 +141,7 @@ app.patch("/api/import-sync/generic-unique-merchants/:id", writeHandler((req, re
     res.status(400).json({ error: "invalid id" });
     return;
   }
-  const raw = req.body?.merchant;
-  if (typeof raw !== "string") {
-    res.status(400).json({ error: "merchant required" });
-    return;
-  }
-  const merchantKey = normalizeCcExpenseMerchantKey(raw);
+  const merchantKey = normalizeCcExpenseMerchantKey(parseBody(genericUniqueMerchantSchema, req).merchant);
   if (!merchantKey) {
     res.status(400).json({ error: "merchant required" });
     return;

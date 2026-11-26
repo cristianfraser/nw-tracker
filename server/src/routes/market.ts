@@ -16,11 +16,17 @@ import {
   searchWatchlistSymbols,
   WatchlistSymbolLookupError,
 } from "../watchlist.js";
-import { asyncHandler } from "./shared.js";
+import { asyncHandler, parseBody } from "./shared.js";
 import { writeHandler } from "../inputError.js";
 import { invalidateMarketDataAggregations } from "../cacheRegistry.js";
 import { listEquitySplits, recordEquitySplit } from "../equitySplits.js";
-import { isPositiveFiniteNumber, isYmdString } from "../requestValidation.js";
+import {
+  equitySplitCreateSchema,
+  fxBidAskUpsertSchema,
+  fxUpsertSchema,
+  watchlistAddSchema,
+  watchlistRowPatchSchema,
+} from "nw-tracker-contracts/requests/market";
 import { requestDisplayUnit } from "../displayUnits.js";
 
 /**
@@ -48,35 +54,12 @@ app.get("/api/fx/bid-ask/gaps", (_req, res) => {
 });
 
 /** Upsert directional FX: body { date, buy_clp_per_usd, sell_clp_per_usd } */
-app.post("/api/fx/bid-ask", (req, res) => {
-  const { date, buy_clp_per_usd, sell_clp_per_usd } = req.body as {
-    date?: string;
-    buy_clp_per_usd?: number;
-    sell_clp_per_usd?: number;
-  };
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    res.status(400).json({ error: "date (YYYY-MM-DD) required" });
-    return;
-  }
-  if (
-    buy_clp_per_usd == null ||
-    sell_clp_per_usd == null ||
-    !Number.isFinite(buy_clp_per_usd) ||
-    !Number.isFinite(sell_clp_per_usd) ||
-    buy_clp_per_usd <= 0 ||
-    sell_clp_per_usd <= 0
-  ) {
-    res.status(400).json({ error: "positive buy_clp_per_usd and sell_clp_per_usd required" });
-    return;
-  }
-  if (buy_clp_per_usd < sell_clp_per_usd) {
-    res.status(400).json({ error: "buy_clp_per_usd must be >= sell_clp_per_usd" });
-    return;
-  }
-  // Everything the write checks is checked above; a throw from here on is a 500.
+app.post("/api/fx/bid-ask", writeHandler((req, res) => {
+  // Everything the write checks is the schema's; a throw from here on is a 500.
+  const { date, buy_clp_per_usd, sell_clp_per_usd } = parseBody(fxBidAskUpsertSchema, req);
   const row = upsertManualFxBidAskRow(date, buy_clp_per_usd, sell_clp_per_usd);
   res.json({ ok: true, row });
-});
+}));
 
 app.get("/api/fx", (_req, res) => {
   const rows = db
@@ -86,22 +69,14 @@ app.get("/api/fx", (_req, res) => {
 });
 
 /** Upsert FX: body { date: 'YYYY-MM-DD', clp_per_usd: number } */
-app.post("/api/fx", (req, res) => {
-  const { date, clp_per_usd } = req.body as { date?: unknown; clp_per_usd?: unknown };
-  if (!isYmdString(date)) {
-    res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    return;
-  }
-  if (!isPositiveFiniteNumber(clp_per_usd)) {
-    res.status(400).json({ error: "positive clp_per_usd required" });
-    return;
-  }
+app.post("/api/fx", writeHandler((req, res) => {
+  const { date, clp_per_usd } = parseBody(fxUpsertSchema, req);
   db.prepare(
     `INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)
      ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd`
   ).run(date, clp_per_usd);
   res.json({ ok: true });
-});
+}));
 
 /** Upsert UF (CLF): body { date: 'YYYY-MM-DD', clp_per_uf: number } CLP per 1 UF */
 app.get("/api/market-series", (req, res) => {
@@ -148,15 +123,7 @@ app.get("/api/equity-splits", (req, res) => {
  * numerator, denominator (3 and 1 for a 3-for-1).
  */
 app.post("/api/equity-splits", writeHandler((req, res) => {
-  const b = (req.body ?? {}) as { ticker?: unknown; ex_date?: unknown; numerator?: unknown; denominator?: unknown };
-  if (typeof b.ticker !== "string" || !b.ticker.trim() || !isYmdString(b.ex_date)) {
-    res.status(400).json({ error: "ticker and ex_date (YYYY-MM-DD) required" });
-    return;
-  }
-  if (!isPositiveFiniteNumber(b.numerator) || !isPositiveFiniteNumber(b.denominator)) {
-    res.status(400).json({ error: "numerator and denominator must be positive numbers" });
-    return;
-  }
+  const b = parseBody(equitySplitCreateSchema, req);
   // A split the user can restate (1:1, a coin, an ex-date still ahead, another ratio than the one
   // on record) is an `InputError` → 400; a ledger the split cannot be applied to is a 500.
   const out = recordEquitySplit({
@@ -178,34 +145,22 @@ app.get("/api/watchlist", (req, res) => {
   res.json(getWatchlistPayload(new Date(), unit));
 });
 
-app.patch("/api/watchlist/:id", (req, res) => {
+app.patch("/api/watchlist/:id", writeHandler((req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid id" });
     return;
   }
-  const body = (req.body ?? {}) as { show_in_marquee?: unknown; sort_order?: unknown };
+  const body = parseBody(watchlistRowPatchSchema, req);
   const patch: { show_in_marquee?: number; sort_order?: number } = {};
-  if (body.show_in_marquee != null) {
-    if (body.show_in_marquee !== 0 && body.show_in_marquee !== 1) {
-      res.status(400).json({ error: "show_in_marquee must be 0 or 1" });
-      return;
-    }
-    patch.show_in_marquee = body.show_in_marquee;
-  }
-  if (body.sort_order != null) {
-    if (typeof body.sort_order !== "number" || !Number.isFinite(body.sort_order)) {
-      res.status(400).json({ error: "sort_order must be a finite number" });
-      return;
-    }
-    patch.sort_order = body.sort_order;
-  }
+  if (body.show_in_marquee != null) patch.show_in_marquee = body.show_in_marquee;
+  if (body.sort_order != null) patch.sort_order = body.sort_order;
   if (watchlistRowSource(id) == null) {
     res.status(400).json({ error: `watchlist row ${id} not found` });
     return;
   }
   res.json(patchWatchlistRow(id, patch));
-});
+}));
 
 // The two Yahoo calls on a request path: the user's own typing and add, never a display read.
 app.get(
@@ -229,11 +184,7 @@ app.get(
 app.post(
   "/api/watchlist",
   writeHandler(async (req, res) => {
-    const ticker = typeof req.body?.ticker === "string" ? req.body.ticker : "";
-    if (!ticker.trim()) {
-      res.status(400).json({ error: "ticker required" });
-      return;
-    }
+    const { ticker } = parseBody(watchlistAddSchema, req);
     try {
       res.status(201).json(await addManualWatchlistTickerFromYahoo(ticker));
     } catch (e) {

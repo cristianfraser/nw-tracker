@@ -12,6 +12,10 @@ import { registerGroceriesRoutes } from "./groceries.js";
 import { registerMovementsRoutes } from "./movements.js";
 import { registerMovementMirrorsRoutes } from "./movementMirrors.js";
 import { registerMortgageRoutes } from "./mortgage.js";
+import { registerMarketRoutes } from "./market.js";
+import { registerSyncRoutes } from "./sync.js";
+import { registerDashboardRoutes } from "./dashboard.js";
+import { registerTaxResidencyRoutes } from "./taxResidency.js";
 
 /**
  * Write routes read their bodies through `parseBody` (contracts `requests/` schemas): a malformed
@@ -39,6 +43,10 @@ beforeAll(async () => {
   registerMovementsRoutes(app);
   registerMovementMirrorsRoutes(app);
   registerMortgageRoutes(app);
+  registerMarketRoutes(app);
+  registerSyncRoutes(app);
+  registerDashboardRoutes(app);
+  registerTaxResidencyRoutes(app);
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err), terminal: true });
   });
@@ -164,6 +172,47 @@ describe("mortgage routes", () => {
       status: 400,
       json: { error: "interes_pay is required" },
     });
+  });
+});
+
+describe("market routes", () => {
+  it("a rate or split body of the wrong shape is a 400 with the route's message", async () => {
+    expect(await call("POST", "/api/fx", { date: "2031-01-02", clp_per_usd: "900" })).toEqual({
+      status: 400,
+      json: { error: "positive clp_per_usd required" },
+    });
+    expect(await call("POST", "/api/fx/bid-ask", { date: "2031-01-02", buy_clp_per_usd: 900, sell_clp_per_usd: 910 })).toEqual({
+      status: 400,
+      json: { error: "buy_clp_per_usd must be >= sell_clp_per_usd" },
+    });
+    expect(await call("POST", "/api/equity-splits", { ticker: "SPY", ex_date: "2020-01-02", numerator: 2 })).toEqual({
+      status: 400,
+      json: { error: "numerator and denominator must be positive numbers" },
+    });
+  });
+});
+
+describe("sync routes", () => {
+  it("an ingest run kind that is not offered is a 400 naming it", async () => {
+    expect(await call("POST", "/api/import-sync/ingest-runs", { kind: "weekly" })).toEqual({
+      status: 400,
+      json: { error: "Unknown ingest run kind: weekly" },
+    });
+    expect(await call("POST", "/api/import-sync/ingest-runs", {})).toEqual({
+      status: 400,
+      json: { error: "Unknown ingest run kind: (none)" },
+    });
+    expect(await call("POST", "/api/sync/force-stale", {})).toEqual({ status: 400, json: { error: "invalid_source" } });
+  });
+});
+
+describe("dashboard and tax-residency routes", () => {
+  it("a body that is no object, or lacks a field, is a 400", async () => {
+    expect(await call("POST", "/api/upcoming-payments/recurring", [1, 2])).toEqual({
+      status: 400,
+      json: { error: "request body must be a JSON object" },
+    });
+    expect(await call("POST", "/api/tax-residency", { jurisdiction: "CL" })).toEqual({ status: 400, json: { error: "from is required" } });
   });
 });
 
