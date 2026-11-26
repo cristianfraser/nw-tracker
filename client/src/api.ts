@@ -1,5 +1,6 @@
 import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import type * as FlowsReq from "nw-tracker-contracts/requests/flows";
+import type * as AccountsReq from "nw-tracker-contracts/requests/accounts";
 import i18n from "./i18n";
 import type { DisplayUnit } from "./queries/keys";
 import { attachLiveInputs, LIVE_INPUTS_HEADER, parseLiveInputs, type LiveQuoteMoves } from "./liveInputs";
@@ -138,7 +139,7 @@ export const api = {
       ticker: string | null;
     }>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
   deleteAccount: (id: number) => j<{ ok: boolean; deleted: number }>(`/api/accounts/${id}`, { method: "DELETE" }),
-  updateAccount: (id: number, body: { name?: string; bucket_slug?: string }) =>
+  updateAccount: (id: number, body: AccountsReq.PanelAccountUpdate) =>
     j<{
       account_id: number;
       name: string;

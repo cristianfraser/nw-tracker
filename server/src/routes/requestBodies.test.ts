@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { writeHandler } from "../inputError.js";
 import { parseBody } from "./shared.js";
 import { registerFlowsRoutes } from "./flows.js";
+import { registerAccountsRoutes } from "./accounts.js";
 
 /**
  * Write routes read their bodies through `parseBody` (contracts `requests/` schemas): a malformed
@@ -27,6 +28,7 @@ beforeAll(async () => {
     })
   );
   registerFlowsRoutes(app);
+  registerAccountsRoutes(app);
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err), terminal: true });
   });
@@ -60,6 +62,31 @@ describe("parseBody", () => {
     expect(await call("POST", "/probe", { id: 2, label: " " })).toEqual({ status: 400, json: { error: "label required" } });
     expect(await call("POST", "/probe", { id: 2 })).toEqual({ status: 400, json: { error: "label is required" } });
     expect(await call("POST", "/probe")).toEqual({ status: 400, json: { error: "id is required" } });
+  });
+});
+
+const UNKNOWN_ID = 987_654_321;
+
+describe("accounts routes", () => {
+  it("a malformed body is a 400; a well-formed one about a row that is not there keeps its 404", async () => {
+    expect(await call("POST", "/api/accounts", { asset_group_id: 1 })).toEqual({ status: 400, json: { error: "name required" } });
+    expect(await call("POST", "/api/accounts", { account: { account_type: "bond" } })).toMatchObject({
+      status: 400,
+      json: { error: expect.stringMatching(/^account\.account_type must be one of /) },
+    });
+    expect(await call("PATCH", `/api/accounts/${UNKNOWN_ID}/exclude-from-group-totals`, { exclude_from_group_totals: 1 })).toEqual({
+      status: 400,
+      json: { error: "exclude_from_group_totals must be boolean" },
+    });
+    expect(await call("PATCH", `/api/accounts/${UNKNOWN_ID}/exclude-from-group-totals`, { exclude_from_group_totals: true })).toEqual({
+      status: 404,
+      json: { error: "account not found" },
+    });
+    expect(await call("PATCH", "/api/portfolio-groups/vitest-no-such-group/color", {})).toEqual({ status: 400, json: { error: "invalid color_rgb" } });
+    expect(await call("PATCH", "/api/portfolio-groups/vitest-no-such-group/color", { color_rgb: 7 })).toEqual({
+      status: 400,
+      json: { error: "invalid color_rgb" },
+    });
   });
 });
 

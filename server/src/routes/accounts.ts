@@ -7,9 +7,17 @@ import {
   createPanelAccount,
   registerPanelAccountInstrument,
   updatePanelAccount,
-  type PanelAccountCreateBody,
-  type PanelAccountUpdateBody,
 } from "../createPanelAccount.js";
+import {
+  bareAccountCreateSchema,
+  checkingLedgerAnchorPutSchema,
+  colorPatchSchema,
+  excludeFromGroupTotalsPatchSchema,
+  panelAccountCreateSchema,
+  panelAccountUpdateSchema,
+  portfolioGroupBasketPatchSchema,
+} from "nw-tracker-contracts/requests/accounts";
+import { writeHandler } from "../inputError.js";
 import { prettyRgbTripletForAccountId } from "../chartColorRgb.js";
 import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupBasket, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
@@ -29,8 +37,7 @@ import { buildCheckingStatement, isCheckingPageAccount } from "../checkingStatem
 import { ccGroupLanesResponse } from "../ccGroupLanes.js";
 import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
 import { mortgageGroupLedgerResponse } from "../mortgageGroupLedger.js";
-import { isPositiveInteger } from "../requestValidation.js";
-import { asyncHandler, accountIdFromReq, queryChoice } from "./shared.js";
+import { asyncHandler, accountIdFromReq, parseBody, queryChoice } from "./shared.js";
 import { HOME_CURRENCY, requestDisplayUnit } from "../displayUnits.js";
 
 /**
@@ -82,12 +89,13 @@ app.get("/api/accounts", asyncHandler(async (req, res) => {
   });
 }));
 
-app.post("/api/accounts", asyncHandler(async (req, res) => {
-  const body = req.body as Record<string, unknown>;
-  if (body.account != null && typeof body.account === "object") {
+app.post("/api/accounts", writeHandler(async (req, res) => {
+  // The panel's create names the account's type under `account`; without it, a bare account.
+  if (typeof req.body === "object" && req.body !== null && "account" in req.body) {
+    const body = parseBody(panelAccountCreateSchema, req);
     try {
-      await registerPanelAccountInstrument(body as PanelAccountCreateBody);
-      const result = createPanelAccount(body as PanelAccountCreateBody);
+      await registerPanelAccountInstrument(body);
+      const result = createPanelAccount(body);
       if (result.ticker) {
         await syncEquityEodFromYahoo([result.ticker], { force: true });
       }
@@ -100,21 +108,13 @@ app.post("/api/accounts", asyncHandler(async (req, res) => {
     return;
   }
 
-  const { asset_group_id, name, notes } = body as {
-    asset_group_id?: unknown;
-    name?: string;
-    notes?: string;
-  };
-  if (!isPositiveInteger(asset_group_id) || !name?.trim()) {
-    res.status(400).json({ error: "asset_group_id and name required" });
-    return;
-  }
+  const { asset_group_id, name, notes } = parseBody(bareAccountCreateSchema, req);
   const id = db.transaction(() => {
     const r = db
       .prepare(
         `INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, ?, ?)`
       )
-      .run(asset_group_id, name.trim(), notes ?? null);
+      .run(asset_group_id, name, notes ?? null);
     const created = Number(r.lastInsertRowid);
     db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`).run(prettyRgbTripletForAccountId(created), created);
     // An account a bucket of the net-worth tree holds takes its place with the insert (no boot places it).
@@ -155,29 +155,30 @@ app.delete("/api/accounts/:id", (req, res) => {
   }
 });
 
-app.patch("/api/accounts/:id", (req, res) => {
+app.patch("/api/accounts/:id", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
+  const body = parseBody(panelAccountUpdateSchema, req);
   try {
-    const result = updatePanelAccount(id, (req.body ?? {}) as PanelAccountUpdateBody);
+    const result = updatePanelAccount(id, body);
     res.json(result);
   } catch (e) {
     const err = e as Error & { status?: number };
     const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
     res.status(status).json({ error: err.message || "update account failed" });
   }
-});
+}));
 
-app.patch("/api/accounts/:id/color", (req, res) => {
+app.patch("/api/accounts/:id/color", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const body = req.body as { color_rgb?: unknown };
+  const body = parseBody(colorPatchSchema, req);
   const updated = updateAccountColorRgb(id, body.color_rgb);
   if (!updated) {
     const exists = db.prepare(`SELECT 1 AS o FROM accounts WHERE id = ?`).get(id) as { o: number } | undefined;
@@ -185,41 +186,34 @@ app.patch("/api/accounts/:id/color", (req, res) => {
       res.status(404).json({ error: "account not found" });
       return;
     }
-    res.status(400).json({ error: body.color_rgb === null ? "invalid request" : "invalid color_rgb" });
+    res.status(400).json({ error: "invalid color_rgb" });
     return;
   }
   res.json(updated);
-});
+}));
 
-app.patch("/api/accounts/:id/exclude-from-group-totals", (req, res) => {
+app.patch("/api/accounts/:id/exclude-from-group-totals", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "invalid account id" });
     return;
   }
-  const body = req.body as { exclude_from_group_totals?: unknown };
+  const body = parseBody(excludeFromGroupTotalsPatchSchema, req);
   const updated = updateAccountExcludeFromGroupTotals(id, body.exclude_from_group_totals);
   if (!updated) {
-    const exists = db.prepare(`SELECT 1 AS o FROM accounts WHERE id = ?`).get(id) as
-      | { o: number }
-      | undefined;
-    if (!exists) {
-      res.status(404).json({ error: "account not found" });
-      return;
-    }
-    res.status(400).json({ error: "exclude_from_group_totals must be boolean" });
+    res.status(404).json({ error: "account not found" });
     return;
   }
   res.json(updated);
-});
+}));
 
-app.patch("/api/portfolio-groups/:slug/color", (req, res) => {
+app.patch("/api/portfolio-groups/:slug/color", writeHandler((req, res) => {
   const slug = String(req.params.slug ?? "").trim();
   if (!slug) {
     res.status(400).json({ error: "slug required" });
     return;
   }
-  const body = req.body as { color_rgb?: unknown };
+  const body = parseBody(colorPatchSchema, req);
   const updated = updatePortfolioGroupColorRgb(slug, body.color_rgb);
   if (!updated) {
     const exists = db
@@ -233,23 +227,22 @@ app.patch("/api/portfolio-groups/:slug/color", (req, res) => {
     return;
   }
   res.json(updated);
-});
+}));
 
-app.patch("/api/portfolio-groups/:slug/basket", (req, res) => {
+app.patch("/api/portfolio-groups/:slug/basket", writeHandler((req, res) => {
   const slug = String(req.params.slug ?? "").trim();
-  const body = req.body as { basket?: unknown };
+  const body = parseBody(portfolioGroupBasketPatchSchema, req);
   const updated = updatePortfolioGroupBasket(slug, body.basket);
   if (!updated) {
-    const exists = db.prepare(`SELECT 1 AS o FROM portfolio_groups WHERE slug = ?`).get(slug) as { o: number } | undefined;
-    res.status(exists ? 400 : 404).json({ error: exists ? "basket must be boolean" : "portfolio group not found" });
+    res.status(404).json({ error: "portfolio group not found" });
     return;
   }
   res.json(updated);
-});
+}));
 
-app.patch("/api/liability-groups/:slug/color", (req, res) => {
+app.patch("/api/liability-groups/:slug/color", writeHandler((req, res) => {
   const slug = String(req.params.slug ?? "").trim();
-  const body = req.body as { color_rgb?: unknown };
+  const body = parseBody(colorPatchSchema, req);
   const exists = db.prepare(`SELECT 1 AS o FROM liability_groups WHERE slug = ?`).get(slug) as { o: number } | undefined;
   if (!exists) {
     res.status(404).json({ error: "liability group not found" });
@@ -261,7 +254,7 @@ app.patch("/api/liability-groups/:slug/color", (req, res) => {
     return;
   }
   res.json(updated);
-});
+}));
 
 app.get("/api/portfolio-groups/:slug/cc-ledger", (req, res) => {
   const slug = String(req.params.slug ?? "").trim();
@@ -400,7 +393,7 @@ app.get("/api/accounts/:id/checking-statement", (req, res) => {
 });
 
 /** Cuenta corriente: per-cartola month totals from `checking_cartola_imports` + movements. */
-app.put("/api/accounts/:id/checking-ledger-anchor", (req, res) => {
+app.put("/api/accounts/:id/checking-ledger-anchor", writeHandler((req, res) => {
   const accountId = accountIdFromReq(req);
   if (!Number.isFinite(accountId) || accountId <= 0) {
     res.status(400).json({ error: "invalid account id" });
@@ -411,7 +404,7 @@ app.put("/api/accounts/:id/checking-ledger-anchor", (req, res) => {
     res.status(400).json({ error: "account is not a cash cartola account (cuenta corriente or cuenta vista)" });
     return;
   }
-  const body = req.body as { clear?: boolean; amount_clp?: number; occurred_on?: string };
+  const body = parseBody(checkingLedgerAnchorPutSchema, req);
   if (body.clear === true) {
     clearCheckingLedgerAnchor(accountId);
     res.json({
@@ -420,19 +413,10 @@ app.put("/api/accounts/:id/checking-ledger-anchor", (req, res) => {
     });
     return;
   }
-  const amount = body.amount_clp;
-  const occurredOn = body.occurred_on;
-  if (amount == null || !Number.isFinite(amount)) {
-    res.status(400).json({ error: "amount_clp required (number, 0 allowed)" });
-    return;
-  }
-  if (!occurredOn || !/^\d{4}-\d{2}-\d{2}$/.test(occurredOn)) {
-    res.status(400).json({ error: "occurred_on required (YYYY-MM-DD)" });
-    return;
-  }
+  // The schema states both when `clear` is not set.
   const saved = upsertCheckingLedgerAnchor(accountId, {
-    amount_clp: Math.round(amount),
-    occurred_on: occurredOn,
+    amount_clp: Math.round(body.amount_clp!),
+    occurred_on: body.occurred_on!,
   });
   if (!saved) {
     res.status(400).json({ error: "no cartola saldo final to anchor against" });
@@ -442,6 +426,6 @@ app.put("/api/accounts/:id/checking-ledger-anchor", (req, res) => {
     ledger_anchor: saved,
     cartola_derived_anchor: getCheckingCartolaMonths(accountId)?.cartola_derived_anchor ?? null,
   });
-});
+}));
 
 }

@@ -25,8 +25,12 @@ import {
   occSymbolSlug,
   optionContractAccountIdForOcc,
   optionContractDisplayName,
-  type OptionRight,
 } from "./optionContracts.js";
+import {
+  PANEL_ACCOUNT_TYPES as PANEL_ACCOUNT_TYPE_LIST,
+  type PanelAccountCreate,
+  type PanelAccountUpdate,
+} from "nw-tracker-contracts/requests/accounts";
 
 /**
  * Unified Panel → Accounts create. The account's *behavior* is carried by its leaf category
@@ -34,37 +38,16 @@ import {
  * any non-liability leaf bucket. Accounts are created empty — flows are added afterwards via the
  * per-account movement forms (which do auto-mirror parity), so there are no `initial_movements`.
  */
-export type PanelAccountType = "equity" | "crypto" | "clp_cash" | "usd_cash" | "foreign_cash" | "option";
+export type PanelAccountType = (typeof PANEL_ACCOUNT_TYPE_LIST)[number];
+
+/** Rename / move body (`PATCH /api/accounts/:id`). */
+export type PanelAccountUpdateBody = PanelAccountUpdate;
 
 /** The terms of an option contract account (`option_contracts`); the server derives the OCC symbol and the name. */
-export type PanelOptionContractInput = {
-  underlying: string;
-  right: OptionRight;
-  strike: number;
-  /** YYYY-MM-DD */
-  expiry: string;
-  /** Shares per contract; 100 when absent. */
-  multiplier?: number;
-};
+export type PanelOptionContractInput = NonNullable<PanelAccountCreateBody["account"]["option"]>;
 
-export type PanelAccountCreateBody = {
-  account: {
-    account_type: PanelAccountType;
-    /** The display name; an option contract may leave it empty and takes «SPY 2025-06-20 C 600». */
-    name: string;
-    /** Leaf bucket slug from the nav tree, e.g. `brokerage_acciones`, `cash_savings`, `real_estate`. An option contract always sits under `brokerage_opciones`. */
-    bucket_slug: string;
-    /** Leaf category key under the bucket (defaults from ticker or name). */
-    category_slug?: string;
-    /** Required for equity/crypto. */
-    ticker?: string;
-    /** Required for an option contract. */
-    option?: PanelOptionContractInput;
-    /** Required for a foreign cash account (`foreign_cash`): the currency it holds, a code of `currencies` other than pesos. */
-    currency?: string;
-    exclude_from_group_totals: boolean;
-  };
-};
+/** The panel's create body as its request schema reads it (`nw-tracker-contracts/requests/accounts`). */
+export type PanelAccountCreateBody = PanelAccountCreate;
 
 export type PanelAccountCreateResult = {
   account_id: number;
@@ -74,14 +57,7 @@ export type PanelAccountCreateResult = {
 };
 
 const SLUG_RE = /^[a-z][a-z0-9_]*$/;
-const PANEL_ACCOUNT_TYPES = new Set<PanelAccountType>([
-  "equity",
-  "crypto",
-  "clp_cash",
-  "usd_cash",
-  "foreign_cash",
-  "option",
-]);
+const PANEL_ACCOUNT_TYPES = new Set<PanelAccountType>(PANEL_ACCOUNT_TYPE_LIST);
 
 /** The asset group (and nav bucket) every option contract account sits under (migration 304). */
 export const OPTION_CONTRACTS_BUCKET_SLUG = "brokerage_opciones";
@@ -339,11 +315,6 @@ export function createPanelAccount(body: PanelAccountCreateBody): PanelAccountCr
     ticker,
   };
 }
-
-export type PanelAccountUpdateBody = {
-  name?: unknown;
-  bucket_slug?: unknown;
-};
 
 export type PanelAccountUpdateResult = {
   account_id: number;

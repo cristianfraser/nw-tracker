@@ -6,7 +6,7 @@ import { z } from "zod";
  *
  * - a missing field: «<field> is required»;
  * - a message the schema wrote that already names its field («label required», «dfl2 must be a
- *   boolean»): that message as it is;
+ *   boolean», «invalid color_rgb»): that message as it is, a missing field included;
  * - any other: «<field>: <zod's message>»;
  * - a body that is no JSON object: «request body must be a JSON object».
  */
@@ -15,9 +15,15 @@ export function requestIssueMessage(issue: z.core.$ZodIssue): string {
   if (path === "") {
     return issue.code === "invalid_type" ? "request body must be a JSON object" : issue.message;
   }
-  if (issue.message === path || issue.message.startsWith(`${path} `)) return issue.message;
+  if (namesField(issue.message, path)) return issue.message;
   if (issue.code === "invalid_type" && issue.input === undefined) return `${path} is required`;
   return `${path}: ${issue.message}`;
+}
+
+/** Whether `message` names the field `path` as a word of its own («invalid color_rgb», not «Invalid» for `id`). */
+function namesField(message: string, path: string): boolean {
+  const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\w.])${escaped}($|[^\\w.])`).test(message);
 }
 
 /** The request body as `schema` reads it, or the sentence naming why not. */
