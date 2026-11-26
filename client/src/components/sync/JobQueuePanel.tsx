@@ -11,9 +11,6 @@ import { OpenRow, OpenRows, RowFacts, StatusWord, type StatusTone } from "../ui/
 import { formatWhen } from "../../storedInstant";
 import styles from "./SyncLogStatusPanel.module.css";
 
-/** Finished jobs shown before «Show more…» (running and waiting jobs always show). */
-const COLLAPSED_FINISHED = 5;
-
 function statusTone(job: JobView): StatusTone {
   if (job.status === "done") return "ok";
   if (job.status === "running" || job.status === "queued") return "active";
@@ -71,8 +68,10 @@ export function JobQueuePanel({ queue, loading }: { queue: JobQueueResponse | un
   const [expanded, setExpanded] = useState(false);
   const live = queue ? [...queue.running, ...queue.queued] : [];
   const finished = queue?.recent ?? [];
-  const hasHidden = finished.length > COLLAPSED_FINISHED;
-  const rows = [...live, ...(hasHidden && !expanded ? finished.slice(0, COLLAPSED_FINISHED) : finished)];
+  // The server says how many finished jobs show before «Show more…».
+  const shownFinished = queue?.recent_shown ?? finished.length;
+  const hasHidden = finished.length > shownFinished;
+  const rows = [...live, ...(hasHidden && !expanded ? finished.slice(0, shownFinished) : finished)];
   const pending = (job: JobView, kind: "cancel" | "retry") => action.isPending && action.variables?.id === job.id && action.variables.action === kind;
   const actionFor = (job: JobView) => {
     if (!JOB_ACTIONS_SHOWN) return null;

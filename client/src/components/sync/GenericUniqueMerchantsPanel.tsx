@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { loadableClass } from "../ui/Loadable";
 import { OpenRow, OpenRows } from "../ui/OpenRows";
 import type { ExpenseGenericUniqueMerchantRow } from "../../types";
 import { Button, Input } from "@crfrsr/ui";
@@ -80,11 +81,10 @@ export function GenericUniqueMerchantsPanel({ merchants, loading }: Props) {
     createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
   return (
-    <div>
+    <div className={loadableClass(loading)} aria-busy={loading || undefined}>
       {formError ? <p className="error">{formError}</p> : null}
 
       <OpenRows
-        loading={loading}
         empty={merchants.length === 0 && !loading ? t("importSync.genericUniqueMerchants.empty") : undefined}
       >
         {merchants.map((row) =>

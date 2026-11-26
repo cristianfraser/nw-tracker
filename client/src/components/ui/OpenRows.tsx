@@ -103,7 +103,8 @@ export function OpenRow({
   const isOpen = openable && open;
   const hasLead = lead != null;
   const hasStatus = status != null;
-  const hasFirst = first != null;
+  // An empty first line is no first line: the title keeps the track and nothing describes the row.
+  const hasFirst = first != null && first !== "";
   const showFirst = hasFirst && !(isOpen && hideFirstWhenOpen);
   const hasAction = action != null && action !== false;
   // Wide layout: a cell this row lacks gives its track (and gap) to its neighbour.

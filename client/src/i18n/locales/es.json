@@ -600,6 +600,7 @@
     "showLess": "Mostrar menos…",
     "docs": {
       "allComplete": "las {{n}} completas",
+      "nothingDue": "nada pendiente aún",
       "someComplete": "{{complete}} de {{n}} completas",
       "legendImported": "importado, archivo en disco",
       "legendNoFile": "importado, sin archivo",

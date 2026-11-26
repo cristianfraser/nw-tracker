@@ -1884,6 +1884,10 @@
         "en": "all {{n}} complete",
         "es": "las {{n}} completas"
       },
+      "nothingDue": {
+        "en": "nothing due yet",
+        "es": "nada pendiente aún"
+      },
       "someComplete": {
         "en": "{{complete}} of {{n}} complete",
         "es": "{{complete}} de {{n}} completas"

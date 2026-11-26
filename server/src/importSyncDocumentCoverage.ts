@@ -45,7 +45,10 @@ export type ImportSyncDocumentCell = {
   state: ImportSyncDocumentCellState;
 };
 
-/** One column's months of a year: those from its first document on, and how many are imported. */
+/**
+ * One column's months of a year: those from its first document on, and how many are imported.
+ * A column whose only month that year is the one in progress (not due) has `counted` 0.
+ */
 export type ImportSyncDocumentYearColumn = { counted: number; imported: number };
 
 export type ImportSyncDocumentYear = {
@@ -54,7 +57,10 @@ export type ImportSyncDocumentYear = {
   month_indexes: number[];
   /** Per column of `accounts`; null = the column has no document by this year. */
   columns: (ImportSyncDocumentYearColumn | null)[];
-  /** Columns with a counted month this year, and those with every counted month imported. */
+  /**
+   * Columns with a counted month this year, and those with every counted month imported (both 0
+   * in a year whose only month is the one in progress: nothing is due yet).
+   */
   columns_counted: number;
   columns_complete: number;
   /** The columns short of a month this year, in column order (the year's line names them). */
@@ -70,8 +76,10 @@ export type ImportSyncDocumentCoveragePayload = {
 };
 
 function cellState(c: { imported: boolean; file_path: string | null; file_sin_movimientos: boolean }): Exclude<ImportSyncDocumentCellState, "before_first" | "not_due"> {
-  if (c.file_sin_movimientos) return "no_movements";
-  if (c.imported) return c.file_path ? "imported" : "imported_no_file";
+  if (c.imported) {
+    if (c.file_sin_movimientos) return "no_movements";
+    return c.file_path ? "imported" : "imported_no_file";
+  }
   return c.file_path ? "file_not_imported" : "missing";
 }
 
@@ -110,14 +118,15 @@ export function buildImportSyncDocumentYears(
     }
     entry.month_indexes.push(rowIdx);
     cells[rowIdx]!.forEach((c, col) => {
-      if (c.state === "before_first" || c.state === "not_due") return;
+      if (c.state === "before_first") return;
       const column = (entry.columns[col] ??= { counted: 0, imported: 0 });
+      if (c.state === "not_due") return;
       column.counted += 1;
       if (c.imported) column.imported += 1;
     });
   });
   for (const y of years) {
-    const counted = y.columns.filter((c): c is ImportSyncDocumentYearColumn => c != null);
+    const counted = y.columns.filter((c): c is ImportSyncDocumentYearColumn => c != null && c.counted > 0);
     y.columns_counted = counted.length;
     y.columns_complete = counted.filter((c) => c.imported === c.counted).length;
     y.incomplete_columns = y.columns.flatMap((c, col) => (c != null && c.imported < c.counted ? [col] : []));

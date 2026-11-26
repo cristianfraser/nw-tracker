@@ -243,12 +243,14 @@ export function AvailableDocumentsTable({
               title={<span className={styles.year}>{year.year}</span>}
               status={
                 <span className="muted">
-                  {year.columns_complete === year.columns_counted
-                    ? t("importSync.docs.allComplete", { n: year.columns_counted })
-                    : t("importSync.docs.someComplete", { complete: year.columns_complete, n: year.columns_counted })}
+                  {year.columns_counted === 0
+                    ? t("importSync.docs.nothingDue")
+                    : year.columns_complete === year.columns_counted
+                      ? t("importSync.docs.allComplete", { n: year.columns_counted })
+                      : t("importSync.docs.someComplete", { complete: year.columns_complete, n: year.columns_counted })}
                 </span>
               }
-              first={incomplete.length > 0 ? <span className={styles.incomplete}>{incomplete.join(" · ")}</span> : ""}
+              first={incomplete.length > 0 ? <span className={styles.incomplete}>{incomplete.join(" · ")}</span> : null}
               defaultOpen={i === 0}
             >
               {data ? (

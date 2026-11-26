@@ -94,8 +94,12 @@ export interface ImportSyncDocumentYear {
   year: number;
   /** Indexes into `months` / `cells` of this year's months, newest first. */
   month_indexes: number[];
-  /** Per column of `accounts`; null = the column has no document by this year. */
+  /**
+   * Per column of `accounts`; null = the column has no document by this year. `counted` 0 = its
+   * only month this year is the one in progress.
+   */
   columns: ({ counted: number; imported: number } | null)[];
+  /** Columns with a counted month this year, and those with every counted month imported. */
   columns_counted: number;
   columns_complete: number;
   /** The columns short of a month this year, in column order. */
@@ -202,4 +206,6 @@ export interface JobQueueResponse {
   running: JobView[];
   queued: JobView[];
   recent: JobView[];
+  /** How many of `recent` the page shows before «Show more…». */
+  recent_shown: number;
 }

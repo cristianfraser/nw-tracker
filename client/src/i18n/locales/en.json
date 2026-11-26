@@ -600,6 +600,7 @@
     "showLess": "Show less…",
     "docs": {
       "allComplete": "all {{n}} complete",
+      "nothingDue": "nothing due yet",
       "someComplete": "{{complete}} of {{n}} complete",
       "legendImported": "imported, file on disk",
       "legendNoFile": "imported, no file",

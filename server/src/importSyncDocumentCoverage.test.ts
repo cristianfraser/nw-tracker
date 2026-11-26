@@ -235,6 +235,38 @@ describe("buildImportSyncDocumentYears", () => {
     ]);
   });
 
+  it("keeps a year whose only month is the one in progress, with nothing due", () => {
+    // January: neither column has its document yet; both have documents in earlier years.
+    const { cells, years } = buildImportSyncDocumentYears(
+      ["2031-01", "2030-12"],
+      2,
+      [
+        [cell(false), cell(false)],
+        [cell(true, "/synthetic/a-2030-12.pdf"), cell(true, "/synthetic/b-2030-12.pdf")],
+      ],
+      "2031-01"
+    );
+    expect(cells[0]!.map((c) => c.state)).toEqual(["not_due", "not_due"]);
+    expect(years[0]).toEqual({
+      year: 2031,
+      month_indexes: [0],
+      columns: [{ counted: 0, imported: 0 }, { counted: 0, imported: 0 }],
+      columns_counted: 0,
+      columns_complete: 0,
+      incomplete_columns: [],
+    });
+  });
+
+  it("reads a cartola with no movements that was never imported as not imported", () => {
+    const { cells } = buildImportSyncDocumentYears(
+      ["2031-01"],
+      1,
+      [[{ imported: false, file_path: "/synthetic/a-2031-01.pdf", file_sin_movimientos: true }]],
+      "2031-02"
+    );
+    expect(cells[0]![0]!.state).toBe("file_not_imported");
+  });
+
   it("gives a column with no document at all no counted month", () => {
     const { cells, years } = buildImportSyncDocumentYears(["2031-01"], 1, [[cell(false)]], "2031-01");
     expect(cells[0]![0]!.state).toBe("before_first");
