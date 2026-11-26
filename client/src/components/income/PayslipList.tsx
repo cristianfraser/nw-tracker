@@ -364,7 +364,7 @@ export function PayslipList({
                       <GrossBar values={v} netSeverance={y.net_severance} className={styles.pBar} />
                       <span className={cn("mono", styles.num, styles.strong, styles.pNet)}>{money(v.net)}</span>
                       <span className={cn("mono muted", styles.num, styles.small, styles.pCheck)}>
-                        {v.gross > 0 ? formatPct((-v.deductions / v.gross) * 100, 1) : ""}
+                        {v.gross > 0 ? formatPct((-v.deductions / v.gross) * 100, 1) : "—"}
                       </span>
                       <ChevronIcon className={styles.chevron} />
                     </div>

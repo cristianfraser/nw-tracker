@@ -72,9 +72,10 @@ export const queryKeys = {
     unit: DisplayUnit,
     period: "month" | "year",
     page: number,
+    pageSize: number,
     installmentMode: "split" | "total"
   ) =>
-    withEntity(["groupConsolidatedMonthlyPage", group, unit, period, page, installmentMode] as const, 2),
+    withEntity(["groupConsolidatedMonthlyPage", group, unit, period, page, pageSize, installmentMode] as const, 2),
   sidebarNav: () => ["sidebarNav"] as const,
   panelNetWorthTree: () => ["panelNetWorthTree"] as const,
   accountsAll: () => ["accountsAll"] as const,

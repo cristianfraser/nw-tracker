@@ -225,7 +225,7 @@ export function useGroupConsolidatedMonthlyPage(
   /** Net worth: the expense mode its rows' income and expenses are counted in. */
   installmentMode: "split" | "total"
 ) {
-  const key = queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page, installmentMode);
+  const key = queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page, pageSize, installmentMode);
   return useQuery({
     queryKey: key,
     queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period, installmentMode }),

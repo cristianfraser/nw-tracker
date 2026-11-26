@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { queryShowsLoading } from "../queries/pageShapeReady";
+import { formatWhen } from "../storedInstant";
 import { Link } from "react-router-dom";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { loadableClass } from "../components/ui/Loadable";
@@ -32,7 +33,7 @@ function symbolLabel(row: WatchlistRow, t: (key: string) => string): string {
 function FetchErrorNote({ error }: { error: NonNullable<WatchlistRow["fetch_error"]> }) {
   const { t } = useTranslation();
   const label = error.stage === "live" ? t("watchlist.fetchErrorLive") : t("watchlist.fetchErrorHistory");
-  const detail = `${error.message} (${error.failed_at.slice(0, 16).replace("T", " ")} UTC)`;
+  const detail = `${error.message} (${formatWhen(error.failed_at)})`;
   return (
     <span className="watchlist-table__fetch-error" role="note" title={`${label}: ${detail}`}>
       {label}
