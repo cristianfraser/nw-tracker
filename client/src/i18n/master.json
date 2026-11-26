@@ -7780,6 +7780,10 @@
           "es": "Lecturas y lo que no se modela"
         }
       },
+      "pageTitle": {
+        "en": "Tax return (Form 1040)",
+        "es": "Declaración de renta (Form 1040)"
+      },
       "tabsLabel": {
         "en": "Return",
         "es": "Declaración"

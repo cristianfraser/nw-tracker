@@ -72,7 +72,8 @@ export function TaxReturnPage() {
 
   return (
     <main>
-      <h1>{t("taxReturn.title")}</h1>
+      {/* The tab's title follows the h1: each return names its own form. */}
+      <h1>{t(jurisdiction === "us" ? "taxReturn.us.pageTitle" : "taxReturn.title")}</h1>
       {queryLoadError(q) ? (
         <>
           <p className="error">{(q.error as Error).message}</p>
