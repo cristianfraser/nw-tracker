@@ -60,7 +60,8 @@ export function billingDetailCacheForAccount(accountId: number): CcLedgerBilling
   });
 }
 
-function billingDetailBaseForAccount(accountId: number): CcLedgerBillingBundle {
+/** The bundle's base (ledger payload, detalle, facturaciones without their dollar rates). */
+export function billingDetailBaseForAccount(accountId: number): CcLedgerBillingBundle {
   return getAggregationCached(cacheKeyCcBillingDetailBase(accountId), () => {
     if (planCount(accountId) === 0) {
       // Statements-only master (or empty account): billing detail from statements alone.

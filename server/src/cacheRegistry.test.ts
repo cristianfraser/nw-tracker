@@ -10,6 +10,7 @@ import {
   cacheKeyFlowsInputs,
   cacheKeyGroupClosingByDate,
   cacheKeyGroupConsolidatedMonthly,
+  familyReadsTable,
   type CacheFamilyName,
 } from "./cacheFamilies.js";
 import {
@@ -148,6 +149,28 @@ describe("cache registry", () => {
       expect(droppedFamilies()).toEqual([...FAMILY_NAMES].sort());
     } finally {
       db.prepare(`DELETE FROM uf_daily WHERE date = '1900-01-01'`).run();
+    }
+  });
+
+  it("a market row drops a family that declares its market reads only when it reads that table", () => {
+    const readers = (table: string) => FAMILY_NAMES.filter((n) => familyReadsTable(CACHE_FAMILIES[n], table)).sort();
+    expect(readers("equity_daily")).not.toContain("flows_inputs");
+    expect(readers("fx_daily")).toContain("flows_inputs");
+    const held = (
+      db.prepare(`SELECT equity_ticker AS t FROM accounts WHERE equity_ticker IS NOT NULL ORDER BY id LIMIT 1`).get() as { t: string }
+    ).t;
+    seedEveryFamily();
+    // A close of a held ticker: a mark row naming its holders.
+    db.prepare(`INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, '1900-01-02', 1, 'usd')`).run(held);
+    try {
+      const global = (names: CacheFamilyName[]) => names.filter((n) => !CACHE_FAMILIES[n].accountScoped);
+      expect(global(droppedFamilies())).toEqual(global(FAMILY_NAMES.filter((n) => n !== "flows_inputs")).sort());
+      seedEveryFamily();
+      db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES ('1900-01-02', 1)`).run();
+      expect(droppedFamilies()).toEqual([...FAMILY_NAMES].sort());
+    } finally {
+      db.prepare(`DELETE FROM equity_daily WHERE ticker = ? AND trade_date = '1900-01-02'`).run(held);
+      db.prepare(`DELETE FROM fx_daily WHERE date = '1900-01-02'`).run();
     }
   });
 

@@ -5,7 +5,7 @@ import { addToCcOwed, ccOwedIn, emptyCcOwed, type CcOwedNative } from "./ccBilli
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { billingDetailCacheForAccount, planScheduleMonths } from "./ccBillingDetailCache.js";
+import { billingDetailBaseForAccount, billingDetailCacheForAccount, planScheduleMonths } from "./ccBillingDetailCache.js";
 import { ccCupoFrame, ccStatementOwedByCurrencyByMonth, type CcCupoFrame } from "./ccBillingViews.js";
 import { planCount } from "./cards/purchases.js";
 import { ccIssuerBySlug } from "./ccIssuers.js";
@@ -206,14 +206,20 @@ export function ccLedgerStatementClosingPointsNative(
   }));
 }
 
-/** Ledger month-end closes for many CC accounts (one billing-detail cache pass per account). */
-export function ccLedgerStatementClosingPointsClpForAccounts(
-  accountIds: readonly number[]
-): Map<number, { as_of_date: string; value_clp: number }[]> {
-  const out = new Map<number, { as_of_date: string; value_clp: number }[]>();
+/**
+ * The month-end dates of {@link ccLedgerStatementClosingPointsClp} for many CC accounts (the
+ * chart grid's card closes): the ledger and detalle months, read from the billing detail's base,
+ * which no dollar rate enters.
+ */
+export function ccLedgerStatementCloseDatesForAccounts(accountIds: readonly number[]): Map<number, string[]> {
+  const out = new Map<number, string[]>();
   for (const id of accountIds) {
-    const pts = ccLedgerStatementClosingPointsClp(id);
-    if (pts?.length) out.set(id, pts);
+    if (!hasBillingLedger(id)) continue;
+    const { payload, detail } = billingDetailBaseForAccount(id);
+    const months = [
+      ...new Set([...(payload?.months ?? []).map((h) => h.month), ...detail.map((d) => d.billing_month)]),
+    ].sort((a, b) => a.localeCompare(b));
+    if (months.length) out.set(id, months.map(ccLedgerMonthEndIso));
   }
   return out;
 }

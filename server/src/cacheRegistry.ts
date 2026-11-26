@@ -13,6 +13,7 @@ import {
 import {
   CACHE_FAMILIES,
   EXPENSE_METADATA_TABLES,
+  familyReadsTable,
   HISTORY_TIER_PREFIX,
   type CacheFamily,
   type CacheFamilyName,
@@ -267,18 +268,33 @@ function dropForChanges(s: ChangeLogSummary): void {
   liveTier.maps.clear();
   epoch += 1;
   const accounts = new Set(s.markAccountIds);
-  let writesAny = s.writtenTables.size > 0;
   let writesValuation = false;
   for (const t of s.writtenTables) if (!EXPENSE_METADATA_TABLES.has(t)) writesValuation = true;
   // Dated mark rows alone: the history tier is trimmed from the earliest day they reach. A write
   // row of a valuation table names no date, so it still drops the tier whole.
   const trimHistory = !writesValuation && s.markFrom != null;
   if (trimHistory) trimHistoryTier(s.markFrom!);
-  if (s.marksAll) writesAny = writesValuation = true;
+  const hasMarks = s.marksAll || accounts.size > 0;
+  // How far the changes reach a family: every entry, the named accounts' (a mark row naming
+  // accounts), or none — a family that reads none of the written or marked tables (a write row of
+  // an expense table for a `valuation` family; a market table outside a family's `marketReads`).
+  const reach = new Map<CacheFamilyName, "all" | "accounts" | "none">();
+  const reachOf = (name: CacheFamilyName, family: CacheFamily) => {
+    const known = reach.get(name);
+    if (known) return known;
+    let written = false;
+    for (const t of s.writtenTables) {
+      if ((family.reads === "any" || !EXPENSE_METADATA_TABLES.has(t)) && familyReadsTable(family, t)) written = true;
+    }
+    const marked = hasMarks && (s.markSources == null || [...s.markSources].some((t) => familyReadsTable(family, t)));
+    const r = written || (marked && s.marksAll) ? "all" : marked ? "accounts" : "none";
+    reach.set(name, r);
+    return r;
+  };
   dropWhere((entry, family) => {
     if (trimHistory && entry.family === "history") return false;
-    if (family.reads === "any" ? writesAny : writesValuation) return true;
-    if (accounts.size === 0) return false;
+    const r = reachOf(entry.family, family);
+    if (r !== "accounts") return r === "all";
     return !family.accountScoped || accounts.has(entry.accountId!);
   });
   invalidationListener?.();
@@ -530,10 +546,13 @@ export function aggregationCacheHasForTest(key: string): boolean {
 }
 
 /** @internal Test hook: every cached key (after applying what the log reports). */
-/** Entries held across every history memo (tests: what a trim kept). */
-export function historyTierEntryCountForTest(): number {
+/** Entries held across every history memo, or one memo by name (tests: what a trim kept). */
+export function historyTierEntryCountForTest(memoName?: string): number {
   let n = 0;
-  for (const entry of cache.values()) if (entry.family === "history") n += (entry.value as Map<unknown, unknown>).size;
+  for (const [key, entry] of cache) {
+    if (entry.family !== "history" || (memoName != null && key !== `${HISTORY_TIER_PREFIX}${memoName}`)) continue;
+    n += (entry.value as Map<unknown, unknown>).size;
+  }
   return n;
 }
 

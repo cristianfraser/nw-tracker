@@ -36,10 +36,10 @@ import {
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
-import { ccLedgerStatementClosingPointsClpForAccounts } from "./ccCreditCardValuations.js";
+import { ccLedgerStatementCloseDatesForAccounts } from "./ccCreditCardValuations.js";
 import { latestCreditCardValuationRowAsOf } from "./valuationLatest.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
-import { historyTierMemo, historyTrimByDay } from "./cacheRegistry.js";
+import { buildHistoryTierValue, historyTierMemo, historyTrimByDay } from "./cacheRegistry.js";
 import { getAccountColorRgb } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -153,6 +153,23 @@ function sortMovsChronological(movs: MovDep[]): MovDep[] {
   return [...movs].sort((a, b) => a.occurred_on.localeCompare(b.occurred_on));
 }
 
+/** A running cumulative of one account's deposit events in a unit, advanced date by date. */
+type DepositCursor = { movs: readonly MovDep[]; i: number; cum: number };
+
+function depositCursor(movs: MovDep[]): DepositCursor {
+  return { movs: sortMovsChronological(movs), i: 0, cum: 0 };
+}
+
+/** The cursor's cumulative through snapshot date `d` (dates are fed in ascending order). */
+function advanceDepositCursor(c: DepositCursor, d: string, unit: TsUnit): number {
+  const cut = depositCutoffForSnapshotRow(d);
+  while (c.i < c.movs.length && c.movs[c.i]!.occurred_on <= cut) {
+    c.cum += flowEventInUnit(c.movs[c.i]!, unit);
+    c.i++;
+  }
+  return c.cum;
+}
+
 /**
  * Cumulative deposits through each snapshot date in `unit`: each flow at its own date's rate
  * (`flowEventInUnit` — never "cumulative CLP ÷ a later rate").
@@ -162,18 +179,9 @@ function cumulativeDepInUnitByDate(
   movs: MovDep[],
   unit: TsUnit
 ): Map<string, number> {
-  const sorted = sortMovsChronological(movs);
+  const c = depositCursor(movs);
   const out = new Map<string, number>();
-  let i = 0;
-  let cum = 0;
-  for (const d of datesAsc) {
-    const cut = depositCutoffForSnapshotRow(d);
-    while (i < sorted.length && sorted[i].occurred_on <= cut) {
-      cum += flowEventInUnit(sorted[i], unit);
-      i++;
-    }
-    out.set(d, cum);
-  }
+  for (const d of datesAsc) out.set(d, advanceDepositCursor(c, d, unit));
   return out;
 }
 
@@ -277,13 +285,8 @@ function augmentChartDatesForCreditCardAccounts(
 ): string[] {
   const aug = new Set(dateStrs);
   const ccIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "credit_card");
-  const closesByAccount = ccLedgerStatementClosingPointsClpForAccounts(ccIds);
-  for (const closes of closesByAccount.values()) {
-    for (const p of closes) {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(p.as_of_date)) {
-        aug.add(p.as_of_date);
-      }
-    }
+  for (const closes of ccLedgerStatementCloseDatesForAccounts(ccIds).values()) {
+    for (const d of closes) if (/^\d{4}-\d{2}-\d{2}$/.test(d)) aug.add(d);
   }
   return [...aug].sort();
 }
@@ -660,12 +663,187 @@ export function patchAccountLiveLastPoint(
     : patchLiveLastPoint(points, dk, today, plotValue);
 }
 
-export function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: TsUnit) {
-  const allIds = [...new Set([...top.map((t) => t.account_id).filter((id) => id > 0), ...extraIds])];
-  if (allIds.length === 0) {
-    return { accounts: top, points: [] as Record<string, string | number | null>[] };
+/** The kinds whose chart line reads its own per-build source (owed walk, depto ledger), not its value. */
+const LEDGER_LINE_KINDS: ReadonlySet<string> = new Set(["credit_card", "mortgage", "property"]);
+
+/** Chart lines summed by the client (no value of their own in the points). */
+function isChartTotalDataKey(dataKey: string): boolean {
+  return dataKey === "crypto_total" || dataKey === "stocks_total" || dataKey === "mutual_funds_total";
+}
+
+/**
+ * A plain account's chart value is its value in the unit (`accountValueAt`): what it held that
+ * day, converted once at its side — never pesos re-converted. A past chart date reads evidence
+ * only, so with `memoize` it is kept in the history tier (`valuation_chart_past_value`). The
+ * card, mortgage and property lines keep their own per-build sources.
+ */
+function plainChartValue(aid: number, d: string, unit: TsUnit, memoize: boolean): number | null {
+  const valueAt = (): number | null => {
+    // A stock's line starts at its first shares (before them it holds nothing yet, not 0).
+    if (accountProfileOptional(aid)?.quantity.kind === "stock" && !equityHeldByYmd(aid, d)) return null;
+    return accountValueAt(aid, d, unit)?.value ?? null;
+  };
+  if (!memoize) return valueAt();
+  const memo = historyTierMemo<string, number | null>("valuation_chart_past_value", CHART_VALUE_BY_DAY);
+  const key = `${aid}|${unit}|${d}`;
+  let v = memo.get(key);
+  if (v === undefined) {
+    v = valueAt();
+    memo.set(key, v);
   }
-  const slugById = bucketSlugByAccountId(allIds);
+  return v;
+}
+
+/**
+ * Leading-null edge (matches the daily series' per-account trim): null each account line's
+ * leading run of 0/null so a late-starting account begins at its first holding instead of a
+ * flat 0 from the block start. Equity already reads null pre-holding; crypto's zero-unit
+ * mark is a finite 0 — nulling the lead makes the two agree here and with the daily view.
+ * Interior/trailing zeros are untouched (the trailing tail-clip runs downstream).
+ */
+function nullLeadingEmptyRuns(points: Record<string, string | number | null>[], lines: readonly AccountLine[]): void {
+  for (const t of lines) {
+    const dk = t.dataKey;
+    let firstHeld = points.findIndex((r) => {
+      const v = r[dk];
+      return typeof v === "number" && Number.isFinite(v) && v !== 0;
+    });
+    if (firstHeld < 0) firstHeld = points.length;
+    for (let i = 0; i < firstHeld; i++) points[i]![dk] = null;
+  }
+}
+
+/** Where a plain-lines walk stands after a date: each line's last value and deposit cumulative. */
+type PlainPointsWalk = {
+  lastInUnit: Map<number, number>;
+  depSeen: Set<number>;
+  deposits: Map<number, DepositCursor>;
+};
+
+/**
+ * The part of a plain-lines chart (`buildPlainAccountPoints`) that reads evidence only: the date
+ * grid, the deposit-line flags, the rows of the leading dates whose deposits cut off before Chile
+ * today, and the walk after them.
+ */
+type PlainPointsPast = {
+  dateStrs: readonly string[];
+  hasDepositLine: readonly boolean[];
+  rows: readonly Readonly<Record<string, string | number | null>>[];
+  walk: PlainPointsWalk;
+};
+
+function clonePlainWalk(w: PlainPointsWalk): PlainPointsWalk {
+  return {
+    lastInUnit: new Map(w.lastInUnit),
+    depSeen: new Set(w.depSeen),
+    deposits: new Map([...w.deposits].map(([id, c]) => [id, { ...c }])),
+  };
+}
+
+/** One chart row of plain lines at `d`, advancing `walk` (dates are fed in ascending order). */
+function plainPointsRow(
+  lines: readonly AccountLine[],
+  d: string,
+  unit: TsUnit,
+  memoize: boolean,
+  walk: PlainPointsWalk
+): Record<string, string | number | null> {
+  const row: Record<string, string | number | null> = { as_of_date: d };
+  for (const t of lines) {
+    if (isChartTotalDataKey(t.dataKey)) continue;
+    const v = plainChartValue(t.account_id, d, unit, memoize);
+    if (v != null) walk.lastInUnit.set(t.account_id, v);
+    row[t.dataKey] = walk.lastInUnit.get(t.account_id) ?? null;
+  }
+  for (const t of lines) {
+    if (!t.depositDataKey) continue;
+    const c = walk.deposits.get(t.account_id);
+    const depPlot = c ? advanceDepositCursor(c, d, unit) : 0;
+    if (!walk.depSeen.has(t.account_id)) {
+      if (depPlot === 0) {
+        row[t.depositDataKey] = null;
+        continue;
+      }
+      walk.depSeen.add(t.account_id);
+    }
+    row[t.depositDataKey] = depPlot;
+  }
+  return row;
+}
+
+/**
+ * {@link buildPointsForAccounts} when no line is a card, mortgage or property: every cell is the
+ * account's value in the unit, forward-filled, plus its deposit line. The rows dated before
+ * Chile today (with their deposits cut off before it) read evidence only, so they are kept in
+ * the history tier with the walk after them (`valuation_chart_past_points`, no trim rule: any
+ * dated change and the day turning drop it whole), and a rebuild after a live tick walks only
+ * today's point and the current month-end after it.
+ */
+function buildPlainAccountPoints(
+  top: AccountLine[],
+  extraIds: number[],
+  unit: TsUnit,
+  slugById: Map<number, string>
+): { accounts: AccountLine[]; points: Record<string, string | number | null>[] } {
+  const today = chileCalendarTodayYmd();
+  const memo = historyTierMemo<string, PlainPointsPast>("valuation_chart_past_points");
+  const key = `${unit}|${top.map((t) => `${t.account_id}:${t.dataKey}`).join(",")}|${extraIds.join(",")}`;
+  let past = memo.get(key);
+  if (!past) {
+    past = buildHistoryTierValue("valuation chart past points", (): PlainPointsPast => {
+      const allIds = [...new Set([...top.map((t) => t.account_id).filter((id) => id > 0), ...extraIds])];
+      const grid = chartDateGrid(allIds, slugById);
+      const lines = attachDepositSeriesKeys(top, grid.displayDepMovs, slugById);
+      const walk: PlainPointsWalk = { lastInUnit: new Map(), depSeen: new Set(), deposits: new Map() };
+      for (const t of lines) {
+        if (t.depositDataKey) walk.deposits.set(t.account_id, depositCursor(grid.displayDepMovs.get(t.account_id) ?? []));
+      }
+      const rows: Record<string, string | number | null>[] = [];
+      for (const d of grid.dateStrs) {
+        if (depositCutoffForSnapshotRow(d) >= today) break;
+        rows.push(plainPointsRow(lines, d, unit, true, walk));
+      }
+      return {
+        dateStrs: grid.dateStrs,
+        hasDepositLine: lines.map((t) => t.depositDataKey != null),
+        rows,
+        walk,
+      };
+    });
+    memo.set(key, past);
+  }
+  const lines = top.map((t, i) => (past.hasDepositLine[i] ? { ...t, depositDataKey: `${t.dataKey}__dep` } : { ...t }));
+  const walk = clonePlainWalk(past.walk);
+  const points = past.rows.map((r) => ({ ...r }));
+  const trailingChartDate = past.dateStrs.length > 0 ? past.dateStrs[past.dateStrs.length - 1]! : "";
+  for (const d of past.dateStrs.slice(past.rows.length)) {
+    points.push(plainPointsRow(lines, d, unit, d !== trailingChartDate && d < today, walk));
+  }
+  const densified = densifyMonthlyValuationPoints(points);
+  nullLeadingEmptyRuns(densified, lines);
+  return { accounts: lines, points: densified };
+}
+
+type ChartDateGrid = { dateStrs: string[]; displayDepMovs: Map<number, MovDep[]> };
+
+/**
+ * The chart's date grid for `allIds` (stored valuation dates, MTM days, ledger and deposit
+ * month-ends, card closes, …, ending on Chile today) and their display deposit events. It reads
+ * the database and the Chile day only, so it is kept in the history tier (`valuation_chart_grid`,
+ * no trim rule) and a live tick leaves it. Callers never mutate it.
+ */
+function chartDateGrid(allIds: number[], slugById: Map<number, string>): ChartDateGrid {
+  const memo = historyTierMemo<string, ChartDateGrid>("valuation_chart_grid");
+  const key = [...allIds].sort((a, b) => a - b).join(",");
+  let grid = memo.get(key);
+  if (!grid) {
+    grid = buildHistoryTierValue("valuation chart date grid", () => chartDateGridUncached(allIds, slugById));
+    memo.set(key, grid);
+  }
+  return grid;
+}
+
+function chartDateGridUncached(allIds: number[], slugById: Map<number, string>): ChartDateGrid {
   // A property's `valuations` are its appraisals (UF), not chart samples or values: its chart
   // dates and values come from the depto ledger.
   const markIds = allIds.filter((id) => !valuationsAreAppraisals(bucketKindFromSlugMap(slugById, id)));
@@ -716,6 +894,21 @@ export function buildPointsForAccounts(top: AccountLine[], extraIds: number[], u
   dateStrs = augmentChartDatesForFintualCertAccounts(dateStrs, allIds, chartMetaById);
   dateStrs = augmentChartDatesForCuotaLedgerAccounts(dateStrs, allIds, slugById);
   dateStrs = sanitizeValuationChartDateStrs(dateStrs);
+  return { dateStrs, displayDepMovs };
+}
+
+export function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: TsUnit) {
+  const allIds = [...new Set([...top.map((t) => t.account_id).filter((id) => id > 0), ...extraIds])];
+  if (allIds.length === 0) {
+    return { accounts: top, points: [] as Record<string, string | number | null>[] };
+  }
+  const slugById = bucketSlugByAccountId(allIds);
+  if (allIds.every((id) => !LEDGER_LINE_KINDS.has(bucketKindFromSlugMap(slugById, id)))) {
+    return buildPlainAccountPoints(top, extraIds, unit, slugById);
+  }
+  const { dateStrs, displayDepMovs } = chartDateGrid(allIds, slugById);
+  const markIds = allIds.filter((id) => !valuationsAreAppraisals(bucketKindFromSlugMap(slugById, id)));
+  const ph = markIds.map(() => "?").join(",");
   // Each property line reads its own depto ledger (one per `property` role holder).
   const propertyDeptoSheetsById = new Map<
     number,
@@ -799,37 +992,15 @@ export function buildPointsForAccounts(top: AccountLine[], extraIds: number[], u
     }
   }
 
-  // A plain account's chart value is its value in the unit (`accountValueAt`): what it held that
-  // day, converted once at its side — never pesos re-converted. A past chart date reads evidence
-  // only, so it is kept in the history tier and the rebuild after a live tick recomputes the
-  // trailing / today point alone. The card, mortgage and property lines keep their own per-build
-  // sources below.
-  const pastValueMemo = historyTierMemo<string, number | null>("valuation_chart_past_value", CHART_VALUE_BY_DAY);
-  const plainValueAt = (aid: number, d: string): number | null => {
-    // A stock's line starts at its first shares (before them it holds nothing yet, not 0).
-    if (accountProfileOptional(aid)?.quantity.kind === "stock" && !equityHeldByYmd(aid, d)) return null;
-    return accountValueAt(aid, d, unit)?.value ?? null;
-  };
-  const plainValueForChart = (aid: number, d: string, memoize: boolean): number | null => {
-    if (!memoize) return plainValueAt(aid, d);
-    const key = `${aid}|${unit}|${d}`;
-    let v = pastValueMemo.get(key);
-    if (v === undefined) {
-      v = plainValueAt(aid, d);
-      pastValueMemo.set(key, v);
-    }
-    return v;
-  };
   const points = dateStrs.map((d) => {
     const row: Record<string, string | number | null> = { as_of_date: d };
     const useLiveAfpOnDate = d === trailingChartDate || d === todayYmd;
     for (const t of topOut) {
-      if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "mutual_funds_total")
-        continue;
+      if (isChartTotalDataKey(t.dataKey)) continue;
       const aid = t.account_id;
       const aidKind = bucketKindFromSlugMap(slugById, aid);
-      if (aidKind !== "credit_card" && aidKind !== "mortgage" && aidKind !== "property") {
-        const v = plainValueForChart(aid, d, !useLiveAfpOnDate && d < todayYmd);
+      if (!LEDGER_LINE_KINDS.has(aidKind)) {
+        const v = plainChartValue(aid, d, unit, !useLiveAfpOnDate && d < todayYmd);
         if (v != null) lastInUnit.set(aid, v);
         row[t.dataKey] = lastInUnit.get(aid) ?? null;
         continue;
@@ -887,20 +1058,7 @@ export function buildPointsForAccounts(top: AccountLine[], extraIds: number[], u
     return row;
   });
   const densified = densifyMonthlyValuationPoints(points);
-  // Leading-null edge (matches the daily series' per-account trim): null each account line's
-  // leading run of 0/null so a late-starting account begins at its first holding instead of a
-  // flat 0 from the block start. Equity already reads null pre-holding; crypto's zero-unit
-  // mark is a finite 0 — nulling the lead makes the two agree here and with the daily view.
-  // Interior/trailing zeros are untouched (the trailing tail-clip runs downstream).
-  for (const t of topOut) {
-    const dk = t.dataKey;
-    let firstHeld = densified.findIndex((r) => {
-      const v = r[dk];
-      return typeof v === "number" && Number.isFinite(v) && v !== 0;
-    });
-    if (firstHeld < 0) firstHeld = densified.length;
-    for (let i = 0; i < firstHeld; i++) densified[i]![dk] = null;
-  }
+  nullLeadingEmptyRuns(densified, topOut);
   return { accounts: topOut, points: densified };
 }
 

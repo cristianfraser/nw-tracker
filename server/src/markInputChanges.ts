@@ -46,6 +46,8 @@ export type ChangeLogSummary = {
   markAccountIds: number[];
   /** Tables a write row named. */
   writtenTables: Set<string>;
+  /** Tables a mark row named; null when the log missed a stretch (anything may have changed). */
+  markSources: Set<string> | null;
   /**
    * The earliest day a mark row reaches (its table's reach rule applied; `0000-01-01` = the whole
    * history), null when no mark row was applied: what the history tier trims from.
@@ -113,7 +115,7 @@ function applyChangeLogInner(today: string, inTransaction: boolean): ChangeLogSu
     // Rows this process never saw were pruned: it cannot tell what they changed.
     clearMarkSeries();
     lastAppliedId = maxId;
-    return { marksAll: true, markAccountIds: [], writtenTables: new Set(), markFrom: FULL_HISTORY };
+    return { marksAll: true, markAccountIds: [], writtenTables: new Set(), markSources: null, markFrom: FULL_HISTORY };
   }
 
   const rows = pendingStmt.all(appliedThrough) as {
@@ -127,6 +129,7 @@ function applyChangeLogInner(today: string, inTransaction: boolean): ChangeLogSu
   let rateFrom: string | null = null;
   const byAccount = new Map<number, string>();
   const writtenTables = new Set<string>();
+  const markSources = new Set<string>();
   const lower = (id: number, from: string) => {
     const prev = byAccount.get(id);
     if (prev == null || from < prev) byAccount.set(id, from);
@@ -136,6 +139,7 @@ function applyChangeLogInner(today: string, inTransaction: boolean): ChangeLogSu
       writtenTables.add(r.source);
       continue;
     }
+    markSources.add(r.source);
     const rule = markInputRuleForSource(r.source);
     let from = isoMinusDays(markChangeIso(r.raw_date), rule.backDays ?? 0);
     if (rule.recentDays != null) from = isoMinusDays(today, rule.recentDays);
@@ -187,6 +191,7 @@ function applyChangeLogInner(today: string, inTransaction: boolean): ChangeLogSu
     marksAll: allFrom != null || rateFrom != null,
     markAccountIds: [...byAccount.keys()],
     writtenTables,
+    markSources,
     markFrom,
   };
 }

@@ -405,7 +405,18 @@ export function storedPairRatesOnOrBefore(
     }
     return out;
   }
-  const rows = link.pair.series.all();
+  // The rows dated before Chile today are evidence a live tick never moves: read once per history
+  // tier (`stored_pair_rows_before_today`, no trim rule); today's and later rows are read fresh.
+  const today = chileCalendarTodayYmd();
+  const memo = historyTierMemo<string, readonly PairRate[]>("stored_pair_rows_before_today");
+  const key = `${link.pair.base}|${link.pair.quote}`;
+  let before = memo.get(key);
+  if (!before) {
+    before = link.pair.series.all().filter((r) => r.date < today);
+    memo.set(key, before);
+  }
+  const lastD = datesAsc[datesAsc.length - 1]!;
+  const rows = lastD >= today ? [...before, ...link.pair.series.range(today, lastD)] : before;
   let j = 0;
   let last: PairRate | null = null;
   for (const d of datesAsc) {

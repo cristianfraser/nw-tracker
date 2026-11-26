@@ -7,6 +7,7 @@ import {
   invalidateMarketDataAggregations,
 } from "./cacheRegistry.js";
 import { insertMovement } from "./movementWrites.js";
+import { markChangeIso } from "./markInputChanges.js";
 import type { LiveQuoteMoves } from "./cacheDependencies.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
@@ -39,7 +40,7 @@ import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
  * timelines, ledger closes, fx rows by day) and rebuilds only today on top of it. Whatever the
  * rebuild serves must be byte-identical to a rebuild from an empty cache at the same instant.
  */
-const restoreTables = snapshotTables(["live_market_quotes", "equity_daily", "fx_daily", "mark_input_changes"]);
+const restoreTables = snapshotTables(["live_market_quotes", "equity_daily", "fx_daily", "fx_daily_bid_ask", "mark_input_changes"]);
 const TRIM_NOTE = "vitest:history-trim";
 const COIN_IMPORT_KEY = "vitest:live-tick|btc";
 afterAll(() => {
@@ -213,6 +214,10 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
     expect(keptKeys).toContain("hist.ledger_closed_month_rows");
     // So do the invested accounts (valuation-series rows: stocks, funds, coins, AFP, cards).
     expect(keptKeys).toContain("hist.valuation_closed_month_perf_rows");
+    // Their valuation series keep the date grid and the past rows of the plain lines; only
+    // today's point and the current month-end are walked again.
+    expect(keptKeys).toContain("hist.valuation_chart_grid");
+    expect(keptKeys).toContain("hist.valuation_chart_past_points");
     // (A card that never billed in dollars reads no live rate and keeps its bundle too.)
     const kept = new Set(keptKeys);
     const ratesReapplied = listCreditCardMasterAccountIds().filter(
@@ -285,7 +290,14 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
 async function changeParity(
   change: (today: string) => void,
   opts: { advanceDays?: number } = {}
-): Promise<{ differing: string[]; keptHistoryEntries: number }> {
+): Promise<{
+  differing: string[];
+  keptHistoryEntries: number;
+  keptClosedMonthRows: number;
+  startDay: string;
+  keptKeys: string[];
+  moved: string[];
+}> {
   const t0 = tradingAfternoon();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(t0);
@@ -295,19 +307,30 @@ async function changeParity(
   db.prepare(`DELETE FROM live_market_quotes`).run();
   clearAggregationCache();
   writeQuotes(t0, 1, 1);
-  await snapshotPayloads();
+  const before = await snapshotPayloads();
+  const cachedBefore = new Set(aggregationCacheKeysForTest());
 
   if (opts.advanceDays) vi.setSystemTime(new Date(t0.getTime() + opts.advanceDays * 86_400_000));
   change(day);
   // What survived the change (the freshness check applies the change log and the day change).
   ensureCacheFresh();
   const keptHistoryEntries = historyTierEntryCountForTest();
+  const keptClosedMonthRows = historyTierEntryCountForTest("valuation_closed_month_perf_rows");
+  const keptKeys = aggregationCacheKeysForTest().filter((k) => cachedBefore.has(k));
   const incremental = await snapshotPayloads();
 
   clearAggregationCache();
   const full = await snapshotPayloads();
   vi.useRealTimers();
-  return { differing: [...full.keys()].filter((k) => incremental.get(k) !== full.get(k)), keptHistoryEntries };
+  return {
+    differing: [...full.keys()].filter((k) => incremental.get(k) !== full.get(k)),
+    keptHistoryEntries,
+    keptClosedMonthRows,
+    startDay: day,
+    keptKeys,
+    // The payloads the change moved (a case whose change reaches no payload proves nothing).
+    moved: [...full.keys()].filter((k) => before.get(k) !== full.get(k)),
+  };
 }
 
 describe("a dated change: rebuild on the trimmed history == full rebuild", () => {
@@ -378,9 +401,103 @@ describe("a dated change: rebuild on the trimmed history == full rebuild", () =>
     expect(differing).toEqual([]);
   }, 300_000);
 
+  /** A payload of the flows overview or the Expenses page (built on the flows inputs). */
+  const isFlowsPayload = (k: string) => k.startsWith("flows|") || k.startsWith("spent|") || k === "expenses";
+  const FLOWS_INPUTS = "flows.overview.inputs|";
+
+  /** Restate the dollar (mid and buy/sell) in force on each of `days` (the row on or before it), then the sync's notice. */
+  function restateDollarOn(days: readonly string[], factor: number): void {
+    for (const ymd of days) {
+      const row = db.prepare(`SELECT date FROM fx_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`).get(ymd) as { date: string };
+      db.prepare(`UPDATE fx_daily SET clp_per_usd = clp_per_usd * ? WHERE date = ?`).run(factor, row.date);
+      db.prepare(
+        `UPDATE fx_daily_bid_ask SET buy_clp_per_usd = buy_clp_per_usd * ?, sell_clp_per_usd = sell_clp_per_usd * ? WHERE date = ?`
+      ).run(factor, factor, row.date);
+    }
+    invalidateMarketDataAggregations("historical");
+  }
+
+  // The wake-up change: new closes for every ticker (here every close restated) and the sync's
+  // notice. The flows inputs read no price: they stay, and what is built on them matches.
+  it("every close restated, with the market notice: the flows inputs stay", async () => {
+    const { differing, keptKeys, moved } = await changeParity((today) => {
+      db.prepare(`UPDATE equity_daily SET close = close * 1.05 WHERE trade_date < ?`).run(today);
+      invalidateMarketDataAggregations("historical");
+    });
+    expect(differing).toEqual([]);
+    expect(moved).toContain("bundle|clp");
+    expect(keptKeys.filter((k) => k.startsWith(FLOWS_INPUTS)).length).toBeGreaterThan(0);
+  }, 300_000);
+
+  // A dollar card line is valued at its facturación's rate (the payment day, the pay-by): restate
+  // the dollar on every day from the purchase through the pay-by of a closed dollar statement.
+  it("a restated dollar on the days a dollar card line is converted at", async () => {
+    const { differing, keptKeys, moved } = await changeParity((today) => {
+      // Statement dates are stored d/m/yyyy.
+      const statements = (
+        db
+          .prepare(
+            `SELECT s.pay_by AS pay_by, COALESCE(NULLIF(l.transaction_date, ''), s.statement_date) AS tx
+             FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+             WHERE l.currency = 'usd' AND s.pay_by IS NOT NULL`
+          )
+          .all() as { pay_by: string; tx: string }[]
+      ).map((r) => ({ pay_by: markChangeIso(r.pay_by), tx: markChangeIso(r.tx) }));
+      const payBy = statements
+        .map((r) => r.pay_by)
+        .filter((d) => d < chileCalendarAddDays(today, -10))
+        .sort()
+        .at(-1)!;
+      const st = { pay_by: payBy, first: statements.filter((r) => r.pay_by === payBy).map((r) => r.tx).sort()[0]! };
+      const days: string[] = [];
+      for (let d = chileCalendarAddDays(st.first, -3); d <= chileCalendarAddDays(st.pay_by, 3); d = chileCalendarAddDays(d, 1)) days.push(d);
+      restateDollarOn(days, 1.03);
+    });
+    expect(differing).toEqual([]);
+    expect(moved.some(isFlowsPayload)).toBe(true);
+    expect(keptKeys.filter((k) => k.startsWith(FLOWS_INPUTS))).toEqual([]);
+  }, 300_000);
+
+  // A dollar credited to a foreign checking account (a single-leg dollar income) is valued at its day's rate.
+  it("a restated dollar on the day of a foreign checking credit", async () => {
+    const { differing, moved } = await changeParity((today) => {
+      const m = db
+        .prepare(
+          `SELECT m.occurred_on AS d FROM movements m JOIN accounts a ON a.id = m.account_id
+           WHERE m.currency = 'usd' AND m.amount > 0 AND m.from_account_id IS NULL AND m.flow_kind = 'fx_purchase'
+             AND m.occurred_on < ? ORDER BY m.occurred_on DESC LIMIT 1`
+        )
+        .get(chileCalendarAddDays(today, -7)) as { d: string };
+      restateDollarOn([m.d], 1.03);
+    });
+    expect(differing).toEqual([]);
+    expect(moved.some(isFlowsPayload)).toBe(true);
+  }, 300_000);
+
+  // A dollar transfer into an invested account is a deposit, valued at its day's rate.
+  it("a restated dollar on the day of a dollar deposit", async () => {
+    const { differing, moved } = await changeParity((today) => {
+      const m = db
+        .prepare(
+          `SELECT m.occurred_on AS d FROM movements m JOIN accounts t ON t.id = m.to_account_id
+           WHERE m.currency = 'usd' AND m.flow_kind IS NULL AND t.equity_ticker IS NULL AND m.occurred_on < ?
+             AND NOT EXISTS (SELECT 1 FROM movements o WHERE o.occurred_on = m.occurred_on AND o.flow_kind = 'fx_purchase')
+           ORDER BY m.occurred_on DESC LIMIT 1`
+        )
+        .get(chileCalendarAddDays(today, -7)) as { d: string };
+      restateDollarOn([m.d], 1.03);
+    });
+    expect(differing).toEqual([]);
+    expect(moved.some(isFlowsPayload)).toBe(true);
+  }, 300_000);
+
   it("the day turning, with nothing written", async () => {
-    const { differing, keptHistoryEntries } = await changeParity(() => undefined, { advanceDays: 1 });
+    const { differing, keptHistoryEntries, keptClosedMonthRows, startDay } = await changeParity(() => undefined, {
+      advanceDays: 1,
+    });
     expect(differing).toEqual([]);
     expect(keptHistoryEntries).toBeGreaterThan(1000);
+    // Inside a month the invested accounts' closed-month rows outlive the day.
+    if (chileCalendarAddDays(startDay, 1).slice(0, 7) === startDay.slice(0, 7)) expect(keptClosedMonthRows).toBeGreaterThan(0);
   }, 300_000);
 });

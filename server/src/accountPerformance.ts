@@ -1,7 +1,8 @@
 import { isHomeCurrency } from "./displayUnits.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { cacheKeyAccountMonthlyPerf } from "./cacheFamilies.js";
-import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./cacheRegistry.js";
+import { buildHistoryTierValue, getAggregationCached, historyTierMemo, type HistoryTierPolicy } from "./cacheRegistry.js";
+import { isCardAccount } from "./holdings.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { getAccountValuationTimeseries } from "./accountValuationTimeseries.js";
@@ -524,6 +525,23 @@ function afpPositiveCuotasInflowByMonthKey(accountId: number): Map<string, numbe
  * The **first** month with a valuation row is included: `prior_closing` is null and `net_capital_flow` equals cumulative
  * aportes at that date (so e.g. VEA’s March 2026 wires appear in March, not folded into April as ΔcumDep=0).
  */
+/**
+ * The rule of `valuation_closed_month_perf_rows`: an entry is the rows of every calendar month
+ * before today's, which read evidence dated in those months (the closed points' values come from
+ * the past days of the mark store, which do not depend on the day they are read). A change from
+ * the current month's first day on leaves them, and so does the day turning inside a month; an
+ * earlier change, and the day turning into a new month, drop them. A card's rows always go: a
+ * card with no anchor values foreign lines at a later pay-by rate (`accountMarkClpAtYmd.ts`).
+ * The rule reads only the entries: it runs inside the freshness check, where a read through a
+ * database memo would run that check again.
+ */
+const CLOSED_MONTH_ROWS_RULE: HistoryTierPolicy<string, ClosedMonthPerfPrefix> = {
+  trim(map, from) {
+    if (from < `${monthKeyFromYmd(chileCalendarTodayYmd())}-01`) return map.clear();
+    for (const [key, prefix] of map) if (prefix.card) map.delete(key);
+  },
+};
+
 /** @heavy Rebuilds monthly performance from valuation timeseries + capital flows (cached in-process). */
 export function valuationSeriesMonthlyPerformance(
   accountId: number,
@@ -572,6 +590,8 @@ type PerfWalkState = {
 type ClosedMonthPerfPrefix = {
   rows: readonly AccountMonthlyPerformanceRow[];
   walk: PerfWalkState;
+  /** A card's rows (dropped by every change: see the rule). */
+  card: boolean;
 };
 
 /**
@@ -807,7 +827,7 @@ function buildAccountMonthlyPerformanceUncached(
   const currentMk = monthKeyFromYmd(chileCalendarTodayYmd());
   const openIdx = pts.findIndex((p) => monthKeyFromYmd(String(p.as_of_date)) >= currentMk);
   const closedPts = openIdx < 0 ? pts : pts.slice(0, openIdx);
-  const prefixMemo = historyTierMemo<string, ClosedMonthPerfPrefix>("valuation_closed_month_perf_rows");
+  const prefixMemo = historyTierMemo<string, ClosedMonthPerfPrefix>("valuation_closed_month_perf_rows", CLOSED_MONTH_ROWS_RULE);
   const prefixKey = `${accountId}|${unit}|${bucketSlug}|${closedPts.map((p) => String(p.as_of_date)).join(",")}`;
   let prefix = prefixMemo.get(prefixKey);
   if (!prefix) {
@@ -815,7 +835,7 @@ function buildAccountMonthlyPerformanceUncached(
       const walk: PerfWalkState = { prevClose: null, prevCumDep: null, prevPerfAsOf: null };
       const rows: AccountMonthlyPerformanceRow[] = [];
       appendReanchoredMonths(rows, walkValuationSeriesPoints(accountId, unit, bucketSlug, closedPts, walk), reanchorOpts);
-      return { rows, walk };
+      return { rows, walk, card: isCardAccount(accountId) };
     });
     prefixMemo.set(prefixKey, prefix);
   }

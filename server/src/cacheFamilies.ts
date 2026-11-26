@@ -12,8 +12,11 @@
  *   - a write row (any other change of a logged table) drops the families that read the table:
  *     `valuation` families read every logged table but {@link EXPENSE_METADATA_TABLES}, `any`
  *     families read them all;
+ *   - a family that declares `marketReads` reads only those of the {@link MARKET_DATA_TABLES}: a
+ *     row (mark or write) of another market table leaves it;
  * - a historical market-data notice (`invalidateMarketDataAggregations("historical")`: EOD closes,
- *   fx/UF rows, fund units written by this process): the families with `historicalMarket`;
+ *   fx/UF rows, fund units written by this process, and the sync state no table holds): the
+ *   families with `historicalMarket`;
  * - a live-quote tick: the `liveTick: "affected"` families' entries that read a moved price
  *   (`cacheDependencies.ts`), or all of them when the tick cannot say what moved;
  * - the Chile day rollover: everything but the mark series (entries bake in "today").
@@ -31,7 +34,17 @@ export type CacheFamily = {
   reads: CacheFamilyReads;
   /** Keys `<prefix><accountId>` or `<prefix><accountId>|…`: a mark row naming accounts drops only theirs. */
   accountScoped: boolean;
+  /**
+   * Dropped by a historical market-data notice. A family whose market reads are all table rows
+   * (the change log carries them) and that reads no state outside the database (the global sync
+   * state) leaves it false.
+   */
   historicalMarket: boolean;
+  /**
+   * The {@link MARKET_DATA_TABLES} the family's builds read; a change of another market table
+   * leaves its entries. Unset: every one. Pinned by a test that hides the others during a build.
+   */
+  marketReads?: readonly string[];
   liveTick: "keep" | "affected";
   bypassInTransaction: boolean;
   response: boolean;
@@ -61,6 +74,23 @@ export const EXPENSE_METADATA_TABLES: ReadonlySet<string> = new Set([
   "sii_informed_dj", "sii_issued_fee_receipts", "transfer_counterparty_accounts", "unemployment_fund_reads", "utility_bills",
   "utility_service_accounts", "vendor_catalog",
 ]);
+
+/**
+ * The tables the market syncs write: prices, splits, rates, fund units, the index series, the
+ * proxy basket and the symbol registry. A family that declares `marketReads` drops on a change of
+ * one of them only when it reads it (a close cannot move an expense line).
+ */
+export const MARKET_DATA_TABLES: ReadonlySet<string> = new Set([
+  "equity_daily", "equity_splits", "eur_daily", "fund_unit_daily", "fx_daily", "fx_daily_bcentral", "fx_daily_bid_ask",
+  "fx_rates", "ipc_daily", "ipc_official_monthly", "market_symbols", "pension_fund_unit_official", "uf_daily", "utm_daily",
+  "watchlist_composite_holdings", "watchlist_composite_meta", "watchlist_composite_position_holdings",
+  "watchlist_composite_positions",
+]);
+
+/** Whether a change of `table` reaches `family` (a table outside the market tables always does). */
+export function familyReadsTable(family: CacheFamily, table: string): boolean {
+  return family.marketReads == null || !MARKET_DATA_TABLES.has(table) || family.marketReads.includes(table);
+}
 
 const aggregation = { bypassInTransaction: false, response: false } as const;
 const response = { bypassInTransaction: true, response: true } as const;
@@ -118,9 +148,20 @@ export const CACHE_FAMILIES: Readonly<Record<string, CacheFamily>> = {
   /**
    * The flows overview's inputs (income, expense lines, deposits, the Expenses payloads): no live
    * quote, but the live dollar rate the expense lines priced unpaid dollars at
-   * (`syncFlowsInputsWithLiveUsdRates`, `flowsMortgageCarrying.ts`).
+   * (`syncFlowsInputsWithLiveUsdRates`, `flowsMortgageCarrying.ts`). Of the market they read the
+   * rates (each line and deposit event at its day's rate, a card's dollars at its facturación's)
+   * and a fund series' currency (an account's holding); UF is listed for UF-denominated flows.
+   * Never a price: a new close leaves them (`flowsInputsMarketReads.test.ts`).
    */
-  flows_inputs: { prefix: "flows.overview.inputs|", reads: "any", accountScoped: false, historicalMarket: true, liveTick: "keep", ...aggregation },
+  flows_inputs: {
+    prefix: "flows.overview.inputs|",
+    reads: "any",
+    accountScoped: false,
+    historicalMarket: false,
+    marketReads: ["fx_daily", "fx_daily_bid_ask", "fx_rates", "eur_daily", "uf_daily", "fund_unit_daily"],
+    liveTick: "keep",
+    ...aggregation,
+  },
   /** A checking account's display balance at a date (`checkingCartolaBalances.ts`). */
   checking_balance: { prefix: "checking.balance|", reads: "valuation", accountScoped: true, historicalMarket: false, liveTick: "keep", ...aggregation },
 };

@@ -1,6 +1,7 @@
 import { addDaysIso, isoDayNumber } from "nw-tracker-contracts";
 import { cacheKeyDailySeries } from "./cacheFamilies.js";
-import { getAggregationCached } from "./cacheRegistry.js";
+import { getAggregationCached, historyTierMemo, type HistoryTierPolicy } from "./cacheRegistry.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getBucketDailySeries } from "./dailySeries.js";
 import type { ShortHorizonAccountRef } from "./periodReturnsShortHorizon.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
@@ -75,6 +76,62 @@ export function unpackDailyPct(packed: PackedDailyPct): readonly DailyPctPoint[]
   return points;
 }
 
+/**
+ * The rule of `daily_pct_past`: a day's return reads that day's and the previous day's values and
+ * the flows between them, so a change from `from` on leaves the returns before it. The chain is
+ * cut there and grown again on the next read.
+ */
+const PAST_CHAIN_RULE: HistoryTierPolicy<string, PackedDailyPct> = {
+  trim(map, from) {
+    for (const [key, chain] of map) {
+      const keep = from <= chain.start ? 0 : isoDayNumber(from) - isoDayNumber(chain.start);
+      if (keep <= 0) map.delete(key);
+      else if (keep < chain.pct.length) map.set(key, { start: chain.start, pct: chain.pct.slice(0, keep) });
+    }
+  },
+};
+
+/**
+ * A scope's chain through today. The returns of the days before today are kept in the history
+ * tier (`daily_pct_past`): a price tick, a new close or the day turning then builds only the days
+ * it lacks — today's alone after a tick — as the last days of a short series, whose returns are
+ * those of the full one (a day's return reads only its own and the previous day's values). With
+ * nothing kept, the full series is built once.
+ */
+function buildDailyPctChain(
+  scopeKey: string,
+  accounts: readonly ShortHorizonAccountRef[],
+  unit: TsUnit,
+  rowsKey: string
+): PackedDailyPct {
+  const memo = historyTierMemo<string, PackedDailyPct>("daily_pct_past", PAST_CHAIN_RULE);
+  const memoKey = `${scopeKey}|${unit}|${rowsKey}`;
+  const today = chileCalendarTodayYmd();
+  const keepPast = (chain: PackedDailyPct): PackedDailyPct => {
+    // The days before today (a chain normally ends today: all but its last day).
+    const past = chain.pct.length === 0 ? 0 : Math.min(chain.pct.length, isoDayNumber(today) - isoDayNumber(chain.start));
+    if (past > 0) memo.set(memoKey, { start: chain.start, pct: chain.pct.subarray(0, past) });
+    return chain;
+  };
+  const kept = memo.get(memoKey);
+  if (!kept || kept.pct.length === 0) {
+    return keepPast(packDailyPct(getBucketDailySeries(accounts, { unit, days: 0 }).points));
+  }
+  const firstMissing = addDaysIso(kept.start, kept.pct.length);
+  const missing = isoDayNumber(today) - isoDayNumber(firstMissing) + 1;
+  if (missing <= 0) throw new Error(`daily pct chain ${memoKey}: kept through ${firstMissing}, on or after today ${today}`);
+  const tail = getBucketDailySeries(accounts, { unit, days: missing }).points;
+  if (tail.length !== missing || tail[0]!.as_of_date !== firstMissing) {
+    throw new Error(
+      `daily pct chain ${memoKey}: asked for the ${missing} day(s) from ${firstMissing}, got ${tail.length} from ${tail[0]?.as_of_date}`
+    );
+  }
+  const pct = new Float64Array(kept.pct.length + missing);
+  pct.set(kept.pct);
+  pct.set(packDailyPct(tail).pct, kept.pct.length);
+  return keepPast({ start: kept.start, pct });
+}
+
 export function dailyPctPointsForScope(
   scopeKey: string,
   accounts: readonly ShortHorizonAccountRef[],
@@ -83,7 +140,7 @@ export function dailyPctPointsForScope(
   const rowsKey = accounts.map((a) => a.account_id).join(",");
   return unpackDailyPct(
     getAggregationCached(cacheKeyDailySeries(`${scopeKey}|${unit}|0|pct|${rowsKey}`), () =>
-      packDailyPct(getBucketDailySeries(accounts, { unit, days: 0 }).points)
+      buildDailyPctChain(scopeKey, accounts, unit, rowsKey)
     )
   );
 }

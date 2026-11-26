@@ -43,9 +43,51 @@ export function chainDailyPct(
   startYmd: string | null,
   todayYmd: string
 ): number | null {
+  // A daily series is in date order: the period is a run of it, found by its two ends instead of
+  // walking every day of the history for each period of each row.
+  if (inDateOrder(points)) {
+    const from = startYmd == null ? 0 : firstIndexAfter(points, startYmd);
+    const to = firstIndexAfter(points, todayYmd);
+    return compound(pctRun(points, from, to));
+  }
   return compound(
     points.filter((p) => (startYmd == null || p.as_of_date > startYmd) && p.as_of_date <= todayYmd).map((p) => p.pct)
   );
+}
+
+type DatedPct = { as_of_date: string; pct: number | null };
+
+const dateOrderByList = new WeakMap<object, boolean>();
+/** Whether the points' days ascend (checked once per list; the lists are read many times). */
+function inDateOrder(points: readonly DatedPct[]): boolean {
+  let ordered = dateOrderByList.get(points);
+  if (ordered === undefined) {
+    ordered = true;
+    for (let i = 1; i < points.length; i++) {
+      if (points[i]!.as_of_date < points[i - 1]!.as_of_date) {
+        ordered = false;
+        break;
+      }
+    }
+    dateOrderByList.set(points, ordered);
+  }
+  return ordered;
+}
+
+/** The first index whose day is after `ymd` (the list's length when none is), in a date-ordered list. */
+function firstIndexAfter(points: readonly DatedPct[], ymd: string): number {
+  let lo = 0;
+  let hi = points.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (points[mid]!.as_of_date <= ymd) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function* pctRun(points: readonly DatedPct[], from: number, to: number): Generator<number | null> {
+  for (let i = from; i < to; i++) yield points[i]!.pct;
 }
 
 /** A daily point of a scope's own series: its date and its flow-adjusted return of the day (`dailyPctSeries.ts`). */

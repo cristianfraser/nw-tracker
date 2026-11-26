@@ -31,7 +31,14 @@ savepoint rolled back when the rows come out the same, so it logs nothing.
 Every family drops on any mark row (an account-scoped one only for the named accounts, and the
 accounts declared trimmed together — `declareAccountsTrimmedTogether`, the depto ledger).
 `valuation` families also drop on a write row of any logged table but `EXPENSE_METADATA_TABLES`;
-`any` families on every write row.
+`any` families on every write row. A family that declares `marketReads` ignores the rows (mark or
+write) of the market tables (`MARKET_DATA_TABLES`: prices, splits, rates, fund units, index series,
+the proxy basket, the symbol registry) it does not list. The flows inputs list the rate tables
+(`fx_daily`, `fx_daily_bid_ask`, `fx_rates`, `eur_daily`, `uf_daily`) and `fund_unit_daily` (a fund
+series' currency decides an account's holding), never a price: a new close keeps them, a rate row
+drops them whole. They read no state outside the database either, so the historical market notice
+leaves them (`historical` blank below); `flowsInputsMarketReads.test.ts` builds them with every
+other market table hidden and checks they never read the global sync state.
 
 | family | prefix | reads | scoped | historical | live tick | tx | response |
 |---|---|---|---|---|---|---|---|
@@ -57,7 +64,7 @@ accounts declared trimmed together — `declareAccountsTrimmedTogether`, the dep
 | dashboard_account_rows_list | `…\|account_rows\|` | valuation | | ✓ | affected | bypass | ✓ |
 | dashboard_nav | `…\|nav_` | valuation | | ✓ | affected | bypass | ✓ |
 | flows_overview | `flows.overview\|` | any | | ✓ | affected | | |
-| flows_inputs | `flows.overview.inputs\|` | any | | ✓ | keep (+ live dollar input) | | |
+| flows_inputs | `flows.overview.inputs\|` | any (market: rates, fund units) | | | keep (+ live dollar input) | | |
 | checking_balance | `checking.balance\|` | valuation | ✓ | | keep | | |
 
 The longest matching prefix decides a key's family; a key in no family throws. The live tier
