@@ -1,18 +1,18 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import { cartolaKeyParts, minorDigitsReader } from "../flows/cartolaRowKey.js";
-import { cartolaPlaceFacts372 } from "./bankRowFacts372.js";
+import { cartolaPlaceFacts373 } from "./bankRowFacts373.js";
 
 /**
- * What migrations 370–372 would trip on, read only, on a database that may not have applied them
+ * What migrations 371–373 would trip on, read only, on a database that may not have applied them
  * (`scripts/report-document-import.ts --preflight`): every list empty = safe to deploy.
  *
  * - `no_evidence`: movements with no `flow_evidence` row (the readers of `bankRowFacts.ts` throw for them);
  * - `cartola_without_identity`: cartola rows whose note lacks `on:` / `amt:` / `idx:` (they stay keyed by
  *   their id, as before, and state no position);
  * - `cartola_amount_disagrees`: cartola rows whose note's `amt:` is not the row's signed amount in minor
- *   units (migration 372 fails on them: their purchase key would change);
+ *   units (migration 373 fails on them: their purchase key would change);
  * - `cartola_day_moves`: cartola rows whose evidence states a listed day other than the note's `on:`
- *   (372 states the note's day; informational, when 370 is applied);
+ *   (373 states the note's day; informational, when 371 is applied);
  * - `merge_legs_without_identity`: mirror-merge legs whose kept cartola note has no identity (restored
  *   without a position on undo).
  */
@@ -30,7 +30,7 @@ const isCartolaRowNote = (note: string | null) => {
   return n.slice(0, "import:cartola|".length).toLowerCase() === "import:cartola|" && !ANCHOR.test(n);
 };
 
-export function bankRowFactsPreflight372(dbi: DatabaseType): BankRowFactsPreflight {
+export function bankRowFactsPreflight373(dbi: DatabaseType): BankRowFactsPreflight {
   const evidenceCols = new Set((dbi.prepare(`SELECT name FROM pragma_table_info('flow_evidence')`).all() as { name: string }[]).map((c) => c.name));
   const hasStatedOn = evidenceCols.has("stated_on");
   const out: BankRowFactsPreflight = {
@@ -56,7 +56,7 @@ export function bankRowFactsPreflight372(dbi: DatabaseType): BankRowFactsPreflig
     )
     .all() as { id: number; note: string | null; account_id: number | null; amount: number; currency: string; flow_kind: string | null; stated_on: string | null }[];
   for (const r of rows) {
-    const identity = cartolaPlaceFacts372(String(r.note ?? "").trim()).identity;
+    const identity = cartolaPlaceFacts373(String(r.note ?? "").trim()).identity;
     if (!identity) {
       out.cartola_without_identity.push(r.id);
       continue;
@@ -72,8 +72,8 @@ export function bankRowFactsPreflight372(dbi: DatabaseType): BankRowFactsPreflig
     in_movement_id: number | null;
   }[];
   for (const m of merges) {
-    const out_ = isCartolaRowNote(m.out_note) && cartolaPlaceFacts372(String(m.out_note).trim()).identity == null;
-    const in_ = m.in_movement_id != null && isCartolaRowNote(m.in_note) && cartolaPlaceFacts372(String(m.in_note).trim()).identity == null;
+    const out_ = isCartolaRowNote(m.out_note) && cartolaPlaceFacts373(String(m.out_note).trim()).identity == null;
+    const in_ = m.in_movement_id != null && isCartolaRowNote(m.in_note) && cartolaPlaceFacts373(String(m.in_note).trim()).identity == null;
     if (out_ || in_) out.merge_legs_without_identity.push(m.id);
   }
   return out;

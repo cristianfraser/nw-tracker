@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { backfillListingFacts370 } from "./evidenceListingFacts370.js";
+import { backfillListingFacts371 } from "./evidenceListingFacts371.js";
 
 /** The tables the backfill reads, cut to the columns it touches, in a database of its own. */
 function scratchDb() {
@@ -23,7 +23,7 @@ function row(dbi: Database.Database, id: number, kind: string, note: string, occ
 const facts = (dbi: Database.Database) =>
   dbi.prepare(`SELECT source_row_id AS id, stated_on, stated_amount, stated_description, stated_document_no, stated_period FROM flow_evidence ORDER BY id`).all();
 
-describe("migration 370: listing facts from the notes on file", () => {
+describe("migration 371: listing facts from the notes on file", () => {
   it("states each bank row's listing: a daily row's from its note, a cartola row's bank day from its posting", () => {
     const dbi = scratchDb();
     row(dbi, 1, "daily_listing", "import:cartola-partial|1803-04-03|-45000|TRANSF  A JUAN|doc:123", "1803-04-02", -45_000);
@@ -32,7 +32,7 @@ describe("migration 370: listing facts from the notes on file", () => {
     row(dbi, 4, "cartola", "import:cartola|1803-04|—|Comision|on:1803-04-06|amt:-100|idx:1", "1803-04-06", -100);
     row(dbi, 5, "manual", "anything", "1803-04-06", 1);
     dbi.prepare(`INSERT INTO movement_bank_postings VALUES (3, 7, '1803-04-05')`).run();
-    backfillListingFacts370(dbi);
+    backfillListingFacts371(dbi);
     expect(facts(dbi)).toEqual([
       { id: 1, stated_on: "1803-04-03", stated_amount: -45_000, stated_description: "TRANSF A JUAN", stated_document_no: "123", stated_period: null },
       // Listed with no description: '' (it matches no cartola row, as before).
@@ -47,7 +47,7 @@ describe("migration 370: listing facts from the notes on file", () => {
     const dbi = scratchDb();
     row(dbi, 1, "cartola_anchor", "import:cartola|anchor|1803-03|saldo final", "1803-03-01", 500);
     row(dbi, 2, "daily_listing", "IMPORT:CARTOLA-PARTIAL|1803-04-03|-45000|X", "1803-04-03", -45_000);
-    backfillListingFacts370(dbi);
+    backfillListingFacts371(dbi);
     expect((facts(dbi) as { id: number; stated_document_no: string | null; stated_description: string }[]).map((f) => [f.id, f.stated_document_no, f.stated_description])).toEqual([
       [1, null, "import:cartola|anchor|1803-03|saldo final"],
       [2, "", "X"],
@@ -59,6 +59,6 @@ describe("migration 370: listing facts from the notes on file", () => {
     row(dbi, 9, "daily_listing", "import:cartola-partial|ayer|mucho|X", "1803-04-04", -1);
     row(dbi, 10, "cartola", "import:cartola|abril|Ag|X|on:1803-04-04|amt:-1|idx:0", "1803-04-04", -1);
     row(dbi, 11, "daily_listing", "import:cartola-partial|1803-04-04|-1|OK", "1803-04-04", -1);
-    expect(() => backfillListingFacts370(dbi)).toThrow(/2 bank movement\(s\).*9 \(daily.*10 \(cartola/);
+    expect(() => backfillListingFacts371(dbi)).toThrow(/2 bank movement\(s\).*9 \(daily.*10 \(cartola/);
   });
 });

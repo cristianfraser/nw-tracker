@@ -30,7 +30,7 @@ export function movementNotAnchorSql(alias: string): string {
  * listing stated it — its kind, document key, day, amount and wording — under `source_table`
  * `restated:<table>` and `source_row_id` its own id, so it names no live row (every per-row lookup
  * reads `source_table = '<table>'`) and never collides with another. The row then gets a fresh
- * evidence row for the document. The flow delete triggers read history as history (migration 370):
+ * evidence row for the document. The flow delete triggers read history as history (migration 371):
  * it neither holds the flow nor stops its retirement.
  */
 export const RESTATED_EVIDENCE_PREFIX = "restated:";

@@ -157,7 +157,7 @@ describe("cartola planner", () => {
       return listedFactsOfEvidence(id, e.kind, e);
     };
     expect(facts()).toEqual({ bank_day: "1803-04-03", amount_clp: -45_000, description: "X /Y", document_no: "", period_month: null });
-    // A note rewritten drops the facts (migration 370): the row is refused, never read from its note.
+    // A note rewritten drops the facts (migration 371): the row is refused, never read from its note.
     restateBankRowDocument(id, { note: partialMovementNote({ occurred_on: "1803-04-03", amount_clp: -45_000, description: "OTRO", document_no: "" }), flowKind: null });
     expect(facts).toThrow(/no listing facts/);
     expect(listedFactsOfEvidence(id, "manual", {} as ListedFactsEvidence)).toBeNull();

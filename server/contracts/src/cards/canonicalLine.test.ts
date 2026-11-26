@@ -61,7 +61,7 @@ describe("canonical card line: the parser's rows", () => {
     expect(STORED_CARD_LINE_DATE_PATTERN.test(storedCardLineDate(null, "2026-12-31")!)).toBe(true);
   });
 
-  it("fingerprints a day as the document printed it, else unpadded (the shape lines had before migration 369)", () => {
+  it("fingerprints a day as the document printed it, else unpadded (the shape lines had before migration 370)", () => {
     expect(fingerprintCardLineDate("05/08/26", "2026-08-05")).toBe("05/08/26");
     expect(fingerprintCardLineDate(null, "2026-08-05")).toBe("5/8/2026");
     expect(unpaddedCardLineDate("2026-12-31")).toBe("31/12/2026");

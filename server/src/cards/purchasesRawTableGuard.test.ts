@@ -28,7 +28,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccPlantedCharges.ts": "raw: the planted charge lines a listing line may be the later listing of",
   "migrationHooks/ccPlantedCharges328.ts": "raw: migration 328 registers the planted charge lines already on file",
   "migrationHooks/statementFingerprint292.ts": "raw: migration 292 hook (re-derives stored fingerprints from the stored lines; was under cards/)",
-  "migrationHooks/cardLineDates369.ts": "raw: migration 369 hook (checks the padded line days, re-states their evidence)",
+  "migrationHooks/cardLineDates370.ts": "raw: migration 370 hook (checks the padded line days, re-states their evidence)",
   "flows/flowFirstSeenWindowRepair.ts": "raw: the arrival-stamp repair (which flows record only statement cuota lines)",
   "migrationHooks/statementLineAmount319.ts": "raw: migration 319 hook (rebuilds the line table with amount + currency; was under cards/)",
   "ccAnnulledPurchases.ts": "raw: snapshots a bucket line by id into an annulled purchase before its line is deleted",

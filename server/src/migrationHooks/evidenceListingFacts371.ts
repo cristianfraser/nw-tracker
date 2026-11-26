@@ -5,7 +5,7 @@ import { flowRetireDeleteTriggerSql } from "./flowRetirement290.js";
 import { reinstallTableTriggersInOrder } from "./tableTriggerReinstall.js";
 
 /**
- * Migration 370 hook, after its SQL added `flow_evidence.stated_document_no` / `stated_period`:
+ * Migration 371 hook, after its SQL added `flow_evidence.stated_document_no` / `stated_period`:
  *
  * 1. the evidence write log watches the two new columns;
  * 2. a movement whose note is rewritten loses its listing facts (`flow_movements_evidence_au` already
@@ -32,45 +32,45 @@ import { reinstallTableTriggersInOrder } from "./tableTriggerReinstall.js";
  *
  * Pure (no `db` import).
  */
-export function runEvidenceListingFacts370(dbi: DatabaseType): void {
+export function runEvidenceListingFacts371(dbi: DatabaseType): void {
   const cols = (dbi.prepare(`SELECT name FROM pragma_table_info('flow_evidence')`).all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes("stated_document_no") || !cols.includes("stated_period")) {
-    throw new Error("migration 370: flow_evidence has no stated_document_no / stated_period");
+    throw new Error("migration 371: flow_evidence has no stated_document_no / stated_period");
   }
   reinstallTableTriggersInOrder(
     dbi,
     "flow_evidence",
     { write_log_flow_evidence_au: writeLogTriggerSql("flow_evidence", cols, null)[2]! },
-    "migration 370"
+    "migration 371"
   );
   // A movement's note rewritten: its listing facts go with the old note (the writer that turns a row
   // into a bank document's states them again, `recordBankListingFacts`).
   const noteTrigger = dbi
     .prepare(`SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'flow_movements_evidence_au'`)
     .get() as { sql: string } | undefined;
-  if (!noteTrigger) throw new Error("migration 370: no flow_movements_evidence_au trigger");
+  if (!noteTrigger) throw new Error("migration 371: no flow_movements_evidence_au trigger");
   const clause = "stated_description = NEW.note";
-  if (noteTrigger.sql.split(clause).length !== 2) throw new Error(`migration 370: flow_movements_evidence_au does not set «${clause}» once`);
+  if (noteTrigger.sql.split(clause).length !== 2) throw new Error(`migration 371: flow_movements_evidence_au does not set «${clause}» once`);
   reinstallTableTriggersInOrder(
     dbi,
     "movements",
     { flow_movements_evidence_au: noteTrigger.sql.replace(clause, `${clause}, stated_document_no = NULL, stated_period = NULL`) },
-    "migration 370"
+    "migration 371"
   );
   for (const spec of FLOW_SOURCES) {
     reinstallTableTriggersInOrder(
       dbi,
       spec.table,
       { [`flow_${spec.table}_ad`]: flowRetireDeleteTriggerSql(spec, { refundLinks: true, restatedEvidence: true }) },
-      "migration 370"
+      "migration 371"
     );
   }
 
-  backfillListingFacts370(dbi);
+  backfillListingFacts371(dbi);
 }
 
-/** Step 4 of {@link runEvidenceListingFacts370}: the listing facts of the bank rows on file, from their notes. */
-export function backfillListingFacts370(dbi: DatabaseType): void {
+/** Step 4 of {@link runEvidenceListingFacts371}: the listing facts of the bank rows on file, from their notes. */
+export function backfillListingFacts371(dbi: DatabaseType): void {
   const rows = dbi
     .prepare(
       `SELECT e.id AS evidence_id, e.source_kind AS kind, m.id, m.account_id, m.note, m.occurred_on,
@@ -93,7 +93,7 @@ export function backfillListingFacts370(dbi: DatabaseType): void {
   for (const r of rows) {
     const note = String(r.note ?? "");
     if (r.kind === "daily_listing") {
-      const facts = dailyNoteFacts370(note);
+      const facts = dailyNoteFacts371(note);
       if (!facts) {
         unreadable.push(`${r.id} (daily listing: no day and amount)`);
         continue;
@@ -102,7 +102,7 @@ export function backfillListingFacts370(dbi: DatabaseType): void {
       daily.run(facts.bank_day, facts.amount, facts.description, facts.document_no, r.evidence_id);
       dailyRows += 1;
     } else {
-      const facts = cartolaNoteFacts370(note);
+      const facts = cartolaNoteFacts371(note);
       if (!facts) {
         unreadable.push(`${r.id} (cartola: no YYYY-MM month)`);
         continue;
@@ -112,10 +112,10 @@ export function backfillListingFacts370(dbi: DatabaseType): void {
     }
   }
   if (unreadable.length > 0) {
-    throw new Error(`migration 370: ${unreadable.length} bank movement(s) whose note states no listing: ${unreadable.join(", ")}`);
+    throw new Error(`migration 371: ${unreadable.length} bank movement(s) whose note states no listing: ${unreadable.join(", ")}`);
   }
   console.log(
-    `migration 370: listing facts stated for ${dailyRows} daily-listing and ${cartolaRows} cartola movement(s)` +
+    `migration 371: listing facts stated for ${dailyRows} daily-listing and ${cartolaRows} cartola movement(s)` +
       (noDescription.length > 0 ? `; ${noDescription.length} daily row(s) listed with no description: ${noDescription.join(", ")}` : "")
   );
 }
@@ -126,15 +126,15 @@ const DAILY_PREFIX = "import:cartola-partial|";
  * The prefix test of the evidence kind (`movementEvidenceKindSql`: SQLite's LIKE, which ignores
  * ASCII case), so a row the kind names a bank listing's is one this reader reads.
  */
-function hasPrefix370(note: string, prefix: string): boolean {
+function hasPrefix371(note: string, prefix: string): boolean {
   return note.slice(0, prefix.length).toLowerCase() === prefix;
 }
 
 /** A daily-listing note's facts (`import:cartola-partial|<day>|<amount>|<description>[|doc:<n>]`), as the 2026-11 reader read them. */
-export function dailyNoteFacts370(
+export function dailyNoteFacts371(
   note: string
 ): { bank_day: string; amount: number; description: string; document_no: string } | null {
-  if (!hasPrefix370(note, DAILY_PREFIX)) return null;
+  if (!hasPrefix371(note, DAILY_PREFIX)) return null;
   const rest = note.slice(DAILY_PREFIX.length);
   const firstBar = rest.indexOf("|");
   if (firstBar < 0) return null;
@@ -158,8 +158,8 @@ export function dailyNoteFacts370(
 const CARTOLA_PREFIX = "import:cartola|";
 
 /** A cartola note's facts (`import:cartola|<month>|<branch>|<description>[|doc:<n>]|on:…|amt:…|idx:…`). */
-export function cartolaNoteFacts370(note: string): { period_month: string; description: string; document_no: string } | null {
-  if (!hasPrefix370(note, CARTOLA_PREFIX)) return null;
+export function cartolaNoteFacts371(note: string): { period_month: string; description: string; document_no: string } | null {
+  if (!hasPrefix371(note, CARTOLA_PREFIX)) return null;
   const period = note.split("|")[1]?.trim() ?? "";
   if (!/^\d{4}-\d{2}$/.test(period)) return null;
   const fragment = descriptionFragment(note);

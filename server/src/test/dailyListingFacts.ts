@@ -1,6 +1,6 @@
 import { db } from "../db.js";
-import { cartolaNoteFacts370, dailyNoteFacts370 } from "../migrationHooks/evidenceListingFacts370.js";
-import { anchorDescription372, cartolaPlaceFacts372, mailDescription372 } from "../migrationHooks/bankRowFacts372.js";
+import { cartolaNoteFacts371, dailyNoteFacts371 } from "../migrationHooks/evidenceListingFacts371.js";
+import { anchorDescription373, cartolaPlaceFacts373, mailDescription373 } from "../migrationHooks/bankRowFacts373.js";
 import type { BankRowText } from "../bankRowFacts.js";
 import { dailyListingFacts, recordBankListingFacts } from "../movementListingFacts.js";
 
@@ -21,7 +21,7 @@ export function stateListingFactsOfFixtures(): void {
     .all() as { id: number; kind: string; note: string }[]) {
     const note = r.note.trim();
     db.prepare(`UPDATE flow_evidence SET stated_description = ? WHERE id = ?`).run(
-      r.kind === "cartola_anchor" ? anchorDescription372(note) : mailDescription372(note),
+      r.kind === "cartola_anchor" ? anchorDescription373(note) : mailDescription373(note),
       r.id
     );
   }
@@ -34,15 +34,15 @@ export function stateListingFactsOfFixtures(): void {
     .all() as { id: number; note: string; occurred_on: string; kind: string }[];
   for (const r of rows) {
     if (r.kind === "daily_listing") {
-      const parsed = dailyNoteFacts370(r.note);
+      const parsed = dailyNoteFacts371(r.note);
       if (!parsed) throw new Error(`test fixture movement ${r.id}: unreadable daily note ${r.note}`);
       recordBankListingFacts(r.id, dailyListingFacts({ occurred_on: parsed.bank_day, amount_clp: parsed.amount, description: parsed.description, document_no: parsed.document_no }), db);
       continue;
     }
-    const content = cartolaNoteFacts370(r.note);
+    const content = cartolaNoteFacts371(r.note);
     if (!content) continue;
     const day = r.note.match(/\|on:([^|]+)/)?.[1]?.trim() ?? r.occurred_on;
-    const place = cartolaPlaceFacts372(r.note);
+    const place = cartolaPlaceFacts373(r.note);
     recordBankListingFacts(
       r.id,
       { bank_day: day, description: content.description, document_no: content.document_no, period_month: content.period_month, branch: place.branch, position: place.identity?.position ?? 0 },
@@ -57,11 +57,11 @@ export function stateListingFactsOfFixtures(): void {
  * states once its importer writes it (`bankRowFacts.ts`).
  */
 export function rowTextOfFixtureNote(note: string): BankRowText {
-  const daily = dailyNoteFacts370(note);
+  const daily = dailyNoteFacts371(note);
   if (daily) return { description: daily.description, document_no: daily.document_no || null, branch: null };
-  const cartola = cartolaNoteFacts370(note);
+  const cartola = cartolaNoteFacts371(note);
   if (cartola) return { description: cartola.description, document_no: cartola.document_no || null, branch: note.split("|")[2] ?? "" };
-  if (/^import:(?:santander|mach|bancochile)-mail\|/.test(note)) return { description: mailDescription372(note), document_no: null, branch: null };
+  if (/^import:(?:santander|mach|bancochile)-mail\|/.test(note)) return { description: mailDescription373(note), document_no: null, branch: null };
   return { description: note.trim(), document_no: null, branch: null };
 }
 

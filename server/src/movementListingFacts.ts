@@ -1,5 +1,5 @@
 /**
- * What a bank listing printed for a row it wrote, in columns (migrations 370, 372): a cartola or a
+ * What a bank listing printed for a row it wrote, in columns (migrations 371, 373): a cartola or a
  * daily-listing movement's evidence (`flow_evidence`, `source_table = 'movements'`) states the bank
  * day it was listed on (`stated_on`), its signed amount (`stated_amount`), its description
  * (`stated_description`), its document number (`stated_document_no`, '' when it printed none), the
@@ -111,7 +111,7 @@ export type ListedFactsEvidence = {
 /**
  * A bank row's listing facts from its evidence: null for a row no bank listing wrote. A cartola or
  * daily-listing row without them throws — every writer states them (`insertBankPesoMovement`), and
- * migration 370 stated them for the rows on file.
+ * migration 371 stated them for the rows on file.
  */
 export function listedFactsOfEvidence(movementId: number, kind: string | null, e: ListedFactsEvidence): CheckingListedFacts | null {
   if (kind !== "cartola" && kind !== "daily_listing") return null;
@@ -151,7 +151,7 @@ export function listedFactsOfMovement(movementId: number, dbHandle: Database): B
 }
 
 /**
- * A mirror conversion's kept leg (`movement_mirror_merges`, migration 371): the listing facts the
+ * A mirror conversion's kept leg (`movement_mirror_merges`, migration 372): the listing facts the
  * deleted leg's evidence stated, kept with the merge row so an undo restores them. `side` names the
  * column set (`out_listed_*` / `in_listed_*`).
  */

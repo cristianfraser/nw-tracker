@@ -8,8 +8,8 @@ import { cartolaRowPurchaseKey, movementDescription } from "./bankRowFacts.js";
 import { resolveExpenseKey } from "./flows/flowKeyResolve.js";
 import { getFlowCategory, putFlowCategory } from "./flows/flowCategories.js";
 import { checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
-import { backfillBankRowFacts372 } from "./migrationHooks/bankRowFacts372.js";
-import { bankRowFactsPreflight372 } from "./migrationHooks/bankRowFactsPreflight372.js";
+import { backfillBankRowFacts373 } from "./migrationHooks/bankRowFacts373.js";
+import { bankRowFactsPreflight373 } from "./migrationHooks/bankRowFactsPreflight373.js";
 import { listedFactsOfMovement, restoreMirrorLegListing } from "./movementListingFacts.js";
 
 const PERIOD = "1803-07";
@@ -79,7 +79,7 @@ describe("bank row facts", () => {
     expect(() => movementDescription(bad)).toThrow(new RegExp(`movement ${bad}: no evidence`));
   });
 
-  it("migration 372's backfill states each kind's facts from its note, and refuses a cartola note whose amount disagrees, naming it", () => {
+  it("migration 373's backfill states each kind's facts from its note, and refuses a cartola note whose amount disagrees, naming it", () => {
     const ins = (amount: number, note: string) => {
       const id = Number(db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', '1803-07-05', ?)`).run(checking, amount, note).lastInsertRowid);
       extra.push(id);
@@ -102,7 +102,7 @@ describe("bank row facts", () => {
          in_movement_id, in_occurred_on, in_amount, in_currency, in_note) VALUES (?, 1, '1803-07-06', -1000, 'clp', ?, 2, '1803-07-06', 1000, 'clp', ?)`
     ).run(transfer, `import:cartola|${PERIOD}|Ag|VITEST BRF OUT|on:1803-07-06|amt:-1000|idx:7`, `import:cartola|${PERIOD}|Ag|VITEST BRF IN|on:1803-07-06|amt:1000`);
 
-    backfillBankRowFacts372(db);
+    backfillBankRowFacts373(db);
     expect(evidenceOf(cart)).toMatchObject({ stated_on: "1803-07-04", stated_branch: "Providencia", stated_position: 3 });
     expect(evidenceOf(noIdx)).toMatchObject({ stated_branch: "Providencia", stated_position: null });
     expect(evidenceOf(daily)).toMatchObject({ stated_branch: null, stated_position: null });
@@ -114,11 +114,11 @@ describe("bank row facts", () => {
 
     // The preflight lists what the migrations would trip on.
     const off = ins(-9_999, `import:cartola|${PERIOD}|Providencia|VITEST BRF OTRO MONTO|on:1803-07-04|amt:-1|idx:4`);
-    const pre = bankRowFactsPreflight372(db);
+    const pre = bankRowFactsPreflight373(db);
     expect(pre.cartola_without_identity).toContain(noIdx);
     expect(pre.cartola_amount_disagrees).toEqual([off]);
     expect(pre.merge_legs_without_identity).toContain(transfer);
-    expect(() => backfillBankRowFacts372(db)).toThrow(new RegExp(`disagrees.*: ${off}$`));
+    expect(() => backfillBankRowFacts373(db)).toThrow(new RegExp(`disagrees.*: ${off}$`));
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(transfer);
     deleteTempCardMaster(other);
   });

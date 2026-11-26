@@ -3,11 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { runCardLineDates369 } from "./cardLineDates369.js";
+import { runCardLineDates370 } from "./cardLineDates370.js";
 
-const MIGRATION = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "migrations", "369_cc_line_dates_padded.sql");
+const MIGRATION = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "migrations", "370_cc_line_dates_padded.sql");
 
-/** The tables migration 369 reads, cut to the columns it touches, in a database of its own. */
+/** The tables migration 370 reads, cut to the columns it touches, in a database of its own. */
 function scratchDb() {
   const dbi = new Database(":memory:");
   dbi.exec(`
@@ -25,7 +25,7 @@ function scratchDb() {
 function migrate(dbi: Database.Database): void {
   const sql = fs.readFileSync(MIGRATION, "utf8").replace(/--[^\n]*/g, "");
   for (const stmt of sql.split(";").map((s) => s.trim()).filter(Boolean)) dbi.exec(stmt);
-  runCardLineDates369(dbi);
+  runCardLineDates370(dbi);
 }
 
 /** A line and its flow as the old insert trigger wrote them (`stated_on` / `occurred_on` given). */
@@ -39,7 +39,7 @@ const lineDays = (dbi: Database.Database) =>
   dbi.prepare(`SELECT id, transaction_date AS tx, posting_date AS post FROM cc_statement_lines ORDER BY id`).all();
 const flowDays = (dbi: Database.Database) => dbi.prepare(`SELECT id, occurred_on AS day FROM flows ORDER BY id`).all();
 
-describe("migration 369: card line days padded", () => {
+describe("migration 370: card line days padded", () => {
   it("pads every stored shape, re-states the line evidence and repairs the flows dated from it", () => {
     const dbi = scratchDb();
     // An 8-character d/m/yyyy: the trigger read it as dd/mm/yy (a malformed day).

@@ -64,10 +64,10 @@ import { runMortgageLenderQuotes308 } from "./migrationHooks/mortgageLenderQuote
 import { runFlowFirstSeen310 } from "./migrationHooks/flowFirstSeen310.js";
 import { runFlowFirstSeenTime367 } from "./migrationHooks/flowFirstSeenTime367.js";
 import { runFlowEventTimes368 } from "./migrationHooks/flowEventTimes368.js";
-import { runCardLineDates369 } from "./migrationHooks/cardLineDates369.js";
-import { runEvidenceListingFacts370 } from "./migrationHooks/evidenceListingFacts370.js";
-import { runMirrorMergeListingFacts371 } from "./migrationHooks/mirrorMergeListingFacts371.js";
-import { runBankRowFacts372 } from "./migrationHooks/bankRowFacts372.js";
+import { runCardLineDates370 } from "./migrationHooks/cardLineDates370.js";
+import { runEvidenceListingFacts371 } from "./migrationHooks/evidenceListingFacts371.js";
+import { runMirrorMergeListingFacts372 } from "./migrationHooks/mirrorMergeListingFacts372.js";
+import { runBankRowFacts373 } from "./migrationHooks/bankRowFacts373.js";
 import { runCardToCardPayments311 } from "./migrationHooks/cardToCardPayments311.js";
 import { runBrokerInstruments361 } from "./migrationHooks/brokerInstruments361.js";
 import { runCardRefundLinks365 } from "./migrationHooks/cardRefundLinks365.js";
@@ -439,10 +439,10 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "366_card_refund_links_hold_flows.sql": runCardRefundLinksHold366,
   "367_flow_first_seen_time.sql": runFlowFirstSeenTime367,
   "368_flow_event_times.sql": runFlowEventTimes368,
-  "369_cc_line_dates_padded.sql": runCardLineDates369,
-  "370_evidence_listing_facts.sql": runEvidenceListingFacts370,
-  "371_mirror_merge_listing_facts.sql": runMirrorMergeListingFacts371,
-  "372_bank_row_facts.sql": runBankRowFacts372,
+  "370_cc_line_dates_padded.sql": runCardLineDates370,
+  "371_evidence_listing_facts.sql": runEvidenceListingFacts371,
+  "372_mirror_merge_listing_facts.sql": runMirrorMergeListingFacts372,
+  "373_bank_row_facts.sql": runBankRowFacts373,
   "363_vendor_catalog_checking_names.sql": runVendorCatalog363,
 };
 

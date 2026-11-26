@@ -9,7 +9,7 @@ const lineDayIso = (a: string) =>
 const PADDED = `'[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'`;
 
 /**
- * Migration 369 hook, after its SQL padded the stored card line days:
+ * Migration 370 hook, after its SQL padded the stored card line days:
  *
  * 1. every stored day is a padded `dd/mm/yyyy` of a real calendar day, or the migration throws
  *    (a day nothing can read is a data problem to fix, not to carry);
@@ -28,7 +28,7 @@ const PADDED = `'[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'`;
  *
  * Pure (no `db` import).
  */
-export function runCardLineDates369(dbi: DatabaseType): void {
+export function runCardLineDates370(dbi: DatabaseType): void {
   const bad = dbi
     .prepare(
       `SELECT id, transaction_date, posting_date FROM cc_statement_lines
@@ -41,7 +41,7 @@ export function runCardLineDates369(dbi: DatabaseType): void {
     .all() as { id: number; transaction_date: string | null; posting_date: string | null }[];
   if (bad.length > 0) {
     throw new Error(
-      `migration 369: card line days that are not dd/mm/yyyy days: ` +
+      `migration 370: card line days that are not dd/mm/yyyy days: ` +
         bad.map((b) => `line ${b.id} (${b.transaction_date ?? "—"} / ${b.posting_date ?? "—"})`).join(", ")
     );
   }
@@ -99,13 +99,13 @@ export function runCardLineDates369(dbi: DatabaseType): void {
     const dayOn = recovered ?? `${year}-01-01`;
     if (!recovered) {
       console.warn(
-        `migration 369: flow ${flowId} lost its month («${f.occurred_on}», no line and no document key names its day): dated ${dayOn}`
+        `migration 370: flow ${flowId} lost its month («${f.occurred_on}», no line and no document key names its day): dated ${dayOn}`
       );
     }
     flowsRepaired += setDay.run(dayOn, flowId, dayOn).changes;
   }
   if (unreadable.length > 0) {
-    throw new Error(`migration 369: flows with a malformed day that is not a misread card line day: ${unreadable.slice(0, 20).join(", ")}`);
+    throw new Error(`migration 370: flows with a malformed day that is not a misread card line day: ${unreadable.slice(0, 20).join(", ")}`);
   }
   const malformedSet = new Set(malformed);
   for (const flowId of new Set(redated.map((r) => r.flow_id))) {
@@ -114,5 +114,5 @@ export function runCardLineDates369(dbi: DatabaseType): void {
     if (!b || !redatedEvidence.has(b.id)) continue;
     flowsRepaired += setDay.run(b.stated_on, flowId, b.stated_on).changes;
   }
-  console.log(`migration 369: ${redated.length} card line evidence day(s) re-stated, ${flowsRepaired} flow day(s) repaired`);
+  console.log(`migration 370: ${redated.length} card line evidence day(s) re-stated, ${flowsRepaired} flow day(s) repaired`);
 }

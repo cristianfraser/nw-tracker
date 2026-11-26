@@ -12,8 +12,8 @@
  *   npx tsx scripts/report-document-import.ts --db=<snapshot copy> --account=<id> --cartola=<file.json> [--product=checking|demand_deposit] [--force] [--migrate]
  *   npx tsx scripts/report-document-import.ts --db=<snapshot copy> --preflight
  *
- * `--preflight`: read only, without migrating, lists what migrations 370–372 would trip on
- * (`bankRowFactsPreflight372`); every list empty = safe to deploy (exit 0, else 1).
+ * `--preflight`: read only, without migrating, lists what migrations 371–373 would trip on
+ * (`bankRowFactsPreflight373`); every list empty = safe to deploy (exit 0, else 1).
  *
  * `--statements`: canonical card statements (an array of `CardCanonicalStatement`, or a
  * `card.statement` payload in its canonical format — `{ "format": "canonical", "statements": [...] }`,
@@ -44,10 +44,10 @@ if (fs.existsSync(live) && fs.realpathSync(file) === fs.realpathSync(live) && !f
   throw new Error(`${file} is the live database: run on a snapshot copy, or pass --allow-live with the server stopped`);
 }
 if (flag("preflight")) {
-  // Read only, before any migration: what migrations 370–372 would trip on.
-  const { bankRowFactsPreflight372 } = await import("../src/migrationHooks/bankRowFactsPreflight372.js");
+  // Read only, before any migration: what migrations 371–373 would trip on.
+  const { bankRowFactsPreflight373 } = await import("../src/migrationHooks/bankRowFactsPreflight373.js");
   const dbi = new Database(file, { readonly: true, fileMustExist: true });
-  const report = bankRowFactsPreflight372(dbi);
+  const report = bankRowFactsPreflight373(dbi);
   dbi.close();
   console.log(`database: ${file}`);
   let total = 0;

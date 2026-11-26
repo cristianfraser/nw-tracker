@@ -36,7 +36,7 @@
  */
 import { putFlowCategory } from "../src/flows/flowCategories.js";
 import { stateMovementDescription } from "../src/movementListingFacts.js";
-import { mailDescription372 } from "../src/migrationHooks/bankRowFacts372.js";
+import { mailDescription373 } from "../src/migrationHooks/bankRowFacts373.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -257,7 +257,7 @@ function mailRowInsert(sql: string) {
   return {
     run: (accountId: number, amount: number, day: string, note: string) => {
       const r = stmt.run(accountId, amount, day, note);
-      stateMovementDescription(Number(r.lastInsertRowid), mailDescription372(note), db);
+      stateMovementDescription(Number(r.lastInsertRowid), mailDescription373(note), db);
       return r;
     },
   };

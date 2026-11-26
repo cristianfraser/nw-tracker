@@ -188,7 +188,7 @@ export function storedCardLineDate(printed: string | null, iso: string | null): 
 
 /**
  * The day as the import fingerprint hashes it (`cards/statementStorage.ts`): the document's own text,
- * else the day unpadded — how lines were stored before migration 369 padded them, so a statement
+ * else the day unpadded — how lines were stored before migration 370 padded them, so a statement
  * imported before keeps its fingerprint and does not re-import.
  */
 export function fingerprintCardLineDate(printed: string | null, iso: string | null): string | null {

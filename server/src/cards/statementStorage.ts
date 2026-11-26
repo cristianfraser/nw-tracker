@@ -126,8 +126,8 @@ export function assertStoredCardLineDates(row: { transaction_date: string | null
 
 /**
  * The line's columns as the fingerprint hashes them: the days as the document printed them
- * (`fingerprintCardLineDate`: the stored shape before migration 369) and the legacy two-slot
- * amounts (unchanged since migration 292), so a statement imported before 369 or 319 keeps its hash,
+ * (`fingerprintCardLineDate`: the stored shape before migration 370) and the legacy two-slot
+ * amounts (unchanged since migration 292), so a statement imported before 370 or 319 keeps its hash,
  * plus — only for a line in another currency than pesos or dollars — its currency and amount.
  */
 function storedLineColumnsForFingerprint(statement: CardCanonicalStatement, line: CardCanonicalLine) {

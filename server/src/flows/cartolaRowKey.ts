@@ -3,7 +3,7 @@ import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 
 /**
  * A cartola row's identity, as its purchase key (`checking-cartola:<account>:<month>:<day>:<amount>:<position>`)
- * spells it, from the row's evidence (migrations 370, 372) — never its note: the cartola month
+ * spells it, from the row's evidence (migrations 371, 373) — never its note: the cartola month
  * (`stated_period`), the day the cartola listed it (`stated_on`), its position in the cartola
  * (`stated_position`) and the bank's signed amount in minor units of the row's currency (a peso row
  * stores it signed; a foreign row unsigned, its direction in its flow kind). Read by the key builder

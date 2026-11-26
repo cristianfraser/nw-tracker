@@ -1,4 +1,4 @@
--- A mirror conversion deletes its legs; the listing facts a bank leg's evidence stated (migration 370)
+-- A mirror conversion deletes its legs; the listing facts a bank leg's evidence stated (migration 371)
 -- are kept with the merge row so an undo restores them (`restoreMirrorLegListing`). The hook backfills
 -- the merge rows on file from the leg notes they kept, once, and reinstalls the write log.
 ALTER TABLE movement_mirror_merges ADD COLUMN out_listed_on TEXT;

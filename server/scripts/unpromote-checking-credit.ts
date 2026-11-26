@@ -17,7 +17,7 @@
  * copy the pattern from a sibling row of the same feed). It is what stops the next xlsx import
  * from re-inserting the credit as a second row, and the daily listing's facts the row's evidence
  * states again (`movementListingFacts.ts`) are read from it (the daily importer's note grammar, as
- * migration 370 read the rows on file). Personal values stay on the command line.
+ * migration 371 read the rows on file). Personal values stay on the command line.
  *
  * Report-only by default; `--apply` writes. Refuses when the row is not a goal → checking
  * transfer, when it is a synthesized retiro (those are deleted, not unpromoted — a different
@@ -26,7 +26,7 @@
 import { db } from "../src/db.js";
 import { checkingAccountId } from "../src/checkingCartolaImport.js";
 import { recordBankListingFacts } from "../src/movementListingFacts.js";
-import { dailyNoteFacts370 } from "../src/migrationHooks/evidenceListingFacts370.js";
+import { dailyNoteFacts371 } from "../src/migrationHooks/evidenceListingFacts371.js";
 
 
 function arg(name: string): string | undefined {
@@ -40,7 +40,7 @@ const movementId = Number(arg("movement-id"));
 const note = arg("note");
 if (!Number.isInteger(movementId) || movementId <= 0) throw new Error("--movement-id=NN is required");
 if (!note) throw new Error("--note='<original note>' is required");
-const listed = dailyNoteFacts370(note);
+const listed = dailyNoteFacts371(note);
 if (!listed) throw new Error(`--note «${note}» is not a daily-listing note (import:cartola-partial|<ymd>|<amount>|<description>[|doc:<n>])`);
 
 type Row = {

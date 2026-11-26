@@ -11,7 +11,7 @@
  *  - any other row (typed by hand, a broker's or a legacy import's): its note, which IS its only
  *    description (shown and matched as the text a person wrote; nothing reads a field out of it).
  * A note rewritten later is the row's description from then on: the rewrite drops the listing facts
- * (migration 370's trigger), so the row describes itself by its new note.
+ * (migration 371's trigger), so the row describes itself by its new note.
  */
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";

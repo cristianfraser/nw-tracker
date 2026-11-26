@@ -18,7 +18,7 @@ const ID_KEY_PREFIX: Partial<Record<SourceSpec["table"], string>> = {
 /**
  * What the delete triggers count as holding a flow, by the migration that installs them: 290 the
  * holding tables and `flow_links`; 366 adds the card refund links (migration 365), whose either end
- * keeps its flow (a refund linked to a purchase that a re-import rewrites must find it again); 370
+ * keeps its flow (a refund linked to a purchase that a re-import rewrites must find it again); 371
  * reads a restated row's earlier evidence (`source_table` `restated:<table>`, `flows/flowEvidence.ts`)
  * as history, never as another row of the flow.
  */

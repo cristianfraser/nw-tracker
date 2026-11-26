@@ -23,7 +23,7 @@ describe("card line days as stored", () => {
     const [padded] = parsedStatements([record("05/08/26")]);
     expect(storedLineColumns(short!, short!.lines[0]!).transaction_date).toBe("05/08/2026");
     expect(storedLineColumns(padded!, padded!.lines[0]!).transaction_date).toBe("05/08/2026");
-    // The fingerprint keeps hashing the document's own text (the shape stored before migration 369).
+    // The fingerprint keeps hashing the document's own text (the shape stored before migration 370).
     expect(cardStatementFingerprint(short!)).not.toBe(cardStatementFingerprint(padded!));
   });
 

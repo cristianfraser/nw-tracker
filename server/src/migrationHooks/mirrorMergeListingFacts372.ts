@@ -1,35 +1,35 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import { writeLogTriggerSql } from "../markInputTriggers.js";
 import { reinstallTableTriggersInOrder } from "./tableTriggerReinstall.js";
-import { cartolaNoteFacts370, dailyNoteFacts370 } from "./evidenceListingFacts370.js";
+import { cartolaNoteFacts371, dailyNoteFacts371 } from "./evidenceListingFacts371.js";
 
 /** The columns the merge rows' mark trigger watches (its write log logs the others). */
 const MARK_WATCHED = ["transfer_movement_id", "out_occurred_on", "in_occurred_on"] as const;
 
 /**
- * Migration 371 hook, after its SQL added the `out_listed_*` / `in_listed_*` columns of
+ * Migration 372 hook, after its SQL added the `out_listed_*` / `in_listed_*` columns of
  * `movement_mirror_merges`: the write log watches them, and each merge row on file keeps the
- * listing facts its deleted legs stated, read ONCE from the leg notes it kept with migration 370's
+ * listing facts its deleted legs stated, read ONCE from the leg notes it kept with migration 371's
  * reader (a leg whose note is a cartola or daily-listing row's, its kind's prefix test; an anchor
  * note is neither): the bank day (a daily note's day; a cartola leg's posting on its account kept
  * on the transfer, else its day), the description, the document ('' when none) and the cartola
  * month. A bank leg note that does not read fails the migration, every such merge row listed at
  * once. Pure (no `db` import).
  */
-export function runMirrorMergeListingFacts371(dbi: DatabaseType): void {
+export function runMirrorMergeListingFacts372(dbi: DatabaseType): void {
   const cols = (dbi.prepare(`SELECT name FROM pragma_table_info('movement_mirror_merges')`).all() as { name: string }[]).map((c) => c.name);
   const before = writeLogTriggerSql("movement_mirror_merges", cols.filter((c) => !c.includes("_listed_")), [...MARK_WATCHED])[0]!;
   const installed = (dbi.prepare(`SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'write_log_movement_mirror_merges_au'`).get() as
     | { sql: string }
     | undefined)?.sql;
-  if (installed !== before) throw new Error("migration 371: write_log_movement_mirror_merges_au is not the expected trigger");
+  if (installed !== before) throw new Error("migration 372: write_log_movement_mirror_merges_au is not the expected trigger");
   reinstallTableTriggersInOrder(
     dbi,
     "movement_mirror_merges",
     { write_log_movement_mirror_merges_au: writeLogTriggerSql("movement_mirror_merges", cols, [...MARK_WATCHED])[0]! },
-    "migration 371"
+    "migration 372"
   );
-  backfillMirrorMergeListingFacts371(dbi);
+  backfillMirrorMergeListingFacts372(dbi);
 }
 
 const ANCHOR = /^import:cartola\|(anchor|opening)\|/i;
@@ -39,18 +39,18 @@ function legFacts(note: string | null, postedOn: string | null, occurredOn: stri
   const daily = n.slice(0, "import:cartola-partial|".length).toLowerCase() === "import:cartola-partial|";
   const cartola = !daily && n.slice(0, "import:cartola|".length).toLowerCase() === "import:cartola|" && !ANCHOR.test(n);
   if (daily) {
-    const f = dailyNoteFacts370(n);
+    const f = dailyNoteFacts371(n);
     return f ? { facts: [f.bank_day, f.description, f.document_no, null] } : "unreadable";
   }
   if (cartola) {
-    const f = cartolaNoteFacts370(n);
+    const f = cartolaNoteFacts371(n);
     return f ? { facts: [postedOn ?? occurredOn, f.description, f.document_no, f.period_month] } : "unreadable";
   }
   return "not_bank";
 }
 
-/** The listing facts of the merge rows on file (see {@link runMirrorMergeListingFacts371}). */
-export function backfillMirrorMergeListingFacts371(dbi: DatabaseType): void {
+/** The listing facts of the merge rows on file (see {@link runMirrorMergeListingFacts372}). */
+export function backfillMirrorMergeListingFacts372(dbi: DatabaseType): void {
   const rows = dbi
     .prepare(
       `SELECT mm.transfer_movement_id AS id, mm.out_note, mm.out_occurred_on, mm.in_note, mm.in_occurred_on, mm.in_movement_id,
@@ -95,7 +95,7 @@ export function backfillMirrorMergeListingFacts371(dbi: DatabaseType): void {
     }
   }
   if (unreadable.length > 0) {
-    throw new Error(`migration 371: ${unreadable.length} mirror-merge leg(s) whose note states no listing: ${unreadable.join(", ")}`);
+    throw new Error(`migration 372: ${unreadable.length} mirror-merge leg(s) whose note states no listing: ${unreadable.join(", ")}`);
   }
-  console.log(`migration 371: listing facts kept for ${legs} bank leg(s) of ${rows.length} mirror conversion(s)`);
+  console.log(`migration 372: listing facts kept for ${legs} bank leg(s) of ${rows.length} mirror conversion(s)`);
 }

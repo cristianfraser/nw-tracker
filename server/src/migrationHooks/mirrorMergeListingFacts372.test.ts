@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { backfillMirrorMergeListingFacts371 } from "./mirrorMergeListingFacts371.js";
+import { backfillMirrorMergeListingFacts372 } from "./mirrorMergeListingFacts372.js";
 
 function scratchDb() {
   const dbi = new Database(":memory:");
@@ -15,7 +15,7 @@ function scratchDb() {
   return dbi;
 }
 
-describe("migration 371: a mirror conversion keeps its bank legs' listing", () => {
+describe("migration 372: a mirror conversion keeps its bank legs' listing", () => {
   it("reads each bank leg's note once; anchors, other notes and a card payment's statement side keep none", () => {
     const dbi = scratchDb();
     dbi.exec(`INSERT INTO movements VALUES (1, 7, 8), (2, 7, 9)`);
@@ -26,7 +26,7 @@ describe("migration 371: a mirror conversion keeps its bank legs' listing", () =
     dbi.prepare(`INSERT INTO movement_mirror_merges (transfer_movement_id, out_note, out_occurred_on, in_movement_id, in_note, in_occurred_on) VALUES (?, ?, ?, ?, ?, ?)`).run(
       2, "import:cartola|anchor|1803-03|saldo", "1803-03-01", null, "PAGO", "1803-04-01"
     );
-    backfillMirrorMergeListingFacts371(dbi);
+    backfillMirrorMergeListingFacts372(dbi);
     expect(dbi.prepare(`SELECT out_listed_on, out_listed_description, out_listed_document_no, out_listed_period, in_listed_on, in_listed_description, in_listed_document_no, in_listed_period FROM movement_mirror_merges ORDER BY transfer_movement_id`).all()).toEqual([
       { out_listed_on: "1803-04-03", out_listed_description: "TRASPASO", out_listed_document_no: "5", out_listed_period: null, in_listed_on: "1803-04-06", in_listed_description: "Abono", in_listed_document_no: "", in_listed_period: "1803-04" },
       { out_listed_on: null, out_listed_description: null, out_listed_document_no: null, out_listed_period: null, in_listed_on: null, in_listed_description: null, in_listed_document_no: null, in_listed_period: null },
@@ -39,6 +39,6 @@ describe("migration 371: a mirror conversion keeps its bank legs' listing", () =
     for (const id of [1, 2]) {
       dbi.prepare(`INSERT INTO movement_mirror_merges (transfer_movement_id, out_note, out_occurred_on, in_movement_id, in_note, in_occurred_on) VALUES (?, ?, '1803-04-01', 3, 'x', '1803-04-01')`).run(id, "import:cartola-partial|nunca|x|Y");
     }
-    expect(() => backfillMirrorMergeListingFacts371(dbi)).toThrow(/2 mirror-merge leg\(s\).*1 \(out leg\), 2 \(out leg\)/);
+    expect(() => backfillMirrorMergeListingFacts372(dbi)).toThrow(/2 mirror-merge leg\(s\).*1 \(out leg\), 2 \(out leg\)/);
   });
 });
