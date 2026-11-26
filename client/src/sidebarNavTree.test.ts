@@ -127,6 +127,37 @@ describe("buildSidebarNavFromApi", () => {
     ]);
   });
 
+  it("flags leaf groups (rows include accounts or tracked places) so they start closed", () => {
+    const account = (id: number) => ({ ...navNode(`acc.${id}`, `account_${id}`), account_id: id });
+    const place = { ...navNode("exp.home", "exp_home"), expense_account_id: 7 };
+    const soxx = navNode("soxx", "soxx", [account(3)]);
+    const payload: SidebarNavResponse = {
+      schema_version: DTO_SCHEMA_VERSIONS.sidebar_nav,
+      dashboard: null,
+      main: [
+        navNode("inversiones", "inversiones", [
+          navNode("brokerage", "brokerage", [navNode("acciones", "acciones", [account(1), soxx])]),
+          navNode("savings", "savings", [account(2)]),
+        ]),
+      ],
+      flows: navNode("flows", "flows", [navNode("ingresos", "ingresos"), navNode("gastos", "gastos", [place])]),
+      projections: null,
+      wealth_percentile: null,
+      tax_return: null,
+      rates: null,
+      net_worth: null,
+    };
+    const flagged: string[] = [];
+    const walk = (nodes: SidebarNavNode[]) => {
+      for (const n of nodes) {
+        if (n.holdsAccounts) flagged.push(n.id);
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(buildSidebarNavFromApi(payload));
+    expect(flagged.sort()).toEqual(["acciones", "gastos", "savings"]);
+  });
+
   it("hides chart_inactive buckets from the sidebar at any depth", () => {
     const mutualFunds = { ...navNode("mutual_funds", "brokerage_mutual_funds"), chart_inactive: true };
     const acciones = navNode("acciones", "brokerage_acciones", [navNode("acc.1", "account_1")]);

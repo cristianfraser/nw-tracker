@@ -18,6 +18,11 @@ export type SidebarNavNode = {
   activePrefix?: string;
   children?: SidebarNavNode[];
   /**
+   * A leaf group: some of its rows are accounts (or tracked places). It starts closed in the
+   * sidebar; every other group starts open.
+   */
+  holdsAccounts?: boolean;
+  /**
    * The mark hung left of the label: a net-worth group with rows under it shows a square in its
    * card pill's colour; the expenses row, its favicon's down-pointing triangle.
    */

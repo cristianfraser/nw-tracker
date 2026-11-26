@@ -32,22 +32,46 @@ import { cn } from "../../cn";
 import styles from "./AppSidebar.module.css";
 import type { DisplayUnit } from "../../queries/keys";
 
-const COLLAPSE_STORAGE_KEY = "nw-sidebar-collapsed";
+/**
+ * The viewer's explicit open / closed choices by node id; a group without one follows
+ * `openByDefault`. v2: the default became «every group open but leaf groups» — the v1 key (a
+ * set of closed ids under an all-open default) is no longer read.
+ */
+const OPEN_STORAGE_KEY = "nw-sidebar-open.v2";
+const LEGACY_COLLAPSE_STORAGE_KEY = "nw-sidebar-collapsed";
 
-function readCollapsedIds(): Set<string> {
+type OpenChoices = Record<string, boolean>;
+
+function readOpenChoices(): OpenChoices {
   try {
-    const raw = localStorage.getItem(COLLAPSE_STORAGE_KEY);
-    if (!raw) return new Set();
+    localStorage.removeItem(LEGACY_COLLAPSE_STORAGE_KEY);
+    const raw = localStorage.getItem(OPEN_STORAGE_KEY);
+    if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(parsed.filter((x): x is string => typeof x === "string"));
+    if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: OpenChoices = {};
+    for (const [id, open] of Object.entries(parsed)) if (typeof open === "boolean") out[id] = open;
+    return out;
   } catch {
-    return new Set();
+    return {};
   }
 }
 
-function writeCollapsedIds(ids: Set<string>) {
-  localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...ids]));
+function writeOpenChoices(choices: OpenChoices) {
+  try {
+    localStorage.setItem(OPEN_STORAGE_KEY, JSON.stringify(choices));
+  } catch {
+    // Storage unavailable (private mode): the choice lasts this page view.
+  }
+}
+
+/** Every group starts open except a leaf group (one whose rows include accounts). */
+function openByDefault(node: SidebarNavNode): boolean {
+  return node.holdsAccounts !== true;
+}
+
+function isNodeOpen(choices: OpenChoices, node: SidebarNavNode): boolean {
+  return choices[node.id] ?? openByDefault(node);
 }
 
 /**
@@ -72,8 +96,8 @@ function RowMarker({ marker, swap }: { marker: SidebarNavMarker; swap: boolean }
 function SidebarNavItem({
   node,
   depth,
-  collapsed,
-  onToggleCollapse,
+  openChoices,
+  onToggleOpen,
   pathname,
   navPayload,
   displayUnit,
@@ -82,8 +106,8 @@ function SidebarNavItem({
 }: {
   node: SidebarNavNode;
   depth: number;
-  collapsed: Set<string>;
-  onToggleCollapse: (id: string) => void;
+  openChoices: OpenChoices;
+  onToggleOpen: (node: SidebarNavNode) => void;
   pathname: string;
   navPayload: SidebarNavResponse | null;
   displayUnit: DisplayUnit;
@@ -93,7 +117,7 @@ function SidebarNavItem({
 }) {
   const { t } = useTranslation();
   const hasChildren = (node.children?.length ?? 0) > 0;
-  const isCollapsed = collapsed.has(node.id);
+  const isCollapsed = !isNodeOpen(openChoices, node);
   const isActive = sidebarNodeMatchesPath(pathname, node);
   /** A group above the open page: its label reads bright, like the page's own. */
   const onActivePath = hasChildren && sidebarNodeSubtreeContainsPath(pathname, node);
@@ -107,7 +131,7 @@ function SidebarNavItem({
   const toggle = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onToggleCollapse(node.id);
+    onToggleOpen(node);
   };
 
   return (
@@ -159,8 +183,8 @@ function SidebarNavItem({
               key={child.id}
               node={child}
               depth={depth + 1}
-              collapsed={collapsed}
-              onToggleCollapse={onToggleCollapse}
+              openChoices={openChoices}
+              onToggleOpen={onToggleOpen}
               pathname={pathname}
               navPayload={navPayload}
               displayUnit={displayUnit}
@@ -195,7 +219,7 @@ export function AppSidebar() {
     [queryClient, displayUnit, navPayload]
   );
   const unreadCount = unread?.count ?? 0;
-  const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsedIds);
+  const [openChoices, setOpenChoices] = useState<OpenChoices>(readOpenChoices);
 
   // `language` is a dep because buildSidebarNavFromApi resolves node labels via
   // module-level i18n.t — without it a language switch keeps the stale tree.
@@ -222,23 +246,24 @@ export function AppSidebar() {
     if (!tree) return;
     const expandIds = collectAncestorIdsToExpand(tree, pathname);
     if (expandIds.length === 0) return;
-    setCollapsed((prev) => {
-      const next = new Set(prev);
+    setOpenChoices((prev) => {
       let changed = false;
+      const next = { ...prev };
       for (const id of expandIds) {
-        if (next.delete(id)) changed = true;
+        if (next[id] !== true) {
+          next[id] = true;
+          changed = true;
+        }
       }
-      if (changed) writeCollapsedIds(next);
+      if (changed) writeOpenChoices(next);
       return changed ? next : prev;
     });
   }, [pathname, tree]);
 
-  const onToggleCollapse = useCallback((id: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      writeCollapsedIds(next);
+  const onToggleOpen = useCallback((node: SidebarNavNode) => {
+    setOpenChoices((prev) => {
+      const next = { ...prev, [node.id]: !isNodeOpen(prev, node) };
+      writeOpenChoices(next);
       return next;
     });
   }, []);
@@ -301,13 +326,16 @@ export function AppSidebar() {
   useEffect(() => {
     const expandIds = collectAncestorIdsToExpand([panelNode], pathname);
     if (expandIds.length === 0) return;
-    setCollapsed((prev) => {
-      const next = new Set(prev);
+    setOpenChoices((prev) => {
       let changed = false;
+      const next = { ...prev };
       for (const id of expandIds) {
-        if (next.delete(id)) changed = true;
+        if (next[id] !== true) {
+          next[id] = true;
+          changed = true;
+        }
       }
-      if (changed) writeCollapsedIds(next);
+      if (changed) writeOpenChoices(next);
       return changed ? next : prev;
     });
   }, [pathname, panelNode]);
@@ -334,8 +362,8 @@ export function AppSidebar() {
                     <SidebarNavItem
                       node={aboutNode}
                       depth={0}
-                      collapsed={collapsed}
-                      onToggleCollapse={onToggleCollapse}
+                      openChoices={openChoices}
+                      onToggleOpen={onToggleOpen}
                       pathname={pathname}
                       navPayload={null}
                       displayUnit={displayUnit}
@@ -345,8 +373,8 @@ export function AppSidebar() {
                   <SidebarNavItem
                     node={coldDashboardNode}
                     depth={0}
-                    collapsed={collapsed}
-                    onToggleCollapse={onToggleCollapse}
+                    openChoices={openChoices}
+                    onToggleOpen={onToggleOpen}
                     pathname={pathname}
                     navPayload={null}
                     displayUnit={displayUnit}
@@ -361,8 +389,8 @@ export function AppSidebar() {
                     <SidebarNavItem
                       node={aboutNode}
                       depth={0}
-                      collapsed={collapsed}
-                      onToggleCollapse={onToggleCollapse}
+                      openChoices={openChoices}
+                      onToggleOpen={onToggleOpen}
                       pathname={pathname}
                       navPayload={navPayload ?? null}
                       displayUnit={displayUnit}
@@ -374,8 +402,8 @@ export function AppSidebar() {
                       key={dashboardNode.id}
                       node={dashboardNode}
                       depth={0}
-                      collapsed={collapsed}
-                      onToggleCollapse={onToggleCollapse}
+                      openChoices={openChoices}
+                      onToggleOpen={onToggleOpen}
                       pathname={pathname}
                       navPayload={navPayload ?? null}
                       displayUnit={displayUnit}
@@ -389,8 +417,8 @@ export function AppSidebar() {
                       key={node.id}
                       node={node}
                       depth={0}
-                      collapsed={collapsed}
-                      onToggleCollapse={onToggleCollapse}
+                      openChoices={openChoices}
+                      onToggleOpen={onToggleOpen}
                       pathname={pathname}
                       navPayload={navPayload ?? null}
                       displayUnit={displayUnit}
@@ -404,8 +432,8 @@ export function AppSidebar() {
                     <SidebarNavItem
                       node={projectionsNode}
                       depth={0}
-                      collapsed={collapsed}
-                      onToggleCollapse={onToggleCollapse}
+                      openChoices={openChoices}
+                      onToggleOpen={onToggleOpen}
                       pathname={pathname}
                       navPayload={navPayload ?? null}
                       displayUnit={displayUnit}
@@ -416,8 +444,8 @@ export function AppSidebar() {
                     <SidebarNavItem
                       node={wealthPercentileNode}
                       depth={0}
-                      collapsed={collapsed}
-                      onToggleCollapse={onToggleCollapse}
+                      openChoices={openChoices}
+                      onToggleOpen={onToggleOpen}
                       pathname={pathname}
                       navPayload={navPayload ?? null}
                       displayUnit={displayUnit}
@@ -428,8 +456,8 @@ export function AppSidebar() {
                     <SidebarNavItem
                       node={taxReturnNode}
                       depth={0}
-                      collapsed={collapsed}
-                      onToggleCollapse={onToggleCollapse}
+                      openChoices={openChoices}
+                      onToggleOpen={onToggleOpen}
                       pathname={pathname}
                       navPayload={navPayload ?? null}
                       displayUnit={displayUnit}
@@ -441,8 +469,8 @@ export function AppSidebar() {
                       node={flowsNode}
                       tourTarget="nav-flows"
                       depth={0}
-                      collapsed={collapsed}
-                      onToggleCollapse={onToggleCollapse}
+                      openChoices={openChoices}
+                      onToggleOpen={onToggleOpen}
                       pathname={pathname}
                       navPayload={navPayload ?? null}
                       displayUnit={displayUnit}
@@ -457,8 +485,8 @@ export function AppSidebar() {
                       key={node.id}
                       node={node}
                       depth={0}
-                      collapsed={collapsed}
-                      onToggleCollapse={onToggleCollapse}
+                      openChoices={openChoices}
+                      onToggleOpen={onToggleOpen}
                       pathname={pathname}
                       navPayload={navPayload ?? null}
                       displayUnit={displayUnit}
@@ -476,8 +504,8 @@ export function AppSidebar() {
               <SidebarNavItem
                 node={panelNode}
                 depth={0}
-                collapsed={collapsed}
-                onToggleCollapse={onToggleCollapse}
+                openChoices={openChoices}
+                onToggleOpen={onToggleOpen}
                 pathname={pathname}
                 navPayload={navPayload ?? null}
                 displayUnit={displayUnit}

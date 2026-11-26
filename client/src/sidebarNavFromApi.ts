@@ -89,6 +89,8 @@ function mapNode(dto: NavTreeNodeDto, asLeaf = false, markers = false): SidebarN
         ? visible.map((c) => mapNode(c, c.account_id == null, markers))
         : sortNavTreeLeavesFirst(visible).map((c) => mapNode(c, false, markers));
   const children = childDtos && childDtos.length > 0 ? childDtos : undefined;
+  const holdsAccounts =
+    children != null && visible.some((c) => c.account_id != null || c.expense_account_id != null);
   return {
     id: dto.node_id,
     label: resolveNavTreeLabel(dto),
@@ -97,6 +99,7 @@ function mapNode(dto: NavTreeNodeDto, asLeaf = false, markers = false): SidebarN
     activePrefix: dto.active_prefix ?? undefined,
     marker: navNodeMarker(dto, markers && children != null),
     children,
+    holdsAccounts: holdsAccounts || undefined,
   };
 }
 
