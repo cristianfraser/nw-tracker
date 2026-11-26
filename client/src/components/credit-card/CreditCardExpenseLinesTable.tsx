@@ -93,7 +93,7 @@ function sortLines(
   return lines
     .map((line, index) => ({ line, index }))
     .sort((a, b) => {
-      let cmp = 0;
+      let cmp: number;
       if (sort.key === "date") cmp = sign * dateOf(a.line).localeCompare(dateOf(b.line));
       else if (sort.key === "amount") cmp = sign * (lineValueIn(a.line, unit) - lineValueIn(b.line, unit));
       else {

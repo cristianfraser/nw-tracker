@@ -106,11 +106,12 @@ function replayHeaders(all: Record<string, string>): Record<string, string> {
 }
 
 /** A screenshot and the page's text, for an unattended failure; returns where they went. */
-async function saveDiagnostics(page: Page, label: string): Promise<string> {
+async function saveDiagnostics(page: Page, label: string, extra: readonly string[] = []): Promise<string> {
   const base = path.join(ensureDir(path.join(resolveCfraserDir(), "scraper-diagnostics")), `${label}-${new Date().toISOString().replace(/[:.]/g, "-")}`);
   try {
     await page.screenshot({ path: `${base}.png`, fullPage: true });
-    fs.writeFileSync(`${base}.txt`, `${page.url()}\n\n${await page.evaluate(() => document.body?.innerText ?? "")}`);
+    const tail = extra.length > 0 ? `\n\n${extra.join("\n")}` : "";
+    fs.writeFileSync(`${base}.txt`, `${page.url()}\n\n${await page.evaluate(() => document.body?.innerText ?? "")}${tail}`);
     return `see ${path.relative(resolveCfraserDir(), base)}.png`;
   } catch (err) {
     return `no screenshot: ${err instanceof Error ? err.message : String(err)}`;
@@ -124,9 +125,15 @@ async function saveDiagnostics(page: Page, label: string): Promise<string> {
 async function signInAndReadHome(page: Page, rut: string, clave: string): Promise<HomeRead> {
   let movements: { list: PortalMovement[]; headers: Record<string, string> } | null = null;
   let fund: ConsultaFund | null = null;
+  // Every portal API answer (time, status, path), kept for the diagnostics of a home page that
+  // never delivered what the read needs.
+  const apiAnswers: string[] = [];
   page.on("response", (response) => {
     void (async () => {
       const url = response.url();
+      if (url.startsWith(PORTAL_API)) {
+        apiAnswers.push(`${new Date().toISOString()} ${response.status()} ${url.slice(PORTAL_API.length).split("?")[0]}`);
+      }
       if (!url.startsWith(PORTAL_API) || response.status() !== 200) return;
       if (url.includes("/afiliado-movimientos/movimientos-portal")) {
         const body = response.request().postDataJSON() as { tipoProducto?: string } | null;
@@ -169,10 +176,21 @@ async function signInAndReadHome(page: Page, rut: string, clave: string): Promis
     log(`AFP UNO: sign-in refused — «${why}»`);
   }
 
-  const deadline = Date.now() + HOME_WAIT_MS;
-  while ((!movements || !fund) && Date.now() < deadline) await page.waitForTimeout(500);
+  const waitForHome = async (): Promise<void> => {
+    const deadline = Date.now() + HOME_WAIT_MS;
+    while ((!movements || !fund) && Date.now() < deadline) await page.waitForTimeout(500);
+  };
+  await waitForHome();
   if (!movements || !fund) {
-    log(`AFP UNO: ${await saveDiagnostics(page, "afp-uno-home")}`);
+    // The home page can show the balance without the scraper ever seeing its `consulta` answer
+    // (2026-11-12 and 11-19; the next night's run passed both times): reload it once, as a person
+    // would, and wait again. The listener above stays attached across the reload.
+    log(`AFP UNO: the home page's ${!movements ? "movements" : "balance"} answer did not arrive — reloading the home page once`);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await waitForHome();
+  }
+  if (!movements || !fund) {
+    log(`AFP UNO: ${await saveDiagnostics(page, "afp-uno-home", ["--- portal API answers ---", ...(apiAnswers.length > 0 ? apiAnswers : ["(none)"])])}`);
     throw new Error(`AFP UNO: the home page did not load its ${!movements ? "movements" : "balance"} within ${HOME_WAIT_MS / 1000} s`);
   }
   const m = movements as { list: PortalMovement[]; headers: Record<string, string> };

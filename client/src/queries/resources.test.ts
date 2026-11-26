@@ -33,6 +33,7 @@ describe("resources", () => {
       queryKeys.accountDetail("42", "usd", "monthly"),
       queryKeys.accountFlowsAll(),
       queryKeys.mortgageGroupGlanceAll(),
+      queryKeys.realEstateGroupGlanceAll(),
       queryKeys.liabilitiesGlanceAll(),
       queryKeys.deptoPrepaymentsAll(),
       queryKeys.dashboard("usd"),

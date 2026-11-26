@@ -78,6 +78,7 @@ import {
 } from "./flowsRealEstateExpenses.js";
 import { computeMortgagePrepaymentComparison, type MortgagePrepaymentComparison } from "./mortgagePrepaymentComparison.js";
 import { mortgageLedgerRowDto } from "./mortgageLedgerDto.js";
+import { loanMonthlyRate } from "./mortgageLoanRate.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 import { MORTGAGE_MINIMUM_TERM_CUOTAS } from "./mortgageScenarioPayments.js";
 import { convertFlow, storedPairRate, type TsUnit } from "./rates.js";
@@ -844,13 +845,8 @@ export function deptoProjection(args: {
   if (regularIdx.length === 0) return null;
   const lastIdx = regularIdx[regularIdx.length - 1]!;
   const lastCuota = loanRows[lastIdx]!;
-  // `ledger[lastIdx]` is the row before `loanRows[lastIdx]` (the pie for the first one). A cuota's
-  // interest accrues on the balance its bank sequence leaves before it, a prepago in between
-  // included: the lender recomputes the cuota on the balance after a prepago, so the interest over
-  // that balance is the same monthly rate as the cuotas either side (checked on the ledger), not
-  // the rate on the balance before the prepago.
-  const before = requireNumber(ledger[lastIdx]!.credito_restante_loan, `the balance before cuota ${lastCuota.cuota}`);
-  const rate = requireNumber(lastCuota.interes_loan, `cuota ${lastCuota.cuota}'s interest`) / before;
+  const rate = loanMonthlyRate(ledger);
+  if (rate == null) return null;
   const balance = requireNumber(loanRows[loanRows.length - 1]!.credito_restante_loan, "today's balance");
   const lastNumber = numericCuota(lastCuota.cuota);
   if (lastNumber == null) throw new Error(`depto glance: cuota '${lastCuota.cuota}' is not a number`);

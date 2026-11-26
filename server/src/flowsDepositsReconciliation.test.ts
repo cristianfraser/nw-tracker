@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildDepositsReconciliationPayload,
+  depositsReconciliationPage,
+  type DepositReconciliationUnitPayload,
   resolveInternalNetWorthTransfers,
   type DepositReconciliationRow,
   type DepositRedemptionRow,
@@ -234,5 +236,123 @@ describe("buildDepositsReconciliationPayload", () => {
       expect(redemptions[0]!.status).toBe("resolved_internal_transfer");
       expect(redemptions[1]!.status).toBe("unlinked_checking_present");
     });
+  });
+});
+
+describe("depositsReconciliationPage", () => {
+  type UnitRow = DepositReconciliationUnitPayload["rows"][number];
+  const dep = (movement_id: number, occurred_on: string, amount: number | null, status: UnitRow["status"]): UnitRow => ({
+    movement_id,
+    occurred_on,
+    account_id: 44,
+    account_name: "A",
+    category: "brokerage",
+    amount,
+    status,
+  });
+  const manual = (
+    purchase_key: string,
+    occurred_on: string,
+    amount: number,
+    status: "linked" | "asserted_unmatched"
+  ): DepositReconciliationUnitPayload["manual_assertions"][number] => ({
+    purchase_key,
+    account_id: 2,
+    account_name: "Checking",
+    occurred_on,
+    merchant: "TRANSF",
+    amount,
+    deposit_movement_id: status === "linked" ? 1 : null,
+    deposit_account_id: null,
+    deposit_account_name: null,
+    candidate_count: 0,
+    status,
+  });
+  const flat: DepositReconciliationUnitPayload = {
+    unit: "clp",
+    rows: [
+      dep(4, "2025-03-20", 400, "linked"),
+      dep(3, "2025-03-05", 300, "unlinked_checking_present"),
+      dep(2, "2025-02-10", null, "unlinked_checking_present"),
+      dep(1, "2025-02-01", 100, "linked"),
+    ],
+    by_status: {} as DepositReconciliationUnitPayload["by_status"],
+    by_month: [],
+    redemptions: [
+      { occurred_on: "2025-03-02", account_id: 45, account_name: "B", category: "cash", amount: 50, status: "linked" },
+    ],
+    redemptions_by_status: {} as DepositReconciliationUnitPayload["redemptions_by_status"],
+    manual_assertions: [
+      manual("k3", "2025-03-09", 70, "asserted_unmatched"),
+      manual("k2", "2025-03-01", 30, "linked"),
+      manual("k1", "2025-01-15", 20, "asserted_unmatched"),
+    ],
+    fx_conversion_error: false,
+    fx_conversion_warnings: [],
+  };
+
+  it("lists every status in page order, each by month newest first with its count and total", () => {
+    const page = depositsReconciliationPage(flat);
+    expect(page.deposits.sections.map((s) => s.status)).toEqual([
+      "unlinked_checking_present",
+      "unlinked_no_checking_source",
+      "resolved_internal_transfer",
+      "resolved_tax_refund",
+      "linked",
+    ]);
+    const linked = page.deposits.sections.find((s) => s.status === "linked")!;
+    expect(linked.count).toBe(2);
+    expect(linked.total).toBe(500);
+    expect(linked.months.map((m) => [m.month, m.total, m.rows.map((r) => r.movement_id)])).toEqual([
+      ["2025-03", 400, [4]],
+      ["2025-02", 100, [1]],
+    ]);
+    const empty = page.deposits.sections.find((s) => s.status === "resolved_tax_refund")!;
+    expect(empty).toEqual({ status: "resolved_tax_refund", count: 0, total: 0, months: [] });
+    expect(page.redemptions.sections.map((s) => s.count)).toEqual([0, 0, 0, 1]);
+    expect(page.redemptions.total).toBe(50);
+  });
+
+  it("a row with no value in the unit makes its month, its section and the side total null, and no other", () => {
+    const page = depositsReconciliationPage(flat);
+    const unlinked = page.deposits.sections[0]!;
+    expect(unlinked.total).toBeNull();
+    expect(unlinked.months.map((m) => m.total)).toEqual([300, null]);
+    expect(page.deposits.total).toBeNull();
+    expect(page.deposits.count).toBe(4);
+    expect(page.deposits.sections.find((s) => s.status === "linked")!.total).toBe(500);
+  });
+
+  it("«by month» names only the statuses with rows that month, in section order", () => {
+    const page = depositsReconciliationPage(flat);
+    expect(page.deposits.by_month).toEqual([
+      {
+        month: "2025-03",
+        total: 700,
+        statuses: [
+          { status: "unlinked_checking_present", total: 300 },
+          { status: "linked", total: 400 },
+        ],
+      },
+      {
+        month: "2025-02",
+        total: null,
+        statuses: [
+          { status: "unlinked_checking_present", total: null },
+          { status: "linked", total: 100 },
+        ],
+      },
+    ]);
+  });
+
+  it("lists only the manual marks without a deposit and counts the ones that found theirs", () => {
+    const page = depositsReconciliationPage(flat);
+    expect(page.manual_assertions.count).toBe(2);
+    expect(page.manual_assertions.total).toBe(90);
+    expect(page.manual_assertions.linked_count).toBe(1);
+    expect(page.manual_assertions.months.map((m) => [m.month, m.rows.map((r) => r.purchase_key)])).toEqual([
+      ["2025-03", ["k3"]],
+      ["2025-01", ["k1"]],
+    ]);
   });
 });

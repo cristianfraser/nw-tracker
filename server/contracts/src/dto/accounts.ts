@@ -983,6 +983,90 @@ export interface MortgageGroupChartDto {
   prepagos: { date: string; account_id: number; step: number }[];
 }
 
+/** One property of the real-estate group page: what its own page opens with (`depto_glance.header`). */
+export interface RealEstateGroupPropertyDto {
+  account_id: number;
+  name: string;
+  /** The account's chart colour (`r,g,b`): its row's swatch and its layer of the value chart. */
+  color_rgb: string;
+  loan_currency: string;
+  /** Net equity today in the loan currency, and in the payload's unit. */
+  equity_loan: number;
+  equity: number;
+  /** The appraisal and what is owed on it, loan currency; `owned_share` = net equity ÷ appraisal. */
+  appraisal_loan: number;
+  owed_loan: number;
+  owned_share: number;
+  /** The property page's día / mes / año / total P/L. */
+  strip: DeptoGlanceHeaderDto["strip"];
+}
+
+/**
+ * The property pages' value bands as one, in the unit: per chart date the properties' points
+ * added up (a property counts from its first point), the net equity also per property for the
+ * stack. The rail's figures are the pages' rails added up.
+ */
+export interface RealEstateGroupValueBandDto {
+  /** Every property's chart dates (month-ends and today), ascending. */
+  dates: string[];
+  /** One net-equity value per property per date; null before the property's first point. */
+  series: { account_id: number; equity: (number | null)[] }[];
+  /** Σ the properties' points per date: appraisal value, mortgage, deposited, net equity. */
+  totals: { value: number; mortgage: number; deposited: number; equity: number }[];
+  /** Today: net equity (Σ the pages' heroes) against what is owed (Σ the charts' last mortgage), shares of their sum. */
+  ownership: { owned: number; owed: number; owned_share: number; owed_share: number };
+  /** Σ the appraisals' value today. */
+  appraisal: number;
+  /** Σ the appraisals' value at each purchase, and the move since (`revaluation_pct` of that sum). */
+  purchase: { value: number; revaluation: number; revaluation_pct: number };
+  /** Σ the pies, each at its own day's rate. */
+  pie: number;
+}
+
+/** The real-estate group page with two or more properties: the property page's blocks, summed in the unit. */
+export interface RealEstateGroupSummedDto {
+  /** Σ net equity today (the hero). */
+  equity: number;
+  /**
+   * Σ the properties' strips. `day` is null when any property has none, never a partial sum;
+   * `total_pct` = Σ total ÷ Σ deposited (the property page's rule); `year_pct` null (the pages
+   * state no base to add up).
+   */
+  strip: DeptoGlanceHeaderDto["strip"];
+  /** One row per property, in the group's account order (an account kept out of the group's totals is not on the page). */
+  properties: RealEstateGroupPropertyDto[];
+  value: RealEstateGroupValueBandDto;
+  /**
+   * The P/L band: months, years and total added up (a property counts from its first month);
+   * `this_month` adds the properties' splits, its `cuotas` every property's in property order;
+   * null when any property has none (bought this month), never a split of only the others.
+   */
+  pl: DeptoPropertyPlBandDto;
+  /** The loan currencies behind `pl.this_month.currency_part` (distinct, property order). */
+  loan_currencies: string[];
+  /**
+   * The cost of living of every property with a tracked place: the pages' months added per kind,
+   * the axis cap and the 12-month window by the property page's rule over the merged months.
+   * Null when no property has one.
+   */
+  cost: Omit<DeptoCostBandDto, "place_slug"> | null;
+}
+
+/**
+ * `GET /api/portfolio-groups/:slug/real-estate-glance?unit=` (`realEstateGroupGlance.ts`): the
+ * real-estate group page, built from each property's own page block (`depto_glance`). With one
+ * property it is that block untouched (`single`), so the group page shows the property page's
+ * figures; with several, the blocks added up (`several`). Both null when no property has a ledger.
+ */
+export interface RealEstateGroupGlanceDto {
+  unit: DisplayUnitCode;
+  as_of: string;
+  single: { account_id: number; name: string; glance: Extract<DeptoGlanceDto, { kind: "property" }> } | null;
+  several: RealEstateGroupSummedDto | null;
+  /** Property accounts with no ledger row yet (listed, in no sum). */
+  properties_without_ledger: { account_id: number; name: string }[];
+}
+
 /** One debt's payment in a month of the Liabilities page's «Upcoming payments», in the payload's unit. */
 export interface LiabilitiesUpcomingPartDto {
   kind: "card" | "mortgage";
