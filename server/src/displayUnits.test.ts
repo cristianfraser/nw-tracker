@@ -8,8 +8,6 @@ import {
   DisplayUnitNotSupportedError,
   DisplayUnitRequestError,
   parseDisplayUnit,
-  warmedDisplayUnits,
-  coreCurrencyCodes,
   requestDisplayUnit,
 } from "./displayUnits.js";
 import { registerMetaRoutes } from "./routes/meta.js";
@@ -70,20 +68,5 @@ describe("GET /api/currencies", () => {
     expect(byCode.get("eur")).toMatchObject({ code: "eur", minor_digits: 2, tier: "core" });
     const firstNonCore = body.currencies.findIndex((c) => c.tier !== "core");
     if (firstNonCore >= 0) expect(body.currencies.slice(firstNonCore).every((c) => c.tier !== "core")).toBe(true);
-  });
-});
-
-describe("warmedDisplayUnits", () => {
-  const before = process.env.DEMO_MODE;
-  afterAll(() => {
-    if (before === undefined) delete process.env.DEMO_MODE;
-    else process.env.DEMO_MODE = before;
-  });
-
-  it("is every core currency, and pesos and dollars alone on the demo", () => {
-    delete process.env.DEMO_MODE;
-    expect([...warmedDisplayUnits()].sort()).toEqual([...coreCurrencyCodes()].sort());
-    process.env.DEMO_MODE = "1";
-    expect([...warmedDisplayUnits()].sort()).toEqual(["clp", "usd"]);
   });
 });

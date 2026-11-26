@@ -10,8 +10,6 @@
 import { db } from "./db.js";
 import type { CurrenciesResponse, CurrencyDto } from "nw-tracker-contracts/dto";
 import { dbStateMemo } from "./dbStateMemo.js";
-import { deploymentProfile } from "./config.js";
-import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 
 const selCore = db.prepare(`SELECT code FROM currencies WHERE tier = 'core' ORDER BY code`);
 
@@ -110,13 +108,8 @@ export function currencySmallestCoin(code: string): number {
   return 10 ** -currencyMinorDigits(code);
 }
 
-/**
- * The units the warmers build caches for: every core currency. The demo warms pesos and dollars
- * only — each warmed unit keeps ~40 MB of heap on its small instance (512 MB, a 320 MB V8 heap),
- * and a unit nobody picked is built when someone does.
- */
+/** The units the warmers build caches for: every core currency. */
 export function warmedDisplayUnits(): readonly string[] {
-  if (deploymentProfile().demo) return coreCurrencyCodes().filter((c) => c === HOME_CURRENCY || c === "usd"); // convention-ok: the demo person's two currencies (Chile, then the US chapter)
   return coreCurrencyCodes();
 }
 
