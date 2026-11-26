@@ -6,6 +6,8 @@
  *   npm run repair:cc-web-paste-pdf-reconcile -w nw-tracker-server -- --account-id=32 --billing-month=2026-06
  *   npm run repair:cc-web-paste-pdf-reconcile -w nw-tracker-server -- --account-id=32 --billing-month=2026-06 --apply
  */
+// Loads the card-line write funnel the reconcile writes through (as the server does at boot).
+import "../src/cards/lineWrites.js";
 import { reconcileOpenWebPasteAfterPdfClose } from "../src/ccOpenWebPastePdfReconcile.js";
 import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 
