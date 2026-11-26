@@ -5,12 +5,26 @@
  * credential expiry) cannot block the others. A source's user-forced-stale flag is
  * cleared only after a successful step, unless the source is still naturally stale
  * (e.g. NYSE close not yet published).
+ *
+ * Each attempted source's outcome is kept with the run (keyed by the run's error list, so two runs
+ * or two tests never mix) and handed to `recordSyncSourceOutcomes` when the run ends
+ * (`syncSourceFailures.ts`: the failing-source notifications).
  */
 import { deploymentProfile } from "./config.js";
 import type { ChileWallClock } from "./chileDate.js";
 import { clearUserForcedStale, keepUserForcedStaleAfterSuccess, SYNC_SOURCES, type GlobalSyncSource } from "./globalSyncStale.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import type { SyncStepError } from "./syncRunLog.js";
+import type { SyncSourceOutcome } from "./syncSourceFailures.js";
+
+const outcomesByRun = new WeakMap<SyncStepError[], SyncSourceOutcome[]>();
+
+/** The outcomes of the sources attempted in the run whose error list is `errors`, removed from the run. */
+export function takeSyncStepOutcomes(errors: SyncStepError[]): SyncSourceOutcome[] {
+  const outcomes = outcomesByRun.get(errors) ?? [];
+  outcomesByRun.delete(errors);
+  return outcomes;
+}
 
 export function syncErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -46,7 +60,24 @@ export async function runSyncStepIfStale(
     return;
   }
   const errorsBefore = errors.length;
-  await runSyncStep(step, errors, fn);
+  let thrown: unknown = undefined;
+  let failed = false;
+  await runSyncStep(step, errors, async () => {
+    try {
+      await fn();
+    } catch (e) {
+      failed = true;
+      thrown = e;
+      throw e;
+    }
+  });
+  const outcomes = outcomesByRun.get(errors) ?? [];
+  outcomesByRun.set(errors, outcomes);
+  outcomes.push(
+    failed
+      ? { source, label: step, at: new Date(), ok: false, message: syncErrorMessage(thrown) }
+      : { source, label: step, at: new Date(), ok: true }
+  );
   if (errors.length === errorsBefore && !keepUserForcedStaleAfterSuccess(source, cl, state)) {
     clearUserForcedStale(state, source);
   }

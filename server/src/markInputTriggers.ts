@@ -588,13 +588,14 @@ export function markInputRuleForSource(source: string): MarkInputRule {
 /**
  * Tables whose writes migration 270 does not log (frozen): the run, job and message logs, the
  * usage log, the live quotes (a live tick is its own event, `invalidateMarketDataAggregations`),
- * the change log itself and SQLite's own tables. Every other table carries write triggers; a test
+ * the change log itself and SQLite's own tables — plus the sync sources' failure streaks
+ * (migration 379, scheduling bookkeeping like the run log). Every other table carries write triggers; a test
  * fails on a table that is in neither list.
  */
 export const UNLOGGED_TABLES_270: readonly string[] = [
   "app_messages", "app_notifications", "fx_daily_yahoo_rejected", "ingest_documents", "ingest_runs",
   "jobs", "live_market_quotes", "mark_input_changes", "market_symbol_fetch_errors", "schema_migrations",
-  "sqlite_sequence", "sync_log_entries", "usage_endpoint_hourly", "usage_page_views",
+  "sqlite_sequence", "sync_log_entries", "sync_source_failure_streaks", "usage_endpoint_hourly", "usage_page_views",
 ];
 
 /** Tables with write triggers as of migration 270 (frozen). */

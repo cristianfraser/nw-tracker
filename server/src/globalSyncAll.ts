@@ -45,7 +45,8 @@ import {
   staleSyncSources,
   type GlobalSyncSource,
 } from "./globalSyncStale.js";
-import { runSyncStepIfStale, syncErrorMessage } from "./globalSyncStep.js";
+import { runSyncStepIfStale, syncErrorMessage, takeSyncStepOutcomes } from "./globalSyncStep.js";
+import { recordSyncSourceOutcomes } from "./syncSourceFailures.js";
 import { CMF_RN_CROSS_CHECK_MAX_GAP_DAYS, syncCmfRnPortfolio } from "./cmfRnPortfolioSync.js";
 import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
@@ -1470,6 +1471,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     ) {
       invalidateMarketDataAggregations();
     }
+    recordSyncSourceOutcomes(takeSyncStepOutcomes(stepErrors), { dryRun: syncDryRun });
     if (stepErrors.length > 0) {
       console.log(`sync:all — done with ${stepErrors.length} error(s).`);
       return 1;
