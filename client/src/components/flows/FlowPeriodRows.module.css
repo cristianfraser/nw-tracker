@@ -42,7 +42,8 @@
   top: -0.2rem;
   bottom: -0.2rem;
   width: 1px;
-  background: var(--text);
+  /* Quieter than a mark (a total's is near white). */
+  background: var(--muted);
 }
 
 /* A chart's line series (income, a total): a mark across the bar. */

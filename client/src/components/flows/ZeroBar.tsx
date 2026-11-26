@@ -1,5 +1,5 @@
 import { cn } from "../../cn";
-import styles from "./FlowsOverviewRows.module.css";
+import styles from "./FlowPeriodRows.module.css";
 
 /** One stretch of a bar around zero: `amount` is its size (positive). */
 export type ZeroBarSegment = { key: string; color: string; amount: number };

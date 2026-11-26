@@ -1430,7 +1430,8 @@
       "sectionYearly": "Yearly summary",
       "groupBuckets": "By bucket",
       "groupRunning": "Running totals",
-      "rowLabel": "{{period}}: P/L {{total}} ({{parts}})"
+      "rowLabel": "{{period}}: P/L {{total}} ({{parts}}), cumulative {{cumulative}}",
+      "legendCumulative": "in grey: cumulative"
     },
     "filters": {
       "year": "Year",

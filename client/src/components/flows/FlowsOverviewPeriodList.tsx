@@ -10,7 +10,7 @@ import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import rows from "../income/IncomeRows.module.css";
 import { flowsOverviewBar, flowsOverviewBarExtent } from "./flowsOverviewBar";
 import { FLOWS_OVERVIEW_COLORS, FLOWS_OVERVIEW_SERIES, type FlowsOverviewSeries } from "./flowsOverviewColors";
-import styles from "./FlowsOverviewRows.module.css";
+import styles from "./FlowPeriodRows.module.css";
 import { ZeroBar } from "./ZeroBar";
 
 const PAGE_SIZE = 12;
@@ -85,12 +85,10 @@ function SeriesMark({ series }: { series: FlowsOverviewSeries }) {
 /** A period's flows around zero (`flowsOverviewBar`), in the chart's colours, income as the mark. */
 function OverviewBar({ row, scale, className }: { row: FlowsOverviewTotals; scale: number; className?: string }) {
   const bar = flowsOverviewBar(row);
-  const colored = (list: typeof bar.left) =>
-    list.map((s) => ({ key: s.series, color: FLOWS_OVERVIEW_COLORS[s.series], amount: s.amount }));
   return (
     <ZeroBar
-      left={colored(bar.left)}
-      right={colored(bar.right)}
+      left={bar.left}
+      right={bar.right}
       mark={bar.income > 0 ? { value: bar.income, color: FLOWS_OVERVIEW_COLORS.income } : undefined}
       scale={scale}
       className={className}

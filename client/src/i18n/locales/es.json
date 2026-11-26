@@ -1430,7 +1430,8 @@
       "sectionYearly": "Resumen anual",
       "groupBuckets": "Por bucket",
       "groupRunning": "Acumulados",
-      "rowLabel": "{{period}}: PL {{total}} ({{parts}})"
+      "rowLabel": "{{period}}: PL {{total}} ({{parts}}), acumulado {{cumulative}}",
+      "legendCumulative": "en gris: acumulado"
     },
     "filters": {
       "year": "Año",
