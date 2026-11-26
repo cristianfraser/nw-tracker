@@ -5,19 +5,22 @@
  * gave the row's old, unstamped flow the stamp the new row's insert had just written, and the
  * statement's cuota lines were stamped like new purchases.
  *
- * A stamp inside the window `[from, to)` goes when its flow:
+ * «On file before the window» is read from a snapshot of the database taken before it (the
+ * current database alone cannot tell: a flow created inside the window may carry an older copied
+ * stamp, and `flows` hands a deleted top id out again). A stamp inside the window `[from, to)` goes
+ * when its flow:
  *
- * - **was on file before the window**: its id is at most the highest id of a flow stamped before
- *   the window (a stamp from before migration 367 has no time and counts as before). `flows` hands
- *   out ids as one more than the highest on file, so a flow created inside the window has an id
- *   above every flow that existed at its start; a flow with a lower id existed then. Under the old
- *   rule an earlier stamp always won, so a flow on file with a stamp of its own never got a window
- *   stamp: the window stamp is the only one it ever had, and it goes.
+ * - **was on file before the window, unstamped**: the snapshot has a flow of that id with no stamp,
+ *   and the id is below a **witness** — a flow present in both databases with the same write order
+ *   (`first_seen_seq`, one counter: a flow keeps its number, a new one gets the next). An id is
+ *   only handed out again once every higher id is gone, and the witness never went, so an id below
+ *   it is the same flow in both. Under the old rule an earlier stamp always won, so a flow the
+ *   snapshot shows stamped never took a window stamp; one it shows unstamped had none of its own.
  * - **is a statement cuota line's flow**: every row it records is a statement's cuota line (never
  *   a new movement).
  *
  * Every other window stamp stays (a purchase first seen in the window). Report first; the apply
- * runs in one IMMEDIATE transaction. Pure over the handle it is given (no `db` import).
+ * runs in one IMMEDIATE transaction. Pure over the handles it is given (no `db` import).
  */
 import type { Database } from "better-sqlite3";
 
@@ -30,13 +33,15 @@ export type FirstSeenWindowRow = {
   amount: number;
   currency: string;
   description: string | null;
+  /** What the snapshot held under this id (null for a cuota line's flow it did not have). */
+  before: { occurred_on: string; amount: number; currency: string; description: string | null } | null;
 };
 
 export type FirstSeenWindowPlan = {
   fromIso: string;
   toIso: string;
-  /** The highest flow id stamped before the window (null: none, so no flow is proven older by id). */
-  lastFlowIdBefore: number | null;
+  /** The highest flow id present in both databases with the same write order (null: none). */
+  witnessFlowId: number | null;
   /** Stamps inside the window. */
   inWindow: number;
   remove: FirstSeenWindowRow[];
@@ -51,12 +56,29 @@ export function windowInstant(raw: string, what: string): string {
   return new Date(t).toISOString();
 }
 
-export function planFirstSeenWindowRepair(dbi: Database, fromIso: string, toIso: string): FirstSeenWindowPlan {
+type SnapshotFlow = { occurred_on: string; amount: number; currency: string; description: string | null };
+
+export function planFirstSeenWindowRepair(dbi: Database, snapshot: Database, fromIso: string, toIso: string): FirstSeenWindowPlan {
   if (!(fromIso < toIso)) throw new Error(`the window must end after it starts (${fromIso} → ${toIso})`);
-  const before = dbi
-    .prepare(`SELECT MAX(flow_id) AS id FROM flow_first_seen WHERE first_seen_at IS NULL OR first_seen_at < ?`)
-    .get(fromIso) as { id: number | null };
-  const lastFlowIdBefore = before.id;
+  const latest = snapshot.prepare(`SELECT MAX(first_seen_at) AS at FROM flow_first_seen`).get() as { at: string | null };
+  if (latest.at != null && latest.at >= fromIso) {
+    throw new Error(`the snapshot holds a stamp written at ${latest.at}, inside or after the window: take one from before ${fromIso}`);
+  }
+  const snapshotSeq = new Map(
+    (snapshot.prepare(`SELECT flow_id, first_seen_seq FROM flow_first_seen WHERE first_seen_seq IS NOT NULL`).all() as {
+      flow_id: number;
+      first_seen_seq: number;
+    }[]).map((r) => [r.flow_id, r.first_seen_seq])
+  );
+  const snapshotStamped = new Set((snapshot.prepare(`SELECT flow_id FROM flow_first_seen`).all() as { flow_id: number }[]).map((r) => r.flow_id));
+  let witnessFlowId: number | null = null;
+  for (const r of dbi.prepare(`SELECT flow_id, first_seen_seq FROM flow_first_seen WHERE first_seen_seq IS NOT NULL`).all() as {
+    flow_id: number;
+    first_seen_seq: number;
+  }[]) {
+    if (snapshotSeq.get(r.flow_id) === r.first_seen_seq && (witnessFlowId == null || r.flow_id > witnessFlowId)) witnessFlowId = r.flow_id;
+  }
+  const snapshotFlow = snapshot.prepare(`SELECT occurred_on, amount, currency, description FROM flows WHERE id = ?`);
   const rows = dbi
     .prepare(
       `SELECT f.flow_id, f.first_seen_at, fl.kind, fl.occurred_on, fl.amount, fl.currency, fl.description,
@@ -69,13 +91,17 @@ export function planFirstSeenWindowRepair(dbi: Database, fromIso: string, toIso:
        WHERE f.first_seen_at >= ? AND f.first_seen_at < ?
        ORDER BY f.first_seen_seq, f.flow_id`
     )
-    .all(fromIso, toIso) as (Omit<FirstSeenWindowRow, "reason"> & { evidence: number; cuota: number })[];
+    .all(fromIso, toIso) as (Omit<FirstSeenWindowRow, "reason" | "before"> & { evidence: number; cuota: number })[];
   const remove: FirstSeenWindowRow[] = [];
   for (const { evidence, cuota, ...r } of rows) {
-    if (lastFlowIdBefore != null && r.flow_id <= lastFlowIdBefore) remove.push({ ...r, reason: "on_file_before" });
-    else if (evidence > 0 && cuota === evidence) remove.push({ ...r, reason: "statement_cuota_line" });
+    const before = (snapshotFlow.get(r.flow_id) as SnapshotFlow | undefined) ?? null;
+    if (before != null && !snapshotStamped.has(r.flow_id) && witnessFlowId != null && r.flow_id < witnessFlowId) {
+      remove.push({ ...r, reason: "on_file_before", before });
+    } else if (evidence > 0 && cuota === evidence) {
+      remove.push({ ...r, reason: "statement_cuota_line", before });
+    }
   }
-  return { fromIso, toIso, lastFlowIdBefore, inWindow: rows.length, remove };
+  return { fromIso, toIso, witnessFlowId, inWindow: rows.length, remove };
 }
 
 /** Removes the plan's stamps (still inside the window) in one IMMEDIATE transaction; returns how many went. */

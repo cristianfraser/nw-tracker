@@ -8,6 +8,7 @@ import {
   type CardPlanForMatching,
 } from "./cards/purchases.js";
 import { db } from "./db.js";
+import { copyFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import {
   isGenericTransferMerchantKey,
   normalizeCcExpenseMerchantKey,
@@ -119,6 +120,9 @@ export function earliestTransactionDateForLineIds(lineIds: number[]): string | n
  * the line that replaces it; deletes. Throws when a line is not on the account. Returns the lines
  * deleted.
  */
+const selLineFlow = db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`);
+const selPlanFlow = db.prepare(`SELECT flow_id FROM cc_installment_purchases WHERE id = ?`);
+
 export function applyCardLinePlan(accountId: number, plan: CardLinePlan): number {
   requireCardLineSession(accountId, "a line delete");
   const ids = [...new Set(plan.deleteLineIds)];
@@ -137,6 +141,12 @@ export function applyCardLinePlan(accountId: number, plan: CardLinePlan): number
   }
   noteCardLineEvidence(accountId, earliestTransactionDateForLineIds(ids));
   replaceCardLines(plan.carry);
+  for (const a of plan.arrivalsOntoPlans ?? []) {
+    const lineFlow = (selLineFlow.get(a.fromLineId) as { flow_id: number | null } | undefined)?.flow_id;
+    const planFlow = (selPlanFlow.get(a.planId) as { flow_id: number | null } | undefined)?.flow_id;
+    if (lineFlow == null || planFlow == null) throw new Error(`line ${a.fromLineId} / plan ${a.planId}: no flow`);
+    copyFlowFirstSeen(lineFlow, planFlow);
+  }
   let n = 0;
   for (const id of ids) n += delLines.run(id).changes;
   return n;
@@ -147,7 +157,8 @@ export type CcCrossImportDedupePlan = CardLinePlan & { removed_line_ids: number[
 /**
  * The one-shot lines a plan supersedes (the line its purchase was listed as): a plan for each. A
  * category set on such a line moves to the plan's purchase key («Único» row) — written here, since
- * the line's own row goes with it; the lines are the funnel's to delete. A line a plan was
+ * the line's own row goes with it; the lines are the funnel's to delete, and each line's arrival
+ * folds into its plan's flow (the purchase arrived when it was first listed). A line a plan was
  * converted from (`cc_installment_purchases.source_line_id`) stays: the plan overlays it.
  */
 export function planOneShotLinesSupersededByInstallmentPurchases(accountId: number): CcCrossImportDedupePlan {
@@ -155,6 +166,7 @@ export function planOneShotLinesSupersededByInstallmentPurchases(accountId: numb
   const sourceLineByPlan = sourceLinesOfPlans(accountId);
   const kept = new Set(sourceLineByPlan.values());
   const ids: number[] = [];
+  const arrivalsOntoPlans: { fromLineId: number; planId: number }[] = [];
   for (const [lineId, purchase] of superseded) {
     // A plan converted from a line has its line: another line of the same facts is another
     // purchase (identical twins of one day), never this plan's to settle.
@@ -171,8 +183,9 @@ export function planOneShotLinesSupersededByInstallmentPurchases(accountId: numb
       upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
     }
     ids.push(lineId);
+    arrivalsOntoPlans.push({ fromLineId: lineId, planId: purchase.id });
   }
-  return { removed_line_ids: ids, deleteLineIds: ids, carry: [] };
+  return { removed_line_ids: ids, deleteLineIds: ids, carry: [], arrivalsOntoPlans };
 }
 
 /** Plan id → the line it was converted from, on the account: the plan overlays it, nothing deletes it. */
@@ -197,7 +210,8 @@ export function planOneShotLinesForInstallmentPurchase(accountId: number, purcha
     )
     .get(purchaseId, accountId) as CardPlanForMatching | undefined;
   if (!purchase) return { deleteLineIds: [], carry: [] };
-  return { deleteLineIds: findOneShotLinesOfPlan(accountId, purchase), carry: [] };
+  const lineIds = findOneShotLinesOfPlan(accountId, purchase);
+  return { deleteLineIds: lineIds, carry: [], arrivalsOntoPlans: lineIds.map((fromLineId) => ({ fromLineId, planId: purchase.id })) };
 }
 
 export function backfillCcCrossImportDedupe(

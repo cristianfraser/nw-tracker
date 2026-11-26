@@ -1,14 +1,16 @@
 /**
  * Removes the arrival stamps (`flow_first_seen`) written inside a time window onto flows that were
  * on file before it, or onto a statement cuota line's flow: the rows a statement close or a cartola
- * settled, which jumped to the top of «Últimos movimientos» as if they had just arrived. The rule
- * that decides «on file before» is in `src/flows/flowFirstSeenWindowRepair.ts`.
+ * settled, which jumped to the top of «Últimos movimientos» as if they had just arrived. «On file
+ * before» is read from a snapshot taken before the window (a daily `auto-daily` or a
+ * `before-deploy-<sha>` one); the rule is in `src/flows/flowFirstSeenWindowRepair.ts`.
  *
- *   npx tsx scripts/repair-flow-first-seen-window.ts --from=<ISO instant> --to=<ISO instant> [--apply] [--migrate]
+ *   npx tsx scripts/repair-flow-first-seen-window.ts --from=<ISO instant> --to=<ISO instant> --snapshot=<db file> [--apply] [--migrate]
  *
  * The window is UTC instants, `[from, to)` (e.g. `--from=2026-11-25T01:00:00Z --to=2026-11-25T02:30:00Z`:
- * the ingest run that imported the statement). Report-first; `--apply` deletes the listed stamps in
- * one IMMEDIATE transaction. Opens the database `db.ts` would (`NW_TRACKER_TEST_DB`, else
+ * the ingest run that imported the statement). Report-first: every flow it would touch is printed
+ * as it is now and as the snapshot held it, for a human to approve; `--apply` deletes the listed
+ * stamps in one IMMEDIATE transaction. Opens the database `db.ts` would (`NW_TRACKER_TEST_DB`, else
  * `data/nw-tracker.db`) without applying migrations: a database with pending migrations is refused
  * unless `--migrate` is passed, which applies them first (importing `db.ts`). Take a snapshot first
  * (`npm run db:snapshot`).
@@ -27,6 +29,9 @@ const fromRaw = arg("from");
 const toRaw = arg("to");
 if (!fromRaw || !toRaw) throw new Error("--from=<ISO instant> and --to=<ISO instant> are required");
 const fromIso = windowInstant(fromRaw, "--from");
+const snapshotFile = arg("snapshot");
+if (!snapshotFile) throw new Error("--snapshot=<a database snapshot taken before the window> is required");
+if (!fs.existsSync(snapshotFile)) throw new Error(`no snapshot at ${snapshotFile}`);
 const toIso = windowInstant(toRaw, "--to");
 
 function databasePath(): string {
@@ -59,13 +64,17 @@ if (pending.length > 0) {
 }
 dbi.pragma("foreign_keys = ON");
 
-const plan = planFirstSeenWindowRepair(dbi, fromIso, toIso);
+const snapshot = new Database(snapshotFile, { readonly: true, fileMustExist: true });
+const plan = planFirstSeenWindowRepair(dbi, snapshot, fromIso, toIso);
+snapshot.close();
 console.log(`database: ${file}`);
+console.log(`snapshot: ${snapshotFile}`);
 console.log(`window: ${plan.fromIso} → ${plan.toIso}; ${plan.inWindow} stamp(s) inside it`);
-console.log(`highest flow id stamped before the window: ${plan.lastFlowIdBefore ?? "none"}`);
+console.log(`witness flow (same write order in both): ${plan.witnessFlowId ?? "none"}`);
 for (const r of plan.remove) {
+  const before = r.before ? `${r.before.occurred_on} ${r.before.amount} ${r.before.currency} «${r.before.description ?? ""}»` : "not in the snapshot";
   console.log(
-    `  flow ${r.flow_id} (${r.reason}) stamped ${r.first_seen_at}: ${r.kind} ${r.occurred_on} ${r.amount} ${r.currency} «${r.description ?? ""}»`
+    `  flow ${r.flow_id} (${r.reason}) stamped ${r.first_seen_at}: now ${r.kind} ${r.occurred_on} ${r.amount} ${r.currency} «${r.description ?? ""}»; before: ${before}`
   );
 }
 console.log(`${plan.remove.length} stamp(s) to remove; ${plan.inWindow - plan.remove.length} kept (first seen in the window)`);

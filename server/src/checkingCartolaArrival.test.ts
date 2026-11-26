@@ -3,6 +3,8 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
 import { partialMovementNote } from "./checkingPartialMovementsImport.js";
+import { insertMovement } from "./movementWrites.js";
+import { deleteTempCardMaster } from "./test/tempCardMaster.js";
 
 /** A cartola taking over the daily rows keeps each row's arrival (`olderArrival`, `flowFirstSeen.ts`). */
 const PERIOD = "1802-03";
@@ -13,15 +15,20 @@ const rows = [
   { occurred_on: "1802-03-14", amount_clp: -33_333, description: "VITEST ARRIVAL CARTOLA ONLY" },
 ];
 
-function checkingAccountId(): number {
-  const row = db
+/** A checking account this file owns, beside the test person's. */
+function createCheckingAccount(): number {
+  const group = db
     .prepare(
-      `SELECT a.id FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id
+      `SELECT a.asset_group_id AS id FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE g.slug LIKE '%cuenta_corriente%' ORDER BY a.id LIMIT 1`
     )
     .get() as { id: number } | undefined;
-  if (!row) throw new Error("no checking account in the test person");
-  return row.id;
+  if (!group) throw new Error("no checking group in the test person");
+  const key = "import:panel|vitest-arrival-checking";
+  return Number(
+    db.prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'Vitest · arrival checking', ?, ?)`).run(group.id, key, key)
+      .lastInsertRowid
+  );
 }
 
 function stampOfCartolaRow(accountId: number, description: string): { on: string; at: string | null; seq: number | null } | null {
@@ -39,31 +46,19 @@ function stampOfCartolaRow(accountId: number, description: string): { on: string
 describe("a checking cartola over the daily rows", () => {
   let accountId = 0;
   const notes = rows.slice(0, 2).map((r) => partialMovementNote({ ...r, document_no: "" }));
-  const cleanup = () => {
-    db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(accountId, PERIOD);
-    db.prepare(`DELETE FROM movements WHERE account_id = ? AND (note IN (?, ?) OR note LIKE ?)`).run(
-      accountId,
-      ...notes,
-      `import:cartola|${PERIOD}|%`
-    );
-  };
 
   beforeAll(() => {
-    accountId = checkingAccountId();
-    cleanup();
+    accountId = createCheckingAccount();
     // Two daily rows on file: one from before the stamps (none), one stamped when it was listed.
-    for (const [i, note] of notes.entries()) {
-      db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`).run(
-        accountId,
-        rows[i]!.amount_clp,
-        rows[i]!.occurred_on,
-        note
-      );
-    }
-    db.prepare(
-      `INSERT INTO flow_first_seen (flow_id, first_seen_on, first_seen_at, first_seen_seq)
-       SELECT flow_id, ?, ?, ? FROM movements WHERE account_id = ? AND note = ?`
-    ).run(OLD_STAMP.on, OLD_STAMP.at, OLD_STAMP.seq, accountId, notes[1]);
+    const daily = notes.map((note, i) => insertMovement({ accountId, amount: rows[i]!.amount_clp, currency: "clp", occurredOn: rows[i]!.occurred_on, note }));
+    const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+    db.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(flowOf(daily[0]!));
+    db.prepare(`UPDATE flow_first_seen SET first_seen_on = ?, first_seen_at = ?, first_seen_seq = ? WHERE flow_id = ?`).run(
+      OLD_STAMP.on,
+      OLD_STAMP.at,
+      OLD_STAMP.seq,
+      flowOf(daily[1]!)
+    );
 
     const { partialsRemoved, movementsInserted } = importCheckingCartola(accountId, {
       source_file: "vitest-arrival-cartola.xlsx",
@@ -80,7 +75,7 @@ describe("a checking cartola over the daily rows", () => {
     expect(partialsRemoved).toBe(2);
   });
 
-  afterAll(() => cleanup());
+  afterAll(() => deleteTempCardMaster(accountId));
 
   it("the cartola row of a daily row on file before the stamps stays unstamped", () => {
     expect(stampOfCartolaRow(accountId, rows[0]!.description)).toBeNull();

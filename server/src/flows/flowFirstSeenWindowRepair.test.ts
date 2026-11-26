@@ -19,10 +19,12 @@ function scratchDb() {
 const FROM = "2026-11-25T01:00:00.000Z";
 const TO = "2026-11-25T02:00:00.000Z";
 
-function flow(dbi: Database.Database, id: number, stampAt: string | null | undefined, lines: { stmt: number; cuota: boolean }[] = []) {
-  dbi.prepare(`INSERT INTO flows VALUES (?, 'card_purchase', '2026-11-02', 1000, 'clp', 'VITEST')`).run(id);
-  if (stampAt !== undefined) {
-    dbi.prepare(`INSERT INTO flow_first_seen VALUES (?, ?, ?, ?)`).run(id, (stampAt ?? "2026-11-01").slice(0, 10), stampAt, id);
+type Stamp = { at: string | null; seq: number | null } | undefined;
+
+function flow(dbi: Database.Database, id: number, stamp: Stamp, lines: { stmt: number; cuota: boolean }[] = [], description = "VITEST") {
+  dbi.prepare(`INSERT INTO flows VALUES (?, 'card_purchase', '2026-11-02', 1000, 'clp', ?)`).run(id, description);
+  if (stamp !== undefined) {
+    dbi.prepare(`INSERT INTO flow_first_seen VALUES (?, ?, ?, ?)`).run(id, (stamp.at ?? "2026-01-01").slice(0, 10), stamp.at, stamp.seq);
   }
   for (const [i, l] of lines.entries()) {
     const lineId = id * 10 + i;
@@ -31,43 +33,66 @@ function flow(dbi: Database.Database, id: number, stampAt: string | null | undef
   }
 }
 
-describe("repair of the arrival stamps a window wrote", () => {
-  it("removes window stamps on flows on file before it and on statement cuota line flows, keeps the new ones", () => {
-    const dbi = scratchDb();
-    flow(dbi, 10, null); // stamped before migration 367 (no time)
-    flow(dbi, 20, "2026-11-20T10:00:00.000Z"); // stamped before the window
-    flow(dbi, 5, "2026-11-25T01:10:00.000Z", [{ stmt: 1, cuota: false }]); // an old flow that took a window stamp
-    flow(dbi, 15, "2026-11-25T01:20:00.000Z", [{ stmt: 1, cuota: false }]); // old too: below flow 20
-    flow(dbi, 30, "2026-11-25T01:30:00.000Z", [{ stmt: 1, cuota: false }]); // first seen in the window
-    flow(dbi, 31, "2026-11-25T01:31:00.000Z", [{ stmt: 1, cuota: true }]); // a statement cuota line
-    flow(dbi, 32, "2026-11-25T01:32:00.000Z", [{ stmt: 2, cuota: true }]); // a listing's cuota purchase: new
-    flow(dbi, 33, "2026-11-25T02:00:00.000Z", [{ stmt: 1, cuota: false }]); // the window's end is outside it
+const at = (hhmm: string, day = "2026-11-25") => `${day}T${hhmm}:00.000Z`;
+const ids = (dbi: Database.Database) =>
+  (dbi.prepare(`SELECT flow_id FROM flow_first_seen ORDER BY flow_id`).all() as { flow_id: number }[]).map((r) => r.flow_id);
 
-    const plan = planFirstSeenWindowRepair(dbi, FROM, TO);
-    expect(plan.lastFlowIdBefore).toBe(20);
-    expect(plan.inWindow).toBe(5);
+describe("repair of the arrival stamps a window wrote", () => {
+  it("removes window stamps on flows the snapshot had unstamped and on statement cuota line flows, keeps the new ones", () => {
+    const snapshot = scratchDb();
+    flow(snapshot, 5, undefined, [{ stmt: 2, cuota: false }], "OLD LISTING"); // before the stamps
+    flow(snapshot, 15, undefined, [{ stmt: 2, cuota: false }]);
+    flow(snapshot, 20, { at: at("10:00", "2026-11-20"), seq: 7 }); // stamped before the window: the witness
+    flow(snapshot, 40, { at: at("11:00", "2026-11-20"), seq: 8 }); // its top id goes in the window
+
+    const now = scratchDb();
+    flow(now, 5, { at: at("01:10"), seq: 21 }, [{ stmt: 1, cuota: false }], "OLD LISTING SETTLED"); // took a window stamp
+    flow(now, 15, { at: at("01:20"), seq: 22 }, [{ stmt: 1, cuota: false }]);
+    flow(now, 20, { at: at("10:00", "2026-11-20"), seq: 7 });
+    flow(now, 30, { at: at("01:30"), seq: 23 }, [{ stmt: 1, cuota: false }]); // first seen in the window
+    flow(now, 31, { at: at("01:31"), seq: 24 }, [{ stmt: 1, cuota: true }]); // a statement cuota line
+    flow(now, 32, { at: at("01:32"), seq: 25 }, [{ stmt: 2, cuota: true }]); // a listing's cuota purchase: new
+    flow(now, 40, { at: at("01:40"), seq: 26 }, [{ stmt: 1, cuota: false }]); // id handed out again: a new purchase
+    flow(now, 33, { at: at("02:00"), seq: 27 }, [{ stmt: 1, cuota: false }]); // the window's end is outside it
+
+    const plan = planFirstSeenWindowRepair(now, snapshot, FROM, TO);
+    expect(plan.witnessFlowId).toBe(20);
+    expect(plan.inWindow).toBe(6);
     expect(plan.remove.map((r) => [r.flow_id, r.reason])).toEqual([
       [5, "on_file_before"],
       [15, "on_file_before"],
       [31, "statement_cuota_line"],
     ]);
+    expect(plan.remove[0]!.before?.description).toBe("OLD LISTING");
     // Report first: nothing written until applied.
-    expect(dbi.prepare(`SELECT COUNT(*) AS n FROM flow_first_seen`).get()).toEqual({ n: 8 });
-    expect(applyFirstSeenWindowRepair(dbi, plan)).toBe(3);
-    expect((dbi.prepare(`SELECT flow_id FROM flow_first_seen ORDER BY flow_id`).all() as { flow_id: number }[]).map((r) => r.flow_id)).toEqual([
-      10, 20, 30, 32, 33,
-    ]);
+    expect(ids(now)).toEqual([5, 15, 20, 30, 31, 32, 33, 40]);
+    expect(applyFirstSeenWindowRepair(now, plan)).toBe(3);
+    expect(ids(now)).toEqual([20, 30, 32, 33, 40]);
   });
 
-  it("proves nothing old by id when no flow was stamped before the window", () => {
-    const dbi = scratchDb();
-    flow(dbi, 5, "2026-11-25T01:10:00.000Z", [{ stmt: 1, cuota: false }]);
-    expect(planFirstSeenWindowRepair(dbi, FROM, TO).remove).toEqual([]);
+  it("keeps a new flow's stamp beside a flow created in the window with an older copied stamp", () => {
+    const snapshot = scratchDb();
+    flow(snapshot, 1, { at: at("10:00", "2026-11-20"), seq: 1 });
+    const now = scratchDb();
+    flow(now, 1, { at: at("10:00", "2026-11-20"), seq: 1 });
+    flow(now, 2, { at: at("01:10"), seq: 2 }, [{ stmt: 1, cuota: false }]); // a new purchase first seen in the window
+    flow(now, 3, { at: at("10:00", "2026-11-22"), seq: 3 }); // a card payment created in the window, the debit's stamp
+    expect(planFirstSeenWindowRepair(now, snapshot, FROM, TO).remove).toEqual([]);
+  });
+
+  it("proves nothing old with no witness, and refuses a snapshot taken inside the window", () => {
+    const snapshot = scratchDb();
+    flow(snapshot, 5, undefined);
+    const now = scratchDb();
+    flow(now, 5, { at: at("01:10"), seq: 1 }, [{ stmt: 1, cuota: false }]);
+    expect(planFirstSeenWindowRepair(now, snapshot, FROM, TO).remove).toEqual([]);
+    flow(snapshot, 9, { at: at("01:05"), seq: 1 });
+    expect(() => planFirstSeenWindowRepair(now, snapshot, FROM, TO)).toThrow(/inside or after the window/);
   });
 
   it("reads the window as UTC instants and refuses anything else", () => {
     expect(windowInstant("2026-11-24T22:00:00-03:00", "--from")).toBe("2026-11-25T01:00:00.000Z");
     expect(() => windowInstant("2026-11-25", "--from")).toThrow(/ISO instant/);
-    expect(() => planFirstSeenWindowRepair(scratchDb(), TO, FROM)).toThrow(/end after it starts/);
+    expect(() => planFirstSeenWindowRepair(scratchDb(), scratchDb(), TO, FROM)).toThrow(/end after it starts/);
   });
 });

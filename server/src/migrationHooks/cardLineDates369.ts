@@ -17,7 +17,14 @@ const PADDED = `'[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'`;
  *    could not read an unpadded day and stated a malformed one, or none);
  * 3. a flow dated from those lines follows its most trusted dated line (`refreshFlowFromEvidence`'s
  *    rule): every flow whose day is not ISO, and every flow whose most trusted line's evidence this
- *    hook re-dated. A malformed flow day with no dated line to follow throws.
+ *    hook re-dated.
+ * 4. a malformed flow day with no line left to follow (a retired flow, kept by its assignments
+ *    after its line went; a key's holder copied from such a flow) is the trigger's misreading of an
+ *    8-character `d/m/yyyy` — `20yy-/y-d/`: the year and the one-digit day survive, the month does
+ *    not. Its day comes from the document keys it still names (`retired_document_key`,
+ *    `retired_key`, `legacy_key` embed the line's ISO day) when exactly one ISO day of that year and
+ *    day is among them; else it is dated the 1st of January of its year, logged with its id. Any
+ *    other malformed day is not this migration's to read: it throws.
  *
  * Pure (no `db` import).
  */
@@ -61,18 +68,44 @@ export function runCardLineDates369(dbi: DatabaseType): void {
   ).map((r) => r.id);
   const redatedEvidence = new Set(redated.map((r) => r.id));
   const setDay = dbi.prepare(`UPDATE flows SET occurred_on = ? WHERE id = ? AND occurred_on IS NOT ?`);
-  const unrepaired: number[] = [];
+  const flowFacts = dbi.prepare(`SELECT occurred_on, retired_document_key, retired_key, legacy_key FROM flows WHERE id = ?`);
+  const unreadable: string[] = [];
   let flowsRepaired = 0;
   for (const flowId of new Set(malformed)) {
     const b = best.get(flowId) as { id: number; stated_on: string } | undefined;
-    if (!b) {
-      unrepaired.push(flowId);
+    if (b) {
+      flowsRepaired += setDay.run(b.stated_on, flowId, b.stated_on).changes;
       continue;
     }
-    flowsRepaired += setDay.run(b.stated_on, flowId, b.stated_on).changes;
+    const f = flowFacts.get(flowId) as {
+      occurred_on: string | null;
+      retired_document_key: string | null;
+      retired_key: string | null;
+      legacy_key: string | null;
+    };
+    const misread = /^20(\d{2})-\/\d-(\d)\/$/.exec(f.occurred_on ?? "");
+    if (!misread) {
+      unreadable.push(`${flowId} («${f.occurred_on ?? ""}»)`);
+      continue;
+    }
+    const year = `20${misread[1]}`;
+    const day = `0${misread[2]}`;
+    const named = new Set(
+      [f.retired_document_key, f.retired_key, f.legacy_key]
+        .flatMap((k) => (k ?? "").match(/\d{4}-\d{2}-\d{2}/g) ?? [])
+        .filter((iso) => iso.startsWith(`${year}-`) && iso.endsWith(`-${day}`))
+    );
+    const recovered = named.size === 1 ? [...named][0]! : null;
+    const dayOn = recovered ?? `${year}-01-01`;
+    if (!recovered) {
+      console.warn(
+        `migration 369: flow ${flowId} lost its month («${f.occurred_on}», no line and no document key names its day): dated ${dayOn}`
+      );
+    }
+    flowsRepaired += setDay.run(dayOn, flowId, dayOn).changes;
   }
-  if (unrepaired.length > 0) {
-    throw new Error(`migration 369: flows with a malformed day and no dated card line to follow: ${unrepaired.slice(0, 20).join(", ")}`);
+  if (unreadable.length > 0) {
+    throw new Error(`migration 369: flows with a malformed day that is not a misread card line day: ${unreadable.slice(0, 20).join(", ")}`);
   }
   const malformedSet = new Set(malformed);
   for (const flowId of new Set(redated.map((r) => r.flow_id))) {

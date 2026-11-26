@@ -111,6 +111,11 @@ export function withCardLineSession<T>(accountId: number, what: string, body: ()
 export type CardLinePlan = {
   deleteLineIds: readonly number[];
   carry: readonly { fromLineId: number; toLineId: number }[];
+  /**
+   * Deleted one-shot lines a plan supersedes (the purchase listed before its plan existed): each
+   * line's arrival folds into its plan's flow (`olderArrival`) before the line goes.
+   */
+  arrivalsOntoPlans?: readonly { fromLineId: number; planId: number }[];
 };
 
 export const EMPTY_CARD_LINE_PLAN: CardLinePlan = { deleteLineIds: [], carry: [] };

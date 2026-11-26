@@ -158,7 +158,7 @@ function createPlansInSession(
         cuotas_totales: cp.cuota_count!,
         merchant: line.merchant,
         card_group: meta.cardGroup,
-      }, { arrival: true });
+      });
       updFirstDue.run(firstDue, p.id);
       insProvenance.run(
         p.id,

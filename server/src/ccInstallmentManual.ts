@@ -2,7 +2,7 @@ import { InputError } from "./inputError.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
-import { recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
+import { copyFlowFirstSeen, recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import {
   applyCardLinePlan,
   planOneShotLinesForInstallmentPurchase,
@@ -42,8 +42,6 @@ export function createManualCcInstallmentPurchase(
   opts?: {
     removeSupersededOneShotLines?: boolean;
     sourceLineId?: number;
-    /** The plan is a purchase first seen now (a feed's cuota purchase): its flow is stamped. */
-    arrival?: boolean;
   }
 ): { id: number; canonical_row_id: string } {
   const purchaseDate = parsePurchaseDateIso(input.purchase_date);
@@ -77,8 +75,17 @@ export function createManualCcInstallmentPurchase(
       );
 
     const purchaseId = Number(r.lastInsertRowid);
-    // Stamped before the superseded one-shot lines fold in, so an older line's arrival wins.
-    if (opts?.arrival) recordPlanFlowFirstSeen(purchaseId);
+    // A plan written by hand or from a feed is a new movement: stamped now. A conversion is the
+    // purchase its line already was: it takes the line's arrival (none when the line had none);
+    // the one-shot lines it supersedes below fold theirs in (`olderArrival`).
+    recordPlanFlowFirstSeen(purchaseId);
+    if (opts?.sourceLineId != null) {
+      const flowOf = (sql: string, id: number) => (db.prepare(sql).get(id) as { flow_id: number | null } | undefined)?.flow_id ?? null;
+      const lineFlow = flowOf(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`, opts.sourceLineId);
+      const planFlow = flowOf(`SELECT flow_id FROM cc_installment_purchases WHERE id = ?`, purchaseId);
+      if (lineFlow == null || planFlow == null) throw new Error(`line ${opts.sourceLineId} / plan ${purchaseId}: no flow`);
+      copyFlowFirstSeen(lineFlow, planFlow);
+    }
     // Fuzzy cross-source dedupe (merchant + date + amount tolerance) is only appropriate
     // when the caller has no exact source line — e.g. a hand-entered manual purchase that
     // supersedes a previously imported one-shot line. A conversion names its line

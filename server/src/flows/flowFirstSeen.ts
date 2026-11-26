@@ -1,10 +1,9 @@
 /**
  * When a flow first reached the ledger (`flow_first_seen`, migrations 310 and 367): the Chile day,
- * the moment (UTC ISO) and the write order (one counter over the table). Written when a card line
- * (a statement's cuota line excepted), a plan, a movement is inserted or a manual expense is created
- * (the first write wins). When two flows become one, the older arrival stays ({@link olderArrival}:
- * a flow with no stamp was on file before the stamps and is older than any). The day is read by the
- * expense lines (`first_seen_on`); the order sorts «Últimos movimientos».
+ * the moment (UTC ISO) and the write order (one counter over the table). Written when a flow is
+ * created for a new movement (the first write wins; who writes it: {@link FlowArrival}). When two
+ * flows become one, the older arrival stays ({@link olderArrival}). The day is read by the expense
+ * lines (`first_seen_on`); the order sorts «Últimos movimientos».
  */
 import type { Database } from "better-sqlite3";
 import { db } from "../db.js";
@@ -96,12 +95,17 @@ function stampOf(r: StampRow): FirstSeenStamp {
  * A flow's arrival, as the carry rule reads it:
  *
  * - `stamped`: the flow has a stamp.
- * - `before_stamps`: no stamp, so it was on file before the stamps existed (every insert since
- *   stamps its row: a card line, a movement, a manual expense, a plan): older than any stamp. A
- *   flow whose rows are gone (retired, kept by its assignments) is one too.
+ * - `before_stamps`: no stamp, and it records a row (or recorded one: a retired flow, kept by its
+ *   assignments after its row went). Every writer that creates a flow for a new movement stamps it
+ *   — the card-line import (a statement's cuota line excepted), a plan written new (a statement's,
+ *   a feed's, a hand-entered one; a plan converted from a line takes the line's arrival),
+ *   `insertMovement`, the manual-expense create — so such a flow was on file before the stamps (or
+ *   is a re-creation of one: a ledger wipe's plans, the receipt and gap scripts' estimated lines,
+ *   income entries, which no runtime path writes): older than any stamp.
  * - `not_an_arrival`: no stamp, and every row it records is a statement's cuota line (its monthly
- *   billing of a plan: never a new movement, so the import stamps none). It neither gives nor takes
- *   a place.
+ *   billing of a plan: never a new movement, so the import stamps none) — or it records no row and
+ *   was never retired (a key's holder, `ensureFlowForKey`, which carries only the stamp it was given).
+ *   It neither gives nor takes a place.
  */
 export type FlowArrival = { kind: "stamped"; stamp: FirstSeenStamp } | { kind: "before_stamps" } | { kind: "not_an_arrival" };
 
@@ -113,15 +117,17 @@ export function flowArrival(flowId: number, dbHandle: Database = db): FlowArriva
   if (row) return { kind: "stamped", stamp: stampOf(row) };
   const evidence = dbHandle
     .prepare(
-      `SELECT COUNT(*) AS n,
+      `SELECT COUNT(e.id) AS n,
          SUM(CASE WHEN e.source_table = 'cc_statement_lines' AND EXISTS (
            SELECT 1 FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
            WHERE l.id = e.source_row_id AND l.installment_flag = 1 AND s.source_kind NOT IN ('listing_open', 'listing_other')
-         ) THEN 1 ELSE 0 END) AS cuota
+         ) THEN 1 ELSE 0 END) AS cuota,
+         (SELECT retired_on IS NOT NULL FROM flows WHERE id = ?) AS retired
        FROM flow_evidence e WHERE e.flow_id = ?`
     )
-    .get(flowId) as { n: number; cuota: number | null };
-  return evidence.n > 0 && evidence.cuota === evidence.n ? { kind: "not_an_arrival" } : { kind: "before_stamps" };
+    .get(flowId, flowId) as { n: number; cuota: number | null; retired: number | null };
+  if (evidence.n === 0) return evidence.retired ? { kind: "before_stamps" } : { kind: "not_an_arrival" };
+  return evidence.cuota === evidence.n ? { kind: "not_an_arrival" } : { kind: "before_stamps" };
 }
 
 /** Whether `a` is the earlier stamp: by day, then time, then order (a missing time or order counts as earlier). */

@@ -13,7 +13,8 @@ function scratchDb() {
   dbi.exec(`
     CREATE TABLE cc_statements (id INTEGER PRIMARY KEY, statement_date TEXT);
     CREATE TABLE cc_statement_lines (id INTEGER PRIMARY KEY, statement_id INTEGER, transaction_date TEXT, posting_date TEXT);
-    CREATE TABLE flows (id INTEGER PRIMARY KEY, occurred_on TEXT NOT NULL);
+    CREATE TABLE flows (id INTEGER PRIMARY KEY, occurred_on TEXT NOT NULL, retired_on TEXT, retired_document_key TEXT,
+      retired_key TEXT, legacy_key TEXT);
     CREATE TABLE flow_evidence (id INTEGER PRIMARY KEY, flow_id INTEGER, source_table TEXT, source_row_id INTEGER,
       stated_on TEXT, stated_amount REAL, authority INTEGER);
     INSERT INTO cc_statements VALUES (1, '24/11/2026');
@@ -30,7 +31,7 @@ function migrate(dbi: Database.Database): void {
 /** A line and its flow as the old insert trigger wrote them (`stated_on` / `occurred_on` given). */
 function line(dbi: Database.Database, id: number, tx: string | null, post: string | null, statedOn: string | null, occurredOn: string) {
   dbi.prepare(`INSERT INTO cc_statement_lines VALUES (?, 1, ?, ?)`).run(id, tx, post);
-  dbi.prepare(`INSERT INTO flows VALUES (?, ?)`).run(id, occurredOn);
+  dbi.prepare(`INSERT INTO flows (id, occurred_on) VALUES (?, ?)`).run(id, occurredOn);
   dbi.prepare(`INSERT INTO flow_evidence VALUES (?, ?, 'cc_statement_lines', ?, ?, 1000, 3)`).run(id, id, id, statedOn);
 }
 
@@ -98,9 +99,28 @@ describe("migration 369: card line days padded", () => {
     expect(() => migrate(dbi2)).toThrow(/line 1/);
   });
 
-  it("refuses a malformed flow day with no dated line to follow", () => {
+  it("dates a retired flow from the document key it still names, else the 1st of January of its year", () => {
     const dbi = scratchDb();
-    dbi.prepare(`INSERT INTO flows VALUES (9, '2026-/2-1/')`).run();
-    expect(() => migrate(dbi)).toThrow(/no dated card line to follow: 9/);
+    const retired = (id: number, documentKey: string | null) =>
+      dbi
+        .prepare(`INSERT INTO flows (id, occurred_on, retired_on, retired_document_key) VALUES (?, '2026-/2-1/', '2026-11-20', ?)`)
+        .run(id, documentKey);
+    // Its listing line («1/6/2026») went; the key the line was filed under names the day.
+    retired(7, "web:santander|VITEST SHOP|12000|2026-06-01");
+    // No key names a day of that year and day: the month is lost.
+    retired(8, "web:santander|VITEST SHOP|12000|2025-06-01");
+    retired(9, null);
+    migrate(dbi);
+    expect(flowDays(dbi)).toEqual([
+      { id: 7, day: "2026-06-01" },
+      { id: 8, day: "2026-01-01" },
+      { id: 9, day: "2026-01-01" },
+    ]);
+  });
+
+  it("refuses a malformed flow day that is not a misread card line day", () => {
+    const dbi = scratchDb();
+    dbi.prepare(`INSERT INTO flows (id, occurred_on) VALUES (9, 'sometime')`).run();
+    expect(() => migrate(dbi)).toThrow(/not a misread card line day: 9/);
   });
 });
