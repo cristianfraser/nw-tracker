@@ -25,7 +25,7 @@ import {
   FINTUAL_CERT_V2_CATEGORY_SLUG,
   assetGroupIdForFintualCertV2Notes,
   fintualCertV2SeriesKeyFromImportNotes,
-  matchFintualCertGoalV2,
+  matchFintualCertificadoInvestment,
 } from "./fintualCertV2.js";
 import { backfillFintualCertValorCuotaFromScan } from "./fintualFundUnitDaily.js";
 import {
@@ -102,7 +102,7 @@ type CertPlanRow = {
 function certPlanRows(scan: FintualCertificadoAggregateScan): CertPlanRow[] {
   const out: CertPlanRow[] = [];
   for (const a of scan.sortedAggregates) {
-    const importNote = matchFintualCertGoalV2(a.goalId, a.name);
+    const importNote = matchFintualCertificadoInvestment(a.goalId, a.name);
     if (!importNote) continue;
 
     let impliedClp = a.clpNet;
@@ -211,7 +211,7 @@ export function importFintualCertificado(
   opts?: { maxMonth?: string }
 ): FintualCertImportResult {
   const maxMonth = opts?.maxMonth ?? chileCalendarTodayYmd().slice(0, 7);
-  const scan = aggregateFintualCertificado(transactions, maxMonth, matchFintualCertGoalV2);
+  const scan = aggregateFintualCertificado(transactions, maxMonth, matchFintualCertificadoInvestment);
   const plan = certPlanRows(scan);
 
   const reconcile = db.transaction(() => {
@@ -280,7 +280,7 @@ export function importFintualCertificado(
     }
 
     // Valor-cuota hints and the sync reseed are additive/idempotent.
-    const fundUnitRows = backfillFintualCertValorCuotaFromScan(scan, matchFintualCertGoalV2, false);
+    const fundUnitRows = backfillFintualCertValorCuotaFromScan(scan, matchFintualCertificadoInvestment, false);
     reseedAllAccountSyncSources();
 
     return {

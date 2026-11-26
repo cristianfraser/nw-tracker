@@ -9,7 +9,6 @@ import {
   FINTUAL_CERT_V2_ACCOUNT_NAMES,
   FINTUAL_CERT_V2_GOAL_IDS,
   isFintualCertV2AccountNotes,
-  matchFintualCertGoalV2,
 } from "./fintualCertV2.js";
 import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
 import {
@@ -400,12 +399,4 @@ export function fintualGoalsNavFromResolution(
   goalNavClp: number
 ): number {
   return resolution?.goalsApiNavClp ?? goalNavClp;
-}
-
-export function matchFintualCertGoalV2ForPoll(goal: {
-  id: number | string;
-  name: string;
-  matchedNotes: string | null;
-}): string | null {
-  return matchFintualCertGoalV2(String(goal.id), goal.name);
 }

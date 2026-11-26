@@ -104,7 +104,7 @@ import {
   priorAccountValuation,
   syncFintualFundUnitsFromResolutions,
 } from "./fintualApplyShared.js";
-import { matchFintualCertGoalV2 } from "./fintualCertV2.js";
+import { fintualCertGoalImportKeyById } from "./fintualCertV2.js";
 import {
   fintualCertV2AnyHeldFundMissingDayRow,
   fintualCertV2PollReconciled,
@@ -352,7 +352,8 @@ function fundUnitValuesOnDay(ymd: string): string {
 async function runFintual(
   cl: ReturnType<typeof chileWallClockNow>,
   state: GlobalSyncStateFile,
-  changes: SyncFieldChange[]
+  changes: SyncFieldChange[],
+  notes: SyncStepNote[]
 ): Promise<{ pending: boolean; fintualNoChange?: boolean; polled?: boolean }> {
   // Pre-18:00 polls happen only as carries: an unresolved prior evening (sig/publish based), a
   // held fund whose publish-day bar is still missing (late publisher — invisible to sig checks),
@@ -394,10 +395,18 @@ async function runFintual(
   const raw = await fetchFintualGoalsRaw(session.email, session.token);
   const rows = parseGoalsFromResponse(raw);
   const overrides = loadGoalIdOverrides();
-  const rowsWithMatch = rows.map((g) => ({
-    ...g,
-    matchedNotes: matchGoalToImportNotes(g.id, g.name, overrides),
-  }));
+  // A goal is tracked by its id alone (`fintualGoals.ts`). One the app does not track is named in
+  // the step's notes and left out of the poll — never priced onto an account by its name.
+  const untracked = rows.filter((g) => fintualCertGoalImportKeyById(g.id) == null);
+  for (const g of untracked) {
+    notes.push({ step: "Fintual", message: `goal ${g.id} «${g.name}» is not tracked (fintualGoals.ts): not valued` });
+  }
+  const rowsWithMatch = rows
+    .filter((g) => fintualCertGoalImportKeyById(g.id) != null)
+    .map((g) => ({
+      ...g,
+      matchedNotes: matchGoalToImportNotes(g.id, g.name, overrides),
+    }));
   let resolutions;
   let publishYmd = cl.ymd;
   try {
@@ -408,7 +417,6 @@ async function runFintual(
     clearFintualRealAssetNavCaches();
   }
   for (const r of resolutions) {
-    if (!r.row.matchedNotes && !matchFintualCertGoalV2(String(r.row.id), r.row.name)) continue;
     const line = describeFintualGoalResolution(r);
     if (line) console.log(`sync: Fintual — ${line}`);
   }
@@ -459,7 +467,7 @@ async function runFintual(
   }
 
   const anyMapped = snap.goals.some(
-    (g) => g.matchedNotes || matchFintualCertGoalV2(String(g.id), g.name)
+    (g) => g.matchedNotes || fintualCertGoalImportKeyById(String(g.id))
   );
   const fintualLogChanges = collectFintualGoalValuationChanges(snap, resolutions);
   const unreconciledRemoved = cleanupUnreconciledFintualCertFundUnitsForPoll(
@@ -1349,7 +1357,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     });
 
     await runSyncStepIfStale("fintual", stale, stepErrors, state!, cl, async () => {
-      const fintualResult = await runFintual(cl, state!, syncChanges);
+      const fintualResult = await runFintual(cl, state!, syncChanges, stepNotes);
       if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
       if (fintualResult.polled) {
         await runFintualOfficialSeriesCheck(cl, state!, syncChanges, stepErrors);

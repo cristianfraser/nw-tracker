@@ -2,9 +2,6 @@
  * Fintual “certificado de transacciones” v2 accounts: cuotas in movements, valor cuota in fund_unit_daily.
  * Parallel to the older `import:excel|key=…` accounts still in the database.
  */
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { assetGroupBySlug } from "./assetGroupTree.js";
 import { assetGroupIdForImportKind } from "./portfolioGroupTree.js";
 import { FINTUAL_GOALS, fintualGoalByImportKey, isFintualGoalImportKey, type FintualGoal } from "./fintualGoals.js";
@@ -44,48 +41,46 @@ export function fintualCertV2SeriesKeyFromImportNotes(importNotes: string): stri
   return FINTUAL_CERT_V2_SERIES_KEY[importNotes] ?? null;
 }
 
-export function fintualCertV2GoalMapPath(): string {
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(__dirname, "..", "data", "fintual-goal-map-v2.json");
+/**
+ * The certificado account key of a live Fintual goal, by the goal's id alone (`fintualGoals.ts`):
+ * null for a goal the app does not track. The sync and valuation paths resolve goals only this
+ * way — a goal's name is never evidence of which account it is.
+ */
+export function fintualCertGoalImportKeyById(goalId: string): string | null {
+  return FINTUAL_CERT_V2_GOAL_IDS[String(goalId).trim()] ?? null;
 }
 
-export function loadFintualCertV2GoalIdOverrides(): Record<string, string> {
-  const p = fintualCertV2GoalMapPath();
-  if (!fs.existsSync(p)) return {};
-  const j = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
-  if (!j || typeof j !== "object") throw new Error(`fintual goal map is not a JSON object: ${p}`);
-  const by = (j as { byGoalId?: unknown }).byGoalId;
-  if (!by || typeof by !== "object") throw new Error(`fintual goal map missing byGoalId object: ${p}`);
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(by as Record<string, unknown>)) {
-    if (typeof v !== "string" || !v.trim()) {
-      throw new Error(`fintual goal map byGoalId["${k}"] must be a non-empty string: ${p}`);
-    }
-    out[String(k)] = v.trim();
-  }
-  return out;
-}
-
-/** Infer Fintual goal id from certificado investment name (CSV). */
-export function fintualCertGoalIdFromInvestmentName(name: string): string | null {
+/**
+ * The tracked goals whose name rule an investment name meets (accents and case folded). The
+ * certificado's name is the only clue for a row whose investment id no tracked goal carries.
+ */
+function goalIdsByInvestmentName(name: string): string[] {
   const n = name
     .toLowerCase()
     .normalize("NFD")
     .replace(/\p{M}/gu, "");
-  if (n.includes("mega") && n.includes("cbcb")) return "78515";
-  if (n.includes("mega") && n.includes("caca")) return "16749";
-  if (n.includes("caca") && n.includes("daca")) return "2859";
-  if (n.includes("reserva")) return "1164983";
-  return null;
+  const ids: string[] = [];
+  if (n.includes("mega") && n.includes("cbcb")) ids.push("78515");
+  if (n.includes("mega") && n.includes("caca")) ids.push("16749");
+  if (n.includes("caca") && n.includes("daca")) ids.push("2859");
+  if (n.includes("reserva")) ids.push("1164983");
+  return ids;
 }
 
-export function matchFintualCertGoalV2(goalId: string, investmentName: string): string | null {
-  const overrides = loadFintualCertV2GoalIdOverrides();
-  const ovr = overrides[goalId];
-  if (ovr && FINTUAL_CERT_V2_TRACKED_NOTES.has(ovr)) return ovr;
-  const mapped = FINTUAL_CERT_V2_GOAL_IDS[goalId];
-  if (mapped) return mapped;
-  const inferred = fintualCertGoalIdFromInvestmentName(investmentName);
-  if (inferred) return FINTUAL_CERT_V2_GOAL_IDS[inferred] ?? null;
-  return null;
+/**
+ * The account key of a certificado de transacciones row: by its investment id when a tracked
+ * goal carries it, else by its name — the certificado is the one source whose rows may carry an
+ * id no live goal has (it lists every investment ever held). A name that meets two goals' rules
+ * throws; one that meets none is an investment the app does not track (null).
+ */
+export function matchFintualCertificadoInvestment(investmentId: string, investmentName: string): string | null {
+  const byId = fintualCertGoalImportKeyById(investmentId);
+  if (byId) return byId;
+  const ids = goalIdsByInvestmentName(investmentName);
+  if (ids.length > 1) {
+    throw new Error(
+      `Fintual certificado: investment ${investmentId} «${investmentName}» matches ${ids.length} tracked goals by name (${ids.join(", ")})`
+    );
+  }
+  return ids.length === 1 ? (FINTUAL_CERT_V2_GOAL_IDS[ids[0]!] ?? null) : null;
 }

@@ -22,7 +22,7 @@
 import type { ChileWallClock } from "./chileDate.js";
 import { resolveFintualPublishYmd } from "./fintualPublishDate.js";
 import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
-import { matchFintualCertGoalV2 } from "./fintualCertV2.js";
+import { fintualCertGoalImportKeyById } from "./fintualCertV2.js";
 import { db } from "./db.js";
 import { fetchFintualGqlDocument } from "./fintualApiLib.js";
 import type { FintualGoalRow } from "./fintualApiLib.js";
@@ -99,7 +99,7 @@ const accruedBalanceCache = new Map<string, FintualGoalAccruedBalance>();
  * (`fintualGoals.ts`) or whose account row is missing throws: nothing is priced by guess.
  */
 function certAccountIdForGoal(row: FintualGoalRowWithMatch): number {
-  const key = matchFintualCertGoalV2(row.id, row.name);
+  const key = fintualCertGoalImportKeyById(row.id);
   if (!key) {
     throw new Error(`Fintual goal ${row.id} has no certificado account: it is not a tracked goal (fintualGoals.ts)`);
   }

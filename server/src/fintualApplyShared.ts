@@ -8,7 +8,7 @@ import {
 import { db } from "./db.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { buildGoalsSnapshot, type FintualGoalRow, type FintualGoalSnapshot } from "./fintualApiLib.js";
-import { matchFintualCertGoalV2 } from "./fintualCertV2.js";
+import { fintualCertGoalImportKeyById } from "./fintualCertV2.js";
 import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
 import {
   fundSeriesKeyFromImportNotes,
@@ -59,7 +59,7 @@ const stmtAccountByImportKey = db.prepare("SELECT id FROM accounts WHERE import_
 
 /** True when the app tracks the goal (`fintualGoals.ts`, the certificado goal map). */
 function fintualGoalIsTracked(goal: { id: number | string; name: string }): boolean {
-  return matchFintualCertGoalV2(String(goal.id), goal.name) != null;
+  return fintualCertGoalImportKeyById(String(goal.id)) != null;
 }
 
 /**
@@ -67,7 +67,7 @@ function fintualGoalIsTracked(goal: { id: number | string; name: string }): bool
  * only: one the app does not track (`fintualGoals.ts`) or whose account row is missing throws.
  */
 export function resolveFintualGoalApplyAccount(goal: { id: number | string; name: string }): FintualGoalApplyTarget {
-  const importNotes = matchFintualCertGoalV2(String(goal.id), goal.name);
+  const importNotes = fintualCertGoalImportKeyById(String(goal.id));
   if (!importNotes) {
     throw new Error(
       `Fintual goal ${goal.id} has no certificado account: it is not a tracked goal (fintualGoals.ts)`
