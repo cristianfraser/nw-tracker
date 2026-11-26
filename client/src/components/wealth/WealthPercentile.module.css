@@ -1,0 +1,543 @@
+/* The wealth-percentile page (WealthPercentilePage.tsx): the position page's title line and band
+   (chart | rail) over the year list, which takes the dashboard's full Returns list as its base. */
+
+/* ---- Title line (as PositionGlance's) ---- */
+
+.titleBlock {
+  min-width: 0;
+}
+
+.titleLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 1.125rem;
+  row-gap: 2px;
+}
+
+.titleLine > h1 {
+  margin: 0;
+}
+
+.titleValue {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.titleUnit {
+  margin-left: 0.4em;
+  font-size: var(--font-size-card-meta);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.titleSecondary {
+  font-size: var(--font-size-ui);
+  color: var(--muted);
+}
+
+.sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.35em;
+  row-gap: 3px;
+  margin: 3px 0 0;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+.sub strong {
+  font-weight: 400;
+  color: var(--text);
+}
+
+/* ---- The chart's box ---- */
+
+.chartBox {
+  width: 100%;
+  height: 320px;
+}
+
+/* ---- Rail: today's standing per chart line (the chart's legend), then the country picker ---- */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 10px 0;
+  font-size: var(--font-size-card-meta);
+  line-height: 1.3;
+}
+
+.rail > h2 {
+  margin: 0 0 6px;
+}
+
+.standings {
+  display: grid;
+  grid-template-columns: max-content minmax(2rem, 1fr) max-content;
+  column-gap: 10px;
+  row-gap: 9px;
+  margin: 0;
+  padding: 6px 0 10px;
+  list-style: none;
+}
+
+.standing {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+}
+
+.standingName {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.standingValue {
+  min-width: 3.2em;
+  text-align: right;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.standingOwn .standingName {
+  color: var(--text);
+}
+
+.standingOwn .standingValue {
+  font-weight: 600;
+}
+
+.railGroup {
+  border-top: 1px solid var(--hairline);
+  padding-top: 10px;
+}
+
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+}
+
+.pickerLabel {
+  color: var(--muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.9em;
+  height: 3px;
+  margin-right: 0.5em;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.track {
+  position: relative;
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface2);
+}
+
+.fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 2px;
+}
+
+/* ---- Year list ----
+
+   The frame is the size container and states the list's breakpoint as its font-size (the width a
+   one-line row needs grows with the countries shown), queried as `1em`; the list sets its own
+   font-size, so the frame's reaches no text. */
+
+.frame {
+  container: wealth-years / inline-size;
+}
+
+.years {
+  display: grid;
+  grid-template-columns: var(--wealth-wide-columns);
+  column-gap: 1rem;
+  border-top: 1px solid var(--hairline);
+  font-size: var(--font-size-prose-sm);
+}
+
+.yearRow {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.opens {
+  cursor: pointer;
+}
+
+.opens:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.yearHead {
+  padding: 0.25rem 0;
+  font-size: var(--font-size-card-meta-sm);
+  color: var(--muted);
+}
+
+.yearHead > span {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.yearHead > .headLeft {
+  text-align: left;
+}
+
+.year {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.open > .year {
+  font-weight: 600;
+}
+
+.notes {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  column-gap: 0.7em;
+  font-size: var(--font-size-card-meta-sm);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.noteEstimate {
+  color: #f59e0b;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.percentile {
+  font-weight: 600;
+}
+
+.bars {
+  display: grid;
+  gap: 3px;
+}
+
+/* A square, so the opened row's quarter turn stays inside its own box. */
+.chevron {
+  display: inline-grid;
+  place-items: center;
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+  color: var(--muted);
+  transition: transform 0.12s;
+}
+
+.open > .chevron {
+  color: var(--text);
+  transform: rotate(90deg);
+}
+
+/* The narrow third line; the wide row has columns for these. */
+.detail {
+  display: none;
+}
+
+/* ---- An opened year: the thresholds of each distribution ---- */
+
+.opened {
+  grid-column: 1 / -1;
+  padding: 0.6rem 0 0.8rem;
+  border-bottom: 1px solid var(--hairline);
+  container: wealth-thresholds / inline-size;
+}
+
+.openedTitle {
+  margin: 0 0 0.4rem;
+}
+
+.thresholds {
+  display: grid;
+  grid-template-columns: max-content max-content max-content max-content minmax(6rem, 1fr) max-content;
+  column-gap: 1.4rem;
+  max-width: 62rem;
+  font-size: var(--font-size-card-meta);
+}
+
+.thresholdRow {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.thresholdHead {
+  font-size: var(--font-size-card-meta-sm);
+  color: var(--muted);
+}
+
+.thresholdHead > span {
+  text-align: right;
+}
+
+.thresholdHead > span:first-child {
+  text-align: left;
+}
+
+.thresholdName {
+  white-space: nowrap;
+}
+
+/* p50 | p90 | p99 as ticks, the year's net worth as the dot. */
+.scale {
+  position: relative;
+  height: 12px;
+}
+
+.scale::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--surface2);
+}
+
+.scaleTick {
+  position: absolute;
+  top: 2px;
+  width: 1px;
+  height: 8px;
+  background: var(--muted);
+}
+
+/* Kept whole inside the scale at either end. */
+.scaleYou {
+  position: absolute;
+  top: 2px;
+  left: clamp(4px, var(--at), calc(100% - 4px));
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.you {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.youAmount {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* Narrow only: each threshold's label and its amount shortened. */
+.thresholdLabel,
+.thresholdShort {
+  display: none;
+}
+
+.thresholdLabel {
+  margin-right: 0.35em;
+}
+
+/* ---- The words beside the years, explained once ---- */
+
+.noteKey {
+  display: grid;
+  gap: 2px;
+  margin: 0.7rem 0 0;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+.noteKey > div {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.5em;
+}
+
+.noteKey dt {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.noteKey dt.noteEstimate {
+  color: #f59e0b;
+}
+
+.noteKey dd {
+  margin: 0;
+}
+
+/*
+ * Narrow: one line per year no longer fits. A year is three lines — year, net worth, the
+ * percentile and the chevron; the two bars; the financial figures and the benchmarks, muted —
+ * and a fourth with the words for its distribution, when it has any.
+ */
+@container wealth-years (max-width: 1em) {
+  .years {
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    column-gap: 0.7rem;
+  }
+
+  .yearHead,
+  .wideOnly {
+    display: none;
+  }
+
+  .yearRow {
+    align-items: baseline;
+    row-gap: 0.3rem;
+  }
+
+  .year {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .netWorth {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .percentile {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .chevron {
+    grid-row: 1;
+    grid-column: 4;
+  }
+
+  .bars {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+
+  .detail {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.1rem 0.8rem;
+    grid-row: 3;
+    grid-column: 1 / -1;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-card-meta-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  .detailCountries {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 0.8em;
+  }
+
+  .notes {
+    grid-row: 4;
+    grid-column: 1 / -1;
+  }
+
+  .notes:empty {
+    display: none;
+  }
+}
+
+/* An opened year, narrow (its own container: its width does not depend on the countries in the
+   list's columns): each distribution is its name and standing, the scale, the three thresholds
+   shortened. */
+@container wealth-thresholds (max-width: 52rem) {
+  .thresholds {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 0.6rem;
+  }
+
+  .thresholdHead,
+  .thresholdFull,
+  .youAmount {
+    display: none;
+  }
+
+  .thresholdLabel,
+  .thresholdShort {
+    display: inline;
+  }
+
+  .thresholdRow {
+    row-gap: 0.25rem;
+    padding: 0.4rem 0;
+  }
+
+  .thresholdRow + .thresholdRow {
+    border-top: 1px dashed var(--hairline);
+  }
+
+  .thresholdHead + .thresholdRow {
+    border-top: 0;
+  }
+
+  .thresholdName {
+    grid-row: 1;
+    grid-column: 1 / 3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .you {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .scale {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+
+  /* p50 at the left, p90 in the middle, p99 at the right, under the scale. */
+  .threshold {
+    grid-row: 3;
+    font-size: var(--font-size-card-meta-sm);
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .thresholdName + .threshold {
+    text-align: left;
+  }
+
+  .threshold:has(+ .scale) {
+    text-align: right;
+  }
+}

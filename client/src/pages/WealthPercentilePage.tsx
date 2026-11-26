@@ -1,37 +1,31 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "../cn";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { WealthPercentileChart } from "../components/charts/WealthPercentileChart";
 import { ChartEmptyState } from "../components/charts/ChartEmptyState";
+import { ChartPanelTitleRow } from "../components/charts/ChartPanelTitleRow";
 import { minMaxForKeys } from "../components/charts/chartLayout";
 import { percentileLogAxisFor, topPercentOf } from "../components/charts/percentileLogAxis";
 import { Loadable, loadableClass } from "../components/ui/Loadable";
-import { ColumnTable, type TableColumn } from "../components/ui/ColumnTable";
+import { WealthTodayRail } from "../components/wealth/WealthTodayRail";
+import { WealthYearList } from "../components/wealth/WealthYearList";
+import {
+  BENCHMARK_COUNTRIES,
+  BENCHMARK_STROKE,
+  CL_FINANCIAL_STROKE,
+  CL_TOTAL_STROKE,
+  percentileLabel,
+} from "../components/wealth/wealthSeries";
+import styles from "../components/wealth/WealthPercentile.module.css";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatCurrency, formatGroupedDecimal } from "../format";
 import { useWealthPercentile } from "../queries/hooks";
-import type {
-  WealthBenchmarkCountry,
-  WealthPercentileCell,
-  WealthPercentileYearRow,
-} from "../types";
+import type { WealthBenchmarkCountry } from "../types";
 import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
-import type { DisplayUnit } from "../queries/keys";
+import bandStyles from "./accountDetail/PositionAccountDetailPage.module.css";
 
-const BENCHMARK_COUNTRIES: readonly WealthBenchmarkCountry[] = [
-  "US",
-  "ES",
-  "CH",
-  "UK",
-  "AU",
-  "DE",
-  "JP",
-  "MX",
-  "BR",
-  "CN",
-];
-
-/** Benchmarks shown out of the box; the settings section below the page toggles the full list. */
+/** Benchmarks shown out of the box; the rail's buttons toggle the full list. */
 const DEFAULT_ENABLED_BENCHMARKS: readonly WealthBenchmarkCountry[] = ["US", "AU", "DE", "MX"];
 
 const ENABLED_BENCHMARKS_STORAGE_KEY = "nw-tracker.wealth-percentile.countries";
@@ -48,245 +42,28 @@ function loadEnabledBenchmarks(): WealthBenchmarkCountry[] {
   }
 }
 
-/** Distinct hues from the app palette families; the CL pair below is white/light-gray, so no grays here. */
-const BENCHMARK_STROKE: Record<WealthBenchmarkCountry, string> = {
-  US: "#22c55e",
-  ES: "#eab308",
-  CH: "#ec4899",
-  UK: "#a78bfa",
-  AU: "#fb923c",
-  DE: "#38bdf8",
-  JP: "#f87171",
-  MX: "#2dd4bf",
-  BR: "#e879f9",
-  CN: "#fcd34d",
-};
-
-/** The two CL lines share one neutral hue (white/light-gray) so benchmarks carry the color. */
-const CL_TOTAL_STROKE = "#ffffff";
-const CL_FINANCIAL_STROKE = "#94a3b8";
+/** A figure not in yet: its box, no text. */
+const BLANK = "\u00a0";
 
 type ScaleMode = "linear" | "log";
-const SCALE_MODES: readonly ScaleMode[] = ["linear", "log"];
-
-type ThresholdKey = "p50" | "p90" | "p99";
-/** Richest-first order for the stacked country-table cells (p99 on top). */
-const THRESHOLD_KEYS_DESC: readonly ThresholdKey[] = ["p99", "p90", "p50"];
-
-/** `*` databook lag · `†` interpolated 2023/24 · `‡` own 2025 reconstruction. */
-function yearMarkers(row: WealthPercentileYearRow): string {
-  return [
-    row.distribution_year < row.year ? "*" : "",
-    row.interpolated ? "†" : "",
-    row.reconstructed ? "‡" : "",
-  ].join("");
-}
-
-/** The threshold in the payload's unit (server-converted at the row's year-end rate). */
-function thresholdOf(cell: WealthPercentileCell, key: ThresholdKey): number {
-  return key === "p50" ? cell.p50 : key === "p90" ? cell.p90 : cell.p99;
-}
-
-function rowsDescOf(rows: readonly WealthPercentileYearRow[]): WealthPercentileYearRow[] {
-  return [...rows].sort((a, b) => b.year - a.year);
-}
-
-/** Año | Patr. financiero | %CL fin. | Patrimonio | %CL | benchmark columns (today's percentile, desc). */
-function MyDataTable({
-  rows,
-  countries,
-  unit,
-  loading,
-}: {
-  rows: readonly WealthPercentileYearRow[];
-  countries: readonly WealthBenchmarkCountry[];
-  /** The unit the rows' amounts are in (the payload's). */
-  unit: DisplayUnit;
-  loading?: boolean;
-}) {
-  const { t } = useTranslation();
-  const money = (n: number) => formatCurrency(n, unit);
-  const pctText = (cell: WealthPercentileCell) =>
-    cell.below_support
-      ? t("wealthPercentile.belowSupport")
-      : formatGroupedDecimal(cell.percentile ?? Number.NaN, 1);
-
-  const columns: TableColumn<WealthPercentileYearRow>[] = [
-    { key: "year", header: t("wealthPercentile.table.year"), className: "mono", cell: (row) => `${row.year}${yearMarkers(row)}`, title: true },
-    {
-      key: "finNetWorth",
-      header: t("wealthPercentile.table.finNetWorth"),
-      className: "mono",
-      cell: (row) => money(row.fin_net_worth),
-    },
-    { key: "clFin", header: "%CL fin.", className: "mono", cell: (row) => pctText(row.cl_financial) },
-    {
-      key: "netWorth",
-      header: t("wealthPercentile.table.netWorth"),
-      className: "mono",
-      cell: (row) => money(row.net_worth),
-    },
-    { key: "cl", header: "%CL", className: "mono", cell: (row) => pctText(row.cl_total) },
-    ...countries.map(
-      (c): TableColumn<WealthPercentileYearRow> => ({
-        key: c,
-        header: `%${c}`,
-        className: "mono",
-        cell: (row) => pctText(row.benchmarks[c]),
-      })
-    ),
-  ];
-
-  return (
-    <ColumnTable
-      rows={rowsDescOf(rows)}
-      columns={columns}
-      rowKey={(row) => row.year}
-      wrapClassName={loadableClass(loading)}
-      cardLayout="flat"
-    />
-  );
-}
-
-const THRESHOLD_PERCENTILE: Record<ThresholdKey, number> = { p50: 50, p90: 90, p99: 99 };
+const SCALE_MODES: readonly ScaleMode[] = ["log", "linear"];
 
 /**
- * Own percentile label, truncated (never rounded up) so it cannot read as the threshold above it:
- * 98,96 is «p98,9», not «p99,0». Two decimals above p99, where one would show «p99,9» for 99,96.
+ * /wealth-percentile: the position page's title line (today's percentile in Chile as the figure)
+ * and band — the chart of every line by year beside the rail, which is the chart's legend
+ * (today's standing per line) and holds the benchmark-country buttons — over the year list
+ * (`WealthYearList`), whose rows open into the year's thresholds. One column below 880, in DOM
+ * order. Headline, row order, country order and the words for each year's distribution are the
+ * server's; the page only picks the countries switched on.
  */
-function ownPercentileLabel(percentile: number): string {
-  const decimals = percentile >= 99 ? 2 : 1;
-  const factor = 10 ** decimals;
-  return `p${formatGroupedDecimal(Math.floor(percentile * factor) / factor, decimals)}`;
-}
-
-/**
- * p99/p90/p50 stacked for one distribution cell, with the user's own net worth for that year inserted
- * where its percentile falls (above p99, between two thresholds, or below p50) and highlighted.
- */
-function ThresholdPairsCell({
-  cell,
-  own,
-  unit,
-}: {
-  cell: WealthPercentileCell;
-  /** The user's net worth for the cell's mode, in `unit`. */
-  own: number;
-  unit: DisplayUnit;
-}) {
-  const { t } = useTranslation();
-  const ownValue = formatCurrency(own, unit);
-  const ownLine = (
-    <span key="own" className="wealth-own-threshold" style={{ whiteSpace: "nowrap" }}>
-      {`${cell.below_support || cell.percentile === null ? t("wealthPercentile.belowSupport") : ownPercentileLabel(cell.percentile)}: ${ownValue}`}
-    </span>
-  );
-  const lines: ReactNode[] = [];
-  let ownPlaced = false;
-  for (const k of THRESHOLD_KEYS_DESC) {
-    if (!ownPlaced && cell.percentile !== null && cell.percentile >= THRESHOLD_PERCENTILE[k]) {
-      lines.push(ownLine);
-      ownPlaced = true;
-    }
-    lines.push(
-      <span key={k} style={{ whiteSpace: "nowrap" }}>
-        {`${k}: ${formatCurrency(thresholdOf(cell, k), unit)}`}
-      </span>
-    );
-  }
-  if (!ownPlaced) lines.push(ownLine);
-  return <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>{lines}</div>;
-}
-
-/**
- * Año | CL fin. | CL | benchmark columns (same order as MyDataTable) — p99/p90/p50 per cell plus the
- * user's own line for that year. The CL fin. column (Chile financial-wealth distribution, ex real
- * estate) places the year's FINANCIAL net worth; total-mode columns place the year's total net worth.
- */
-function CountryDataTable({
-  rows,
-  countries,
-  unit,
-  loading,
-}: {
-  rows: readonly WealthPercentileYearRow[];
-  countries: readonly WealthBenchmarkCountry[];
-  unit: DisplayUnit;
-  loading?: boolean;
-}) {
-  const { t } = useTranslation();
-  const pairs = (cell: WealthPercentileCell, own: number) => (
-    <ThresholdPairsCell cell={cell} own={own} unit={unit} />
-  );
-
-  const columns: TableColumn<WealthPercentileYearRow>[] = [
-    {
-      key: "year",
-      header: t("wealthPercentile.table.year"),
-      className: "mono",
-      cellProps: () => ({ style: { verticalAlign: "top" } }),
-      cell: (row) => `${row.year}${yearMarkers(row)}`,
-      title: true,
-    },
-    {
-      key: "clFin",
-      header: "CL fin.",
-      className: "mono",
-      cell: (row) => pairs(row.cl_financial, row.fin_net_worth),
-    },
-    { key: "cl", header: "CL", className: "mono", cell: (row) => pairs(row.cl_total, row.net_worth) },
-    ...countries.map(
-      (c): TableColumn<WealthPercentileYearRow> => ({
-        key: c,
-        header: c,
-        className: "mono",
-        cell: (row) => pairs(row.benchmarks[c], row.net_worth),
-      })
-    ),
-  ];
-
-  return (
-    <ColumnTable
-      rows={rowsDescOf(rows)}
-      columns={columns}
-      rowKey={(row) => row.year}
-      wrapClassName={loadableClass(loading)}
-      cardLayout="flat"
-    />
-  );
-}
-
-function MarkerLegend({ rows }: { rows: readonly WealthPercentileYearRow[] }) {
-  const { t } = useTranslation();
-  const lagged = rows.filter((r) => r.distribution_year < r.year);
-  const hasInterpolated = rows.some((r) => r.interpolated);
-  const hasReconstructed = rows.some((r) => r.reconstructed);
-  if (!lagged.length && !hasInterpolated && !hasReconstructed) return null;
-  return (
-    <p className="muted" style={{ fontSize: "0.8em" }}>
-      {lagged.length > 0 ? (
-        <span style={{ display: "block" }}>
-          {t("wealthPercentile.markers.distributionYear", {
-            year: Math.max(...lagged.map((r) => r.distribution_year)),
-          })}
-        </span>
-      ) : null}
-      {hasInterpolated ? (
-        <span style={{ display: "block" }}>{t("wealthPercentile.markers.interpolated")}</span>
-      ) : null}
-      {hasReconstructed ? (
-        <span style={{ display: "block" }}>{t("wealthPercentile.markers.reconstructed")}</span>
-      ) : null}
-    </p>
-  );
-}
-
 export function WealthPercentilePage() {
   const { t } = useTranslation();
   const [scaleMode, setScaleMode] = useState<ScaleMode>("log");
   const [enabledBenchmarks, setEnabledBenchmarks] = useState<WealthBenchmarkCountry[]>(
     loadEnabledBenchmarks
   );
+  // null = the viewer has not touched a row yet: the newest year is open.
+  const [openYearsChoice, setOpenYearsChoice] = useState<ReadonlySet<number> | null>(null);
   const { displayUnit } = useDisplayPreferences();
   const wealthQuery = useWealthPercentile(displayUnit);
   const { data, error: queryError } = wealthQuery;
@@ -306,25 +83,28 @@ export function WealthPercentilePage() {
     });
   };
 
-  // Series plotted in both chart modes (percentile in linear mode, top-% in log mode).
-  const chartSeriesKeys = useMemo(
-    () => ["total", "financial", ...enabledBenchmarks.map((c) => c.toLowerCase())],
-    [enabledBenchmarks]
+  // The countries switched on, in the server's order (today's percentile, highest first).
+  const countries = useMemo(
+    () => (data?.benchmark_order ?? BENCHMARK_COUNTRIES).filter((c) => enabledBenchmarks.includes(c)),
+    [data, enabledBenchmarks]
   );
+
+  // Series plotted in both chart modes (percentile in linear mode, top-% in log mode).
+  const chartSeriesKeys = useMemo(() => ["total", "financial", ...countries.map((c) => c.toLowerCase())], [countries]);
 
   // Raw numbers only — formatting happens at render time (separator/language toggles).
   const chartPoints = useMemo(
     () =>
-      (data?.rows ?? []).map((r) => {
+      (data?.chart ?? []).map((point) => {
         const p: Record<string, string | number | null> = {
-          year: String(r.year),
-          total: r.cl_total.percentile,
-          financial: r.cl_financial.percentile,
+          year: String(point.year),
+          total: point.cl_total,
+          financial: point.cl_financial,
         };
-        for (const c of enabledBenchmarks) p[c.toLowerCase()] = r.benchmarks[c].percentile;
+        for (const c of countries) p[c.toLowerCase()] = point.benchmarks[c];
         return p;
       }),
-    [data, enabledBenchmarks]
+    [data, countries]
   );
 
   // Log mode plots "top X%" (100 − percentile) on a reversed-log axis so the crowded 90–100 band opens up.
@@ -354,97 +134,131 @@ export function WealthPercentilePage() {
   }
 
   const rows = data?.rows ?? [];
-  // Column order comes from the latest row (current year, valued as of today).
-  const latestRow = rows.length ? rows.reduce((m, r) => (r.year > m.year ? r : m)) : null;
-  // Enabled benchmark columns ordered by today's percentile, highest first (easiest country → hardest).
-  const benchmarkOrder: readonly WealthBenchmarkCountry[] = latestRow
-    ? [...enabledBenchmarks].sort(
-        (a, b) =>
-          (latestRow.benchmarks[b].percentile ?? -1) - (latestRow.benchmarks[a].percentile ?? -1)
-      )
-    : enabledBenchmarks;
+  const today = data?.today ?? null;
+  // The list is newest first: its first row is today's.
+  const latestRow = rows[0] ?? null;
+  const openYears = openYearsChoice ?? new Set(today ? [today.year] : []);
+  const toggleYear = (year: number) => {
+    const next = new Set(openYears);
+    if (next.has(year)) next.delete(year);
+    else next.add(year);
+    setOpenYearsChoice(next);
+  };
+  const standing = (percentile: number | null) =>
+    percentile == null ? t("wealthPercentile.belowSupport") : percentileLabel(percentile);
 
   return (
     <main>
-      <h1>{t("wealthPercentile.title")}</h1>
-
-      <PageGridTile id="chart">
-        <label
-          style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
-        >
-          <span className="muted" style={{ fontSize: "0.85em" }}>
-            {t("wealthPercentile.chart.scaleLabel")}
-          </span>
-          <select value={scaleMode} onChange={(e) => setScaleMode(e.target.value as ScaleMode)}>
-            {SCALE_MODES.map((m) => (
-              <option key={m} value={m}>
-                {m === "log" ? t("wealthPercentile.chart.scaleLog") : t("wealthPercentile.chart.scaleLinear")}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {chartPoints.length === 0 ? (
-          <ChartEmptyState loading={loading} message={t("wealthPercentile.empty")} />
-        ) : (
-          <Loadable loading={loading} style={{ width: "100%", height: 320 }}>
-            <WealthPercentileChart
-              data={scaleMode === "log" ? logChartPoints : chartPoints}
-              logAxis={scaleMode === "log" ? logAxis : null}
-              lines={[
-                { dataKey: "total", name: t("wealthPercentile.chart.seriesTotal"), stroke: CL_TOTAL_STROKE, strokeWidth: 2 },
-                {
-                  dataKey: "financial",
-                  name: t("wealthPercentile.chart.seriesFinancial"),
-                  stroke: CL_FINANCIAL_STROKE,
-                  strokeWidth: 2,
-                },
-                ...benchmarkOrder.map((c) => ({
-                  dataKey: c.toLowerCase(),
-                  name: t("wealthPercentile.chart.seriesBenchmark", { country: c }),
-                  stroke: BENCHMARK_STROKE[c],
-                  strokeWidth: 1.5,
-                })),
-              ]}
-            />
+      <div className={styles.titleBlock}>
+        <div className={styles.titleLine}>
+          <h1>{t("wealthPercentile.title")}</h1>
+          {/* The figures' frame stands while the payload is pending (blank, dimmed). */}
+          <Loadable loading={loading} className={styles.titleLine}>
+            <span className={styles.titleValue}>
+              <span className="mono">{today ? standing(today.percentile) : BLANK}</span>
+              <span className={styles.titleUnit}>{t("wealthPercentile.headline.inChile")}</span>
+            </span>
+            {today == null || today.top_percent != null ? (
+              <span className={cn("mono", styles.titleSecondary)}>
+                {today?.top_percent != null
+                  ? t("wealthPercentile.headline.top", { percent: formatGroupedDecimal(today.top_percent, 1) })
+                  : BLANK}
+              </span>
+            ) : null}
           </Loadable>
-        )}
+        </div>
+        <p className={loadableClass(loading, styles.sub)}>
+          <span>
+            {t("wealthPercentile.headline.financial")}{" "}
+            <strong className="mono">{today ? standing(today.financial_percentile) : BLANK}</strong>
+          </span>
+          <span aria-hidden>·</span>
+          <span>
+            {t("wealthPercentile.headline.netWorth")}{" "}
+            <strong className="mono">{today ? formatCurrency(today.net_worth, amountsUnit) : BLANK}</strong>
+          </span>
+          {today ? (
+            <span>
+              {t("wealthPercentile.headline.asOf", { date: today.as_of_date, year: today.distribution_year })}
+            </span>
+          ) : null}
+        </p>
+      </div>
+
+      <PageGridTile id="percentile-band" className={cn("page-grid", bandStyles.band)}>
+        <div className={bandStyles.bandChart}>
+          <ChartPanelTitleRow
+            title={t("wealthPercentile.chart.title")}
+            controls={
+              <div className="surface-controls">
+                <span className="surface-controls__set" role="group" aria-label={t("wealthPercentile.chart.scaleLabel")}>
+                  {SCALE_MODES.map((m) => {
+                    const name = t(m === "log" ? "wealthPercentile.chart.scaleLogName" : "wealthPercentile.chart.scaleLinearName");
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        className={m === scaleMode ? "is-on" : undefined}
+                        aria-pressed={m === scaleMode}
+                        title={name}
+                        aria-label={name}
+                        onClick={() => setScaleMode(m)}
+                      >
+                        {t(m === "log" ? "wealthPercentile.chart.scaleLog" : "wealthPercentile.chart.scaleLinear")}
+                      </button>
+                    );
+                  })}
+                </span>
+              </div>
+            }
+          />
+          {chartPoints.length === 0 ? (
+            <ChartEmptyState loading={loading} message={t("wealthPercentile.empty")} boxStyle={{ height: 320 }} />
+          ) : (
+            <Loadable loading={loading} className={styles.chartBox}>
+              <WealthPercentileChart
+                data={scaleMode === "log" ? logChartPoints : chartPoints}
+                logAxis={scaleMode === "log" ? logAxis : null}
+                lines={[
+                  { dataKey: "total", name: t("wealthPercentile.series.chile"), stroke: CL_TOTAL_STROKE, strokeWidth: 2 },
+                  {
+                    dataKey: "financial",
+                    name: t("wealthPercentile.series.chileFinancial"),
+                    stroke: CL_FINANCIAL_STROKE,
+                    strokeWidth: 2,
+                  },
+                  ...countries.map((c) => ({
+                    dataKey: c.toLowerCase(),
+                    name: t(`wealthPercentile.countries.${c}`),
+                    stroke: BENCHMARK_STROKE[c],
+                    strokeWidth: 1.5,
+                  })),
+                ]}
+              />
+            </Loadable>
+          )}
+        </div>
+        <div className={loadableClass(loading, bandStyles.bandRail)} aria-busy={loading || undefined}>
+          <WealthTodayRail
+            latest={latestRow}
+            countries={countries}
+            enabled={enabledBenchmarks}
+            onToggle={toggleBenchmark}
+          />
+        </div>
       </PageGridTile>
 
-      <PageGridTile id="my-data">
-        <h2>{t("wealthPercentile.tables.myData")}</h2>
-        <MyDataTable rows={rows} countries={benchmarkOrder} unit={amountsUnit} loading={loading} />
-      </PageGridTile>
-
-      <PageGridTile id="country-data">
-        <h2>{t("wealthPercentile.tables.countryData")}</h2>
-        <CountryDataTable
+      <PageGridTile id="years">
+        <h2>{t("wealthPercentile.years.title")}</h2>
+        <WealthYearList
           rows={rows}
-          countries={benchmarkOrder}
+          countries={countries}
           unit={amountsUnit}
+          latestDistributionYear={today?.distribution_year ?? null}
+          openYears={openYears}
+          onToggleYear={toggleYear}
           loading={loading}
         />
-      </PageGridTile>
-
-      <MarkerLegend rows={rows} />
-
-      <PageGridTile id="settings">
-        <h2>{t("wealthPercentile.settings.title")}</h2>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem 1.5rem" }}>
-          {BENCHMARK_COUNTRIES.map((c) => (
-            <label
-              key={c}
-              style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}
-            >
-              <input
-                type="checkbox"
-                checked={enabledBenchmarks.includes(c)}
-                onChange={() => toggleBenchmark(c)}
-              />
-              <span>{`${t(`wealthPercentile.countries.${c}`)} (${c})`}</span>
-            </label>
-          ))}
-        </div>
       </PageGridTile>
     </main>
   );

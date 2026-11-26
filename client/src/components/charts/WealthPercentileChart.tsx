@@ -1,4 +1,4 @@
-import { CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, XAxis, YAxis } from "recharts";
 import { formatGroupedDecimal } from "../../format";
 import { AppLineChart } from "./AppLineChart";
 
@@ -11,7 +11,7 @@ export type WealthPercentileChartLine = {
 };
 
 /**
- * The wealth-percentile lines by year. On the log scale the points are top-% distances (100 − p)
+ * The wealth-percentile lines by year, without a legend (the rail beside the chart names the lines). On the log scale the points are top-% distances (100 − p)
  * on a reversed log axis, so ticks and tooltip read back as percentiles.
  */
 export function WealthPercentileChart({
@@ -52,7 +52,6 @@ export function WealthPercentileChart({
       ) : (
         <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fill: "var(--muted)", fontSize: 10 }} width={30} />
       )}
-      <Legend itemSorter={null} />
       {lines.map((l) => (
         <Line
           key={l.dataKey}

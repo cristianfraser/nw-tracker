@@ -2039,17 +2039,7 @@
   "wealthPercentile": {
     "title": "Wealth percentile",
     "empty": "No percentile data.",
-    "chart": {
-      "seriesTotal": "Total percentile (CL)",
-      "seriesFinancial": "Financial percentile (CL)",
-      "seriesBenchmark": "Percentile ({{country}})",
-      "scaleLabel": "Scale",
-      "scaleLinear": "Linear",
-      "scaleLog": "Log (top %)"
-    },
-    "settings": {
-      "title": "Benchmark countries"
-    },
+    "belowSupport": "< p10",
     "countries": {
       "US": "United States",
       "ES": "Spain",
@@ -2062,20 +2052,57 @@
       "BR": "Brazil",
       "CN": "Mainland China"
     },
-    "tables": {
-      "myData": "My data",
-      "countryData": "Country data"
+    "headline": {
+      "inChile": "in Chile",
+      "top": "top {{percent}} %",
+      "financial": "Financial wealth",
+      "netWorth": "net worth",
+      "asOf": "on {{date}}, against the {{year}} distribution"
     },
-    "table": {
+    "chart": {
+      "title": "Percentile by year",
+      "scaleLabel": "Scale",
+      "scaleLinear": "Linear",
+      "scaleLog": "Log",
+      "scaleLinearName": "Linear scale",
+      "scaleLogName": "Log scale (top %)"
+    },
+    "series": {
+      "chile": "Chile",
+      "chileFinancial": "Chile · financial",
+      "chileFinancialWealth": "Chile · financial wealth"
+    },
+    "rail": {
+      "title": "Today, by country",
+      "compareWith": "Compare with"
+    },
+    "years": {
+      "title": "By year",
       "year": "Year",
       "netWorth": "Net worth",
-      "finNetWorth": "Fin. net worth"
+      "financial": "Financial",
+      "chileFinancial": "Chile fin.",
+      "financialDetail": "financial {{percentile}} · {{amount}}",
+      "rowLabel": "{{year}}: {{percentile}} in Chile, net worth {{netWorth}}, financial wealth {{financialPercentile}}, {{financialNetWorth}}",
+      "thresholds": {
+        "title": "What each percentile took in {{year}}, and where you stood",
+        "distribution": "Distribution",
+        "you": "You"
+      }
     },
-    "belowSupport": "< p10",
-    "markers": {
-      "distributionYear": "* uses the latest available databook distribution ({{year}})",
-      "interpolated": "† parameters interpolated 2022→2025",
-      "reconstructed": "‡ own reconstruction (not an official UBS figure)"
+    "notes": {
+      "latestDistribution": {
+        "tag": "{{year}} distribution",
+        "text": "no databook for the year yet, so it is placed in the latest one."
+      },
+      "interpolated": {
+        "tag": "interpolated",
+        "text": "distribution interpolated between the 2022 and 2025 databooks, whose methods differ."
+      },
+      "reconstructed": {
+        "tag": "own estimate",
+        "text": "Chile's distribution rebuilt from the report's Gini and millionaire count, not a printed UBS figure."
+      }
     }
   },
   "projections": {

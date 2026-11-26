@@ -6557,37 +6557,9 @@
       "en": "No percentile data.",
       "es": "Sin datos de percentil."
     },
-    "chart": {
-      "seriesTotal": {
-        "en": "Total percentile (CL)",
-        "es": "Percentil total (CL)"
-      },
-      "seriesFinancial": {
-        "en": "Financial percentile (CL)",
-        "es": "Percentil financiero (CL)"
-      },
-      "seriesBenchmark": {
-        "en": "Percentile ({{country}})",
-        "es": "Percentil ({{country}})"
-      },
-      "scaleLabel": {
-        "en": "Scale",
-        "es": "Escala"
-      },
-      "scaleLinear": {
-        "en": "Linear",
-        "es": "Lineal"
-      },
-      "scaleLog": {
-        "en": "Log (top %)",
-        "es": "Log (top %)"
-      }
-    },
-    "settings": {
-      "title": {
-        "en": "Benchmark countries",
-        "es": "Países de referencia"
-      }
+    "belowSupport": {
+      "en": "< p10",
+      "es": "< p10"
     },
     "countries": {
       "US": {
@@ -6631,17 +6603,83 @@
         "es": "China continental"
       }
     },
-    "tables": {
-      "myData": {
-        "en": "My data",
-        "es": "Mis datos"
+    "headline": {
+      "inChile": {
+        "en": "in Chile",
+        "es": "en Chile"
       },
-      "countryData": {
-        "en": "Country data",
-        "es": "Datos país"
+      "top": {
+        "en": "top {{percent}} %",
+        "es": "top {{percent}} %"
+      },
+      "financial": {
+        "en": "Financial wealth",
+        "es": "Patrimonio financiero"
+      },
+      "netWorth": {
+        "en": "net worth",
+        "es": "patrimonio"
+      },
+      "asOf": {
+        "en": "on {{date}}, against the {{year}} distribution",
+        "es": "al {{date}}, contra la distribución de {{year}}"
       }
     },
-    "table": {
+    "chart": {
+      "title": {
+        "en": "Percentile by year",
+        "es": "Percentil por año"
+      },
+      "scaleLabel": {
+        "en": "Scale",
+        "es": "Escala"
+      },
+      "scaleLinear": {
+        "en": "Linear",
+        "es": "Lineal"
+      },
+      "scaleLog": {
+        "en": "Log",
+        "es": "Log"
+      },
+      "scaleLinearName": {
+        "en": "Linear scale",
+        "es": "Escala lineal"
+      },
+      "scaleLogName": {
+        "en": "Log scale (top %)",
+        "es": "Escala logarítmica (top %)"
+      }
+    },
+    "series": {
+      "chile": {
+        "en": "Chile",
+        "es": "Chile"
+      },
+      "chileFinancial": {
+        "en": "Chile · financial",
+        "es": "Chile · financiero"
+      },
+      "chileFinancialWealth": {
+        "en": "Chile · financial wealth",
+        "es": "Chile · patrimonio financiero"
+      }
+    },
+    "rail": {
+      "title": {
+        "en": "Today, by country",
+        "es": "Hoy, por país"
+      },
+      "compareWith": {
+        "en": "Compare with",
+        "es": "Comparar con"
+      }
+    },
+    "years": {
+      "title": {
+        "en": "By year",
+        "es": "Por año"
+      },
       "year": {
         "en": "Year",
         "es": "Año"
@@ -6650,27 +6688,67 @@
         "en": "Net worth",
         "es": "Patrimonio"
       },
-      "finNetWorth": {
-        "en": "Fin. net worth",
-        "es": "Patr. financiero"
+      "financial": {
+        "en": "Financial",
+        "es": "Financiero"
+      },
+      "chileFinancial": {
+        "en": "Chile fin.",
+        "es": "Chile fin."
+      },
+      "financialDetail": {
+        "en": "financial {{percentile}} · {{amount}}",
+        "es": "financiero {{percentile}} · {{amount}}"
+      },
+      "rowLabel": {
+        "en": "{{year}}: {{percentile}} in Chile, net worth {{netWorth}}, financial wealth {{financialPercentile}}, {{financialNetWorth}}",
+        "es": "{{year}}: {{percentile}} en Chile, patrimonio {{netWorth}}, patrimonio financiero {{financialPercentile}}, {{financialNetWorth}}"
+      },
+      "thresholds": {
+        "title": {
+          "en": "What each percentile took in {{year}}, and where you stood",
+          "es": "Cuánto pedía cada percentil en {{year}} y dónde estabas"
+        },
+        "distribution": {
+          "en": "Distribution",
+          "es": "Distribución"
+        },
+        "you": {
+          "en": "You",
+          "es": "Tú"
+        }
       }
     },
-    "belowSupport": {
-      "en": "< p10",
-      "es": "< p10"
-    },
-    "markers": {
-      "distributionYear": {
-        "en": "* uses the latest available databook distribution ({{year}})",
-        "es": "* usa la distribución del último databook disponible ({{year}})"
+    "notes": {
+      "latestDistribution": {
+        "tag": {
+          "en": "{{year}} distribution",
+          "es": "distribución {{year}}"
+        },
+        "text": {
+          "en": "no databook for the year yet, so it is placed in the latest one.",
+          "es": "aún no hay databook del año, así que se ubica en el último disponible."
+        }
       },
       "interpolated": {
-        "en": "† parameters interpolated 2022→2025",
-        "es": "† parámetros interpolados 2022→2025"
+        "tag": {
+          "en": "interpolated",
+          "es": "interpolada"
+        },
+        "text": {
+          "en": "distribution interpolated between the 2022 and 2025 databooks, whose methods differ.",
+          "es": "distribución interpolada entre los databooks de 2022 y 2025, de metodologías distintas."
+        }
       },
       "reconstructed": {
-        "en": "‡ own reconstruction (not an official UBS figure)",
-        "es": "‡ reconstrucción propia (no es cifra oficial de UBS)"
+        "tag": {
+          "en": "own estimate",
+          "es": "estimación propia"
+        },
+        "text": {
+          "en": "Chile's distribution rebuilt from the report's Gini and millionaire count, not a printed UBS figure.",
+          "es": "distribución de Chile reconstruida con el Gini y el número de millonarios del informe; no es una cifra impresa de UBS."
+        }
       }
     }
   },
