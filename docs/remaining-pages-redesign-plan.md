@@ -32,7 +32,7 @@ proposed split into one-session work items.
 | `/account/:id` cuenta corriente / vista, and every other cash ledger (a broker's peso or dollar cash, the exchange's peso wallet, a foreign-currency account; item B1, done) | `CheckingAccountDetailPage` | redesigned |
 | `/account/:id` property, mortgage | `DeptoAccountDetailPage` | redesigned |
 | `/account/:id` everything else: stock, coin, fund (AFP, AFC, APV), an account valued by stored balances, an option contract (item B2, done) | `PositionAccountDetailPage` | redesigned |
-| `/flows` | `FlowsOverviewPage` | **old**, mild (item J) |
+| `/flows` | `FlowsOverviewPage` | redesigned |
 | `/flows/income`, `/flows/expenses`, `/flows/expenses/groceries`, `/flows/expenses/real_estate[/:slug]`, `/flows/deposits`, `/flows/pl` | income, expenses, groceries, flows tables | redesigned |
 | `/flows/deposits/reconciliation` | `DepositsReconciliationPage` | **old** (item E) |
 | `/rates` | `RatesPage` | redesigned |
@@ -193,6 +193,11 @@ Two different kinds of account land here, and the page fits neither.
   returns table for the percentile years.
 
 ### J. `/flows` overview
+
+> **Done (2026-11-26):** `FlowsOverviewPeriodList` on the income page's month rows. The user's
+> steer on the mockup: the row's bar is centred on zero like the «Flows and P/L» chart (expenses
+> left, deposits and P/L right, negatives on the other side). `/flows/pl` still has the same
+> generic «Month detail» table.
 
 - Chart plus a paginated `ColumnTable` «Month detail». It has a phone rendering and does not
   overflow (3,700px). Its issue is consistency: the income and expenses pages next to it now

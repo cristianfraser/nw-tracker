@@ -4320,17 +4320,9 @@
         "en": "AFP+AFC (contributions)",
         "es": "AFP+AFC (cotizaciones)"
       },
-      "depositsPreTaxShort": {
-        "en": "Pre-tax",
-        "es": "Pre-impuesto"
-      },
       "cardSpentMinusPaid": {
         "en": "Cards: spent − paid",
         "es": "Tarjetas: gastado − pagado"
-      },
-      "cardSpentMinusPaidShort": {
-        "en": "Cards spent − paid",
-        "es": "Tarjetas gastado − pagado"
       },
       "cashChange": {
         "en": "Cash change",
@@ -4352,29 +4344,53 @@
         "en": "Investments change",
         "es": "Variación inversiones"
       },
-      "investmentsChangeShort": {
-        "en": "Inv. change",
-        "es": "Var. inversiones"
-      },
       "netWorthChange": {
         "en": "Net-worth change",
         "es": "Variación patrimonio"
-      },
-      "netWorthChangeShort": {
-        "en": "NW change",
-        "es": "Var. patrimonio"
       },
       "detailTitle": {
         "en": "Month detail",
         "es": "Detalle del mes"
       },
-      "totalsLabel": {
-        "en": "Totals:",
-        "es": "Totales:"
-      },
       "colMonth": {
         "en": "Month",
         "es": "Mes"
+      },
+      "summaryLabel": {
+        "en": "Net-worth change, all time:",
+        "es": "Variación patrimonio histórica:"
+      },
+      "sectionMonthly": {
+        "en": "Monthly summary",
+        "es": "Resumen mensual"
+      },
+      "sectionYearly": {
+        "en": "Yearly summary",
+        "es": "Resumen anual"
+      },
+      "groupCash": {
+        "en": "Cash",
+        "es": "Caja"
+      },
+      "groupInvestments": {
+        "en": "Investments",
+        "es": "Inversiones"
+      },
+      "groupNetWorth": {
+        "en": "Net worth",
+        "es": "Patrimonio"
+      },
+      "legendTotal": {
+        "en": "total: net-worth change",
+        "es": "total: variación patrimonio"
+      },
+      "rowLabel": {
+        "en": "{{period}}: net-worth change {{total}} ({{parts}})",
+        "es": "{{period}}: variación patrimonio {{total}} ({{parts}})"
+      },
+      "emptyMonths": {
+        "en": "No flow data.",
+        "es": "Sin datos de flujos."
       }
     },
     "pl": {

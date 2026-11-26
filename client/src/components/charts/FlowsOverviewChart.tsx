@@ -18,13 +18,14 @@ import {
 } from "./chartLayout";
 import { UNDER_SERIES_Z_INDEX } from "./chartZIndex";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
+import { FLOWS_OVERVIEW_COLORS } from "../flows/flowsOverviewColors";
 
 const CHART_ANIM_MS = 90;
 
-const EXPENSES_COLOR = "#ef4444";
-const DEPOSITS_COLOR = "#3b82f6";
-const PL_COLOR = "#60a5fa";
-const INCOME_COLOR = "#22c55e";
+const EXPENSES_COLOR = FLOWS_OVERVIEW_COLORS.expenses;
+const DEPOSITS_COLOR = FLOWS_OVERVIEW_COLORS.deposits;
+const PL_COLOR = FLOWS_OVERVIEW_COLORS.pl;
+const INCOME_COLOR = FLOWS_OVERVIEW_COLORS.income;
 
 /** `expenses` is pre-negated and stacks below the axis; `deposits` and `pl` stack above. */
 export type FlowsOverviewChartPoint = {
