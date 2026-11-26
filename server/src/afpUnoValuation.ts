@@ -5,7 +5,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
-import { AFP_CERT_FUND_UNIT_SCRATCH, assertFundSeriesClp, fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
+import { assertFundSeriesClp, fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
 
 /**
  * Cumulative AFP cuotas: Σ `movements.units_delta` on the account plus manual transfer legs.
@@ -55,30 +55,6 @@ export function latestAfpUnoFundUnitRowOnOrBeforeForDisplay(
   return r ? { day: r.day, unit_value: r.unit_value } : null;
 }
 
-/** Prior reputable valor cuota strictly before `beforeDay` (skips cert scratch rows). */
-export function priorAfpUnoFundUnitRowBeforeForDisplay(
-  seriesKey: string,
-  beforeDay: string
-): { day: string; unit_value: number } | null {
-  assertFundSeriesClp(seriesKey, "priorAfpUnoFundUnitRowBeforeForDisplay");
-  const rows = db
-    .prepare(
-      `SELECT day, unit_value, COALESCE(note, '') AS note FROM fund_unit_daily
-       WHERE series_key = ? AND day < ?
-       ORDER BY day DESC
-       LIMIT 60`
-    )
-    .all(seriesKey, beforeDay) as { day: string; unit_value: number; note: string }[];
-  for (const r of rows) {
-    if (!r.note.includes(AFP_CERT_FUND_UNIT_SCRATCH)) {
-      const v = r.unit_value;
-      if (v != null && Number.isFinite(v) && v > 0 && r.day) {
-        return { day: r.day, unit_value: v };
-      }
-    }
-  }
-  return null;
-}
 
 export function latestFundUnitClpOnOrBefore(seriesKey: string, asOfYmd: string): number | null {
   return latestFundUnitRowOnOrBefore(seriesKey, asOfYmd)?.unit_value ?? null;

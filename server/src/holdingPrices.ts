@@ -24,7 +24,7 @@ import {
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import { equityAsTradedClose } from "./equitySplits.js";
-import { AFP_CERT_FUND_UNIT_SCRATCH, assertFundSeriesClp, fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
+import { assertFundSeriesClp, fundUnitRowOnOrBeforeForDisplay } from "./fundUnitDaily.js";
 import type { Holding } from "./holdings.js";
 import { optionIntrinsicPerShare } from "./optionContracts.js";
 import type { CurrencyCode } from "./rates.js";
@@ -228,7 +228,7 @@ const stmtEquityCloses = db.prepare(
 );
 const stmtFundUnits = db.prepare(
   `SELECT day AS date, unit_value AS price FROM fund_unit_daily
-   WHERE series_key = ? AND day < ? AND unit_value > 0 AND COALESCE(note, '') NOT LIKE ?
+   WHERE series_key = ? AND day < ? AND unit_value > 0 AND cert_scratch = 0
    ORDER BY day`
 );
 
@@ -241,7 +241,7 @@ const stmtFundUnits = db.prepare(
 export function unitPriceSeries(h: InstrumentHolding, beforeYmd: string): UnitPricePoint[] {
   if (h.kind === "option") throw new Error(`unitPriceSeries: option ${h.occSymbol} has no stored price series`);
   if (h.kind === "fund") {
-    return stmtFundUnits.all(h.seriesKey, beforeYmd, `%${AFP_CERT_FUND_UNIT_SCRATCH}%`) as UnitPricePoint[];
+    return stmtFundUnits.all(h.seriesKey, beforeYmd) as UnitPricePoint[];
   }
   return stmtEquityCloses.all(tickerOf(h)!, beforeYmd) as UnitPricePoint[];
 }

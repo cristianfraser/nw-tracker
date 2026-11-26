@@ -20,6 +20,7 @@ import {
   runMarkInputChangeTriggers332,
   runMarkInputChangeTriggers333,
   runMarkInputChangeTriggers334,
+  runMarkInputChangeTriggers377,
   runMarketDisplaySeriesFxPair313,
   runMarketTablesAnyCurrency315,
 } from "./markInputTriggers.js";
@@ -443,6 +444,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "371_evidence_listing_facts.sql": runEvidenceListingFacts371,
   "372_mirror_merge_listing_facts.sql": runMirrorMergeListingFacts372,
   "373_bank_row_facts.sql": runBankRowFacts373,
+  "377_fund_unit_cert_scratch.sql": runMarkInputChangeTriggers377,
   "363_vendor_catalog_checking_names.sql": runVendorCatalog363,
 };
 

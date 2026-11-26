@@ -50,12 +50,16 @@ function assertSeriesWritableIn(seriesKey: string, currency: CurrencyCode): void
   }
 }
 
-/** Certificate scratch rows (`monto / cuotas` per movement line): never a display price. */
-export const AFP_CERT_FUND_UNIT_SCRATCH = "afp-cert:monto/cuotas_delta";
+const stmtDisplayRowOnOrBefore = db.prepare(
+  `SELECT day, unit_value FROM fund_unit_daily
+   WHERE series_key = ? AND day <= ? AND cert_scratch = 0 AND unit_value > 0
+   ORDER BY day DESC LIMIT 1`
+);
 
 /**
- * The display valor cuota on or before `ymd`, in the series' currency: the newest quoted row
- * (certificate scratch rows skipped within the 60 most recent), else the newest row of any kind.
+ * The display valor cuota on or before `ymd`, in the series' currency: the newest positive row
+ * that is not a certificate scratch price (`cert_scratch`, migration 377: `monto / cuotas` of one
+ * movement line, never a display price). Null when the series has no such row on or before the day.
  */
 export function fundUnitRowOnOrBeforeForDisplay(
   seriesKey: string,
@@ -63,27 +67,8 @@ export function fundUnitRowOnOrBeforeForDisplay(
 ): { day: string; unit_value: number; currency: CurrencyCode } | null {
   const currency = fundSeriesCurrency(seriesKey);
   if (currency == null) return null;
-  const rows = db
-    .prepare(
-      `SELECT day, unit_value, COALESCE(note, '') AS note FROM fund_unit_daily
-       WHERE series_key = ? AND day <= ?
-       ORDER BY day DESC
-       LIMIT 60`
-    )
-    .all(seriesKey, ymd) as { day: string; unit_value: number; note: string }[];
-  const valid = (r: { day: string; unit_value: number }) =>
-    r.day && r.unit_value != null && Number.isFinite(r.unit_value) && r.unit_value > 0;
-  for (const r of rows) {
-    if (!r.note.includes(AFP_CERT_FUND_UNIT_SCRATCH) && valid(r)) return { day: r.day, unit_value: r.unit_value, currency };
-  }
-  const any = db
-    .prepare(
-      `SELECT day, unit_value FROM fund_unit_daily
-       WHERE series_key = ? AND day <= ?
-       ORDER BY day DESC LIMIT 1`
-    )
-    .get(seriesKey, ymd) as { day: string; unit_value: number } | undefined;
-  return any && valid(any) ? { day: any.day, unit_value: any.unit_value, currency } : null;
+  const r = stmtDisplayRowOnOrBefore.get(seriesKey, ymd) as { day: string; unit_value: number } | undefined;
+  return r != null && Number.isFinite(r.unit_value) ? { day: r.day, unit_value: r.unit_value, currency } : null;
 }
 
 /**
@@ -98,7 +83,7 @@ export function writeFundUnitSeriesRows(opts: {
   assertSeriesWritableIn(opts.seriesKey, opts.currency);
   const up = db.prepare(
     `INSERT INTO fund_unit_daily (series_key, day, unit_value, currency, note) VALUES (?,?,?,?,?)
-     ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
+     ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note, cert_scratch = 0`
   );
   let n = 0;
   for (const r of opts.rows) {
@@ -249,7 +234,7 @@ export function upsertFundUnitSpotPreservingHistory(opts: {
   if (!opts.dryRun) {
     db.prepare(
       `INSERT INTO fund_unit_daily (series_key, day, unit_value, currency, note) VALUES (?,?,?,?,?)
-       ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
+       ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note, cert_scratch = 0`
     ).run(opts.seriesKey, opts.observationDay, px, currency, opts.note);
   }
 

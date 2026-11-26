@@ -539,8 +539,23 @@ export const CC_PLAN_PREPAYMENTS_SPEC: TriggerSpec = {
 
 const SPECS_334: readonly TriggerSpec[] = [...SPECS_333, CC_PLAN_PREPAYMENTS_SPEC];
 
+/**
+ * Migration 377: `fund_unit_daily.cert_scratch` decides whether a row is a display price (the
+ * display readers skip scratch rows), so it is watched like the price itself.
+ */
+const SPECS_377: readonly TriggerSpec[] = SPECS_334.map((s) =>
+  s.table === "fund_unit_daily" ? { ...s, watch: [...s.watch, "cert_scratch"] } : s
+);
+
 /** The newest mark specs: what the database logs now, and the trim rule of each logged table. */
-export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_334;
+export const CURRENT_MARK_INPUT_SPECS: readonly TriggerSpec[] = SPECS_377;
+
+/** Migration 377 hook: the `fund_unit_daily` triggers over its new column (only that table's, as in 332). */
+export function runMarkInputChangeTriggers377(dbi: DatabaseType): void {
+  const spec = SPECS_377.find((s) => s.table === "fund_unit_daily");
+  if (!spec) throw new Error("migration 377: no mark-input spec for fund_unit_daily");
+  installAnnulledPurchaseTriggers(dbi, spec, "377");
+}
 
 /**
  * Migration 318 hook part: the `accounts` triggers that name its columns, over the current column

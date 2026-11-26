@@ -137,7 +137,7 @@ const stmtGetBar = db.prepare(
 );
 const stmtUpsertBar = db.prepare(
   `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, ?)
-   ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
+   ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note, cert_scratch = 0`
 );
 
 /**

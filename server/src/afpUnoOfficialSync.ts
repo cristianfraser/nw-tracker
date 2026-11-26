@@ -96,7 +96,7 @@ export type AfpUnoOfficialSyncResult = {
 const stmtDisplayRow = db.prepare(`SELECT unit_value FROM fund_unit_daily WHERE series_key = ? AND day = ?`);
 const stmtUpsertDisplay = db.prepare(
   `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, ?)
-   ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
+   ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note, cert_scratch = 0`
 );
 
 /** Provenance of a display row: the official day it shows and the lag it was shifted by. */
