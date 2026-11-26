@@ -35,10 +35,9 @@ import {
 import {
   fintualCertV2PreferGoalsNavDisplay,
   fintualGoalsApiNavClpForImportNotes,
-  fintualGoalsApiPollYmdForState,
+  fintualGoalsApiPollYmdForImportNotes,
   fintualGoalsNavMatchesPriorPublishPosition,
 } from "./fintualCertV2Reconcile.js";
-import { loadGlobalSyncState } from "./globalSyncState.js";
 import {
   isRiskyNorrisProxyMtmSeries,
   riskyNorrisProxyAppliesOnYmd,
@@ -79,8 +78,7 @@ function fintualCertPositionMeta(
   let px = fu?.unit_value;
   let pxDay = fu?.day;
   const today = chileCalendarTodayYmd();
-  const goalsSyncState = loadGlobalSyncState();
-  const goalsNavClp = fintualGoalsApiNavClpForImportNotes(importNotes, goalsSyncState);
+  const goalsNavClp = fintualGoalsApiNavClpForImportNotes(importNotes);
   const cuotaPositionClp =
     cuotas != null && cuotas > 1e-9 && px != null && px > 0
       ? Math.round(cuotas * px * 100) / 100
@@ -90,7 +88,7 @@ function fintualCertPositionMeta(
     cuotaPositionClp,
     asOfYmd,
     todayYmd: today,
-    lastGoalsPollYmd: fintualGoalsApiPollYmdForState(goalsSyncState),
+    lastGoalsPollYmd: fintualGoalsApiPollYmdForImportNotes(importNotes),
     newestLocalCuotaFlowYmd: newestCuotaMovementYmdForAccount(accountId),
     navMatchesPriorPublishPosition: fintualGoalsNavMatchesPriorPublishPosition(
       accountId,

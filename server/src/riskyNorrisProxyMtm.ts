@@ -71,7 +71,7 @@ export function fintualGlobalSyncSettledForChileDay(ymd: string): boolean {
   const sig = state.fintualLastAppliedSig ?? state.fintualLastCheckSig;
   if (!fintualPollDayCaughtUp(ymd, publishYmd, state, sig)) return false;
   const reconcileYmd = publishYmd ?? ymd;
-  if (!fintualCertV2PollReconciled(reconcileYmd, state)) return false;
+  if (!fintualCertV2PollReconciled(reconcileYmd)) return false;
   return true;
 }
 

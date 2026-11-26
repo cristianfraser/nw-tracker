@@ -6,7 +6,7 @@ import { historyTierMemo } from "./cacheRegistry.js";
 import { db } from "./db.js";
 import { accountWithRoleOptional } from "./accountRoles.js";
 import {
-  FINTUAL_CERT_V2_ACCOUNT_NAMES,
+
   FINTUAL_CERT_V2_GOAL_IDS,
   isFintualCertV2AccountNotes,
 } from "./fintualCertV2.js";
@@ -19,7 +19,7 @@ import { fintualExpectsCuotaOnPollDay } from "./fintualPublishDate.js";
 import { assertFundSeriesClp, latestFundUnitRow } from "./fundUnitDaily.js";
 import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
-import { loadGlobalSyncState } from "./globalSyncState.js";
+import { fintualGoalNavClp, fintualGoalNavs } from "./fintualGoalNavs.js";
 
 /** Max |goals API − cuotas×cuota| (CLP) before v2 is treated as unreconciled. */
 export const FINTUAL_CERT_V2_RECONCILE_TOLERANCE_CLP = 1000;
@@ -31,21 +31,6 @@ const stmtDeleteFundUnitOnDay = db.prepare(
   `DELETE FROM fund_unit_daily WHERE series_key = ? AND day = ?`
 );
 
-/** Parse `fintualMappedNavSignature` payload (`goalId:navClp|…`). */
-export function parseFintualMappedNavSignature(sig: string | null | undefined): Map<string, number> {
-  const out = new Map<string, number>();
-  if (!sig?.trim()) return out;
-  for (const part of sig.split("|")) {
-    const i = part.indexOf(":");
-    if (i <= 0) continue;
-    const goalId = part.slice(0, i).trim();
-    const nav = Number(part.slice(i + 1));
-    if (!goalId || !Number.isFinite(nav)) continue;
-    out.set(goalId, Math.round(nav));
-  }
-  return out;
-}
-
 /** Fintual goal id for a v2 `import:fintual|cert|key=…` account, if mapped. */
 export function fintualCertV2GoalIdForImportNotes(importNotes: string): string | null {
   for (const [goalId, notes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
@@ -54,29 +39,30 @@ export function fintualCertV2GoalIdForImportNotes(importNotes: string): string |
   return null;
 }
 
-/** Latest polled goals API NAV for a v2 account (from global sync signature). */
-export function fintualGoalsApiNavClpForImportNotes(
-  importNotes: string,
-  state: GlobalSyncStateFile = loadGlobalSyncState()
-): number | null {
+/** Latest polled goals API NAV (pesos) for a v2 account (`fintual_goal_navs`), or null. */
+export function fintualGoalsApiNavClpForImportNotes(importNotes: string): number | null {
   const goalId = fintualCertV2GoalIdForImportNotes(importNotes);
-  if (!goalId) return null;
-  const sig = state.fintualLastCheckSig ?? state.fintualLastAppliedSig;
-  const nav = parseFintualMappedNavSignature(sig).get(goalId);
-  return nav != null && Number.isFinite(nav) ? nav : null;
+  return goalId ? fintualGoalNavClp(goalId) : null;
 }
 
 /**
- * Chile day the goals NAV read by {@link fintualGoalsApiNavClpForImportNotes} was last polled —
- * mirrors that function's `fintualLastCheckSig ?? fintualLastAppliedSig` selection so the day
- * matches the signature the NAV came from. Null when never polled.
+ * Chile day the goals NAV read by {@link fintualGoalsApiNavClpForImportNotes} was polled (the
+ * same row), or null when no poll stated one.
  */
-export function fintualGoalsApiPollYmdForState(
-  state: GlobalSyncStateFile = loadGlobalSyncState()
-): string | null {
-  return state.fintualLastCheckSig != null
-    ? state.fintualLastCheckYmd ?? null
-    : state.fintualLastAppliedYmd ?? null;
+export function fintualGoalsApiPollYmdForImportNotes(importNotes: string): string | null {
+  const goalId = fintualCertV2GoalIdForImportNotes(importNotes);
+  return goalId ? (fintualGoalNavs().get(goalId)?.polled_ymd ?? null) : null;
+}
+
+/** Every stored goals NAV of a tracked goal: goal id, its account, its import key and the pesos. */
+function storedTrackedGoalNavs(): { goalId: string; accountId: number; importNotes: string; navClp: number }[] {
+  const out: { goalId: string; accountId: number; importNotes: string; navClp: number }[] = [];
+  for (const row of fintualGoalNavs().values()) {
+    const importNotes = FINTUAL_CERT_V2_GOAL_IDS[row.goal_id];
+    if (!importNotes) throw new Error(`fintual_goal_navs: goal ${row.goal_id} is not a tracked goal (fintualGoals.ts)`);
+    out.push({ goalId: row.goal_id, accountId: row.account_id, importNotes, navClp: fintualGoalNavClp(row.goal_id)! });
+  }
+  return out;
 }
 
 export function fintualCertV2PositionFromCuotaClp(
@@ -261,99 +247,25 @@ export function fintualMorningCarryPerFundUnresolved(
   if (!pollYmd || pollYmd >= cl.ymd) return false;
   if (!fintualExpectsCuotaOnPollDay(pollYmd)) return false;
   const publishYmd = state.fintualLastPublishYmd ?? pollYmd;
-  return fintualCertV2AnyHeldFundMissingDayRow(publishYmd, state);
+  return fintualCertV2AnyHeldFundMissingDayRow(publishYmd);
 }
 
-/** Any mapped held v2 fund is still missing its `publishYmd` bar (see the per-account check). */
-export function fintualCertV2AnyHeldFundMissingDayRow(
-  publishYmd: string,
-  state: GlobalSyncStateFile = loadGlobalSyncState()
-): boolean {
-  const goalsById = parseFintualMappedNavSignature(
-    state.fintualLastCheckSig ?? state.fintualLastAppliedSig
-  );
-  if (goalsById.size === 0) return false;
-  for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
-    if (goalsById.get(goalId) == null) continue;
-    const accId = accountWithRoleOptional("fintual_goal", goalId);
-    if (accId == null) continue;
-    const acc = { id: accId };
-    if (fintualCertV2HeldFundMissingDayRow(acc.id, importNotes, publishYmd)) return true;
-  }
-  return false;
+/**
+ * Any held v2 fund the latest poll stated a goals NAV for (`fintual_goal_navs`) is still missing
+ * its `publishYmd` bar (see the per-account check).
+ */
+export function fintualCertV2AnyHeldFundMissingDayRow(publishYmd: string): boolean {
+  return storedTrackedGoalNavs().some((g) => fintualCertV2HeldFundMissingDayRow(g.accountId, g.importNotes, publishYmd));
 }
 
-/** All mapped v2 cert accounts reconcile goals API vs cuotas×cuota on `publishYmd`. */
-export function fintualCertV2PollReconciled(
-  publishYmd: string,
-  state: GlobalSyncStateFile = loadGlobalSyncState()
-): boolean {
-  const goalsById = parseFintualMappedNavSignature(
-    state.fintualLastCheckSig ?? state.fintualLastAppliedSig
+/**
+ * Every v2 account the latest poll stated a goals NAV for reconciles it against cuotas × cuota
+ * on `publishYmd`; vacuously true when no poll stated one (a fresh database, the demo).
+ */
+export function fintualCertV2PollReconciled(publishYmd: string): boolean {
+  return storedTrackedGoalNavs().every((g) =>
+    fintualCertV2AccountReconciledOnDay(g.accountId, g.importNotes, publishYmd, g.navClp)
   );
-  if (goalsById.size === 0) return true;
-
-  let checked = 0;
-  for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
-    const goalsNav = goalsById.get(goalId);
-    if (goalsNav == null) continue;
-    const accId = accountWithRoleOptional("fintual_goal", goalId);
-    if (accId == null) continue;
-    const acc = { id: accId };
-    if (!fintualCertV2AccountReconciledOnDay(acc.id, importNotes, publishYmd, goalsNav)) {
-      return false;
-    }
-    checked += 1;
-  }
-  return checked > 0;
-}
-
-export type FintualCertV2ReconcileRow = {
-  goalId: string;
-  goalName: string;
-  importNotes: string;
-  accountId: number;
-  goalsNavClp: number;
-  cuotaPositionClp: number | null;
-  unitClp: number | null;
-  reconciled: boolean;
-};
-
-export function listFintualCertV2ReconcileRows(
-  publishYmd: string,
-  state: GlobalSyncStateFile = loadGlobalSyncState()
-): FintualCertV2ReconcileRow[] {
-  const goalsById = parseFintualMappedNavSignature(
-    state.fintualLastCheckSig ?? state.fintualLastAppliedSig
-  );
-  const out: FintualCertV2ReconcileRow[] = [];
-  for (const [goalId, importNotes] of Object.entries(FINTUAL_CERT_V2_GOAL_IDS)) {
-    const goalsNav = goalsById.get(goalId);
-    if (goalsNav == null) continue;
-    const accId = accountWithRoleOptional("fintual_goal", goalId);
-    if (accId == null) continue;
-    const acc = { id: accId };
-    const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
-    if (seriesKey != null) assertFundSeriesClp(seriesKey, "fintualCertV2Reconcile");
-    const unitRow =
-      seriesKey != null
-        ? (stmtFundUnitOnDay.get(seriesKey, publishYmd) as
-            | { unit_value: number; note: string }
-            | undefined)
-        : undefined;
-    const cuotaPos = fintualCertV2PositionFromCuotaClp(acc.id, importNotes, publishYmd);
-    out.push({
-      goalId,
-      goalName: FINTUAL_CERT_V2_ACCOUNT_NAMES[importNotes] ?? goalId,
-      importNotes,
-      accountId: acc.id,
-      goalsNavClp: goalsNav,
-      cuotaPositionClp: cuotaPos,
-      unitClp: unitRow?.unit_value ?? null,
-      reconciled: fintualCertV2AccountReconciledOnDay(acc.id, importNotes, publishYmd, goalsNav),
-    });
-  }
-  return out;
 }
 
 /** Drop inferred fund_unit rows that disagree with goals API (goals balance lagging cuota publish). */

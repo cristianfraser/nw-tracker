@@ -5,11 +5,12 @@ import {
   fintualCertV2GoalsCuotaReconciled,
   fintualCertV2HeldFundMissingDayRow,
   fintualCertV2PreferGoalsNavDisplay,
-  fintualGoalsApiPollYmdForState,
+  fintualGoalsApiNavClpForImportNotes,
+  fintualGoalsApiPollYmdForImportNotes,
   fintualGoalsNavMatchesPriorPublishPosition,
   fintualMorningCarryPerFundUnresolved,
-  parseFintualMappedNavSignature,
 } from "./fintualCertV2Reconcile.js";
+import { writeFintualGoalNavs } from "./fintualGoalNavs.js";
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { fintualExpectsCuotaOnPollDay } from "./fintualPublishDate.js";
@@ -59,12 +60,6 @@ function ensureCertV2Account(notes: string): { accountId: number; cleanup: () =>
 }
 
 describe("fintualCertV2Reconcile", () => {
-  it("parses mapped nav signature", () => {
-    const m = parseFintualMappedNavSignature("2859:10000000|16749:40000000");
-    expect(m.get("2859")).toBe(10000000);
-    expect(m.get("16749")).toBe(40000000);
-  });
-
   it("detects goals vs cuota position mismatch", () => {
     expect(
       fintualCertV2GoalsCuotaReconciled({ goalsNavClp: 10_000_000, cuotaPositionClp: 10_400_000 })
@@ -133,22 +128,23 @@ describe("fintualCertV2Reconcile", () => {
     ).toBe(true);
   });
 
-  it("resolves goals poll ymd from sync state (check sig wins over applied)", () => {
-    expect(
-      fintualGoalsApiPollYmdForState({
-        fintualLastCheckSig: "2859:1",
-        fintualLastCheckYmd: "2026-07-08",
-        fintualLastAppliedSig: "2859:1",
-        fintualLastAppliedYmd: "2026-07-07",
-      })
-    ).toBe("2026-07-08");
-    expect(
-      fintualGoalsApiPollYmdForState({
-        fintualLastAppliedSig: "2859:1",
-        fintualLastAppliedYmd: "2026-07-07",
-      })
-    ).toBe("2026-07-07");
-    expect(fintualGoalsApiPollYmdForState({})).toBeNull();
+  it("reads the goals NAV and its poll day from the database, not the sync state", () => {
+    const notes = "import:fintual|cert|key=apv_b";
+    const goalId = "78515";
+    const { accountId, cleanup } = ensureCertV2Account(notes);
+    try {
+      expect(fintualGoalsApiNavClpForImportNotes(notes)).toBeNull();
+      expect(fintualGoalsApiPollYmdForImportNotes(notes)).toBeNull();
+      writeFintualGoalNavs("2026-07-08", [{ goalId, accountId, navClp: 1_234_567.4 }]);
+      expect(fintualGoalsApiNavClpForImportNotes(notes)).toBe(1_234_567);
+      expect(fintualGoalsApiPollYmdForImportNotes(notes)).toBe("2026-07-08");
+      // A later poll that states no NAV for the goal leaves none on file.
+      writeFintualGoalNavs("2026-07-09", []);
+      expect(fintualGoalsApiNavClpForImportNotes(notes)).toBeNull();
+    } finally {
+      db.prepare(`DELETE FROM fintual_goal_navs WHERE goal_id = ?`).run(goalId);
+      cleanup();
+    }
   });
 
   it("treats a held fund's missing publish-day bar as unreconciled (late publisher)", () => {
@@ -211,6 +207,7 @@ describe("fintualCertV2Reconcile", () => {
         fintualLastCheckSig: `${goalId}:${nav}`,
         fintualLastAppliedSig: `${goalId}:${nav}`,
       };
+      writeFintualGoalNavs(pollYmd, [{ goalId, accountId, navClp: nav }]);
       const nextMorning = chileClockAt(chileCalendarAddDays(pollYmd, 1), 9);
 
       // Missing bar on yesterday's publish day → morning carry stays unresolved.
@@ -228,6 +225,7 @@ describe("fintualCertV2Reconcile", () => {
       ).run(seriesKey, pollYmd);
       expect(fintualMorningCarryPerFundUnresolved(nextMorning, state)).toBe(false);
     } finally {
+      db.prepare(`DELETE FROM fintual_goal_navs WHERE goal_id = ?`).run(goalId);
       db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = 'vitest-morning-carry'`).run(accountId);
       db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ? AND note = 'vitest-morning-carry'`).run(seriesKey);
       cleanup();

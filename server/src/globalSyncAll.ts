@@ -96,6 +96,7 @@ import {
   collectFintualGoalValuationChanges,
   fintualEveningCatchUpComplete,
   fintualMappedGoalsApiSignature,
+  resolveFintualGoalApplyAccount,
   fintualNavUnchangedSinceLastApply,
   fintualSnapshotMatchesDb,
   markFintualAppliedFromPoll,
@@ -105,6 +106,7 @@ import {
   syncFintualFundUnitsFromResolutions,
 } from "./fintualApplyShared.js";
 import { fintualCertGoalImportKeyById } from "./fintualCertV2.js";
+import { writeFintualGoalNavs } from "./fintualGoalNavs.js";
 import {
   fintualCertV2AnyHeldFundMissingDayRow,
   fintualCertV2PollReconciled,
@@ -450,10 +452,22 @@ async function runFintual(
     carryPollYmd != null &&
     cl.hour < 18 &&
     (fintualPollDayStillUnresolved(carryPollYmd, publishYmd, state, sig) ||
-      fintualCertV2AnyHeldFundMissingDayRow(publishYmd, state));
+      fintualCertV2AnyHeldFundMissingDayRow(publishYmd));
   state.fintualLastPublishYmd = publishYmd;
   state.fintualLastCheckSig = sig;
   state.fintualLastCheckYmd = stillUnresolved ? carryPollYmd : cl.ymd;
+  // The goals NAV the signature carries, as a value: valuation and the reconcile checks read it
+  // from the database (`fintualGoalNavs.ts`); the signature stays scheduling state.
+  if (!syncDryRun) {
+    writeFintualGoalNavs(
+      state.fintualLastCheckYmd,
+      resolutions.map((r) => ({
+        goalId: String(r.row.id),
+        accountId: resolveFintualGoalApplyAccount(r.row).accountId,
+        navClp: r.goalsApiNavClp,
+      }))
+    );
+  }
   if (!stillUnresolved && carryPollYmd && !syncDryRun) {
     state.fintualEveningSettledYmd = carryPollYmd;
   }
@@ -485,7 +499,7 @@ async function runFintual(
     // A late-publishing fund can land its cuota while the goals NAV endpoint still serves the
     // prior day's totals (both lag independently): the sig is unchanged but the publish-day bar
     // is missing. Write it now, or the poll loop would spin without ever recording the price.
-    if (fintualCertV2AnyHeldFundMissingDayRow(snap.asOfDate, state)) {
+    if (fintualCertV2AnyHeldFundMissingDayRow(snap.asOfDate)) {
       const recorded = syncFintualFundUnitsFromResolutions(resolutions, snap.asOfDate, syncDryRun);
       if (recorded > 0) {
         if (!syncDryRun) invalidateMarketDataAggregations();
@@ -532,7 +546,7 @@ async function runFintual(
     if (
       !syncDryRun &&
       fintualEveningCatchUpComplete(rowsWithMatch, overrides, pollCl, publishYmd) &&
-      fintualCertV2PollReconciled(snap.asOfDate, state)
+      fintualCertV2PollReconciled(snap.asOfDate)
     ) {
       state.fintualEveningSettledYmd = pollCl.ymd;
     }
@@ -563,7 +577,7 @@ async function runFintual(
     markFintualEveningSettledWhenCurrent(state, pollCl, snap, syncDryRun, resolutions);
     if (
       fintualEveningCatchUpComplete(rowsWithMatch, overrides, pollCl, publishYmd) &&
-      fintualCertV2PollReconciled(snap.asOfDate, state)
+      fintualCertV2PollReconciled(snap.asOfDate)
     ) {
       state.fintualEveningSettledYmd = pollCl.ymd;
     }

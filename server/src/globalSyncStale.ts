@@ -203,7 +203,7 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
     state.fintualLastCheckSig != null &&
     state.fintualLastCheckSig === state.fintualLastAppliedSig
   ) {
-    return !fintualCertV2PollReconciled(state.fintualLastAppliedPublishYmd, state);
+    return !fintualCertV2PollReconciled(state.fintualLastAppliedPublishYmd);
   }
   if (
     state.fintualEveningSettledYmd === cl.ymd &&
@@ -214,7 +214,7 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
     state.fintualLastCheckSig === state.fintualLastAppliedSig
   ) {
     const publishYmd = state.fintualLastAppliedPublishYmd ?? cl.ymd;
-    if (!fintualCertV2PollReconciled(publishYmd, state)) return true;
+    if (!fintualCertV2PollReconciled(publishYmd)) return true;
     return false;
   }
   if (state.fintualLastCheckYmd !== cl.ymd) return true;
@@ -234,7 +234,7 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
     state.fintualLastCheckYmd === cl.ymd &&
     state.fintualLastCheckSig != null &&
     state.fintualLastCheckSig === state.fintualLastAppliedSig &&
-    !fintualCertV2PollReconciled(publishYmd, state)
+    !fintualCertV2PollReconciled(publishYmd)
   ) {
     return true;
   }
@@ -383,7 +383,7 @@ export function fintualPublisherLag(
     expected = chileCalendarAddDays(expected, 1);
   }
   if (expected > cap) return null;
-  if (fintualCertV2AnyHeldFundMissingDayRow(published, state)) return null;
+  if (fintualCertV2AnyHeldFundMissingDayRow(published)) return null;
   return recentPollLag(expected, published, opts.lastCheckedAt, opts.nowMs);
 }
 

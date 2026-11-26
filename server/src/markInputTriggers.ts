@@ -692,6 +692,7 @@ export const WRITE_LOGGED_TABLES: readonly string[] = [
   "cc_plan_prepayments",
   "broker_instruments",
   "flow_event_times",
+  "fintual_goal_navs",
 ];
 
 /**

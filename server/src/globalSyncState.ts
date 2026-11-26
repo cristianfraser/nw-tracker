@@ -88,9 +88,10 @@ function migrateLoadedState(state: GlobalSyncStateFile): GlobalSyncStateFile {
 let parsedState: { stamp: string; state: GlobalSyncStateFile } | null = null;
 
 /**
- * The Fintual fields valuation reads (the APV proxy gate and its per-date hold, the goals-NAV
- * display choice, the settled check). A sync run that changes them without writing a row must
- * still drop the cached values built on the old ones (`runGlobalSyncAll`).
+ * The Fintual scheduling fields valuation consults (the APV proxy gate's settled check: poll and
+ * publish days, the signatures' equality). The goals NAV itself is a table (`fintual_goal_navs`),
+ * whose writes reach the caches through the change log. A sync run that changes these fields
+ * without writing a row must still drop the cached values built on the old ones (`runGlobalSyncAll`).
  */
 export function fintualValuationStateFingerprint(state: GlobalSyncStateFile): string {
   return JSON.stringify([

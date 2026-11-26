@@ -358,7 +358,7 @@ export function markFintualEveningSettledWhenCurrent(
   if (dryRun || cl.hour < 18) return;
   if (fintualPublishLagsPollCalendarDay(cl, snap.asOfDate)) return;
   if (!fintualSnapshotMatchesDb(snap, resolutions)) return;
-  if (!fintualCertV2PollReconciled(snap.asOfDate, state)) return;
+  if (!fintualCertV2PollReconciled(snap.asOfDate)) return;
   state.fintualEveningSettledYmd = cl.ymd;
 }
 
