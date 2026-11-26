@@ -450,8 +450,9 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
  * Migrations that rebuild a table referenced by ON DELETE CASCADE children. With
  * foreign_keys=ON, DROP TABLE performs an implicit DELETE whose cascade actions wipe the
  * child tables, and the pragma is a no-op inside the migration transaction — so these
- * run with foreign keys off around the transaction. Their hooks must finish with a
- * PRAGMA foreign_key_check before committing.
+ * run with foreign keys off around the transaction. The runner itself runs
+ * `PRAGMA foreign_key_check` after the SQL and the hook, inside the migration's transaction, and
+ * throws (rolling the migration back) when a row points at nothing (`assertNoForeignKeyViolations`).
  */
 const FOREIGN_KEYS_OFF_MIGRATIONS = new Set([
   "169_movements_amount_currency.sql",
@@ -464,6 +465,24 @@ const FOREIGN_KEYS_OFF_MIGRATIONS = new Set([
   "319_cc_statement_line_amount_currency.sql",
   "321_cc_card_amounts_by_currency.sql",
 ]);
+
+type ForeignKeyViolation = { table: string; rowid: number | null; parent: string; fkid: number };
+
+/**
+ * A migration that ran with foreign keys off must leave every reference whole: SQLite does not
+ * check them while the pragma is off, so a rebuild that drops or renumbers a parent row commits
+ * silently and the orphans surface later as missing data. Throws inside the migration's
+ * transaction, so nothing of the migration is kept.
+ */
+function assertNoForeignKeyViolations(file: string): void {
+  const rows = dbInternal.pragma("foreign_key_check") as ForeignKeyViolation[];
+  if (rows.length === 0) return;
+  const first = rows
+    .slice(0, 5)
+    .map((r) => `${r.table} rowid ${r.rowid ?? "?"} → ${r.parent} (fk ${r.fkid})`)
+    .join("; ");
+  throw new Error(`migration ${file}: ${rows.length} foreign key violation(s) after a foreign-keys-off migration: ${first}`);
+}
 
 export function runMigrations() {
   if (!fs.existsSync(migrationsDir)) {
@@ -489,6 +508,7 @@ export function runMigrations() {
     if (already) return false;
     execMigrationSql(sql);
     POST_MIGRATION_HOOKS[file]?.(dbInternal);
+    if (FOREIGN_KEYS_OFF_MIGRATIONS.has(file)) assertNoForeignKeyViolations(file);
     dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
     return true;
   });

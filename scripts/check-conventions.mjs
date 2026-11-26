@@ -188,6 +188,37 @@ if (fs.existsSync(MIGRATIONS_DIR)) {
 }
 
 /**
+ * Migration identity: the runner records a migration by its full filename and applies files in
+ * name order, so two files with one number apply in an order nobody chose, and a renumbered file
+ * runs again on every database that applied it under its old name. Every number names one file.
+ * The one historical pair below landed on main from two branches before this check existed and
+ * is applied everywhere under both names; renaming either now would re-run it.
+ */
+const DUPLICATE_MIGRATION_NUMBER_ALLOWLIST = new Map([["226", ["226_payroll_parameters.sql", "226_soxx_unit.sql"]]]);
+
+if (fs.existsSync(MIGRATIONS_DIR)) {
+  const byNumber = new Map();
+  for (const entry of fs.readdirSync(MIGRATIONS_DIR).sort()) {
+    if (!entry.endsWith(".sql")) continue;
+    const m = /^(\d+)_/.exec(entry);
+    if (!m) {
+      problems.push(`server/migrations/${entry}: a migration filename starts with its number and an underscore (NNN_name.sql)`);
+      continue;
+    }
+    const n = String(Number(m[1]));
+    byNumber.set(n, [...(byNumber.get(n) ?? []), entry]);
+  }
+  for (const [n, entries] of byNumber) {
+    if (entries.length < 2) continue;
+    const allowed = DUPLICATE_MIGRATION_NUMBER_ALLOWLIST.get(n);
+    if (allowed && allowed.length === entries.length && entries.every((e) => allowed.includes(e))) continue;
+    problems.push(
+      `server/migrations: migration number ${n} names ${entries.length} files (${entries.join(", ")}) — give the newer one the next free number`
+    );
+  }
+}
+
+/**
  * Currency hardcoding (rules 8–13, docs/any-currency-plan.md «Guard, landing with A1»). A display
  * unit is any currency of `currencies`; code must not name a fixed set of them. Scans server/src,
  * client/src, server/contracts/src and ingest/src (tests and server/src/test excluded). Every hit
