@@ -16,7 +16,28 @@ import { buildPayrollBreakdown } from "../payrollBreakdown.js";
 import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
 import { saveVendorBranchChoice } from "../vendorCatalog.js";
-import type { CategoryRuleLinkKind } from "../expenseCategoryRules.js";
+import {
+  bigGroupLabelSchema,
+  expenseLineCategoryPatchSchema,
+  expenseLinePiecesPutSchema,
+  financingLinkUpsertSchema,
+  incomeMovementPatchSchema,
+  incomeRefundRequestSchema,
+  manualExpenseInputSchema,
+  purchaseBigGroupPutSchema,
+  purchaseNotePatchSchema,
+  realEstateAssignSchema,
+  realEstateBillMonthPatchSchema,
+  realEstateConsumptionPatchSchema,
+  realEstateLinkPutSchema,
+  realEstateMonthsCoveredPatchSchema,
+  realEstatePlaceCreateSchema,
+  realEstatePlaceDfl2PatchSchema,
+  refundLinkPutSchema,
+  vendorBranchChoiceSchema,
+  workEarningPatchSchema,
+} from "nw-tracker-contracts/requests/flows";
+import { parseBody } from "./shared.js";
 import { buildDepositsReconciliationPagePayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsResponse } from "../flowsDeposits.js";
 import { cachedMortgageCarryingEvents } from "../flowsMortgageCarrying.js";
@@ -35,18 +56,8 @@ import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
 import { listPropertyAccounts } from "../accountRoles.js";
 import { assignFlowExpenseLineCategory } from "../expenseAssignmentWrites.js";
 import { cardRefundCandidatesResponse, linkCardRefund, unlinkCardRefund } from "../cardRefundLinkWrites.js";
-import {
-  getExpenseLinePieces,
-  replaceExpenseLinePieces,
-  type ExpenseLinePieceInput,
-  type ExpenseLinePieceSource,
-} from "../expenseLinePieces.js";
-import {
-  createManualExpense,
-  deleteManualExpense,
-  updateManualExpense,
-  type ManualExpenseInput,
-} from "../flowsManualExpenses.js";
+import { getExpenseLinePieces, replaceExpenseLinePieces, type ExpenseLinePieceSource } from "../expenseLinePieces.js";
+import { createManualExpense, deleteManualExpense, updateManualExpense } from "../flowsManualExpenses.js";
 import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
 import { setCcExpensePurchaseNote } from "../ccExpensePurchaseNotes.js";
 import {
@@ -65,15 +76,12 @@ import { markCheckingExpenseRefund, unmarkCheckingExpenseRefund } from "../check
 import { transferCounterpartiesByMovementSide, withTransferCounterparties } from "../bankTransferNotices.js";
 import { checkingMovementShownName, loadDisplayNameContext } from "../expenseDisplayNames.js";
 import {
-  CHECKING_INCOME_KINDS,
-  type CheckingIncomeKind,
   clearCheckingIncomeForceInclude,
-  isCheckingIncomeKind,
   loadRentPlaceSlugByMovementId,
   restoreCheckingIncomeMovement,
   upsertCheckingIncomeMovementOverride,
 } from "../flowsCheckingIncomeOverrides.js";
-import { updatePayrollWorkEarning, type PayrollEarningType } from "../flowsPayrollWorkEarnings.js";
+import { updatePayrollWorkEarning } from "../flowsPayrollWorkEarnings.js";
 import {
   listPayrollLinkCandidates,
 } from "../payrollWorkEarningsLinking.js";
@@ -208,19 +216,8 @@ app.patch("/api/work-earnings/:id", writeHandler((req, res) => {
     res.status(400).json({ error: "invalid id" });
     return;
   }
-  const body = req.body as {
-    earning_type?: PayrollEarningType;
-    movement_id?: number | null;
-  };
-  if (body.earning_type != null && body.earning_type !== "salary" && body.earning_type !== "severance") {
-    res.status(400).json({ error: "earning_type must be salary or severance" });
-    return;
-  }
-  if (body.movement_id !== undefined && body.movement_id != null) {
-    if (!Number.isFinite(body.movement_id) || body.movement_id <= 0) {
-      res.status(400).json({ error: "invalid movement_id" });
-      return;
-    }
+  const body = parseBody(workEarningPatchSchema, req);
+  if (body.movement_id != null) {
     // Building the candidates may throw (a 500); a movement that is not one of them is the request's.
     const movementId = body.movement_id;
     if (!listPayrollLinkCandidates().some((c) => c.movement_id === movementId)) {
@@ -229,7 +226,7 @@ app.patch("/api/work-earnings/:id", writeHandler((req, res) => {
     }
   }
   const row = updatePayrollWorkEarning(id, {
-    earning_type: body.earning_type,
+    earning_type: body.earning_type ?? undefined,
     movement_id: body.movement_id,
   });
   res.json(row);
@@ -241,32 +238,7 @@ app.patch("/api/income/movements/:movement_id", linkSyncingWrite((req, res) => {
     res.status(400).json({ error: "invalid movement_id" });
     return;
   }
-  const body = req.body as {
-    income_kind?: CheckingIncomeKind;
-    rent_place_slug?: string;
-    excluded?: boolean;
-    force_include?: boolean;
-    note?: string | null;
-  };
-  if (body.rent_place_slug !== undefined && typeof body.rent_place_slug !== "string") {
-    res.status(400).json({ error: "rent_place_slug must be a place slug" });
-    return;
-  }
-  if (body.income_kind != null && !isCheckingIncomeKind(body.income_kind)) {
-    res.status(400).json({
-      error: `income_kind must be one of ${CHECKING_INCOME_KINDS.join(", ")}`,
-    });
-    return;
-  }
-  if (
-    body.income_kind === undefined &&
-    body.excluded === undefined &&
-    body.force_include === undefined &&
-    body.note === undefined
-  ) {
-    res.status(400).json({ error: "income_kind, excluded, force_include, or note required" });
-    return;
-  }
+  const body = parseBody(incomeMovementPatchSchema, req);
   if (body.excluded === false) {
     restoreCheckingIncomeMovement(movementId);
     res.json({
@@ -335,9 +307,9 @@ app.post("/api/income/movements/:movement_id/refund", linkSyncingWrite((req, res
     res.status(400).json({ error: "invalid movement_id" });
     return;
   }
-  const slug = (req.body as { category_slug?: unknown } | undefined)?.category_slug;
+  const slug = parseBody(incomeRefundRequestSchema, req).category_slug;
   try {
-    markCheckingExpenseRefund(movementId, typeof slug === "string" && slug.trim() ? slug.trim() : undefined);
+    markCheckingExpenseRefund(movementId, slug || undefined);
     res.json({ ok: true, movement_id: movementId });
   } catch (e) {
     // `checkingExpenseRefunds.ts` states the answer on the errors a request can cause (an unknown
@@ -449,20 +421,20 @@ app.get("/api/flows/expenses/line-pieces", (req, res) => {
 });
 
 app.put("/api/flows/expenses/line-pieces", linkSyncingWrite((req, res) => {
-  const body = req.body as { source?: string; line_id?: number; pieces?: ExpenseLinePieceInput[] };
-  const ref = piecesLineRef(body.source, body.line_id);
-  if (!Array.isArray(body.pieces)) throw new Error("pieces must be an array");
-  res.json(replaceExpenseLinePieces(ref.source, ref.lineId, body.pieces));
+  const body = parseBody(expenseLinePiecesPutSchema, req);
+  res.json(replaceExpenseLinePieces(body.source, body.line_id, body.pieces));
 }));
 
 app.post("/api/flows/expenses/manual", linkSyncingWrite((req, res) => {
-  assertDemoManualExpenseDescription((req.body as ManualExpenseInput | undefined)?.description);
-  res.status(201).json(createManualExpense(req.body as ManualExpenseInput));
+  const body = parseBody(manualExpenseInputSchema, req);
+  assertDemoManualExpenseDescription(body.description);
+  res.status(201).json(createManualExpense(body));
 }));
 
 app.patch("/api/flows/expenses/manual/:id", linkSyncingWrite((req, res) => {
-  assertDemoManualExpenseDescription((req.body as ManualExpenseInput | undefined)?.description);
-  updateManualExpense(Number(req.params.id), req.body as ManualExpenseInput);
+  const body = parseBody(manualExpenseInputSchema, req);
+  assertDemoManualExpenseDescription(body.description);
+  updateManualExpense(Number(req.params.id), body);
   res.json({ ok: true });
 }));
 
@@ -486,24 +458,11 @@ app.get("/api/flows/expenses/financing-links", (_req, res) => {
 });
 
 app.post("/api/flows/expenses/financing-links", writeHandler((req, res) => {
-  const body = req.body as {
-    financed_account_id?: number;
-    financed_billing_month?: string;
-    financing?: { account_id?: number; purchase_key?: string }[];
-  };
-  const financedAccountId = Number(body.financed_account_id);
-  const financedBillingMonth = String(body.financed_billing_month ?? "").trim();
-  const financing = (body.financing ?? [])
-    .map((f) => ({ account_id: Number(f.account_id), purchase_key: String(f.purchase_key ?? "").trim() }))
-    .filter((f) => Number.isFinite(f.account_id) && f.account_id > 0 && f.purchase_key.length > 0);
-  if (!Number.isFinite(financedAccountId) || financedAccountId <= 0 || !financedBillingMonth) {
-    res.status(400).json({ error: "financed_account_id and financed_billing_month required" });
-    return;
-  }
+  const body = parseBody(financingLinkUpsertSchema, req);
   const link = upsertCcFacturadoFinancingLink({
-    financedAccountId,
-    financedBillingMonth,
-    financing,
+    financedAccountId: body.financed_account_id,
+    financedBillingMonth: body.financed_billing_month,
+    financing: body.financing,
   });
   syncCardToCardPaymentTransfers();
   res.json({ ok: true, id: link.id });
@@ -534,14 +493,8 @@ app.get("/api/flows/expenses/real-estate/candidates", (req, res) => {
 });
 
 app.put("/api/flows/expenses/real-estate/links", writeHandler((req, res) => {
-  const body = req.body as { expense_entry_id?: number; purchase_key?: string };
-  const expenseEntryId = Number(body.expense_entry_id);
-  const purchaseKey = String(body.purchase_key ?? "").trim();
-  if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0 || !purchaseKey) {
-    res.status(400).json({ error: "expense_entry_id and purchase_key required" });
-    return;
-  }
-  const link = manualLinkRealEstateExpense(expenseEntryId, purchaseKey);
+  const body = parseBody(realEstateLinkPutSchema, req);
+  const link = manualLinkRealEstateExpense(body.expense_entry_id, body.purchase_key);
   res.json(link);
 }));
 
@@ -570,19 +523,10 @@ app.get("/api/flows/expenses/real-estate/unlinked-purchases", (req, res) => {
 });
 
 app.post("/api/flows/expenses/real-estate/places", writeHandler((req, res) => {
-  const body = req.body as {
-    slug?: string;
-    label?: string;
-    active_from?: string | null;
-    active_to?: string | null;
-    property_account_id?: number | null;
-    dfl2?: boolean;
-    dfl2_built_m2?: number | null;
-    dfl2_reception_year?: number | null;
-  };
+  const body = parseBody(realEstatePlaceCreateSchema, req);
   const place = createRealEstatePlace({
-    slug: String(body.slug ?? ""),
-    label: String(body.label ?? ""),
+    slug: body.slug,
+    label: body.label,
     activeFrom: body.active_from ?? null,
     activeTo: body.active_to ?? null,
     propertyAccountId: body.property_account_id ?? null,
@@ -597,21 +541,12 @@ app.post("/api/flows/expenses/real-estate/places", writeHandler((req, res) => {
 
 /** A place's DFL-2 declaration: the flag with the built area and the reception year, or none. */
 app.patch("/api/flows/expenses/real-estate/places/:slug/dfl2", writeHandler((req, res) => {
-  const body = req.body as { dfl2?: unknown; dfl2_built_m2?: unknown; dfl2_reception_year?: unknown };
-  if (typeof body.dfl2 !== "boolean") {
-    res.status(400).json({ error: "dfl2 must be a boolean" });
-    return;
-  }
-  const num = (v: unknown, name: string): number | null => {
-    if (v == null) return null;
-    if (typeof v !== "number" || !Number.isFinite(v)) throw new Error(`${name} must be a number`);
-    return v;
-  };
+  const body = parseBody(realEstatePlaceDfl2PatchSchema, req);
   res.json(
     setRealEstatePlaceDfl2(String(req.params.slug), {
       dfl2: body.dfl2,
-      builtM2: num(body.dfl2_built_m2, "dfl2_built_m2"),
-      receptionYear: num(body.dfl2_reception_year, "dfl2_reception_year"),
+      builtM2: body.dfl2_built_m2 ?? null,
+      receptionYear: body.dfl2_reception_year ?? null,
     })
   );
 }));
@@ -622,26 +557,12 @@ app.get("/api/flows/expenses/real-estate/property-accounts", (_req, res) => {
 });
 
 app.post("/api/flows/expenses/real-estate/assign", writeHandler((req, res) => {
-  const body = req.body as {
-    purchase_key?: string;
-    account_slug?: string;
-    kind?: string;
-    bill_month?: string;
-    kwh?: number | null;
-    m3?: number | null;
-  };
-  const purchaseKey = String(body.purchase_key ?? "").trim();
-  const accountSlug = String(body.account_slug ?? "").trim();
-  const kind = String(body.kind ?? "").trim();
-  if (!purchaseKey || !accountSlug || !kind) {
-    res.status(400).json({ error: "purchase_key, account_slug and kind required" });
-    return;
-  }
+  const body = parseBody(realEstateAssignSchema, req);
   const result = assignPurchaseToRealEstateExpense({
-    purchaseKey,
-    accountSlug,
-    kind,
-    billMonth: typeof body.bill_month === "string" ? body.bill_month : undefined,
+    purchaseKey: body.purchase_key,
+    accountSlug: body.account_slug,
+    kind: body.kind,
+    billMonth: body.bill_month,
     kwh: body.kwh ?? null,
     m3: body.m3 ?? null,
   });
@@ -654,12 +575,7 @@ app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/bill-month", 
     res.status(400).json({ error: "invalid expense entry id" });
     return;
   }
-  const billMonth = String((req.body as { bill_month?: string }).bill_month ?? "").trim();
-  if (!/^\d{4}-\d{2}$/.test(billMonth)) {
-    res.status(400).json({ error: "bill_month must be YYYY-MM" });
-    return;
-  }
-  updateRealEstateExpenseBillMonth(expenseEntryId, billMonth);
+  updateRealEstateExpenseBillMonth(expenseEntryId, parseBody(realEstateBillMonthPatchSchema, req).bill_month);
   res.status(204).send();
 }));
 
@@ -669,7 +585,7 @@ app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/months-covere
     res.status(400).json({ error: "invalid expense entry id" });
     return;
   }
-  updateRealEstateExpenseMonthsCovered(expenseEntryId, Number((req.body as { months_covered?: number }).months_covered));
+  updateRealEstateExpenseMonthsCovered(expenseEntryId, parseBody(realEstateMonthsCoveredPatchSchema, req).months_covered);
   res.status(204).send();
 }));
 
@@ -679,7 +595,7 @@ app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/consumption",
     res.status(400).json({ error: "invalid expense entry id" });
     return;
   }
-  const body = req.body as { kwh?: number | null; m3?: number | null };
+  const body = parseBody(realEstateConsumptionPatchSchema, req);
   updateRealEstateExpenseConsumption(expenseEntryId, {
     kwh: body.kwh ?? null,
     m3: body.m3 ?? null,
@@ -698,26 +614,10 @@ app.delete("/api/flows/expenses/real-estate/entries/:expenseEntryId", writeHandl
 }));
 
 app.patch("/api/flows/expenses/purchase-notes", writeHandler((req, res) => {
-  const body = req.body as {
-    account_id?: number;
-    purchase_key?: string;
-    statement_line_id?: number;
-    notes?: string | null;
-  };
-  const accountId = Number(body.account_id);
-  if (!Number.isFinite(accountId) || accountId <= 0) {
-    res.status(400).json({ error: "invalid account_id" });
-    return;
-  }
-  let purchaseKey = String(body.purchase_key ?? "").trim();
-  const statementLineId = Number(body.statement_line_id);
-  if (!purchaseKey && Number.isFinite(statementLineId) && statementLineId > 0) {
-    purchaseKey = resolveCcExpensePurchaseKey(statementLineId);
-  }
-  if (!purchaseKey) {
-    res.status(400).json({ error: "purchase_key or statement_line_id required" });
-    return;
-  }
+  const body = parseBody(purchaseNotePatchSchema, req);
+  const accountId = body.account_id;
+  // The schema holds one of the two: a key, else the statement line it is resolved from.
+  const purchaseKey = body.purchase_key || resolveCcExpensePurchaseKey(body.statement_line_id!);
   const result = setCcExpensePurchaseNote({
     accountId,
     purchaseKey,
@@ -727,27 +627,14 @@ app.patch("/api/flows/expenses/purchase-notes", writeHandler((req, res) => {
 }));
 
 app.post("/api/flows/expenses/vendor-branch-choice", writeHandler((req, res) => {
-  const body = req.body as { key?: string; display?: string };
-  const key = String(body.key ?? "").trim();
-  const display = String(body.display ?? "").trim();
-  if (!key || !display) {
-    res.status(400).json({ error: "key and display required" });
-    return;
-  }
+  const { key, display } = parseBody(vendorBranchChoiceSchema, req);
   saveVendorBranchChoice(key, display);
   res.json({ ok: true });
 }));
 
 app.put("/api/flows/expenses/purchase-big-group", writeHandler((req, res) => {
-  const body = req.body as {
-    purchase_key?: string;
-    group_slug?: string | null;
-  };
-  const purchaseKey = String(body.purchase_key ?? "").trim();
-  if (!purchaseKey) {
-    res.status(400).json({ error: "purchase_key required" });
-    return;
-  }
+  const body = parseBody(purchaseBigGroupPutSchema, req);
+  const purchaseKey = body.purchase_key;
   const result = setCcExpensePurchaseBigGroup({
     purchaseKey,
     groupSlug: body.group_slug,
@@ -759,24 +646,18 @@ app.put("/api/flows/expenses/purchase-big-group", writeHandler((req, res) => {
 }));
 
 app.post("/api/flows/expenses/big-groups", writeHandler((req, res) => {
-  const body = req.body as { label?: string };
-  const label = String(body.label ?? "").trim();
-  if (!label) {
-    res.status(400).json({ error: "label required" });
-    return;
-  }
+  const { label } = parseBody(bigGroupLabelSchema, req);
   const group = createCcExpenseBigGroup(label);
   res.status(201).json(group);
 }));
 
 app.patch("/api/flows/expenses/big-groups/:slug", writeHandler((req, res) => {
   const slug = String(req.params.slug ?? "").trim();
-  const body = req.body as { label?: string };
-  const label = String(body.label ?? "").trim();
-  if (!slug || !label) {
-    res.status(400).json({ error: "slug and label required" });
+  if (!slug) {
+    res.status(400).json({ error: "slug required" });
     return;
   }
+  const { label } = parseBody(bigGroupLabelSchema, req);
   const group = renameCcExpenseBigGroup(slug, label);
   res.json(group);
 }));
@@ -809,18 +690,8 @@ app.get("/api/flows/expenses/refund-candidates", writeHandler((req, res) => {
 }));
 
 app.put("/api/flows/expenses/refund-links", writeHandler((req, res) => {
-  const body = req.body as { account_id?: unknown; line_id?: unknown; purchase_line_id?: unknown };
-  const purchaseLineId = Number(body.purchase_line_id);
-  if (!Number.isInteger(purchaseLineId) || purchaseLineId === 0) {
-    throw new InputError(`purchase_line_id must be a non-zero integer, got ${String(body.purchase_line_id)}`);
-  }
-  res.json(
-    linkCardRefund({
-      accountId: positiveIntParam("account_id", body.account_id),
-      lineId: positiveIntParam("line_id", body.line_id),
-      purchaseLineId,
-    })
-  );
+  const body = parseBody(refundLinkPutSchema, req);
+  res.json(linkCardRefund({ accountId: body.account_id, lineId: body.line_id, purchaseLineId: body.purchase_line_id }));
 }));
 
 app.delete("/api/flows/expenses/refund-links", writeHandler((req, res) => {
@@ -839,33 +710,14 @@ app.patch("/api/flows/expenses/lines/:lineId/category", writeHandler((req, res) 
     res.status(400).json({ error: "invalid line id" });
     return;
   }
-  const body = req.body as {
-    category_slug?: string;
-    unique?: boolean;
-    clear_category?: boolean;
-    source?: "cc" | "checking" | "manual" | "payslip";
-    /** «Específico»: the line's link (`category_link`), so the change writes the specific rule. */
-    rule_link?: { kind?: string; key?: string } | null;
-  };
-  const categorySlug = body.category_slug != null ? String(body.category_slug).trim() : "";
-  const unique = !!body.unique;
-  const clearCategory = body.clear_category === true;
-  const ruleLink =
-    body.rule_link != null
-      ? { kind: String(body.rule_link.kind ?? "") as CategoryRuleLinkKind, key: String(body.rule_link.key ?? "") }
-      : null;
-  const bodySource = body.source;
-  const source =
-    bodySource === "checking" || bodySource === "cc" || bodySource === "manual" || bodySource === "payslip"
-      ? bodySource
-      : undefined;
+  const body = parseBody(expenseLineCategoryPatchSchema, req);
   const result = assignFlowExpenseLineCategory({
     lineId,
-    source,
-    unique,
-    categorySlug: categorySlug || null,
-    clearCategory,
-    ruleLink,
+    source: body.source,
+    unique: body.unique === true,
+    categorySlug: body.category_slug || null,
+    clearCategory: body.clear_category === true,
+    ruleLink: body.rule_link ?? null,
   });
   res.json(result);
 }));

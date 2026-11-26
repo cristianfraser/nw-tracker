@@ -4,6 +4,9 @@
  */
 import express from "express";
 import { parseEnvFlag } from "nw-tracker-contracts";
+import { parseRequestBody } from "nw-tracker-contracts/requests/issues";
+import type { z } from "zod";
+import { InputError } from "../inputError.js";
 import { isResolvablePortfolioGroupSlug } from "../portfolioGroupTree.js";
 import { db } from "../db.js";
 
@@ -55,6 +58,17 @@ export function queryFlag(req: express.Request, res: express.Response, name: str
   }
   res.status(400).json({ error: `${name} must be 1/true/yes or 0/false/no` });
   return null;
+}
+
+/**
+ * The request body as `schema` (a contracts `requests/` schema) reads it. A body it refuses throws an
+ * `InputError` (400) naming the first failing field, which `writeHandler` answers as `{ error }`;
+ * the route never casts `req.body` and never re-checks what the schema states.
+ */
+export function parseBody<S extends z.ZodType>(schema: S, req: express.Request): z.output<S> {
+  const r = parseRequestBody(schema, req.body);
+  if (!r.ok) throw new InputError(r.error);
+  return r.data;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient, type QueryFilters } from "@tanstack/react-query";
 import { api } from "../api";
+import type * as FlowsReq from "nw-tracker-contracts/requests/flows";
 import type {
   ManualExpenseInput,
   FlowCcExpenseLineRow,
@@ -348,7 +349,7 @@ export function applyCcExpensePurchaseBigGroupPatch<T extends WithLines>(
 export function usePostVendorBranchChoiceMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { key: string; display: string }) => api.postVendorBranchChoice(vars),
+    mutationFn: (vars: FlowsReq.VendorBranchChoice) => api.postVendorBranchChoice(vars),
     onSettled: () => {
       void invalidateResources(queryClient, resources.expenseLineRows());
     },
@@ -548,7 +549,7 @@ export function useAccountImportMutation(opts: { accountId: number; displayUnit:
 export function useLinkRealEstateExpenseMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { expense_entry_id: number; purchase_key: string }) =>
+    mutationFn: (body: FlowsReq.RealEstateLinkPut) =>
       api.linkRealEstateExpense(body),
     onSettled: () => {
       void invalidateResources(queryClient, resources.realEstateExpenses(), resources.realEstateLinkCandidates());
@@ -584,16 +585,7 @@ export function useAssignRealEstatePurchaseMutation() {
 export function useCreateRealEstatePlaceMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: {
-      slug: string;
-      label: string;
-      active_from?: string | null;
-      active_to?: string | null;
-      property_account_id?: number | null;
-      dfl2?: boolean;
-      dfl2_built_m2?: number | null;
-      dfl2_reception_year?: number | null;
-    }) => api.createRealEstatePlace(body),
+    mutationFn: (body: FlowsReq.RealEstatePlaceCreate) => api.createRealEstatePlace(body),
     onSettled: () => {
       void invalidateResources(queryClient, resources.realEstateExpenses(), resources.sidebarNav(), resources.income());
     },
@@ -660,11 +652,7 @@ export function useDeleteRealEstateExpenseEntryMutation() {
 export function usePatchWorkEarningMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: {
-      id: number;
-      earning_type?: import("../types").PayrollEarningType;
-      movement_id?: number | null;
-    }) => {
+    mutationFn: (vars: { id: number } & FlowsReq.WorkEarningPatch) => {
       const { id, ...body } = vars;
       return api.patchWorkEarning(id, body);
     },
@@ -677,14 +665,7 @@ export function usePatchWorkEarningMutation() {
 export function usePatchIncomeMovementMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: {
-      movement_id: number;
-      income_kind?: import("../types").IncomeKind;
-      rent_place_slug?: string;
-      excluded?: boolean;
-      force_include?: boolean;
-      note?: string | null;
-    }) => {
+    mutationFn: (vars: { movement_id: number } & FlowsReq.IncomeMovementPatch) => {
       const { movement_id, ...body } = vars;
       return api.patchIncomeMovement(movement_id, body);
     },
@@ -730,11 +711,7 @@ export function useRestoreIncomeMovementMutation() {
 export function useUpsertCcFacturadoFinancingLinkMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: {
-      financed_account_id: number;
-      financed_billing_month: string;
-      financing: { account_id: number; purchase_key: string }[];
-    }) => api.upsertCcFacturadoFinancingLink(body),
+    mutationFn: (body: FlowsReq.FinancingLinkUpsert) => api.upsertCcFacturadoFinancingLink(body),
     onSettled: () => {
       void invalidateResources(queryClient, resources.expenseLines(), resources.financingLinks());
     },
@@ -793,7 +770,7 @@ export function useDeleteManualExpenseMutation() {
 export function useLinkCardRefundMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { account_id: number; line_id: number; purchase_line_id: number }) => api.linkCardRefund(vars),
+    mutationFn: (vars: FlowsReq.RefundLinkPut) => api.linkCardRefund(vars),
     onSettled: () => {
       void invalidateResources(queryClient, resources.expenseLines());
     },

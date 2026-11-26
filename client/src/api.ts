@@ -1,4 +1,5 @@
 import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
+import type * as FlowsReq from "nw-tracker-contracts/requests/flows";
 import i18n from "./i18n";
 import type { DisplayUnit } from "./queries/keys";
 import { attachLiveInputs, LIVE_INPUTS_HEADER, parseLiveInputs, type LiveQuoteMoves } from "./liveInputs";
@@ -545,27 +546,12 @@ export const api = {
     }),
   income: (unit: DisplayUnit) =>
     j<import("./types").FlowsIncomeResponse>(`/api/income?unit=${unit}`),
-  patchWorkEarning: (
-    id: number,
-    body: {
-      earning_type?: import("./types").PayrollEarningType;
-      movement_id?: number | null;
-    }
-  ) =>
+  patchWorkEarning: (id: number, body: FlowsReq.WorkEarningPatch) =>
     j<import("./types").FlowWorkEarningRow>(`/api/work-earnings/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-  patchIncomeMovement: (
-    movementId: number,
-    body: {
-      income_kind?: import("./types").IncomeKind;
-      rent_place_slug?: string;
-      excluded?: boolean;
-      force_include?: boolean;
-      note?: string | null;
-    }
-  ) =>
+  patchIncomeMovement: (movementId: number, body: FlowsReq.IncomeMovementPatch) =>
     j<{
       movement_id: number;
       excluded: boolean;
@@ -615,7 +601,7 @@ export const api = {
     j<{ candidates: import("./types").RealEstateLinkCandidateDto[] }>(
       `/api/flows/expenses/real-estate/candidates?expense_entry_id=${expenseEntryId}`
     ),
-  linkRealEstateExpense: (body: { expense_entry_id: number; purchase_key: string }) =>
+  linkRealEstateExpense: (body: FlowsReq.RealEstateLinkPut) =>
     j<import("./types").RealEstateExpenseLinkDto>("/api/flows/expenses/real-estate/links", {
       method: "PUT",
       body: JSON.stringify(body),
@@ -636,23 +622,14 @@ export const api = {
       `/api/flows/expenses/real-estate/unlinked-purchases?${usp.toString()}`
     );
   },
-  createRealEstatePlace: (body: {
-    slug: string;
-    label: string;
-    active_from?: string | null;
-    active_to?: string | null;
-    property_account_id?: number | null;
-    dfl2?: boolean;
-    dfl2_built_m2?: number | null;
-    dfl2_reception_year?: number | null;
-  }) =>
+  createRealEstatePlace: (body: FlowsReq.RealEstatePlaceCreate) =>
     j<import("./types").RealEstatePlaceDto>("/api/flows/expenses/real-estate/places", {
       method: "POST",
       body: JSON.stringify(body),
     }),
   setRealEstatePlaceDfl2: (
     slug: string,
-    body: { dfl2: boolean; dfl2_built_m2: number | null; dfl2_reception_year: number | null }
+    body: FlowsReq.RealEstatePlaceDfl2Patch
   ) =>
     j<import("./types").RealEstatePlaceDto>(
       `/api/flows/expenses/real-estate/places/${encodeURIComponent(slug)}/dfl2`,
@@ -673,20 +650,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  updateRealEstateMonthsCovered: (expenseEntryId: number, body: { months_covered: number }) =>
+  updateRealEstateMonthsCovered: (expenseEntryId: number, body: FlowsReq.RealEstateMonthsCoveredPatch) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}/months-covered`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-  updateRealEstateBillMonth: (expenseEntryId: number, body: { bill_month: string }) =>
+  updateRealEstateBillMonth: (expenseEntryId: number, body: FlowsReq.RealEstateBillMonthPatch) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}/bill-month`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-  updateRealEstateConsumption: (
-    expenseEntryId: number,
-    body: { kwh: number | null; m3: number | null }
-  ) =>
+  updateRealEstateConsumption: (expenseEntryId: number, body: FlowsReq.RealEstateConsumptionPatch) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}/consumption`, {
       method: "PATCH",
       body: JSON.stringify(body),
@@ -744,26 +718,12 @@ export const api = {
     return j<import("./types").FlowsExpensesSpentLinesResponse>(`/api/flows/expenses/spent/lines?${q.toString()}`);
   },
 
-  assignCcExpenseLineCategory: (
-    lineId: number,
-    body: {
-      unique: boolean;
-      category_slug?: string;
-      clear_category?: boolean;
-      source?: import("./types").FlowCcExpenseLineSource;
-      rule_link?: { kind: "receipt" | "app" | "recipient"; key: string } | null;
-    }
-  ) =>
+  assignCcExpenseLineCategory: (lineId: number, body: FlowsReq.ExpenseLineCategoryPatch) =>
     j<{ category_slug: string; unique: boolean; merchant_key: string; purchase_key: string }>(
       `/api/flows/expenses/lines/${lineId}/category`,
       { method: "PATCH", body: JSON.stringify(body) }
     ),
-  patchCcExpensePurchaseNote: (body: {
-    account_id: number;
-    purchase_key?: string;
-    statement_line_id?: number;
-    notes: string;
-  }) =>
+  patchCcExpensePurchaseNote: (body: FlowsReq.PurchaseNotePatch) =>
     j<{ account_id: number; purchase_key: string; notes: string }>(
       "/api/flows/expenses/purchase-notes",
       { method: "PATCH", body: JSON.stringify(body) }
@@ -772,22 +732,18 @@ export const api = {
     j<import("./types").ExpenseLinePieces>(
       `/api/flows/expenses/line-pieces?source=${source}&line_id=${lineId}`
     ),
-  putExpenseLinePieces: (body: {
-    source: "cc" | "checking";
-    line_id: number;
-    pieces: import("./types").ExpenseLinePiece[];
-  }) =>
+  putExpenseLinePieces: (body: FlowsReq.ExpenseLinePiecesPut) =>
     j<import("./types").ExpenseLinePieces>("/api/flows/expenses/line-pieces", {
       method: "PUT",
       body: JSON.stringify(body),
     }),
-  createManualExpense: (body: import("./types").ManualExpenseInput) =>
+  createManualExpense: (body: FlowsReq.ManualExpenseRequest) =>
     j<{ id: number }>("/api/flows/expenses/manual", { method: "POST", body: JSON.stringify(body) }),
-  updateManualExpense: (id: number, body: import("./types").ManualExpenseInput) =>
+  updateManualExpense: (id: number, body: FlowsReq.ManualExpenseRequest) =>
     j<{ ok: boolean }>(`/api/flows/expenses/manual/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteManualExpense: (id: number) =>
     j<void>(`/api/flows/expenses/manual/${id}`, { method: "DELETE" }),
-  postVendorBranchChoice: (body: { key: string; display: string }) =>
+  postVendorBranchChoice: (body: FlowsReq.VendorBranchChoice) =>
     j<{ ok: boolean }>("/api/flows/expenses/vendor-branch-choice", {
       method: "POST",
       body: JSON.stringify(body),
@@ -797,14 +753,14 @@ export const api = {
     j<import("./types").CardRefundCandidatesResponse>(
       `/api/flows/expenses/refund-candidates?${new URLSearchParams({ unit, account_id: String(accountId), line_id: String(lineId) })}`
     ),
-  linkCardRefund: (body: { account_id: number; line_id: number; purchase_line_id: number }) =>
+  linkCardRefund: (body: FlowsReq.RefundLinkPut) =>
     j<{ ok: true }>("/api/flows/expenses/refund-links", { method: "PUT", body: JSON.stringify(body) }),
   unlinkCardRefund: (accountId: number, lineId: number) =>
     j<void>(
       `/api/flows/expenses/refund-links?${new URLSearchParams({ account_id: String(accountId), line_id: String(lineId) })}`,
       { method: "DELETE" }
     ),
-  putCcExpensePurchaseBigGroup: (body: { purchase_key: string; group_slug: string | null }) =>
+  putCcExpensePurchaseBigGroup: (body: FlowsReq.PurchaseBigGroupPut) =>
     j<{ purchase_key: string; group_slug: string | null }>(
       "/api/flows/expenses/purchase-big-group",
       { method: "PUT", body: JSON.stringify(body) }
@@ -828,11 +784,7 @@ export const api = {
     j<{ links: import("./types").CcFacturadoFinancingLink[] }>(
       "/api/flows/expenses/financing-links"
     ),
-  upsertCcFacturadoFinancingLink: (body: {
-    financed_account_id: number;
-    financed_billing_month: string;
-    financing: { account_id: number; purchase_key: string }[];
-  }) =>
+  upsertCcFacturadoFinancingLink: (body: FlowsReq.FinancingLinkUpsert) =>
     j<{ ok: boolean; id: number }>("/api/flows/expenses/financing-links", {
       method: "POST",
       body: JSON.stringify(body),

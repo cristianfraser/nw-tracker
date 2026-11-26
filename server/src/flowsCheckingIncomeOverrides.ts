@@ -4,6 +4,7 @@ import { movementFlowId } from "./flows/flowIdentity.js";
 import { isCheckingCredit } from "./checkingCartolaLoaders.js";
 import { movementDescription } from "./bankRowFacts.js";
 import { incomeKindByMovementId } from "./flowsPayrollWorkEarnings.js";
+import { CHECKING_INCOME_KINDS } from "nw-tracker-contracts/requests/flows";
 
 
 /**
@@ -14,14 +15,8 @@ import { incomeKindByMovementId } from "./flowsPayrollWorkEarnings.js";
 const INCOME_OVERRIDES_BY_MOVEMENT = `(SELECT m.id AS movement_id, o.is_excluded, o.force_include, o.income_kind, o.note, o.rent_place_id, o.updated_at
   FROM flow_income_overrides o JOIN movements m ON m.flow_id = o.flow_id)`;
 
-export const CHECKING_INCOME_KINDS = [
-  "salary",
-  "severance",
-  "other",
-  "parent_gift",
-  /** Rent of a tracked place (`expense_accounts`): the override names the place (`rent_place_id`). */
-  "rent",
-] as const;
+/** The income kinds (the request schema's list, `nw-tracker-contracts/requests/flows`). */
+export { CHECKING_INCOME_KINDS };
 
 /**
  * Money that pays back spending (a shared expense, an additional cardholder's charges) is not an
@@ -103,7 +98,8 @@ export function upsertCheckingIncomeMovementOverride(
   patch: {
     excluded?: boolean;
     force_include?: boolean;
-    income_kind?: CheckingIncomeKind;
+    /** null clears the credit's kind. */
+    income_kind?: CheckingIncomeKind | null;
     /** The place a `rent` credit is the rent of (required with `rent`, refused with any other kind). */
     rent_place_slug?: string;
     note?: string | null;

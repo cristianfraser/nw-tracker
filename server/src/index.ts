@@ -56,6 +56,7 @@ import { db } from "./db.js";
 import { jsonResponseMiddleware } from "./jsonResponse.js";
 import { LIVE_INPUTS_HEADER, liveInputsMiddleware } from "./liveInputsHeader.js";
 import { DisplayUnitRequestError } from "./displayUnits.js";
+import { InputError } from "./inputError.js";
 
 seedNavTree();
 // The seed places no account: one that is not where its asset group says fails the boot.
@@ -156,7 +157,8 @@ app.use(
       `[api] route error: ${err instanceof Error ? (err.stack ?? msg) : msg}`
     );
     if (res.headersSent) return;
-    if (err instanceof DisplayUnitRequestError) {
+    // A request the user can fix, thrown outside `writeHandler` (a display unit, a route's `parseBody`).
+    if (err instanceof DisplayUnitRequestError || err instanceof InputError) {
       res.status(err.status).json({ error: msg });
       return;
     }

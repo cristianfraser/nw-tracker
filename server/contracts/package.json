@@ -17,6 +17,10 @@
       "types": "./src/dto/*.ts",
       "default": "./src/dto/*.ts"
     },
+    "./requests/*": {
+      "types": "./src/requests/*.ts",
+      "default": "./src/requests/*.ts"
+    },
     "./formats/*": {
       "types": "./src/formats/*.ts",
       "default": "./src/formats/*.ts"
