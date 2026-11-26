@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { invalidateResources, resources } from "../../queries/resources";
+import styles from "./PanelForm.module.css";
 
 type Props = {
   accountId: number;
@@ -23,14 +24,14 @@ export function AccountExcludeFromTotalsToggle({ accountId, excluded }: Props) {
   });
 
   return (
-    <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+    <label className={styles.check}>
       <input
         type="checkbox"
         checked={excluded}
         disabled={mutation.isPending}
-        aria-label={t("panelAccounts.addAccount.excludeFromTotals")}
         onChange={(e) => mutation.mutate(e.target.checked)}
       />
+      <span>{t("panelAccounts.addAccount.excludeFromTotals")}</span>
     </label>
   );
 }

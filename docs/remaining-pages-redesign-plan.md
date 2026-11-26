@@ -43,7 +43,7 @@ proposed split into one-session work items.
 | `/watchlist` | `WatchlistPage` | redesigned |
 | `/panel/notifications` | `NotificationsPage` (messages table) | redesigned |
 | `/panel/mirror-pairs` | `MirrorPairsPanelPage` | redesigned |
-| `/panel/accounts` | `AccountsPanelPage` | **old** except its accounts tree (item H) |
+| `/panel/accounts` | `AccountsPanelPage` | redesigned |
 | `/panel/import-sync` | `ImportSyncPage` | **old** except its message list (item F) |
 | `/panel/usage` | `UsagePanelPage` | old, low value (item K) |
 | `/panel/settings` | `SettingsPage` | residency form redesigned; the rest is two small blocks (item K) |
@@ -144,6 +144,12 @@ Two different kinds of account land here, and the page fits neither.
   form for the header.
 
 ### H. `/panel/accounts`
+
+> **Done (2026-11-26):** one tile, «Accounts»: the accounts tree with the controls on its rows
+> (`NavAccountsTree` `rowExtras`; the user picked the ⋯ variant, an account's actions open under
+> its row). «Account list» and «Portfolio groups» are gone; accounts in no group of the tree are
+> listed under it. «New account» and the edit modal use the residency form's layout
+> (`PanelForm.module.css`); the option strike is read through `parseNumberInput`.
 
 - «New account» is bare browser controls stacked without spacing; the checkbox label prints a
   column name (`exclude_from_group_totals`).

@@ -1479,29 +1479,21 @@
       "en": "New account",
       "es": "Nueva cuenta"
     },
-    "accountsTitle": {
-      "en": "Account list",
-      "es": "Lista de cuentas"
+    "accountsTileTitle": {
+      "en": "Accounts",
+      "es": "Cuentas"
     },
-    "portfolioGroupsTitle": {
-      "en": "Portfolio groups (from Net worth)",
-      "es": "Grupos de portfolio (desde Patrimonio neto)"
+    "notInTree": {
+      "en": "Not in the tree",
+      "es": "Fuera del árbol"
     },
-    "netWorthTreeTitle": {
-      "en": "Account tree (Net worth)",
-      "es": "Árbol de cuentas (Patrimonio neto)"
+    "outOfTotalsTag": {
+      "en": "out of totals",
+      "es": "fuera de los totales"
     },
-    "colGroupKind": {
-      "en": "Kind",
-      "es": "Tipo"
-    },
-    "colAccount": {
-      "en": "Account",
-      "es": "Cuenta"
-    },
-    "colBucket": {
-      "en": "Bucket",
-      "es": "Bucket"
+    "rowActions": {
+      "en": "Actions for {{name}}",
+      "es": "Acciones de {{name}}"
     },
     "colBasket": {
       "en": "Basket",
@@ -1510,22 +1502,6 @@
     "groupBasketToggle": {
       "en": "Declare this group a basket",
       "es": "Declarar este grupo una canasta"
-    },
-    "colExclude": {
-      "en": "Exclude from totals",
-      "es": "No sumar en totales"
-    },
-    "colActions": {
-      "en": "Actions",
-      "es": "Acciones"
-    },
-    "colSlug": {
-      "en": "Slug",
-      "es": "Slug"
-    },
-    "colAccounts": {
-      "en": "N accounts",
-      "es": "N cuentas"
     },
     "deleteBtn": {
       "en": "Delete",
@@ -1548,10 +1524,6 @@
         "en": "(keep current group)",
         "es": "(mantener grupo actual)"
       }
-    },
-    "emptyAccounts": {
-      "en": "No accounts.",
-      "es": "No hay cuentas."
     },
     "emptyTree": {
       "en": "The net-worth master bucket was not found in the navigation tree.",
@@ -1663,16 +1635,16 @@
         "es": "p. ej. QQQ"
       },
       "tickerSymbol": {
-        "en": "Ticker (Yahoo / equity_daily)",
-        "es": "Ticker (Yahoo / equity_daily)"
+        "en": "Ticker",
+        "es": "Ticker"
       },
       "bucket": {
-        "en": "Portfolio group (leaf)",
-        "es": "Grupo portfolio (hoja)"
+        "en": "Group",
+        "es": "Grupo"
       },
       "excludeFromTotals": {
-        "en": "Exclude from bucket totals (exclude_from_group_totals)",
-        "es": "No sumar en totales de bucket (exclude_from_group_totals)"
+        "en": "Leave out of its group's totals",
+        "es": "No sumar en los totales de su grupo"
       },
       "initialMovementsTitle": {
         "en": "Initial movements (optional)",
@@ -1734,14 +1706,6 @@
         "en": "Fill in name, ticker, category, and a date on every movement row.",
         "es": "Completa nombre, ticker, categoría y fecha en cada movimiento con fila."
       }
-    },
-    "groupSubGroupsCount": {
-      "en": "({{count}} sub-groups)",
-      "es": "({{count}} subgrupos)"
-    },
-    "groupAccountsCount": {
-      "en": "({{count}} accounts)",
-      "es": "({{count}} cuentas)"
     }
   },
   "messages": {
