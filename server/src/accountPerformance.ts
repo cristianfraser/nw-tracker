@@ -1,7 +1,7 @@
 import { isHomeCurrency } from "./displayUnits.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { cacheKeyAccountMonthlyPerf } from "./cacheFamilies.js";
-import { getAggregationCached } from "./cacheRegistry.js";
+import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./cacheRegistry.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
 import { deptoLedgerForAccount } from "./deptoLedgerFromMovements.js";
 import { getAccountValuationTimeseries } from "./accountValuationTimeseries.js";
@@ -131,6 +131,20 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
   opts: ReanchorMonthlyPerfOpts
 ): AccountMonthlyPerformanceRow[] {
   if (!pickedAsc.length) return pickedAsc;
+  const out: AccountMonthlyPerformanceRow[] = [];
+  const step = calendarReanchorStep(opts);
+  for (const row of pickedAsc) out.push(step(row, out));
+  return withRunningPlTotals(out);
+}
+
+/**
+ * One month of {@link reanchorMonthlyPerfToCalendarMonthEnds}: `row` re-anchored after the
+ * re-anchored rows `before` (ascending, one per calendar month). Resumable: the closed months'
+ * rows kept in the history tier continue with the current month's.
+ */
+function calendarReanchorStep(
+  opts: ReanchorMonthlyPerfOpts
+): (row: AccountMonthlyPerformanceRow, before: readonly AccountMonthlyPerformanceRow[]) => AccountMonthlyPerformanceRow {
   const q = accountProfileOptional(opts.accountId)?.quantity.kind;
   const isMortgage = q === "depto_loan";
   const isDeptoProperty = q === "depto_property";
@@ -138,16 +152,15 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
   const deptoLedger =
     isMortgage || isDeptoProperty ? deptoLedgerForAccount(opts.accountId) : [];
 
-  const out: AccountMonthlyPerformanceRow[] = [];
-  for (const row of pickedAsc) {
+  return (row, before) => {
     const mk = monthKeyFromYmd(row.as_of_date);
     const priorMk = priorCalendarMonthKey(mk);
     const prior =
-      out.length > 0
+      before.length > 0
         ? monthEndCloseForAccountInUnit(
             opts.accountId,
             opts.bucketSlug,
-            out,
+            before,
             priorMk,
             opts.unit,
             { import_key: opts.import_key, name: opts.name }
@@ -156,7 +169,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
     const closeFromMark = monthEndCloseForAccountInUnit(
       opts.accountId,
       opts.bucketSlug,
-      out,
+      before,
       mk,
       opts.unit,
       { import_key: opts.import_key, name: opts.name }
@@ -178,7 +191,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
           opts.accountId,
           prior,
           close,
-          out.length > 0 ? monthEndUtcYmd(priorMk) : null,
+          before.length > 0 ? monthEndUtcYmd(priorMk) : null,
           monthEndUtcYmd(mk),
           opts.unit
         )
@@ -207,26 +220,15 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
           : flowAdjustedPct(nominal_pl, prior, netFlow, close, opts.unit);
     }
 
-    out.push({
+    return {
       ...row,
       closing_value: close,
       prior_closing,
       net_capital_flow: netFlow,
       nominal_pl,
       pct_month,
-    });
-  }
-
-  return withRunningPlTotals(out);
-}
-
-/** One row per calendar month (`pickMonthlyPerfRowsByMonth`), re-anchored on the calendar month ends. */
-function collapseMonthlyPerfDuplicateCalendarMonths(
-  outAsc: AccountMonthlyPerformanceRow[],
-  opts: ReanchorMonthlyPerfOpts
-): AccountMonthlyPerformanceRow[] {
-  if (outAsc.length === 0) return outAsc;
-  return reanchorMonthlyPerfToCalendarMonthEnds([...pickMonthlyPerfRowsByMonth(outAsc).values()], opts);
+    };
+  };
 }
 
 function accountMetaForLivePerfClose(
@@ -556,29 +558,38 @@ export function valuationSeriesMonthlyPerformance(
   };
 }
 
-function buildAccountMonthlyPerformanceUncached(
+/** The raw walk's running state between two valuation-series points. */
+type PerfWalkState = {
+  prevClose: number | null;
+  prevCumDep: number | null;
+  prevPerfAsOf: string | null;
+};
+
+/**
+ * An invested account's rows over its closed calendar months (before Chile today's month),
+ * re-anchored on their month ends (running totals not applied), and the walk's state after them.
+ */
+type ClosedMonthPerfPrefix = {
+  rows: readonly AccountMonthlyPerformanceRow[];
+  walk: PerfWalkState;
+};
+
+/**
+ * The raw month rows of the valuation-series points `ptsAsc` (one per month, ascending), walked
+ * on from `state` (updated in place). Every per-date input is read for these points' dates only,
+ * so the closed months' part reads evidence alone.
+ */
+function walkValuationSeriesPoints(
   accountId: number,
   unit: TsUnit,
-  bucketSlug: string
-): { account_id: number; bucket_slug: string; monthly: AccountMonthlyPerformanceRow[] } {
-  const ts = getAccountValuationTimeseriesForPerf(accountId, unit, () =>
-    getAccountValuationTimeseries(accountId, unit, {})
-  );
-  if (!ts || ts.granularity !== "monthly" || !ts.accounts.points.length) {
-    return { account_id: accountId, bucket_slug: bucketSlug, monthly: [] };
-  }
-
-  const dk = String(accountId);
-  const depKeyFull = `${dk}__dep`;
-  let pts = [...ts.accounts.points].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
-  const depKey = depKeyFull;
-
-  let prevClose: number | null = null;
-  let prevCumDep: number | null = null;
-  let prevPerfAsOf: string | null = null;
-  // Running totals are not built here: the rows go through the month collapse and the
-  // calendar re-anchor, which recompute them (`withRunningPlTotals`).
+  bucketSlug: string,
+  ptsAsc: readonly Record<string, string | number | null>[],
+  state: PerfWalkState
+): AccountMonthlyPerformanceRow[] {
   const outAsc: AccountMonthlyPerformanceRow[] = [];
+  if (ptsAsc.length === 0) return outAsc;
+  const dk = String(accountId);
+  const depKey = `${dk}__dep`;
   const unitsByMonthEnd = stockUnitsInflowByMonthEnd(accountId);
   const afpCuotasByMonthKey =
     isCuotaLedgerKindSlug(accountBucketKindSlug(bucketSlug)) ? afpPositiveCuotasInflowByMonthKey(accountId) : null;
@@ -594,7 +605,7 @@ function buildAccountMonthlyPerformanceUncached(
   const isMortgage = quantityKind === "depto_loan";
   const isDeptoProperty = quantityKind === "depto_property";
   const isCreditCard = quantityKind === "card";
-  const deptoSnapshotDates = deptoLedger ? pts.map((p) => String(p.as_of_date)) : [];
+  const deptoSnapshotDates = deptoLedger ? ptsAsc.map((p) => String(p.as_of_date)) : [];
   const mortgageUfByDate =
     deptoLedger && isMortgage
       ? deptoCreditoRestanteUfBySnapshotDates(deptoSnapshotDates, deptoLedger)
@@ -621,7 +632,7 @@ function buildAccountMonthlyPerformanceUncached(
   const coinUnitsEomForPerfRow = (asOf: string) =>
     cryptoAsset != null ? cryptoCoinCumulativeThroughDate(accountId, asOf, cryptoAsset) : null;
 
-  for (const p of pts) {
+  for (const p of ptsAsc) {
     const asOf = String(p.as_of_date);
     const close =
       deptoCloseClpByDate != null
@@ -632,13 +643,13 @@ function buildAccountMonthlyPerformanceUncached(
     // grid adds the month-end of every deposit event — no flow either): cumulative deposits carry.
     // Reading it as 0 while `close` carried the last book value split one flow into a ± couplet
     // across the gap, while the daily series (deposit events) had it right.
-    const cumDep: number = numCell(p[depKey]) ?? prevCumDep ?? 0;
+    const cumDep: number = numCell(p[depKey]) ?? state.prevCumDep ?? 0;
 
-    if (prevClose == null) {
+    if (state.prevClose == null) {
       const y = Number(asOf.slice(0, 4));
       if (!Number.isFinite(y)) {
-        prevClose = close;
-        prevCumDep = cumDep;
+        state.prevClose = close;
+        state.prevCumDep = cumDep;
         continue;
       }
       /** First month in the series: no prior month-end — net flow = cumulative aportes at this date (vs 0). */
@@ -683,12 +694,14 @@ function buildAccountMonthlyPerformanceUncached(
           : {}),
         unit,
       });
-      prevClose = close;
-      prevCumDep = cumDep;
-      prevPerfAsOf = asOf;
+      state.prevClose = close;
+      state.prevCumDep = cumDep;
+      state.prevPerfAsOf = asOf;
       continue;
     }
 
+    const prevClose = state.prevClose;
+    const prevPerfAsOf = state.prevPerfAsOf;
     const mortgageAfterExclusive =
       isMortgage && deptoLedger && prevPerfAsOf != null && monthKeyFromYmd(prevPerfAsOf) === monthKeyFromYmd(asOf)
         ? prevPerfAsOf
@@ -702,7 +715,7 @@ function buildAccountMonthlyPerformanceUncached(
         ? perfMortgagePaymentsInUnit(deptoLedger, asOf, mortgageAfterExclusive, unit)
         : isDeptoProperty && deptoLedger
           ? perfDeptoPropertyPaymentsInUnit(deptoLedger, asOf, propertyAfterExclusive, unit)
-          : cumDep - (prevCumDep ?? 0);
+          : cumDep - (state.prevCumDep ?? 0);
     const ccPerf = isCreditCard
       ? creditCardMonthPerf(accountId, prevClose, close, prevPerfAsOf, asOf, unit)
       : null;
@@ -719,9 +732,9 @@ function buildAccountMonthlyPerformanceUncached(
 
     const y = Number(String(p.as_of_date).slice(0, 4));
     if (!Number.isFinite(y)) {
-      prevClose = close;
-      prevCumDep = cumDep;
-      prevPerfAsOf = asOf;
+      state.prevClose = close;
+      state.prevCumDep = cumDep;
+      state.prevPerfAsOf = asOf;
       continue;
     }
     outAsc.push({
@@ -744,11 +757,40 @@ function buildAccountMonthlyPerformanceUncached(
       unit,
     });
 
-    prevClose = close;
-    prevCumDep = cumDep;
-    prevPerfAsOf = asOf;
+    state.prevClose = close;
+    state.prevCumDep = cumDep;
+    state.prevPerfAsOf = asOf;
+  }
+  return outAsc;
+}
+
+/**
+ * The raw rows of `ptsAsc` collapsed to one per calendar month (`pickMonthlyPerfRowsByMonth`)
+ * and re-anchored on the calendar month ends after `before`, appended to it.
+ */
+function appendReanchoredMonths(
+  before: AccountMonthlyPerformanceRow[],
+  rawAsc: readonly AccountMonthlyPerformanceRow[],
+  opts: ReanchorMonthlyPerfOpts
+): void {
+  if (rawAsc.length === 0) return;
+  const step = calendarReanchorStep(opts);
+  for (const row of pickMonthlyPerfRowsByMonth(rawAsc).values()) before.push(step(row, before));
+}
+
+function buildAccountMonthlyPerformanceUncached(
+  accountId: number,
+  unit: TsUnit,
+  bucketSlug: string
+): { account_id: number; bucket_slug: string; monthly: AccountMonthlyPerformanceRow[] } {
+  const ts = getAccountValuationTimeseriesForPerf(accountId, unit, () =>
+    getAccountValuationTimeseries(accountId, unit, {})
+  );
+  if (!ts || ts.granularity !== "monthly" || !ts.accounts.points.length) {
+    return { account_id: accountId, bucket_slug: bucketSlug, monthly: [] };
   }
 
+  const pts = [...ts.accounts.points].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
   const perfMeta = accountMetaForLivePerfClose(accountId);
   const reanchorOpts: ReanchorMonthlyPerfOpts = {
     accountId,
@@ -757,7 +799,32 @@ function buildAccountMonthlyPerformanceUncached(
     import_key: perfMeta?.import_key ?? null,
     name: perfMeta?.name ?? null,
   };
-  const collapsed = collapseMonthlyPerfDuplicateCalendarMonths(outAsc, reanchorOpts);
+
+  // The closed calendar months (before Chile today's) read evidence only — their points' values
+  // and flows, month-end marks, card financing —, so their rows are kept in the history tier
+  // and the rebuild after a live tick walks and re-anchors the current month alone. Running
+  // totals span both parts and are applied once over the whole series.
+  const currentMk = monthKeyFromYmd(chileCalendarTodayYmd());
+  const openIdx = pts.findIndex((p) => monthKeyFromYmd(String(p.as_of_date)) >= currentMk);
+  const closedPts = openIdx < 0 ? pts : pts.slice(0, openIdx);
+  const prefixMemo = historyTierMemo<string, ClosedMonthPerfPrefix>("valuation_closed_month_perf_rows");
+  const prefixKey = `${accountId}|${unit}|${bucketSlug}|${closedPts.map((p) => String(p.as_of_date)).join(",")}`;
+  let prefix = prefixMemo.get(prefixKey);
+  if (!prefix) {
+    prefix = buildHistoryTierValue("valuation-series closed-month rows", (): ClosedMonthPerfPrefix => {
+      const walk: PerfWalkState = { prevClose: null, prevCumDep: null, prevPerfAsOf: null };
+      const rows: AccountMonthlyPerformanceRow[] = [];
+      appendReanchoredMonths(rows, walkValuationSeriesPoints(accountId, unit, bucketSlug, closedPts, walk), reanchorOpts);
+      return { rows, walk };
+    });
+    prefixMemo.set(prefixKey, prefix);
+  }
+
+  const outAsc = [...prefix.rows];
+  const walk: PerfWalkState = { ...prefix.walk };
+  const openRaw = walkValuationSeriesPoints(accountId, unit, bucketSlug, pts.slice(closedPts.length), walk);
+  appendReanchoredMonths(outAsc, openRaw, reanchorOpts);
+  const collapsed = outAsc.length > 0 ? withRunningPlTotals(outAsc) : outAsc;
   return { account_id: accountId, bucket_slug: bucketSlug, monthly: [...collapsed].reverse() };
 }
 

@@ -25,7 +25,8 @@
 import { isHomeCurrency } from "./displayUnits.js";
 import { normalizedPostCloseLines } from "./ccBillingBalances.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
-import { ccRevaluationCostByDate } from "./ccOwedWalk.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import { ccPastRevaluationCostByDate, ccRevaluationCostByDate } from "./ccOwedWalk.js";
 import type { CurrencyCode } from "./rates.js";
 import { convertValue } from "./valueConvert.js";
 
@@ -57,11 +58,17 @@ export function ccSection3FinancingClpByDate(accountId: number): Map<string, num
  * was billed in, converted once at its own day's rate at the debt side (a charge adds to what is
  * owed), so with the card's value in that unit the derived flow is the evidence at each day's rate.
  */
-function ccChargesByDateInUnit(accountId: number, unit: CurrencyCode): Map<string, number> {
+function ccChargesByDateInUnit(
+  accountId: number,
+  unit: CurrencyCode,
+  /** Only the charges dated on or before it (a window that ends before today reads no live rate). */
+  throughYmd: string | null = null
+): Map<string, number> {
   if (isHomeCurrency(unit)) return ccSection3FinancingClpByDate(accountId);
   const seen = new Set<string>();
   const byDate = new Map<string, number>();
   const add = (iso: string, qty: number, from: CurrencyCode) => {
+    if (throughYmd != null && iso > throughYmd) return;
     const v = from === unit ? qty : convertValue(qty, from, unit, iso, "debt");
     if (v == null || !Number.isFinite(v)) {
       throw new Error(`card ${accountId}: no ${from}→${unit} rate on or before ${iso} for a financing charge`);
@@ -95,6 +102,15 @@ export function ccFinancingCostByDateInUnit(accountId: number, unit: CurrencyCod
   return byDate;
 }
 
+/** {@link ccFinancingCostByDateInUnit} through `throughYmd`, a day before Chile today. */
+function ccPastFinancingCostByDateInUnit(accountId: number, unit: CurrencyCode, throughYmd: string): Map<string, number> {
+  const byDate = new Map(ccChargesByDateInUnit(accountId, unit, throughYmd));
+  for (const [iso, cost] of ccPastRevaluationCostByDate(accountId, unit)) {
+    byDate.set(iso, (byDate.get(iso) ?? 0) + cost);
+  }
+  return byDate;
+}
+
 /** {@link ccFinancingCostByDateInUnit} in pesos. */
 export function ccFinancingCostClpByDate(accountId: number): Map<string, number> {
   return ccFinancingCostByDateInUnit(accountId, "clp");
@@ -107,8 +123,15 @@ export function ccFinancingCostBetweenInUnit(
   toYmd: string,
   unit: CurrencyCode
 ): number {
+  // A window that ends before today reads evidence only — the charges through its end at their
+  // own day's rate and the revaluation of past days, never today's live term —, so a closed
+  // month's row can sit in the history tier. Same entries, same order, as the whole map.
+  const byDate =
+    toYmd < chileCalendarTodayYmd()
+      ? ccPastFinancingCostByDateInUnit(accountId, unit, toYmd)
+      : ccFinancingCostByDateInUnit(accountId, unit);
   let sum = 0;
-  for (const [iso, v] of ccFinancingCostByDateInUnit(accountId, unit)) {
+  for (const [iso, v] of byDate) {
     if (iso <= fromYmd || iso > toYmd) continue;
     sum += v;
   }

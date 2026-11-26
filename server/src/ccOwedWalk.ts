@@ -190,9 +190,7 @@ function isoAddDays(iso: string, days: number): string {
  */
 export function ccRevaluationCostByDate(accountId: number, unit: CurrencyCode): Map<string, number> {
   const today = chileCalendarTodayYmd();
-  const past = getAggregationCached(cacheKeyCcBillingPart(accountId, `reval|${unit}|${today}`), () =>
-    buildRevaluation(accountId, unit, today)
-  );
+  const past = pastRevaluation(accountId, unit, today);
   const out = new Map(past.byDate);
   if (past.lastPast != null) {
     const cur: CcOwedNative = ccOwedByCurrencyAtYmd(accountId, today)?.owed ?? emptyCcOwed();
@@ -200,6 +198,20 @@ export function ccRevaluationCostByDate(accountId: number, unit: CurrencyCode): 
     if (term != null && term !== 0) out.set(today, term);
   }
   return out;
+}
+
+/**
+ * {@link ccRevaluationCostByDate} over the days before Chile today alone: stored rates only, no
+ * live rate read (a window that ends before today, such as a closed month's row).
+ */
+export function ccPastRevaluationCostByDate(accountId: number, unit: CurrencyCode): ReadonlyMap<string, number> {
+  return pastRevaluation(accountId, unit, chileCalendarTodayYmd()).byDate;
+}
+
+function pastRevaluation(accountId: number, unit: CurrencyCode, today: string): RevaluationPast {
+  return getAggregationCached(cacheKeyCcBillingPart(accountId, `reval|${unit}|${today}`), () =>
+    buildRevaluation(accountId, unit, today)
+  );
 }
 
 /** Rate of one `c` into `unit` on `day` at the side a sub-balance of `qty` is valued at. */

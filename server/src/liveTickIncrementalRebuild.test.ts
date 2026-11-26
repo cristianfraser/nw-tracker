@@ -211,6 +211,8 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
     expect(keptKeys).toContain("hist.daily_series_past");
     // The ledger accounts keep their closed months' rows; only the current month's is rebuilt.
     expect(keptKeys).toContain("hist.ledger_closed_month_rows");
+    // So do the invested accounts (valuation-series rows: stocks, funds, coins, AFP, cards).
+    expect(keptKeys).toContain("hist.valuation_closed_month_perf_rows");
     // (A card that never billed in dollars reads no live rate and keeps its bundle too.)
     const kept = new Set(keptKeys);
     const ratesReapplied = listCreditCardMasterAccountIds().filter(
@@ -336,6 +338,18 @@ describe("a dated change: rebuild on the trimmed history == full rebuild", () =>
       const row = db
         .prepare(`SELECT trade_date FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`)
         .get(heldTicker(), chileCalendarAddDays(today, -40)) as { trade_date: string };
+      db.prepare(`UPDATE equity_daily SET close = close * 0.97 WHERE ticker = ? AND trade_date = ?`).run(heldTicker(), row.trade_date);
+    });
+    expect(differing).toEqual([]);
+  }, 300_000);
+
+  // The last close of a closed month (whatever today's date): the month-end every monthly row reads.
+  it("a restated close of the last month-end", async () => {
+    const { differing } = await changeParity((today) => {
+      const lastMonthEnd = chileCalendarAddDays(`${today.slice(0, 8)}01`, -1);
+      const row = db
+        .prepare(`SELECT trade_date FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`)
+        .get(heldTicker(), lastMonthEnd) as { trade_date: string };
       db.prepare(`UPDATE equity_daily SET close = close * 0.97 WHERE ticker = ? AND trade_date = ?`).run(heldTicker(), row.trade_date);
     });
     expect(differing).toEqual([]);
