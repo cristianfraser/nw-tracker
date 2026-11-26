@@ -4,7 +4,7 @@ import { adoptFlow } from "./flows/flowAdoption.js";
 import { ensureFlowForKey, flowIdForKey, mergeFlowInto } from "./flows/flowIdentity.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import {
-  listInstallmentPurchaseSiblingStatementLineIds,
+  installmentPurchaseSiblingStatementLines,
   loadCcStatementLineExpenseCtx,
   normalizeCcExpenseMerchantKey,
   stableCcExpensePurchaseKeyFromCtx,
@@ -316,8 +316,12 @@ function resolveCategoryIdForManualPurchase(accountId: number, manualId: number,
   return r2?.category_id ?? null;
 }
 
-function applyCategoryToMatchedLines(accountId: number, matchedLineId: number, categoryId: number): void {
-  const siblingIds = listInstallmentPurchaseSiblingStatementLineIds(matchedLineId);
+/**
+ * Files the manual plan's category on the matched statement line and its purchase's other lines.
+ * Returns the plans the line's look-alikes span when that is ambiguous (only the line is filed).
+ */
+function applyCategoryToMatchedLines(accountId: number, matchedLineId: number, categoryId: number): number[] | null {
+  const { line_ids: siblingIds, ambiguous_plan_ids } = installmentPurchaseSiblingStatementLines(matchedLineId);
   const seen = new Set<number>();
   for (const lineId of siblingIds) {
     if (seen.has(lineId)) continue;
@@ -328,6 +332,7 @@ function applyCategoryToMatchedLines(accountId: number, matchedLineId: number, c
     const stable = stableCcExpensePurchaseKeyFromCtx(ctx);
     upsertUniqueCat.run(accountId, stable, categoryId);
   }
+  return ambiguous_plan_ids;
 }
 
 function deleteManualPurchaseExpenseKeys(accountId: number, manualId: number, manualKey: string | null): void {
@@ -363,6 +368,11 @@ export type CcManualInstallmentReconcileResult = {
   /** Flows folded into a manual plan's flow when its statement twin took it over (F9 step 4). */
   flows_adopted: number;
   matches: CcManualInstallmentReconcileMatch[];
+  /**
+   * Matched lines whose category stayed on the line alone: it has no ledger link and the lines that
+   * look like its purchase belong to plans of different totals (`installmentPurchaseSiblingStatementLines`).
+   */
+  category_spread_ambiguous: { manual_id: number; line_id: number; plan_ids: number[] }[];
 };
 
 /**
@@ -413,6 +423,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
       categories_transferred: 0,
       flows_adopted: 0,
       matches: [],
+      category_spread_ambiguous: [],
     };
   }
 
@@ -422,6 +433,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
   let categoriesTransferred = 0;
   let flowsAdopted = 0;
   const matches: CcManualInstallmentReconcileMatch[] = [];
+  const categorySpreadAmbiguous: CcManualInstallmentReconcileResult["category_spread_ambiguous"] = [];
   // Plans converted from web-pasted lines inherit the web-paste statement's issuer-derived
   // card_group (e.g. 'santander'), while PDF statements keep the legacy parser groups
   // ('A'/'B'/'INTL') — those rows must still reconcile against any of the account's PDF
@@ -515,7 +527,8 @@ export function reconcileManualInstallmentPurchasesForStatements(
 
         const categoryId = resolveCategoryIdForManualPurchase(accountId, manual.id, manualKey);
         if (categoryId != null) {
-          applyCategoryToMatchedLines(accountId, hitLine.id, categoryId);
+          const ambiguous = applyCategoryToMatchedLines(accountId, hitLine.id, categoryId);
+          if (ambiguous) categorySpreadAmbiguous.push({ manual_id: manual.id, line_id: hitLine.id, plan_ids: ambiguous });
           categoriesTransferred += 1;
         }
 
@@ -592,6 +605,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
     categories_transferred: categoriesTransferred,
     flows_adopted: flowsAdopted,
     matches,
+    category_spread_ambiguous: categorySpreadAmbiguous,
   };
 }
 

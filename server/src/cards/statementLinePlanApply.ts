@@ -648,5 +648,5 @@ function importResult(
 }
 
 function emptyManualReconcile(): ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport> {
-  return { statements_considered: 0, matched: 0, deleted: 0, converted: 0, categories_transferred: 0, flows_adopted: 0, matches: [] };
+  return { statements_considered: 0, matched: 0, deleted: 0, converted: 0, categories_transferred: 0, flows_adopted: 0, matches: [], category_spread_ambiguous: [] };
 }

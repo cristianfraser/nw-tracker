@@ -701,71 +701,117 @@ function installmentLedgerTotalsForIdentity(
 
 /** Statement line ids that share one installment purchase (cuotas 1..N). */
 export function listInstallmentPurchaseSiblingStatementLineIds(statementLineId: number): number[] {
-  const ctx = loadCcStatementLineExpenseCtx(statementLineId);
-  if (!ctx || ctx.installment_flag !== 1) return [statementLineId];
-
-  const viaLedger = listInstallmentSiblingIdsViaLedger(ctx);
-  if (viaLedger.length > 0) return viaLedger;
-
-  const viaHeuristic = listInstallmentSiblingIdsViaHeuristic(ctx);
-  return viaHeuristic.length > 0 ? viaHeuristic : [statementLineId];
+  return installmentPurchaseSiblingStatementLines(statementLineId).line_ids;
 }
 
-function listInstallmentSiblingIdsViaLedger(ctx: CcStatementLineExpenseCtx): number[] {
-  const parserRowId = String(ctx.parser_row_id ?? "").trim();
-  if (!parserRowId || parserRowId.startsWith("synthetic:")) return [];
+export type InstallmentPurchaseSiblings = {
+  line_ids: number[];
+  /**
+   * Set when the line has no ledger link and the lines that look like its purchase belong to plans
+   * of different totals: nothing is spread (`line_ids` is the line alone) and these are the plans.
+   */
+  ambiguous_plan_ids: number[] | null;
+};
 
-  const pay = db
-    .prepare(`SELECT purchase_id FROM cc_installment_payments WHERE parser_row_id = ?`)
-    .get(parserRowId) as { purchase_id: number } | undefined;
-  if (!pay) return [];
+/**
+ * The statement lines of one installment purchase. A cuota line the ledger matched names its plan
+ * (`cc_installment_payments.parser_row_id`) and the plan names its lines. A line with no payment
+ * row — a statement's 00/N «compras en cuotas del período» row, which bills nothing, or a line with
+ * no parser row — falls back to the lines of the same identity (merchant, purchase day, cuota
+ * count, cuota amount), but only while those all belong to one plan (twins share one total and one
+ * key): when they span plans of different totals nothing is spread and the plans are reported.
+ */
+export function installmentPurchaseSiblingStatementLines(statementLineId: number): InstallmentPurchaseSiblings {
+  const ctx = loadCcStatementLineExpenseCtx(statementLineId);
+  if (!ctx || ctx.installment_flag !== 1) return { line_ids: [statementLineId], ambiguous_plan_ids: null };
 
-  const parserRows = db
-    .prepare(
-      `SELECT parser_row_id FROM cc_installment_payments
-       WHERE purchase_id = ?
-         AND parser_row_id IS NOT NULL
-         AND parser_row_id NOT LIKE 'synthetic:%'`
-    )
-    .all(pay.purchase_id) as { parser_row_id: string }[];
-  if (parserRows.length === 0) return [];
+  const planId = planIdOfParserRow(ctx.parser_row_id);
+  if (planId != null) {
+    const viaLedger = statementLineIdsOfPlan(ctx.account_id, planId);
+    if (viaLedger.length > 0) return { line_ids: viaLedger, ambiguous_plan_ids: null };
+  }
 
+  const candidates = listInstallmentSiblingCandidatesByIdentity(ctx);
+  const plans = new Map<number, number>();
+  for (const c of candidates) {
+    const p = planIdOfParserRow(c.parser_row_id);
+    if (p != null) plans.set(p, Math.round((stmtPlanTotal.get(p) as { total_amount_clp: number }).total_amount_clp));
+  }
+  if (new Set(plans.values()).size > 1) {
+    return { line_ids: [statementLineId], ambiguous_plan_ids: [...plans.keys()].sort((a, b) => a - b) };
+  }
+  const ids = candidates.map((c) => c.id);
+  return { line_ids: ids.length > 0 ? ids : [statementLineId], ambiguous_plan_ids: null };
+}
+
+const stmtPlanOfParserRow = db.prepare(
+  `SELECT DISTINCT purchase_id FROM cc_installment_payments WHERE parser_row_id = ?`
+);
+const stmtParserRowsOfPlan = db.prepare(
+  `SELECT parser_row_id FROM cc_installment_payments
+   WHERE purchase_id = ?
+     AND parser_row_id IS NOT NULL
+     AND parser_row_id NOT LIKE 'synthetic:%'`
+);
+const stmtLineOfParserRow = db.prepare(
+  `SELECT l.id FROM cc_statement_lines l
+   JOIN cc_statements s ON s.id = l.statement_id
+   WHERE s.account_id = ? AND l.parser_row_id = ?`
+);
+const stmtPlanTotal = db.prepare(`SELECT total_amount_clp FROM cc_installment_purchases WHERE id = ?`);
+const stmtInstallmentLinesByCuotaCount = db.prepare(
+  `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.parser_row_id,
+          ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp
+   FROM cc_statement_lines l
+   JOIN cc_statements s ON s.id = l.statement_id
+   WHERE s.account_id = ? AND l.installment_flag = 1 AND l.nro_cuota_total = ?`
+);
+
+/** The plan a statement line's parser row was matched to (null when it has none). Throws on two. */
+function planIdOfParserRow(parserRowId: string | null | undefined): number | null {
+  const prid = String(parserRowId ?? "").trim();
+  if (!prid || prid.startsWith("synthetic:")) return null;
+  const rows = stmtPlanOfParserRow.all(prid) as { purchase_id: number }[];
+  if (rows.length > 1) {
+    throw new Error(`cc_installment_payments.parser_row_id ${prid} maps to ${rows.length} plans (${rows.map((r) => r.purchase_id).join(", ")})`);
+  }
+  return rows[0]?.purchase_id ?? null;
+}
+
+function statementLineIdsOfPlan(accountId: number, planId: number): number[] {
   const ids = new Set<number>();
-  const selOne = db.prepare(
-    `SELECT l.id FROM cc_statement_lines l
-     JOIN cc_statements s ON s.id = l.statement_id
-     WHERE s.account_id = ? AND l.parser_row_id = ?`
-  );
-  for (const { parser_row_id } of parserRows) {
-    const hit = selOne.get(ctx.account_id, parser_row_id) as { id: number } | undefined;
+  for (const { parser_row_id } of stmtParserRowsOfPlan.all(planId) as { parser_row_id: string }[]) {
+    const hit = stmtLineOfParserRow.get(accountId, parser_row_id) as { id: number } | undefined;
     if (hit) ids.add(hit.id);
   }
   return [...ids].sort((a, b) => a - b);
 }
 
-function listInstallmentSiblingIdsViaHeuristic(ctx: CcStatementLineExpenseCtx): number[] {
+function listInstallmentSiblingIdsViaLedger(ctx: CcStatementLineExpenseCtx): number[] {
+  const planId = planIdOfParserRow(ctx.parser_row_id);
+  return planId == null ? [] : statementLineIdsOfPlan(ctx.account_id, planId);
+}
+
+/** Installment lines of the card with the line's merchant, purchase day, cuota count and cuota amount. */
+function listInstallmentSiblingCandidatesByIdentity(
+  ctx: CcStatementLineExpenseCtx
+): { id: number; parser_row_id: string | null }[] {
   const purchaseIso = purchaseDateIsoFromLine(ctx);
   const merchantKey = normalizeCcExpenseMerchantKey(ctx.merchant);
   const cuotasTotal = ctx.nro_cuota_total;
   if (!purchaseIso || !merchantKey || cuotasTotal == null || cuotasTotal <= 0) return [];
 
-  const candidates = db
-    .prepare(
-      `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, ${lineCuotaClpSql("l")} AS valor_cuota_mensual_clp
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       WHERE s.account_id = ? AND l.installment_flag = 1 AND l.nro_cuota_total = ?`
-    )
-    .all(ctx.account_id, cuotasTotal) as {
+  const candidates = stmtInstallmentLinesByCuotaCount.all(ctx.account_id, cuotasTotal) as {
     id: number;
     merchant: string | null;
     transaction_date: string | null;
     posting_date: string | null;
+    parser_row_id: string | null;
     valor_cuota_mensual_clp: number | null;
   }[];
 
   const anchorCuota = ctx.valor_cuota_mensual_clp;
-  const out: number[] = [];
+  const out: { id: number; parser_row_id: string | null }[] = [];
   for (const row of candidates) {
     if (normalizeCcExpenseMerchantKey(row.merchant) !== merchantKey) continue;
     const rowCtx: CcStatementLineExpenseCtx = {
@@ -781,9 +827,9 @@ function listInstallmentSiblingIdsViaHeuristic(ctx: CcStatementLineExpenseCtx): 
     };
     if (purchaseDateIsoFromLine(rowCtx) !== purchaseIso) continue;
     if (!cuotaAmountMatches(anchorCuota, row.valor_cuota_mensual_clp)) continue;
-    out.push(row.id);
+    out.push({ id: row.id, parser_row_id: row.parser_row_id });
   }
-  return out.sort((a, b) => a - b);
+  return out.sort((a, b) => a.id - b.id);
 }
 
 /**
