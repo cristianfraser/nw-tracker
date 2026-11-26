@@ -119,6 +119,7 @@ function node(partial: Partial<NavTreeNodeDto> & { slug: string }): NavTreeNodeD
     dashboard_bucket_slug: partial.dashboard_bucket_slug ?? null,
     exclude_from_parent_total: false,
     investment_glance: false,
+    cash_glance: false,
     group_kind: partial.group_kind ?? "bucket",
     children: partial.children ?? [],
   };

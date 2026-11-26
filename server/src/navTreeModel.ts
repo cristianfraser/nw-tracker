@@ -302,6 +302,18 @@ export function isInvestmentGroup(slug: string): boolean {
   return children.length > 0 && children.every((c) => isInvestmentGroup(c.slug));
 }
 
+/**
+ * True for a group of the cash bucket: the net-worth bucket whose total nets the linked credit
+ * cards ({@link nettingGroupOf}; cards are paid from cash), the bucket itself included. Never an
+ * investment group.
+ */
+export function isCashGroup(slug: string): boolean {
+  const g = navGroup(slug);
+  if (!g || isInvestmentGroup(slug)) return false;
+  const bucket = nwBucketOfGroup(g.id);
+  return bucket != null && nettingGroupOf(bucket) != null;
+}
+
 /** True when an account sits in an investment root's subtree. */
 export function isInvestmentAccount(accountId: number): boolean {
   const leaf = leafGroupOfAccount(accountId);

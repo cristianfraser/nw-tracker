@@ -826,18 +826,6 @@
       "en": "Valuation and contributions",
       "es": "Valorización y aportes"
     },
-    "currentValueByAccount": {
-      "en": "Current value by account",
-      "es": "Valor actual por cuenta"
-    },
-    "monthlyDeltaConsolidated": {
-      "en": "Monthly Δ (consolidated)",
-      "es": "Δ mensual (consolidado)"
-    },
-    "monthlyDeltaConsolidatedAccumTitle": {
-      "en": "Monthly Δ (consolidated) and accumulated earnings",
-      "es": "Δ mensual (consolidado) y ganancias acumuladas"
-    },
     "noMonthlyPl": {
       "en": "No monthly P/L data for this period.",
       "es": "Sin datos de P/L mensual para este período."
@@ -4003,6 +3991,46 @@
         "es": "Ver la participación de cada posición en el total"
       }
     },
+    "cashGlance": {
+      "tableLabel": {
+        "en": "Accounts of {{name}}",
+        "es": "Cuentas de {{name}}"
+      },
+      "col": {
+        "spark": {
+          "en": "balance, 1 year",
+          "es": "saldo, 1 año"
+        },
+        "native": {
+          "en": "balance",
+          "es": "saldo"
+        }
+      },
+      "byCurrency": {
+        "en": "balance by currency",
+        "es": "saldo por moneda"
+      },
+      "change": {
+        "en": "change in balance",
+        "es": "variación del saldo"
+      },
+      "balanceTitle": {
+        "en": "Balance",
+        "es": "Saldo"
+      },
+      "balanceByAccount": {
+        "en": "Balance by account",
+        "es": "Saldo por cuenta"
+      },
+      "percentToggleTitle": {
+        "en": "Show each account's share of the total",
+        "es": "Ver la participación de cada cuenta en el total"
+      },
+      "dayChange": {
+        "en": "Change in balance today",
+        "es": "Variación del saldo hoy"
+      }
+    },
     "basketGlance": {
       "units": {
         "shares": {
@@ -4055,25 +4083,9 @@
       "en": "No monthly performance data for this group's accounts.",
       "es": "Sin datos de rendimiento mensual para las cuentas de este grupo."
     },
-    "accountsTreeTitle": {
-      "en": "Accounts in this view",
-      "es": "Cuentas en esta vista"
-    },
     "accountsTreeTitleLiabilities": {
       "en": "Groups and accounts in this view",
       "es": "Grupos y cuentas en esta vista"
-    },
-    "chartToggleGrouped": {
-      "en": "Grouped",
-      "es": "Agrupado"
-    },
-    "chartToggleAccumulatedDeposits": {
-      "en": "Accumulated contributions",
-      "es": "Aportes acumulados"
-    },
-    "chartToggleAccumulatedDepositsTitle": {
-      "en": "Dashed lines with accumulated contributions per account or group.",
-      "es": "Líneas punteadas de aportes acumulados por cuenta o grupo."
     },
     "accountsTreeEmpty": {
       "en": "No accounts in this view yet.",

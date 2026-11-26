@@ -18,7 +18,7 @@ Global chrome: navigation, page chrome, loading, ticker.
 
 Recharts wrappers and chart panels shared across pages.
 
-- **AppLineChart**, **ValuationLineCharts**, **MonthlyPerformanceComboChart**, category/apartment/deposit charts, **PortfolioGroupChartsSection**
+- **AppLineChart**, **ValuationLineCharts**, **MonthlyPerformanceComboChart**, category/apartment/deposit charts, **GroupCharts** (a group page's valuation chart and P/L combo)
 
 ## `dashboard/` — portfolio cards & metrics
 

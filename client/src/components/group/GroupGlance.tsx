@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { formatMoney, formatPct } from "../../format";
-import type { GroupGlanceDto, GroupGlanceRowDto, Money } from "../../types";
+import type { GroupGlanceCashDto, GroupGlanceDto, GroupGlanceRowDto, Money } from "../../types";
 import {
   CompositionGroup,
   GlanceRail,
@@ -31,8 +31,9 @@ function SignedMoney({ money }: { money: Money | null }) {
 }
 
 /**
- * The investment group page's title line: the group's name, today's value and the day's P/L
- * (server `group_glance`). `glance` undefined = pending: the nav's name, blank figures.
+ * The group page's title line: the group's name, today's value and the day's P/L (server
+ * `group_glance`); on a cash group the day's change of the balance, the figure its strip shows
+ * (`cash.change.day`). `glance` undefined = pending: the nav's name, blank figures.
  */
 export function GroupGlanceTitle({
   glance,
@@ -43,11 +44,14 @@ export function GroupGlanceTitle({
   fallbackTitle: string;
   loading?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <GlanceTitleLine
-      title={glance?.title ?? fallbackTitle}
+      // The nav's label (translated like the sidebar's) once known; the server's before.
+      title={fallbackTitle || glance?.title || ""}
       value={glance?.value ?? null}
-      day={glance?.day ?? null}
+      day={glance?.cash ? glance.cash.change.day : (glance?.day ?? null)}
+      dayLabel={glance?.cash ? t("groupPage.cashGlance.dayChange") : undefined}
       loading={loading}
     />
   );
@@ -60,16 +64,64 @@ function useRowLabel(): (row: Pick<GroupGlanceRowDto, "label" | "label_i18n_key"
 }
 
 /**
- * The strip under the band: the «valor hoy» composition bar (the position page's, summed over the
- * group's members by the server) | the día / mes / año bars. Pending: their frames.
+ * A cash group's balances by the currency its accounts hold (server `group_glance.cash`): a bar
+ * to scale, each currency's balance in that currency (and in the display unit when it is
+ * another), and at the right what the linked cards owe, when the group nets them.
  */
-export function GroupGlanceStrip({ glance }: { glance: GroupGlanceDto | undefined }) {
+function CurrencyGroup({ cash, unit }: { cash: GroupGlanceCashDto; unit: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className={styles.currencies}>
+      <div className={styles.stripCaption}>{t("groupPage.cashGlance.byCurrency")}</div>
+      <div className={styles.currencyBar}>
+        {cash.by_currency.map((c, i) => (
+          <span key={c.currency} className={styles[`currency${Math.min(i, 3)}`]} style={{ width: pctOf(c.share) }} />
+        ))}
+      </div>
+      <div className={styles.currencyLabels}>
+        {cash.by_currency.map((c, i) => (
+          <span key={c.currency}>
+            <em>
+              <i className={styles[`currency${Math.min(i, 3)}`]} />
+              {c.currency.toUpperCase()}
+            </em>
+            <b className="mono">{formatMoney(c.native, { precision: "full" })}</b>
+            {c.currency !== unit ? <small className="mono">{formatMoney(c.value)}</small> : null}
+          </span>
+        ))}
+        {cash.linked_cards ? (
+          <span className={styles.currencyCards}>
+            <em>
+              <Link to={cash.linked_cards.route_path}>
+                {cash.linked_cards.label_i18n_key ? t(cash.linked_cards.label_i18n_key) : cash.linked_cards.label}
+              </Link>
+            </em>
+            <b className={cn("mono", toneClass(cash.linked_cards.value.value))}>
+              {formatMoney(cash.linked_cards.value)}
+            </b>
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The strip under the band: the «valor hoy» composition bar (the position page's, summed over the
+ * group's members by the server) | the día / mes / año bars. A cash group (`cash`): its balances
+ * by currency | the change of its balance over the day, the month and the year, on the same bars.
+ * Pending: their frames.
+ */
+export function GroupGlanceStrip({ glance, cash = false }: { glance: GroupGlanceDto | undefined; cash?: boolean }) {
+  const { t } = useTranslation();
   return (
     <>
       <div className={styles.stripComposition}>
         <GlanceRail>
           {glance ? (
-            glance.composition ? (
+            glance.cash ? (
+              <CurrencyGroup cash={glance.cash} unit={glance.unit} />
+            ) : glance.composition ? (
               <CompositionGroup composition={glance.composition} />
             ) : null
           ) : (
@@ -79,7 +131,8 @@ export function GroupGlanceStrip({ glance }: { glance: GroupGlanceDto | undefine
       </div>
       <div className={styles.stripPeriods}>
         <GlanceRail>
-          <PeriodsGroup periods={glance?.periods ?? null} />
+          {cash ? <div className={styles.stripCaption}>{t("groupPage.cashGlance.change")}</div> : null}
+          <PeriodsGroup periods={cash ? (glance?.cash?.change ?? null) : (glance?.periods ?? null)} />
         </GlanceRail>
       </div>
     </>
@@ -166,7 +219,88 @@ function parseOpenChoices(raw: string | null): Record<string, boolean> {
 }
 
 function rowKey(row: Pick<GroupGlanceRowDto, "kind" | "slug" | "account_id">): string {
-  return row.kind === "group" ? `g:${row.slug}` : `a:${row.account_id}`;
+  return row.kind === "account" ? `a:${row.account_id}` : row.kind === "group" ? `g:${row.slug}` : `c:${row.slug}`;
+}
+
+/**
+ * One line of a cash group's table: dot + name | one-year balance line | balance in the currency
+ * the accounts hold | value in the unit | weight | month change | year change.
+ */
+function CashGlanceRow({
+  row,
+  color,
+  variant,
+  caret,
+}: {
+  row: GroupGlanceRowDto;
+  color: string;
+  variant: "total" | "child" | "member";
+  caret?: { open: boolean; onToggle: () => void };
+}) {
+  const { t } = useTranslation();
+  const label = useRowLabel()(row);
+  const sold = !row.held && variant !== "total";
+  const cards = row.kind === "linked_cards";
+  return (
+    <div
+      role="row"
+      className={cn(
+        styles.row,
+        variant === "total" && styles.totalRow,
+        variant === "member" && styles.memberRow,
+        sold && styles.soldRow
+      )}
+    >
+      <span role="cell" className={styles.nameCell}>
+        {caret ? (
+          <button
+            type="button"
+            className={cn(styles.caret, caret.open && styles.caretOpen)}
+            aria-expanded={caret.open}
+            aria-label={t(caret.open ? "groupPage.investmentGlance.collapse" : "groupPage.investmentGlance.expand", {
+              name: label,
+            })}
+            onClick={caret.onToggle}
+          >
+            <ChevronIcon />
+          </button>
+        ) : (
+          <span className={styles.caretSpace} />
+        )}
+        <ColorMarker color={color} className={styles.dot} />
+        <Link to={row.route_path} className={styles.name}>
+          {label}
+        </Link>
+      </span>
+      <span role="cell" className={styles.sparkCell}>
+        <Spark points={row.spark} className={variant !== "total" ? styles.sparkChild : styles.sparkTotalPerf} />
+      </span>
+      <span role="cell" className={cn("mono", styles.num, styles.native)}>
+        {row.native.length > 0
+          ? row.native.map((m) => <span key={m.currency}>{formatMoney(m, { precision: "full" })}</span>)
+          : "—"}
+      </span>
+      <span role="cell" className={cn("mono", styles.num, styles.value, cards && toneClass(row.value.value))}>
+        {formatMoney(row.value)}
+      </span>
+      <span role="cell" className={styles.shareCell}>
+        {sold || cards ? null : (
+          <>
+            <span className={styles.shareBar}>
+              <i style={{ width: pctOf(row.share), background: variant === "total" ? undefined : color }} />
+            </span>
+            <span className={cn("mono", styles.sharePct)}>{formatPct(row.share * 100, 2)}</span>
+          </>
+        )}
+      </span>
+      <span role="cell" className={cn("mono", styles.num, styles.month)}>
+        <SignedMoney money={row.change?.month ?? null} />
+      </span>
+      <span role="cell" className={cn("mono", styles.num, styles.year)}>
+        <SignedMoney money={row.change?.year ?? null} />
+      </span>
+    </div>
+  );
 }
 
 /** One line of the table: dot + name | sparkline | valor | peso | día | mes | año | total | aportes. */
@@ -263,15 +397,34 @@ function GlanceRow({
 }
 
 /** A pending row: the name from the nav tree, blank figures at the loaded height. */
-function PendingRow({ label, total = false }: { label: string; total?: boolean }) {
-  return (
-    <div role="row" className={cn(styles.row, total && styles.totalRow)}>
+function PendingRow({ label, total = false, cash = false }: { label: string; total?: boolean; cash?: boolean }) {
+  const head = (
+    <>
       <span role="cell" className={styles.nameCell}>
         <span className={styles.caretSpace} />
         <span className={cn(styles.dot, styles.dotPending)} />
         <span className={styles.name}>{label || BLANK}</span>
       </span>
       <span role="cell" className={styles.sparkCell} />
+    </>
+  );
+  if (cash) {
+    return (
+      <div role="row" className={cn(styles.row, total && styles.totalRow)}>
+        {head}
+        <span role="cell" className={cn(styles.num, styles.native)} />
+        <span role="cell" className={cn(styles.num, styles.value)}>
+          {BLANK}
+        </span>
+        <span role="cell" className={styles.shareCell} />
+        <span role="cell" className={cn(styles.num, styles.month)} />
+        <span role="cell" className={cn(styles.num, styles.year)} />
+      </div>
+    );
+  }
+  return (
+    <div role="row" className={cn(styles.row, total && styles.totalRow)}>
+      {head}
       <span role="cell" className={cn(styles.num, styles.value)}>
         {BLANK}
       </span>
@@ -293,6 +446,11 @@ function PendingRow({ label, total = false }: { label: string; total?: boolean }
  * every group page. One row list at every width: a container query keeps
  * name, value, mes and total when narrow (no horizontal scroll). Each dot takes the child's chart
  * colour (`colorFor`, the page's group colour maps), so dot, band and bar match.
+ *
+ * A cash group (`cash`): the same rows without return figures — the line is always the balance,
+ * the columns the balance in the currency the accounts hold, the value in the unit, the weight
+ * and the month's and year's change; the linked cards are a row of their own (negative). Narrow,
+ * it keeps name, balance and value.
  */
 export function GroupGlanceTable({
   glance,
@@ -301,8 +459,11 @@ export function GroupGlanceTable({
   colorFor,
   totalColor,
   loading = false,
+  cash = false,
 }: {
   glance: GroupGlanceDto | undefined;
+  /** A cash group's table (known from the nav node before the glance is in). */
+  cash?: boolean;
   /** The group's name (the pending total row's). */
   title: string;
   /** The nav node's children, for the pending rows. */
@@ -337,6 +498,72 @@ export function GroupGlanceTable({
       ? { mode: "perf", zeroY: glance.perf_zero_y }
       : { mode: "balance" }
     : undefined;
+  const rowOpen = (row: GroupGlanceRowDto) => row.members.length > 0 && (openChoices[rowKey(row)] ?? openByDefault(row));
+  if (cash) {
+    return (
+      <div className={loadableClass(loading, styles.frame)}>
+        <div
+          role="table"
+          className={cn(styles.table, styles.tableCash)}
+          aria-label={t("groupPage.cashGlance.tableLabel", { name: title })}
+        >
+          <div role="row" className={cn(styles.row, styles.headRow)}>
+            <span role="columnheader" className={styles.nameCell} />
+            <span role="columnheader" className={cn(styles.sparkCell, styles.num)}>
+              {t("groupPage.cashGlance.col.spark")}
+            </span>
+            <span role="columnheader" className={cn(styles.num, styles.native)}>
+              {t("groupPage.cashGlance.col.native")}
+            </span>
+            <span role="columnheader" className={cn(styles.num, styles.value)}>
+              {t("groupPage.investmentGlance.col.value")}
+            </span>
+            <span role="columnheader" className={styles.shareCell}>
+              {t("groupPage.investmentGlance.col.share")}
+            </span>
+            <span role="columnheader" className={cn(styles.num, styles.month)}>
+              {t("groupPage.investmentGlance.col.month")}
+            </span>
+            <span role="columnheader" className={cn(styles.num, styles.year)}>
+              {t("groupPage.investmentGlance.col.year")}
+            </span>
+          </div>
+          {glance ? (
+            <>
+              <CashGlanceRow row={glance.total} color={totalColor} variant="total" />
+              {glance.rows.map((row) => {
+                const key = rowKey(row);
+                const color = colorFor(row);
+                const open = rowOpen(row);
+                return (
+                  <div key={key} role="rowgroup" className={styles.rowGroup}>
+                    <CashGlanceRow
+                      row={row}
+                      color={color}
+                      variant="child"
+                      caret={row.members.length > 0 ? { open, onToggle: () => toggle(key, open) } : undefined}
+                    />
+                    {open
+                      ? row.members.map((m) => <CashGlanceRow key={rowKey(m)} row={m} color={color} variant="member" />)
+                      : null}
+                  </div>
+                );
+              })}
+            </>
+          ) : (
+            <>
+              <PendingRow label={title} total cash />
+              {pendingLabels.map((label, i) => (
+                <div key={i} role="rowgroup" className={styles.rowGroup}>
+                  <PendingRow label={label} cash />
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={loadableClass(loading, styles.frame)}>
       <div role="table" className={styles.table} aria-label={t("groupPage.investmentGlance.tableLabel", { name: title })}>
@@ -390,7 +617,7 @@ export function GroupGlanceTable({
               const key = rowKey(row);
               const color = colorFor(row);
               const hasMembers = row.members.length > 0;
-              const open = hasMembers && (openChoices[key] ?? openByDefault(row));
+              const open = rowOpen(row);
               return (
                 <div key={key} role="rowgroup" className={styles.rowGroup}>
                   <GlanceRow
