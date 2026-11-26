@@ -16,19 +16,20 @@ import type {
 import { monthEndYmdsForSkeleton } from "./placeholderMonthRows";
 
 const OVERVIEW_LINE_SPECS: DashboardChartShapeLine[] = [
-  { dataKey: "real_estate", name: "Inmuebles", valueSeriesType: "data" },
-  { dataKey: "retirement", name: "Retiro", valueSeriesType: "data" },
-  { dataKey: "brokerage", name: "Brokerage", valueSeriesType: "data" },
-  { dataKey: "invested", name: "Invested", valueSeriesType: "reference" },
-  { dataKey: "cash", name: "Cash savings", valueSeriesType: "data" },
-  { dataKey: "liabilities", name: "Pasivos", valueSeriesType: "data" },
-  { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
+  { dataKey: "real_estate", name: "Inmuebles", name_i18n_key: "dashboard.buckets.real_estate", valueSeriesType: "data" },
+  { dataKey: "retirement", name: "Retiro", name_i18n_key: "dashboard.cards.retirement", valueSeriesType: "data" },
+  { dataKey: "brokerage", name: "Brokerage", name_i18n_key: "dashboard.cards.brokerage", valueSeriesType: "data" },
+  { dataKey: "invested", name: "Invested", name_i18n_key: "charts.overview.invested", valueSeriesType: "reference" },
+  { dataKey: "cash", name: "Cash savings", name_i18n_key: "dashboard.buckets.cash_eqs", valueSeriesType: "data" },
+  { dataKey: "liabilities", name: "Pasivos", name_i18n_key: "dashboard.cards.liabilities", valueSeriesType: "data" },
+  { dataKey: "total_nw", name: "Patrimonio neto", name_i18n_key: "dashboard.cards.netWorth", valueSeriesType: "data" },
   // The server's USD milestone lines (same keys and labels as `usdMilestoneReferenceLines`).
   ...(["50", "100", "250", "300", "500"] as const).map((k) => ({
     dataKey: `usd_${k}k`,
-    name: `US$${k},000`,
+    name: `US$${k}000`,
     valueSeriesType: "reference" as const,
     level_currency: "usd" as const,
+    level_amount: Number(k) * 1000,
   })),
 ];
 

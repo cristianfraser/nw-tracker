@@ -1,6 +1,8 @@
 import { CartesianGrid, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import i18n from "../../i18n";
+import { formatMoney } from "../../format";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../../chartColors";
 import { resolveLineSeriesColors } from "../../chartColors";
 import { GROUP_TAB_DEP_TOTAL } from "../../groupTabAggregation";
@@ -354,7 +356,12 @@ function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boo
     seenDataKeys.add(ln.dataKey);
     raw.push({
       dataKey: ln.dataKey,
-      name: ln.name,
+      name:
+        ln.level_currency != null && ln.level_amount != null
+          ? formatMoney({ value: ln.level_amount, currency: ln.level_currency }, { digits: 0 })
+          : ln.name_i18n_key
+            ? i18n.t(ln.name_i18n_key)
+            : ln.name,
       colorIndex: nAccounts + j,
       color_rgb: ln.color_rgb,
       isReferenceOverlay: ln.valueSeriesType === "reference",
@@ -506,10 +513,11 @@ export function LineChartPanel({
         : carryForwardTrailingPendingRows(densified, lastRealYmd);
     return coerceKeptTrailingZeroMonth(carried, valuationKeys);
   }, [blockWithAnchors.points, xAxisGranularity, valuationKeys, block.chart_end_ymd]);
+  const { decimalSeparator } = useDisplayPreferences();
   const series = useMemo(
     () => resolveLineSeriesColors(buildRawLineSeries(blockWithAnchors, includeAccumulatedLines), colorPlan),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n.language: bucket/deposit labels translate at render (no cached t()).
-    [blockWithAnchors, includeAccumulatedLines, colorPlan, i18n.language]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n.language, decimalSeparator: labels translate and format at render (no cached t()).
+    [blockWithAnchors, includeAccumulatedLines, colorPlan, i18n.language, decimalSeparator]
   );
 
   // Series that ended before the window starts arrive all-null and draw nothing — drop them from

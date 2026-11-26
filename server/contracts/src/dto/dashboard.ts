@@ -314,12 +314,16 @@ export interface TimeseriesBlock {
   lines?: {
     dataKey: string;
     name: string;
+    /** master.json key; the client resolves it at render and falls back to `name`. */
+    name_i18n_key?: string;
     valueSeriesType: ValueSeriesType;
     /** Resolved from `portfolio_groups` for dashboard overview buckets. */
     color_rgb?: string;
     /** A reference level fixed in a currency (the USD milestones): in that display unit its value
      * is its own name, so the tooltip leaves it out. */
     level_currency?: DisplayUnitCode;
+    /** The level's amount in `level_currency`; the client formats it as the line's name. */
+    level_amount?: number;
   }[];
   points: Record<string, string | number | null>[];
   /** USD milestone levels (in the block's unit) for chart anchor dates (month/year prior period ends). */

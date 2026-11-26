@@ -49,11 +49,15 @@ export interface GroupMonthlyPerformanceResponse {
 export interface DashboardChartShapeLine {
   dataKey: string;
   name: string;
+  /** See `TimeseriesBlock.lines[].name_i18n_key`. */
+  name_i18n_key?: string;
   valueSeriesType: ValueSeriesType;
   account_id?: number;
   color_rgb?: string;
   /** See `TimeseriesBlock.lines[].level_currency`. */
   level_currency?: DisplayUnitCode;
+  /** See `TimeseriesBlock.lines[].level_amount`. */
+  level_amount?: number;
 }
 
 /**

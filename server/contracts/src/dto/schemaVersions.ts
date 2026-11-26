@@ -16,9 +16,10 @@ export const DTO_SCHEMA_VERSIONS = {
    * `parent_pct`, v15 added the server `value`, v16 compounded daily % with `on_deposits_*`, v17
    * the account rows' `nav_label`, `has_period_returns` and `loan_account_id`, v18 Retirement by
    * country (Chile / US slugs), v19 dropped `nav_label` (a card line's label is the row's `name`), v20
-   * one value per field in the payload's `unit` (no `_clp` / `_usd` pairs).
+   * one value per field in the payload's `unit` (no `_clp` / `_usd` pairs), v21 the chart shape's lines
+   * carry `name_i18n_key` and a milestone's `level_amount`.
    */
-  nav_strip: 20,
+  nav_strip: 21,
   /**
    * `GET /api/meta/sidebar-nav`: v5 `chart_coverage`, v6 `member_account_ids`, v7 Retirement by
    * country, v8 `investment_glance` on every node, v9 no `chart_coverage` (the Liabilities page

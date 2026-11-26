@@ -98,6 +98,8 @@ type GroupTabValuationBlock = {
     /** A reference level fixed in a currency (the USD milestones): in that display unit its value
      * is its own name, so the tooltip leaves it out. */
     level_currency?: CurrencyCode;
+    /** The level's amount in `level_currency`; the client formats it as the line's name. */
+    level_amount?: number;
   }[];
   /** FX-backed USD milestone CLP levels for chart anchor dates (month/year prior period ends). */
   referenceMilestoneByDate?: Record<string, Record<string, number | null>>;
@@ -345,9 +347,10 @@ function buildReferenceMilestoneAnchorsByDate(
 function usdMilestoneReferenceLines(): NonNullable<GroupTabValuationBlock["lines"]> {
   return PATRIMONIO_USD_MILESTONE_AMOUNTS.map((usd) => ({
     dataKey: usdMilestoneDataKey(usd),
-    name: `US$${usd.toLocaleString("en-US")}`,
+    name: `US$${usd}`,
     valueSeriesType: "reference" as const,
     level_currency: "usd" as const,
+    level_amount: usd,
   }));
 }
 
@@ -862,6 +865,8 @@ export type DashboardChartShapeLine = {
   account_id?: number;
   color_rgb?: string;
   level_currency?: CurrencyCode;
+  level_amount?: number;
+  name_i18n_key?: string;
 };
 
 /** Dashboard chart skeleton: line specs + x-axis start + section presence, no points. */
