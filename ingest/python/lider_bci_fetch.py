@@ -44,6 +44,7 @@ from typing import Any
 
 from scrapling.fetchers import StealthySession
 
+from lider_browser_cache import clear_http_cache
 from lider_login_failure import classify_login_failure
 
 REPO = Path(__file__).resolve().parents[2]
@@ -316,7 +317,8 @@ def main() -> None:
             # About one fetch in 25 the movements page right after the login lands on the site's root
             # and renders blank, so the list is never asked for (2026-11-16 → 11-26; the next hourly
             # fetch always worked). Reopen it once in the same session — no second login, so the
-            # clave is never presented again.
+            # clave is never presented again. (A page blank on every fetch was a stale cached page
+            # shell: see lider_browser_cache.py.)
             result["movements_reopened_from"] = page.url
             log(f"the «Por facturar» list did not arrive (page at {page.url}) — opening the movements page once more")
             page.goto(MOVEMENTS_URL, wait_until="domcontentloaded")
@@ -362,6 +364,9 @@ def main() -> None:
 
     # No network_idle: the site's analytics never go quiet, so every idle wait ran to its 30 s
     # timeout (~1,5 min between Turnstile «Success!» and the form). run() waits for what it needs.
+    removed = clear_http_cache(PROFILE_DIR)
+    if removed:
+        log(f"browser HTTP cache cleared ({', '.join(removed)})")
     with StealthySession(headless=args.headless, solve_cloudflare=True,
                          user_data_dir=str(PROFILE_DIR)) as session:
         session.fetch(LOGIN_URL, page_action=action, solve_cloudflare=True)
