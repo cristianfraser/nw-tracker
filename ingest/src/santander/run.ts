@@ -12,7 +12,7 @@ import { assertRunAllowed } from "../runGuard.js";
 import { setForceRefetch } from "../documentLedger.js";
 import { assertValidSteps, shouldRunStep } from "../steps.js";
 import type { RunOptions, StepResult } from "../runTypes.js";
-import { isPrivateAppUrl, login } from "./login.js";
+import { isPrivateAppUrl, login, LoginBouncedError } from "./login.js";
 import { assertLoginNotLatched } from "./loginLatch.js";
 import { LOGIN_HOSTS } from "./routes.js";
 import { fetchCardMovements, fetchCardStatements } from "./cards.js";
@@ -110,7 +110,7 @@ export async function runSantander(opts: RunOptions): Promise<number> {
    * shows the bank's connection-error card instead of the form (2026-09-25). Waiting here costs
    * nothing on a normal night and applies to a relaunch as well.
    */
-  const openSession = async (): Promise<Session> => {
+  const openSessionOnce = async (): Promise<Session> => {
     await waitForHosts(LOGIN_HOSTS);
     const context = await launchBrowser({ bank: "santander", headless: false, background: opts.background });
     try {
@@ -123,6 +123,23 @@ export async function runSantander(opts: RunOptions): Promise<number> {
         log(`(browser context close after failed login: ${errorMessage(closeErr).split("\n")[0]})`);
       });
       throw err;
+    }
+  };
+
+  /**
+   * `openSessionOnce`, and once more in a fresh browser when the bank bounces the login to its own
+   * login page (no toast, no API call). A retry in the same browser right after a bounce often
+   * bounced again (2026-11-22 → 25: 5 of 17 bounces), while the next poll's new Chrome always got
+   * through, so the bounced browser is closed first (its session cookies and tab storage go with
+   * it; the saved profile stays). Never more than one retry: a second bounce fails the step.
+   */
+  const openSession = async (): Promise<Session> => {
+    try {
+      return await openSessionOnce();
+    } catch (err) {
+      if (!(err instanceof LoginBouncedError)) throw err;
+      log(`${errorMessage(err).split("\n")[0]} — logging in once more in a fresh browser`);
+      return await openSessionOnce();
     }
   };
 
@@ -179,12 +196,16 @@ export async function runSantander(opts: RunOptions): Promise<number> {
         log(`✗ ${name}: ${detail}`);
         if (!session.page.isClosed()) await saveStepDiagnostics(session.page, stepName, detail);
         const stack = err instanceof Error ? err.stack : undefined;
-        if (!browserIsGone(session, err) || relaunches >= MAX_BROWSER_RELAUNCHES) {
+        // A mid-run re-login the bank bounced is retried like a dead browser: in a fresh one.
+        const bounced = err instanceof LoginBouncedError;
+        if (!(bounced || browserIsGone(session, err)) || relaunches >= MAX_BROWSER_RELAUNCHES) {
           results.push({ name, ok: false, detail, stack });
           return;
         }
         relaunches += 1;
-        log(`browser died mid-run — relaunching (${relaunches}/${MAX_BROWSER_RELAUNCHES}) and retrying "${name}"`);
+        log(
+          `${bounced ? "re-login bounced" : "browser died mid-run"} — relaunching (${relaunches}/${MAX_BROWSER_RELAUNCHES}) and retrying "${name}"`
+        );
         sessionExtensions += session.keepAlive.extensions;
         await closeSession(session);
         try {
