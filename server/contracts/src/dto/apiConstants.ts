@@ -35,3 +35,25 @@ export const CHECKING_PAGE_KIND_SLUGS: readonly string[] = [
   "foreign_cash",
   "buda_clp",
 ];
+
+/** The age /projections retires at (server `projections.ts`). */
+export const PROJECTION_RETIRE_AGE = 65;
+
+/**
+ * The bounds of every /projections input: the server refuses a request outside them
+ * (`projectionParamsFromQuery`) and the form sends only values inside them, so both read this.
+ */
+export const PROJECTION_NUMBER_PARAM_BOUNDS = {
+  real_return_pct: [-5, 20],
+  retire_return_pct: [-5, 20],
+  end_age: [PROJECTION_RETIRE_AGE + 1, 110],
+  swr_pct: [0, 25],
+  pct_balance_pct: [0, 25],
+  liquidate_other_pct: [0, 100],
+} as const satisfies Record<string, readonly [number, number]>;
+
+/** Bounds of the money inputs (monthly contribution, fixed income, passive rent), in the currency typed. */
+export const PROJECTION_MONEY_BOUNDS: readonly [number, number] = [0, 1_000_000_000];
+
+/** Bounds of every `inflation_<code>_pct` input. */
+export const PROJECTION_INFLATION_BOUNDS: readonly [number, number] = [0, 30];

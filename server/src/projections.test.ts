@@ -225,6 +225,19 @@ describe("projectionsGlance", () => {
     expect(swr.lasts_share).toBeCloseTo(10 / 30, 12);
   });
 
+  it("an empty pot funds nothing: the strategies have run out at retirement", () => {
+    const empty = { ...BASE, base_total: 100_000_000, base_invested: 0, monthly_aporte: 0, liquidate_other_pct: 0 };
+    const g = glanceOf(empty);
+    expect(g.pot_at_retire).toBe(0);
+    for (const s of g.strategies) {
+      expect(s.lasts).toEqual({ kind: "depleted", age: PROJECTION_RETIRE_AGE });
+      expect(s.lasts_share).toBe(0);
+    }
+    // A fixed income the rent covers whole needs no pot.
+    const covered = glanceOf({ ...empty, monthly_income: 900_000, monthly_rent: 1_000_000 });
+    expect(covered.strategies[2]!.lasts).toEqual({ kind: "end_age", age: 95 });
+  });
+
   it("carries the rent every income includes", () => {
     const g = glanceOf({ ...BASE, monthly_rent: 1_000_000 });
     expect(g.monthly_rent).toBe(1_000_000);

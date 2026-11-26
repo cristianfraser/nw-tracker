@@ -1,7 +1,12 @@
 /**
- * The /projections form's fields: what each one is in the request, its bounds (the server's,
- * `projections.ts`) and the group it is edited in.
+ * The /projections form's fields: what each one is in the request, its bounds (the ones the
+ * server enforces, from the contracts) and the group it is edited in.
  */
+import {
+  PROJECTION_INFLATION_BOUNDS,
+  PROJECTION_MONEY_BOUNDS,
+  PROJECTION_NUMBER_PARAM_BOUNDS,
+} from "nw-tracker-contracts/dto/apiConstants";
 import {
   projectionInflationKey,
   projectionMoneyCurrencyKey,
@@ -11,17 +16,7 @@ import {
 import type { ProjectionParams } from "./types";
 
 /** The plain numeric inputs (no currency). */
-export const PROJECTION_NUMBER_BOUNDS = {
-  real_return_pct: [-5, 20],
-  retire_return_pct: [-5, 20],
-  end_age: [66, 110],
-  swr_pct: [0, 25],
-  pct_balance_pct: [0, 25],
-  liquidate_other_pct: [0, 100],
-} as const;
-export type ProjectionNumberKey = keyof typeof PROJECTION_NUMBER_BOUNDS;
-const MONEY_BOUNDS: readonly [number, number] = [0, 1_000_000_000];
-const INFLATION_BOUNDS: readonly [number, number] = [0, 30];
+export type ProjectionNumberKey = keyof typeof PROJECTION_NUMBER_PARAM_BOUNDS;
 
 /** One form field: its request key, how it reads the server's echo and its bounds. */
 export type ProjectionField =
@@ -37,8 +32,8 @@ export function projectionFieldKey(f: ProjectionField): string {
 }
 
 export function projectionFieldBounds(f: ProjectionField): readonly [number, number] {
-  if (f.kind === "number") return PROJECTION_NUMBER_BOUNDS[f.key];
-  return f.kind === "money" ? MONEY_BOUNDS : INFLATION_BOUNDS;
+  if (f.kind === "number") return PROJECTION_NUMBER_PARAM_BOUNDS[f.key];
+  return f.kind === "money" ? PROJECTION_MONEY_BOUNDS : PROJECTION_INFLATION_BOUNDS;
 }
 
 export function projectionFieldInBounds(f: ProjectionField, v: number): boolean {

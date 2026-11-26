@@ -16,6 +16,12 @@ import { accountIdsInPortfolioGroupForTotals } from "./portfolioGroupTree.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { coreCurrencyCodes, roundToCurrency } from "./displayUnits.js";
 import { convertCurrency } from "./rates.js";
+import {
+  PROJECTION_INFLATION_BOUNDS,
+  PROJECTION_MONEY_BOUNDS,
+  PROJECTION_NUMBER_PARAM_BOUNDS,
+  PROJECTION_RETIRE_AGE,
+} from "nw-tracker-contracts/dto/apiConstants";
 import type {
   ProjectionsChartLine,
   ProjectionsCompositionSegment,
@@ -25,7 +31,7 @@ import type {
 
 /** User's birth month — retirement age is measured from here. */
 export const PROJECTION_BIRTH_MONTH = "1992-01";
-export const PROJECTION_RETIRE_AGE = 65;
+export { PROJECTION_RETIRE_AGE };
 
 /** USD reference levels for the projection horizon (superset of the patrimonio milestones). */
 export const PROJECTION_USD_MILESTONES = [250_000, 500_000, 750_000, 1_000_000, 1_500_000, 2_000_000] as const;
@@ -58,25 +64,15 @@ export type ProjectionParams = {
   monthly_rent: number;
 };
 
-/** The plain numeric parameters (no currency), with their bounds. */
-export const PROJECTION_NUMBER_PARAM_BOUNDS = {
-  real_return_pct: [-5, 20],
-  retire_return_pct: [-5, 20],
-  end_age: [PROJECTION_RETIRE_AGE + 1, 110],
-  swr_pct: [0, 25],
-  pct_balance_pct: [0, 25],
-  liquidate_other_pct: [0, 100],
-} as const satisfies Record<string, readonly [number, number]>;
+/** The plain numeric parameters (no currency); their bounds are the contracts' (shared with the form). */
+export { PROJECTION_INFLATION_BOUNDS, PROJECTION_MONEY_BOUNDS, PROJECTION_NUMBER_PARAM_BOUNDS };
 
 export type ProjectionNumberParam = keyof typeof PROJECTION_NUMBER_PARAM_BOUNDS;
 
 /** The money parameters: an amount in the currency the request names (`<key>_currency`, default the unit). */
 export const PROJECTION_MONEY_PARAMS = ["monthly_aporte", "monthly_income", "monthly_rent"] as const;
 export type ProjectionMoneyParam = (typeof PROJECTION_MONEY_PARAMS)[number];
-export const PROJECTION_MONEY_BOUNDS: readonly [number, number] = [0, 1_000_000_000];
 
-/** Bounds of every `inflation_<code>_pct` input. */
-export const PROJECTION_INFLATION_BOUNDS: readonly [number, number] = [0, 30];
 
 /**
  * Default annual inflation per core currency — ASSUMPTIONS, not forecasts: CLP 3,5 % (the
@@ -387,6 +383,15 @@ export function projectionsGlance(
           lasts: { kind: "depleted", age: depletionAge },
           lasts_share: Math.min(1, Math.max(0, (depletionAge - PROJECTION_RETIRE_AGE) / span)),
         };
+  // An empty pot funds nothing: a strategy that needs a withdrawal has run out at retirement
+  // (the engine's walk never starts on it, so it reports no depletion).
+  const potEmpty = engine.balance_at_retire <= 0;
+  const unfunded: Pick<ProjectionsStrategy, "lasts" | "lasts_share"> = {
+    lasts: { kind: "depleted", age: PROJECTION_RETIRE_AGE },
+    lasts_share: 0,
+  };
+  // The fixed income needs no pot only when a passive rent covers its whole target.
+  const fixedNeedsPot = !(engine.monthly_rent > 0 && engine.fixed_monthly_income <= engine.monthly_rent);
   return {
     net_worth_at_retire: total,
     composition: today > 0 && total > 0 ? compositionOf(today, contributions, growth) : null,
@@ -404,7 +409,7 @@ export function projectionsGlance(
         pct: input.swr_pct,
         monthly_income: engine.swr_monthly_income,
         income_is_initial: false,
-        ...lastsOf(engine.swr_depletion_age),
+        ...(potEmpty ? unfunded : lastsOf(engine.swr_depletion_age)),
       },
       {
         kind: "pct_balance",
@@ -412,8 +417,7 @@ export function projectionsGlance(
         pct: input.pct_balance_pct,
         monthly_income: engine.pct_balance_initial_monthly_income,
         income_is_initial: true,
-        lasts: { kind: "always" },
-        lasts_share: 1,
+        ...(potEmpty ? unfunded : { lasts: { kind: "always" as const }, lasts_share: 1 }),
       },
       {
         kind: "fixed_income",
@@ -421,7 +425,7 @@ export function projectionsGlance(
         pct: null,
         monthly_income: engine.fixed_monthly_income,
         income_is_initial: false,
-        ...lastsOf(engine.fixed_income_depletion_age),
+        ...(potEmpty && fixedNeedsPot ? unfunded : lastsOf(engine.fixed_income_depletion_age)),
       },
     ],
   };
