@@ -7,12 +7,7 @@ import {
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 import { ccCupoFrame } from "./ccBillingViews.js";
-import {
-  latestCreditCardBillingBalanceTotalClp,
-  upsertCreditCardValuationsFromLedger,
-} from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
 import {
   ensureVitestCreditCardFixtures,
   getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
@@ -160,31 +155,6 @@ describe("installment ledger cupo (synthetic)", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("persists a today valuation equal to the owed walk", () => {
-    ensureVitestCreditCardFixtures();
-    const id = getVitestSantanderCcMasterAccountId();
-    if (id == null) return;
-    accountId = id;
-    cleanup();
-    seedPurchase();
-
-    const written = upsertCreditCardValuationsFromLedger(accountId);
-    expect(written).toBeGreaterThan(0);
-
-    // Today's stamp is the walk (last anchor strictly before today + evidence after it), else
-    // the billing-detail balance when there is no anchor to walk from, else the live outstanding.
-    const today = chileCalendarTodayYmd();
-    const expected =
-      ccOwedWalkClpAtYmd(accountId, today)?.value_clp ??
-      latestCreditCardBillingBalanceTotalClp(accountId) ??
-      liveCreditCardOutstandingClp(accountId);
-    expect(expected).not.toBeNull();
-    const row = db
-      .prepare(`SELECT value AS value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`)
-      .get(accountId, today) as { value_clp: number } | undefined;
-    expect(row?.value_clp).toBe(expected);
   });
 });
 

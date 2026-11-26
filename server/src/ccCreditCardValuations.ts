@@ -10,10 +10,7 @@ import { ccCupoFrame, ccStatementOwedByCurrencyByMonth, type CcCupoFrame } from 
 import { planCount } from "./cards/purchases.js";
 import { ccIssuerBySlug } from "./ccIssuers.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
-import {
-  ccLedgerMonthEndIso,
-  liveCreditCardOutstandingClp,
-} from "./ccInstallmentLedgerDb.js";
+import { ccLedgerMonthEndIso } from "./ccInstallmentLedgerDb.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 
 /**
@@ -311,28 +308,23 @@ export function upsertCreditCardValuationsFromLedger(
   // Today's stamp is the WALKED balance (anchor + evidence dated after it), the same frame the
   // series uses for every other day — see `ccOwedWalk.ts`. Stamping the live billing formula
   // here instead made tomorrow's anchor a different frame from the walk that leads into it, so
-  // the gap surfaced as a phantom move on a day with no transactions. Falls back to the live
-  // number (as pesos) only when there is no anchor to walk from.
+  // the gap surfaced as a phantom move on a day with no transactions. With no anchor before today
+  // to walk from (a card whose first month-end is today or later) nothing is stamped: today's
+  // value is then read live (`latestCreditCardDisplayedBalance`), never written as an anchor
+  // every later walk would start from.
   const today = chileCalendarTodayYmd();
   const walkedToday = ccOwedByCurrencyAtYmd(accountId, today, { strictlyBefore: true });
-  let owedToday: CcOwedNative | null = walkedToday ? walkedToday.owed : null;
-  if (!owedToday) {
-    const liveBalance = latestCreditCardBillingBalanceTotalClp(accountId) ?? liveCreditCardOutstandingClp(accountId);
-    if (liveBalance != null && Number.isFinite(liveBalance)) owedToday = { clp: Math.round(liveBalance), usd: 0 };
-  }
-  if (owedToday) {
-    writeCcOwedAnchor(accountId, today, owedToday);
+  if (walkedToday) {
+    writeCcOwedAnchor(accountId, today, walkedToday.owed);
     upsertValuationMonth.run({
       account_id: accountId,
       as_of_date: today,
-      value_clp: ccOwedValueClpOrThrow(accountId, today, owedToday),
+      value_clp: ccOwedValueClpOrThrow(accountId, today, walkedToday.owed),
     });
     n += 1;
   }
   // The pesos of every other anchor (earlier daily stamps) at its own date's rate: a stamp written
   // during a live day carries that moment's rate until the day's close is on file.
   revalueCcOwedAnchorValuations(accountId);
-  if (pts.length > 0) {
-  }
   return n;
 }
