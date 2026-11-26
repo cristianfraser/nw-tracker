@@ -14,7 +14,7 @@ import { buildDashboardPageBundle } from "../src/dashboardPageBundle.js";
 import { getDashboardOverviewDaily } from "../src/dashboardOverviewDaily.js";
 import { buildFlowsOverviewPayload } from "../src/flowsOverview.js";
 import { warmRentabilidadDailySeries } from "../src/rentabilidadDailyWarm.js";
-import { coreCurrencyCodes } from "../src/displayUnits.js";
+import { warmedDisplayUnits } from "../src/displayUnits.js";
 
 const HOME_OVERVIEW_DEFAULT_DAYS = 1096;
 const top = Number(process.argv.find((a) => a.startsWith("--top="))?.slice(6) ?? 30);
@@ -27,7 +27,9 @@ function report(label: string): void {
   console.log(`${label.padEnd(28)} heap ${mb(m.heapUsed).padStart(6)} MB   rss ${mb(m.rss).padStart(6)} MB`);
 }
 
-const replacer = (_k: string, x: unknown) => (x instanceof Map ? [...x] : x);
+// A typed array counts as its bytes (JSON would spell every element out as an object key).
+const replacer = (_k: string, x: unknown) =>
+  x instanceof Map ? [...x] : ArrayBuffer.isView(x) ? "x".repeat(x.byteLength) : x;
 function approxBytes(v: unknown): { bytes: number; entries: number } {
   if (v instanceof Map) {
     let n = 0;
@@ -48,7 +50,7 @@ function approxBytes(v: unknown): { bytes: number; entries: number } {
 async function main(): Promise<void> {
   if (!gc) console.log("(run with --expose-gc for retained sizes; without it the figures include garbage)");
   report("boot");
-  const units = coreCurrencyCodes();
+  const units = warmedDisplayUnits();
   for (const unit of units) {
     await buildDashboardPageBundle(unit);
     report(`after page bundle ${unit}`);

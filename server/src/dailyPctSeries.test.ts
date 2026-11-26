@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountDailyPctPoints, groupDailyPctPoints } from "./dailyPctSeries.js";
+import { accountDailyPctPoints, groupDailyPctPoints, packDailyPct, unpackDailyPct } from "./dailyPctSeries.js";
 import { db } from "./db.js";
 import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
 
@@ -35,5 +35,26 @@ describe("dailyPctSeries", () => {
 
   it("a group with no accounts has no returns", () => {
     expect(groupDailyPctPoints("no_such_group_for_this_test", "clp")).toBeNull();
+  });
+});
+
+describe("packed daily returns", () => {
+  const points = [
+    { as_of_date: "2026-02-27", pct: 0.5 },
+    { as_of_date: "2026-02-28", pct: null },
+    { as_of_date: "2026-03-01", pct: -1.25 },
+  ];
+
+  it("come back as the same points, a missing return included, across a month end", () => {
+    const packed = packDailyPct(points);
+    expect(packed.start).toBe("2026-02-27");
+    expect(packed.pct).toBeInstanceOf(Float64Array);
+    expect(unpackDailyPct(packed)).toEqual(points);
+    expect(unpackDailyPct(packDailyPct([]))).toEqual([]);
+  });
+
+  it("refuse a series with a missing day or a pct that is not a number", () => {
+    expect(() => packDailyPct([points[0]!, points[2]!])).toThrow(/contiguous/);
+    expect(() => packDailyPct([{ as_of_date: "2026-02-27", pct: Number.NaN }])).toThrow(/pct of NaN/);
   });
 });
