@@ -7,7 +7,8 @@
  * - **Arrival batch.** A row arrives with its write stamp (`flow_first_seen.first_seen_at`). Writes
  *   inside one ingest run (`ingest_runs` start → finish) are one batch, dated at the run's start;
  *   any other write (a hand entry, an upload) is a batch of its own. The later batch is on top.
- * - **Inside a batch, when it happened**, newest first: the first stated time (the flow's own
+ * - **Inside a batch, by the row's own date**, newest first (a document need not print by date).
+ * - **Then, inside a day, when it happened**, newest first: the first stated time (the flow's own
  *   document, a paired processor or grocery receipt), else the earliest upper bound a source gives
  *   (a transfer or broker mail's time), else the middle of the window the row could have happened
  *   in — after the previous run started (that run did not bring it), before it was written. Then
@@ -73,15 +74,15 @@ export function happenedEstimateMs(times: LatestRowTimes, stamp: LatestWriteStam
   return stamp.atMs;
 }
 
-/** A row's place: stamped rows by batch, then moment, then write order; the rest by day. */
+/** A row's place: stamped rows by batch, then day, then moment, then write order; the rest by day. */
 export type LatestRowOrderKey =
-  | { stamped: true; batchAtMs: number; happenedMs: number; seq: number }
+  | { stamped: true; batchAtMs: number; on: string; happenedMs: number; seq: number }
   | { stamped: false; on: string };
 
 /** Newest first (a row's id order breaks the last tie, outside). */
 export function compareLatestRowOrderKeys(a: LatestRowOrderKey, b: LatestRowOrderKey): number {
   if (a.stamped && b.stamped) {
-    return b.batchAtMs - a.batchAtMs || b.happenedMs - a.happenedMs || b.seq - a.seq;
+    return b.batchAtMs - a.batchAtMs || b.on.localeCompare(a.on) || b.happenedMs - a.happenedMs || b.seq - a.seq;
   }
   if (a.stamped) return -1;
   if (b.stamped) return 1;

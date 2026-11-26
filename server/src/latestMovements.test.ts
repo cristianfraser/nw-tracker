@@ -152,7 +152,7 @@ describe("latestMovementRows", () => {
     expect(inUsd[0]).toMatchObject({ kind: "income", income: { converted: { value: 5_000, currency: "usd", rate_source: "native" } } });
   });
 
-  it("puts the newest arrival on top, ordered inside a run by when it happened", () => {
+  it("puts the newest arrival on top, ordered inside a run by day, then by when it happened", () => {
     const income: FlowsOverviewIncome = {
       ...noIncome,
       lines: [
@@ -190,13 +190,14 @@ describe("latestMovementRows", () => {
     expect(ids(rows)).toEqual([
       "cc:5@2026-09-20",
       "checking:40@2026-09-20",
-      "cc:4@2026-09-13",
       "cc:1@2026-09-20",
+      // A week late in the same run: below the run's later days.
+      "cc:4@2026-09-13",
       "cc:2@2026-09-20",
       "cc:3@2026-09-20",
     ]);
     // Each row is known to the animation by its flow, whatever its key.
-    expect(rows.map((r) => r.arrival_key)).toEqual(["flow:105", "flow:900", "flow:104", "flow:101", "flow:102", "flow:103"]);
+    expect(rows.map((r) => r.arrival_key)).toEqual(["flow:105", "flow:900", "flow:101", "flow:104", "flow:102", "flow:103"]);
     // A list that ends inside the newest run leaves the older rows out.
     expect(ids(latestMovementRows(lines, income, known, 2, today, noDollars, [], "clp", undefined, sources))).toEqual([
       "cc:5@2026-09-20",

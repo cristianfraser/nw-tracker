@@ -34,22 +34,39 @@ describe("happenedEstimateMs", () => {
 });
 
 describe("compareLatestRowOrderKeys", () => {
-  it("orders stamped rows by batch, moment and write order, then the unstamped ones by day", () => {
+  it("orders stamped rows by batch, day, moment and write order, then the unstamped ones by day", () => {
     const keys: LatestRowOrderKey[] = [
       { stamped: false, on: "2026-01-14" },
-      { stamped: true, batchAtMs: 100, happenedMs: 5, seq: 1 },
+      { stamped: true, batchAtMs: 100, on: "2026-01-10", happenedMs: 5, seq: 1 },
       { stamped: false, on: "2026-01-15" },
-      { stamped: true, batchAtMs: 200, happenedMs: 1, seq: 2 },
-      { stamped: true, batchAtMs: 100, happenedMs: 5, seq: 3 },
-      { stamped: true, batchAtMs: 100, happenedMs: 9, seq: 0 },
+      { stamped: true, batchAtMs: 200, on: "2026-01-01", happenedMs: 1, seq: 2 },
+      { stamped: true, batchAtMs: 100, on: "2026-01-10", happenedMs: 5, seq: 3 },
+      { stamped: true, batchAtMs: 100, on: "2026-01-10", happenedMs: 9, seq: 0 },
     ];
     expect([...keys].sort(compareLatestRowOrderKeys)).toEqual([
-      { stamped: true, batchAtMs: 200, happenedMs: 1, seq: 2 },
-      { stamped: true, batchAtMs: 100, happenedMs: 9, seq: 0 },
-      { stamped: true, batchAtMs: 100, happenedMs: 5, seq: 3 },
-      { stamped: true, batchAtMs: 100, happenedMs: 5, seq: 1 },
+      { stamped: true, batchAtMs: 200, on: "2026-01-01", happenedMs: 1, seq: 2 },
+      { stamped: true, batchAtMs: 100, on: "2026-01-10", happenedMs: 9, seq: 0 },
+      { stamped: true, batchAtMs: 100, on: "2026-01-10", happenedMs: 5, seq: 3 },
+      { stamped: true, batchAtMs: 100, on: "2026-01-10", happenedMs: 5, seq: 1 },
       { stamped: false, on: "2026-01-15" },
       { stamped: false, on: "2026-01-14" },
     ]);
+  });
+
+  it("inside a batch, puts a later day first whatever the moment or write order (a statement not printed by date)", () => {
+    const row = (on: string, seq: number): LatestRowOrderKey => ({ stamped: true, batchAtMs: 100, on, happenedMs: 50, seq });
+    const printed = [row("2026-11-02", 1), row("2026-11-02", 2), row("2026-11-04", 3), row("2026-11-07", 4), row("2026-11-02", 5), row("2026-11-01", 6), row("2026-11-09", 7)];
+    expect([...printed].sort(compareLatestRowOrderKeys).map((k) => (k.stamped ? `${k.on}#${k.seq}` : ""))).toEqual([
+      "2026-11-09#7",
+      "2026-11-07#4",
+      "2026-11-04#3",
+      "2026-11-02#5",
+      "2026-11-02#2",
+      "2026-11-02#1",
+      "2026-11-01#6",
+    ]);
+    // A later stated moment on an earlier day stays below the later day.
+    const early = { stamped: true, batchAtMs: 100, on: "2026-11-01", happenedMs: 999, seq: 9 } as const;
+    expect([early, row("2026-11-02", 1)].sort(compareLatestRowOrderKeys)[0]).toEqual(row("2026-11-02", 1));
   });
 });

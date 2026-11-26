@@ -461,7 +461,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
          WHERE s.account_id = ? AND l.merchant = 'PAYU *UBER TRIP'`
       )
       .all(accountId);
-    expect(uber).toEqual([{ transaction_date: "12/9/2026" }]);
+    expect(uber).toEqual([{ transaction_date: "12/09/2026" }]);
   });
 
   it("proves a currency complete by the bank's cupo identity when its SALDO INICIAL row is missing", () => {
@@ -525,7 +525,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
          WHERE s.account_id = ? AND l.merchant = 'APPLE.COM/BILL' AND ${lineAmountUsdSql("l")} = 13.22`
       )
       .all(accountId);
-    expect(restated).toEqual([{ transaction_date: "17/9/2026" }]);
+    expect(restated).toEqual([{ transaction_date: "17/09/2026" }]);
     db.prepare(`DELETE FROM cc_bank_cupo_captures WHERE source_file LIKE 'card-movements-vitest-identity-%'`).run();
   });
 

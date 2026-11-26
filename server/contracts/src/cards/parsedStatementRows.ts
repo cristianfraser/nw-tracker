@@ -106,6 +106,12 @@ export function canonicalLineFromParsedRow(row: Row, statementCurrency: string):
   const total = parseOptionalChileanInteger(cell(row, "monto_total_a_pagar_clp"));
   const printedTx = textOrNull(row, "transaction_date");
   const printedPost = textOrNull(row, "posting_date");
+  const readDay = (printed: string | null, column: string): string | null => {
+    if (!printed) return null;
+    const iso = parseDdMmYyToIso(printed);
+    if (!iso) throw new Error(`CC statement import (${document}): line «${merchant}» ${column} «${printed}» is not a date`);
+    return iso;
+  };
   return {
     kind: cardLineKind({
       installment_flag: installment,
@@ -114,8 +120,8 @@ export function canonicalLineFromParsedRow(row: Row, statementCurrency: string):
       amount_usd: usd,
       statement_currency: statementCurrency,
     }),
-    transaction_date: printedTx ? parseDdMmYyToIso(printedTx) : null,
-    posting_date: printedPost ? parseDdMmYyToIso(printedPost) : null,
+    transaction_date: readDay(printedTx, "transaction_date"),
+    posting_date: readDay(printedPost, "posting_date"),
     printed_transaction_date: printedTx,
     printed_posting_date: printedPost,
     merchant,

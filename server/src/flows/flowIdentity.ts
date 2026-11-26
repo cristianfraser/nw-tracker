@@ -11,7 +11,7 @@ import type { Database } from "better-sqlite3";
 import { db } from "../db.js";
 import { expenseKeySql } from "../expenseKeys.js";
 import { expenseKeyParts, resolveExpenseKey, type FlowSourceRow } from "./flowKeyResolve.js";
-import { carryFlowFirstSeen } from "./flowFirstSeen.js";
+import { carryFlowFirstSeen, flowArrival, olderArrival, setFlowArrival } from "./flowFirstSeen.js";
 import { carryFlowEventTime } from "./flowEventTimes.js";
 
 export { expenseKeyParts };
@@ -84,7 +84,7 @@ export function ensureFlowForKey(key: string, dbHandle: Database = db): number {
     // the key gets a flow of its own, copied from the first row's.
     const first = resolved.rows[0]!;
     const src = rowFlowId(first, dbHandle);
-    return Number(
+    const created = Number(
       dbHandle
         .prepare(
           `INSERT INTO flows (kind, from_account_id, to_account_id, from_party_id, to_party_id, occurred_on, amount, currency,
@@ -94,12 +94,18 @@ export function ensureFlowForKey(key: string, dbHandle: Database = db): number {
         )
         .run(resolved.flowKey, src).lastInsertRowid
     );
+    // The key's flow arrived with the row it copies.
+    const arrival = flowArrival(src, dbHandle);
+    if (arrival.kind === "stamped") setFlowArrival(created, arrival, dbHandle);
+    return created;
   }
   for (const other of others) {
+    // The older arrival of the two, read before the rows move (`olderArrival`).
+    const arrival = olderArrival(flowArrival(other, dbHandle), flowArrival(target, dbHandle));
     for (const row of keyless.get(other)!) repointRow(row, target, dbHandle);
     // A facturado payment charge (migration 297) names the purchase by its flow: it follows it.
     dbHandle.prepare(`UPDATE cc_facturado_payment_charges SET flow_id = ? WHERE flow_id = ?`).run(target, other);
-    carryFlowFirstSeen(other, target, dbHandle);
+    carryFlowFirstSeen(other, target, dbHandle, arrival);
     carryFlowEventTime(other, target, dbHandle);
     // A refund link on the folded flow follows it (the target's own link stays).
     moveCardRefundLinks(other, target, "to", dbHandle);
@@ -149,6 +155,9 @@ export const FLOW_ASSIGNMENT_TABLES: readonly FlowAssignmentTable[] = [
  */
 export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", dbHandle: Database = db): void {
   if (from === to) return;
+  // When the purchase first reached the ledger: the older arrival of the two, read before the
+  // evidence moves (`olderArrival`).
+  const arrival = olderArrival(flowArrival(from, dbHandle), flowArrival(to, dbHandle));
   for (const { table, onConflict } of FLOW_ASSIGNMENT_TABLES) {
     const fromRows = dbHandle.prepare(`SELECT COUNT(*) AS c FROM ${table} WHERE flow_id = ?`).get(from) as { c: number };
     if (fromRows.c === 0) continue;
@@ -198,8 +207,7 @@ export function mergeFlowInto(from: number, to: number, prefer: "from" | "to", d
   moveCardRefundLinks(from, to, prefer, dbHandle);
   // A link that points at the merged flow (a deposit a purchase funded) points at the survivor.
   dbHandle.prepare(`UPDATE OR IGNORE flow_links SET counterpart_flow_id = ? WHERE counterpart_flow_id = ?`).run(to, from);
-  // The day the purchase first reached the ledger: the earlier of the two.
-  carryFlowFirstSeen(from, to, dbHandle);
+  carryFlowFirstSeen(from, to, dbHandle, arrival);
   carryFlowEventTime(from, to, dbHandle);
   dbHandle.prepare(`DELETE FROM flows WHERE id = ?`).run(from);
 }

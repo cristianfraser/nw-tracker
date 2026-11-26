@@ -1,9 +1,10 @@
 /**
  * When a flow first reached the ledger (`flow_first_seen`, migrations 310 and 367): the Chile day,
  * the moment (UTC ISO) and the write order (one counter over the table). Written when a card line
- * or a movement is inserted or a manual expense is created (the first write wins), kept at the
- * earlier stamp when two flows merge or a re-import gives a line a new row. The day is read by the
- * expense lines (`first_seen_on`); the order sorts a day's «Últimos movimientos».
+ * (a statement's cuota line excepted), a plan, a movement is inserted or a manual expense is created
+ * (the first write wins). When two flows become one, the older arrival stays ({@link olderArrival}:
+ * a flow with no stamp was on file before the stamps and is older than any). The day is read by the
+ * expense lines (`first_seen_on`); the order sorts «Últimos movimientos».
  */
 import type { Database } from "better-sqlite3";
 import { db } from "../db.js";
@@ -69,35 +70,20 @@ export function recordCardLineFlowFirstSeen(lineId: number, day: string = chileC
   if (row?.flow_id != null) recordFlowFirstSeen(row.flow_id, day, dbHandle);
 }
 
+/** Stamps the plan's flow as first seen now, unless its flow has a stamp (a plan written new). */
+export function recordPlanFlowFirstSeen(planId: number, dbHandle: Database = db): void {
+  const row = dbHandle.prepare(`SELECT flow_id FROM cc_installment_purchases WHERE id = ?`).get(planId) as
+    | { flow_id: number | null }
+    | undefined;
+  if (row?.flow_id != null) recordFlowFirstSeen(row.flow_id, chileCalendarTodayYmd(), dbHandle);
+}
+
 /** Stamps the movement's flow as first seen now, unless its flow has a stamp. */
 export function recordMovementFlowFirstSeen(movementId: number, dbHandle: Database = db): void {
   const row = dbHandle.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(movementId) as
     | { flow_id: number | null }
     | undefined;
   if (row?.flow_id != null) recordFlowFirstSeen(row.flow_id, chileCalendarTodayYmd(), dbHandle);
-}
-
-/**
- * The flow's stamp becomes `stamp` when it has none or a later one: by day, then time, then order,
- * a missing time or order counting as earlier (a row from before migration 367 was written first).
- */
-export function keepEarlierFlowFirstSeen(flowId: number, stamp: FirstSeenStamp, dbHandle: Database = db): void {
-  dbHandle
-    .prepare(
-      `INSERT INTO flow_first_seen (flow_id, first_seen_on, first_seen_at, first_seen_seq) VALUES (?, ?, ?, ?)
-       ON CONFLICT(flow_id) DO UPDATE SET
-         first_seen_on = excluded.first_seen_on,
-         first_seen_at = excluded.first_seen_at,
-         first_seen_seq = excluded.first_seen_seq
-       WHERE (excluded.first_seen_on, COALESCE(excluded.first_seen_at, ''), COALESCE(excluded.first_seen_seq, 0))
-           < (first_seen_on, COALESCE(first_seen_at, ''), COALESCE(first_seen_seq, 0))`
-    )
-    .run(flowId, stamp.on, stamp.at, stamp.seq);
-}
-
-/** Removes the flow's stamp when its day is `day` (what an insert on that day recorded). */
-export function dropFlowFirstSeenRecordedOn(flowId: number, day: string, dbHandle: Database = db): void {
-  dbHandle.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ? AND first_seen_on = ?`).run(flowId, day);
 }
 
 type StampRow = { first_seen_on: string; first_seen_at: string | null; first_seen_seq: number | null };
@@ -107,28 +93,95 @@ function stampOf(r: StampRow): FirstSeenStamp {
 }
 
 /**
- * `to` takes `from`'s stamp when it is the earlier (`from` keeps its own): a row that replaces
- * another under a new flow (a checking debit converted into a card payment) keeps the place the
- * replaced row had in «Últimos movimientos».
+ * A flow's arrival, as the carry rule reads it:
+ *
+ * - `stamped`: the flow has a stamp.
+ * - `before_stamps`: no stamp, so it was on file before the stamps existed (every insert since
+ *   stamps its row: a card line, a movement, a manual expense, a plan): older than any stamp. A
+ *   flow whose rows are gone (retired, kept by its assignments) is one too.
+ * - `not_an_arrival`: no stamp, and every row it records is a statement's cuota line (its monthly
+ *   billing of a plan: never a new movement, so the import stamps none). It neither gives nor takes
+ *   a place.
  */
-export function copyEarlierFlowFirstSeen(from: number, to: number, dbHandle: Database = db): void {
-  if (from === to) return;
+export type FlowArrival = { kind: "stamped"; stamp: FirstSeenStamp } | { kind: "before_stamps" } | { kind: "not_an_arrival" };
+
+/** The flow's arrival (see {@link FlowArrival}). */
+export function flowArrival(flowId: number, dbHandle: Database = db): FlowArrival {
   const row = dbHandle
     .prepare(`SELECT first_seen_on, first_seen_at, first_seen_seq FROM flow_first_seen WHERE flow_id = ?`)
-    .get(from) as StampRow | undefined;
-  if (row) keepEarlierFlowFirstSeen(to, stampOf(row), dbHandle);
+    .get(flowId) as StampRow | undefined;
+  if (row) return { kind: "stamped", stamp: stampOf(row) };
+  const evidence = dbHandle
+    .prepare(
+      `SELECT COUNT(*) AS n,
+         SUM(CASE WHEN e.source_table = 'cc_statement_lines' AND EXISTS (
+           SELECT 1 FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+           WHERE l.id = e.source_row_id AND l.installment_flag = 1 AND s.source_kind NOT IN ('listing_open', 'listing_other')
+         ) THEN 1 ELSE 0 END) AS cuota
+       FROM flow_evidence e WHERE e.flow_id = ?`
+    )
+    .get(flowId) as { n: number; cuota: number | null };
+  return evidence.n > 0 && evidence.cuota === evidence.n ? { kind: "not_an_arrival" } : { kind: "before_stamps" };
+}
+
+/** Whether `a` is the earlier stamp: by day, then time, then order (a missing time or order counts as earlier). */
+function stampIsEarlier(a: FirstSeenStamp, b: FirstSeenStamp): boolean {
+  const key = (s: FirstSeenStamp) => [s.on, s.at ?? "", s.seq ?? 0] as const;
+  const [ka, kb] = [key(a), key(b)];
+  if (ka[0] !== kb[0]) return ka[0] < kb[0];
+  if (ka[1] !== kb[1]) return ka[1] < kb[1];
+  return ka[2] < kb[2];
 }
 
 /**
- * Moves `from`'s stamp onto `to`, keeping the earlier of the two (before `from` is deleted; its row
- * would cascade away).
+ * THE carry rule, for every path that folds one flow's arrival into another's (a flow merge, a
+ * re-imported or settled line taking over a flow, a debit reshaped into a card payment): the result
+ * is the older arrival. A flow on file before the stamps is older than any stamp, so it wins and the
+ * result is unstamped (a newer row's stamp never lands on it); between two stamps the earlier
+ * stays; a statement cuota line's own flow changes nothing. A genuinely new row whose flow absorbs
+ * nothing old keeps its own stamp.
  */
-export function carryFlowFirstSeen(from: number, to: number, dbHandle: Database = db): void {
+export function olderArrival(a: FlowArrival, b: FlowArrival): FlowArrival {
+  if (a.kind === "before_stamps" || b.kind === "before_stamps") return { kind: "before_stamps" };
+  if (a.kind === "not_an_arrival") return b;
+  if (b.kind === "not_an_arrival") return a;
+  return stampIsEarlier(a.stamp, b.stamp) ? a : b;
+}
+
+/** Writes an arrival onto a flow: its stamp, or none. */
+export function setFlowArrival(flowId: number, arrival: FlowArrival, dbHandle: Database = db): void {
+  if (arrival.kind !== "stamped") {
+    dbHandle.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(flowId);
+    return;
+  }
+  const { on, at, seq } = arrival.stamp;
+  dbHandle
+    .prepare(
+      `INSERT INTO flow_first_seen (flow_id, first_seen_on, first_seen_at, first_seen_seq) VALUES (?, ?, ?, ?)
+       ON CONFLICT(flow_id) DO UPDATE SET
+         first_seen_on = excluded.first_seen_on, first_seen_at = excluded.first_seen_at, first_seen_seq = excluded.first_seen_seq`
+    )
+    .run(flowId, on, at, seq);
+}
+
+/**
+ * `to` takes the older arrival of the two ({@link olderArrival}); `from` keeps its own: a row that
+ * replaces another under a new flow (a checking debit converted into a card payment) keeps the
+ * place the replaced row had in «Últimos movimientos», and none when the replaced row had none.
+ */
+export function copyFlowFirstSeen(from: number, to: number, dbHandle: Database = db): void {
   if (from === to) return;
-  const row = dbHandle
-    .prepare(`SELECT first_seen_on, first_seen_at, first_seen_seq FROM flow_first_seen WHERE flow_id = ?`)
-    .get(from) as StampRow | undefined;
-  if (row) keepEarlierFlowFirstSeen(to, stampOf(row), dbHandle);
+  setFlowArrival(to, olderArrival(flowArrival(from, dbHandle), flowArrival(to, dbHandle)), dbHandle);
+}
+
+/**
+ * Folds `from`'s arrival into `to` ({@link olderArrival}) and removes `from`'s stamp. `arrival`: the
+ * result read before the caller moved `from`'s rows (a merge moves the evidence first, which
+ * changes what `to` records); read now when omitted.
+ */
+export function carryFlowFirstSeen(from: number, to: number, dbHandle: Database = db, arrival?: FlowArrival): void {
+  if (from === to) return;
+  setFlowArrival(to, arrival ?? olderArrival(flowArrival(from, dbHandle), flowArrival(to, dbHandle)), dbHandle);
   dbHandle.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(from);
 }
 

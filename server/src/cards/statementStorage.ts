@@ -16,7 +16,14 @@
  * such a statement re-imports once.
  */
 import crypto from "node:crypto";
-import { storedCardLineDate, type CardCanonicalLine, type CardCanonicalStatement } from "nw-tracker-contracts";
+import {
+  fingerprintCardLineDate,
+  parseDdMmYyToIso,
+  STORED_CARD_LINE_DATE_PATTERN,
+  storedCardLineDate,
+  type CardCanonicalLine,
+  type CardCanonicalStatement,
+} from "nw-tracker-contracts";
 import { ccCardGroupOrDefault } from "../ccIssuers.js";
 import { canonicalCcLineDedupeKeys } from "../ccDedupeKey.js";
 
@@ -90,6 +97,9 @@ export function storedLineColumns(statement: CardCanonicalStatement, line: CardC
   const inst = line.installment;
   return {
     ...storedLineColumnsForFingerprint(statement, line),
+    // The ledger's one day shape (`storedCardLineDate`); the fingerprint hashes the printed text.
+    transaction_date: storedCardLineDate(line.printed_transaction_date, line.transaction_date),
+    posting_date: storedCardLineDate(line.printed_posting_date, line.posting_date),
     amount: line.amount,
     currency: line.currency,
     // A one-shot peso line stores a 0 cuota, any other currency none (the legacy slots read 0 / NULL).
@@ -98,16 +108,34 @@ export function storedLineColumns(statement: CardCanonicalStatement, line: CardC
 }
 
 /**
- * The line's columns as the fingerprint hashes them: the legacy two-slot amounts (unchanged since
- * migration 292, so a statement imported before 319 keeps its hash), plus — only for a line in
- * another currency than pesos or dollars — its currency and amount.
+ * The write funnel's check on a line's days (`importCcStatementsMerge`): each is null or the ledger's
+ * one shape, padded `dd/mm/yyyy` of a real day — the shape the flow trigger reads. Anything else
+ * throws before the row is written.
+ */
+export function assertStoredCardLineDates(row: { transaction_date: string | null; posting_date: string | null }, where: string): void {
+  for (const [column, value] of [
+    ["transaction_date", row.transaction_date],
+    ["posting_date", row.posting_date],
+  ] as const) {
+    if (value == null) continue;
+    if (!STORED_CARD_LINE_DATE_PATTERN.test(value) || parseDdMmYyToIso(value) == null) {
+      throw new Error(`${where}: card line ${column} «${value}» is not a padded dd/mm/yyyy day`);
+    }
+  }
+}
+
+/**
+ * The line's columns as the fingerprint hashes them: the days as the document printed them
+ * (`fingerprintCardLineDate`: the stored shape before migration 369) and the legacy two-slot
+ * amounts (unchanged since migration 292), so a statement imported before 369 or 319 keeps its hash,
+ * plus — only for a line in another currency than pesos or dollars — its currency and amount.
  */
 function storedLineColumnsForFingerprint(statement: CardCanonicalStatement, line: CardCanonicalLine) {
   const inst = line.installment;
   const { amount_clp, amount_usd } = storedCardLineAmounts(line);
   return {
-    transaction_date: storedCardLineDate(line.printed_transaction_date, line.transaction_date),
-    posting_date: storedCardLineDate(line.printed_posting_date, line.posting_date),
+    transaction_date: fingerprintCardLineDate(line.printed_transaction_date, line.transaction_date),
+    posting_date: fingerprintCardLineDate(line.printed_posting_date, line.posting_date),
     place: line.place,
     merchant: line.merchant || null,
     description_merged: line.description,

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readCaseFile } from "../formats/caseFile.js";
-import { cardStatementLayout, storedCardLineDate, unpaddedCardLineDate } from "./canonicalLine.js";
+import {
+  cardStatementLayout,
+  fingerprintCardLineDate,
+  STORED_CARD_LINE_DATE_PATTERN,
+  storedCardLineDate,
+  unpaddedCardLineDate,
+} from "./canonicalLine.js";
 import { canonicalLineFromParsedRow, canonicalStatementsFromParsedRecords } from "./parsedStatementRows.js";
 
 type Cases = {
@@ -46,9 +52,18 @@ describe("canonical card line: the parser's rows", () => {
     expect(() => canonicalStatementsFromParsedRecords([{ ...base, orig_currency: "usd" }])).toThrow(/labeled on import/);
   });
 
-  it("stores a day as printed, else unpadded", () => {
-    expect(storedCardLineDate("05/08/2026", "2026-08-05")).toBe("05/08/2026");
-    expect(storedCardLineDate(null, "2026-08-05")).toBe("5/8/2026");
+  it("stores a day padded dd/mm/yyyy whatever was printed, and refuses a printed day it cannot read", () => {
+    expect(storedCardLineDate("05/08/26", "2026-08-05")).toBe("05/08/2026");
+    expect(storedCardLineDate("5/8/2026", "2026-08-05")).toBe("05/08/2026");
+    expect(storedCardLineDate(null, "2026-08-05")).toBe("05/08/2026");
+    expect(storedCardLineDate(null, null)).toBeNull();
+    expect(() => storedCardLineDate("13/05/2511001SANTIAG", null)).toThrow(/not a date/);
+    expect(STORED_CARD_LINE_DATE_PATTERN.test(storedCardLineDate(null, "2026-12-31")!)).toBe(true);
+  });
+
+  it("fingerprints a day as the document printed it, else unpadded (the shape lines had before migration 369)", () => {
+    expect(fingerprintCardLineDate("05/08/26", "2026-08-05")).toBe("05/08/26");
+    expect(fingerprintCardLineDate(null, "2026-08-05")).toBe("5/8/2026");
     expect(unpaddedCardLineDate("2026-12-31")).toBe("31/12/2026");
     expect(cardStatementLayout("wide_master_simple")).toBe("wide");
   });

@@ -24,11 +24,11 @@ import { ensureFlowForKey, flowIdForKey } from "./flowIdentity.js";
 import { FLOW_HOLDING_TABLES } from "./flowTriggerSpecs.js";
 import {
   cardLineFirstSeenForAccount,
-  dropFlowFirstSeenRecordedOn,
-  keepEarlierFlowFirstSeen,
+  flowArrival,
+  olderArrival,
+  setFlowArrival,
   type FirstSeenStamp,
 } from "./flowFirstSeen.js";
-import { chileCalendarTodayYmd } from "../chileDate.js";
 import { lineAmountClpSql, lineAmountUsdSql } from "../cards/lineAmountSql.js";
 
 export type CcLineIdentitySource = {
@@ -400,8 +400,6 @@ export type CardLineCapture = {
    * line that replaces it.
    */
   firstSeenByLineId: Map<number, FirstSeenStamp>;
-  /** The Chile day the re-import runs: the day its inserts record as first seen. */
-  importDay: string;
 };
 
 export function captureCardLines(accountId: number): CardLineCapture {
@@ -410,7 +408,7 @@ export function captureCardLines(accountId: number): CardLineCapture {
   const lines = listCcLineRefsForAccount(accountId).map((r) =>
     r.flowId != null && !flowOutlivesRows(r.flowId) ? { ...r, flowId: null } : r
   );
-  return { accountId, lines, firstSeenByLineId: cardLineFirstSeenForAccount(accountId), importDay: chileCalendarTodayYmd() };
+  return { accountId, lines, firstSeenByLineId: cardLineFirstSeenForAccount(accountId) };
 }
 
 function flowOutlivesRows(flowId: number): boolean {
@@ -459,12 +457,12 @@ export function adoptReimportedCardLines(capture: CardLineCapture): ReimportedCa
 }
 
 /**
- * A replacing line's flow carries the first-seen stamp of the line it replaces: the earlier of the
- * two when that line had one (it may have arrived long before; its flow may already be gone), and
- * none when it had none — a line on file from before migration 310 is not new today, so the day
- * this import's insert recorded goes (else a full re-import would date every old credit today).
- * Not onto a new sibling beside a kept line (it may be its own purchase), nor across cuota lines
- * (their flow is their plan's).
+ * A replacing line's flow carries the arrival of the line it replaces (`olderArrival`): the earlier
+ * stamp when that line had one (it may have arrived long before; its flow may already be gone), and
+ * none when it had none — a line on file from before the stamps is not new today, so the stamp this
+ * import's insert recorded goes (else a full re-import would date every old credit today). Not onto
+ * a new sibling beside a kept line (it may be its own purchase), nor across cuota lines (their flow
+ * is their plan's).
  */
 function carryFirstSeenOntoReplacingLines(moves: readonly CcLineMove[], capture: CardLineCapture): void {
   for (const move of moves) {
@@ -472,8 +470,8 @@ function carryFirstSeenOntoReplacingLines(moves: readonly CcLineMove[], capture:
     const flow = rowFlowId("cc_statement_lines", move.to.lineId);
     if (flow == null) continue;
     const stamp = capture.firstSeenByLineId.get(move.from.lineId);
-    if (stamp) keepEarlierFlowFirstSeen(flow, stamp);
-    else dropFlowFirstSeenRecordedOn(flow, capture.importDay);
+    const replaced = stamp ? ({ kind: "stamped", stamp } as const) : ({ kind: "before_stamps" } as const);
+    setFlowArrival(flow, olderArrival(replaced, flowArrival(flow)));
   }
 }
 

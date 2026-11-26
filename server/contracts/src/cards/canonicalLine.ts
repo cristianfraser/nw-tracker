@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CARD_LINE_KINDS } from "../flowKinds.js";
-import { isoDateSchema, currencyCodeSchema } from "../formats/index.js";
+import { isoDateSchema, currencyCodeSchema, ddMmYyyyFromIso } from "../formats/index.js";
 
 /**
  * The canonical card line (docs/untangle-plan.md F13): the one shape a card statement line has
@@ -14,8 +14,8 @@ import { isoDateSchema, currencyCodeSchema } from "../formats/index.js";
  * - **Kind** is stamped by the one classifier (`cardLineKind`, `lineRules.ts`) when the line is
  *   built, from its sign, wording and installment flag.
  * - **Days** are ISO. The text a document printed for them, when it printed one, rides beside in
- *   `printed_*` and is what the ledger stores (`cc_statement_lines.transaction_date` keeps the
- *   statement's own text; a source with no printed text stores the day unpadded, `7/9/2026`).
+ *   `printed_*`; the ledger stores the day padded, `dd/mm/yyyy` ({@link storedCardLineDate}), whatever
+ *   the document printed.
  * - **Document provenance** (`document`) is what the import keys a line on: the document's own
  *   line id and dedupe key (a same-statement twin carries `#dupN`), the section of the document the
  *   parser read it from, and the raw text.
@@ -163,15 +163,35 @@ export function cardStatementLayout(parserLayout: string): CardCanonicalStatemen
   return "compact";
 }
 
-/** `2026-07-23` → `23/7/2026`: how a day with no printed text is stored. */
+/** `2026-07-23` → `23/7/2026` (unpadded). */
 export function unpaddedCardLineDate(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!m) throw new Error(`Expected an ISO date, got "${iso}"`);
   return `${Number(m[3])}/${Number(m[2])}/${m[1]}`;
 }
 
-/** The transaction date as the ledger stores it: the document's text, else the day unpadded. */
+/** The one shape a stored card line day has (`cc_statement_lines.transaction_date` / `posting_date`). */
+export const STORED_CARD_LINE_DATE_PATTERN = /^\d{2}\/\d{2}\/\d{4}$/;
+
+/**
+ * A card line's day as the ledger stores it: its ISO day, padded `dd/mm/yyyy` — one shape for every
+ * source, the one the flow trigger reads. A day the document printed but the source could not read
+ * throws (a line is never stored with a day nothing can read).
+ */
 export function storedCardLineDate(printed: string | null, iso: string | null): string | null {
+  if (iso) return ddMmYyyyFromIso(iso);
+  if (printed != null && printed.trim() !== "") {
+    throw new Error(`card line day «${printed.trim()}» is printed but not a date (dd/mm/yy or dd/mm/yyyy)`);
+  }
+  return null;
+}
+
+/**
+ * The day as the import fingerprint hashes it (`cards/statementStorage.ts`): the document's own text,
+ * else the day unpadded — how lines were stored before migration 369 padded them, so a statement
+ * imported before keeps its fingerprint and does not re-import.
+ */
+export function fingerprintCardLineDate(printed: string | null, iso: string | null): string | null {
   if (printed != null && printed.trim() !== "") return printed.trim();
   return iso ? unpaddedCardLineDate(iso) : null;
 }

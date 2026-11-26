@@ -24,7 +24,7 @@ function row(overrides: Partial<ParsedRecord>): ParsedRecord {
     statement_compras_cargos: "100",
     statement_deuda_total: "1100",
     statement_monto_facturado: "1100",
-    transaction_date: "15/06",
+    transaction_date: "15/06/2024",
     posting_date: "",
     place: "",
     merchant: "TEST CLP",

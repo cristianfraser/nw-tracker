@@ -235,6 +235,7 @@ export function latestMovementRows(
       key: {
         stamped: true,
         batchAtMs: r.batch.atMs,
+        on: r.row.on,
         happenedMs: happenedEstimateMs(times[i]!, r.stamp, r.batch),
         seq: r.stamp.seq,
       } as LatestRowOrderKey,

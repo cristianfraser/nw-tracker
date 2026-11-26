@@ -64,6 +64,7 @@ import { runMortgageLenderQuotes308 } from "./migrationHooks/mortgageLenderQuote
 import { runFlowFirstSeen310 } from "./migrationHooks/flowFirstSeen310.js";
 import { runFlowFirstSeenTime367 } from "./migrationHooks/flowFirstSeenTime367.js";
 import { runFlowEventTimes368 } from "./migrationHooks/flowEventTimes368.js";
+import { runCardLineDates369 } from "./migrationHooks/cardLineDates369.js";
 import { runCardToCardPayments311 } from "./migrationHooks/cardToCardPayments311.js";
 import { runBrokerInstruments361 } from "./migrationHooks/brokerInstruments361.js";
 import { runCardRefundLinks365 } from "./migrationHooks/cardRefundLinks365.js";
@@ -435,6 +436,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "366_card_refund_links_hold_flows.sql": runCardRefundLinksHold366,
   "367_flow_first_seen_time.sql": runFlowFirstSeenTime367,
   "368_flow_event_times.sql": runFlowEventTimes368,
+  "369_cc_line_dates_padded.sql": runCardLineDates369,
   "363_vendor_catalog_checking_names.sql": runVendorCatalog363,
 };
 

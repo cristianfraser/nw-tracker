@@ -2,6 +2,7 @@ import { InputError } from "./inputError.js";
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
+import { recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import {
   applyCardLinePlan,
   planOneShotLinesForInstallmentPurchase,
@@ -38,7 +39,12 @@ function parsePurchaseDateIso(raw: string): string | null {
 export function createManualCcInstallmentPurchase(
   accountId: number,
   input: ManualCcPurchaseInput,
-  opts?: { removeSupersededOneShotLines?: boolean; sourceLineId?: number }
+  opts?: {
+    removeSupersededOneShotLines?: boolean;
+    sourceLineId?: number;
+    /** The plan is a purchase first seen now (a feed's cuota purchase): its flow is stamped. */
+    arrival?: boolean;
+  }
 ): { id: number; canonical_row_id: string } {
   const purchaseDate = parsePurchaseDateIso(input.purchase_date);
   if (!purchaseDate) throw new InputError("invalid purchase_date");
@@ -71,6 +77,8 @@ export function createManualCcInstallmentPurchase(
       );
 
     const purchaseId = Number(r.lastInsertRowid);
+    // Stamped before the superseded one-shot lines fold in, so an older line's arrival wins.
+    if (opts?.arrival) recordPlanFlowFirstSeen(purchaseId);
     // Fuzzy cross-source dedupe (merchant + date + amount tolerance) is only appropriate
     // when the caller has no exact source line — e.g. a hand-entered manual purchase that
     // supersedes a previously imported one-shot line. A conversion names its line

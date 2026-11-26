@@ -20,7 +20,13 @@ import {
 } from "./flows/cardLineAdoption.js";
 import { ccLineDedupeKeyExistsOnAccount, patchCcLineOriginCardOnDedupeHit } from "./ccExpenseLineDedupe.js";
 import { ccLineOriginCurrency } from "./ccOriginCurrency.js";
-import { canonicalLineDedupeKeys, cardStatementFingerprint, storedLineColumns, storedStatementColumns } from "./cards/statementStorage.js";
+import {
+  assertStoredCardLineDates,
+  canonicalLineDedupeKeys,
+  cardStatementFingerprint,
+  storedLineColumns,
+  storedStatementColumns,
+} from "./cards/statementStorage.js";
 import {
   cardStatementKey,
   parseDdMmYyToIso,
@@ -330,6 +336,7 @@ export function importCcStatementsMerge(
     const seenDedupeInBatch = new Set<string>();
     const statementLabel = ccStatementLabel(statementDate, currency);
     const stampOrder: number[] = [];
+    const listing = isListingSourceKind(ccStatementSourceKindOf(sourcePdf));
 
     for (const line of lines) {
       const inst = line.installment != null;
@@ -407,6 +414,7 @@ export function importCcStatementsMerge(
         other_currency_amount: _other,
         ...stored
       } = columns as typeof columns & { other_currency_amount?: string };
+      assertStoredCardLineDates(stored, `CC statement import (${sourcePdf})`);
       const ins = insLine.run({
         statement_id: statementId,
         ...stored,
@@ -416,7 +424,9 @@ export function importCcStatementsMerge(
       });
       const statementLineId = Number(ins.lastInsertRowid);
       if (plantedSource && !inst && columns.amount > 0) recordPlantedChargeLine(statementLineId, accountId, plantedSource);
-      stampOrder.push(statementLineId);
+      // A statement's cuota line bills a plan's month: never a new movement, so it gets no stamp
+      // (`FlowArrival`). A listing's lines are all arrivals (a cuota purchase listed at its price).
+      if (!(inst && !listing)) stampOrder.push(statementLineId);
       const writtenHere = insertedLineIdsByStatement.get(statementId) ?? new Set<number>();
       writtenHere.add(statementLineId);
       insertedLineIdsByStatement.set(statementId, writtenHere);
@@ -432,11 +442,9 @@ export function importCcStatementsMerge(
       linesInserted += 1;
       inserted_flows.push(flowItem);
     }
-    // When each purchase reached the ledger (kept when its flow already has a stamp: a cuota line of
-    // a plan on file, or a re-import whose adoption carries the vanished line's stamp), stamped in
-    // the document's time order: a listing as it declares (`listingOrder.ts`), a statement oldest
-    // first.
-    const listing = isListingSourceKind(ccStatementSourceKindOf(sourcePdf));
+    // When each purchase reached the ledger (the adoption that follows keeps the older arrival when
+    // the line replaces one on file: `olderArrival`), stamped in the document's time order: a
+    // listing as it declares (`listingOrder.ts`), a statement oldest first.
     const order: ListingOrder = listing ? (opts?.listingOrder ?? DEFAULT_LISTING_ORDER) : "oldest_first";
     for (const lineId of listedOldestFirst(stampOrder, order)) recordCardLineFlowFirstSeen(lineId);
   }

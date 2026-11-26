@@ -1,5 +1,6 @@
 import type { ListingOrder } from "nw-tracker-contracts";
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
+import { recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf } from "./ccStatementSourceKind.js";
 import { applyCardLinePlan, planOneShotLinesSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
@@ -343,6 +344,7 @@ function mergeInstallmentLedgerInSession(
       });
       let pid = purchaseIdByFingerprint.get(fingerprint);
       if (pid == null) {
+        const onFile = selId.get(accountId, agg.card_group, agg.canonical_row_id) != null;
         insP.run({
           account_id: accountId,
           card_group: agg.card_group,
@@ -369,6 +371,9 @@ function mergeInstallmentLedgerInSession(
         }
         pid = (selId.get(accountId, agg.card_group, agg.canonical_row_id) as { id: number }).id;
         purchaseIdByFingerprint.set(fingerprint, pid);
+        // A plan written new is the purchase's arrival (its cuota lines are not: `FlowArrival`); a
+        // ledger wipe re-creates what was on file, so it stamps nothing.
+        if (!onFile && !replaceLedger) recordPlanFlowFirstSeen(pid);
       } else {
         db.prepare(
           `UPDATE cc_installment_purchases SET
