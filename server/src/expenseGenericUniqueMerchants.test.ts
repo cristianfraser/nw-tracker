@@ -3,7 +3,6 @@ import { db } from "./db.js";
 import {
   createExpenseGenericUniqueMerchant,
   deleteExpenseGenericUniqueMerchant,
-  invalidateExpenseGenericUniqueMerchantCache,
   isExactGenericUniqueMerchantKey,
   listExpenseGenericUniqueMerchants,
   updateExpenseGenericUniqueMerchant,
@@ -29,12 +28,29 @@ describe("expenseGenericUniqueMerchants", () => {
     expect(isExactGenericUniqueMerchantKey(nextKey)).toBe(true);
 
     deleteExpenseGenericUniqueMerchant(row.id);
-    invalidateExpenseGenericUniqueMerchantCache();
     expect(isExactGenericUniqueMerchantKey(nextKey)).toBe(false);
     expect(
       db
         .prepare(`SELECT 1 AS o FROM cc_expense_generic_unique_merchants WHERE id = ?`)
         .get(row.id)
     ).toBeUndefined();
+  });
+
+  it("sees a key another connection writes (a script, the ingest service)", async () => {
+    const { default: Database } = await import("better-sqlite3");
+    const key = `VITEST GENERIC OTHER CONNECTION ${Date.now()}`;
+    expect(isExactGenericUniqueMerchantKey(key)).toBe(false);
+    const other = new Database(db.name);
+    try {
+      other.prepare(`INSERT INTO cc_expense_generic_unique_merchants (merchant_key, sort_order) VALUES (?, 99999)`).run(key);
+      await Promise.resolve(); // the freshness check runs once per synchronous stretch
+      expect(isExactGenericUniqueMerchantKey(key)).toBe(true);
+      other.prepare(`DELETE FROM cc_expense_generic_unique_merchants WHERE merchant_key = ?`).run(key);
+      await Promise.resolve();
+      expect(isExactGenericUniqueMerchantKey(key)).toBe(false);
+    } finally {
+      other.prepare(`DELETE FROM cc_expense_generic_unique_merchants WHERE merchant_key = ?`).run(key);
+      other.close();
+    }
   });
 });

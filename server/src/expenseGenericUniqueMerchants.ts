@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { dbStateMemo } from "./dbStateMemo.js";
 import { InputError } from "./inputError.js";
 
 export type ExpenseGenericUniqueMerchantRow = {
@@ -7,20 +8,17 @@ export type ExpenseGenericUniqueMerchantRow = {
   sort_order: number;
 };
 
-let cachedKeys: Set<string> | null = null;
-
-export function invalidateExpenseGenericUniqueMerchantCache(): void {
-  cachedKeys = null;
-}
-
-export function exactGenericUniqueMerchantKeys(): Set<string> {
-  if (!cachedKeys) {
+/**
+ * The generic merchant keys, memoized on database state (`dbStateMemo`): any write of this
+ * connection, another connection's write (a script, the ingest service) or the day turn drops it.
+ */
+export function exactGenericUniqueMerchantKeys(): ReadonlySet<string> {
+  return dbStateMemo("expense_generic_unique_merchant_keys", null, () => {
     const rows = db
       .prepare(`SELECT merchant_key FROM cc_expense_generic_unique_merchants`)
       .all() as { merchant_key: string }[];
-    cachedKeys = new Set(rows.map((r) => r.merchant_key));
-  }
-  return cachedKeys;
+    return new Set(rows.map((r) => r.merchant_key));
+  });
 }
 
 export function isExactGenericUniqueMerchantKey(key: string): boolean {
@@ -62,7 +60,6 @@ export function createExpenseGenericUniqueMerchant(
        VALUES (?, ?)`
     )
     .run(key, sortOrder);
-  invalidateExpenseGenericUniqueMerchantCache();
 
   return db
     .prepare(
@@ -99,7 +96,6 @@ export function updateExpenseGenericUniqueMerchant(
     key,
     id
   );
-  invalidateExpenseGenericUniqueMerchantCache();
 
   return db
     .prepare(
@@ -116,5 +112,4 @@ export function deleteExpenseGenericUniqueMerchant(id: number): void {
   if (result.changes === 0) {
     throw new InputError("not found", 404);
   }
-  invalidateExpenseGenericUniqueMerchantCache();
 }

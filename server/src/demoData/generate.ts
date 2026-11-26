@@ -51,7 +51,6 @@ import { applyPayrollParameters } from "../payrollParametersApply.js";
 import { applyEmploymentPayslips } from "../payslipsApply.js";
 import { payslipLineKind } from "../payslipLineKinds.js";
 import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
-import { invalidateExpenseGenericUniqueMerchantCache } from "../expenseGenericUniqueMerchants.js";
 import {
   deptoPaymentHumanNote,
   insertLoanPaymentRow,
@@ -725,7 +724,6 @@ function seedCategoryRules(ledger: Ledger, ids: Map<Acct, number>): void {
   ].forEach((k, i) =>
     generic.run(normalizeCcExpenseMerchantKey(k), 1000 + i * 10)
   );
-  invalidateExpenseGenericUniqueMerchantCache();
 }
 
 const GROUP_COLORS: ReadonlyArray<[string, string]> = [
