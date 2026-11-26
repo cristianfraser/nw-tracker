@@ -25,7 +25,31 @@
  *   "again"`) runs once more right after.
  * - **Enabled and awake gates**: a job not enabled at start never arms; an asleep job (the hosted
  *   demo with nobody browsing) skips its run and stays unarmed until its wake source triggers one.
+ * - **A `next` that throws does not kill the job**: it is asked again every
+ *   {@link NEXT_ERROR_RETRY_MS}, and the first throw of a streak raises one app notification.
+ * - **One stop for all** (`stopAllScheduledJobs`, the server's shutdown): every started job is
+ *   registered until it stops.
  */
+
+import { insertAppMessage } from "./appMessages.js";
+
+/** How long a job whose `next` threw waits before asking it again. */
+export const NEXT_ERROR_RETRY_MS = 5 * 60_000;
+
+/** The notification title for a job whose `next` threw (one per job per failure streak). */
+export function nextErrorNotificationTitle(jobName: string): string {
+  return `Scheduler stalled: ${jobName}`;
+}
+
+/** Every started job, so a shutdown can stop them all. */
+const startedJobs = new Set<ScheduledJob>();
+
+/** Stops every started job (timers, retries, network waits); a run in progress finishes on its own. */
+export function stopAllScheduledJobs(): number {
+  const jobs = [...startedJobs];
+  for (const job of jobs) job.stop();
+  return jobs.length;
+}
 
 /** A run's outcome: `failed` — the work reported a failure; `threw` — it raised. */
 export type KernelRunResult = "ok" | "failed" | "threw";
@@ -152,6 +176,8 @@ export class ScheduledJob {
   /** Suspended time seen by timer fires since the last run consumed it. */
   private observedSuspendedMs = 0;
   private wakeRegistered = false;
+  /** `next` threw and has not answered since (the notification is raised once per streak). */
+  private nextFailing = false;
 
   constructor(private readonly spec: ScheduledJobSpec) {}
 
@@ -163,6 +189,7 @@ export class ScheduledJob {
   start(): boolean {
     this.enabled = this.spec.enabled();
     if (!this.enabled) return false;
+    startedJobs.add(this);
     this.noteActivity();
     this.retriesUsed = 0;
     if (!this.wakeRegistered && this.spec.onWake) {
@@ -176,6 +203,7 @@ export class ScheduledJob {
   }
 
   stop(): void {
+    startedJobs.delete(this);
     this.enabled = false;
     this.clearTimer();
     this.clearRetry();
@@ -187,6 +215,7 @@ export class ScheduledJob {
     this.retriesUsed = 0;
     this.observedSuspendedMs = 0;
     this.runAgain = false;
+    this.nextFailing = false;
   }
 
   /** Ask `next` again and re-arm the job's timer. */
@@ -197,8 +226,12 @@ export class ScheduledJob {
     try {
       at = this.spec.next(Date.now());
     } catch (e) {
-      console.error(`${this.spec.name} — next run error: ${e instanceof Error ? e.message : e}`);
-      at = null;
+      this.onNextError(e);
+      return;
+    }
+    if (this.nextFailing) {
+      this.nextFailing = false;
+      console.log(`${this.spec.name} — next run answered again; the job is scheduled`);
     }
     if (at == null) return;
     this.timerAtMs = at;
@@ -225,6 +258,35 @@ export class ScheduledJob {
 
   snapshot(): ScheduledJobSnapshot {
     return { enabled: this.enabled, in_flight: this.inFlight, next_at_ms: this.timerAtMs };
+  }
+
+  /** `next` threw: ask again after {@link NEXT_ERROR_RETRY_MS}; notify on the first throw of a streak. */
+  private onNextError(e: unknown): void {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(
+      `${this.spec.name} — next run error: ${msg}; asking again in ${Math.round(NEXT_ERROR_RETRY_MS / 1000)}s`
+    );
+    if (!this.nextFailing) {
+      this.nextFailing = true;
+      try {
+        insertAppMessage(
+          "notification",
+          nextErrorNotificationTitle(this.spec.name),
+          `The ${this.spec.name} job could not work out when to run next: ${msg}. ` +
+            `It asks again every ${Math.round(NEXT_ERROR_RETRY_MS / 60_000)} minutes and runs once it gets an answer; ` +
+            `no further notification is raised until it has recovered.`
+        );
+      } catch (notifyErr) {
+        console.error(
+          `${this.spec.name} — could not raise the notification: ${notifyErr instanceof Error ? notifyErr.message : notifyErr}`
+        );
+      }
+    }
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.reschedule();
+    }, NEXT_ERROR_RETRY_MS);
+    this.timer.unref?.();
   }
 
   private noteActivity(): void {

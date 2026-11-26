@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { db } from "./db.js";
 import {
+  NEXT_ERROR_RETRY_MS,
   ScheduledJob,
+  nextErrorNotificationTitle,
+  stopAllScheduledJobs,
   nextAlignedMs,
   planRetry,
   planTick,
@@ -205,5 +209,92 @@ describe("ScheduledJob", () => {
     await vi.advanceTimersByTimeAsync(600_000);
     expect(runs).toHaveLength(3);
     job.stop();
+  });
+});
+
+describe("ScheduledJob — a `next` that throws", () => {
+  const JOB = "vitest-kernel-next-throws";
+  const notifications = () =>
+    (
+      db
+        .prepare(`SELECT COUNT(*) AS c FROM app_messages WHERE kind = 'notification' AND title = ?`)
+        .get(nextErrorNotificationTitle(JOB)) as { c: number }
+    ).c;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: new Date("2026-05-27T14:00:00Z") });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    db.prepare(`DELETE FROM app_messages WHERE title = ?`).run(nextErrorNotificationTitle(JOB));
+  });
+
+  it("asks again after the retry delay, notifies once per streak, and runs once it answers", async () => {
+    let throws = 2;
+    const runs: string[] = [];
+    const job = new ScheduledJob({
+      name: JOB,
+      enabled: () => true,
+      next: (now) => {
+        if (throws > 0) {
+          throws--;
+          throw new Error("stale rule row");
+        }
+        return runs.length === 0 ? now : null;
+      },
+      run: async (tick) => {
+        runs.push(tick.cause);
+        return "ok";
+      },
+    });
+    job.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runs).toEqual([]);
+    expect(notifications()).toBe(1);
+    await vi.advanceTimersByTimeAsync(NEXT_ERROR_RETRY_MS);
+    await vi.advanceTimersByTimeAsync(NEXT_ERROR_RETRY_MS - 1);
+    expect(runs).toEqual([]);
+    expect(notifications()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(runs).toEqual(["timer"]);
+
+    // A new streak after a recovery notifies again.
+    throws = 1;
+    job.reschedule();
+    expect(notifications()).toBe(2);
+    job.stop();
+  });
+});
+
+describe("stopAllScheduledJobs", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: new Date("2026-05-27T14:00:00Z") });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("stops every started job, and only started ones are counted", async () => {
+    const runs: string[] = [];
+    const make = (name: string) =>
+      new ScheduledJob({
+        name,
+        enabled: () => true,
+        next: (now) => now + 60_000,
+        run: async () => {
+          runs.push(name);
+          return "ok";
+        },
+      });
+    const a = make("a");
+    const b = make("b");
+    make("never-started");
+    a.start();
+    b.start();
+    expect(stopAllScheduledJobs()).toBeGreaterThanOrEqual(2);
+    expect(a.isEnabled || b.isEnabled).toBe(false);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(runs).toEqual([]);
+    expect(stopAllScheduledJobs()).toBe(0);
   });
 });
