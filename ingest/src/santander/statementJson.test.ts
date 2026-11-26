@@ -114,7 +114,7 @@ describe("national rows", () => {
     expect([pay.kind, pay.amount]).toEqual(["payment", -2002346]);
     const nota = nationalRowToLine(nationalRow({ CodTxs: "510", NombreComercio: "NOTA DE CREDITO", MontoTxs: "0000002140" }));
     expect([nota.kind, nota.amount]).toEqual(["credit_note", -2140]);
-    for (const code of ["002", "203", "071", "701"]) {
+    for (const code of ["002", "203", "071", "701", "204"]) {
       const charge = nationalRowToLine(nationalRow({ CodTxs: code, MontoTxs: "0000009882" }));
       expect([charge.kind, charge.amount]).toEqual(["charge", 9882]);
     }

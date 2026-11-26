@@ -69,6 +69,11 @@ export const NATIONAL_COD_TXS = {
    * rides in TotalCargos with a trailing '-'; verified on the 25/08/2026 close: compras + cargos aut
    * − 2.140 nota = facturado exact). */
   CREDIT_NOTE: "510",
+  /** PREPAGO EN CUOTAS — the bank pays a cuota plan's whole principal off at once (the feed's
+   * `plan_prepayment`), POSITIVE: on the 24/11/2026 close it billed 8x.xxx beside a 510 nota of
+   * the same amount, both in TotalCargos (which read 0) and DeudaTotalFact = compras + cargos aut
+   * + cargos exact. */
+  PLAN_PREPAYMENT: "204",
 } as const;
 
 const KNOWN_NATIONAL_COD_TXS = new Set<string>(Object.values(NATIONAL_COD_TXS));
@@ -154,7 +159,8 @@ export function nationalRowToLine(row: SantanderNationalRow): CardStatementLine 
   const billed = parseSantanderFixed(row.MontoTxs, 0);
   const isPayment = code === NATIONAL_COD_TXS.PAYMENT;
   const isCreditNote = code === NATIONAL_COD_TXS.CREDIT_NOTE;
-  if (isInstallment && (isPayment || isCreditNote)) {
+  const isPlanPrepayment = code === NATIONAL_COD_TXS.PLAN_PREPAYMENT;
+  if (isInstallment && (isPayment || isCreditNote || isPlanPrepayment)) {
     throw new Error(`National CodTxs ${code} row carries cuotas (${merchant}) — not a shape this decoder knows`);
   }
   const kind: CardStatementLine["kind"] = isPayment
@@ -166,7 +172,8 @@ export function nationalRowToLine(row: SantanderNationalRow): CardStatementLine 
         : code === NATIONAL_COD_TXS.INSURANCE ||
             code === NATIONAL_COD_TXS.STAMP_TAX ||
             code === NATIONAL_COD_TXS.INTERNATIONAL_USE_FEE ||
-            code === NATIONAL_COD_TXS.INTERNATIONAL_USE_FEE_VAT
+            code === NATIONAL_COD_TXS.INTERNATIONAL_USE_FEE_VAT ||
+            isPlanPrepayment
           ? "charge"
           : "purchase";
   return {
