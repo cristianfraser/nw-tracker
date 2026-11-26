@@ -7,7 +7,7 @@ import {
   DEMO_WRITES_PER_VISITOR_PER_DAY,
   demoResetDue,
   demoWriteQuotaMiddleware,
-  markDemoWrittenForTest,
+  markDemoWritten,
   resetDemoDatabaseToPristine,
   resetDemoWritableStateForTest,
   saveDemoPristineCopy,
@@ -148,7 +148,7 @@ describe("resetDemoDatabaseToPristine", () => {
         INSERT INTO mark_input_changes (source) VALUES ('movements');
       `);
       expect(count("child")).toBe(1);
-      markDemoWrittenForTest();
+      markDemoWritten();
       expect(resetDemoDatabaseToPristine({ pristinePath: pristine, database: scratch })).toBe(true);
       expect(scratch.prepare(`SELECT name FROM parent ORDER BY id`).pluck().all()).toEqual(["a", "b"]);
       expect(count("child")).toBe(2);

@@ -55,9 +55,17 @@ let writtenSinceReset = false;
 const writesByVisitorDay = new Map<string, number>();
 let quotaDay: string | null = null;
 
-/** True when a visitor write landed since the last reset (a reset is skipped otherwise). */
+/** True when a write landed since the last reset (a reset is skipped otherwise). */
 export function demoWrittenSinceReset(): boolean {
   return writtenSinceReset;
+}
+
+/**
+ * The database was written: by an allowed visitor request, or by the server itself (a demo
+ * arrival, `demoArrivals.ts`). The next idle or nightly check restores the generated state.
+ */
+export function markDemoWritten(): void {
+  writtenSinceReset = true;
 }
 
 /**
@@ -102,7 +110,7 @@ export function demoWriteQuotaMiddleware(): RequestHandler {
       res.status(429).json({ error: "demo_write_limit" });
       return;
     }
-    writtenSinceReset = true;
+    markDemoWritten();
     next();
   };
 }
@@ -241,7 +249,3 @@ export function resetDemoWritableStateForTest(): void {
   nightlyResetDoneFor = null;
 }
 
-/** Tests: mark the database as written (what an allowed request does). */
-export function markDemoWrittenForTest(): void {
-  writtenSinceReset = true;
-}
