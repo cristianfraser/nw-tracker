@@ -126,15 +126,16 @@ describe("syncAllLiveMarketQuotes", () => {
   });
 
   it("flags changed values on first poll, not on an identical re-poll", async () => {
+    // 15:00 Chile: after the interbank window, where a dollar print at the same price moves nothing.
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-19T15:00:00.000Z"));
+    vi.setSystemTime(new Date("2026-05-19T19:00:00.000Z"));
     try {
-      const first = await syncAllLiveMarketQuotes(new Date("2026-05-19T15:00:00.000Z"));
+      const first = await syncAllLiveMarketQuotes(new Date("2026-05-19T19:00:00.000Z"));
       expect(first.values_changed).toBe(true);
 
       // Mocked Yahoo returns the same prices; nothing effective changed → no invalidation.
-      vi.setSystemTime(new Date("2026-05-19T15:05:00.000Z"));
-      const second = await syncAllLiveMarketQuotes(new Date("2026-05-19T15:05:00.000Z"));
+      vi.setSystemTime(new Date("2026-05-19T19:05:00.000Z"));
+      const second = await syncAllLiveMarketQuotes(new Date("2026-05-19T19:05:00.000Z"));
       expect(second.values_changed).toBe(false);
       expect(second.equities.filter((r) => r.ok).every((r) => r.changed === false)).toBe(true);
       expect(second.fx.changed).toBe(false);
@@ -258,6 +259,31 @@ describe("writeStreamQuotes", () => {
       expect(result).toEqual({ changedTickers: [], fxChanged: ["EUR_USD"] });
       expect(getLatestLivePairQuoteRow("EUR_USD", 600_000)?.value).toBe(1.1234);
       expect(getLatestLiveFxQuoteRow(600_000)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports an unchanged dollar inside the interbank window: the print moves the window average", () => {
+    // 2026-11-26 (Thanksgiving): the APV proxy's fx leg is the 09:00–14:00 Chile average of
+    // these rows, and a re-stamp at the same price shifts it without a reported change.
+    vi.useFakeTimers();
+    const t0 = new Date("2026-11-26T15:00:00Z"); // 12:00 Chile
+    vi.setSystemTime(t0);
+    try {
+      writeStreamQuotes([{ symbol: "CLP=X", price: 951.5, timeMs: t0.getTime(), previousClose: 945 }], t0);
+      const t1 = new Date("2026-11-26T15:03:00Z");
+      vi.setSystemTime(t1);
+      const inWindow = writeStreamQuotes([{ symbol: "CLP=X", price: 951.5, timeMs: t0.getTime(), previousClose: 945 }], t1);
+      expect(inWindow).toEqual({ changedTickers: [], fxChanged: ["USD_CLP"] });
+      // After 14:00 Chile the window is closed: a re-stamp three minutes on moves nothing.
+      const t2 = new Date("2026-11-26T17:01:00Z");
+      vi.setSystemTime(t2);
+      writeStreamQuotes([{ symbol: "CLP=X", price: 951.5, timeMs: t0.getTime(), previousClose: 945 }], t2);
+      const t3 = new Date("2026-11-26T17:04:00Z");
+      vi.setSystemTime(t3);
+      const after = writeStreamQuotes([{ symbol: "CLP=X", price: 951.5, timeMs: t0.getTime(), previousClose: 945 }], t3);
+      expect(after).toEqual({ changedTickers: [], fxChanged: [] });
     } finally {
       vi.useRealTimers();
     }

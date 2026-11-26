@@ -12,6 +12,7 @@ import {
   type LiveFxPair,
 } from "./fxLive.js";
 import { fxDayDueYmd } from "./forexDay.js";
+import { printEntersInterbankWindow } from "./fxObservadoFrame.js";
 import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
 import { priorLondonSessionYmd, priorNyseSessionYmd } from "./marketHolidays.js";
 import { publishLiveInputChange } from "./cacheRegistry.js";
@@ -285,7 +286,9 @@ function writeLiveFxQuote(
     previous_value: prior,
     fetched_at: fetchedAt,
   });
-  return changed;
+  // Inside the interbank window every print (a re-stamp too) moves the day's running average,
+  // which the Risky Norris proxy reads as its fx leg: report it, or caches split across it.
+  return changed || printEntersInterbankWindow(new Date(fetchedAt));
 }
 
 async function syncLiveFxQuote(now: Date, fetchedAt: string, skipLiveFetch: boolean): Promise<FxSyncOutcome> {
