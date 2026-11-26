@@ -167,8 +167,30 @@ Two different kinds of account land here, and the page fits neither.
 
 ## Work items
 
-One session each, mockups first as in the earlier rounds. «Server» says whether the item needs
-payload work; by the repo rule the client only picks precomputed blocks.
+One session each. «Server» says whether the item needs payload work; by the repo rule the
+client only picks precomputed blocks.
+
+**Every item is based on an existing redesigned surface, not designed anew** (the user's
+decision, 2026-11-26, given for all four wave 1 items and extended to the later waves). The
+«Base» column names that surface: the session reuses its components, phone rendering and
+vocabulary, and mocks only what its page needs beyond the base (never 3–4 unrelated layouts),
+showing that to the user before implementing. Where the base is one account's page and the
+item is a group, the group page with a single account shows that account page's figures.
+
+| # | Base |
+|---|---|
+| A | The property account page (`components/depto/`); `MortgageGroupPage` only as the precedent for composing glances server-side |
+| B1 | `CheckingAccountDetailPage` |
+| B2 | `PositionAccountDetailPage` |
+| C | `CheckingAccountDetailPage` (balance strip, statement) for the content, in the `InvestmentGroupPage` frame |
+| D | `WatchlistPage` for the glance per pair; the position page's chart tiles |
+| E | The deposits table on `/flows/deposits` (`components/flows/`) |
+| F | The messages table (`components/messages/`) |
+| G | The income tables; the settings residency form for the header |
+| H | The accounts tree component; `MirrorPairsPanelPage` for the list rows |
+| I | The position page rail (projections); the dashboard returns table (percentile years) |
+| J | `IncomePage` |
+| K | The messages table / `ColumnTable` rows already in place |
 
 | # | Item | Server | Main files |
 |---|---|---|---|
