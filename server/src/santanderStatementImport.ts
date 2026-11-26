@@ -153,7 +153,11 @@ export function buildSantanderStatement(
   // The classifier's two slots (`cardLineKind`): a dollar line its dollars, any other its amount in the peso slot.
   const dollarSlot = legacyAmountColumn(currency) === "amount_usd";
   const baseKeys = lineRows.map((line) => {
-    const amountKey = digits > 0 ? lineAmount(line).toFixed(digits) : String(lineAmount(line));
+    const amount = digits > 0 ? lineAmount(line).toFixed(digits) : String(lineAmount(line));
+    // A cuota line prints the purchase's day and total on every statement it bills on, so its
+    // position in the plan is part of its identity: without it each later close's cuota reads as a
+    // duplicate of the previous close's and is skipped.
+    const amountKey = line.installment ? `${amount}|cuota ${line.installment.number}/${line.installment.count}` : amount;
     return ccJsonStatementLineBaseKey(ctx.cardGroup, currency, line.transaction_date, line.merchant, amountKey);
   });
   const dedupeKeys = dedupeKeysByOccurrence(baseKeys);

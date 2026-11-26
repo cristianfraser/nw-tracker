@@ -289,6 +289,29 @@ describe("santanderStatementImport", () => {
     expect(otherMonth.n).toBe(1);
   });
 
+  it("writes each close's cuota of a plan, though every statement prints the same day and total", () => {
+    const id = masterId();
+    if (id == null) return;
+    const cuota = (number: number) =>
+      line({
+        kind: "installment",
+        merchant: "MUEBLES VITEST",
+        amount: 10_000,
+        installment: { number, count: 6, cuota_amount: 10_000, total_amount: 60_000 },
+        transaction_date: "2026-04-01",
+      });
+    const september = buildSantanderStatement("clp", [cuota(2)], totals({}), { ...CTX, accountId: id });
+    const october = buildSantanderStatement("clp", [cuota(3)], totals({}), {
+      ...CTX,
+      accountId: id,
+      statementDate: "20/10/2026",
+      periodFrom: "20/09/2026",
+      payBy: "10/11/2026",
+    });
+    expect(writeSantanderStatements(id, [september]).lineCount).toBe(1);
+    expect(writeSantanderStatements(id, [october]).lineCount).toBe(1);
+  });
+
   it("writes one facturación per call", () => {
     const id = masterId();
     if (id == null) return;
