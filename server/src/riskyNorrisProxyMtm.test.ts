@@ -24,6 +24,7 @@ import * as fintualCertV2Reconcile from "./fintualCertV2Reconcile.js";
 import * as globalSyncState from "./globalSyncState.js";
 import * as watchlistComposite from "./watchlistComposite.js";
 import { newCacheDepNode, runInCacheDepNode } from "./cacheDependencies.js";
+import { stubObservadoWindowFrom09 } from "./test/observadoWindowStub.js";
 
 const TEST_BUCKET = RISKY_NORRIS_PROXY_BUCKET;
 const COMPOSITION_DATE = "2026-06-20";
@@ -126,13 +127,51 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     expect(node.fx.has("USD_CLP")).toBe(true);
   });
 
-  it("is false when NYSE is not trading today (and the last session was a Chile business day)", () => {
+  it("is true on a US holiday Chile works until that day's own cuota lands (fx-only day)", () => {
     stubSettled(false);
-    stubLatestPublished("2026-06-26"); // Friday's cuota is in
-    stubNyseTrading(false);
+    stubLatestPublished("2026-06-26"); // Friday's cuota is in; Monday's is not
+    stubNyseTrading(false); // Mon 2026-06-29 in New York, no session
+    stubObservadoWindowFrom09(); // the real clock is past 2026-06-29: the day has its own fx
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockReturnValue(true);
-    vi.spyOn(marketHolidays, "priorNyseSessionYmd").mockReturnValue("2026-06-26");
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date())).toBe(true);
+    stubLatestPublished("2026-06-29"); // Monday's evening cuota
     expect(shouldUseRiskyNorrisProxyMtm(APV, new Date())).toBe(false);
+  });
+
+  it("is false when NYSE is not trading and Chile does not work either", () => {
+    stubSettled(false);
+    stubLatestPublished("2026-06-26");
+    stubNyseTrading(false);
+    vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation((ymd: string) => ymd === "2026-06-26");
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date())).toBe(false);
+  });
+
+  it("values Thanksgiving through the proxy, from its first fx prints until its cuota lands", () => {
+    // 2026-11-26 (Thu): NYSE closed, Chile works. Fintual's cuota for the day carries Wednesday's
+    // US closes at Thursday's observado, so it moves by the fx alone; the proxy follows it.
+    // Chile UTC−3, New York EST UTC−5.
+    expect(marketHolidays.isNyseTradingDay("2026-11-26")).toBe(false);
+    expect(marketHolidays.isChileBusinessDay("2026-11-26")).toBe(true);
+    stubSettledForDay("2026-11-25");
+    stubObservadoWindowFrom09();
+    const probes: [string, boolean][] = [
+      ["2026-11-26T03:30:00Z", false], // Thu 00:30 Chile, New York still on Wednesday's settled session
+      ["2026-11-26T06:00:00Z", false], // Thu 03:00 Chile: no fx of its own yet, Wednesday's cuota is right
+      ["2026-11-26T12:05:00Z", true], // Thu 09:05 Chile: the fx window has prints
+      ["2026-11-26T15:00:00Z", true], // Thu 12:00 Chile
+      ["2026-11-26T23:00:00Z", true], // Thu 20:00 Chile, the cuota not in yet
+      ["2026-11-27T12:00:00Z", true], // Fri 09:00 Chile, pre-open: Thursday's value still held
+    ];
+    for (const [iso, expected] of probes) {
+      expect(shouldUseRiskyNorrisProxyMtm(APV, new Date(iso)), iso).toBe(expected);
+    }
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-11-25")).toBe(false);
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-11-26")).toBe(true);
+    // Thursday's evening cuota lands: the official bar takes over, the morning after too.
+    stubSettledForDay("2026-11-26");
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date("2026-11-26T23:00:00Z"))).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(APV, new Date("2026-11-27T12:00:00Z"))).toBe(false);
+    expect(riskyNorrisProxyAppliesOnYmd(APV, "2026-11-26")).toBe(false);
   });
 
   it("is false on a normal business day once the Fintual evening sync is settled", () => {
@@ -335,7 +374,6 @@ describe("inPendingCuotaProxyHold", () => {
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation(
       (ymd: string) => ymd !== "2026-06-29"
     );
-    vi.spyOn(marketHolidays, "priorNyseSessionYmd").mockReturnValue("2026-06-29"); // Mon holiday
     stubNyYmd("2026-06-30");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(true);
     expect(inPendingCuotaProxyHold(APV, new Date())).toBe(true);
@@ -346,7 +384,6 @@ describe("inPendingCuotaProxyHold", () => {
     stubLatestPublished("2026-06-29");
     vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue("2026-06-30");
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockReturnValue(true);
-    vi.spyOn(marketHolidays, "priorNyseSessionYmd").mockReturnValue("2026-06-29");
     stubNyYmd("2026-06-30");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(true);
     expect(inPendingCuotaProxyHold(APV, new Date())).toBe(false);
@@ -359,7 +396,6 @@ describe("inPendingCuotaProxyHold", () => {
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation(
       (ymd: string) => ymd !== "2026-06-29"
     );
-    vi.spyOn(marketHolidays, "priorNyseSessionYmd").mockReturnValue("2026-06-29");
     stubNyYmd("2026-06-30");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(true);
     expect(inPendingCuotaProxyHold(APV, new Date())).toBe(false);
@@ -387,6 +423,28 @@ describe("riskyNorrisProxyCuotaForMtm APV calibration", () => {
     const apvPx = riskyNorrisProxyCuotaForMtm("fintual_cert_apv_a", now);
     const rnPx = riskyNorrisProxyCuotaForMtm("fintual_cert_risky_norris", now);
     expect(apvPx).toBeCloseTo(rnPx, 6);
+  });
+});
+
+describe("riskyNorrisProxyCuotaForMtm valuation day", () => {
+  it("values a US holiday Chile works on the day itself, not the last session (fx leg moves)", () => {
+    // Thanksgiving 2026-11-26, 12:00 Chile: the basket's EOD reads resolve on or before the
+    // holiday (Wednesday's closes) and the fx leg is the holiday's observado frame.
+    seedProxyMeta(null);
+    vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue("2026-11-26");
+    stubObservadoWindowFrom09();
+    const spy = vi.spyOn(watchlistComposite, "proxyClpFromMeta").mockReturnValue(4100);
+    const now = new Date("2026-11-26T15:00:00Z");
+    expect(riskyNorrisProxyCuotaForMtm("fintual_cert_risky_norris", now)).toBe(4100);
+    expect(spy).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), "2026-11-26", {
+      preferLive: false,
+      now,
+    });
+    // Friday before the open holds Thursday's value; a historical weekend after it reads Friday.
+    riskyNorrisProxyCuotaForMtm("fintual_cert_risky_norris", new Date("2026-11-27T12:00:00Z"));
+    expect(spy.mock.lastCall?.[2]).toBe("2026-11-26");
+    riskyNorrisProxyCuotaForMtm("fintual_cert_risky_norris", now, "2026-11-29");
+    expect(spy.mock.lastCall?.[2]).toBe("2026-11-27");
   });
 });
 
