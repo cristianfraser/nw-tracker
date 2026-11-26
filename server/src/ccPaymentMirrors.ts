@@ -26,6 +26,8 @@
  * A converted pair stays tied to its evidence by the payment's card, date and amount, never by the
  * statement row it was paired with — re-imports replace those rows (`ccPaymentMirrorEvidence.ts`).
  */
+import { copyEarlierFlowFirstSeen } from "./flows/flowFirstSeen.js";
+import { copyFlowEventTime } from "./flows/flowEventTimes.js";
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
@@ -414,6 +416,14 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
         HOME_CURRENCY,
         cand.evidence.label
       );
+      // The payment is the debit, reshaped: it keeps the moment the debit reached the ledger.
+      const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number | null }).flow_id;
+      const debitFlow = flowOf(cand.out.movement_id);
+      const transferFlow = flowOf(transferId);
+      if (debitFlow != null && transferFlow != null) {
+        copyEarlierFlowFirstSeen(debitFlow, transferFlow);
+        copyFlowEventTime(debitFlow, transferFlow);
+      }
       // The deleted checking row was the bank's listing: its date is the transfer's posting
       // day on checking, while the transfer itself takes the card's credit date.
       recordBankPosting(transferId, cand.out.account_id, bankPostedOn(cand.out.movement_id, cand.out.account_id));

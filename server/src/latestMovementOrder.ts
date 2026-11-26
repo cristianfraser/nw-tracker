@@ -41,6 +41,8 @@ export type ArrivalRun = { startedMs: number; endMs: number };
 /** The rows' arrival and moments, from the database (`latestMovementTimes.ts`) or a test. */
 export type LatestRowSources = {
   stamps: (refs: readonly LatestRowRef[]) => (LatestWriteStamp | null)[];
+  /** Each row's flow (its arrival key), null when it has none. */
+  flows: (refs: readonly LatestRowRef[]) => (number | null)[];
   /** Ingest runs, oldest first. */
   runs: readonly ArrivalRun[];
   times: (refs: readonly LatestRowRef[]) => LatestRowTimes[];

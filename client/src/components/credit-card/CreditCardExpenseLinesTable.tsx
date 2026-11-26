@@ -932,8 +932,16 @@ export const expenseListVendorClassName = styles.vendor;
  * draws it with `on` as its date, or a row of another kind (`ExpenseListStaticRow`).
  */
 export type ExpenseListItem =
-  | { kind: "expense"; on?: string; line: FlowCcExpenseLineRow }
-  | { kind: "custom"; key: string; node: ReactNode };
+  | { kind: "expense"; on?: string; line: FlowCcExpenseLineRow; arrivalKey?: string }
+  | { kind: "custom"; key: string; node: ReactNode; arrivalKey?: string };
+
+/**
+ * What makes a row "the same row" for the arrival animation: the server's arrival key (the row's
+ * flow, which a re-import or a cartola replacing the daily row keeps), else the row key.
+ */
+function arrivalKeyOf(item: ExpenseListItem): string {
+  return item.arrivalKey ?? (item.kind === "custom" ? item.key : expenseLineRowKey(item.line));
+}
 
 /**
  * Expense lines as a responsive list: one row per line — origin icon, date and the category pill
@@ -943,16 +951,6 @@ export type ExpenseListItem =
  * sort buttons (date, category, amount) that sort and reverse the rows. Same rendering at every
  * width; narrow containers stack the pills under the merchant.
  */
-/**
- * What makes a row "the same row" for the arrival animation: an expense line's flow (it survives a
- * re-import that gives the line a new row and key, such as a statement settling a pasted line),
- * else its row key.
- */
-function arrivalKeyOf(item: ExpenseListItem): string {
-  if (item.kind === "custom") return item.key;
-  return item.line.flow_id != null ? `flow:${item.line.flow_id}` : expenseLineRowKey(item.line);
-}
-
 export function CreditCardExpenseLinesTable({
   lines = [],
   items,

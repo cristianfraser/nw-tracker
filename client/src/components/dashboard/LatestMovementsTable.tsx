@@ -29,7 +29,7 @@ function isLatestMovements(v: unknown): v is LatestMovementsResponse {
     Array.isArray(categories) &&
     Array.isArray(big_groups) &&
     rows.every((r) => {
-      if (r == null || typeof r !== "object" || typeof r.on !== "string") return false;
+      if (r == null || typeof r !== "object" || typeof r.on !== "string" || typeof r.arrival_key !== "string") return false;
       if (r.kind === "expense") {
         return r.line != null && r.line.name != null && typeof r.line.purchase_key === "string" && r.line.amount != null && Number.isFinite(r.line.amount.value) && r.line.converted !== undefined && typeof r.line.value_clp === "number";
       }
@@ -182,11 +182,14 @@ export function LatestMovementsTable() {
   const loadError = queryLoadError(query);
 
   const items: ExpenseListItem[] = (data?.rows ?? []).map((r) => {
-    if (r.kind === "expense") return { kind: "expense", on: r.on, line: r.line };
-    if (r.kind === "income") return { kind: "custom", key: r.income.key, node: <IncomeMovementRow on={r.on} income={r.income} /> };
+    if (r.kind === "expense") return { kind: "expense", on: r.on, line: r.line, arrivalKey: r.arrival_key };
+    if (r.kind === "income") {
+      return { kind: "custom", key: r.income.key, arrivalKey: r.arrival_key, node: <IncomeMovementRow on={r.on} income={r.income} /> };
+    }
     return {
       kind: "custom",
       key: r.payment.key,
+      arrivalKey: r.arrival_key,
       node: (
         <CardPaymentRow on={r.on} payment={r.payment} categories={data?.categories ?? []} bigGroups={data?.big_groups ?? []} />
       ),

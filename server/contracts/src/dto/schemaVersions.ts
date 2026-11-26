@@ -36,7 +36,7 @@ export const DTO_SCHEMA_VERSIONS = {
    * credit may carry `refund_suggestion`, `refund_link_broken`, `can_link_refund` and `refund_of.manual`; v6: a financed
    * purchase's «Por cuota» slice may carry `billing_account_id` (the financing card).
    */
-  latest_movements: 6,
+  latest_movements: 7,
   /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`. */
   flows_overview: 2,
 } as const;

@@ -283,6 +283,19 @@ describe("convertCcPaymentMirrors", () => {
 
     const cands = myCandidates();
     const lineCand = cands.find((c) => c.evidence.amount_clp === 487331)!;
+    const stampOfMovement = (id: number) =>
+      db
+        .prepare(
+          `SELECT f.first_seen_at AS at, f.first_seen_seq AS seq FROM movements m JOIN flow_first_seen f ON f.flow_id = m.flow_id WHERE m.id = ?`
+        )
+        .get(id) as { at: string; seq: number } | undefined;
+    // The debit reached the ledger earlier (a stamp older than anything this run writes).
+    db.prepare(
+      `INSERT OR REPLACE INTO flow_first_seen (flow_id, first_seen_on, first_seen_at, first_seen_seq)
+       SELECT flow_id, '2026-01-10', '2026-01-10T12:00:00.000Z', 1 FROM movements WHERE id = ?`
+    ).run(lineCand.out.movement_id);
+    const debitStamp = stampOfMovement(lineCand.out.movement_id);
+    expect(debitStamp).toEqual({ at: "2026-01-10T12:00:00.000Z", seq: 1 });
     const { converted } = convertCcPaymentMirrors([
       {
         out_movement_id: lineCand.out.movement_id,
@@ -290,6 +303,8 @@ describe("convertCcPaymentMirrors", () => {
       },
     ]);
     expect(converted).toHaveLength(1);
+    // The payment keeps the moment the debit reached the ledger («Últimos movimientos» order).
+    expect(stampOfMovement(converted[0]!.transfer_movement_id)).toEqual(debitStamp);
     const transfer = db
       .prepare(`SELECT * FROM movements WHERE id = ?`)
       .get(converted[0]!.transfer_movement_id) as {

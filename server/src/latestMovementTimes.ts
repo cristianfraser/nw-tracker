@@ -59,6 +59,7 @@ export function latestRowSources(): LatestRowSources {
 
   return {
     runs: ingestRuns(),
+    flows: (refs) => refs.map(flowOf),
     stamps: (refs): (LatestWriteStamp | null)[] =>
       refs.map((ref) => {
         const flowId = flowOf(ref);

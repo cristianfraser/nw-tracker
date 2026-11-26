@@ -28,6 +28,17 @@ export function recordFlowEventTimeForMovement(
     .run(instant.toISOString(), source, sourceRef, movementId);
 }
 
+/** Copies `from`'s event time onto `to` when `to` has none (`from` keeps its own). */
+export function copyFlowEventTime(from: number, to: number, dbHandle: Database = db): void {
+  if (from === to) return;
+  dbHandle
+    .prepare(
+      `INSERT OR IGNORE INTO flow_event_times (flow_id, occurred_at, source, source_ref)
+       SELECT ?, occurred_at, source, source_ref FROM flow_event_times WHERE flow_id = ?`
+    )
+    .run(to, from);
+}
+
 /** Moves `from`'s event time onto `to` when `to` has none (before `from` is deleted). */
 export function carryFlowEventTime(from: number, to: number, dbHandle: Database = db): void {
   if (from === to) return;

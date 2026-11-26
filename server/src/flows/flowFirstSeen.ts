@@ -107,6 +107,19 @@ function stampOf(r: StampRow): FirstSeenStamp {
 }
 
 /**
+ * `to` takes `from`'s stamp when it is the earlier (`from` keeps its own): a row that replaces
+ * another under a new flow (a checking debit converted into a card payment) keeps the place the
+ * replaced row had in «Últimos movimientos».
+ */
+export function copyEarlierFlowFirstSeen(from: number, to: number, dbHandle: Database = db): void {
+  if (from === to) return;
+  const row = dbHandle
+    .prepare(`SELECT first_seen_on, first_seen_at, first_seen_seq FROM flow_first_seen WHERE flow_id = ?`)
+    .get(from) as StampRow | undefined;
+  if (row) keepEarlierFlowFirstSeen(to, stampOf(row), dbHandle);
+}
+
+/**
  * Moves `from`'s stamp onto `to`, keeping the earlier of the two (before `from` is deleted; its row
  * would cascade away).
  */

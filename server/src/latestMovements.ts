@@ -190,7 +190,7 @@ export function latestMovementRows(
     const own = ownIdx.map((i) => toWireExpenseLine(lines[i]!, unit));
     const payment = latestCardPayment(t, own, unit, ownIdx.map((i) => lines[i]!));
     ranked.push({
-      row: { kind: "card_payment", on: t.occurred_on, payment },
+      row: { kind: "card_payment", on: t.occurred_on, payment, arrival_key: payment.key },
       // The money left the paying account: its transfer mail names that side.
       ref: { kind: "movement", movementId: t.movement_id, accountId: t.from_account_id },
       tie: t.movement_id * 1000,
@@ -202,7 +202,7 @@ export function latestMovementRows(
     const on = movementOn(line, todayYmd);
     if (on > todayYmd) continue;
     ranked.push({
-      row: { kind: "expense", on, line: toWireExpenseLine(line, unit) },
+      row: { kind: "expense", on, line: toWireExpenseLine(line, unit), arrival_key: `line:${line.source}-${line.statement_line_id}-${line.purchase_key}` },
       ref: { kind: "line", line },
       tie: line.statement_line_id * 1000 + (line.piece_seq ?? 0),
     });
@@ -210,7 +210,7 @@ export function latestMovementRows(
   for (const m of incomeMovements(income, foreignAccountIds, unit, incomeNames)) {
     if (m.on > todayYmd) continue;
     ranked.push({
-      row: { kind: "income", on: m.on, income: m.income },
+      row: { kind: "income", on: m.on, income: m.income, arrival_key: m.income.key },
       ref: m.accountId != null ? { kind: "movement", movementId: m.id, accountId: m.accountId } : { kind: "none" },
       tie: m.id * 1000,
     });
@@ -242,7 +242,14 @@ export function latestMovementRows(
     ...(reached.length < limit ? unstamped : []),
   ];
   keyed.sort((a, b) => compareLatestRowOrderKeys(a.key, b.key) || b.tie - a.tie);
-  const rows = keyed.slice(0, limit).map((r) => r.row);
+  const shownRows = keyed.slice(0, limit);
+  // A row is the same row for as long as its flow lives (a re-import, a cartola replacing the daily
+  // row, a payment conversion keep it).
+  const flows = sources ? sources.flows(shownRows.map((r) => r.ref)) : [];
+  const rows = shownRows.map((r, i): LatestMovementRow => {
+    const flowId = flows[i];
+    return flowId == null ? r.row : { ...r.row, arrival_key: `flow:${flowId}` };
+  });
   for (const r of rows) {
     if (r.kind === "expense" && !knownCategories.has(r.line.category_slug)) {
       throw new Error(

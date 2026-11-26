@@ -1348,7 +1348,7 @@ export interface LatestMovementsResponse {
   big_groups: CcExpenseBigGroupDto[];
 }
 
-export type LatestMovementRow =
+export type LatestMovementRow = (
   | {
       kind: "expense";
       /** The day the movement happened (ISO): a credit's arrival, never a backdated transaction date. */
@@ -1364,7 +1364,15 @@ export type LatestMovementRow =
       kind: "card_payment";
       on: string;
       payment: LatestCardPayment;
-    };
+    }
+) & {
+  /**
+   * What makes the row the same row for the arrival animation: its flow (`flow:<id>`), which a
+   * re-import, a cartola replacing the daily row or a payment conversion keeps; a row with no flow,
+   * its own key.
+   */
+  arrival_key: string;
+};
 
 /**
  * A card payment, once: the `pago_tarjeta` transfer that paid a card — from a bank account, or from

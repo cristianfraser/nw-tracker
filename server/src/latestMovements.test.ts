@@ -178,6 +178,7 @@ describe("latestMovementRows", () => {
         { startedMs: at("19:30"), endMs: at("19:40") },
         { startedMs: at("20:30"), endMs: at("20:41") },
       ],
+      flows: (refs) => refs.map((r) => (r.kind === "line" ? r.line.flow_id! : r.kind === "movement" ? 900 : null)),
       stamps: (refs) =>
         refs.map((r) =>
           r.kind === "line" ? (stampByFlow[r.line.flow_id!] ?? null) : r.kind === "movement" ? { atMs: at("20:36"), seq: 11 } : null
@@ -194,6 +195,8 @@ describe("latestMovementRows", () => {
       "cc:2@2026-09-20",
       "cc:3@2026-09-20",
     ]);
+    // Each row is known to the animation by its flow, whatever its key.
+    expect(rows.map((r) => r.arrival_key)).toEqual(["flow:105", "flow:900", "flow:104", "flow:101", "flow:102", "flow:103"]);
     // A list that ends inside the newest run leaves the older rows out.
     expect(ids(latestMovementRows(lines, income, known, 2, today, noDollars, [], "clp", undefined, sources))).toEqual([
       "cc:5@2026-09-20",
