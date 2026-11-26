@@ -9,6 +9,7 @@ import { observadoFrameFxForDay } from "./fxObservadoFrame.js";
 import {
   basketUsdForHoldings,
   compositeLiveStats,
+  compositeValuesAtYmds,
   loadCompositeHoldings,
   loadCompositeMeta,
   proxyClpFromMeta,
@@ -275,6 +276,20 @@ describe("proxyClpFromMeta value weighting", () => {
     expect(next / atAnchor).toBeCloseTo(1.05 * fxRatio, 8);
     // The share-count reading Σ w·px(d)/Σ w·px(0) = 60/55 would land ~4% higher.
     expect(next / atAnchor).not.toBeCloseTo((60 / 55) * fxRatio, 2);
+  });
+
+  it("a day with no price of its own reads null; a broken anchor throws", () => {
+    seedValueWeightFixture();
+    const meta = loadCompositeMeta(VALUE_WEIGHT_BUCKET)!;
+    const holdings = loadCompositeHoldings(VALUE_WEIGHT_BUCKET);
+    const now = new Date("2026-07-08T15:00:00Z");
+    // A day before the first close: that day's price is missing — a blank, not an error.
+    expect(compositeValuesAtYmds(meta, holdings, { before: "2026-07-03" }, now)).toEqual({ before: null });
+    // An anchor day with no close is the composition row's problem, on every day: it throws.
+    const brokenAnchor = { ...meta, composition_date: "2026-07-03" };
+    expect(() => compositeValuesAtYmds(brokenAnchor, holdings, { d: VW_DAYS[1] }, now)).toThrow(
+      /missing anchor price/
+    );
   });
 });
 

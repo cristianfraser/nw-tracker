@@ -46,10 +46,21 @@ export function accountWithRoleOptional(role: AccountRole, param?: string): numb
   return ids[0] ?? null;
 }
 
-/** The one account holding `role` (and `param`); none or several throw, naming the role. */
+/**
+ * A lookup of the one account in some role found none. Only this is «not found»: several accounts
+ * where one is expected, or a database error, are other errors and must not be read as absent.
+ */
+export class AccountNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AccountNotFoundError";
+  }
+}
+
+/** The one account holding `role` (and `param`); none ({@link AccountNotFoundError}) or several throw, naming the role. */
 export function accountWithRole(role: AccountRole, param?: string): number {
   const id = accountWithRoleOptional(role, param);
-  if (id == null) throw new Error(`account role ${role}${param ? ` «${param}»` : ""}: no account holds it`);
+  if (id == null) throw new AccountNotFoundError(`account role ${role}${param ? ` «${param}»` : ""}: no account holds it`);
   return id;
 }
 

@@ -11,7 +11,7 @@ import type { BrokerNotificationPlanRow } from "nw-tracker-contracts";
 import { accountIdForEquityTicker, accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
-import { accountWithRole } from "./accountRoles.js";
+import { AccountNotFoundError, accountWithRole } from "./accountRoles.js";
 import { db } from "./db.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 
@@ -168,11 +168,13 @@ const stmtSingleLegCheckingDebit = db.prepare(
      AND occurred_on BETWEEN ? AND ?`
 );
 
-function accountOrNull(resolve: () => number): number | null {
+/** The resolved account, or null when the resolver found none; several accounts or any other error propagate. */
+export function accountOrNull(resolve: () => number): number | null {
   try {
     return resolve();
-  } catch {
-    return null;
+  } catch (e) {
+    if (e instanceof AccountNotFoundError) return null;
+    throw e;
   }
 }
 

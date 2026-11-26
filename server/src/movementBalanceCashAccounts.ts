@@ -7,7 +7,7 @@ import {
 } from "./assetGroupTree.js";
 import { db } from "./db.js";
 
-import { CARTOLA_CHECKING_KIND_SLUGS } from "./accountRoles.js";
+import { AccountNotFoundError, CARTOLA_CHECKING_KIND_SLUGS } from "./accountRoles.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 
 /**
@@ -47,7 +47,7 @@ export function cartolaCashAccountIdOptional(kindSlug: "cuenta_corriente" | "cue
 
 export function cartolaCashAccountId(bucketSlug: "cuenta_corriente" | "cuenta_vista"): number {
   const id = cartolaCashAccountIdOptional(bucketSlug);
-  if (id == null) throw new Error(`${bucketSlug} account not found`);
+  if (id == null) throw new AccountNotFoundError(`${bucketSlug} account not found`);
   return id;
 }
 

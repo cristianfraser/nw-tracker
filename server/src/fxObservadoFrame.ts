@@ -1,6 +1,7 @@
 import { chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { noteLiveFxRead } from "./cacheDependencies.js";
 import { db } from "./db.js";
+import { NoPriceForDayError } from "./noPriceForDayError.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 
 /**
@@ -125,7 +126,7 @@ export function observadoFrameFxForDay(ymd: string, now: Date = new Date()): Obs
   // sbif_usd sync has not landed. The last published row bounds how recent "pending" may be.
   const head = validRow(stmtLatestPublishedOnOrBefore.get(ymd) as ObservadoRow | undefined);
   if (head == null) {
-    throw new Error(`observado frame ${ymd}: no fx_daily_bcentral row on or before ${ymd}`);
+    throw new NoPriceForDayError(ymd, `observado frame ${ymd}: no fx_daily_bcentral row on or before ${ymd}`);
   }
   if (head.date < chileCalendarAddDays(ymd, -OBSERVADO_PENDING_MAX_STALE_DAYS)) {
     throw new Error(

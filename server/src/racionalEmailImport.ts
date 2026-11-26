@@ -39,6 +39,7 @@ import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { insertMovement } from "./movementWrites.js";
 import {
+  accountOrNull,
   brokerAdapter,
   planDepositFromMail,
   racionalCashAccountId,
@@ -73,11 +74,7 @@ export type RacionalEmailPlannedMovement = {
 };
 
 function tryRacionalCashAccountId(currency: "clp" | "usd"): number | null { // convention-ok: Racional holds broker cash in pesos and dollars only
-  try {
-    return racionalCashAccountId(currency);
-  } catch {
-    return null;
-  }
+  return accountOrNull(() => racionalCashAccountId(currency));
 }
 
 const mailChileYmd = notificationChileYmd;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { brokerAdapter, brokerPlanRow } from "./brokerAdapter.js";
+import { accountOrNull, brokerAdapter, brokerPlanRow } from "./brokerAdapter.js";
+import { accountWithRole } from "./accountRoles.js";
 
 describe("broker adapters", () => {
   it("look for a bank-listed deposit debit up to the window each broker's mail lags", () => {
@@ -26,5 +27,16 @@ describe("broker adapters", () => {
     expect(brokerPlanRow({ ...base, duplicate_of: 7 })).toMatchObject({ state: "duplicate", detail: "already in the ledger as movement 7" });
     expect(brokerPlanRow({ ...base, synthesized: true }).state).toBe("synthesized");
     expect(brokerPlanRow({ ...base, create_account: { ticker: "SPY", bucket_slug: "b" } }).detail).toBe("creates the SPY position in b");
+  });
+});
+
+describe("accountOrNull", () => {
+  it("reads only a resolver's «no account» as absent; several accounts or a database error propagate", () => {
+    expect(accountOrNull(() => accountWithRole("broker_cash", "vitest-no-broker|clp"))).toBeNull();
+    expect(() =>
+      accountOrNull(() => {
+        throw new Error("account role broker_cash «x|clp»: 2 accounts hold it, expected one");
+      })
+    ).toThrow(/2 accounts hold it/);
   });
 });

@@ -8,6 +8,7 @@ import {
   resolveEquityQuote,
 } from "./equityQuote.js";
 import { observadoFrameFxForDay } from "./fxObservadoFrame.js";
+import { NoPriceForDayError } from "./noPriceForDayError.js";
 import { heldProxyValuationDayYmd, priorProxyValuationDayYmd } from "./rnProxyValuationDay.js";
 
 export const RISKY_NORRIS_PROXY_BUCKET = "fintual_risky_norris_proxy";
@@ -125,7 +126,7 @@ export function basketUsdForHoldings(
   for (const h of holdings) {
     const px = priceUsdForTickerOnYmd(h.ticker, ymd, { preferLive, now });
     if (px == null) {
-      throw new Error(`composite basket ${ymd}: missing price for ${h.ticker}`);
+      throw new NoPriceForDayError(ymd, `composite basket ${ymd}: missing price for ${h.ticker}`);
     }
     total += h.weight * px;
   }
@@ -164,7 +165,7 @@ export function basketReturnForHoldings(
     }
     const px = priceUsdForTickerOnYmd(h.ticker, ymd, { preferLive, now });
     if (px == null) {
-      throw new Error(`composite basket ${ymd}: missing price for ${h.ticker}`);
+      throw new NoPriceForDayError(ymd, `composite basket ${ymd}: missing price for ${h.ticker}`);
     }
     factor += h.weight * (px / anchorPx);
     weightSum += h.weight;
@@ -198,9 +199,9 @@ export function proxyClpFromMeta(
 }
 
 /**
- * Per-day proxy value or null when that day lacks data (holiday/gap — expected).
- * Day-independent corruption (invalid anchor metadata) still throws: swallowing it
- * would silently null every day and hide the broken composition row.
+ * Per-day proxy value, or null when a basket price or the fx of that very day is missing (a
+ * holiday, a day before a series starts: {@link NoPriceForDayError}). Anything else — a broken
+ * anchor, a missing anchor price, an observado gap or a stale sync, a bug — throws.
  */
 function tryProxyClp(
   meta: CompositeMeta,
@@ -211,8 +212,8 @@ function tryProxyClp(
   try {
     return proxyClpFromMeta(meta, holdings, ymd, opts);
   } catch (e) {
-    if (e instanceof Error && e.message.includes("invalid anchor metadata")) throw e;
-    return null;
+    if (e instanceof NoPriceForDayError && e.day === ymd) return null;
+    throw e;
   }
 }
 
