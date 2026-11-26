@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
-import type { ParsedCheckingCartola, ParsedCheckingMovement } from "./checkingCartolaParse.js";
+import { movementNote, type ParsedCheckingCartola, type ParsedCheckingMovement } from "./checkingCartolaParse.js";
 import { partialMovementNote } from "./checkingPartialMovementsImport.js";
 import { insertBankPesoMovement, insertMovement, redateMovementKeepingBankDay } from "./movementWrites.js";
 import { deleteTempCardMaster } from "./test/tempCardMaster.js";
 import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
 import { planCheckingCartola, type CheckingCartolaPlan } from "./checkingCartolaPlan.js";
 import { applyCheckingCartolaPlan } from "./checkingCartolaPlanApply.js";
-import { dailyListingFacts } from "./movementListingFacts.js";
+import { cartolaListingFacts, dailyListingFacts } from "./movementListingFacts.js";
+import { foldMovementInto, restateMovementFromCartola } from "./checkingCartolaRestate.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { putFlowCategory } from "./flows/flowCategories.js";
 import { buildExpenseKey } from "./expenseKeys.js";
@@ -236,6 +237,59 @@ describe("cartola plan applied, against today's import", () => {
       expect(retired.retired).toBe(1);
       expect(retired.retired_document_key).toMatch(/^import:cartola\|1803-05\|/);
       expect(db.prepare(`SELECT source_table FROM flow_evidence WHERE flow_id = ?`).all(heldFlow)).toEqual([{ source_table: "restated:movements" }]);
+    });
+  });
+
+  const flowOfRow = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+  const restateOf = (id: number, c: ParsedCheckingCartola) => {
+    const m = c.movements[0]!;
+    return {
+      movementId: id,
+      accountId: checking,
+      note: movementNote(c.period_month, m.branch, m.description, m.document_no, { occurredOn: m.occurred_on, amountClp: m.amount_clp, cartolaIndex: 0 }),
+      amount: m.amount_clp,
+      flowKind: null,
+      listed: cartolaListingFacts(c.period_month, m),
+    };
+  };
+
+  it("a restate that changes nothing writes nothing", () => {
+    const row = daily("1803-05-03", -45_000, "TRANSFERENCIA");
+    const c = cartola([mv("1803-05-03", -45_000, "Transferencia")]);
+    rolledBack(() => {
+      expect(restateMovementFromCartola(restateOf(row, c))).toBe(true);
+      const total = (db.prepare(`SELECT total_changes() AS n`).get() as { n: number }).n;
+      const logged = (db.prepare(`SELECT COALESCE(MAX(id), 0) AS n FROM mark_input_changes`).get() as { n: number }).n;
+      expect(restateMovementFromCartola(restateOf(row, c))).toBe(false);
+      expect((db.prepare(`SELECT total_changes() AS n`).get() as { n: number }).n).toBe(total);
+      expect((db.prepare(`SELECT COALESCE(MAX(id), 0) AS n FROM mark_input_changes`).get() as { n: number }).n).toBe(logged);
+    });
+  });
+
+  it("a kept row takes back the flow retired with its cartola row, the kept flow's assignments winning", () => {
+    const c = cartola([mv("1803-05-08", -9_000, "Compra Comercio")]);
+    const r0 = restateOf(0, c);
+    const earlier = insertBankPesoMovement({ accountId: checking, amount: -9_000, occurredOn: "1803-05-08", note: r0.note, flowKind: null, listed: r0.listed });
+    const retiredFlow = flowOfRow(earlier);
+    const category = (db.prepare(`SELECT id FROM cc_expense_categories ORDER BY id LIMIT 1`).get() as { id: number }).id;
+    db.prepare(`INSERT INTO flow_categories (flow_id, portion, piece_seq, account_id, category_id) VALUES (?, 'gastos', -1, ?, ?)`).run(retiredFlow, checking, category);
+    db.prepare(`UPDATE flows SET legacy_key = NULL WHERE id = ?`).run(retiredFlow);
+    db.prepare(`DELETE FROM movements WHERE id = ?`).run(earlier);
+    const row = daily("1803-05-08", -9_000, "COMPRA COMERCIO");
+    rolledBack(() => {
+      restateMovementFromCartola(restateOf(row, c));
+      expect(db.prepare(`SELECT 1 FROM flows WHERE id = ?`).get(retiredFlow)).toBeUndefined();
+      expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(flowOfRow(row))).toEqual([{ category_id: category }]);
+    });
+  });
+
+  it("a fold of the older arrival into a newer one leaves the kept flow unstamped", () => {
+    const older = daily("1803-05-09", -3_000, "PEAJE");
+    db.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(flowOfRow(older));
+    const newer = daily("1803-05-09", -3_000, "PEAJE");
+    rolledBack(() => {
+      foldMovementInto(older, newer, checking);
+      expect(db.prepare(`SELECT 1 FROM flow_first_seen WHERE flow_id = ?`).get(flowOfRow(newer))).toBeUndefined();
     });
   });
 

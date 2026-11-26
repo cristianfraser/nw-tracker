@@ -22,6 +22,7 @@ import { lineAmount, lineValueIn } from "./lineMoney.js";
 import { convertMirrorPairs, undoMirrorConversion } from "./movementMirrorConvert.js";
 import { listMirrorPairCandidates } from "./movementMirrorPairs.js";
 import { convertCurrency } from "./rates.js";
+import { recordBankListingFacts } from "./movementListingFacts.js";
 
 const ISSUER = "vitest_eurobank";
 const NUMBER = "40012345";
@@ -41,6 +42,8 @@ describe("a euro checking account on the bank side", () => {
         .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'eur', ?, ?, ?)`)
         .run(checkingEur, Math.abs(eur), on, note, eur > 0 ? "deposit" : "withdrawal").lastInsertRowid
     );
+    // A statement row states its listing, as the cartola import writes it.
+    recordBankListingFacts(id, { bank_day: on, description, document_no: `vitest-eur${idx}`, period_month: on.slice(0, 7) }, db);
     movements.push(id);
     return id;
   };

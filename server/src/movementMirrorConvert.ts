@@ -24,6 +24,7 @@ import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
 
 import { db } from "./db.js";
 import { deleteMovements, insertMovement } from "./movementWrites.js";
+import { listedFactsOfMovement, mirrorLegListingOf, restoreMirrorLegListing, type MirrorLegListing } from "./movementListingFacts.js";
 import { listMirrorPairCandidates, mirrorLegIsMonthPrecision, resolveMirrorPairRef } from "./movementMirrorPairs.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { type MovementAmountFields } from "./movementAmounts.js";
@@ -94,8 +95,10 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
     `INSERT INTO movement_mirror_merges (
        transfer_movement_id,
        out_movement_id, out_occurred_on, out_amount, out_currency, out_units_delta, out_note,
-       in_movement_id, in_occurred_on, in_amount, in_currency, in_units_delta, in_note
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       in_movement_id, in_occurred_on, in_amount, in_currency, in_units_delta, in_note,
+       out_listed_on, out_listed_description, out_listed_document_no, out_listed_period,
+       in_listed_on, in_listed_description, in_listed_document_no, in_listed_period
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   // Income include/exclude overrides describe the single-leg row as an income candidate; once
   // converted to a transfer the row is internal by construction and the override is moot.
@@ -153,7 +156,10 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
         innAmount,
         inn.currency,
         inn.units_delta,
-        inn.note
+        inn.note,
+        // The listing each deleted leg's evidence stated, for an undo (`restoreMirrorLegListing`).
+        ...Object.values(mirrorLegListingOf(listedFactsOfMovement(out.id, db))),
+        ...Object.values(mirrorLegListingOf(listedFactsOfMovement(inn.id, db)))
       );
       // Each deleted leg was its account's own listing of the money: its bank day (its own
       // posting row, else its date — a post-cutoff daily row is stored on an earlier day) stays
@@ -206,9 +212,19 @@ function restoredLegAmount(
   return { amount: Math.abs(signed), currency, flowKind: side === "out" ? "withdrawal" : "deposit" };
 }
 
+/** The listing facts a merge row kept for one of its legs. */
+function keptListing(merge: Record<string, unknown>, side: "out" | "in"): MirrorLegListing {
+  return {
+    listed_on: merge[`${side}_listed_on`] as string | null,
+    listed_description: merge[`${side}_listed_description`] as string | null,
+    listed_document_no: merge[`${side}_listed_document_no`] as string | null,
+    listed_period: merge[`${side}_listed_period`] as string | null,
+  };
+}
+
 /**
  * Deletes a mirror-merge transfer and re-inserts the two original single-leg rows exactly as
- * they were (dates, amounts, units, notes — new ids). Rejections/links that referenced the old
+ * they were (dates, amounts, units, notes, the listing facts a bank leg stated — new ids). Rejections/links that referenced the old
  * ids already cascaded at conversion time and do not come back.
  */
 export function undoMirrorConversion(transferMovementId: number): {
@@ -243,6 +259,14 @@ export function undoMirrorConversion(transferMovementId: number): {
         in_currency: string;
         in_units_delta: number | null;
         in_note: string | null;
+        out_listed_on: string | null;
+        out_listed_description: string | null;
+        out_listed_document_no: string | null;
+        out_listed_period: string | null;
+        in_listed_on: string | null;
+        in_listed_description: string | null;
+        in_listed_document_no: string | null;
+        in_listed_period: string | null;
       }
     | undefined;
   if (!merge) {
@@ -259,8 +283,9 @@ export function undoMirrorConversion(transferMovementId: number): {
         unitsDelta: merge.out_units_delta,
         note: merge.out_note,
       });
-      // The restored leg takes back its bank day (the transfer's posting on that account).
+      // The restored leg takes back its bank day (the transfer's posting on that account) and its listing.
       carryStoredBankPosting(transferMovementId, outId, row.from_account_id!);
+      restoreMirrorLegListing(outId, keptListing(merge, "out"), db);
       deleteMovements([transferMovementId]);
       return { restored_out_id: outId, restored_in_id: outId };
     })();
@@ -288,6 +313,8 @@ export function undoMirrorConversion(transferMovementId: number): {
     // post-cutoff daily row is stored before the day the bank filed it).
     carryStoredBankPosting(transferMovementId, outId, fromId);
     carryStoredBankPosting(transferMovementId, inId, toId);
+    restoreMirrorLegListing(outId, keptListing(merge, "out"), db);
+    restoreMirrorLegListing(inId, keptListing(merge, "in"), db);
     deleteMovements([transferMovementId]);
     return { restored_out_id: outId, restored_in_id: inId };
   });

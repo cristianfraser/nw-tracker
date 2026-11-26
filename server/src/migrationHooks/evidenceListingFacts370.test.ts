@@ -43,9 +43,22 @@ describe("migration 370: listing facts from the notes on file", () => {
     ]);
   });
 
-  it("throws on a daily note with no day and amount, naming the row", () => {
+  it("leaves the ledger anchors alone and reads a prefix as the evidence kind does (case ignored)", () => {
+    const dbi = scratchDb();
+    row(dbi, 1, "cartola_anchor", "import:cartola|anchor|1803-03|saldo final", "1803-03-01", 500);
+    row(dbi, 2, "daily_listing", "IMPORT:CARTOLA-PARTIAL|1803-04-03|-45000|X", "1803-04-03", -45_000);
+    backfillListingFacts370(dbi);
+    expect((facts(dbi) as { id: number; stated_document_no: string | null; stated_description: string }[]).map((f) => [f.id, f.stated_document_no, f.stated_description])).toEqual([
+      [1, null, "import:cartola|anchor|1803-03|saldo final"],
+      [2, "", "X"],
+    ]);
+  });
+
+  it("fails on every unreadable bank note at once, naming each row", () => {
     const dbi = scratchDb();
     row(dbi, 9, "daily_listing", "import:cartola-partial|ayer|mucho|X", "1803-04-04", -1);
-    expect(() => backfillListingFacts370(dbi)).toThrow(/movement 9/);
+    row(dbi, 10, "cartola", "import:cartola|abril|Ag|X|on:1803-04-04|amt:-1|idx:0", "1803-04-04", -1);
+    row(dbi, 11, "daily_listing", "import:cartola-partial|1803-04-04|-1|OK", "1803-04-04", -1);
+    expect(() => backfillListingFacts370(dbi)).toThrow(/2 bank movement\(s\).*9 \(daily.*10 \(cartola/);
   });
 });

@@ -13,6 +13,12 @@ import { sumClpThroughDate, transferLegUnitsThroughDate } from "./movementTransf
 import { loadInternalNetWorthTransferOutflowKeys } from "./flowsDepositsReconciliation.js";
 import { bankPostedOn } from "./movementBankPostings.js";
 import { insertDepositLink, selectDepositLinks } from "./test/flowFixtures.js";
+import { insertBankPesoMovement } from "./movementWrites.js";
+import { partialMovementNote } from "./checkingPartialMovementsImport.js";
+import { dailyListingFacts, listedFactsOfMovement, recordBankListingFacts } from "./movementListingFacts.js";
+import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
+import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
+import { planCheckingCartola } from "./checkingCartolaPlan.js";
 
 const NOTE = "vitest-mirrorconv";
 
@@ -200,6 +206,8 @@ describe("convertMirrorPairs", () => {
       null,
       "import:cartola|2026-06|Ag|Transf|on:2026-06-15|amt:-8181811|idx:0"
     );
+    // A cartola row states its listing (as the cartola import writes it).
+    recordBankListingFacts(outId, { bank_day: "2026-06-15", description: "Transf", document_no: "", period_month: "2026-06" }, db);
     const depId = insLeg(fundId, 8_181_811, "2026-06-16", 2.5, NOTE);
     insertDepositLink({
       account_id: fundId,
@@ -327,5 +335,44 @@ describe("reconciliation outflow keys for mirror-merge transfers", () => {
     // The claim is the transfer's flow on its from-account (bug 8), whatever day each leg posts.
     expect(keys.has(outflowFlowClaimKey(genericId, flowOf(converted!.transfer_movement_id)))).toBe(true);
     expect(keys.has(outflowFlowClaimKey(generic2Id, flowOf(plain)))).toBe(false);
+  });
+});
+
+describe("a bank leg's listing facts through a conversion and its undo", () => {
+  it("the undone daily-listing leg states its listing again, and the cartola plan pairs it", () => {
+    const listing = { occurred_on: "2026-03-09", amount_clp: -2_727_201, description: "TRASPASO VITEST MIRRORCONV", document_no: "77" };
+    const outId = insertBankPesoMovement({
+      accountId: checkingId,
+      amount: listing.amount_clp,
+      occurredOn: listing.occurred_on,
+      note: partialMovementNote(listing),
+      flowKind: null,
+      listed: dailyListingFacts(listing),
+    });
+    const inId = insLeg(genericId, 2_727_201, "2026-03-09", null, `${NOTE}|facts-in`);
+    const { converted } = convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
+    const transferId = converted[0]!.transfer_movement_id;
+    expect(
+      db.prepare(`SELECT out_listed_on, out_listed_description, out_listed_document_no, out_listed_period, in_listed_document_no FROM movement_mirror_merges WHERE transfer_movement_id = ?`).get(transferId)
+    ).toEqual({ out_listed_on: "2026-03-09", out_listed_description: "TRASPASO VITEST MIRRORCONV", out_listed_document_no: "77", out_listed_period: null, in_listed_document_no: null });
+    const { restored_out_id } = undoMirrorConversion(transferId);
+    try {
+      expect(listedFactsOfMovement(restored_out_id, db)).toEqual({ ...dailyListingFacts(listing) });
+      const cartola: ParsedCheckingCartola = {
+        source_file: "vitest-mirrorconv-cartola.xlsx",
+        period_month: "2026-03",
+        period_from: "2026-03-01",
+        period_to: "2026-03-31",
+        saldo_inicial_clp: 0,
+        saldo_final_clp: listing.amount_clp,
+        movements: [{ occurred_on: "2026-03-09", amount_clp: listing.amount_clp, branch: "Agustinas", description: "Traspaso Vitest Mirrorconv", document_no: "" }],
+        skipped: [],
+        notes: [],
+      };
+      const plan = planCheckingCartola(loadCheckingCartolaPlanInput(checkingId, cartola));
+      expect(plan.keep.map((k) => [k.row_id, k.why])).toEqual([[restored_out_id, "daily_listing"]]);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE account_id = ? AND note LIKE 'import:cartola-partial|%VITEST MIRRORCONV%'`).run(checkingId);
+    }
   });
 });

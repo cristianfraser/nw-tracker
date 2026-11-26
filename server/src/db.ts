@@ -66,6 +66,7 @@ import { runFlowFirstSeenTime367 } from "./migrationHooks/flowFirstSeenTime367.j
 import { runFlowEventTimes368 } from "./migrationHooks/flowEventTimes368.js";
 import { runCardLineDates369 } from "./migrationHooks/cardLineDates369.js";
 import { runEvidenceListingFacts370 } from "./migrationHooks/evidenceListingFacts370.js";
+import { runMirrorMergeListingFacts371 } from "./migrationHooks/mirrorMergeListingFacts371.js";
 import { runCardToCardPayments311 } from "./migrationHooks/cardToCardPayments311.js";
 import { runBrokerInstruments361 } from "./migrationHooks/brokerInstruments361.js";
 import { runCardRefundLinks365 } from "./migrationHooks/cardRefundLinks365.js";
@@ -439,6 +440,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "368_flow_event_times.sql": runFlowEventTimes368,
   "369_cc_line_dates_padded.sql": runCardLineDates369,
   "370_evidence_listing_facts.sql": runEvidenceListingFacts370,
+  "371_mirror_merge_listing_facts.sql": runMirrorMergeListingFacts371,
   "363_vendor_catalog_checking_names.sql": runVendorCatalog363,
 };
 

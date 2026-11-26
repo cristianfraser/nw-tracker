@@ -69,8 +69,9 @@ export function applyCheckingCartolaPlan(
         const kind = (kindOf.get(keep.row_id) as { source_kind: string } | undefined)?.source_kind;
         if (kind == null) throw new Error(`keep-rows apply: movement ${index} keeps row ${keep.row_id}, which is gone`);
         if (kind === "daily_listing") {
-          restateMovementFromCartola({ movementId: keep.row_id, accountId, note, amount: mv.amount_clp, flowKind, listed }, dbHandle);
-          out.restated.push(keep.row_id);
+          if (restateMovementFromCartola({ movementId: keep.row_id, accountId, note, amount: mv.amount_clp, flowKind, listed }, dbHandle)) {
+            out.restated.push(keep.row_id);
+          }
           wrote += 1;
         } else if (kind !== "cartola") {
           throw new Error(`keep-rows apply: movement ${index} keeps row ${keep.row_id}, a ${kind ?? "kind-less"} row`);

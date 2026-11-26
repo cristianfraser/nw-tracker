@@ -315,6 +315,51 @@ describe("statement-line plan applied, against today's import", () => {
     expect(r.applied.history).toEqual([]);
   });
 
+  const changesNow = () => ({
+    total: (db.prepare(`SELECT total_changes() AS n`).get() as { n: number }).n,
+    logged: (db.prepare(`SELECT COALESCE(MAX(id), 0) AS n FROM mark_input_changes`).get() as { n: number }).n,
+  });
+  const flowOfLine = (id: number) => (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+
+  it("a restate that changes nothing writes nothing, and does not re-sync the card", () => {
+    const listed = bucketLine("2026-06-03", "FARMACIA CENTRAL", 8_500);
+    const st = statement([line("2026-06-04", "FARMACIA CENTRAL (T)", 8_500)]);
+    const restate = [{ lineId: listed, statementId: bucketId, statement: st, line: st.lines[0]!, dedupeKey: "vitest-kra-restate" }];
+    rolledBack(() => {
+      applyLinePlan(accountId, "vitest restate", { deleteLineIds: [], carry: [], restate });
+      const before = changesNow();
+      const metricsBefore = db.prepare(`SELECT COUNT(*) AS n FROM cc_billing_month_metrics WHERE account_id = ?`).get(accountId);
+      applyLinePlan(accountId, "vitest restate again", { deleteLineIds: [], carry: [], restate });
+      expect(changesNow()).toEqual(before);
+      expect(db.prepare(`SELECT COUNT(*) AS n FROM cc_billing_month_metrics WHERE account_id = ?`).get(accountId)).toEqual(metricsBefore);
+    });
+  });
+
+  it("a kept line takes back the flow retired with its document, the kept flow's assignments winning", () => {
+    const old = bucketLine("2026-06-03", "FARMACIA CENTRAL", 8_500);
+    const category = categorize(old);
+    const oldFlow = flowOfLine(old);
+    const prid = (db.prepare(`SELECT parser_row_id FROM cc_statement_lines WHERE id = ?`).get(old) as { parser_row_id: string }).parser_row_id;
+    db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(old);
+    expect(db.prepare(`SELECT retired_document_key FROM flows WHERE id = ?`).get(oldFlow)).toEqual({ retired_document_key: prid });
+    const kept = bucketLine("2026-06-03", "FARMACIA CENTRAL", 8_500);
+    const st = statement([line("2026-06-04", "FARMACIA CENTRAL (T)", 8_500, { id: prid })]);
+    rolledBack(() => {
+      applyLinePlan(accountId, "vitest restate", { deleteLineIds: [], carry: [], restate: [{ lineId: kept, statementId: bucketId, statement: st, line: st.lines[0]!, dedupeKey: prid }] });
+      expect(db.prepare(`SELECT 1 FROM flows WHERE id = ?`).get(oldFlow)).toBeUndefined();
+      expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(flowOfLine(kept))).toEqual([{ category_id: category }]);
+    });
+  });
+
+  it("a fold of the older arrival into a newer one leaves the kept flow unstamped", () => {
+    const older = bucketLine("2026-06-05", "SUPERMERCADO SUR", 5_000);
+    const newer = bucketLine("2026-06-05", "SUPERMERCADO SUR", 7_000, { stamp: "2026-06-06T10:00:00.000Z" });
+    rolledBack(() => {
+      applyLinePlan(accountId, "vitest fold", { deleteLineIds: [], carry: [], fold: [{ fromLineId: older, intoLineId: newer }] });
+      expect(db.prepare(`SELECT 1 FROM flow_first_seen WHERE flow_id = ?`).get(flowOfLine(newer))).toBeUndefined();
+    });
+  });
+
   it("refuses a plan it cannot apply yet, and a restate of a line on another card", () => {
     const listed = bucketLine("2026-06-02", "ACME STORE", 12_000);
     const sts = [statement([line("2026-06-02", "ACME STORE", 12_000)])];

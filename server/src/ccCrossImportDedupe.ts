@@ -19,7 +19,7 @@ import { generalRuleCategoryIdReaching, hasGeneralRule, setExpenseCategoryRule }
 import { purchaseAmountsMatch } from "./matching/installmentAmount.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { adoptReplacingCardLines, type CardLineAdoptionResult } from "./flows/cardLineAdoption.js";
-import { noteCardLineEvidence, requireCardLineSession, type CardLinePlan } from "./cards/lineWriteSession.js";
+import { noteCardLineEvidence, noteCardLineWritten, requireCardLineSession, type CardLinePlan } from "./cards/lineWriteSession.js";
 import { lineAmountClpSql } from "./cards/lineAmountSql.js";
 
 export const selLineCategory = db.prepare<[number]>(
@@ -167,13 +167,18 @@ export function applyCardLinePlanDetailed(accountId: number, plan: CardLinePlan)
       throw new Error(`card line write on account ${accountId}: lines ${foreign.join(", ")} are on another card`);
     }
   }
-  noteCardLineEvidence(accountId, earliestTransactionDateForLineIds(ids));
+  if (ids.length > 0 || plan.carry.length > 0) noteCardLineEvidence(accountId, earliestTransactionDateForLineIds(ids));
   // Restates: the row stays and takes the document line; evidence moved on both its old and new day.
   for (const r of restates) {
     const row = storedDocumentLine(r.statementId, r.statement, r.line, r.dedupeKey, `restate of card line ${r.lineId}`);
-    const before = restateCardLineRow(r.lineId, accountId, row);
-    noteCardLineEvidence(accountId, normalizeTransactionDateIso(before.transaction_date) ?? normalizeTransactionDateIso(before.posting_date));
-    noteCardLineEvidence(accountId, r.line.transaction_date ?? r.line.posting_date);
+    const { before, changed, moneyOrDayChanged } = restateCardLineRow(r.lineId, accountId, row);
+    if (!changed) continue;
+    if (moneyOrDayChanged) {
+      noteCardLineEvidence(accountId, normalizeTransactionDateIso(before.transaction_date) ?? normalizeTransactionDateIso(before.posting_date));
+      noteCardLineEvidence(accountId, r.line.transaction_date ?? r.line.posting_date);
+    } else {
+      noteCardLineWritten(accountId);
+    }
     carryMerchantRule(accountId, before.merchant, row.merchant as string | null);
   }
   // Inserts, stamped in the plan's order (a statement prints oldest first).

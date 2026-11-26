@@ -25,8 +25,9 @@ import { buildExpenseKey } from "./expenseKeys.js";
 import { EVIDENCE_COLUMNS, movementEvidenceValues } from "./flows/flowTriggerSpecs.js";
 import { keepEvidenceAsHistory } from "./flows/flowEvidence.js";
 import { expenseKeyParts, flowIdForKey, mergeFlowInto } from "./flows/flowIdentity.js";
-import { occurredOnBasis, recordBankPosting } from "./movementBankPostings.js";
-import { recordBankListingFacts, type BankListingFacts } from "./movementListingFacts.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, occurredOnBasis, recordBankPosting } from "./movementBankPostings.js";
+import { listedFactsOfMovement, recordBankListingFacts, type BankListingFacts } from "./movementListingFacts.js";
+import { foldRetiredFlowOfDocumentInto } from "./flows/flowAdoption.js";
 import { deleteMovements, repointMovementReferences, restateBankRowDocument } from "./movementWrites.js";
 
 type BankRow = { id: number; account_id: number | null; amount: number; currency: string; flow_id: number | null; kind: string | null };
@@ -56,8 +57,11 @@ export type CartolaRestate = {
   listed: BankListingFacts;
 };
 
-/** Restates a bank row as its cartola row (see the module doc). */
-export function restateMovementFromCartola(r: CartolaRestate, dbHandle: Database = db): void {
+/**
+ * Restates a bank row as its cartola row (see the module doc). A row that already is that cartola
+ * row (its note, kind, listing facts and posting) writes nothing; returns whether anything changed.
+ */
+export function restateMovementFromCartola(r: CartolaRestate, dbHandle: Database = db): boolean {
   const row = bankRow(r.movementId, r.accountId, dbHandle);
   if (row.kind !== "daily_listing" && row.kind !== "cartola") {
     throw new Error(`movement ${r.movementId}: a ${row.kind ?? "kind-less"} row is no bank listing's to restate`);
@@ -66,6 +70,7 @@ export function restateMovementFromCartola(r: CartolaRestate, dbHandle: Database
     throw new Error(`movement ${r.movementId}: holds ${row.amount} ${row.currency}, the cartola lists ${r.amount} pesos`);
   }
   if (r.listed.period_month == null) throw new Error(`movement ${r.movementId}: a cartola restate names its month`);
+  if (row.kind === "cartola" && alreadyThisCartolaRow(r, dbHandle)) return false;
   keepEvidenceAsHistory(dbHandle, "movements", r.movementId);
   restateBankRowDocument(r.movementId, { note: r.note, flowKind: r.flowKind }, dbHandle);
   dbHandle
@@ -74,8 +79,22 @@ export function restateMovementFromCartola(r: CartolaRestate, dbHandle: Database
   recordBankListingFacts(r.movementId, r.listed, dbHandle);
   // The cartola's day is the bank's posting day; the row's own day (a receipt's, a fetch day) stays.
   recordBankPosting(r.movementId, r.accountId, r.listed.bank_day, dbHandle, occurredOnBasis(r.movementId, r.accountId, dbHandle));
+  // An earlier incarnation of this cartola row, retired with what the user put on it, folds in.
+  foldRetiredFlowOfDocumentInto(row.flow_id, "movements", r.accountId, r.note, dbHandle);
   answerToCartolaKey(r.movementId, r.accountId, r.note, row.flow_id, dbHandle);
   dbHandle.prepare(`UPDATE flows SET description = ? WHERE id = ?`).run(r.note, row.flow_id);
+  return true;
+}
+
+function alreadyThisCartolaRow(r: CartolaRestate, dbHandle: Database): boolean {
+  const m = dbHandle.prepare(`SELECT note, flow_kind FROM movements WHERE id = ?`).get(r.movementId) as { note: string | null; flow_kind: string | null };
+  if (m.note !== r.note || (m.flow_kind ?? null) !== (r.flowKind ?? null)) return false;
+  const f = listedFactsOfMovement(r.movementId, dbHandle);
+  const posted = (dbHandle.prepare(`SELECT ${BANK_POSTED_ON_SQL} AS d FROM movements m ${BANK_POSTING_JOIN_SQL} WHERE m.id = ?`).get(r.accountId, r.movementId) as { d: string }).d;
+  return (
+    f != null && f.bank_day === r.listed.bank_day && f.description === r.listed.description && f.document_no === r.listed.document_no &&
+    f.period_month === r.listed.period_month && posted === r.listed.bank_day
+  );
 }
 
 /**
@@ -97,8 +116,9 @@ export function foldMovementInto(movementId: number, intoMovementId: number, acc
   if (movementId === intoMovementId) throw new Error(`movement ${movementId}: folds into itself`);
   const row = bankRow(movementId, accountId, dbHandle);
   const kept = bankRow(intoMovementId, accountId, dbHandle);
-  keepEvidenceAsHistory(dbHandle, "movements", movementId);
+  // The flows first: the fold's arrival rule reads the folded row's evidence as it stood.
   mergeFlowInto(row.flow_id, kept.flow_id, "to", dbHandle);
+  keepEvidenceAsHistory(dbHandle, "movements", movementId);
   repointMovementReferences(movementId, intoMovementId, dbHandle);
   deleteMovements([movementId], dbHandle);
   // A cartola row kept: its flow answers to its key, as when a daily row was adopted into it.

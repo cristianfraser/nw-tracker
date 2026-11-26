@@ -105,3 +105,54 @@ export function listedFactsOfEvidence(movementId: number, kind: string | null, e
     period_month: kind === "cartola" ? e.stated_period : null,
   };
 }
+
+/**
+ * A movement's listing facts as written (`recordBankListingFacts`): null for a row no bank listing
+ * wrote; a cartola or daily-listing row without them throws.
+ */
+export function listedFactsOfMovement(movementId: number, dbHandle: Database): BankListingFacts | null {
+  const e = dbHandle
+    .prepare(`SELECT e.source_kind AS kind, ${LISTED_FACTS_COLUMNS_SQL} FROM flow_evidence e WHERE e.source_table = 'movements' AND e.source_row_id = ?`)
+    .get(movementId) as (ListedFactsEvidence & { kind: string }) | undefined;
+  if (!e) throw new Error(`movement ${movementId}: no evidence`);
+  const f = listedFactsOfEvidence(movementId, e.kind, e);
+  return f == null ? null : { bank_day: f.bank_day, description: f.description, document_no: f.document_no, period_month: f.period_month };
+}
+
+/**
+ * A mirror conversion's kept leg (`movement_mirror_merges`, migration 371): the listing facts the
+ * deleted leg's evidence stated, kept with the merge row so an undo restores them. `side` names the
+ * column set (`out_listed_*` / `in_listed_*`).
+ */
+export type MirrorLegListing = {
+  listed_on: string | null;
+  listed_description: string | null;
+  listed_document_no: string | null;
+  listed_period: string | null;
+};
+
+export function mirrorLegListingOf(facts: BankListingFacts | null): MirrorLegListing {
+  return facts == null
+    ? { listed_on: null, listed_description: null, listed_document_no: null, listed_period: null }
+    : { listed_on: facts.bank_day, listed_description: facts.description, listed_document_no: facts.document_no, listed_period: facts.period_month };
+}
+
+/**
+ * A restored leg states again the listing its merge row kept: a cartola or daily-listing row
+ * (its restored note says so) takes the kept facts, and throws when the merge row kept none; any
+ * other row takes none, and throws when the merge row kept some.
+ */
+export function restoreMirrorLegListing(movementId: number, kept: MirrorLegListing, dbHandle: Database): void {
+  const kind = (dbHandle.prepare(`SELECT source_kind FROM flow_evidence WHERE source_table = 'movements' AND source_row_id = ?`).get(movementId) as
+    | { source_kind: string }
+    | undefined)?.source_kind;
+  const isBank = kind === "cartola" || kind === "daily_listing";
+  if (!isBank) {
+    if (kept.listed_document_no != null) throw new Error(`movement ${movementId}: a ${kind ?? "kind-less"} leg with listing facts kept`);
+    return;
+  }
+  if (kept.listed_on == null || kept.listed_description == null || kept.listed_document_no == null) {
+    throw new Error(`movement ${movementId}: a restored ${kind} leg whose conversion kept no listing facts`);
+  }
+  recordBankListingFacts(movementId, { bank_day: kept.listed_on, description: kept.listed_description, document_no: kept.listed_document_no, period_month: kept.listed_period }, dbHandle);
+}

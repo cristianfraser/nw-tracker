@@ -21,11 +21,14 @@ import { reinstallTableTriggersInOrder } from "./tableTriggerReinstall.js";
  *    amount (a daily row's note amount; a cartola row keeps the amount it was written with), the
  *    description, the document number ('' when none) and the cartola month (NULL on a daily row).
  *
- * A daily-listing note whose day or amount does not read throws with the row id: every such note
- * was written by the daily importer, which always writes both. One whose description is empty (a
+ * Rows are chosen by their evidence kind (`cartola`, `daily_listing`: the ledger anchors are
+ * `cartola_anchor` and carry no listing), and read with the kind's own prefix test (ASCII case
+ * ignored, as LIKE does). A daily-listing note whose day or amount does not read, or a cartola note
+ * whose month is not `YYYY-MM`, fails the migration — every such row listed at once: every such
+ * note was written by its importer, which always writes them. One whose description is empty (a
  * bank row listed with no text; the old reader returned nothing for it, so it never matched) gets
  * the description '' and is counted: '' matches no cartola description either, so it stays
- * unmatched, as before. A cartola note whose month is not `YYYY-MM` throws.
+ * unmatched, as before.
  *
  * Pure (no `db` import).
  */
@@ -86,20 +89,30 @@ export function backfillListingFacts370(dbi: DatabaseType): void {
   let dailyRows = 0;
   let cartolaRows = 0;
   const noDescription: number[] = [];
+  const unreadable: string[] = [];
   for (const r of rows) {
     const note = String(r.note ?? "");
     if (r.kind === "daily_listing") {
       const facts = dailyNoteFacts370(note);
-      if (!facts) throw new Error(`migration 370: daily-listing movement ${r.id}: its note «${note}» names no day and amount`);
+      if (!facts) {
+        unreadable.push(`${r.id} (daily listing: no day and amount)`);
+        continue;
+      }
       if (facts.description === "") noDescription.push(r.id);
       daily.run(facts.bank_day, facts.amount, facts.description, facts.document_no, r.evidence_id);
       dailyRows += 1;
     } else {
       const facts = cartolaNoteFacts370(note);
-      if (!facts) throw new Error(`migration 370: cartola movement ${r.id}: its note «${note}» names no cartola month`);
+      if (!facts) {
+        unreadable.push(`${r.id} (cartola: no YYYY-MM month)`);
+        continue;
+      }
       cartola.run(r.posted_on ?? r.occurred_on, facts.description, facts.document_no, facts.period_month, r.evidence_id);
       cartolaRows += 1;
     }
+  }
+  if (unreadable.length > 0) {
+    throw new Error(`migration 370: ${unreadable.length} bank movement(s) whose note states no listing: ${unreadable.join(", ")}`);
   }
   console.log(
     `migration 370: listing facts stated for ${dailyRows} daily-listing and ${cartolaRows} cartola movement(s)` +
@@ -109,11 +122,19 @@ export function backfillListingFacts370(dbi: DatabaseType): void {
 
 const DAILY_PREFIX = "import:cartola-partial|";
 
+/**
+ * The prefix test of the evidence kind (`movementEvidenceKindSql`: SQLite's LIKE, which ignores
+ * ASCII case), so a row the kind names a bank listing's is one this reader reads.
+ */
+function hasPrefix370(note: string, prefix: string): boolean {
+  return note.slice(0, prefix.length).toLowerCase() === prefix;
+}
+
 /** A daily-listing note's facts (`import:cartola-partial|<day>|<amount>|<description>[|doc:<n>]`), as the 2026-11 reader read them. */
 export function dailyNoteFacts370(
   note: string
 ): { bank_day: string; amount: number; description: string; document_no: string } | null {
-  if (!note.startsWith(DAILY_PREFIX)) return null;
+  if (!hasPrefix370(note, DAILY_PREFIX)) return null;
   const rest = note.slice(DAILY_PREFIX.length);
   const firstBar = rest.indexOf("|");
   if (firstBar < 0) return null;
@@ -138,7 +159,7 @@ const CARTOLA_PREFIX = "import:cartola|";
 
 /** A cartola note's facts (`import:cartola|<month>|<branch>|<description>[|doc:<n>]|on:…|amt:…|idx:…`). */
 export function cartolaNoteFacts370(note: string): { period_month: string; description: string; document_no: string } | null {
-  if (!note.startsWith(CARTOLA_PREFIX)) return null;
+  if (!hasPrefix370(note, CARTOLA_PREFIX)) return null;
   const period = note.split("|")[1]?.trim() ?? "";
   if (!/^\d{4}-\d{2}$/.test(period)) return null;
   const fragment = descriptionFragment(note);

@@ -28,7 +28,7 @@ import { assertStoredCardLineDates, storedLineColumns } from "./statementStorage
 import { ccLineOriginCurrency } from "../ccOriginCurrency.js";
 import { buildExpenseKey } from "../expenseKeys.js";
 import { keepEvidenceAsHistory } from "../flows/flowEvidence.js";
-import { adoptFlow } from "../flows/flowAdoption.js";
+import { adoptFlow, foldRetiredFlowOfDocumentInto, refreshFlowFromEvidence } from "../flows/flowAdoption.js";
 
 /** The columns a document line is stored with (the line importer's INSERT). */
 const STORED = [
@@ -124,25 +124,51 @@ function linePrKey(installment: boolean, parserRowId: string | null): string | n
   return !installment && t && !t.startsWith("synthetic:") ? buildExpenseKey({ kind: "line_pr", parserRowId: t }) : null;
 }
 
+/** The columns whose change moves money or a day (a restate that changes one notes its days). */
+const MONEY_OR_DAY = new Set<string>([
+  "statement_id", "transaction_date", "posting_date", "amount", "currency", "installment_flag", "nro_cuota_current",
+  "nro_cuota_total", "cuota_amount",
+]);
+
+const same = (a: unknown, b: unknown): boolean => (a ?? null) === (b ?? null) || (typeof a === "number" && typeof b === "number" && a === b);
+
+export type CardLineRestateOutcome = {
+  before: LineBefore;
+  /** Nothing differed: nothing was written. */
+  changed: boolean;
+  /** A column that moves money or a day differed (its old and new days are the write's evidence). */
+  moneyOrDayChanged: boolean;
+};
+
 /**
  * Restates line `lineId` (on the card `accountId`) as the stored document line `row` (see the
- * module doc). Returns the line as it stood. Throws when the line is gone, is on another card, or
- * the statement it moves to is.
+ * module doc). A line that already states exactly what the document states writes nothing. Throws
+ * when the line is gone, is on another card, or the statement it moves to is.
  */
-export function restateCardLineRow(lineId: number, accountId: number, row: StoredCardLine): LineBefore {
+export function restateCardLineRow(lineId: number, accountId: number, row: StoredCardLine): CardLineRestateOutcome {
   const before = cardLineOnAccount(lineId, accountId);
   const target = db.prepare(`SELECT account_id FROM cc_statements WHERE id = ?`).get(row.statement_id) as { account_id: number } | undefined;
   if (!target) throw new Error(`card line ${lineId}: statement ${String(row.statement_id)} does not exist`);
   if (target.account_id !== accountId) throw new Error(`card line ${lineId}: statement ${String(row.statement_id)} is on account ${target.account_id}`);
   if (before.flow_id == null) throw new Error(`card line ${lineId}: has no flow`);
+  const stored = db.prepare(`SELECT ${STORED.join(", ")} FROM cc_statement_lines WHERE id = ?`).get(lineId) as StoredCardLine;
+  const differing = STORED.filter((c) => !same(stored[c], row[c]));
+  if (differing.length === 0) return { before, changed: false, moneyOrDayChanged: false };
   const was = db
     .prepare(`SELECT source_kind, document_key FROM flow_evidence WHERE source_table = 'cc_statement_lines' AND source_row_id = ?`)
     .get(lineId) as { source_kind: string; document_key: string | null } | undefined;
   if (!was) throw new Error(`card line ${lineId}: has no evidence`);
-  db.prepare(`UPDATE cc_statement_lines SET ${STORED.map((c) => `${c} = @${c}`).join(", ")} WHERE id = @id`).run({ ...row, id: lineId });
+  const columns = differing.filter((c) => c !== "kind");
+  if (columns.length > 0) {
+    db.prepare(`UPDATE cc_statement_lines SET ${columns.map((c) => `${c} = @${c}`).join(", ")} WHERE id = @id`).run({
+      ...Object.fromEntries(columns.map((c) => [c, row[c]])),
+      id: lineId,
+    });
+  }
   // The kind trigger re-derives the kind from the amount and merchant; the line keeps the
   // document's, as an insert of it would.
-  db.prepare(`UPDATE cc_statement_lines SET kind = ? WHERE id = ?`).run(row.kind, lineId);
+  const kindNow = (db.prepare(`SELECT kind FROM cc_statement_lines WHERE id = ?`).get(lineId) as { kind: string | null }).kind;
+  if (!same(kindNow, row.kind)) db.prepare(`UPDATE cc_statement_lines SET kind = ? WHERE id = ?`).run(row.kind, lineId);
   const doc = db.prepare(DOCUMENT_EVIDENCE_SQL).get(lineId) as {
     flow_id: number;
     source_kind: string;
@@ -163,9 +189,16 @@ export function restateCardLineRow(lineId: number, accountId: number, row: Store
   } else {
     db.prepare(
       `UPDATE flow_evidence SET stated_on = ?, stated_amount = ?, stated_currency = ?, stated_description = ?, authority = ?
-       WHERE source_table = 'cc_statement_lines' AND source_row_id = ?`
-    ).run(doc.stated_on, doc.stated_amount, doc.stated_currency, doc.stated_description, doc.authority, lineId);
+       WHERE source_table = 'cc_statement_lines' AND source_row_id = ?
+         AND NOT (stated_on IS ? AND stated_amount IS ? AND stated_currency IS ? AND stated_description IS ? AND authority IS ?)`
+    ).run(
+      doc.stated_on, doc.stated_amount, doc.stated_currency, doc.stated_description, doc.authority, lineId,
+      doc.stated_on, doc.stated_amount, doc.stated_currency, doc.stated_description, doc.authority
+    );
   }
+  // An earlier incarnation of the line's document, retired with what the user put on it: it folds
+  // into the kept line's flow (the kept flow's assignments win, the older arrival stays).
+  foldRetiredFlowOfDocumentInto(doc.flow_id, "cc_statement_lines", accountId, doc.document_key);
   const installment = Number(row.installment_flag) === 1;
   if (!installment && before.installment_flag !== 1) {
     adoptFlow(
@@ -177,7 +210,7 @@ export function restateCardLineRow(lineId: number, accountId: number, row: Store
       }
     );
   }
-  return before;
+  return { before, changed: true, moneyOrDayChanged: differing.some((c) => MONEY_OR_DAY.has(c)) };
 }
 
 /**
@@ -189,6 +222,8 @@ export function foldCardLineFlowInto(fromLineId: number, intoLineId: number, acc
   const from = cardLineOnAccount(fromLineId, accountId);
   const into = cardLineOnAccount(intoLineId, accountId);
   if (from.flow_id == null || into.flow_id == null) throw new Error(`card lines ${fromLineId} / ${intoLineId}: no flow`);
-  keepEvidenceAsHistory(db, "cc_statement_lines", fromLineId);
+  // The flows first: the fold's arrival rule reads the folded line's evidence as it stood.
   if (from.flow_id !== into.flow_id) adoptFlow({ survivor: into.flow_id, arriving: from.flow_id }, { prefer: "survivor" });
+  keepEvidenceAsHistory(db, "cc_statement_lines", fromLineId);
+  refreshFlowFromEvidence(into.flow_id);
 }
