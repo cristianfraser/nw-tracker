@@ -128,7 +128,7 @@ export function movementEvidenceAuthoritySql(a: string): string {
 }
 
 /** Evidence of a movement: its document by its note's provenance (the note stays human text). */
-function movementEvidenceValues(a: string): string {
+export function movementEvidenceValues(a: string): string {
   return `${movementEvidenceKindSql(a)}, 'movements', ${a}.id, ${movementDocumentKeySql(a)}, ${a}.occurred_on, ${a}.amount,
     ${a}.currency, ${a}.note, ${movementEvidenceAuthoritySql(a)}`;
 }

@@ -102,7 +102,8 @@ export function cardLineWrite<T>(accountId: number, what: string, body: () => T)
 
 /** Applies a planner's plan as one card-line write; returns the lines deleted. */
 export function applyLinePlan(accountId: number, what: string, plan: CardLinePlan): number {
-  if (plan.deleteLineIds.length === 0 && plan.carry.length === 0) return 0;
+  const empty = (xs: readonly unknown[] | undefined) => (xs ?? []).length === 0;
+  if (empty(plan.deleteLineIds) && empty(plan.carry) && empty(plan.restate) && empty(plan.insert) && empty(plan.fold)) return 0;
   return withCardLineSession(accountId, what, () => applyCardLinePlan(accountId, plan));
 }
 

@@ -19,9 +19,8 @@ import {
   snapshotLineCategories,
 } from "./flows/cardLineAdoption.js";
 import { ccLineDedupeKeyExistsOnAccount, patchCcLineOriginCardOnDedupeHit } from "./ccExpenseLineDedupe.js";
-import { ccLineOriginCurrency } from "./ccOriginCurrency.js";
+import { insertStoredCardLine, storedDocumentLine } from "./cards/lineRowWrites.js";
 import {
-  assertStoredCardLineDates,
   canonicalLineDedupeKeys,
   cardStatementFingerprint,
   storedLineColumns,
@@ -157,8 +156,7 @@ const findStmtByClose = db.prepare(
    WHERE account_id = ? AND card_group = ? AND statement_date = ?
      AND COALESCE(card_last4, '') = COALESCE(?, '')
      AND currency = ?
-   ORDER BY id ASC
-   LIMIT 1`
+   ORDER BY id ASC`
 );
 
 function maybeApplyAdditionalCardNoCuenta(
@@ -215,7 +213,9 @@ const updStmt = db.prepare(`
 export function upsertCcStatementHeader(
   accountId: number,
   statement: CardCanonicalStatement,
-  lines: readonly CardCanonicalLine[]
+  lines: readonly CardCanonicalLine[],
+  /** Statements the close fallback must not resolve to (JSON closes a PDF takes over, still on file). */
+  opts?: { notStatementIds?: ReadonlySet<number> }
 ): { statementId: number; existed: boolean } {
   assertStatementHeader(statement);
   const stored = storedStatementColumns(statement);
@@ -231,8 +231,11 @@ export function upsertCcStatementHeader(
     import_fingerprint: cardStatementFingerprint({ ...statement, lines: [...lines] }),
   };
   let existing = findStmtId.get(accountId, cardGroup, sourcePdf, statementDate) as { id: number } | undefined;
+  if (existing && opts?.notStatementIds?.has(existing.id)) existing = undefined;
   if (!existing) {
-    existing = findStmtByClose.get(accountId, cardGroup, statementDate, stored.card_last4, currency) as { id: number } | undefined;
+    existing = (findStmtByClose.all(accountId, cardGroup, statementDate, stored.card_last4, currency) as { id: number }[]).find(
+      (r) => !opts?.notStatementIds?.has(r.id)
+    );
   }
   if (existing) {
     updStmt.run({ ...stmtParams, id: existing.id });
@@ -284,19 +287,6 @@ export function importCcStatementsMerge(
 
   const delLinesForStmt = db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`);
 
-  const insLine = db.prepare(`
-    INSERT INTO cc_statement_lines (
-      statement_id, transaction_date, posting_date, place, merchant, description_merged,
-      country, amount_orig, orig_currency, amount, currency, installment_flag,
-      nro_cuota_current, nro_cuota_total, cuota_amount,
-      interest_rate_text, tipo_cuota, dedupe_key, parser_row_id, raw_line, origin_card_last4, kind
-    ) VALUES (
-      @statement_id, @transaction_date, @posting_date, @place, @merchant, @description_merged,
-      @country, @amount_orig, @orig_currency, @amount, @currency, @installment_flag,
-      @nro_cuota_current, @nro_cuota_total, @cuota_amount,
-      @interest_rate_text, @tipo_cuota, @dedupe_key, @parser_row_id, @raw_line, @origin_card_last4, @kind
-    )
-  `);
 
   let statementCount = 0;
   let lineCount = 0;
@@ -420,22 +410,9 @@ export function importCcStatementsMerge(
         continue;
       }
 
-      const {
-        amount_clp: _legacyClp,
-        amount_usd: _legacyUsd,
-        valor_cuota_mensual_clp: _legacyCuota,
-        other_currency_amount: _other,
-        ...stored
-      } = columns as typeof columns & { other_currency_amount?: string };
-      assertStoredCardLineDates(stored, `CC statement import (${sourcePdf})`);
-      const ins = insLine.run({
-        statement_id: statementId,
-        ...stored,
-        orig_currency: ccLineOriginCurrency({ amountOrig: columns.amount_orig, amountUsd: columns.amount_usd, dateIso: lineDateIso }),
-        dedupe_key: dedupeKeys[dedupeKeys.length - 1] ?? null,
-        kind: line.kind,
-      });
-      const statementLineId = Number(ins.lastInsertRowid);
+      const statementLineId = insertStoredCardLine(
+        storedDocumentLine(statementId, statement, line, dedupeKeys[dedupeKeys.length - 1] ?? null, `CC statement import (${sourcePdf})`)
+      );
       if (plantedSource && !inst && columns.amount > 0) recordPlantedChargeLine(statementLineId, accountId, plantedSource);
       // A statement's cuota line bills a plan's month: never a new movement, so it gets no stamp
       // (`FlowArrival`). A listing's lines are all arrivals (a cuota purchase listed at its price).

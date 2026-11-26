@@ -3,10 +3,10 @@ import { db } from "./db.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
 import type { ParsedCheckingCartola, ParsedCheckingMovement } from "./checkingCartolaParse.js";
 import { partialMovementNote } from "./checkingPartialMovementsImport.js";
-import { insertMovement, redateMovementKeepingBankDay } from "./movementWrites.js";
+import { insertBankPesoMovement, insertMovement, redateMovementKeepingBankDay, restateBankRowDocument } from "./movementWrites.js";
 import { deleteTempCardMaster } from "./test/tempCardMaster.js";
 import { compareCheckingCartolaImport } from "./checkingCartolaPlanCompare.js";
-import { listedFactsOfBankRow } from "./checkingCartolaPlanLoad.js";
+import { dailyListingFacts, LISTED_FACTS_COLUMNS_SQL, listedFactsOfEvidence, type ListedFactsEvidence } from "./movementListingFacts.js";
 
 const PERIOD = "1803-04";
 const MESSAGE_PREFIX = "vitest-keep-rows-mail-";
@@ -65,12 +65,14 @@ describe("cartola planner against today's import", () => {
   });
 
   function daily(occurred_on: string, amount_clp: number, description: string): number {
-    return insertMovement({
+    const row = { occurred_on, amount_clp, description, document_no: "" };
+    return insertBankPesoMovement({
       accountId: checking,
       amount: amount_clp,
-      currency: "clp",
       occurredOn: occurred_on,
-      note: partialMovementNote({ occurred_on, amount_clp, description, document_no: "" }),
+      note: partialMovementNote(row),
+      flowKind: null,
+      listed: dailyListingFacts(row),
     });
   }
 
@@ -153,13 +155,18 @@ describe("cartola planner against today's import", () => {
     expect(plan.insert).toEqual([]);
   });
 
-  it("reads a bank row's listing facts from its note (the one adapter)", () => {
-    expect(
-      listedFactsOfBankRow("daily_listing", partialMovementNote({ occurred_on: "1803-04-03", amount_clp: -45_000, description: "X Y", document_no: "123" }), {
-        bankPostedOn: "1803-04-03",
-        amountClp: -45_000,
-      })
-    ).toEqual({ bank_day: "1803-04-03", amount_clp: -45_000, description: "X Y", document_no: "123", period_month: null });
-    expect(listedFactsOfBankRow("manual", "anything", { bankPostedOn: "1803-04-03", amountClp: 1 })).toBeNull();
+  it("reads a bank row's listing facts from its evidence, never its note", () => {
+    const id = daily("1803-04-03", -45_000, "X  |Y");
+    const facts = () => {
+      const e = db
+        .prepare(`SELECT e.source_kind AS kind, ${LISTED_FACTS_COLUMNS_SQL} FROM flow_evidence e WHERE e.source_table = 'movements' AND e.source_row_id = ?`)
+        .get(id) as ListedFactsEvidence & { kind: string };
+      return listedFactsOfEvidence(id, e.kind, e);
+    };
+    expect(facts()).toEqual({ bank_day: "1803-04-03", amount_clp: -45_000, description: "X /Y", document_no: "", period_month: null });
+    // A note rewritten drops the facts (migration 370): the row is refused, never read from its note.
+    restateBankRowDocument(id, { note: partialMovementNote({ occurred_on: "1803-04-03", amount_clp: -45_000, description: "OTRO", document_no: "" }), flowKind: null });
+    expect(facts).toThrow(/no listing facts/);
+    expect(listedFactsOfEvidence(id, "manual", {} as ListedFactsEvidence)).toBeNull();
   });
 });

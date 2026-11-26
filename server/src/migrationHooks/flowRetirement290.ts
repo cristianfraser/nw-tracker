@@ -18,9 +18,11 @@ const ID_KEY_PREFIX: Partial<Record<SourceSpec["table"], string>> = {
 /**
  * What the delete triggers count as holding a flow, by the migration that installs them: 290 the
  * holding tables and `flow_links`; 366 adds the card refund links (migration 365), whose either end
- * keeps its flow (a refund linked to a purchase that a re-import rewrites must find it again).
+ * keeps its flow (a refund linked to a purchase that a re-import rewrites must find it again); 370
+ * reads a restated row's earlier evidence (`source_table` `restated:<table>`, `flows/flowEvidence.ts`)
+ * as history, never as another row of the flow.
  */
-export type FlowHoldingRules = { refundLinks: boolean };
+export type FlowHoldingRules = { refundLinks: boolean; restatedEvidence?: boolean };
 
 const HOLDING_290: FlowHoldingRules = { refundLinks: false };
 
@@ -44,8 +46,9 @@ export function flowRetireDeleteTriggerSql(spec: SourceSpec, rules: FlowHoldingR
   const oldFlow = spec.hasFlowColumn
     ? `OLD.flow_id`
     : `(SELECT flow_id FROM flow_evidence WHERE source_table = '${t}' AND source_row_id = OLD.id)`;
+  const history = rules.restatedEvidence ? ` AND e.source_table NOT LIKE 'restated:%'` : "";
   const otherEvidence = `EXISTS (SELECT 1 FROM flow_evidence e WHERE e.flow_id = flows.id
-      AND NOT (e.source_table = '${t}' AND e.source_row_id = OLD.id))`;
+      AND NOT (e.source_table = '${t}' AND e.source_row_id = OLD.id)${history})`;
   const prefix = ID_KEY_PREFIX[t];
   const detach = prefix
     ? `UPDATE flows SET retired_key = legacy_key, legacy_key = NULL WHERE id = ${oldFlow} AND legacy_key = '${prefix}' || OLD.id;`

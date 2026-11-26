@@ -23,6 +23,7 @@
  * runs in one IMMEDIATE transaction. Pure over the handles it is given (no `db` import).
  */
 import type { Database } from "better-sqlite3";
+import { liveEvidenceSql } from "./flowEvidence.js";
 
 export type FirstSeenWindowRow = {
   flow_id: number;
@@ -82,7 +83,7 @@ export function planFirstSeenWindowRepair(dbi: Database, snapshot: Database, fro
   const rows = dbi
     .prepare(
       `SELECT f.flow_id, f.first_seen_at, fl.kind, fl.occurred_on, fl.amount, fl.currency, fl.description,
-         (SELECT COUNT(*) FROM flow_evidence e WHERE e.flow_id = f.flow_id) AS evidence,
+         (SELECT COUNT(*) FROM flow_evidence e WHERE e.flow_id = f.flow_id AND ${liveEvidenceSql("e")}) AS evidence,
          (SELECT COUNT(*) FROM flow_evidence e
             JOIN cc_statement_lines l ON e.source_table = 'cc_statement_lines' AND l.id = e.source_row_id
             JOIN cc_statements s ON s.id = l.statement_id

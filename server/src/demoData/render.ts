@@ -22,6 +22,7 @@ import {
   type CardCanonicalStatement,
 } from "nw-tracker-contracts";
 import type { CcListingParseResult } from "../ccWebPasteParse.js";
+import type { BankListingFacts } from "../movementListingFacts.js";
 import { AFC_RATES_PCT, afpEmployerRatePct, AFP_NAMES, afpWorkerRatePct, pensionCapUf, unemploymentCapUf } from "../legalParameters.js";
 import type { MarketReader } from "./market.js";
 import { addMonths, daysInMonth, MONTH_NAMES_ES, monthOf, type CardDef, type Month, type Ymd, ymd } from "./person.js";
@@ -35,7 +36,7 @@ export const DEMO_US_CHECKING_NUMBER = "4021987653";
 export const DEMO_US_SAVINGS_NUMBER = "4021987661";
 
 /** A statement row; `transfer` when a transfer between own accounts explains it (the app holds the transfer, not the row). */
-export type RenderedUsStatementRow = { date: Ymd; amount: number; note: string; transfer: boolean };
+export type RenderedUsStatementRow = { date: Ymd; amount: number; note: string; listed: BankListingFacts; transfer: boolean };
 
 /**
  * The US checking account's monthly statements, row by row, in the bank-statement identity the
@@ -57,8 +58,10 @@ export function renderUsStatementRows(ledger: Ledger): RenderedUsStatementRow[] 
     const idx = idxByMonth.get(m) ?? 0;
     idxByMonth.set(m, idx + 1);
     const amtCents = Math.round(r.amount * 100);
-    const note = `import:cartola|${m}|${us.bank.branch}|${r.description}|doc:${String(doc++).padStart(9, "0")}|on:${r.date}|amt:${amtCents}|idx:${idx}`;
-    return { date: r.date, amount: r.amount, note, transfer: r.transfer === true };
+    const documentNo = String(doc++).padStart(9, "0");
+    const note = `import:cartola|${m}|${us.bank.branch}|${r.description}|doc:${documentNo}|on:${r.date}|amt:${amtCents}|idx:${idx}`;
+    const listed: BankListingFacts = { bank_day: r.date, description: r.description.slice(0, 180).trim(), document_no: documentNo, period_month: m };
+    return { date: r.date, amount: r.amount, note, listed, transfer: r.transfer === true };
   });
 }
 

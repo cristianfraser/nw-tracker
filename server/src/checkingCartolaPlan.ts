@@ -32,15 +32,9 @@ import { pickTransferNoticeMovementForBankRow, type TransferNoticeCandidate } fr
 import type { FlowArrival } from "./flows/flowFirstSeen.js";
 import { compareArrival } from "./cards/statementLinePlan.js";
 
-/** What a bank listing says about a row it wrote (the cartola's or the daily listing's). */
-export type CheckingListedFacts = {
-  bank_day: string;
-  amount_clp: number;
-  description: string;
-  document_no: string;
-  /** The cartola month a cartola row was written from (null for a daily-listing row). */
-  period_month: string | null;
-};
+import type { CheckingListedFacts } from "./movementListingFacts.js";
+
+export type { CheckingListedFacts };
 
 /** A row on file of the account, as the planner reads it. */
 export type CheckingFileRow = {

@@ -1,70 +1,24 @@
 /**
  * Reads what the cartola planner (`checkingCartolaPlan.ts`) needs for one parsed cartola month,
- * from the ledger as it stands. Writes nothing.
- *
- * **The listing-facts adapter ({@link listedFactsOfBankRow}) is the one place that still reads a
- * note**, and it is what phase 2 replaces. Of a bank row's listing facts, the structured homes hold
- * the amount (`movements.amount`) and, for a row whose day a receipt corrected, the bank's day
- * (`movement_bank_postings`); `flow_evidence` holds the whole note as `document_key` and as
- * `stated_description`, and `stated_on` is the row's day when written. Missing in structured form:
- * the listed description, the document number, the cartola month a cartola row came from, and — for
- * a daily row never re-dated — its bank day as listed (today it equals `occurred_on`, but nothing
- * states it). Until they are stored, the adapter parses them from the note exactly as today's
- * matchers do (`parsePartialMovementNote`, `cartolaNoteContent`).
+ * from the ledger as it stands. Writes nothing. A bank row's listing facts (the bank day, amount,
+ * description, document and cartola month its listing printed) come from its evidence
+ * (`movementListingFacts.ts`), never from its note.
  */
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { HOME_CURRENCY, currencyMinorDigits } from "./displayUnits.js";
-import { cartolaNoteContent, movementNote, type ParsedCheckingCartola } from "./checkingCartolaParse.js";
-import { parsePartialMovementNote } from "./checkingCartolaPartialReconcile.js";
+import { movementNote, type ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import { MOVEMENT_AMOUNT_COLUMNS_SQL, MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 import { listTransferNoticeCandidates } from "./transferNoticeMovements.js";
 import { priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { flowArrival } from "./flows/flowFirstSeen.js";
-import type { CheckingCartolaPlanInput, CheckingFileRow, CheckingListedFacts } from "./checkingCartolaPlan.js";
+import { cartolaListingFacts, LISTED_FACTS_COLUMNS_SQL, listedFactsOfEvidence, type ListedFactsEvidence } from "./movementListingFacts.js";
+import type { CheckingCartolaPlanInput, CheckingFileRow } from "./checkingCartolaPlan.js";
 
-/**
- * PHASE 2 REPLACES THIS: a bank row's listing facts, parsed from its note (cartola rows:
- * `import:cartola|<month>|…`; daily-listing rows: `import:cartola-partial|…`). The bank day and
- * amount of a cartola row come from its columns (`bankPostedOn`, `amountClp`); a daily row's from its
- * note, as the daily↔cartola match reads them today. Null for any other row.
- */
-export function listedFactsOfBankRow(
-  kind: string,
-  note: string | null,
-  columns: { bankPostedOn: string; amountClp: number }
-): CheckingListedFacts | null {
-  const n = String(note ?? "");
-  if (kind === "daily_listing") {
-    const parsed = parsePartialMovementNote(n);
-    if (!parsed) return null;
-    return {
-      bank_day: parsed.occurred_on,
-      amount_clp: parsed.amount_clp,
-      description: parsed.description,
-      document_no: parsed.document_no,
-      period_month: null,
-    };
-  }
-  if (kind === "cartola") {
-    const content = cartolaNoteContent(n);
-    if (!content) return null;
-    return {
-      bank_day: columns.bankPostedOn,
-      amount_clp: columns.amountClp,
-      description: content.description,
-      document_no: content.document_no,
-      period_month: n.split("|")[1]?.trim() ?? null,
-    };
-  }
-  return null;
-}
-
-type MovementRow = {
+type MovementRow = ListedFactsEvidence & {
   id: number;
-  note: string | null;
   occurred_on: string;
   amount_clp: number;
   bank_posted_on: string;
@@ -81,8 +35,8 @@ export function loadCheckingCartolaPlanInput(
 ): CheckingCartolaPlanInput {
   const rows = dbHandle
     .prepare(
-      `SELECT m.id, m.note, m.occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, ${BANK_POSTED_ON_SQL} AS bank_posted_on,
-              e.source_kind AS kind, e.document_key, m.flow_id
+      `SELECT m.id, m.occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, ${BANK_POSTED_ON_SQL} AS bank_posted_on,
+              e.source_kind AS kind, e.document_key, m.flow_id, ${LISTED_FACTS_COLUMNS_SQL}
        FROM movements m ${BANK_POSTING_JOIN_SQL}
        LEFT JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id
        WHERE m.account_id = ? ORDER BY m.id`
@@ -95,7 +49,7 @@ export function loadCheckingCartolaPlanInput(
     bank_posted_on: r.bank_posted_on,
     occurred_on: r.occurred_on,
     amount_clp: r.amount_clp,
-    listed: listedFactsOfBankRow(r.kind, r.note, { bankPostedOn: r.bank_posted_on, amountClp: r.amount_clp }),
+    listed: listedFactsOfEvidence(r.id, r.kind, r),
     arrival: r.flow_id == null ? { kind: "not_an_arrival" } : flowArrival(r.flow_id, dbHandle),
   }));
 
@@ -127,11 +81,12 @@ export function loadCheckingCartolaPlanInput(
       amountClp: mv.amount_clp,
       cartolaIndex: index,
     });
+    const facts = cartolaListingFacts(cartola.period_month, mv);
     return {
       ...mv,
       index,
       document_key: documentKey,
-      listed: listedFactsOfBankRow("cartola", documentKey, { bankPostedOn: mv.occurred_on, amountClp: mv.amount_clp })!,
+      listed: { bank_day: facts.bank_day, amount_clp: mv.amount_clp, description: facts.description, document_no: facts.document_no, period_month: facts.period_month },
     };
   });
 

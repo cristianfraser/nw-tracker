@@ -27,6 +27,7 @@ import {
 } from "./checkingCartolaBalances.js";
 import { assertCheckingCartolaSaldoIdentity, validateCartolaSaldoChain } from "./checkingCartolaSaldoValidation.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
+import { cartolaListingFacts } from "./movementListingFacts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
@@ -218,6 +219,66 @@ export function wipeCheckingAccountData(accountId: number, dbHandle: Database = 
   };
 }
 
+/**
+ * The month's movements are on file: a cartola that lists movements but wrote, kept by a transfer
+ * leg or a mail row none, on a month with no cartola row on file, throws; so does one that lists
+ * none but whose saldo moved. `wrote`: the movements written or restated, plus those a leg or a
+ * mail row holds.
+ */
+export function assertCartolaMonthWrote(accountId: number, cartola: ParsedCheckingCartola, wrote: number, dbHandle: Database = db): void {
+  if (cartola.movements.length > 0 && wrote === 0) {
+    const existing = countExistingCartolaMovementsForMonth(accountId, cartola.period_month, dbHandle);
+    if (existing === 0) {
+      throw new Error(
+        `Cartola ${cartola.period_month} (${cartola.source_file}): parsed ${cartola.movements.length} movement(s) but inserted 0`
+      );
+    }
+  }
+  if (
+    cartola.movements.length === 0 &&
+    cartola.saldo_inicial_clp != null &&
+    cartola.saldo_final_clp != null &&
+    cartola.saldo_inicial_clp !== cartola.saldo_final_clp
+  ) {
+    const existing = countExistingCartolaMovementsForMonth(accountId, cartola.period_month, dbHandle);
+    if (existing === 0) {
+      throw new Error(
+        `Cartola ${cartola.period_month} (${cartola.source_file}): no movements parsed but saldo changed (${cartola.saldo_inicial_clp} → ${cartola.saldo_final_clp})`
+      );
+    }
+  }
+}
+
+/** The cartola month's import row (the month's ownership and its saldos). */
+export function recordCartolaMonthImport(accountId: number, cartola: ParsedCheckingCartola, dbHandle: Database = db): void {
+  dbHandle
+    .prepare(
+      `INSERT INTO checking_cartola_imports (
+         account_id, period_month, source_file, movement_count,
+         saldo_final_clp, saldo_inicial_clp, period_from, period_to
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(account_id, period_month) DO UPDATE SET
+         source_file = excluded.source_file,
+         movement_count = excluded.movement_count,
+         saldo_final_clp = excluded.saldo_final_clp,
+         saldo_inicial_clp = excluded.saldo_inicial_clp,
+         period_from = excluded.period_from,
+         period_to = excluded.period_to,
+         imported_at = datetime('now')`
+    )
+    .run(
+      accountId,
+      cartola.period_month,
+      cartola.source_file,
+      cartola.movements.length,
+      cartola.saldo_final_clp,
+      cartola.saldo_inicial_clp,
+      cartola.period_from,
+      cartola.period_to
+    );
+}
+
 export function importCheckingCartola(
   accountId: number,
   cartola: ParsedCheckingCartola,
@@ -237,22 +298,6 @@ export function importCheckingCartola(
   if (chainErr) {
     throw new Error(`Cartola ${cartola.period_month} (${cartola.source_file}): ${chainErr}`);
   }
-
-  const markImported = dbHandle.prepare(
-    `INSERT INTO checking_cartola_imports (
-       account_id, period_month, source_file, movement_count,
-       saldo_final_clp, saldo_inicial_clp, period_from, period_to
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(account_id, period_month) DO UPDATE SET
-       source_file = excluded.source_file,
-       movement_count = excluded.movement_count,
-       saldo_final_clp = excluded.saldo_final_clp,
-       saldo_inicial_clp = excluded.saldo_inicial_clp,
-       period_from = excluded.period_from,
-       period_to = excluded.period_to,
-       imported_at = datetime('now')`
-  );
 
   const noteExists = dbHandle.prepare(
     `SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ? LIMIT 1`
@@ -353,6 +398,7 @@ export function importCheckingCartola(
           occurredOn: mv.occurred_on,
           note,
           flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp),
+          listed: cartolaListingFacts(cartola.period_month, mv),
         },
         dbHandle,
         flow_adoptions
@@ -360,47 +406,10 @@ export function importCheckingCartola(
       movementsInserted += 1;
       inserted_flows.push(flowOf(mv));
     });
-    if (cartola.movements.length > 0 && movementsInserted === 0 && movementsSupersededByTransfer === 0) {
-      const existing = countExistingCartolaMovementsForMonth(
-        accountId,
-        cartola.period_month,
-        dbHandle
-      );
-      if (existing === 0) {
-        throw new Error(
-          `Cartola ${cartola.period_month} (${cartola.source_file}): parsed ${cartola.movements.length} movement(s) but inserted 0`
-        );
-      }
-    }
-    if (
-      cartola.movements.length === 0 &&
-      cartola.saldo_inicial_clp != null &&
-      cartola.saldo_final_clp != null &&
-      cartola.saldo_inicial_clp !== cartola.saldo_final_clp
-    ) {
-      const existing = countExistingCartolaMovementsForMonth(
-        accountId,
-        cartola.period_month,
-        dbHandle
-      );
-      if (existing === 0) {
-        throw new Error(
-          `Cartola ${cartola.period_month} (${cartola.source_file}): no movements parsed but saldo changed (${cartola.saldo_inicial_clp} → ${cartola.saldo_final_clp})`
-        );
-      }
-    }
+    assertCartolaMonthWrote(accountId, cartola, movementsInserted + movementsSupersededByTransfer, dbHandle);
     const reconcile = reconcileCartolaPartialImports(accountId, cartola.movements, dbHandle);
     partialsRemoved = reconcile.removed;
-    markImported.run(
-      accountId,
-      cartola.period_month,
-      cartola.source_file,
-      cartola.movements.length,
-      cartola.saldo_final_clp,
-      cartola.saldo_inicial_clp,
-      cartola.period_from,
-      cartola.period_to
-    );
+    recordCartolaMonthImport(accountId, cartola, dbHandle);
   });
   tx();
   return { movementsInserted, movementsSkipped, partialsRemoved, inserted_flows, skipped_flows, flow_adoptions };

@@ -8,7 +8,8 @@ import {
   type CardPlanForMatching,
 } from "./cards/purchases.js";
 import { db } from "./db.js";
-import { copyFlowFirstSeen } from "./flows/flowFirstSeen.js";
+import { copyFlowFirstSeen, recordCardLineFlowFirstSeen } from "./flows/flowFirstSeen.js";
+import { foldCardLineFlowInto, insertStoredCardLine, restateCardLineRow, storedDocumentLine } from "./cards/lineRowWrites.js";
 import {
   isGenericTransferMerchantKey,
   normalizeCcExpenseMerchantKey,
@@ -128,19 +129,32 @@ export function earliestTransactionDateForLineIds(lineIds: number[]): string | n
 }
 
 /**
- * The funnel's one delete step (`cards/lineWrites.ts`): only inside a card-line write on the
- * account. Reads the evidence date BEFORE deleting (afterwards the rows are gone) and notes it, so
- * the write re-syncs the valuations from it; carries each replaced line's expense assignments onto
- * the line that replaces it; deletes. Throws when a line is not on the account. Returns the lines
- * deleted.
+ * The funnel's one plan step (`cards/lineWrites.ts`): only inside a card-line write on the
+ * account. Reads the evidence date of the lines it deletes BEFORE deleting (afterwards the rows are
+ * gone) and notes it, so the write re-syncs the valuations from it; a restated line notes both its
+ * old and its new day, an inserted line its day. In order: restates each line a document line
+ * restates in place (`cards/lineRowWrites.ts`; a merchant rule follows a new merchant name), inserts
+ * the document lines (stamped in the plan's order when they are new movements), folds each line
+ * into its kept line (its flow, its category override and merchant rule follow), carries each
+ * replaced line's expense assignments onto the line that replaces it, folds superseded lines'
+ * arrivals onto their plans, deletes (the deleted and the folded lines). Throws when a line is not
+ * on the account. Returns the lines deleted.
  */
 const selLineFlow = db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`);
 const selPlanFlow = db.prepare(`SELECT flow_id FROM cc_installment_purchases WHERE id = ?`);
 
 export function applyCardLinePlan(accountId: number, plan: CardLinePlan): number {
+  return applyCardLinePlanDetailed(accountId, plan).deleted;
+}
+
+/** {@link applyCardLinePlan}, also returning the ids of the lines it inserted (in the plan's order). */
+export function applyCardLinePlanDetailed(accountId: number, plan: CardLinePlan): { deleted: number; inserted: number[] } {
   requireCardLineSession(accountId, "a line delete");
-  const ids = [...new Set(plan.deleteLineIds)];
-  if (ids.length === 0 && plan.carry.length === 0) return 0;
+  const restates = plan.restate ?? [];
+  const inserts = plan.insert ?? [];
+  const folds = plan.fold ?? [];
+  const ids = [...new Set([...plan.deleteLineIds, ...folds.map((f) => f.fromLineId)])];
+  if (ids.length === 0 && plan.carry.length === 0 && restates.length === 0 && inserts.length === 0) return { deleted: 0, inserted: [] };
   if (ids.length > 0) {
     const owners = db
       .prepare(
@@ -154,6 +168,37 @@ export function applyCardLinePlan(accountId: number, plan: CardLinePlan): number
     }
   }
   noteCardLineEvidence(accountId, earliestTransactionDateForLineIds(ids));
+  // Restates: the row stays and takes the document line; evidence moved on both its old and new day.
+  for (const r of restates) {
+    const row = storedDocumentLine(r.statementId, r.statement, r.line, r.dedupeKey, `restate of card line ${r.lineId}`);
+    const before = restateCardLineRow(r.lineId, accountId, row);
+    noteCardLineEvidence(accountId, normalizeTransactionDateIso(before.transaction_date) ?? normalizeTransactionDateIso(before.posting_date));
+    noteCardLineEvidence(accountId, r.line.transaction_date ?? r.line.posting_date);
+    carryMerchantRule(accountId, before.merchant, row.merchant as string | null);
+  }
+  // Inserts, stamped in the plan's order (a statement prints oldest first).
+  const inserted: number[] = [];
+  const stamped: number[] = [];
+  for (const i of inserts) {
+    const id = insertStoredCardLine(storedDocumentLine(i.statementId, i.statement, i.line, i.dedupeKey, `card line insert (${i.statement.document})`));
+    inserted.push(id);
+    if (i.stamp) stamped.push(id);
+    noteCardLineEvidence(accountId, i.line.transaction_date ?? i.line.posting_date);
+  }
+  for (const id of stamped) recordCardLineFlowFirstSeen(id);
+  // Folds: the flow into the kept line's, then what names the line by id outside the flow.
+  const lineCategory = db.prepare(`SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`);
+  for (const f of folds) {
+    const from = (db.prepare(`SELECT merchant FROM cc_statement_lines WHERE id = ?`).get(f.fromLineId) as { merchant: string | null } | undefined);
+    const into = (db.prepare(`SELECT merchant FROM cc_statement_lines WHERE id = ?`).get(f.intoLineId) as { merchant: string | null } | undefined);
+    if (!from || !into) throw new Error(`card line fold ${f.fromLineId} → ${f.intoLineId}: a line is gone`);
+    foldCardLineFlowInto(f.fromLineId, f.intoLineId, accountId);
+    const cat = lineCategory.get(f.fromLineId) as { category_id: number } | undefined;
+    if (cat && lineCategory.get(f.intoLineId) == null) {
+      db.prepare(`INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)`).run(f.intoLineId, cat.category_id);
+    }
+    carryMerchantRule(accountId, from.merchant, into.merchant);
+  }
   replaceCardLines(plan.carry);
   for (const a of plan.arrivalsOntoPlans ?? []) {
     const lineFlow = (selLineFlow.get(a.fromLineId) as { flow_id: number | null } | undefined)?.flow_id;
@@ -163,7 +208,7 @@ export function applyCardLinePlan(accountId: number, plan: CardLinePlan): number
   }
   let n = 0;
   for (const id of ids) n += delLines.run(id).changes;
-  return n;
+  return { deleted: n, inserted };
 }
 
 export type CcCrossImportDedupePlan = CardLinePlan & { removed_line_ids: number[] };
@@ -311,15 +356,26 @@ export function replaceCardLines(pairs: readonly { fromLineId: number; toLineId:
       insertLineCategory.run(to.id, fromLine.category_id);
       out.line_categories_copied += 1;
     }
-    // Rules are global and keyed on the vendor: a replacing line printed under another vendor gets
-    // the rule the old name had.
-    const fromKey = normalizeCcExpenseMerchantKey(from.merchant);
-    const toKey = normalizeCcExpenseMerchantKey(to.merchant);
-    if (!fromKey || !toKey || fromKey === toKey || isGenericTransferMerchantKey(toKey)) continue;
-    const fromCategoryId = generalRuleCategoryIdReaching(fromKey);
-    if (fromCategoryId == null || hasGeneralRule(toKey)) continue;
-    setExpenseCategoryRule(toKey, null, fromCategoryId);
-    out.merchant_rules_copied.push({ account_id: to.account_id, from: fromKey, to: toKey });
+    const copied = carryMerchantRule(to.account_id, from.merchant, to.merchant);
+    if (copied) out.merchant_rules_copied.push(copied);
   }
   return out;
+}
+
+/**
+ * Rules are global and keyed on the vendor: a line now printed under another vendor (a replacing
+ * line, a restated or folded one) gets the rule the old name had, when no rule reaches the new name.
+ */
+export function carryMerchantRule(
+  accountId: number,
+  fromMerchant: string | null,
+  toMerchant: string | null
+): { account_id: number; from: string; to: string } | null {
+  const fromKey = normalizeCcExpenseMerchantKey(fromMerchant);
+  const toKey = normalizeCcExpenseMerchantKey(toMerchant);
+  if (!fromKey || !toKey || fromKey === toKey || isGenericTransferMerchantKey(toKey)) return null;
+  const fromCategoryId = generalRuleCategoryIdReaching(fromKey);
+  if (fromCategoryId == null || hasGeneralRule(toKey)) return null;
+  setExpenseCategoryRule(toKey, null, fromCategoryId);
+  return { account_id: accountId, from: fromKey, to: toKey };
 }

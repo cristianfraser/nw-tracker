@@ -21,6 +21,7 @@ import { recordBankPosting, type OccurredOnBasis } from "./movementBankPostings.
 import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { adoptRetiredMovementFlow, type RetiredMovementAdoption } from "./flows/flowAdoption.js";
 import { recordMovementFlowFirstSeen } from "./flows/flowFirstSeen.js";
+import { recordBankListingFacts, type BankListingFacts } from "./movementListingFacts.js";
 
 /** Runs an import's movement writes; the expense deposit links re-sync once when it ends. */
 export function movementWrite<T>(body: () => T): T {
@@ -129,12 +130,13 @@ export function insertMovement(row: MovementInsert, dbHandle: Database = db): nu
 
 /**
  * A single-leg peso row a bank document lists (cartola, «últimos movimientos», a paste). Returns its
- * id. A row whose document was on file before (a cartola month re-imported, a daily row listed again)
- * takes its retired flow back (F9 step 4, `adoptRetiredMovementFlow`): every assignment returns with
- * it. Pairings that could not be decided go to `adoptions` for the import's report.
+ * id. Its evidence states what the listing printed (`listed`, `movementListingFacts.ts`). A row whose
+ * document was on file before (a cartola month re-imported, a daily row listed again) takes its
+ * retired flow back (F9 step 4, `adoptRetiredMovementFlow`): every assignment returns with it.
+ * Pairings that could not be decided go to `adoptions` for the import's report.
  */
 export function insertBankPesoMovement(
-  row: { accountId: number; amount: number; occurredOn: string; note: string; flowKind: string | null },
+  row: { accountId: number; amount: number; occurredOn: string; note: string; flowKind: string | null; listed: BankListingFacts },
   dbHandle: Database = db,
   adoptions?: NonNullable<RetiredMovementAdoption>[]
 ): number {
@@ -142,6 +144,7 @@ export function insertBankPesoMovement(
     { accountId: row.accountId, amount: row.amount, currency: HOME_CURRENCY, occurredOn: row.occurredOn, note: row.note, flowKind: row.flowKind },
     dbHandle
   );
+  recordBankListingFacts(id, row.listed, dbHandle);
   const adopted = adoptRetiredMovementFlow(id, dbHandle);
   if (adopted) adoptions?.push(adopted);
   return id;
@@ -199,6 +202,16 @@ export function restateMovementUnits(
   dbHandle
     .prepare(`UPDATE movements SET amount = ?, units_delta = ?, flow_kind = ?, note = ? WHERE id = ?`)
     .run(row.amount, row.unitsDelta, row.flowKind, row.note, movementId);
+}
+
+/**
+ * Restates a bank row in place from the document that now lists it (a daily-listing row its cartola
+ * lists: `checkingCartolaRestate.ts`): the row takes the document's note (its identity) and flow
+ * kind; its id, amount and day stay. Throws when the row is gone.
+ */
+export function restateBankRowDocument(movementId: number, row: { note: string; flowKind: string | null }, dbHandle: Database = db): void {
+  const changes = dbHandle.prepare(`UPDATE movements SET note = ?, flow_kind = ? WHERE id = ?`).run(row.note, row.flowKind, movementId).changes;
+  if (changes !== 1) throw new Error(`movement ${movementId}: no row to restate`);
 }
 
 /**

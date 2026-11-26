@@ -27,6 +27,7 @@ import { readFileSync } from "node:fs";
 import { HOME_CURRENCY } from "nw-tracker-contracts/dto/apiConstants";
 import { db } from "../db.js";
 import { insertMovement } from "../movementWrites.js";
+import { recordBankListingFacts } from "../movementListingFacts.js";
 import { createPanelAccount } from "../createPanelAccount.js";
 import { assignOptionContract } from "../optionAssignment.js";
 import { declareTaxResidency } from "../taxResidency.js";
@@ -445,7 +446,7 @@ function writeUsStatementRows(ledger: Ledger, ids: Map<Acct, number>): void {
   // A single-leg dollar row is positive, its direction in the flow kind (`signedNativeDeltaForAccountMovement`).
   db.transaction(() => {
     for (const r of rows) {
-      insertMovement({
+      const movementId = insertMovement({
         accountId: id,
         amount: Math.abs(r.amount),
         currency: "usd",
@@ -453,6 +454,8 @@ function writeUsStatementRows(ledger: Ledger, ids: Map<Acct, number>): void {
         note: r.note,
         flowKind: r.amount > 0 ? "fx_purchase" : "withdrawal",
       });
+      // What the statement prints, on the row's evidence, as the cartola import states it.
+      recordBankListingFacts(movementId, r.listed, db);
     }
   })();
 }

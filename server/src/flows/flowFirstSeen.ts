@@ -9,6 +9,7 @@ import type { Database } from "better-sqlite3";
 import { db } from "../db.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { listedOldestFirst, type ListingOrder } from "nw-tracker-contracts";
+import { liveEvidenceSql } from "./flowEvidence.js";
 
 /** A flow's first-seen stamp. `at` and `seq` are null on rows written before migration 367. */
 export type FirstSeenStamp = { on: string; at: string | null; seq: number | null };
@@ -95,7 +96,7 @@ function stampOf(r: StampRow): FirstSeenStamp {
  * A flow's arrival, as the carry rule reads it:
  *
  * - `stamped`: the flow has a stamp.
- * - `before_stamps`: no stamp, and it records a row (or recorded one: a retired flow, kept by its
+ * - `before_stamps`: no stamp, and it records a row (a restated row's history does not count; or recorded one: a retired flow, kept by its
  *   assignments after its row went). Every writer that creates a flow for a new movement stamps it
  *   — the card-line import (a statement's cuota line excepted), a plan written new (a statement's,
  *   a feed's, a hand-entered one; a plan converted from a line takes the line's arrival),
@@ -123,7 +124,7 @@ export function flowArrival(flowId: number, dbHandle: Database = db): FlowArriva
            WHERE l.id = e.source_row_id AND l.installment_flag = 1 AND s.source_kind NOT IN ('listing_open', 'listing_other')
          ) THEN 1 ELSE 0 END) AS cuota,
          (SELECT retired_on IS NOT NULL FROM flows WHERE id = ?) AS retired
-       FROM flow_evidence e WHERE e.flow_id = ?`
+       FROM flow_evidence e WHERE e.flow_id = ? AND ${liveEvidenceSql("e")}`
     )
     .get(flowId, flowId) as { n: number; cuota: number | null; retired: number | null };
   if (evidence.n === 0) return evidence.retired ? { kind: "before_stamps" } : { kind: "not_an_arrival" };

@@ -3,6 +3,7 @@ import { insertBankPesoMovement, movementWrite } from "./movementWrites.js";
 import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { recordBankPosting } from "./movementBankPostings.js";
+import { dailyListingFacts } from "./movementListingFacts.js";
 
 import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
@@ -168,6 +169,7 @@ function importPartialMovements(
         occurredOn,
         note,
         flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp),
+        listed: dailyListingFacts(mv),
       });
       if (occurredOn !== mv.occurred_on) recordBankPosting(id, accountId, mv.occurred_on, db, "fetch");
       inserted += 1;

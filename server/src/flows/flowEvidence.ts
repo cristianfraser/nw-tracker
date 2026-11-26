@@ -23,3 +23,36 @@ export function movementSourceKindInSql(alias: string, kinds: readonly string[])
 export function movementNotAnchorSql(alias: string): string {
   return `${movementSourceKindSql(alias)} <> 'cartola_anchor'`;
 }
+
+/**
+ * A row a document restated in place (a listing line its statement bills, a daily-listing movement
+ * its cartola lists) keeps its earlier evidence on its flow as history: the evidence row stays as the
+ * listing stated it — its kind, document key, day, amount and wording — under `source_table`
+ * `restated:<table>` and `source_row_id` its own id, so it names no live row (every per-row lookup
+ * reads `source_table = '<table>'`) and never collides with another. The row then gets a fresh
+ * evidence row for the document. The flow delete triggers read history as history (migration 370):
+ * it neither holds the flow nor stops its retirement.
+ */
+export const RESTATED_EVIDENCE_PREFIX = "restated:";
+
+/** SQL: evidence row `alias` names a live source row (not a restated row's history). */
+export function liveEvidenceSql(alias: string): string {
+  return `${alias}.source_table NOT LIKE '${RESTATED_EVIDENCE_PREFIX}%'`;
+}
+
+/**
+ * Turns the evidence of `table` row `rowId` into history (see {@link RESTATED_EVIDENCE_PREFIX}).
+ * Throws when the row has none.
+ */
+export function keepEvidenceAsHistory(
+  dbHandle: { prepare(sql: string): { run(...params: unknown[]): { changes: number } } },
+  table: string,
+  rowId: number
+): void {
+  const changes = dbHandle
+    .prepare(
+      `UPDATE flow_evidence SET source_table = ?, source_row_id = id WHERE source_table = ? AND source_row_id = ?`
+    )
+    .run(`${RESTATED_EVIDENCE_PREFIX}${table}`, table, rowId).changes;
+  if (changes !== 1) throw new Error(`${table} ${rowId}: no evidence row to keep as history`);
+}

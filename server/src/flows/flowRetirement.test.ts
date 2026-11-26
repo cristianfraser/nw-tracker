@@ -8,6 +8,7 @@ import { fixtureMovement } from "../test/flowFixtures.js";
 /** Movements ids no fixture of the synthetic DB uses. */
 const ID = 9_870_001;
 const NOTE = "import:cartola|2099-01|2099-01-15|-4321|VITEST RETIREMENT ROW|doc:1";
+const LISTED = { bank_day: "2099-01-15", description: "VITEST RETIREMENT ROW", document_no: "1", period_month: "2099-01" };
 
 const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
 const flowRow = (id: number) =>
@@ -49,7 +50,7 @@ describe("flow retirement (migration 290)", () => {
   });
 
   it("a bank row arriving again takes its retired flow back, with what hangs off it", () => {
-    const first = insertBankPesoMovement({ accountId: 1, amount: -4321, occurredOn: "2099-01-15", note: NOTE, flowKind: null });
+    const first = insertBankPesoMovement({ accountId: 1, amount: -4321, occurredOn: "2099-01-15", note: NOTE, flowKind: null, listed: LISTED });
     const flow = flowOf(first);
     db.prepare(`INSERT INTO flow_refunds (flow_id, category_id) SELECT ?, id FROM cc_expense_categories ORDER BY id LIMIT 1`).run(flow);
 
@@ -58,7 +59,7 @@ describe("flow retirement (migration 290)", () => {
     expect(flowRow(flow)).toMatchObject({ retired_document_key: NOTE });
 
     const adoptions: unknown[] = [];
-    const again = insertBankPesoMovement({ accountId: 1, amount: -4321, occurredOn: "2099-01-15", note: NOTE, flowKind: null }, db, adoptions as never);
+    const again = insertBankPesoMovement({ accountId: 1, amount: -4321, occurredOn: "2099-01-15", note: NOTE, flowKind: null, listed: LISTED }, db, adoptions as never);
     expect(flowOf(again)).toBe(flow);
     expect(adoptions).toEqual([{ status: "adopted", movement_id: again, flow_id: flow }]);
     expect(flowRow(flow)?.retired_on).toBeNull();
@@ -66,7 +67,7 @@ describe("flow retirement (migration 290)", () => {
   });
 
   it("a bare flow goes with its row", () => {
-    const id = insertBankPesoMovement({ accountId: 1, amount: -4321, occurredOn: "2099-01-15", note: NOTE, flowKind: null });
+    const id = insertBankPesoMovement({ accountId: 1, amount: -4321, occurredOn: "2099-01-15", note: NOTE, flowKind: null, listed: LISTED });
     const flow = flowOf(id);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
     expect(flowRow(flow)).toBeUndefined();

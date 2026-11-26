@@ -6,11 +6,13 @@
  * date (`cards/lineWrites.ts` owns the sequence). A write nested inside another on the same account
  * joins it: it adds its steps and its evidence, and finishes nothing.
  *
- * A leaf with no imports on purpose: the merge and the dedupe steps open sessions too and
+ * A leaf with no runtime imports on purpose: the merge and the dedupe steps open sessions too and
  * `cards/lineWrites.ts` imports them, so importing the frame (guard, finish) from it here would
  * close an import cycle; it registers the frame instead. A session that ends with no frame
  * registered throws.
  */
+
+import type { CardCanonicalLine, CardCanonicalStatement } from "nw-tracker-contracts";
 
 /** What the funnel runs around a session: the guard inside its transaction, the finish after it. */
 export type CardLineWriteFrame = {
@@ -102,15 +104,27 @@ export function withCardLineSession<T>(accountId: number, what: string, body: ()
 }
 
 /**
- * What a planner (dedupe, mirror, planted, recurring, reconcile) hands the funnel: the lines to
- * delete, and for each line another one that replaces it, whose expense assignments (category, big
- * group, note, pieces, a merchant rule) follow it (`adoptReplacingCardLines`: it takes over the
- * line's flow). A planner reads;
- * it never deletes or carries itself.
+ * What a planner (dedupe, mirror, planted, recurring, reconcile, a statement's keep-rows plan) hands
+ * the funnel: the lines to delete, and for each line another one that replaces it, whose expense
+ * assignments (category, big group, note, pieces, a merchant rule) follow it
+ * (`adoptReplacingCardLines`: it takes over the line's flow); the lines a document restates in
+ * place, the document lines to insert, and the lines that fold into a kept line. A planner reads;
+ * it never deletes or carries itself. `applyCardLinePlan` performs one plan atomically, in this
+ * order: restates, inserts, folds, carries, arrivals onto plans, deletes.
  */
 export type CardLinePlan = {
   deleteLineIds: readonly number[];
   carry: readonly { fromLineId: number; toLineId: number }[];
+  /** Lines on file a document line restates in place (`cards/lineRowWrites.ts`). */
+  restate?: readonly CardLineRestate[];
+  /** Document lines written as new rows. */
+  insert?: readonly CardLineInsert[];
+  /**
+   * Lines that are the same charge as a kept line: the flow folds into the kept line's, the
+   * line-keyed records (its category override, a merchant rule, a plan prepayment) follow, the line
+   * is deleted.
+   */
+  fold?: readonly { fromLineId: number; intoLineId: number }[];
   /**
    * Deleted one-shot lines a plan supersedes (the purchase listed before its plan existed): each
    * line's arrival folds into its plan's flow (`olderArrival`) before the line goes.
@@ -119,3 +133,17 @@ export type CardLinePlan = {
 };
 
 export const EMPTY_CARD_LINE_PLAN: CardLinePlan = { deleteLineIds: [], carry: [] };
+
+/** A document line, as a plan names it: the statement row it goes on, the statement, the line and its stored dedupe key. */
+export type CardDocumentLine = {
+  statementId: number;
+  statement: CardCanonicalStatement;
+  line: CardCanonicalLine;
+  dedupeKey: string | null;
+};
+
+/** A line on file restated by a document line. */
+export type CardLineRestate = CardDocumentLine & { lineId: number };
+
+/** A document line inserted; `stamp`: it is a new movement (a statement's cuota line is not). */
+export type CardLineInsert = CardDocumentLine & { stamp: boolean };

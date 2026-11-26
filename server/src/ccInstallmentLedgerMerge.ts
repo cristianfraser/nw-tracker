@@ -536,7 +536,7 @@ export type CcBucketPassesResult = {
  * bank's line), an automatic payment's pending listing its posted line replaces
  * (`ccRecurringPendingLines.ts`). Each planner plans; the funnel's step applies.
  */
-function runBucketPasses(
+export function runBucketPasses(
   accountId: number,
   statements: readonly CardCanonicalStatement[],
   listingBatchKind: string | null
