@@ -35,7 +35,7 @@ proposed split into one-session work items.
 | `/flows` | `FlowsOverviewPage` | **old**, mild (item J) |
 | `/flows/income`, `/flows/expenses`, `/flows/expenses/groceries`, `/flows/expenses/real_estate[/:slug]`, `/flows/deposits`, `/flows/pl` | income, expenses, groceries, flows tables | redesigned |
 | `/flows/deposits/reconciliation` | `DepositsReconciliationPage` | **old** (item E) |
-| `/rates` | `RatesPage` | **old** (item D) |
+| `/rates` | `RatesPage` | redesigned |
 | `/tax-return` | `TaxReturnPage`, `UsTaxReturnSections` | **old** (item G) |
 | `/projections` | `ProjectionsPage` | **old** (item I) |
 | `/wealth-percentile` | `WealthPercentilePage` | **old** (item I) |
@@ -123,6 +123,12 @@ Two different kinds of account land here, and the page fits neither.
   content.
 
 ### D. `/rates`
+
+> **Done (2026-11-26):** the watchlist's heat grid as the glance (`GET /api/rates/glance`), a
+> chart tile per series with its own Rango and the server's five latest entries, the coverage
+> problems as rows that open in place, and the review list folded by year. Measuring first showed
+> the 144,000px were the «Buy/sell rates to review» list (1,174 editable rows on the demo data),
+> not the entries under the charts, which were already five rows picked client-side.
 
 - **144,000px tall on a phone**: under each chart every stored day is printed as a date / value
   row, for five pairs. The tail clip is client-side (`pages/ratesDailyTailClip.ts`), against the

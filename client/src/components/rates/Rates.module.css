@@ -1,0 +1,147 @@
+/* The rates page's chart tiles and their latest entries. */
+.tile {
+  --rates-plot-height: clamp(200px, 28vh, 320px);
+}
+
+.note {
+  margin: 0 0 0.5rem;
+  font-size: var(--font-size-prose-sm);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 0.9rem;
+  border-top: 2px solid;
+}
+
+.legendSwatchDashed {
+  border-top-style: dashed;
+}
+
+.plot {
+  height: var(--rates-plot-height);
+  width: 100%;
+}
+
+/* Latest entries: date | value | change, each row a subgrid of the list so the figures line up;
+   a row's extra figures (USD/CLP's observado and buy / sell) take a line of their own. */
+.recent {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) minmax(3.5rem, max-content);
+  column-gap: 1rem;
+  margin-top: 0.65rem;
+  font-size: var(--font-size-card-meta);
+}
+
+.recentList {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.recentRow {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.recentRow > :nth-child(2),
+.recentRow > :nth-child(3) {
+  text-align: right;
+}
+
+.recentHead {
+  border-top: 0;
+  padding-top: 0;
+  color: var(--muted);
+  font-size: var(--font-size-card-label);
+}
+
+.recentExtra {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: var(--font-size-card-label);
+  overflow-wrap: anywhere;
+}
+
+.up {
+  color: var(--positive);
+}
+
+.down {
+  color: var(--negative);
+}
+
+.flat {
+  color: var(--muted);
+}
+
+/* The page's view switch and its section headings. */
+.viewRow {
+  display: flex;
+  font-size: var(--font-size-ui);
+}
+
+/* Coverage notices: the pair in mono, as a row's lead reads. */
+.pair {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-card-meta);
+}
+
+/* The review list: a year's days, and a day being edited (two fields in the title's place). */
+.gapCount {
+  font-weight: 400;
+}
+
+.gapDays {
+  padding-left: 0.75rem;
+}
+
+.gapDate {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-card-meta);
+  white-space: nowrap;
+}
+
+.gapFields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  min-width: 0;
+}
+
+.gapFields > :not(.gapDate):not(.gapError) {
+  flex: 1 1 5rem;
+  min-width: 0;
+  max-width: 7rem;
+}
+
+.gapError {
+  flex: 1 1 100%;
+  max-width: none;
+  white-space: normal;
+  font-size: var(--font-size-prose-sm);
+}
+
+.gapMore {
+  margin-top: 0.4rem;
+}

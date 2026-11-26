@@ -201,10 +201,10 @@ async function main() {
   // ---- meta, market, sync ------------------------------------------------------------------
   for (const p of [
     "/api/meta/panel-net-worth-tree",
-    "/api/meta/rates-instruments",
     "/api/fx",
     "/api/fx/latest",
     "/api/fx/bid-ask/gaps",
+    "/api/rates/glance",
     "/api/sync/status",
     "/api/import-sync/ingest-runs",
     "/api/import-sync/jobs",

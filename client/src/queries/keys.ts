@@ -80,7 +80,6 @@ export const queryKeys = {
   accountsAll: () => ["accountsAll"] as const,
   accountsByPortfolioGroup: (portfolioGroup: string, unit: DisplayUnit) =>
     withEntity(["accounts", "portfolioGroup", portfolioGroup, unit] as const, 3),
-  ratesInstruments: () => ["ratesInstruments"] as const,
   currencies: () => ["currencies"] as const,
   /** Prefix keys (no unit) invalidate every unit's copy at once. */
   marketTickerAll: () => ["marketTicker"] as const,
@@ -91,6 +90,9 @@ export const queryKeys = {
   /** Prefix key (no unit) invalidates every unit's copy at once. */
   marketSeriesAll: () => ["marketSeries"] as const,
   marketSeries: (unit: DisplayUnit) => ["marketSeries", unit] as const,
+  ratesGlanceAll: () => ["ratesGlance"] as const,
+  ratesGlance: (unit: DisplayUnit) => ["ratesGlance", unit] as const,
+  fxBidAskGaps: () => ["fxBidAskGaps"] as const,
   mortgageUfReminder: () => ["mortgageUfReminder"] as const,
   messagesUnread: () => ["messages", "unreadCount"] as const,
   messages: (kind: "notification" | "log") => ["messages", kind] as const,

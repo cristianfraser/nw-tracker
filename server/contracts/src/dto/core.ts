@@ -116,6 +116,21 @@ export interface FxBidAskGapRow {
   suggested_sell: number | null;
 }
 
+/** A year of the buy / sell review list, its days newest first. */
+export interface FxBidAskGapYear {
+  year: number;
+  count: number;
+  first_date: string;
+  last_date: string;
+  rows: FxBidAskGapRow[];
+}
+
+/** `GET /api/fx/bid-ask/gaps`: the review list grouped by year, newest year first. */
+export interface FxBidAskGapsResponse {
+  count: number;
+  years: FxBidAskGapYear[];
+}
+
 /**
  * A display unit: a lowercase currency code the server loads (`currencies`, core tier: clp, usd,
  * eur, …) or `uf` where a surface accepts it. Data, not a closed union.

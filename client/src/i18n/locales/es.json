@@ -145,16 +145,6 @@
     }
   },
   "fxCoverage": {
-    "title": "Tipo de cambio {{pair}} incompleto",
-    "missingFromDate": "Sin tipo de cambio {{pair}} desde {{date}} para convertir saldos y gráficos en {{unit}}.",
-    "sparseHistory": "{{pair}}: historial diario escaso ({{daily}} días observados de {{rows}} filas).",
-    "hint": "Ejecuta el backfill o revisa la sincronización en",
-    "depositConversionError": "Al menos un depósito no pudo convertirse a {{unit}} (sin tipo de cambio en la fecha del movimiento).",
-    "syncStale": "La sincronización USD/EUR con Banco Central está desactualizada o falló.",
-    "yahooRejected": "{{count}} fecha(s) Yahoo CLP=X rechazada(s) (tipo de cambio inválido): {{dates}}. Las conversiones usan el último tipo de cambio válido anterior.",
-    "warningBuyRateMissing": "Conversión CLP→US$ sin tipo compra en fx_daily_bid_ask; se usó el tipo medio de referencia.",
-    "warningSellRateMissing": "Conversión US$→CLP sin tipo venta en fx_daily_bid_ask; se usó el tipo medio de referencia.",
-    "warningUsdReferenceClp": "Monto en CLP es referencia (tipo medio); el capital en US$ es el valor canónico.",
     "cardMissingFx": "Sin tipo de cambio para esta fecha — no se puede mostrar el valor en {{unit}}"
   },
   "rates": {
@@ -164,26 +154,80 @@
     "tabTickers": "Instrumentos",
     "recentColDate": "Fecha",
     "recentColValue": "Valor",
-    "recentEmpty": "Sin datos recientes",
     "noData": "Sin datos",
     "fx": {
       "clpPerUsd": "CLP por US$1",
       "clpPerUf": "CLP por 1 UF",
       "clpPerEur": "CLP por €1",
       "ipcTitle": "IPC",
-      "ipcFootnote": "Nivel del índice (CSV opcional)",
+      "ipcFootnote": "Nivel del índice, base 2023 = 100",
       "usdPerEur": "USD por €1 (Yahoo EURUSD=X)",
-      "yahoo": "Yahoo CLP=X (conversiones)",
-      "bcentralObservado": "Banco Central — dólar observado (referencia)",
-      "buy": "Compra US$ (bid/ask)",
-      "sell": "Venta US$ (bid/ask)",
+      "yahoo": "Yahoo CLP=X",
+      "bcentralObservado": "Banco Central observado",
+      "buy": "Compra US$",
+      "sell": "Venta US$",
       "gapsTitle": "Tipos compra/venta por revisar",
       "gapsEmpty": "No hay fechas pendientes de revisión para compra/venta US$.",
       "gapsColMid": "Medio (Yahoo)",
-      "gapsColSource": "Fuente",
       "gapsSourceMidInferred": "Estimado desde el tipo medio",
       "gapsInvalidValues": "Compra y venta deben ser números positivos.",
-      "gapsBuySellOrder": "Compra debe ser ≥ venta (más CLP por US$ al comprar)."
+      "gapsBuySellOrder": "Compra debe ser ≥ venta (más CLP por US$ al comprar).",
+      "gapsDays": "{{count}} días",
+      "gapsDaysOne": "1 día",
+      "gapsEdit": "Editar",
+      "gapsEditDay": "Editar los tipos compra y venta del {{date}}"
+    },
+    "instrumentsEmpty": "No hay instrumentos listados para esta página.",
+    "instrumentNote": "Valor en {{unit}}",
+    "glance": {
+      "title": "Hoy",
+      "colPair": "Par",
+      "colInstrument": "Instrumento",
+      "colToday": "Hoy",
+      "asOf": "al {{date}}"
+    },
+    "recent": {
+      "title": "Últimos registros",
+      "colChange": "Variación",
+      "observado": "observado {{value}}",
+      "buySell": "compra {{buy}} · venta {{sell}}"
+    },
+    "coverage": {
+      "title": "Problemas del historial de tipos de cambio",
+      "factSince": "Falta desde",
+      "factDays": "Días sin tipo de cambio",
+      "factLongestGap": "Mayor brecha",
+      "factLatest": "Última fecha",
+      "factWhere": "Revisar la sincronización",
+      "days": "{{count}} días",
+      "daysOne": "1 día",
+      "missingRates": {
+        "status": "faltan tipos de cambio",
+        "first": "Sin tipo de cambio {{pair}} desde {{date}} para convertir saldos y gráficos a {{unit}}."
+      },
+      "sparseHistory": {
+        "status": "historial escaso",
+        "first": "{{daily}} días observados de {{rows}} filas."
+      },
+      "rejectedDates": {
+        "status": "{{count}} fechas rechazadas",
+        "statusOne": "1 fecha rechazada",
+        "first": "Tipo de cambio inválido recibido; las conversiones usan el último válido anterior."
+      },
+      "midRateUsed": {
+        "status": "se usó el tipo medio",
+        "firstBuy": "Una conversión CLP→US$ no tenía tipo compra en su fecha; se usó el tipo medio.",
+        "firstSell": "Una conversión US$→CLP no tenía tipo venta en su fecha; se usó el tipo medio."
+      },
+      "referenceRate": {
+        "status": "tipo de referencia",
+        "first": "Un monto en CLP es referencia al tipo medio; el capital en US$ es el valor canónico."
+      },
+      "syncStale": {
+        "title": "Sincronización de tipos de cambio",
+        "status": "desactualizada",
+        "first": "La sincronización de una fuente de tipos de cambio está desactualizada o falló."
+      }
     }
   },
   "brokerage": {

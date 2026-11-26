@@ -37,6 +37,8 @@ export type StoredSurfacePrefs = {
   percent?: boolean;
   /** An accounts table's «Liquidadas» row group, opened. */
   liquidatedOpen?: boolean;
+  /** A page with views of its own (the rates page's «Currencies / Instruments»): the one shown. */
+  tab?: string;
 };
 
 export type SurfaceCompositionView = "composition" | "map";
@@ -91,6 +93,7 @@ export function parseStoredSurfacePrefs(raw: string | null): StoredSurfacePrefs 
   if (rec.area === "ytd" || rec.area === "total") out.area = rec.area;
   if (typeof rec.percent === "boolean") out.percent = rec.percent;
   if (typeof rec.liquidatedOpen === "boolean") out.liquidatedOpen = rec.liquidatedOpen;
+  if (typeof rec.tab === "string" && rec.tab !== "") out.tab = rec.tab;
   return out;
 }
 
@@ -219,4 +222,19 @@ export function useSurfaceLiquidatedOpen(surfaceId: string | null): {
   const [stored, write] = useStoredSurface(surfaceId);
   const setOpen = useCallback((open: boolean) => write({ liquidatedOpen: open }), [write]);
   return { open: stored.liquidatedOpen ?? false, setOpen };
+}
+
+/**
+ * A page's own view switch (`<pageKey>.view`): one of `options`, the first by default. A stored
+ * value the page no longer offers reads as the default.
+ */
+export function useSurfaceTab<T extends string>(
+  surfaceId: string | null,
+  options: readonly T[]
+): { tab: T; setTab: (tab: T) => void } {
+  const [stored, write] = useStoredSurface(surfaceId);
+  const setTab = useCallback((tab: T) => write({ tab }), [write]);
+  const tab = options.find((o) => o === stored.tab) ?? options[0];
+  if (tab === undefined) throw new Error("useSurfaceTab: no options");
+  return { tab, setTab };
 }

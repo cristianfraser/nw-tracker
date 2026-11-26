@@ -158,7 +158,6 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ color_rgb }),
     }),
-  ratesInstruments: () => j<import("./types").RatesInstrumentsResponse>("/api/meta/rates-instruments"),
   currencies: () => j<import("./types").CurrenciesResponse>("/api/currencies"),
   dashboardNavSnapshot: (unit: DisplayUnit) => {
     const q = new URLSearchParams();
@@ -836,7 +835,12 @@ export const api = {
     ),
   mortgageUfReminder: () =>
     j<import("./types").MortgageUfReminder>("/api/reminders/mortgage-uf"),
-  fxBidAskGaps: () => j<{ gaps: import("./types").FxBidAskGapRow[] }>("/api/fx/bid-ask/gaps"),
+  // The rate rows are facts in their own quote; the instruments come back in the display unit.
+  ratesGlance: (unit: DisplayUnit) =>
+    j<import("./types").RatesGlanceResponse>(
+      !isHomeCurrency(unit) ? `/api/rates/glance?unit=${encodeURIComponent(unit)}` : "/api/rates/glance"
+    ),
+  fxBidAskGaps: () => j<import("./types").FxBidAskGapsResponse>("/api/fx/bid-ask/gaps"),
   upsertFxBidAsk: (date: string, buy_clp_per_usd: number, sell_clp_per_usd: number) =>
     j<{ ok: boolean }>("/api/fx/bid-ask", {
       method: "POST",

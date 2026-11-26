@@ -53,7 +53,11 @@ describe("resources", () => {
       queryKeys.accountsAll(),
     ]);
     expect(keysOf(resources.watchlist())).toEqual([queryKeys.watchlistAll(), queryKeys.marketTickerAll()]);
-    expect(keysOf(resources.marketSeries())).toEqual([queryKeys.marketSeriesAll()]);
+    expect(keysOf(resources.ratesPage())).toEqual([
+      queryKeys.marketSeriesAll(),
+      queryKeys.ratesGlanceAll(),
+      queryKeys.fxBidAskGaps(),
+    ]);
     expect(keysOf(resources.jobQueue())).toEqual([queryKeys.jobQueue()]);
     expect(keysOf(resources.ingestRuns())).toEqual([queryKeys.ingestRunsStatus()]);
     expect(keysOf(resources.genericUniqueMerchants())).toEqual([queryKeys.genericUniqueMerchants()]);

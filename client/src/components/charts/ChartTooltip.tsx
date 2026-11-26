@@ -126,7 +126,7 @@ function placementToStayInViewport(
     top: r.top + dy,
     bottom: r.bottom + dy,
   };
-  const panel = el.closest(".chart-box, .rates-chart-card__plot")?.getBoundingClientRect() ?? null;
+  const panel = el.closest(".chart-box, .rates-plot")?.getBoundingClientRect() ?? null;
   return computeTooltipPlacement(tipBelow, flipRise, panel, {
     width: window.innerWidth,
     height: window.innerHeight,

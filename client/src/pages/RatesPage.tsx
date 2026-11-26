@@ -1,72 +1,46 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { FxCoverageBanner } from "../components/layout/FxCoverageBanner";
-import { FxBidAskGapsTable } from "../components/rates/FxBidAskGapsTable";
-import { useMarketSeries, useRatesInstruments, useSyncStatus } from "../queries/hooks";
+import { PageGridTile } from "../components/layout/PageGridTile";
+import { FxBidAskGapsList } from "../components/rates/FxBidAskGapsList";
+import { RatesChartTile, type RatesChartLine } from "../components/rates/RatesChartTile";
+import { RatesCoverageNotices } from "../components/rates/RatesCoverageNotices";
+import { RatesGlanceTable } from "../components/rates/RatesGlanceTable";
+import { pendingGlanceRow, RATES_CURRENCY_SERIES, ratesRowLabel } from "../components/rates/ratesSeries";
+import styles from "../components/rates/Rates.module.css";
+import { formatMarketValue } from "../components/watchlist/heatGrid";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { useSurfacePrefs } from "../surfaceDisplayPrefs";
-import { SurfaceControls } from "../components/ui/SurfaceControls";
-import type { MarketDisplaySeriesRow } from "../types";
-import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
-import { RatesLineChart, type RatesLineSeries } from "../components/charts/RatesLineChart";
-import { useDailyRateTailClip } from "./ratesDailyTailClip";
-import { clipRowsToTimeRange, type TimeRange } from "../timeRange";
-
-const FX_USD_DUAL_SERIES_KEYS = ["yahoo", "bcentral", "buy", "sell"] as const;
-const SINGLE_VALUE_SERIES_KEYS = ["value"] as const;
-import { Table } from "../components/ui/Table";
-import { loadableClass } from "../components/ui/Loadable";
-import { currencyFormatInfo, formatClp, formatCurrencyFine, formatGroupedDecimal } from "../format";
-import type { MarketSeriesPoint } from "../types";
-import { buildNiceYAxisPositiveBand } from "../components/charts/chartLayout";
-import { useTranslation } from "../i18n";
-import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 import { DASHBOARD_PATH } from "../dashboardPath";
+import { useTranslation } from "../i18n";
+import { useMarketSeries, useRatesGlance, useSyncStatus } from "../queries/hooks";
+import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
+import { useSurfaceTab } from "../surfaceDisplayPrefs";
+import type { MarketSeriesPoint, MarketSeriesResponse, RatesGlanceRow, RatesRecentEntry } from "../types";
 
-type RatesTab = "fx" | "tickers";
+const RATES_VIEWS = ["currencies", "instruments"] as const;
+type RatesView = (typeof RATES_VIEWS)[number];
 
-type InstrumentSlot = {
-  kind: "eq" | "fund";
-  id: string;
-  title: string;
+const VIEW_LABEL_KEYS: Record<RatesView, string> = {
+  currencies: "rates.tabFx",
+  instruments: "rates.tabTickers",
 };
 
-function instrumentSlotsFromDb(rows: MarketDisplaySeriesRow[] | undefined): InstrumentSlot[] {
-  if (!rows?.length) {
-    return [
-      { kind: "eq", id: "SPY", title: "SPY" },
-      { kind: "eq", id: "VEA", title: "VEA" },
-      { kind: "fund", id: "fintual_cert_reserva2", title: "Reserva (valor cuota)" },
-      { kind: "fund", id: "fintual_cert_risky_norris", title: "Risky Norris (valor cuota)" },
-      { kind: "fund", id: "fintual_cert_apv_a", title: "Risky Norris APV (valor cuota)" },
-      { kind: "fund", id: "afp_uno_cuota_a", title: "UNO-A" },
-      { kind: "eq", id: "BTC-USD", title: "BTC" },
-      { kind: "eq", id: "ETH-USD", title: "ETH" },
-    ];
-  }
-  return rows.map((r) => ({
-    kind: r.kind === "fund_unit" ? "fund" : "eq",
-    id: r.series_key ?? r.slug,
-    title: r.rates_chart_title ?? r.label,
-  }));
-}
+/** What one unit of a «Currencies» series is, under its title. */
+const CURRENCY_NOTE_KEYS: Record<string, string> = {
+  usd_clp: "rates.fx.clpPerUsd",
+  uf_clp: "rates.fx.clpPerUf",
+  eur_clp: "rates.fx.clpPerEur",
+  eur_usd: "rates.fx.usdPerEur",
+  ipc: "rates.fx.ipcFootnote",
+};
 
-/** A cross rate near 1 (EUR/USD): four decimals, as quoted. */
-/** A pair's heading from its two codes: «USD / CLP» (codes, not copy). */
-function pairTitle(base: string, quote: string): string {
-  return `${base.toUpperCase()} / ${quote.toUpperCase()}`;
-}
+/** The sync sources whose staleness the page warns about: the rates' own. */
+const RATE_SYNC_SOURCES = ["yahoo_fx_usd", "sbif_usd", "sbif_eur", "fx_pairs"];
 
-function formatRate4(n: number): string {
-  return formatGroupedDecimal(n, 4);
-}
+const NO_POINTS: readonly { date: string; value: number }[] = [];
+const NO_RECENT: readonly RatesRecentEntry[] = [];
 
-function formatIpcIndex(n: number): string {
-  return formatGroupedDecimal(n, 1, 2);
-}
-
-function seriesFromPoints(
-  points: MarketSeriesPoint[],
+function pointsOf(
+  points: readonly MarketSeriesPoint[],
   pick: (p: MarketSeriesPoint) => number | null | undefined
 ): { date: string; value: number }[] {
   const rows: { date: string; value: number }[] = [];
@@ -77,390 +51,154 @@ function seriesFromPoints(
   return rows;
 }
 
-/** The slot's value on a point, already in the payload's unit (server-converted). */
-function instrumentValue(p: MarketSeriesPoint, slot: InstrumentSlot): number | null {
-  return (slot.kind === "eq" ? p.equity[slot.id] : p.fund_unit[slot.id]) ?? null;
-}
-
-const RATES_RECENT_ROWS = 5;
-
-function lastSeriesEntries(
-  data: readonly { date: string; value: number }[],
-  limit = RATES_RECENT_ROWS
-): { date: string; value: number }[] {
-  return [...data]
-    .filter((r) => Number.isFinite(r.value))
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, limit);
-}
-
-function RatesRecentEntriesTable({
-  data,
-  valueFormatter,
-  colDate,
-  colValue,
-  emptyLabel,
-  loading,
-}: {
-  data: readonly { date: string; value: number }[];
-  valueFormatter: (n: number) => string;
-  colDate: string;
-  colValue: string;
-  emptyLabel: string;
-  loading?: boolean;
-}) {
-  const rows = lastSeriesEntries(data);
-  return (
-    <div className="rates-chart-card__table">
-      <Table
-        header={
-          <thead>
-            <tr>
-              <th>{colDate}</th>
-              <th className="mono" style={{ textAlign: "right" }}>
-                {colValue}
-              </th>
-            </tr>
-          </thead>
-        }
-      >
-        {rows.length === 0 ? (
-          loading ? null : (
-            <tr>
-              <td colSpan={2} className="muted">
-                {emptyLabel}
-              </td>
-            </tr>
-          )
-        ) : (
-          rows.map((r) => (
-            <tr key={r.date}>
-              <td className="mono">{r.date}</td>
-              <td className="mono" style={{ textAlign: "right" }}>
-                {valueFormatter(r.value)}
-              </td>
-            </tr>
-          ))
-        )}
-      </Table>
-    </div>
-  );
-}
-
-function minMaxSeriesValues(data: { value: number }[]): { min: number; max: number } | null {
-  let minV = Infinity;
-  let maxV = -Infinity;
-  for (const row of data) {
-    if (!Number.isFinite(row.value)) continue;
-    minV = Math.min(minV, row.value);
-    maxV = Math.max(maxV, row.value);
+/** The lines of a «Currencies» tile, from the series payload's own arrays. */
+function currencyLines(
+  id: string,
+  payload: MarketSeriesResponse | undefined,
+  name: string,
+  t: (key: string) => string
+): RatesChartLine[] {
+  const main = (points: readonly { date: string; value: number }[]): RatesChartLine[] => [
+    { dataKey: "value", name, stroke: "var(--accent)", points },
+  ];
+  if (!payload) return main(NO_POINTS);
+  switch (id) {
+    case "usd_clp":
+      return [
+        { dataKey: "value", name: t("rates.fx.yahoo"), stroke: "var(--accent)", points: payload.fx_usd_clp },
+        {
+          dataKey: "observado",
+          name: t("rates.fx.bcentralObservado"),
+          stroke: "var(--muted)",
+          strokeWidth: 1.5,
+          strokeDasharray: "4 3",
+          points: payload.fx_usd_clp_bcentral,
+        },
+        {
+          dataKey: "buy",
+          name: t("rates.fx.buy"),
+          stroke: "var(--positive)",
+          strokeWidth: 1,
+          dot: { r: 2 },
+          sparse: true,
+          points: payload.fx_usd_clp_buy ?? NO_POINTS,
+        },
+        {
+          dataKey: "sell",
+          name: t("rates.fx.sell"),
+          stroke: "var(--series-orange, #f97316)",
+          strokeWidth: 1,
+          dot: { r: 2 },
+          sparse: true,
+          points: payload.fx_usd_clp_sell ?? NO_POINTS,
+        },
+      ];
+    case "uf_clp":
+      return main(pointsOf(payload.points, (p) => p.clp_per_uf));
+    case "eur_clp":
+      return main(payload.eur_clp);
+    case "eur_usd":
+      return main(payload.eur_usd);
+    case "ipc":
+      return main(pointsOf(payload.points, (p) => p.ipc_index));
+    default:
+      throw new Error(`rates: no chart for series ${id}`);
   }
-  if (!Number.isFinite(minV) || !Number.isFinite(maxV)) return null;
-  return { min: minV, max: maxV };
 }
 
-function mergeFxUsdDualSeries(
-  yahoo: readonly { date: string; value: number }[],
-  bcentral: readonly { date: string; value: number }[],
-  buy: readonly { date: string; value: number }[] = [],
-  sell: readonly { date: string; value: number }[] = []
-): { date: string; yahoo: number | null; bcentral: number | null; buy: number | null; sell: number | null }[] {
-  const dates = new Set<string>();
-  for (const r of yahoo) dates.add(r.date);
-  for (const r of bcentral) dates.add(r.date);
-  for (const r of buy) dates.add(r.date);
-  for (const r of sell) dates.add(r.date);
-  const ym = new Map(yahoo.map((r) => [r.date, r.value]));
-  const bm = new Map(bcentral.map((r) => [r.date, r.value]));
-  const buyM = new Map(buy.map((r) => [r.date, r.value]));
-  const sellM = new Map(sell.map((r) => [r.date, r.value]));
-  return [...dates]
-    .sort((a, b) => a.localeCompare(b))
-    .map((date) => ({
-      date,
-      yahoo: ym.get(date) ?? null,
-      bcentral: bm.get(date) ?? null,
-      buy: buyM.get(date) ?? null,
-      sell: sellM.get(date) ?? null,
-    }));
+function instrumentLines(row: Pick<RatesGlanceRow, "kind" | "series_key">, payload: MarketSeriesResponse | undefined, name: string): RatesChartLine[] {
+  const key = row.series_key;
+  const points =
+    payload && key != null
+      ? pointsOf(payload.points, (p) => (row.kind === "equity" ? p.equity[key] : p.fund_unit[key]))
+      : NO_POINTS;
+  return [{ dataKey: "value", name, stroke: "var(--accent)", points }];
 }
 
-function FxUsdClpDualChart({
-  timeRange,
-  yahooData,
-  bcentralData,
-  buyData = [],
-  sellData = [],
-  yahooLabel,
-  bcentralLabel,
-  buyLabel,
-  sellLabel,
-  recentColDate,
-  recentColValue,
-  recentEmptyLabel,
+/** One series' tile: its lines are built once per payload, not on each glance refetch. */
+function RatesSeriesTile({
+  row,
+  isCurrency,
+  payload,
+  fallbackUnit,
   loading,
 }: {
-  yahooData: { date: string; value: number }[];
-  bcentralData: { date: string; value: number }[];
-  buyData?: { date: string; value: number }[];
-  sellData?: { date: string; value: number }[];
-  yahooLabel: string;
-  bcentralLabel: string;
-  buyLabel: string;
-  sellLabel: string;
-  recentColDate: string;
-  recentColValue: string;
-  recentEmptyLabel: string;
-  timeRange: TimeRange;
-  loading?: boolean;
+  row: RatesGlanceRow;
+  isCurrency: boolean;
+  payload: MarketSeriesResponse | undefined;
+  /** The display unit, for an instrument tile drawn before any series payload. */
+  fallbackUnit: string;
+  loading: boolean;
 }) {
   const { t } = useTranslation();
-  const merged = useMemo(
-    () => mergeFxUsdDualSeries(yahooData, bcentralData, buyData, sellData),
-    [yahooData, bcentralData, buyData, sellData]
+  const name = ratesRowLabel(row, t);
+  const { id, kind, series_key: seriesKey } = row;
+  const lines = useMemo(
+    () =>
+      isCurrency
+        ? currencyLines(id, payload, name, t)
+        : instrumentLines({ kind, series_key: seriesKey }, payload, name),
+    [isCurrency, id, kind, seriesKey, payload, name, t]
   );
-  const denseData = useMemo(() => {
-    const clipped = clipRowsToTimeRange(merged, timeRange, (r) => r.date);
-    return densifyRecordsByCalendarDay(clipped as unknown as ChartSparseRow[], "date", [
-      "yahoo",
-      "bcentral",
-      "buy",
-      "sell",
-    ]);
-  }, [merged, timeRange]);
-
-  const clip = useDailyRateTailClip(
-    denseData as unknown as Record<string, string | number | null>[],
-    FX_USD_DUAL_SERIES_KEYS
-  );
-  const chartData = clip.chartData as {
-    date: string;
-    yahoo: number | null;
-    bcentral: number | null;
-    buy: number | null;
-    sell: number | null;
-  }[];
-  const tailClippedKeys = clip.tailClippedKeys;
-
-  const yBand = useMemo(() => {
-    const values: number[] = [];
-    for (const r of chartData) {
-      for (const key of ["yahoo", "bcentral", "buy", "sell"] as const) {
-        const v = r[key];
-        if (typeof v === "number" && Number.isFinite(v)) values.push(v);
-      }
-    }
-    const mm = minMaxSeriesValues(values.map((value) => ({ value })));
-    if (!mm) return null;
-    return buildNiceYAxisPositiveBand(mm.min, mm.max);
-  }, [chartData]);
-
-  const recentTable = (
-    <RatesRecentEntriesTable
-      data={yahooData}
-      valueFormatter={formatClp}
-      colDate={recentColDate}
-      colValue={recentColValue}
-      emptyLabel={recentEmptyLabel}
+  // An instrument's values are in the series payload's unit (a held one keeps its own).
+  const valueCurrency = isCurrency ? row.value_currency : (payload?.unit ?? fallbackUnit);
+  const noteKey = CURRENCY_NOTE_KEYS[id];
+  if (isCurrency && noteKey == null) throw new Error(`rates: series ${id} has no note`);
+  return (
+    <RatesChartTile
+      surfaceId={`rates.${id}`}
+      title={name}
+      note={noteKey != null ? t(noteKey) : t("rates.instrumentNote", { unit: valueCurrency.toUpperCase() })}
+      lines={lines}
+      showLegend={isCurrency}
+      valueCurrency={valueCurrency}
+      formatValue={(n) => formatMarketValue({ kind, value: n, value_currency: valueCurrency })}
+      recent={payload?.recent[id] ?? NO_RECENT}
       loading={loading}
     />
   );
-
-  if (yahooData.length === 0 && bcentralData.length === 0) {
-    return (
-      <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
-        <h3 className="rates-chart-card__title">{pairTitle("usd", "clp")}</h3>
-        <p className="muted rates-chart-card__note">{t("rates.fx.clpPerUsd")}</p>
-        {loading ? (
-          <div className="rates-chart-card__plot" aria-busy="true" />
-        ) : (
-          <p className="muted rates-chart-card__empty">{t("rates.noData")}</p>
-        )}
-        {recentTable}
-      </section>
-    );
-  }
-
-  return (
-    <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
-      <h3 className="rates-chart-card__title">{pairTitle("usd", "clp")}</h3>
-      <p className="muted rates-chart-card__note">{t("rates.fx.clpPerUsd")}</p>
-      <div className="rates-chart-card__plot">
-        <RatesLineChart
-          data={chartData}
-          tailClippedKeys={tailClippedKeys}
-          yAxisWidth={104}
-          yBand={yBand}
-          formatValue={formatClp}
-          series={[
-            { dataKey: "yahoo", name: yahooLabel, stroke: "var(--accent)" },
-            {
-              dataKey: "bcentral",
-              name: bcentralLabel,
-              stroke: "var(--muted)",
-              strokeWidth: 1.5,
-              strokeDasharray: "4 3",
-            },
-            ...(buyData.length > 0
-              ? [{ dataKey: "buy", name: buyLabel, stroke: "#22c55e", strokeWidth: 1.5, dot: { r: 3 } } satisfies RatesLineSeries]
-              : []),
-            ...(sellData.length > 0
-              ? [{ dataKey: "sell", name: sellLabel, stroke: "#f97316", strokeWidth: 1.5, dot: { r: 3 } } satisfies RatesLineSeries]
-              : []),
-          ]}
-        />
-      </div>
-      {recentTable}
-    </section>
-  );
 }
 
-function MiniLineChart({
-  timeRange,
-  title,
-  footnote,
-  data,
-  yUnit,
-  valueFormatter,
-  recentColDate,
-  recentColValue,
-  recentEmptyLabel,
-  loading,
-}: {
-  title: string;
-  footnote?: string;
-  data: { date: string; value: number }[];
-  /** A currency code for money axes, or `index` for a unitless level. */
-  yUnit: string;
-  valueFormatter: (n: number) => string;
-  recentColDate: string;
-  recentColValue: string;
-  recentEmptyLabel: string;
-  timeRange: TimeRange;
-  loading?: boolean;
-}) {
-  const { t } = useTranslation();
-  const denseData = useMemo(() => {
-    const clipped = clipRowsToTimeRange(data, timeRange, (r) => r.date);
-    return densifyRecordsByCalendarDay(clipped as unknown as ChartSparseRow[], "date", ["value"]);
-  }, [data, timeRange]);
-
-  const clip = useDailyRateTailClip(
-    denseData as unknown as Record<string, string | number | null>[],
-    SINGLE_VALUE_SERIES_KEYS
-  );
-  const chartData = clip.chartData as { date: string; value: number | null }[];
-  const tailClippedKeys = clip.tailClippedKeys;
-
-  const yBand = useMemo(() => {
-    const finiteRows = chartData.filter(
-      (r): r is { date: string; value: number } =>
-        typeof r.value === "number" && Number.isFinite(r.value)
-    );
-    const mm = minMaxSeriesValues(finiteRows);
-    if (!mm) return null;
-    return buildNiceYAxisPositiveBand(mm.min, mm.max);
-  }, [chartData]);
-
-  // Whole-unit currencies (pesos) carry more digits on the axis than ones with cents.
-  const axisW = yUnit === "index" ? 62 : currencyFormatInfo(yUnit).minorDigits === 0 ? 104 : 78;
-  const recentTable = (
-    <RatesRecentEntriesTable
-      data={data}
-      valueFormatter={valueFormatter}
-      colDate={recentColDate}
-      colValue={recentColValue}
-      emptyLabel={recentEmptyLabel}
-      loading={loading}
-    />
-  );
-
-  if (data.length === 0) {
-    return (
-      <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
-        <h3 className="rates-chart-card__title">{title}</h3>
-        {footnote ? <p className="muted rates-chart-card__note">{footnote}</p> : null}
-        {loading ? (
-          <div className="rates-chart-card__plot" aria-busy="true" />
-        ) : (
-          <p className="muted rates-chart-card__empty">{t("rates.noData")}</p>
-        )}
-        {recentTable}
-      </section>
-    );
-  }
-  return (
-    <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
-      <h3 className="rates-chart-card__title">{title}</h3>
-      {footnote ? <p className="muted rates-chart-card__note">{footnote}</p> : null}
-      <div className="rates-chart-card__plot">
-        <RatesLineChart
-          data={chartData}
-          tailClippedKeys={tailClippedKeys}
-          yAxisWidth={axisW}
-          yBand={yBand}
-          formatValue={valueFormatter}
-          series={[{ dataKey: "value", name: title, stroke: "var(--accent)" }]}
-        />
-      </div>
-      {recentTable}
-    </section>
-  );
-}
-
+/**
+ * `/rates`: a glance of today's rates on the watchlist's heat grid, then one chart tile per
+ * series (the position page's tile: its own Rango, the plot, the latest stored entries), in two
+ * views — the currencies (USD/CLP, UF, EUR/CLP, EUR/USD, IPC) and the instruments the server
+ * lists for the page. The coverage problems sit above as rows that open in place, and the
+ * buy / sell rates to review close the currencies view, folded by year.
+ */
 export function RatesPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<RatesTab>("fx");
   const { displayUnit } = useDisplayPreferences();
-  // Range-only per-surface control (rates are daily-native): one Rango for every panel.
-  const rangePrefs = useSurfacePrefs("rates.range", "month", "1y");
+  const { tab: view, setTab: setView } = useSurfaceTab<RatesView>("rates.view", RATES_VIEWS);
+
   const seriesQuery = useMarketSeries(displayUnit);
-  const { data: payload, error: queryError } = seriesQuery;
+  const payload = seriesQuery.data;
   // Dim while there is no payload yet or the previous unit's is held.
   const seriesPending = queryShowsLoading(seriesQuery);
-  const error = queryLoadError({ data: payload, error: queryError });
+  const glanceQuery = useRatesGlance(displayUnit);
+  const glance = glanceQuery.data;
+  const glancePending = queryShowsLoading(glanceQuery);
   const { data: syncStatus } = useSyncStatus();
-  const { data: ratesInstruments } = useRatesInstruments();
-  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
+  // Each payload's error shows in its own section: the charts stay when only the glance fails.
+  const seriesError = queryLoadError(seriesQuery);
+  const glanceError = queryLoadError(glanceQuery);
 
-  const instrumentSlots = useMemo(
-    () => instrumentSlotsFromDb(ratesInstruments?.instruments),
-    [ratesInstruments]
-  );
+  const currencyRows = useMemo(() => {
+    // Before the glance answers, the five series are valueless rows; once it has, it lists them all.
+    if (!glance) return RATES_CURRENCY_SERIES.map(pendingGlanceRow);
+    const byId = new Map(glance.currencies.map((r) => [r.id, r]));
+    return RATES_CURRENCY_SERIES.map((s) => {
+      const row = byId.get(s.id);
+      if (!row) throw new Error(`rates: the glance lists no ${s.id} row`);
+      return row;
+    });
+  }, [glance]);
+  const instrumentRows = glance?.instruments ?? [];
+  const syncStale = (syncStatus?.stale ?? []).some((id) => RATE_SYNC_SOURCES.includes(id));
 
-  const points = useMemo(() => payload?.points ?? [], [payload]);
+  const errorText = (e: unknown) => (e instanceof Error ? e.message : t("common.loadFailed"));
 
-  const fxUsdClp = useMemo(() => payload?.fx_usd_clp ?? [], [payload]);
-  const fxUsdClpBcentral = useMemo(() => payload?.fx_usd_clp_bcentral ?? [], [payload]);
-  const fxUsdClpBuy = useMemo(() => payload?.fx_usd_clp_buy ?? [], [payload]);
-  const fxUsdClpSell = useMemo(() => payload?.fx_usd_clp_sell ?? [], [payload]);
-  const fxUfClp = useMemo(() => seriesFromPoints(points, (p) => p.clp_per_uf), [points]);
-  const fxIpc = useMemo(() => seriesFromPoints(points, (p) => p.ipc_index), [points]);
-  const fxEurClp = useMemo(() => payload?.eur_clp ?? [], [payload]);
-  const fxEurUsd = useMemo(() => payload?.eur_usd ?? [], [payload]);
-
-  const fxSyncStale = useMemo(() => {
-    const stale = syncStatus?.stale ?? [];
-    return (
-      stale.includes("yahoo_fx_usd") ||
-      stale.includes("sbif_usd") ||
-      stale.includes("sbif_eur") ||
-      stale.includes("fx_pairs")
-    );
-  }, [syncStatus]);
-
-  const recentColDate = t("rates.recentColDate");
-  const recentColValue = t("rates.recentColValue");
-  const recentEmptyLabel = t("rates.recentEmpty");
-  const recentTableProps = { recentColDate, recentColValue, recentEmptyLabel };
-
-  if (err) {
-    return (
-      <main>
-        <p className="error">{err}</p>
-      </main>
-    );
-  }
+  const rows = view === "currencies" ? currencyRows : instrumentRows;
 
   return (
     <main>
@@ -468,112 +206,63 @@ export function RatesPage() {
         <Link to={DASHBOARD_PATH}>{t("common.backToDashboard")}</Link>
       </p>
       <h1>{t("rates.pageTitle")}</h1>
-      <FxCoverageBanner coverage={payload?.fx_coverage} />
-      {fxSyncStale ? (
-        <p className="error" role="alert" style={{ maxWidth: "58rem" }}>
-          {t("fxCoverage.syncStale")}
-        </p>
-      ) : null}
+      <RatesCoverageNotices
+        notices={payload?.coverage_notices ?? []}
+        syncStale={syncStale}
+        loading={payload != null && seriesPending}
+      />
 
-      <nav className="flow-subnav" aria-label={t("rates.subnavAria")}>
-        <button type="button" onClick={() => setTab("fx")}>
-          {t("rates.tabFx")}
-        </button>
-        <button type="button" onClick={() => setTab("tickers")}>
-          {t("rates.tabTickers")}
-        </button>
-      </nav>
-
-      <div className="page-tile--end">
-        <SurfaceControls range={rangePrefs.range} onRangeChange={rangePrefs.setRange} />
+      <div className={styles.viewRow}>
+        <div className="surface-controls">
+          <span className="surface-controls__set" role="group" aria-label={t("rates.subnavAria")}>
+            {RATES_VIEWS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className={v === view ? "is-on" : undefined}
+                aria-pressed={v === view}
+                onClick={() => setView(v)}
+              >
+                {t(VIEW_LABEL_KEYS[v])}
+              </button>
+            ))}
+          </span>
+        </div>
       </div>
 
-      {tab === "fx" ? (
-        <>
-          <div className="chart-grid">
-            <FxUsdClpDualChart
-              timeRange={rangePrefs.range}
-              yahooData={fxUsdClp}
-              bcentralData={fxUsdClpBcentral}
-              buyData={fxUsdClpBuy}
-              sellData={fxUsdClpSell}
-              yahooLabel={t("rates.fx.yahoo")}
-              bcentralLabel={t("rates.fx.bcentralObservado")}
-              buyLabel={t("rates.fx.buy")}
-              sellLabel={t("rates.fx.sell")}
-              recentColDate={recentColDate}
-              recentColValue={recentColValue}
-              recentEmptyLabel={recentEmptyLabel}
+      <PageGridTile id="rates-glance">
+        <h2 className="visually-hidden">{t("rates.glance.title")}</h2>
+        {glanceError ? (
+          <p className="error">{errorText(glanceError)}</p>
+        ) : view === "instruments" && !glancePending && instrumentRows.length === 0 ? (
+          <p className="muted">{t("rates.instrumentsEmpty")}</p>
+        ) : (
+          <RatesGlanceTable
+            rows={rows}
+            nameLabel={t(view === "currencies" ? "rates.glance.colPair" : "rates.glance.colInstrument")}
+            loading={glancePending}
+          />
+        )}
+      </PageGridTile>
+
+      {seriesError ? (
+        <p className="error">{errorText(seriesError)}</p>
+      ) : rows.length > 0 ? (
+        <div className="chart-grid">
+          {rows.map((row) => (
+            <RatesSeriesTile
+              key={row.id}
+              row={row}
+              isCurrency={view === "currencies"}
+              payload={payload}
+              fallbackUnit={displayUnit}
               loading={seriesPending}
             />
-            <MiniLineChart
-              timeRange={rangePrefs.range}
-              title={pairTitle("uf", "clp")}
-              footnote={t("rates.fx.clpPerUf")}
-              data={fxUfClp}
-              yUnit="clp"
-              valueFormatter={formatClp}
-              {...recentTableProps}
-              loading={seriesPending}
-            />
-            <MiniLineChart
-              timeRange={rangePrefs.range}
-              title={t("rates.fx.ipcTitle")}
-              footnote={t("rates.fx.ipcFootnote")}
-              data={fxIpc}
-              yUnit="index"
-              valueFormatter={formatIpcIndex}
-              {...recentTableProps}
-              loading={seriesPending}
-            />
-            <MiniLineChart
-              timeRange={rangePrefs.range}
-              title={pairTitle("eur", "clp")}
-              footnote={t("rates.fx.clpPerEur")}
-              data={fxEurClp}
-              yUnit="clp"
-              valueFormatter={formatClp}
-              {...recentTableProps}
-              loading={seriesPending}
-            />
-            <MiniLineChart
-              timeRange={rangePrefs.range}
-              title={pairTitle("eur", "usd")}
-              footnote={t("rates.fx.usdPerEur")}
-              data={fxEurUsd}
-              yUnit="usd"
-              valueFormatter={formatRate4}
-              {...recentTableProps}
-              loading={seriesPending}
-            />
-          </div>
-          <FxBidAskGapsTable />
-        </>
-      ) : (
-        <>
-          <div className="chart-grid chart-grid--full-line">
-            {instrumentSlots.map((slot) => {
-              const data = seriesFromPoints(points, (p) => instrumentValue(p, slot));
-              // The unit the values are in: the payload's (a held one keeps its own while the next loads).
-              const unit = payload?.unit ?? displayUnit;
-              const fmt = (n: number) => formatCurrencyFine(n, unit);
-              const suffix = unit.toUpperCase();
-              return (
-                <MiniLineChart
-                  timeRange={rangePrefs.range}
-                  key={`${slot.kind}:${slot.id}`}
-                  title={`${slot.title} (${suffix})`}
-                  data={data}
-                  yUnit={unit}
-                  valueFormatter={fmt}
-                  {...recentTableProps}
-                  loading={seriesPending}
-                />
-              );
-            })}
-          </div>
-        </>
-      )}
+          ))}
+        </div>
+      ) : null}
+
+      {view === "currencies" ? <FxBidAskGapsList /> : null}
     </main>
   );
 }

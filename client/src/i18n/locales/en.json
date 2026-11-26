@@ -145,16 +145,6 @@
     }
   },
   "fxCoverage": {
-    "title": "{{pair}} exchange rate incomplete",
-    "missingFromDate": "No {{pair}} exchange rate since {{date}} to convert balances and charts to {{unit}}.",
-    "sparseHistory": "{{pair}}: sparse daily history ({{daily}} days observed out of {{rows}} rows).",
-    "hint": "Run the backfill or check the sync at",
-    "depositConversionError": "At least one deposit could not be converted to {{unit}} (no exchange rate on the movement date).",
-    "syncStale": "The USD/EUR sync with Banco Central is stale or failed.",
-    "yahooRejected": "{{count}} Yahoo CLP=X date(s) rejected (invalid exchange rate): {{dates}}. Conversions use the last prior valid rate.",
-    "warningBuyRateMissing": "CLP→US$ conversion without a buy rate in fx_daily_bid_ask; the reference mid rate was used.",
-    "warningSellRateMissing": "US$→CLP conversion without a sell rate in fx_daily_bid_ask; the reference mid rate was used.",
-    "warningUsdReferenceClp": "The CLP amount is a reference (mid rate); the US$ capital is the canonical value.",
     "cardMissingFx": "No exchange rate for this date — cannot display the {{unit}} value"
   },
   "rates": {
@@ -164,26 +154,80 @@
     "tabTickers": "Instruments",
     "recentColDate": "Date",
     "recentColValue": "Value",
-    "recentEmpty": "No recent data",
     "noData": "No data",
     "fx": {
       "clpPerUsd": "CLP per US$1",
       "clpPerUf": "CLP per 1 UF",
       "clpPerEur": "CLP per €1",
       "ipcTitle": "IPC",
-      "ipcFootnote": "Index level (optional CSV)",
+      "ipcFootnote": "Index level, base 2023 = 100",
       "usdPerEur": "USD per €1 (Yahoo EURUSD=X)",
-      "yahoo": "Yahoo CLP=X (conversions)",
-      "bcentralObservado": "Banco Central — observed dollar (reference)",
-      "buy": "US$ buy (bid/ask)",
-      "sell": "US$ sell (bid/ask)",
+      "yahoo": "Yahoo CLP=X",
+      "bcentralObservado": "Banco Central observado",
+      "buy": "US$ buy",
+      "sell": "US$ sell",
       "gapsTitle": "Buy/sell rates to review",
       "gapsEmpty": "No dates pending review for US$ buy/sell.",
       "gapsColMid": "Mid (Yahoo)",
-      "gapsColSource": "Source",
       "gapsSourceMidInferred": "Estimated from the mid rate",
       "gapsInvalidValues": "Buy and sell must be positive numbers.",
-      "gapsBuySellOrder": "Buy must be ≥ sell (more CLP per US$ when buying)."
+      "gapsBuySellOrder": "Buy must be ≥ sell (more CLP per US$ when buying).",
+      "gapsDays": "{{count}} days",
+      "gapsDaysOne": "1 day",
+      "gapsEdit": "Edit",
+      "gapsEditDay": "Edit the buy and sell rate of {{date}}"
+    },
+    "instrumentsEmpty": "No instruments are listed for this page.",
+    "instrumentNote": "Value in {{unit}}",
+    "glance": {
+      "title": "Today",
+      "colPair": "Pair",
+      "colInstrument": "Instrument",
+      "colToday": "Today",
+      "asOf": "as of {{date}}"
+    },
+    "recent": {
+      "title": "Latest entries",
+      "colChange": "Change",
+      "observado": "observado {{value}}",
+      "buySell": "buy {{buy}} · sell {{sell}}"
+    },
+    "coverage": {
+      "title": "Rate history problems",
+      "factSince": "Missing since",
+      "factDays": "Days without a rate",
+      "factLongestGap": "Longest gap",
+      "factLatest": "Latest date",
+      "factWhere": "Check the sync",
+      "days": "{{count}} days",
+      "daysOne": "1 day",
+      "missingRates": {
+        "status": "rates missing",
+        "first": "No {{pair}} rate since {{date}} to convert balances and charts to {{unit}}."
+      },
+      "sparseHistory": {
+        "status": "sparse history",
+        "first": "{{daily}} days observed out of {{rows}} rows."
+      },
+      "rejectedDates": {
+        "status": "{{count}} dates rejected",
+        "statusOne": "1 date rejected",
+        "first": "Invalid rate received; conversions use the last valid rate before it."
+      },
+      "midRateUsed": {
+        "status": "mid rate used",
+        "firstBuy": "A CLP→US$ conversion had no buy rate on its date; the mid rate was used.",
+        "firstSell": "A US$→CLP conversion had no sell rate on its date; the mid rate was used."
+      },
+      "referenceRate": {
+        "status": "reference rate",
+        "first": "A CLP amount is a reference at the mid rate; the US$ capital is the canonical value."
+      },
+      "syncStale": {
+        "title": "Rate sync",
+        "status": "stale",
+        "first": "A rate source's sync is stale or failed."
+      }
     }
   },
   "brokerage": {

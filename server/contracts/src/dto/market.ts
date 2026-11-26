@@ -31,6 +31,72 @@ export interface MarketSeriesResponse {
   /** EUR/USD (`fx_rates`, Yahoo EURUSD=X): dollars per euro. */
   eur_usd: { date: string; value: number }[]; // convention-ok: a rate pair's own series, not a display amount
   fx_coverage: FxCoverage;
+  /**
+   * The latest stored entries of every series, newest first, keyed by series id (`usd_clp`,
+   * `uf_clp`, `eur_clp`, `eur_usd`, `ipc`, `equity:<ticker>`, `fund_unit:<key>`).
+   */
+  recent: Record<string, RatesRecentEntry[]>;
+  coverage_notices: RatesCoverageNotice[];
+}
+
+/** One stored entry of a rates series with its change against the entry before it. */
+export interface RatesRecentEntry {
+  date: string;
+  value: number;
+  change_pct: number | null;
+  /** USD/CLP only: Banco Central's observado and the buy / sell rate stored on the same date. */
+  observado?: number | null;
+  buy?: number | null;
+  sell?: number | null;
+}
+
+/** One problem of the stored rate history, as data: the client words it. */
+export type RatesCoverageNotice =
+  | {
+      kind: "missing_rates";
+      base: string;
+      quote: string;
+      unit: string;
+      first_missing_date: string;
+      missing_count: number;
+    }
+  | { kind: "sparse_history"; base: string; quote: string; daily_count: number; row_count: number; max_gap_days: number }
+  | {
+      kind: "rejected_dates";
+      base: string;
+      quote: string;
+      count: number;
+      dates: { date: string; raw_rate: number }[];
+    }
+  | {
+      kind: "buy_rate_missing" | "sell_rate_missing" | "reference_rate";
+      base: string;
+      quote: string;
+      date: string;
+    };
+
+/** One row of the rates page's glance (`GET /api/rates/glance?unit=`). */
+export interface RatesGlanceRow {
+  /** The series id, shared with `MarketSeriesResponse.recent`. */
+  id: string;
+  kind: "fx_usd" | "fx_pair" | "uf" | "index" | "equity" | "fund_unit";
+  base: string | null;
+  quote: string | null;
+  /** An instrument's chart title; null where the client names the row (a pair by its codes, the IPC). */
+  label: string | null;
+  /** An instrument's key in the series payload's `equity` / `fund_unit` maps. */
+  series_key: string | null;
+  value: number | null;
+  /** A pair's quote, the display unit for an instrument, `none` for an index. */
+  value_currency: DisplayUnitCode | "none";
+  as_of_date: string | null;
+  changes: WatchlistChanges | null;
+}
+
+export interface RatesGlanceResponse {
+  unit: DisplayUnitCode;
+  currencies: RatesGlanceRow[];
+  instruments: RatesGlanceRow[];
 }
 
 /** `GET /api/market-ticker` — Chile-today snapshot for the marquee (not forward-filled series tail). */
@@ -141,8 +207,4 @@ export interface MarketTickerResponse {
     delta_pct: number | null;
   }[];
   marquee_series?: MarketDisplaySeriesRow[];
-}
-
-export interface RatesInstrumentsResponse {
-  instruments: MarketDisplaySeriesRow[];
 }

@@ -343,14 +343,6 @@ export function useCurrencies() {
   });
 }
 
-export function useRatesInstruments() {
-  return useQuery({
-    queryKey: queryKeys.ratesInstruments(),
-    queryFn: () => api.ratesInstruments(),
-    staleTime: 300_000,
-  });
-}
-
 const MARKET_TICKER_MS = 60_000;
 
 /** Marquee snapshot in the display unit (values convert server-side; the key carries the unit). */
@@ -440,6 +432,23 @@ export function useMarketSeries(unit: DisplayUnit) {
     queryKey: queryKeys.marketSeries(unit),
     queryFn: () => api.marketSeries(unit),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** The rates page's glances; reads live rates, so the stamp poll refetches it on a move. */
+export function useRatesGlance(unit: DisplayUnit) {
+  return useQuery({
+    queryKey: queryKeys.ratesGlance(unit),
+    queryFn: () => api.ratesGlance(unit),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The buy / sell rates waiting for review, by year. */
+export function useFxBidAskGaps() {
+  return useQuery({
+    queryKey: queryKeys.fxBidAskGaps(),
+    queryFn: () => api.fxBidAskGaps(),
   });
 }
 

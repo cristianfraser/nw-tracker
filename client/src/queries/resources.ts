@@ -112,7 +112,12 @@ export const resources = {
     { queryKey: queryKeys.dashboard("clp") },
     { queryKey: queryKeys.dashboard("usd") },
   ],
-  marketSeries: (): Invalidation[] => [{ queryKey: queryKeys.marketSeriesAll() }],
+  /** A buy / sell rate saved from the rates page: its review list and everything the page draws. */
+  ratesPage: (): Invalidation[] => [
+    { queryKey: queryKeys.marketSeriesAll() },
+    { queryKey: queryKeys.ratesGlanceAll() },
+    { queryKey: queryKeys.fxBidAskGaps() },
+  ],
   /** The watchlist page and the marquee built from it. */
   watchlist: (): Invalidation[] => [
     { queryKey: queryKeys.watchlistAll() },
