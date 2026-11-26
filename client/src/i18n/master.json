@@ -1646,6 +1646,10 @@
         "en": "Leave out of its group's totals",
         "es": "No sumar en los totales de su grupo"
       },
+      "strikeAmbiguous": {
+        "en": "«{{strike}}» could be thousands or three decimals. Write the strike without a thousands mark (1500), or with a fourth decimal (2.1250).",
+        "es": "«{{strike}}» puede ser miles o tres decimales. Escribe el strike sin separador de miles (1500), o con un cuarto decimal (2,1250)."
+      },
       "initialMovementsTitle": {
         "en": "Initial movements (optional)",
         "es": "Movimientos iniciales (opcional)"

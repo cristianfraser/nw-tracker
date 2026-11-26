@@ -75,7 +75,9 @@ export type NavAccountsTreeRowExtras = {
   groupEnd?: (node: NavTreeNodeDto) => ReactNode;
   /** Before an account's name. */
   accountSwatch?: (account: AccountsTreeAccount) => ReactNode;
-  /** At the end of an account's row. */
+  /** A text mark after an account's name; cut with «…» before the name gives way. */
+  accountTag?: (account: AccountsTreeAccount) => ReactNode;
+  /** At the end of an account's row: controls, which keep their width. */
   accountEnd?: (account: AccountsTreeAccount) => ReactNode;
   /** On a line of its own under an account's row (what its row opened); null when closed. */
   accountBelow?: (account: AccountsTreeAccount) => ReactNode;
@@ -108,6 +110,7 @@ function AccountLeaf({
       </li>
     );
   }
+  const tag = rowExtras.accountTag?.(account);
   const end = rowExtras.accountEnd?.(account);
   return (
     <li>
@@ -116,6 +119,7 @@ function AccountLeaf({
         <Link to={`/account/${account.id}`} className={styles.leafLink}>
           {link}
         </Link>
+        {tag ? <span className={styles.tagSlot}>{tag}</span> : null}
         {end ? <span className={styles.end}>{end}</span> : null}
       </div>
       {rowExtras.accountBelow?.(account)}

@@ -8,6 +8,7 @@ import {
   PANEL_ACCOUNT_TYPES,
   buildPanelAccountCreatePreview,
   defaultPanelAccountFormDraft,
+  isAmbiguousOptionStrike,
   isEquityPanelAccountType,
   isOptionPanelAccountType,
   type OptionRight,
@@ -88,6 +89,10 @@ export function AddAccountForm({ netWorthRoot }: Props) {
     e.preventDefault();
     setFormError(null);
     setCreatedAccountId(null);
+    if (isOptionPanelAccountType(draft.accountType) && isAmbiguousOptionStrike(draft.optionStrike)) {
+      setFormError(t("panelAccounts.addAccount.strikeAmbiguous", { strike: draft.optionStrike.trim() }));
+      return;
+    }
     const payload = buildPanelAccountCreatePreview(draft);
     if (!payload) {
       setFormError(t("panelAccounts.addAccount.previewInvalid"));

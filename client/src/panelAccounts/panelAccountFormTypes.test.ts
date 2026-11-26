@@ -3,6 +3,7 @@ import { setDecimalSeparatorForFormatting } from "../format";
 import {
   buildPanelAccountCreatePreview,
   defaultPanelAccountFormDraft,
+  isAmbiguousOptionStrike,
   parseOptionStrike,
 } from "./panelAccountFormTypes";
 
@@ -18,9 +19,22 @@ describe("parseOptionStrike", () => {
   });
 
   it("rejects an empty, malformed, non-positive or over-precise strike", () => {
-    for (const raw of ["", "abc", "0", "-5", "1,2345"]) {
+    for (const raw of ["", "abc", "0", "-5", "1,23456"]) {
       expect(parseOptionStrike(raw)).toBeNull();
     }
+  });
+
+  it("never guesses a strike that could be thousands or three decimals", () => {
+    for (const separator of ["comma", "period"] as const) {
+      setDecimalSeparatorForFormatting(separator);
+      for (const raw of ["2.125", "2,125", "1.500", " 1,500 "]) {
+        expect(isAmbiguousOptionStrike(raw)).toBe(true);
+        expect(parseOptionStrike(raw)).toBeNull();
+      }
+    }
+    setDecimalSeparatorForFormatting("comma");
+    expect(parseOptionStrike("2,1250")).toBe(2.125);
+    expect(parseOptionStrike("1500")).toBe(1500);
   });
 
   it("goes into the option contract's create body", () => {

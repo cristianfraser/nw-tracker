@@ -159,16 +159,28 @@
   white-space: nowrap;
 }
 
-/* A row's extras, pushed to its end. Controls keep their width; a text extra that allows it
-   (`min-width: 0`) gives way well before the row's name does. */
+/* A row's controls, pushed to its end; they keep their width, the names give way. */
 .end {
-  flex: 0 8 auto;
-  min-width: 0;
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   margin-left: auto;
   padding-left: 0.4rem;
+}
+
+/* An account's text mark, beside its controls: it is cut well before the name is, down to a
+   few letters, and never under its controls. */
+.tagSlot {
+  flex: 0 8 auto;
+  display: inline-flex;
+  min-width: 3.5rem;
+  overflow: hidden;
+  margin-left: auto;
+}
+
+.tagSlot + .end {
+  margin-left: 0;
 }
 
 /* Accounts outside the tree, under it. */

@@ -533,6 +533,7 @@
       "tickerSymbol": "Ticker",
       "bucket": "Group",
       "excludeFromTotals": "Leave out of its group's totals",
+      "strikeAmbiguous": "«{{strike}}» could be thousands or three decimals. Write the strike without a thousands mark (1500), or with a fourth decimal (2.1250).",
       "initialMovementsTitle": "Initial movements (optional)",
       "noMovements": "No initial movements. The account would stay empty until you import or load movements.",
       "movementDate": "Date",

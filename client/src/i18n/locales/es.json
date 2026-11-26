@@ -533,6 +533,7 @@
       "tickerSymbol": "Ticker",
       "bucket": "Grupo",
       "excludeFromTotals": "No sumar en los totales de su grupo",
+      "strikeAmbiguous": "«{{strike}}» puede ser miles o tres decimales. Escribe el strike sin separador de miles (1500), o con un cuarto decimal (2,1250).",
       "initialMovementsTitle": "Movimientos iniciales (opcional)",
       "noMovements": "Sin movimientos iniciales. La cuenta quedaría vacía hasta importar o cargar movimientos.",
       "movementDate": "Fecha",

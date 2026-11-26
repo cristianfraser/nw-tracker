@@ -119,28 +119,27 @@ export function AccountsPanelPage() {
         size="compact"
       />
     ),
+    accountTag: (account) =>
+      accountsById.get(account.id)?.exclude_from_group_totals === 1 ? (
+        <span className={styles.tag} title={t("panelAccounts.outOfTotalsTag")}>
+          {t("panelAccounts.outOfTotalsTag")}
+        </span>
+      ) : null,
     accountEnd: (account) => {
       const row = accountsById.get(account.id);
       if (!row) return null;
       const open = openActionsKey === account.rowKey;
       return (
-        <>
-          {row.exclude_from_group_totals === 1 ? (
-            <span className={styles.tag} title={t("panelAccounts.outOfTotalsTag")}>
-              {t("panelAccounts.outOfTotalsTag")}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            className={styles.more}
-            aria-expanded={open}
-            aria-controls={accountActionsId(account.rowKey)}
-            aria-label={t("panelAccounts.rowActions", { name: row.name })}
-            onClick={() => setOpenActionsKey(open ? null : account.rowKey)}
-          >
-            ⋯
-          </button>
-        </>
+        <button
+          type="button"
+          className={styles.more}
+          aria-expanded={open}
+          aria-controls={accountActionsId(account.rowKey)}
+          aria-label={t("panelAccounts.rowActions", { name: row.name })}
+          onClick={() => setOpenActionsKey(open ? null : account.rowKey)}
+        >
+          ⋯
+        </button>
       );
     },
     accountBelow: (account) => {
