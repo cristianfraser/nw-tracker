@@ -9,7 +9,9 @@ import { startLiveMarketQuotesScheduler } from "./liveMarketQuotesScheduler.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 import { ensureAccountSyncSourcesSeeded } from "./accountSyncSources.js";
 import {
+  crossSiteWriteGuardMiddleware,
   demoReadOnlyMiddleware,
+  hostAllowlistMiddleware,
   resolveBindHost,
   resolveCorsOrigins,
 } from "./httpSecurity.js";
@@ -79,7 +81,11 @@ process.on("unhandledRejection", (reason) => {
   );
 });
 
+// Other websites stay out of the personal API (off in the demo): a rebound Host is refused, then
+// a write from another site's page (httpSecurity.ts).
+app.use(hostAllowlistMiddleware(config));
 app.use(cors({ origin: resolveCorsOrigins(), exposedHeaders: [LIVE_INPUTS_HEADER] }));
+app.use(crossSiteWriteGuardMiddleware(config));
 // The cache warmer steps aside while a request is in flight (apiRequestsInFlight.ts).
 app.use(apiInFlightMiddleware());
 app.use(httpRequestLogMiddleware);

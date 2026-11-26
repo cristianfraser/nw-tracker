@@ -40,6 +40,12 @@ export type ServerConfig = {
   port: number;
   bindHost: string;
   corsOrigins: string[];
+  /**
+   * `ALLOWED_HOSTS` (comma-separated hostnames): the names besides loopback and the CORS origins'
+   * hosts that a request's `Host` may carry (`hostAllowlistMiddleware`, httpSecurity.ts) — the
+   * public name a proxy forwards and the private-network address. Lowercased, port dropped.
+   */
+  allowedHosts: string[];
   profile: DeploymentProfile;
   backgroundJobs: boolean;
   globalSync: { enabled: boolean; intervalMs: number; nyseStaleIntervalMs: number; wakeGapMs: number };
@@ -131,6 +137,39 @@ function positiveInteger(env: NodeJS.ProcessEnv, name: string, fallback: number)
   return Math.trunc(positiveNumber(env, name, fallback));
 }
 
+/**
+ * The hostname of a `Host` header value or a bare host entry: lowercased, port and trailing dot
+ * dropped, an IPv6 literal kept in brackets (`[::1]`). Null when empty.
+ */
+export function hostHeaderHostname(raw: string): string | null {
+  const v = raw.trim().toLowerCase();
+  if (!v) return null;
+  let host: string;
+  if (v.startsWith("[")) {
+    const end = v.indexOf("]");
+    host = end < 0 ? v : v.slice(0, end + 1);
+  } else {
+    const colon = v.indexOf(":");
+    host = colon < 0 ? v : v.slice(0, colon);
+  }
+  if (host.endsWith(".")) host = host.slice(0, -1);
+  return host || null;
+}
+
+/** `ALLOWED_HOSTS`: hostnames only; a URL or a path is an authoring error. */
+function allowedHostsFromEnv(env: NodeJS.ProcessEnv): string[] {
+  const out: string[] = [];
+  for (const entry of (env.ALLOWED_HOSTS ?? "").split(",")) {
+    if (!entry.trim()) continue;
+    if (entry.includes("/")) {
+      throw new Error(`ALLOWED_HOSTS entry ${JSON.stringify(entry.trim())}: expected a hostname (no scheme or path)`);
+    }
+    const host = hostHeaderHostname(entry);
+    if (host) out.push(host);
+  }
+  return out;
+}
+
 function text(env: NodeJS.ProcessEnv, name: string): string | null {
   const v = env[name]?.trim();
   return v ? v : null;
@@ -162,6 +201,7 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     port: positiveInteger(env, "PORT", 3001),
     bindHost: text(env, "HOST") ?? "127.0.0.1",
     corsOrigins: corsFromEnv.length > 0 ? corsFromEnv : DEFAULT_DEV_ORIGINS,
+    allowedHosts: allowedHostsFromEnv(env),
     profile: {
       demo,
       readOnlyApi: demo,
