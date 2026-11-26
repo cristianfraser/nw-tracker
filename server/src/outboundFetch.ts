@@ -1,4 +1,4 @@
-import { fetchOut } from "./httpOut.js";
+import { OUTBOUND_TIMEOUT_MS, fetchOut } from "./httpOut.js";
 
 /**
  * Every sync's outbound HTTP (2026-11-07, docs/untangle-plan.md F14): one place states the user
@@ -14,9 +14,6 @@ import { fetchOut } from "./httpOut.js";
  */
 export const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-/** Unless a request says otherwise: long enough for a year of a public CSV, short enough that a dead host cannot stall a sync forever. */
-export const OUTBOUND_TIMEOUT_MS = 60_000;
 
 /** A shared rate gate (Banco Central's, `sbifApiGate.ts`): waited for before, told the outcome after (a non-2xx answer is a failure). */
 export type OutboundGate = {
@@ -57,11 +54,10 @@ export type OutboundBytesResponse = {
 };
 
 /**
- * The response's raw bytes (a binary download, the demo market asset); the caller decides what a
- * non-2xx status means. No gate: the gated sources are text APIs.
+ * One request, bounded by `req.timeoutMs` (default {@link OUTBOUND_TIMEOUT_MS}): `fetchOut` owns the
+ * bound (and names the host when it fires); a test's `fetchImpl` gets the same bound as a signal.
  */
-export async function fetchOutboundBytes(req: Omit<OutboundRequest, "gate" | "decode">): Promise<OutboundBytesResponse> {
-  const timeout = AbortSignal.timeout(req.timeoutMs ?? OUTBOUND_TIMEOUT_MS);
+async function send(req: Omit<OutboundRequest, "gate" | "decode">): Promise<Response> {
   const init: RequestInit = {
     method: req.method ?? "GET",
     headers: {
@@ -70,9 +66,20 @@ export async function fetchOutboundBytes(req: Omit<OutboundRequest, "gate" | "de
       ...req.headers,
     },
     body: req.body as BodyInit | undefined,
-    signal: req.signal ? AbortSignal.any([req.signal, timeout]) : timeout,
+    signal: req.signal,
   };
-  const res = req.fetchImpl ? await req.fetchImpl(req.url, init) : await fetchOut(req.label, req.url, init);
+  const timeoutMs = req.timeoutMs ?? OUTBOUND_TIMEOUT_MS;
+  if (!req.fetchImpl) return fetchOut(req.label, req.url, init, { timeoutMs });
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return req.fetchImpl(req.url, { ...init, signal: req.signal ? AbortSignal.any([req.signal, timeout]) : timeout });
+}
+
+/**
+ * The response's raw bytes (a binary download, the demo market asset); the caller decides what a
+ * non-2xx status means. No gate: the gated sources are text APIs.
+ */
+export async function fetchOutboundBytes(req: Omit<OutboundRequest, "gate" | "decode">): Promise<OutboundBytesResponse> {
+  const res = await send(req);
   return { status: res.status, ok: res.ok, bytes: new Uint8Array(await res.arrayBuffer()) };
 }
 
@@ -80,18 +87,7 @@ export async function fetchOutboundBytes(req: Omit<OutboundRequest, "gate" | "de
 export async function fetchOutboundText(req: OutboundRequest): Promise<OutboundResponse> {
   await req.gate?.acquire();
   try {
-    const timeout = AbortSignal.timeout(req.timeoutMs ?? OUTBOUND_TIMEOUT_MS);
-    const init: RequestInit = {
-      method: req.method ?? "GET",
-      headers: {
-        "User-Agent": req.userAgent,
-        ...(req.accept ? { Accept: req.accept } : {}),
-        ...req.headers,
-      },
-      body: req.body as BodyInit | undefined,
-      signal: req.signal ? AbortSignal.any([req.signal, timeout]) : timeout,
-    };
-    const res = req.fetchImpl ? await req.fetchImpl(req.url, init) : await fetchOut(req.label, req.url, init);
+    const res = await send(req);
     const bytes = new Uint8Array(await res.arrayBuffer());
     const text = new TextDecoder(req.decode === "latin1" ? "latin1" : "utf-8").decode(bytes);
     if (req.gate) {
