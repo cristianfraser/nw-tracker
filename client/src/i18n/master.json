@@ -4348,14 +4348,6 @@
         "en": "Net-worth change",
         "es": "Variación patrimonio"
       },
-      "detailTitle": {
-        "en": "Month detail",
-        "es": "Detalle del mes"
-      },
-      "colMonth": {
-        "en": "Month",
-        "es": "Mes"
-      },
       "summaryLabel": {
         "en": "Net-worth change, all time:",
         "es": "Variación patrimonio histórica:"
@@ -4433,6 +4425,26 @@
       "breakdownTitle": {
         "en": "Breakdown by account",
         "es": "Desglose por cuenta"
+      },
+      "sectionMonthly": {
+        "en": "Monthly summary",
+        "es": "Resumen mensual"
+      },
+      "sectionYearly": {
+        "en": "Yearly summary",
+        "es": "Resumen anual"
+      },
+      "groupBuckets": {
+        "en": "By bucket",
+        "es": "Por bucket"
+      },
+      "groupRunning": {
+        "en": "Running totals",
+        "es": "Acumulados"
+      },
+      "rowLabel": {
+        "en": "{{period}}: P/L {{total}} ({{parts}})",
+        "es": "{{period}}: PL {{total}} ({{parts}})"
       }
     },
     "filters": {

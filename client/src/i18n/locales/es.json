@@ -1405,8 +1405,6 @@
       "pl": "PL",
       "investmentsChange": "Variación inversiones",
       "netWorthChange": "Variación patrimonio",
-      "detailTitle": "Detalle del mes",
-      "colMonth": "Mes",
       "summaryLabel": "Variación patrimonio histórica:",
       "sectionMonthly": "Resumen mensual",
       "sectionYearly": "Resumen anual",
@@ -1427,7 +1425,12 @@
       "colYtd": "YTD",
       "colCumulative": "Acumulado",
       "totalsLabel": "Total",
-      "breakdownTitle": "Desglose por cuenta"
+      "breakdownTitle": "Desglose por cuenta",
+      "sectionMonthly": "Resumen mensual",
+      "sectionYearly": "Resumen anual",
+      "groupBuckets": "Por bucket",
+      "groupRunning": "Acumulados",
+      "rowLabel": "{{period}}: PL {{total}} ({{parts}})"
     },
     "filters": {
       "year": "Año",

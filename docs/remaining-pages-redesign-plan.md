@@ -207,8 +207,8 @@ Two different kinds of account land here, and the page fits neither.
 
 > **Done (2026-11-26):** `FlowsOverviewPeriodList` on the income page's month rows. The user's
 > steer on the mockup: the row's bar is centred on zero like the «Flows and P/L» chart (expenses
-> left, deposits and P/L right, negatives on the other side). `/flows/pl` still has the same
-> generic «Month detail» table.
+> left, deposits and P/L right, negatives on the other side). `/flows/pl` got the same rows
+> afterwards (`FlowsPlPeriodList`: P/L by bucket around zero, opening into its running totals).
 
 - Chart plus a paginated `ColumnTable` «Month detail». It has a phone rendering and does not
   overflow (3,700px). Its issue is consistency: the income and expenses pages next to it now

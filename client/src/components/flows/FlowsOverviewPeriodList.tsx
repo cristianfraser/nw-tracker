@@ -11,6 +11,7 @@ import rows from "../income/IncomeRows.module.css";
 import { flowsOverviewBar, flowsOverviewBarExtent } from "./flowsOverviewBar";
 import { FLOWS_OVERVIEW_COLORS, FLOWS_OVERVIEW_SERIES, type FlowsOverviewSeries } from "./flowsOverviewColors";
 import styles from "./FlowsOverviewRows.module.css";
+import { ZeroBar } from "./ZeroBar";
 
 const PAGE_SIZE = 12;
 
@@ -81,30 +82,19 @@ function SeriesMark({ series }: { series: FlowsOverviewSeries }) {
   );
 }
 
-/** A period's flows around zero on the list's shared scale (`scale` = the longest side drawn). */
-function ZeroBar({ row, scale, className }: { row: FlowsOverviewTotals; scale: number; className?: string }) {
+/** A period's flows around zero (`flowsOverviewBar`), in the chart's colours, income as the mark. */
+function OverviewBar({ row, scale, className }: { row: FlowsOverviewTotals; scale: number; className?: string }) {
   const bar = flowsOverviewBar(row);
-  const pct = (amount: number) => `${(amount / scale) * 100}%`;
+  const colored = (list: typeof bar.left) =>
+    list.map((s) => ({ key: s.series, color: FLOWS_OVERVIEW_COLORS[s.series], amount: s.amount }));
   return (
-    <span className={cn(styles.bar, className)} aria-hidden>
-      <span className={cn(styles.side, styles.out)}>
-        {scale > 0
-          ? bar.left.map((s) => (
-              <i key={s.series} style={{ width: pct(s.amount), background: FLOWS_OVERVIEW_COLORS[s.series] }} />
-            ))
-          : null}
-      </span>
-      <span className={cn(styles.side, styles.in)}>
-        {scale > 0
-          ? bar.right.map((s) => (
-              <i key={s.series} style={{ width: pct(s.amount), background: FLOWS_OVERVIEW_COLORS[s.series] }} />
-            ))
-          : null}
-        {scale > 0 && bar.income > 0 ? (
-          <i className={styles.mark} style={{ left: `min(${pct(bar.income)}, 100% - 1px)`, background: FLOWS_OVERVIEW_COLORS.income }} />
-        ) : null}
-      </span>
-    </span>
+    <ZeroBar
+      left={colored(bar.left)}
+      right={colored(bar.right)}
+      mark={bar.income > 0 ? { value: bar.income, color: FLOWS_OVERVIEW_COLORS.income } : undefined}
+      scale={scale}
+      className={className}
+    />
   );
 }
 
@@ -194,7 +184,7 @@ export function FlowsOverviewPeriodList({
             onKeyDown={(e: KeyboardEvent) => onKeyActivate(e, () => toggle(key))}
           >
             <span className={rows.mPeriod}>{period}</span>
-            <ZeroBar row={row} scale={scale} className={rows.mBar} />
+            <OverviewBar row={row} scale={scale} className={rows.mBar} />
             <span className={cn(rows.parts, rows.mParts, rows.small)}>
               {/* Every series on every row, a zero included: the four amounts keep their places. */}
               {FLOWS_OVERVIEW_SERIES.map((s) => (

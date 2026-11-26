@@ -1,6 +1,7 @@
-/* The flows overview's period rows (FlowsOverviewPeriodList.tsx): the income page's month rows
-   (IncomeRows.module.css: frame, list, row, parts, sub) with a bar around zero and, in an open row,
-   the period's figures as three sums. The query below reads the income rows' frame (container
+/* The flows overview's and the P/L page's period rows (FlowsOverviewPeriodList.tsx,
+   FlowsPlPeriodList.tsx): the income page's month rows (IncomeRows.module.css: frame, list, row,
+   parts, sub) with a bar around zero (ZeroBar.tsx) and, in an open row, the period's figures as
+   sums. The query below reads the income rows' frame (container
    `income-rows`), on its own breakpoint. */
 
 /* A bar around zero, at the middle: what went out to the left, what came in to the right. */
@@ -44,14 +45,21 @@
   background: var(--text);
 }
 
-/* Income, the chart's line: a mark across the bar. */
+/* A chart's line series (income, a total): a mark across the bar. */
 .side > .mark {
   position: absolute;
   top: -0.15rem;
   bottom: -0.15rem;
   width: 2px;
   height: auto;
+}
+
+.side > .markIn {
   margin-left: -1px;
+}
+
+.side > .markOut {
+  margin-right: -1px;
 }
 
 .line {
@@ -62,7 +70,7 @@
   vertical-align: -0.1rem;
 }
 
-/* An open period: its figures as three sums. */
+/* An open period: its figures as up to three sums. */
 .sums {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 22rem));
