@@ -1336,8 +1336,14 @@ async function runCmfRnPortfolio(
   }
 }
 
-/** Run all external syncs. Returns exit code 0 on success, 1 if any step failed. */
-export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<number> {
+/**
+ * Run all external syncs. Returns exit code 0 on success, 1 if any step failed. `sources` (tests)
+ * names the steps to run in place of the stale rule's list.
+ */
+export async function runGlobalSyncAll(opts?: {
+  dryRun?: boolean;
+  sources?: readonly GlobalSyncSource[];
+}): Promise<number> {
   syncDryRun = opts?.dryRun ?? process.argv.includes("--dry-run");
   const syncChanges: SyncFieldChange[] = [];
   const stepErrors: SyncStepError[] = [];
@@ -1356,7 +1362,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     cl = chileWallClockNow();
     state = loadGlobalSyncState();
     fintualStateAtStart = fintualValuationStateFingerprint(state);
-    stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
+    stale = opts?.sources ? [...opts.sources] : staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
     staleAtStart = [...stale];
     console.log(
       `sync:all — Chile ${cl.ymd} ${String(cl.hour).padStart(2, "0")}:${String(cl.minute).padStart(2, "0")} (${syncDryRun ? "dry-run" : "live"})` +

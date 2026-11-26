@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { syncFilesDir } from "./syncFilesDir.js";
 
 export type GlobalSyncStateFile = {
   /** ISO time of the last successful AFP UNO fetch from the SP (see `afpUnoPublisherLag`). */
@@ -54,7 +52,7 @@ export type GlobalSyncStateFile = {
 };
 
 export function globalSyncStatePath(): string {
-  return path.join(__dirname, "..", "data", ".global-sync-state.json");
+  return path.join(syncFilesDir(), ".global-sync-state.json");
 }
 
 function migrateUserForcedStaleSources(list: string[] | undefined): string[] | undefined {

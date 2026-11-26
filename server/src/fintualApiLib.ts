@@ -16,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchOut } from "./httpOut.js";
+import { syncFilesDir } from "./syncFilesDir.js";
 import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { fintualValuationAsOfYmd } from "./fintualSyncPolicy.js";
 import { liveEnvRaw, liveEnvText } from "./config.js";
@@ -192,11 +193,11 @@ export function repoRootFromScriptsDir(): string {
 }
 
 export function fintualSessionPath(): string {
-  return path.join(repoRootFromScriptsDir(), "server", "data", ".fintual-api-session.json");
+  return path.join(syncFilesDir(), ".fintual-api-session.json");
 }
 
 export function fintualGoalsSnapshotPath(): string {
-  return path.join(repoRootFromScriptsDir(), "server", "data", ".fintual-goals-latest.json");
+  return path.join(syncFilesDir(), ".fintual-goals-latest.json");
 }
 
 export function fintualGoalMapPath(): string {

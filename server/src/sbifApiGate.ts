@@ -4,10 +4,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { serverConfig } from "./config.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { syncFilesDir } from "./syncFilesDir.js";
 
 type SbifApiGateFile = {
   /** Do not call SBIF before this epoch ms. */
@@ -17,8 +15,8 @@ type SbifApiGateFile = {
 };
 
 function gatePath(): string {
-  const primary = path.join(__dirname, "..", "data", ".bcentral-api-gate.json");
-  const legacy = path.join(__dirname, "..", "data", ".sbif-api-gate.json");
+  const primary = path.join(syncFilesDir(), ".bcentral-api-gate.json");
+  const legacy = path.join(syncFilesDir(), ".sbif-api-gate.json");
   if (fs.existsSync(primary)) return primary;
   if (fs.existsSync(legacy)) return legacy;
   return primary;
