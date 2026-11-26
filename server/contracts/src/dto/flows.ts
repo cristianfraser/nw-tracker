@@ -1454,7 +1454,7 @@ export interface FlowsDepositsResponse {
   chart_daily: FlowDepositChartPoint[];
   /** Sum of all row amounts (the flows overview's deposits + contributions_outside_payslip). */
   net_total: number;
-  /** AFP/AFC cotizaciones and the rest (Σ = net total). */
+  /** The credits of the accounts only payroll funds (AFP, AFC, 401(k), HSA) and the rest (Σ = net total). */
   pre_tax_total: number;
   post_tax_total: number;
   fx_conversion_warnings?: FxConversionWarning[];

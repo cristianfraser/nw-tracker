@@ -9,7 +9,8 @@
  * - income: cartola abonos + manual income (salary/severance on their payroll month) + what the
  *   payslips deducted before the pay reached the account: the deductions counted as gastos and
  *   the ones that are saving (`loadPayslipSavingsLines`: the pension contribution, the
- *   unemployment insurance, an APV, a 401(k), an HSA), on the payslip's month;
+ *   unemployment insurance, a 401(k), an HSA, and an APV whose deposit is on file,
+ *   `payslipSavingsCounted`), on the payslip's month;
  * - expenses: gasto del mes of the installment mode; a mortgage-linked payment counts only its
  *   carrying (interés + seguros); refunds count negatively;
  * - savings = income − expenses;
@@ -257,6 +258,46 @@ function mortgageCardAmortizationByKey(
     out.set(bucket, (out.get(bucket) ?? 0) + amortization);
   }
   return out;
+}
+
+/** Account kinds a payslip's voluntary pension deduction is deposited into. */
+const VOLUNTARY_PENSION_KINDS: ReadonlySet<string> = new Set(["apv"]);
+/** How many months after its payslip's month a voluntary deduction's deposit may be credited. */
+const VOLUNTARY_DEPOSIT_MONTHS_AFTER = 2;
+
+/**
+ * The savings deductions the overview counts. One into a payroll-funded account always counts. A
+ * voluntary one (an APV) counts only with its deposit on file: a positive deposit event of exactly
+ * its pesos on a voluntary pension account, from the payslip's month to two months after, each
+ * event taken once (earliest first). Without that event the account's balance rose with no
+ * deposit, so the money is already in its P/L, and counting the deduction as income would count
+ * it twice.
+ */
+export function payslipSavingsCounted(
+  savings: readonly PayslipSavingsLine[],
+  deposits: readonly FlowsOverviewDepositRow[]
+): PayslipSavingsLine[] {
+  const candidates = deposits
+    .filter((d) => VOLUNTARY_PENSION_KINDS.has(d.kind_slug) && d.amount_clp > 0)
+    .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on));
+  const used = new Set<FlowsOverviewDepositRow>();
+  const voluntary = savings
+    .filter((l) => l.destination === "voluntary_account")
+    .sort((a, b) => a.expense_month.localeCompare(b.expense_month) || a.payslip_id - b.payslip_id || a.position - b.position);
+  const counted = new Set<PayslipSavingsLine>();
+  for (const line of voluntary) {
+    const pesos = lineValueIn(line, "clp"); // convention-ok: a deduction and its deposit are matched in the pesos both are recorded in
+    if (pesos == null) throw new Error(`payslip ${line.payslip_id} line ${line.position}: its savings deduction has no pesos`);
+    const last = addCalendarMonths(line.expense_month, VOLUNTARY_DEPOSIT_MONTHS_AFTER);
+    const deposit = candidates.find((d) => {
+      const ym = d.occurred_on.slice(0, 7);
+      return !used.has(d) && ym >= line.expense_month && ym <= last && Math.abs(d.amount_clp - pesos) < 0.5;
+    });
+    if (!deposit) continue;
+    used.add(deposit);
+    counted.add(line);
+  }
+  return savings.filter((l) => l.destination === "payroll_account" || counted.has(l));
 }
 
 /**
@@ -629,7 +670,7 @@ function latestNonEmptyGastosMonth(byMonth: readonly FlowsOverviewGastosMonth[])
 export type FlowsOverviewMonthInputs = {
   income: FlowsOverviewIncome;
   lines: readonly FlowCcExpenseLineRow[];
-  /** The payslips' savings deductions (`loadPayslipSavingsLines`). */
+  /** The payslips' savings deductions that count (`payslipSavingsCounted`). */
   payslipSavings: readonly PayslipSavingsLine[];
   gastosByMonth: readonly FlowsOverviewGastosMonth[];
   deposits: readonly FlowsOverviewDepositRow[];
@@ -746,7 +787,7 @@ function gastosDayForLine(line: FlowCcExpenseLineRow, payByIso: Record<string, s
 export type FlowsOverviewDayInputs = {
   income: FlowsOverviewIncome;
   lines: readonly FlowCcExpenseLineRow[];
-  /** The payslips' savings deductions (`loadPayslipSavingsLines`). */
+  /** The payslips' savings deductions that count (`payslipSavingsCounted`). */
   payslipSavings: readonly PayslipSavingsLine[];
   cuotaPayByIso: Record<string, string> | undefined;
   deposits: readonly FlowsOverviewDepositRow[];
@@ -761,7 +802,9 @@ export type FlowsOverviewDayInputs = {
 
 /**
  * Day rows (Diario): the day grain of {@link aggregateFlowsOverviewMonths}. Income on the day it
- * arrived (not payroll-month attribution), expenses on {@link gastosDayForLine}, deposits and card
+ * arrived (not payroll-month attribution: a payslip's deductions too, so a month's day rows need
+ * not add up to its month row when the pay arrives after the month), expenses on
+ * {@link gastosDayForLine}, deposits and card
  * payments on the event day, P/L from the per-day series, cash from the ledger's day change. Only
  * days that carry something.
  */
@@ -970,6 +1013,7 @@ export function buildFlowsOverviewPayload(
     const src = overviewSourceInputs();
     const gastosMonths = gastosByMonth(src, unit, installmentMode);
     const deposits = depositsInUnit(src, unit);
+    const payslipSavings = payslipSavingsCounted(src.payslipSavings, deposits);
     const checkingAccountIds = new Set(src.checkingAccountIds);
     const carrying = cachedMortgageCarryingEvents(unit);
     const plMonthly = buildFlowsPlChartMonthly(unit, carrying).map((p) => ({ as_of_date: p.as_of_date, total: p.total }));
@@ -984,7 +1028,7 @@ export function buildFlowsOverviewPayload(
       {
         income: src.income,
         lines: src.lines,
-        payslipSavings: src.payslipSavings,
+        payslipSavings,
         gastosByMonth: gastosMonths,
         deposits,
         plMonthly,
@@ -1003,7 +1047,7 @@ export function buildFlowsOverviewPayload(
         {
           income: src.income,
           lines: src.lines,
-          payslipSavings: src.payslipSavings,
+          payslipSavings,
           cuotaPayByIso: src.cuotaPayByIso,
           deposits,
           plDaily: buildFlowsPlDailyChartSeries(unit, days, carrying).map((p) => ({ as_of_date: p.as_of_date, total: p.total })),

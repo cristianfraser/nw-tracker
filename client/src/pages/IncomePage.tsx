@@ -88,11 +88,11 @@ export function IncomePage() {
 
       <p className={loadableClass(loading, "muted")}>
         {t("income.totalLabel")}{" "}
-        <span className="mono" style={{ color: "var(--text)" }}>
+        <span className="mono flow-summary-value">
           {formatFlowMoney(aggregates?.total ?? 0, displayUnit)}
         </span>
         {timeRange !== "total" ? (
-          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
+          <span className="muted flow-summary-note">
             · {t("flows.rangeTotalLabel")}{" "}
             <span className="mono">{formatFlowMoney(rangeTotal, displayUnit)}</span>
           </span>

@@ -30,6 +30,17 @@ h2.flow-section-title {
   margin-top: 0;
 }
 
+/* A flows page's summary line under its title: the headline figure, then its quieter parts and
+   the «in range» companion. */
+.flow-summary-value {
+  color: var(--text);
+}
+
+.flow-summary-note {
+  margin-left: 0.5rem;
+  font-size: var(--font-size-prose);
+}
+
 .watchlist-add-form {
   display: flex;
   gap: 0.5rem;

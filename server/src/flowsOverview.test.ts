@@ -14,6 +14,7 @@ import { buildFlowsPlPayload } from "./flowsPl.js";
 import {
   aggregateFlowsOverviewDays,
   aggregateFlowsOverviewMonths,
+  payslipSavingsCounted,
   buildFlowsIncomeAggregates,
   buildFlowsOverviewPayload,
   flowsOverviewClosed,
@@ -297,6 +298,22 @@ describe("aggregateFlowsOverviewMonths", () => {
     // The deposit never left checking: with the deduction in income, cash explains it.
     expect(after.cash_unexplained - before.cash_unexplained).toBe(-100_000);
     expect(after.net_worth_change - before.net_worth_change).toBe(100_000);
+  });
+
+  it("counts a payslip's APV deduction only with its deposit on file, each deposit once", () => {
+    const apv = (amount_clp: number) => savingsLine({ destination: "voluntary_account", amount_clp });
+    const afp = savingsLine({ destination: "payroll_account", amount_clp: 250_000 });
+    const withDeposit = apv(100_000);
+    const noDeposit = apv(70_000);
+    const second = { ...apv(100_000), payslip_id: 8 };
+    const deposits = [
+      depositRow({ kind_slug: "apv", amount_clp: 100_000, occurred_on: "2024-04-09" }),
+      // Too late for a March payslip, another kind, a withdrawal: none of them is its deposit.
+      depositRow({ kind_slug: "apv", amount_clp: 70_000, occurred_on: "2024-06-03" }),
+      depositRow({ kind_slug: "spy", amount_clp: 70_000 }),
+      depositRow({ kind_slug: "apv", amount_clp: -70_000 }),
+    ];
+    expect(payslipSavingsCounted([afp, withDeposit, noDeposit, second], deposits)).toEqual([afp, withDeposit]);
   });
 
   it("a payslip's savings deduction sits on the day the pay arrived in the day rows", () => {
@@ -813,7 +830,7 @@ describe("buildFlowsOverviewPayload", () => {
         else expect(Math.abs(r.deposits + r.contributions_outside_payslip - page_)).toBeLessThanOrEqual(coin);
       }
       // What the payroll-funded accounts were credited, less the payslips' deductions into them.
-      const fromPayslips = loadPayslipSavingsLines()
+      const fromPayslips = payslipSavingsCounted(loadPayslipSavingsLines(), [])
         .filter((l) => l.destination === "payroll_account")
         .reduce((sum, l) => sum + lineValueIn(l, unit)!, 0);
       expect(

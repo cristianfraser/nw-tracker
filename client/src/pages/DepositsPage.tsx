@@ -81,10 +81,10 @@ export function DepositsPage() {
 
       <p className={loadableClass(loading, "muted")}>
         {t("deposits.totalLabel")}{" "}
-        <span className="mono" style={{ color: "var(--text)" }}>
+        <span className="mono flow-summary-value">
           {formatFlowMoney(total, displayUnit)}
         </span>
-        <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
+        <span className="muted flow-summary-note">
           ({t("deposits.partOther")}{" "}
           <span className="mono">{formatFlowMoney(postTaxTotal, displayUnit)}</span>
           {" · "}
@@ -92,7 +92,7 @@ export function DepositsPage() {
           <span className="mono">{formatFlowMoney(preTaxTotal, displayUnit)}</span>)
         </span>
         {timeRange !== "total" ? (
-          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
+          <span className="muted flow-summary-note">
             · {t("flows.rangeTotalLabel")}{" "}
             <span className="mono">{formatFlowMoney(rangeTotal, displayUnit)}</span>
           </span>

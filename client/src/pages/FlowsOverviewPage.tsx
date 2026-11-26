@@ -114,10 +114,10 @@ export function FlowsOverviewPage() {
 
       <p className={loadableClass(loading, "muted")}>
         {t("flows.overview.summaryLabel")}{" "}
-        <span className="mono" style={{ color: "var(--text)" }}>
+        <span className="mono flow-summary-value">
           {formatFlowMoney(fullTotals.net_worth_change, displayUnit)}
         </span>
-        <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
+        <span className="muted flow-summary-note">
           (
           {NET_WORTH_PARTS.map((part, i) => (
             <span key={part.labelKey}>
@@ -128,7 +128,7 @@ export function FlowsOverviewPage() {
           )
         </span>
         {timeRange !== "total" ? (
-          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
+          <span className="muted flow-summary-note">
             · {t("flows.rangeTotalLabel")}{" "}
             <span className="mono">{formatFlowMoney(rangeTotals.net_worth_change, displayUnit)}</span>
           </span>
@@ -157,7 +157,9 @@ export function FlowsOverviewPage() {
             periodOptions={["month", "year"]}
           />
         </div>
+        {/* Keyed by grain: the open rows and the page are the month view's or the year view's. */}
         <FlowsOverviewPeriodList
+          key={tableGranularity}
           months={monthRows}
           granularity={tableGranularity}
           displayUnit={displayUnit}

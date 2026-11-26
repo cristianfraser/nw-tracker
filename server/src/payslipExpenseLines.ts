@@ -198,7 +198,7 @@ export type PayslipSavingsLine = {
 
 /**
  * Payroll deductions that are saving: the mandatory pension contribution (the printed AFP line
- * less the AFP's commission), the worker's unemployment-insurance share, an APV, and a US stub's
+ * less the AFP's commission, never more than the line), the worker's unemployment-insurance share, an APV, and a US stub's
  * 401(k) and HSA deferrals. The flows overview counts them as income that went straight into a
  * deposit. Dated and converted like the payslip's expense lines. A finiquito's combined
  * «cotizaciones de seguridad social» line cannot be split and is left out, as there.
@@ -209,7 +209,13 @@ export function loadPayslipSavingsLines(): PayslipSavingsLine[] {
     const { payslip: p, line: l, day, pesosPerUnit } = d;
     const destination = SAVINGS_DESTINATION_BY_KIND[l.kind];
     if (!destination) continue;
-    const amount = l.kind === "pension" ? splitPayslipPensionLine(d).mandatory : l.amount;
+    let amount = l.amount;
+    if (l.kind === "pension") {
+      // The taxable base is pesos: an AFP line printed in dollars cannot be split against it.
+      if (pesosPerUnit !== 1) throw new Error(`payslip ${p.id}: an AFP line on a dollar payslip — its saving cannot be told from the commission`);
+      // Never more than the payslip deducted (a line below the mandatory 10 % has no commission).
+      amount = Math.min(l.amount, splitPayslipPensionLine(d).mandatory);
+    }
     if (amount <= 0) continue;
     const amountClp = Math.round(amount * pesosPerUnit);
     const amountUsd = p.liquido_currency === "usd" ? amount : null; // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
