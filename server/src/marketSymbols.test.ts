@@ -4,7 +4,6 @@ import { equityMarketKind, marketQuoteCurrency } from "./equityQuote.js";
 import {
   marketSymbol,
   registerInstrument,
-  reloadMarketSymbols,
   requireMarketSymbol,
   tickersInUse,
   unregisteredTickersInUse,
@@ -27,7 +26,6 @@ const facts = (over: Partial<InstrumentFacts> = {}): InstrumentFacts => ({
 afterEach(() => {
   db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(T);
   db.prepare(`DELETE FROM market_symbols WHERE ticker = ?`).run(T);
-  reloadMarketSymbols();
 });
 
 describe("the instrument registry", () => {
@@ -46,14 +44,13 @@ describe("the instrument registry", () => {
     expect(requireMarketSymbol(T)).toMatchObject({ ticker: T, display_symbol: "ZZREGTEST", source: "declared" });
   });
 
-  it("finds a row another connection wrote (one reload before throwing)", () => {
-    reloadMarketSymbols();
+  it("a row written outside registerInstrument is read at once (the rows are a database memo)", () => {
+    expect(marketSymbol(T)).toBeNull();
     db.prepare(
       `INSERT INTO market_symbols (ticker, quote_currency, market_kind, isin, display_symbol, name, exchange, instrument_type, source, verified_at)
        VALUES (?, 'clp', 'santiago', NULL, 'ZZREGTEST', NULL, NULL, NULL, 'yahoo', '2026-11-10T00:00:00.000Z')`
     ).run(T);
-    expect(marketSymbol(T)).toBeNull(); // the cache does not know it yet
-    expect(requireMarketSymbol(T).market_kind).toBe("santiago");
+    expect(marketSymbol(T)?.market_kind).toBe("santiago");
   });
 
   it("refuses to reframe a ticker with stored bars", () => {

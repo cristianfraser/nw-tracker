@@ -10,7 +10,7 @@ import { getBucketDailySeries } from "./dailySeries.js";
 import { db } from "./db.js";
 import { totalDividendsInUnitForAccount } from "./equityReturns.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
-import { registerInstrument, reloadMarketSymbols } from "./marketSymbols.js";
+import { registerInstrument } from "./marketSymbols.js";
 import { insertMovement } from "./movementWrites.js";
 import { validateMovementCreate } from "./movementUnitsPolicy.js";
 import type { ShortHorizonAccountRef } from "./periodReturnsShortHorizon.js";
@@ -85,7 +85,6 @@ describe("a dividend paid into peso cash", () => {
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(NOTE);
     db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(TICKER);
     db.prepare(`DELETE FROM market_symbols WHERE ticker = ?`).run(TICKER);
-    reloadMarketSymbols();
     clearAggregationCache();
   }
 

@@ -31,7 +31,6 @@ import { storedPairRate } from "./rates.js";
 import {
   clearMarketSymbolFetchError,
   recordMarketSymbolFetchError,
-  reloadMarketSymbols,
 } from "./marketSymbols.js";
 
 const stmtEodPrior = db.prepare(
@@ -479,8 +478,6 @@ export async function syncAllLiveMarketQuotes(
   options: LiveMarketQuotesSyncOptions = {}
 ): Promise<LiveMarketQuotesSyncResult> {
   const fetchedAt = now.toISOString();
-  // A symbol added through another process (the primary server vs a script) must quote in its registered currency.
-  reloadMarketSymbols();
   const allTickers = equityTickersForLiveSync();
   const tickers = allTickers.filter((t) => !options.skipTickers?.has(t.toUpperCase()));
   const streamed = allTickers.length - tickers.length;

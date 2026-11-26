@@ -2,7 +2,6 @@ import { db } from "./db.js";
 import { CRYPTO_TICKER_COINGECKO_ID } from "./equityCoinGeckoEod.js";
 import {
   registerInstrument,
-  reloadMarketSymbols,
   unregisteredTickersInUse,
   type InstrumentFacts,
   type InstrumentSource,
@@ -111,8 +110,6 @@ export function applyInstrumentRegistrationPlan(plan: InstrumentRegistrationPlan
     })();
   } catch (e) {
     if (!(e instanceof Rollback)) throw e;
-  } finally {
-    reloadMarketSymbols();
   }
   return failures;
 }

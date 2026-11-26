@@ -8,7 +8,6 @@ import { equityMarketKind } from "./equityQuote.js";
 import {
   latestMarketSymbolFetchError,
   registerInstrument,
-  reloadMarketSymbols,
   type InstrumentFacts,
   type InstrumentSource,
   type MarketSymbolFetchError,
@@ -334,7 +333,6 @@ export function getWatchlistPayload(
   unit: WatchlistDisplayUnit = "clp"
 ): { unit: WatchlistDisplayUnit; app: WatchlistRow[]; manual: WatchlistRow[] } {
   syncWatchlistFromApp();
-  reloadMarketSymbols();
   const rows = stmtSelectAll.all() as (MarketDisplaySeriesRow & { source: WatchlistSource })[];
   const app: WatchlistRow[] = [];
   const manual: WatchlistRow[] = [];

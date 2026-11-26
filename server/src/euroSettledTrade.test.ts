@@ -11,7 +11,7 @@ import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
 import { totalDividendsInUnitForAccount } from "./equityReturns.js";
 import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
-import { registerInstrument, reloadMarketSymbols } from "./marketSymbols.js";
+import { registerInstrument } from "./marketSymbols.js";
 import { insertMovement } from "./movementWrites.js";
 import { validateMovementCreate } from "./movementUnitsPolicy.js";
 import type { ShortHorizonAccountRef } from "./periodReturnsShortHorizon.js";
@@ -186,7 +186,6 @@ describe("a trade settled in euros", () => {
     }
     db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(EUR_TICKER);
     db.prepare(`DELETE FROM market_symbols WHERE ticker = ?`).run(EUR_TICKER);
-    reloadMarketSymbols();
     clearAggregationCache();
   });
 

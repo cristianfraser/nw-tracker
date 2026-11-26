@@ -8,7 +8,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { totalDividendsClpForAccount } from "./equityReturns.js";
-import { registerInstrument, reloadMarketSymbols } from "./marketSymbols.js";
+import { registerInstrument } from "./marketSymbols.js";
 import { insertMovement } from "./movementWrites.js";
 import { validateMovementCreate } from "./movementUnitsPolicy.js";
 import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
@@ -64,7 +64,6 @@ describe("getAccountValuationTimeseries deposit lines", () => {
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(NOTE);
     db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(TICKER);
     db.prepare(`DELETE FROM market_symbols WHERE ticker = ?`).run(TICKER);
-    reloadMarketSymbols();
     clearAggregationCache();
   }
 

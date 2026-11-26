@@ -149,8 +149,9 @@ export const CACHE_FAMILIES: Readonly<Record<string, CacheFamily>> = {
    * The flows overview's inputs (income, expense lines, deposits, the Expenses payloads): no live
    * quote, but the live dollar rate the expense lines priced unpaid dollars at
    * (`syncFlowsInputsWithLiveUsdRates`, `flowsMortgageCarrying.ts`). Of the market they read the
-   * rates (each line and deposit event at its day's rate, a card's dollars at its facturación's)
-   * and a fund series' currency (an account's holding); UF is listed for UF-denominated flows.
+   * rates (each line and deposit event at its day's rate, a card's dollars at its facturación's),
+   * a fund series' currency and an instrument's registered facts (`market_symbols`: an account's
+   * holding); UF is listed for UF-denominated flows.
    * Never a price: a new close leaves them (`flowsInputsMarketReads.test.ts`).
    */
   flows_inputs: {
@@ -158,7 +159,7 @@ export const CACHE_FAMILIES: Readonly<Record<string, CacheFamily>> = {
     reads: "any",
     accountScoped: false,
     historicalMarket: false,
-    marketReads: ["fx_daily", "fx_daily_bid_ask", "fx_rates", "eur_daily", "uf_daily", "fund_unit_daily"],
+    marketReads: ["fx_daily", "fx_daily_bid_ask", "fx_rates", "eur_daily", "uf_daily", "fund_unit_daily", "market_symbols"],
     liveTick: "keep",
     ...aggregation,
   },

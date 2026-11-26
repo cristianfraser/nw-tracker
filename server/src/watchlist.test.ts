@@ -3,7 +3,6 @@ import { db } from "./db.js";
 import { equityQuoteCurrency, marketQuoteCurrency } from "./equityQuote.js";
 import {
   recordMarketSymbolFetchError,
-  reloadMarketSymbols,
   type InstrumentFacts,
 } from "./marketSymbols.js";
 import {
@@ -80,7 +79,6 @@ afterEach(() => {
   for (const table of ["market_symbols", "market_symbol_fetch_errors", "equity_daily"]) {
     db.prepare(`DELETE FROM ${table} WHERE ticker IN (?, ?)`).run(TEST_TICKER, TEST_INDEX);
   }
-  reloadMarketSymbols();
   db.prepare(`DELETE FROM accounts WHERE equity_ticker = ?`).run(ACCOUNT_TICKER);
   db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ? AND day = ?`).run(AFP_SERIES, SEED_DAY);
   db.prepare(`DELETE FROM watchlist_composite_meta WHERE bucket_slug = ?`).run(RISKY_NORRIS_PROXY_BUCKET);

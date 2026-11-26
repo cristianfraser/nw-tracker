@@ -6,7 +6,7 @@ import {
   providerForTicker,
   type DescribeFn,
 } from "./instrumentRegistrationPlan.js";
-import { marketSymbol, registerInstrument, reloadMarketSymbols, type InstrumentFacts } from "./marketSymbols.js";
+import { marketSymbol, registerInstrument, type InstrumentFacts } from "./marketSymbols.js";
 
 const A = "ZZPLANA.XX";
 const B = "ZZPLANB.XX";
@@ -30,7 +30,6 @@ afterEach(() => {
     db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(t);
     db.prepare(`DELETE FROM market_symbols WHERE ticker = ?`).run(t);
   }
-  reloadMarketSymbols();
 });
 
 describe("planInstrumentRegistration", () => {

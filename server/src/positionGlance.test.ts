@@ -15,7 +15,7 @@ import {
 import { fundTaxLotEventsFromRows, type FundLotRow } from "./fundTaxLotEvents.js";
 import { realizeTaxLots } from "./taxLots.js";
 import { convertCurrency } from "./rates.js";
-import { marketSymbol, reloadMarketSymbols } from "./marketSymbols.js";
+import { marketSymbol } from "./marketSymbols.js";
 import { accountProfile } from "./accountProfile.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { holdingPriceAt } from "./holdingPrices.js";
@@ -531,7 +531,6 @@ afterEach(() => {
   for (const [t, d] of created.equityRows.splice(0)) db.prepare(`DELETE FROM equity_daily WHERE ticker = ? AND trade_date = ?`).run(t, d);
   db.prepare(`DELETE FROM equity_daily WHERE ticker = ?`).run(TICKER);
   db.prepare(`DELETE FROM market_symbols WHERE ticker = ?`).run(TICKER);
-  reloadMarketSymbols();
 });
 
 /** value = deposited + state bonus + price + dividends, to the cent. */

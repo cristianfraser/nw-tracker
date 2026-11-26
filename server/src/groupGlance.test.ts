@@ -8,7 +8,6 @@ import {
   groupGlanceSpark,
   GROUP_GLANCE_SPARK_MAX_POINTS,
 } from "./groupGlance.js";
-import { reloadMarketSymbols } from "./marketSymbols.js";
 import { getSidebarNavPayload } from "./navTree.js";
 import { declareTestInstrument } from "./test/instrumentFixtures.js";
 import type { NavTreeNodeDto } from "./navTreeTypes.js";
@@ -155,7 +154,6 @@ afterAll(() => {
   for (const id of created.accounts) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
   db.prepare(`DELETE FROM equity_daily WHERE ticker IN (?, ?, ?)`).run(TICKER_A, TICKER_B, TICKER_C);
   db.prepare(`DELETE FROM market_symbols WHERE ticker IN (?, ?, ?)`).run(TICKER_A, TICKER_B, TICKER_C);
-  reloadMarketSymbols();
 });
 
 describe("groupGlancePerfOnGrid / groupGlancePerfSparks", () => {

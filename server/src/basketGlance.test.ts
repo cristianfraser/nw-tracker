@@ -3,7 +3,6 @@ import { db } from "./db.js";
 import { basketSparklineFor, unionHeldSpans } from "./basketGlance.js";
 import { buildDashboardNavContext } from "./dashboardAccounts.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { reloadMarketSymbols } from "./marketSymbols.js";
 import { declareTestInstrument } from "./test/instrumentFixtures.js";
 
 describe("unionHeldSpans", () => {
@@ -139,7 +138,6 @@ afterAll(() => {
   for (const id of created.accounts) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
   db.prepare(`DELETE FROM equity_daily WHERE ticker IN (?, ?)`).run(TICKER_A, TICKER_B);
   db.prepare(`DELETE FROM market_symbols WHERE ticker IN (?, ?)`).run(TICKER_A, TICKER_B);
-  reloadMarketSymbols();
 });
 
 describe("basket_glance on the nav-context payload", () => {

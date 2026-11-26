@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { dbStateMemo } from "./dbStateMemo.js";
 
 /**
  * The instrument registry (`market_symbols`, migrations 210 / 303 / 305 / 315): the one source of an
@@ -8,10 +9,9 @@ import { db } from "./db.js";
  * or the demo generator's declaration). A reader never parses a ticker's spelling: an instrument
  * with no row throws ({@link requireMarketSymbol}).
  *
- * Read on hot paths (every equity mark asks for its quote currency), so the rows live in a process
- * cache: written through by {@link registerInstrument}, reloaded by {@link reloadMarketSymbols} on
- * the live-quotes tick and each watchlist read, and once more before a miss throws, which picks up
- * a symbol another process registered.
+ * Read on hot paths (every equity mark asks for its quote currency), so the rows live in a database
+ * memo (`dbStateMemo`): a write through {@link registerInstrument} drops it, and so does another
+ * process's write (a script, `register:market-symbols`), which the change log reports.
  */
 /**
  * The currency an instrument's price is quoted in: a code of `currencies` (`usd`, `clp`, `eur`, …;
@@ -68,32 +68,24 @@ const stmtStoredBarCurrencies = db.prepare(
   `SELECT currency, COUNT(*) AS n FROM equity_daily WHERE ticker = ? GROUP BY currency`
 );
 
-let cache: Map<string, MarketSymbolRow> | null = null;
-
 /** A quote currency for a message: the code, or «index» for an index level (null). */
 export function quoteCurrencyLabel(currency: MarketQuoteCurrency): string {
   return currency ?? "index";
 }
 
-export function reloadMarketSymbols(): void {
-  cache = new Map((stmtAll.all() as MarketSymbolRow[]).map((r) => [r.ticker, r]));
+/** Every registered row by ticker: a database memo, dropped by any write of this connection or a logged write of another. */
+function symbolsByTicker(): ReadonlyMap<string, MarketSymbolRow> {
+  return dbStateMemo("market_symbols", 0, () => new Map((stmtAll.all() as MarketSymbolRow[]).map((r) => [r.ticker, r])));
 }
 
 /** The registered row, or null. Prefer {@link requireMarketSymbol} wherever the facts are needed. */
 export function marketSymbol(ticker: string): MarketSymbolRow | null {
-  if (cache == null) reloadMarketSymbols();
-  return cache!.get(ticker.toUpperCase()) ?? null;
+  return symbolsByTicker().get(ticker.toUpperCase()) ?? null;
 }
 
-/**
- * The registered facts of `ticker`, whatever its spelling; throws when it has no row. The process
- * cache is reloaded once before throwing, so a row another process wrote is found.
- */
+/** The registered facts of `ticker`, whatever its spelling; throws when it has no row. */
 export function requireMarketSymbol(ticker: string): MarketSymbolRow {
-  const hit = marketSymbol(ticker);
-  if (hit != null) return hit;
-  reloadMarketSymbols();
-  const row = cache!.get(ticker.toUpperCase());
+  const row = marketSymbol(ticker);
   if (row == null) {
     throw new Error(
       `${ticker} is not registered in market_symbols; run \`npm run register:market-symbols -w nw-tracker-server\``
@@ -151,8 +143,6 @@ export function registerInstrument(
     verified_at: now.toISOString(),
   };
   stmtUpsert.run(row);
-  if (cache == null) reloadMarketSymbols();
-  else cache.set(key, row);
   return row;
 }
 
@@ -191,8 +181,8 @@ export function tickersInUse(): string[] {
 
 /** The tickers in use ({@link tickersInUse}) the registry has no row for. */
 export function unregisteredTickersInUse(): string[] {
-  reloadMarketSymbols();
-  return tickersInUse().filter((t) => !cache!.has(t));
+  const registered = symbolsByTicker();
+  return tickersInUse().filter((t) => !registered.has(t));
 }
 
 const stmtUpsertError = db.prepare(
