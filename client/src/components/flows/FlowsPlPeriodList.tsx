@@ -9,7 +9,7 @@ import { ChevronIcon } from "../ui/ChevronIcon";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import rows from "../income/IncomeRows.module.css";
 import { FLOWS_PL_BUCKET_SERIES, FLOWS_PL_TOTAL_COLOR } from "./flowsPlBuckets";
-import styles from "./FlowsOverviewRows.module.css";
+import styles from "./FlowPeriodRows.module.css";
 import { ZeroBar, zeroBarExtent, zeroBarSides } from "./ZeroBar";
 
 const PAGE_SIZE = 12;
@@ -30,7 +30,7 @@ function barSides(row: FlowsPlChartPoint) {
  * The /flows P/L page's period list, on the flows overview's rows: one row per month (or per year,
  * which opens into its figures and its months) with the period's P/L by bucket as a bar around
  * zero (the «P/L by bucket» chart's bars and colours, its total line a mark), each bucket's amount
- * and the total. A period opens into its buckets adding up to the total, and its running totals.
+ * the total and, quieter, the cumulative total. A period opens into its buckets adding up to the total, and its running totals.
  * Rows are the server's (`chart_monthly`); a year is `rollupFlowsPlChartPointsByYear`. Full
  * history, newest first.
  */
@@ -108,6 +108,7 @@ export function FlowsPlPeriodList({
       const rowLabel = t("flows.pl.rowLabel", {
         period,
         total: money(row.total),
+        cumulative: money(row.cumulative_total),
         parts: FLOWS_PL_BUCKET_SERIES.map((b) => `${flowsPlBucketLabel(b.slug)} ${money(row[b.slug])}`).join(", "),
       });
       const yearMonths =
@@ -142,8 +143,11 @@ export function FlowsPlPeriodList({
             <span className={cn("mono", rows.num, rows.strong, rows.mTotal)} title={t("flows.pl.colTotal")}>
               {money(row.total)}
             </span>
-            {/* The income rows' line-count slot: these rows have none. */}
-            <span className={rows.mCount} />
+            {/* The income rows' line-count slot: the running total, quiet, to scan down the list. */}
+            <span className={cn("mono muted", rows.num, rows.small, rows.mCount)} title={t("flows.pl.colCumulative")}>
+              <span className="visually-hidden">{t("flows.pl.colCumulative")} </span>
+              {money(row.cumulative_total)}
+            </span>
             <ChevronIcon className={rows.chevron} />
           </div>
           {open ? (
@@ -174,6 +178,7 @@ export function FlowsPlPeriodList({
             <i className={styles.line} style={{ background: FLOWS_PL_TOTAL_COLOR }} />
             {t("flows.pl.colTotal")}
           </span>
+          <span>· {t("flows.pl.legendCumulative")}</span>
         </p>
       </div>
     </PaginatedTable>
