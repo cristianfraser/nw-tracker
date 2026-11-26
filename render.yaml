@@ -66,7 +66,11 @@ services:
     # The boot only generates when the DB is empty (local rehearsal).
     # version-info.mjs first: writes version.json (commit-stamped) at repo root while
     # .git is present, so the server can report the deployed commit at /api/health.
-    buildCommand: node scripts/version-info.mjs --write version.json && npm install --include=dev -w nw-tracker-server -w nw-tracker-contracts -w nw-tracker-client --include-workspace-root && npm run build -w nw-tracker-client && rm -f server/data/nw-tracker.demo.db* && npm run demo:generate -w nw-tracker-server
+    # rm node_modules/recharts first: Render keeps node_modules between builds, and a package
+    # patch-package already patched there takes a changed patch only from a fresh copy — the build
+    # of 432b0ea5 (2026-11-25) failed in postinstall because patches/recharts+3.10.1.patch had
+    # grown since the cached copy was patched.
+    buildCommand: node scripts/version-info.mjs --write version.json && rm -rf node_modules/recharts && npm install --include=dev -w nw-tracker-server -w nw-tracker-contracts -w nw-tracker-client --include-workspace-root && npm run build -w nw-tracker-client && rm -f server/data/nw-tracker.demo.db* && npm run demo:generate -w nw-tracker-server
     # The heap flag is on the start command, NOT an env var: a service env var applies to the
     # build too, and the client's Vite build aborted at 320 MB (deploy of e3e8a113, 2026-11-09).
     # V8 sizes its heap from the machine's memory — on the Starter (512 MB) a ~256 MB limit —
