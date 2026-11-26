@@ -1,3 +1,5 @@
+/* The frame of the import sync panels (runs, queue, market sources): a muted line or two saying
+   where things stand, over the panel's rows (`ui/OpenRows`). */
 .panel {
   margin: 0 0 1rem;
 }
@@ -6,50 +8,4 @@
   margin: 0 0 0.35rem;
   font-size: var(--font-size-ui);
   line-height: 1.45;
-}
-
-.scheduleLine:last-of-type {
-  margin-bottom: 0.65rem;
-}
-
-.tableWrap {
-  overflow-x: auto;
-}
-
-.tableWrap table {
-  font-size: var(--font-size-ui);
-}
-
-.colActions {
-  text-align: right;
-  white-space: nowrap;
-  width: 1%;
-}
-
-.badgeOk {
-  color: var(--positive, #4ade80);
-  white-space: nowrap;
-}
-
-.badgeStale {
-  color: var(--negative, #f87171);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.badgeMuted {
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-/* Stale only because the publisher has not released the expected day yet — not an app fault. */
-.badgeWaiting {
-  color: var(--accent);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.lagDetail {
-  font-size: 0.85em;
-  margin-top: 0.15rem;
 }

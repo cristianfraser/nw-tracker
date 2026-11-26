@@ -579,7 +579,6 @@
     "genericUniqueMerchantsTitle": "Comercios Único automático",
     "genericUniqueMerchants": {
       "colMerchant": "Nombre del comercio",
-      "colActions": "Acciones",
       "empty": "Sin comercios configurados.",
       "addPlaceholder": "Nombre del comercio (como en cartola o estado de cuenta)",
       "add": "Agregar",
@@ -599,6 +598,19 @@
     "importedNo": "{{account}}: falta documento de {{month}}",
     "showMore": "Mostrar más…",
     "showLess": "Mostrar menos…",
+    "docs": {
+      "allComplete": "las {{n}} completas",
+      "nothingDue": "nada pendiente aún",
+      "someComplete": "{{complete}} de {{n}} completas",
+      "legendImported": "importado, archivo en disco",
+      "legendNoFile": "importado, sin archivo",
+      "legendNoMovements": "cartola sin movimientos",
+      "legendFileOnly": "archivo en disco, sin importar",
+      "legendMissing": "falta",
+      "legendNotDue": "mes en curso, aún no corresponde",
+      "notDue": "{{account}}: {{month}} está en curso, su documento aún no corresponde",
+      "fileNotImported": "{{account}}: archivo de {{month}} en disco, sin importar"
+    },
     "sync": {
       "lastSync": "Último sync: {{time}} ({{ago}})",
       "lastSyncNever": "Último sync: —",
@@ -613,10 +625,8 @@
       "publisherLagDetail": "Última cuota {{published}} · esperada {{expected}} · revisado {{checked}}",
       "forceStale": "Marcar desactualizado",
       "forceStalePending": "Marcando…",
-      "colSource": "Fuente",
       "colNextSync": "Próximo sync",
       "colHolidayToday": "Hoy",
-      "colStatus": "Estado",
       "nextSyncNow": "Ahora",
       "nextSyncDash": "—",
       "nextSyncToday": "Hoy, {{time}}",
@@ -652,7 +662,10 @@
       "agoHours": "hace {{n}} h",
       "agoHoursMinutes": "hace {{h}} h {{m}} min",
       "agoDay": "hace 1 día",
-      "agoDays": "hace {{n}} días"
+      "agoDays": "hace {{n}} días",
+      "nextLine": "próximo: {{when}}",
+      "todayIs": "hoy: {{kind}}",
+      "factPublisher": "Publicación"
     },
     "ingestRunsTitle": "Corridas de banco y correo",
     "ingest": {
@@ -660,8 +673,6 @@
       "schedulerOff": "El programador de ingesta está apagado en esta instancia del servidor: las corridas solo se pueden iniciar desde la principal.",
       "inFlight": "En curso: {{kind}} desde {{time}}.",
       "idle": "Ninguna corrida en curso.",
-      "colRun": "Corrida",
-      "colLatest": "Última",
       "colNext": "Próxima",
       "kinds": {
         "hourly": "Revisión de correo (cada hora)",
@@ -678,15 +689,18 @@
       "failedSteps": "{{n}} paso(s) fallido(s)",
       "never": "nunca",
       "runNow": "Correr ahora",
-      "runNowPending": "Iniciando…"
+      "runNowPending": "Iniciando…",
+      "nextAt": "próxima {{time}}",
+      "factReason": "Motivo",
+      "factRequested": "Pedida",
+      "factFinished": "Terminó",
+      "factFailedSteps": "Fallaron",
+      "factError": "Error"
     },
     "jobs": {
       "title": "Cola",
       "summary": "{{running}} en curso, {{queued}} en espera.",
       "empty": "Todavía no ha pasado nada por la cola.",
-      "colJob": "Trabajo",
-      "colStatus": "Estado",
-      "colWhen": "Cuándo",
       "colDetail": "Detalle",
       "kinds": {
         "ingest_nightly": "Corrida nocturna",
@@ -717,7 +731,16 @@
       "cancel": "Cancelar",
       "cancelPending": "Cancelando…",
       "retry": "Reintentar",
-      "retryPending": "Encolando…"
+      "retryPending": "Encolando…",
+      "factReason": "Motivo",
+      "factEnqueuedBy": "Encolado por",
+      "factResources": "Ocupa",
+      "factWorker": "Ejecutor",
+      "factCreated": "Encolado",
+      "factNotBefore": "No antes de",
+      "factStarted": "Partió",
+      "factFinished": "Terminó",
+      "factError": "Error"
     }
   },
   "detail": {

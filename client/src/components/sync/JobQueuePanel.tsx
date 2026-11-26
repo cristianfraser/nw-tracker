@@ -1,26 +1,21 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Button } from "@crfrsr/ui";
 import type { JobQueueResponse, JobView, JobWaitView } from "../../types";
 import { cn } from "../../cn";
 import { DEMO_BUILD } from "../../dashboardPath";
-import { formatDateTimeLabel } from "../../formatDateLabel";
 import { useJobActionMutation } from "../../queries/hooks";
 import { loadableClass } from "../ui/Loadable";
-import { Table } from "../ui/Table";
+import { OpenRow, OpenRows, RowFacts, StatusWord, type StatusTone } from "../ui/OpenRows";
+import { formatWhen } from "../../storedInstant";
 import styles from "./SyncLogStatusPanel.module.css";
 
-function formatWhen(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : formatDateTimeLabel(d);
-}
-
-function statusClass(job: JobView): string {
-  if (job.status === "done") return styles.badgeOk;
-  if (job.status === "running" || job.status === "queued") return styles.badgeWaiting;
-  if (job.status === "failed" || job.status === "lost") return styles.badgeStale;
-  return styles.badgeMuted;
+function statusTone(job: JobView): StatusTone {
+  if (job.status === "done") return "ok";
+  if (job.status === "running" || job.status === "queued") return "active";
+  if (job.status === "failed" || job.status === "lost") return "bad";
+  return "muted";
 }
 
 function kindLabel(t: TFunction, slug: string): string {
@@ -63,14 +58,39 @@ const JOB_ACTIONS_SHOWN = !DEMO_BUILD;
 
 /**
  * The job queue (docs/job-queue-plan.md): what runs, what waits and why, and the latest finished
- * jobs, with Cancel for a queued job and Retry for a failed or lost run. Everything shown is the
- * server's: this component only words it.
+ * jobs, with Cancel for a queued job and Retry for a failed or lost run. One line per job — when,
+ * what, its state, and why it waits or what went wrong — that opens into the rest. Everything
+ * shown is the server's: this component only words it.
  */
 export function JobQueuePanel({ queue, loading }: { queue: JobQueueResponse | undefined; loading?: boolean }) {
   const { t } = useTranslation();
   const action = useJobActionMutation();
-  const rows = queue ? [...queue.running, ...queue.queued, ...queue.recent] : [];
+  const [expanded, setExpanded] = useState(false);
+  const live = queue ? [...queue.running, ...queue.queued] : [];
+  const finished = queue?.recent ?? [];
+  // The server says how many finished jobs show before «Show more…».
+  const shownFinished = queue?.recent_shown ?? finished.length;
+  const hasHidden = finished.length > shownFinished;
+  const rows = [...live, ...(hasHidden && !expanded ? finished.slice(0, shownFinished) : finished)];
   const pending = (job: JobView, kind: "cancel" | "retry") => action.isPending && action.variables?.id === job.id && action.variables.action === kind;
+  const actionFor = (job: JobView) => {
+    if (!JOB_ACTIONS_SHOWN) return null;
+    if (job.can_cancel) {
+      return (
+        <Button variant="secondary" size="sm" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, action: "cancel" })}>
+          {pending(job, "cancel") ? t("importSync.jobs.cancelPending") : t("importSync.jobs.cancel")}
+        </Button>
+      );
+    }
+    if (job.can_retry) {
+      return (
+        <Button variant="secondary" size="sm" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, action: "retry" })}>
+          {pending(job, "retry") ? t("importSync.jobs.retryPending") : t("importSync.jobs.retry")}
+        </Button>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className={loadableClass(loading, styles.panel)}>
@@ -79,48 +99,42 @@ export function JobQueuePanel({ queue, loading }: { queue: JobQueueResponse | un
           ? t("importSync.jobs.summary", { running: queue.running.length, queued: queue.queued.length })
           : "—"}
       </p>
-      <div className={styles.tableWrap}>
-        <Table
-          header={
-            <thead>
-              <tr>
-                <th>{t("importSync.jobs.colJob")}</th>
-                <th>{t("importSync.jobs.colStatus")}</th>
-                <th>{t("importSync.jobs.colWhen")}</th>
-                <th>{t("importSync.jobs.colDetail")}</th>
-                <th className={styles.colActions} />
-              </tr>
-            </thead>
-          }
-        >
-          {rows.map((job) => (
-            <tr key={job.id}>
-              <td>
+      <OpenRows empty={queue && rows.length === 0 ? t("importSync.jobs.empty") : undefined}>
+        {rows.map((job) => (
+          <OpenRow
+            key={job.id}
+            lead={formatWhen(job.finished_at ?? job.started_at ?? job.not_before ?? job.created_at)}
+            title={
+              <>
                 {kindLabel(t, job.kind_slug)} <span className="muted">#{job.id}</span>
-                <div className={cn("muted", styles.lagDetail)}>{job.reason}</div>
-              </td>
-              <td>
-                <span className={statusClass(job)}>{t(`importSync.jobs.status.${job.status}`)}</span>
-              </td>
-              <td className="muted">{formatWhen(job.finished_at ?? job.started_at ?? job.not_before ?? job.created_at)}</td>
-              <td className={cn("muted", styles.lagDetail)}>{detail(t, job)}</td>
-              <td className={styles.colActions}>
-                {JOB_ACTIONS_SHOWN && job.can_cancel ? (
-                  <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, action: "cancel" })}>
-                    {pending(job, "cancel") ? t("importSync.jobs.cancelPending") : t("importSync.jobs.cancel")}
-                  </Button>
-                ) : null}
-                {JOB_ACTIONS_SHOWN && job.can_retry ? (
-                  <Button variant="secondary" disabled={action.isPending} onClick={() => action.mutate({ id: job.id, action: "retry" })}>
-                    {pending(job, "retry") ? t("importSync.jobs.retryPending") : t("importSync.jobs.retry")}
-                  </Button>
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </Table>
-      </div>
-      {queue && rows.length === 0 ? <p className="muted">{t("importSync.jobs.empty")}</p> : null}
+              </>
+            }
+            status={<StatusWord tone={statusTone(job)}>{t(`importSync.jobs.status.${job.status}`)}</StatusWord>}
+            first={detail(t, job) ?? job.reason}
+            action={actionFor(job)}
+          >
+            <RowFacts
+              facts={[
+                [t("importSync.jobs.factReason"), job.reason],
+                [t("importSync.jobs.factEnqueuedBy"), job.enqueued_by],
+                [t("importSync.jobs.colDetail"), detail(t, job)],
+                [t("importSync.jobs.factResources"), job.resources.map((r) => t(`importSync.jobs.resources.${r}`)).join(", ")],
+                [t("importSync.jobs.factWorker"), job.worker],
+                [t("importSync.jobs.factCreated"), formatWhen(job.created_at)],
+                [t("importSync.jobs.factNotBefore"), job.not_before ? formatWhen(job.not_before) : null],
+                [t("importSync.jobs.factStarted"), job.started_at ? formatWhen(job.started_at) : null],
+                [t("importSync.jobs.factFinished"), job.finished_at ? formatWhen(job.finished_at) : null],
+                [t("importSync.jobs.factError"), job.error],
+              ]}
+            />
+          </OpenRow>
+        ))}
+      </OpenRows>
+      {hasHidden ? (
+        <Button variant="ghost" onClick={() => setExpanded((e) => !e)}>
+          {expanded ? t("importSync.showLess") : t("importSync.showMore")}
+        </Button>
+      ) : null}
       {action.error ? <p className="error">{action.error.message}</p> : null}
     </div>
   );

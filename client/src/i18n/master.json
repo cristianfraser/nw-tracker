@@ -1806,10 +1806,6 @@
         "en": "Merchant name",
         "es": "Nombre del comercio"
       },
-      "colActions": {
-        "en": "Actions",
-        "es": "Acciones"
-      },
       "empty": {
         "en": "No merchants configured.",
         "es": "Sin comercios configurados."
@@ -1883,6 +1879,52 @@
       "en": "Show less…",
       "es": "Mostrar menos…"
     },
+    "docs": {
+      "allComplete": {
+        "en": "all {{n}} complete",
+        "es": "las {{n}} completas"
+      },
+      "nothingDue": {
+        "en": "nothing due yet",
+        "es": "nada pendiente aún"
+      },
+      "someComplete": {
+        "en": "{{complete}} of {{n}} complete",
+        "es": "{{complete}} de {{n}} completas"
+      },
+      "legendImported": {
+        "en": "imported, file on disk",
+        "es": "importado, archivo en disco"
+      },
+      "legendNoFile": {
+        "en": "imported, no file",
+        "es": "importado, sin archivo"
+      },
+      "legendNoMovements": {
+        "en": "statement with no movements",
+        "es": "cartola sin movimientos"
+      },
+      "legendFileOnly": {
+        "en": "file on disk, not imported",
+        "es": "archivo en disco, sin importar"
+      },
+      "legendMissing": {
+        "en": "missing",
+        "es": "falta"
+      },
+      "legendNotDue": {
+        "en": "month in progress, not due yet",
+        "es": "mes en curso, aún no corresponde"
+      },
+      "notDue": {
+        "en": "{{account}}: {{month}} is in progress, its document is not due yet",
+        "es": "{{account}}: {{month}} está en curso, su documento aún no corresponde"
+      },
+      "fileNotImported": {
+        "en": "{{account}}: {{month}} file on disk, not imported",
+        "es": "{{account}}: archivo de {{month}} en disco, sin importar"
+      }
+    },
     "sync": {
       "lastSync": {
         "en": "Last sync: {{time}} ({{ago}})",
@@ -1936,10 +1978,6 @@
         "en": "Marking…",
         "es": "Marcando…"
       },
-      "colSource": {
-        "en": "Source",
-        "es": "Fuente"
-      },
       "colNextSync": {
         "en": "Next sync",
         "es": "Próximo sync"
@@ -1947,10 +1985,6 @@
       "colHolidayToday": {
         "en": "Today",
         "es": "Hoy"
-      },
-      "colStatus": {
-        "en": "Status",
-        "es": "Estado"
       },
       "nextSyncNow": {
         "en": "Now",
@@ -2083,6 +2117,18 @@
       "agoDays": {
         "en": "{{n}} days ago",
         "es": "hace {{n}} días"
+      },
+      "nextLine": {
+        "en": "next: {{when}}",
+        "es": "próximo: {{when}}"
+      },
+      "todayIs": {
+        "en": "{{kind}} today",
+        "es": "hoy: {{kind}}"
+      },
+      "factPublisher": {
+        "en": "Publisher",
+        "es": "Publicación"
       }
     },
     "ingestRunsTitle": {
@@ -2105,14 +2151,6 @@
       "idle": {
         "en": "No run in progress.",
         "es": "Ninguna corrida en curso."
-      },
-      "colRun": {
-        "en": "Run",
-        "es": "Corrida"
-      },
-      "colLatest": {
-        "en": "Latest",
-        "es": "Última"
       },
       "colNext": {
         "en": "Next",
@@ -2169,6 +2207,30 @@
       "runNowPending": {
         "en": "Starting…",
         "es": "Iniciando…"
+      },
+      "nextAt": {
+        "en": "next {{time}}",
+        "es": "próxima {{time}}"
+      },
+      "factReason": {
+        "en": "Why",
+        "es": "Motivo"
+      },
+      "factRequested": {
+        "en": "Requested",
+        "es": "Pedida"
+      },
+      "factFinished": {
+        "en": "Finished",
+        "es": "Terminó"
+      },
+      "factFailedSteps": {
+        "en": "Failed",
+        "es": "Fallaron"
+      },
+      "factError": {
+        "en": "Error",
+        "es": "Error"
       }
     },
     "jobs": {
@@ -2183,18 +2245,6 @@
       "empty": {
         "en": "Nothing has gone through the queue yet.",
         "es": "Todavía no ha pasado nada por la cola."
-      },
-      "colJob": {
-        "en": "Job",
-        "es": "Trabajo"
-      },
-      "colStatus": {
-        "en": "Status",
-        "es": "Estado"
-      },
-      "colWhen": {
-        "en": "When",
-        "es": "Cuándo"
       },
       "colDetail": {
         "en": "Detail",
@@ -2295,6 +2345,42 @@
       "retryPending": {
         "en": "Queuing…",
         "es": "Encolando…"
+      },
+      "factReason": {
+        "en": "Why",
+        "es": "Motivo"
+      },
+      "factEnqueuedBy": {
+        "en": "Queued by",
+        "es": "Encolado por"
+      },
+      "factResources": {
+        "en": "Holds",
+        "es": "Ocupa"
+      },
+      "factWorker": {
+        "en": "Worker",
+        "es": "Ejecutor"
+      },
+      "factCreated": {
+        "en": "Queued",
+        "es": "Encolado"
+      },
+      "factNotBefore": {
+        "en": "Not before",
+        "es": "No antes de"
+      },
+      "factStarted": {
+        "en": "Started",
+        "es": "Partió"
+      },
+      "factFinished": {
+        "en": "Finished",
+        "es": "Terminó"
+      },
+      "factError": {
+        "en": "Error",
+        "es": "Error"
       }
     }
   },

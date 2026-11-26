@@ -50,7 +50,12 @@ export type JobQueuePayload = {
   running: JobView[];
   queued: JobView[];
   recent: JobView[];
+  /** How many of `recent` the page shows before «Show more…» (the rest are folded). */
+  recent_shown: number;
 };
+
+/** Finished jobs the page shows before «Show more…»; running and waiting jobs always show. */
+const RECENT_SHOWN = 5;
 
 function waitView(r: JobWaitReason): JobWaitView {
   switch (r.code) {
@@ -104,7 +109,13 @@ export function buildJobQueuePayload(now: Date, recentLimit = 20): JobQueuePaylo
     can_cancel: j.status === "queued",
     can_retry: schedulerOn && ingestRunKindOfJob(j.kind) != null && (j.status === "failed" || j.status === "lost"),
   });
-  return { scheduler_enabled: schedulerOn, running: running.map(view), queued: queued.map(view), recent: recent.map(view) };
+  return {
+    scheduler_enabled: schedulerOn,
+    running: running.map(view),
+    queued: queued.map(view),
+    recent: recent.map(view),
+    recent_shown: Math.min(RECENT_SHOWN, recent.length),
+  };
 }
 
 export type JobActionOutcome = { ok: true } | { ok: false; status: 404 | 409; message: string };

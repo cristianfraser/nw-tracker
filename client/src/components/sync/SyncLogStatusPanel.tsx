@@ -1,26 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../../i18n";
-import type { SyncSourceDisplayStatus, SyncStatusResponse } from "../../types";
+import type { SyncSourceStatusRow, SyncStatusResponse } from "../../types";
 import { cn } from "../../cn";
 import { useSyncForceStaleMutation } from "../../queries/hooks";
-import { formatDateTimeLabel } from "../../formatDateLabel";
 import { loadableClass } from "../ui/Loadable";
-import { Table } from "../ui/Table";
+import { OpenRow, OpenRows, RowFacts, StatusWord, type StatusTone } from "../ui/OpenRows";
+import { formatWhen, parseStoredInstant } from "../../storedInstant";
 import { formatDayKindLabel, formatNextSyncLabel } from "./formatSyncSchedule";
 import styles from "./SyncLogStatusPanel.module.css";
 import { Button } from "@crfrsr/ui";
-
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return formatDateTimeLabel(d);
-}
-
-function parseCreatedAtMs(iso: string): number {
-  const d = new Date(iso.includes("T") ? iso : `${iso.replace(" ", "T")}Z`);
-  return d.getTime();
-}
 
 function formatRemaining(ms: number): string {
   if (ms <= 0) return i18n.t("importSync.sync.agoNow");
@@ -33,7 +22,7 @@ function formatRemaining(ms: number): string {
   return remMin > 0 ? `${h} h ${remMin} min` : `${h} h`;
 }
 
-function formatAgoEs(msAgo: number): string {
+function formatAgo(msAgo: number): string {
   if (msAgo < 0) return i18n.t("importSync.sync.agoNow");
   const totalSec = Math.max(1, Math.floor(msAgo / 1000));
   if (totalSec < 60) return i18n.t("importSync.sync.agoSeconds", { n: totalSec });
@@ -50,15 +39,18 @@ function formatAgoEs(msAgo: number): string {
     : i18n.t("importSync.sync.agoHours", { n: h });
 }
 
-function statusLabel(
-  t: (key: string) => string,
-  status: SyncSourceDisplayStatus
-): string {
-  if (status === "stale") return t("importSync.sync.statusStale");
-  if (status === "disabled") return t("importSync.sync.statusDisabled");
-  return t("importSync.sync.statusOk");
+/** Stale only because the publisher has not released the expected day yet reads as waiting, not as a fault. */
+function statusTone(row: SyncSourceStatusRow): StatusTone {
+  if (row.publisher_lag) return "active";
+  if (row.status === "stale") return "bad";
+  return row.status === "ok" ? "ok" : "muted";
 }
 
+/**
+ * The market-data sources of the global sync: one line per source (its state, its next sync, and
+ * the day when it is not a trading day) that opens into the rest, with «Mark stale» on an
+ * up-to-date source.
+ */
 export function SyncLogStatusPanel({
   status,
   loading,
@@ -76,94 +68,85 @@ export function SyncLogStatusPanel({
   }, []);
 
   // No status yet: dashes, never «never synced» or «scheduler off» (those are answers, not loading).
-  const lastLine = useMemo(() => {
-    if (!status) return "—";
-    if (!status.last_sync_at) return t("importSync.sync.lastSyncNever");
-    const atMs = parseCreatedAtMs(status.last_sync_at);
-    if (Number.isNaN(atMs)) return t("importSync.sync.lastSyncNever");
-    return t("importSync.sync.lastSync", {
-      time: formatWhen(status.last_sync_at),
-      ago: formatAgoEs(nowMs - atMs),
-    });
-  }, [status, nowMs, t]);
+  // Worded at render: both lines follow the clock and the language.
+  const lastAtMs = status?.last_sync_at ? parseStoredInstant(status.last_sync_at).getTime() : Number.NaN;
+  const lastLine = !status
+    ? "—"
+    : !status.last_sync_at || Number.isNaN(lastAtMs)
+      ? t("importSync.sync.lastSyncNever")
+      : t("importSync.sync.lastSync", { time: formatWhen(status.last_sync_at), ago: formatAgo(nowMs - lastAtMs) });
 
-  const nextLine = useMemo(() => {
-    if (!status) return "—";
-    const sched = status.scheduler;
-    if (!sched.enabled) return t("importSync.sync.schedulerOff");
-    if (sched.in_flight) return t("importSync.sync.inFlight");
-    if (!sched.next_check_at) return t("importSync.sync.nextCheckUnknown");
-    const at = parseCreatedAtMs(sched.next_check_at);
-    const remaining = formatRemaining(at - nowMs);
-    return t("importSync.sync.nextCheck", {
-      time: formatWhen(sched.next_check_at),
-      remaining,
-    });
-  }, [status, nowMs, t]);
+  const sched = status?.scheduler;
+  const nextLine = !sched
+    ? "—"
+    : !sched.enabled
+      ? t("importSync.sync.schedulerOff")
+      : sched.in_flight
+        ? t("importSync.sync.inFlight")
+        : !sched.next_check_at
+          ? t("importSync.sync.nextCheckUnknown")
+          : t("importSync.sync.nextCheck", {
+              time: formatWhen(sched.next_check_at),
+              remaining: formatRemaining(parseStoredInstant(sched.next_check_at).getTime() - nowMs),
+            });
 
   return (
     <div className={loadableClass(loading, styles.panel)}>
       <p className={cn("muted", styles.scheduleLine)}>{lastLine}</p>
       <p className={cn("muted", styles.scheduleLine)}>{nextLine}</p>
-      <div className={styles.tableWrap}>
-        <Table
-          header={
-            <thead>
-              <tr>
-                <th>{t("importSync.sync.colSource")}</th>
-                <th>{t("importSync.sync.colNextSync")}</th>
-                <th>{t("importSync.sync.colHolidayToday")}</th>
-                <th>{t("importSync.sync.colStatus")}</th>
-                <th className={styles.colActions} />
-              </tr>
-            </thead>
-          }
-        >
-          {(status?.sources ?? []).map((row) => (
-            <tr key={row.source}>
-              <td>{t(`importSync.sync.sources.${row.source}`)}</td>
-              <td className="muted">{formatNextSyncLabel(row, t)}</td>
-              <td className="muted">{formatDayKindLabel(row.today_day_kind, t)}</td>
-              <td>
-                <span
-                  className={cn(
-                    row.publisher_lag
-                      ? styles.badgeWaiting
-                      : row.status === "stale"
-                        ? styles.badgeStale
-                        : row.status === "ok"
-                          ? styles.badgeOk
-                          : styles.badgeMuted
-                  )}
-                >
-                  {row.publisher_lag ? t("importSync.sync.statusWaitingPublisher") : statusLabel(t, row.status)}
-                </span>
-                {row.publisher_lag ? (
-                  <div className={cn("muted", styles.lagDetail)}>
-                    {t("importSync.sync.publisherLagDetail", {
-                      published: row.publisher_lag.published_ymd,
-                      expected: row.publisher_lag.expected_ymd,
-                      checked: formatWhen(row.publisher_lag.last_checked_at),
-                    })}
-                  </div>
-                ) : null}
-              </td>
-              <td className={styles.colActions}>
-                {row.status === "ok" ? (
-                  <Button variant="secondary"
-                    disabled={forceStale.isPending}
-                    onClick={() => forceStale.mutate(row.source)}
-                  >
+      <OpenRows>
+        {(status?.sources ?? []).map((row) => {
+          const next = formatNextSyncLabel(row, t);
+          const dayKind = formatDayKindLabel(row.today_day_kind, t);
+          const lag = row.publisher_lag
+            ? t("importSync.sync.publisherLagDetail", {
+                published: row.publisher_lag.published_ymd,
+                expected: row.publisher_lag.expected_ymd,
+                checked: formatWhen(row.publisher_lag.last_checked_at),
+              })
+            : null;
+          const firstParts = [
+            row.next_sync_imminent || row.next_sync ? t("importSync.sync.nextLine", { when: next }) : null,
+            row.today_day_kind !== "open" ? t("importSync.sync.todayIs", { kind: dayKind }) : null,
+          ].filter((p): p is string => p != null);
+          return (
+            <OpenRow
+              key={row.source}
+              title={t(`importSync.sync.sources.${row.source}`)}
+              status={
+                <StatusWord tone={statusTone(row)}>
+                  {row.publisher_lag
+                    ? t("importSync.sync.statusWaitingPublisher")
+                    : row.status === "stale"
+                      ? t("importSync.sync.statusStale")
+                      : row.status === "disabled"
+                        ? t("importSync.sync.statusDisabled")
+                        : t("importSync.sync.statusOk")}
+                </StatusWord>
+              }
+              first={lag ?? firstParts.join(" · ")}
+              action={
+                row.status === "ok" ? (
+                  <Button variant="secondary" size="sm" disabled={forceStale.isPending} onClick={() => forceStale.mutate(row.source)}>
                     {forceStale.isPending && forceStale.variables === row.source
                       ? t("importSync.sync.forceStalePending")
                       : t("importSync.sync.forceStale")}
                   </Button>
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </Table>
-      </div>
+                ) : null
+              }
+            >
+              <RowFacts
+                facts={[
+                  [t("importSync.sync.colNextSync"), next],
+                  [t("importSync.sync.colHolidayToday"), dayKind],
+                  [t("importSync.sync.factPublisher"), lag],
+                ]}
+              />
+            </OpenRow>
+          );
+        })}
+      </OpenRows>
+      {forceStale.error ? <p className="error">{forceStale.error.message}</p> : null}
     </div>
   );
 }
