@@ -604,6 +604,8 @@ export type UsTaxReturnForm8621 = {
   disposals: { date: string; units: number; proceeds_usd: number; basis_usd: number; ordinary_gain_usd: number; ordinary_loss_usd: number; capital_loss_usd: number }[]; // convention-ok: a Form 1040 figure is stated in dollars by law
   /** To Schedule 1 line 8z. */
   ordinary_income_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
+  /** The sales' part of `ordinary_income_usd`: the disposals' ordinary gains less their ordinary losses. */
+  disposals_ordinary_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   capital_loss_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law
   end_units: number;
   end_basis_usd: number; // convention-ok: a Form 1040 figure is stated in dollars by law

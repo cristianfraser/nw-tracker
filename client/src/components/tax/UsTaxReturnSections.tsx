@@ -403,7 +403,7 @@ function UsForm8621Section({ data }: { data: UsTaxReturnResponse }) {
             {t("taxReturn.us.form8621.sales", {
               label: r.label,
               count: r.disposals.length,
-              ordinary: formatForm1040Dollars(r.disposals.reduce((a, d) => a + d.ordinary_gain_usd - d.ordinary_loss_usd, 0)),
+              ordinary: formatForm1040Dollars(r.disposals_ordinary_usd),
               capital: formatForm1040Dollars(r.capital_loss_usd),
             })}
           </p>

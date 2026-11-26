@@ -329,6 +329,7 @@ function wiredSections(d: F1040Draft): Pick<UsTaxReturnResponse, "schedule_e" | 
         capital_loss_usd: usd(p.capitalLossUsd),
       })),
       ordinary_income_usd: usd(x.ordinaryIncomeUsd),
+      disposals_ordinary_usd: usd(x.disposals.reduce((a, p) => a + p.ordinaryGainUsd - p.ordinaryLossUsd, 0)),
       capital_loss_usd: usd(x.capitalLossUsd),
       end_units: Math.round(x.stateOut.units * 1e4) / 1e4,
       end_basis_usd: usd(x.stateOut.adjustedBasisUsd),
