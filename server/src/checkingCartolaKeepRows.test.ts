@@ -5,6 +5,7 @@ import { applyBankAccountStatements, parsedCartolaFromStatement } from "./bankAc
 import { checkingAccountId, importCartolaList } from "./checkingCartolaImport.js";
 import { importCheckingPartialMovements, partialMovementNote } from "./checkingPartialMovementsImport.js";
 import { insertBankPesoMovement } from "./movementWrites.js";
+import { foldMovementInto } from "./checkingCartolaRestate.js";
 import { dailyListingFacts } from "./movementListingFacts.js";
 import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { rolledBack } from "./ingestReceiver.js";
@@ -193,5 +194,50 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
     expect(applyBankAccountStatements(payload(later)).files.map((f) => f.status)).toEqual(["skipped_already_imported"]);
     expect(changes()).toEqual(mark);
     db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = '1805-06'`).run(checkingAccountId());
+  }));
+  it("a replaced month pairs each movement with its own row: an exact match is never taken by a looser one", inRollback(() => {
+    const first = statement([mv("1805-04-08", -50_000, "TRASPASO A CUENTA PROPIA"), mv("1805-04-08", -50_000, "TRASPASO A CUENTA PROPIA 77")]);
+    applyBankAccountStatements(payload(first));
+    const [a, b] = rowsOfMonth();
+    // The other rendering, forced: the movement with the longer text comes first and differs only in case.
+    const second = statement([mv("1805-04-08", -50_000, "Traspaso a cuenta propia 77"), mv("1805-04-08", -50_000, "TRASPASO A CUENTA PROPIA")]);
+    applyBankAccountStatements(payload(second, true));
+    const after = new Map(rowsOfMonth().map((r) => [r.id, r.note]));
+    expect(after.get(a!.id)).toMatch(/KEEPROWS TRASPASO A CUENTA PROPIA\|/);
+    expect(after.get(b!.id)).toMatch(/KEEPROWS Traspaso a cuenta propia 77\|/);
+  }));
+
+  it("a shorter rendering of a daily row is the same movement and writes nothing (no flip-flop)", inRollback(() => {
+    const account = checkingAccountId();
+    const full = { occurred_on: "1805-04-16", amount_clp: -4_000, description: `${TAG} Pago Gas Cliente 55`, document_no: "" };
+    importCheckingPartialMovements(account, [full], READ_AFTER_ROWS);
+    const before = rowsOfMonth();
+    const mark = changes();
+    const r = importCheckingPartialMovements(account, [{ ...full, description: `${TAG} Pago Gas` }], READ_AFTER_ROWS);
+    expect([r.inserted, r.restated, r.skipped_duplicate]).toEqual([0, 0, 1]);
+    expect(rowsOfMonth()).toEqual(before);
+    expect(changes()).toEqual(mark);
+  }));
+
+  it("a fold keeps the earlier arrival's assignments, either way round", inRollback(() => {
+    const account = checkingAccountId();
+    const cats = db.prepare(`SELECT id FROM cc_expense_categories ORDER BY id LIMIT 2`).all() as { id: number }[];
+    const mk = (d: string, stamp: string | null, cat: number) => {
+      const m = { occurred_on: "1805-04-20", amount_clp: -9_000, description: `${TAG} ${d}`, document_no: "" };
+      const id = insertBankPesoMovement({ accountId: account, amount: m.amount_clp, occurredOn: m.occurred_on, note: partialMovementNote(m), flowKind: null, listed: dailyListingFacts(m) });
+      const flow = (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+      db.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(flow);
+      if (stamp) db.prepare(`INSERT INTO flow_first_seen (flow_id, first_seen_on, first_seen_at, first_seen_seq) VALUES (?, ?, ?, 1)`).run(flow, stamp.slice(0, 10), stamp);
+      db.prepare(`INSERT INTO flow_categories (flow_id, portion, piece_seq, account_id, category_id) VALUES (?, 'gastos', -1, ?, ?)`).run(flow, account, cat);
+      return { id, flow };
+    };
+    const older = mk("Fold Older", "1805-04-20T10:00:00.000Z", cats[0]!.id);
+    const newer = mk("Fold Newer", "1805-04-21T10:00:00.000Z", cats[1]!.id);
+    foldMovementInto(older.id, newer.id, account);
+    expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(newer.flow)).toEqual([{ category_id: cats[0]!.id }]);
+    const older2 = mk("Fold Older Two", "1805-04-20T10:00:00.000Z", cats[0]!.id);
+    const newer2 = mk("Fold Newer Two", "1805-04-21T10:00:00.000Z", cats[1]!.id);
+    foldMovementInto(newer2.id, older2.id, account);
+    expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(older2.flow)).toEqual([{ category_id: cats[0]!.id }]);
   }));
 });

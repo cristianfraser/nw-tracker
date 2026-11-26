@@ -19,7 +19,7 @@
  * days). A cuota line's flow is its plan's: its evidence changes, the flow does not.
  *
  * **Fold** ({@link foldCardLineFlowInto}): a row that is the same charge as a kept row — its flow
- * folds into the kept row's (the kept row's assignments win, the older arrival stays,
+ * folds into the kept row's (the earlier arrival's assignments win, the older arrival stays,
  * `mergeFlowInto`), its evidence kept as history; the caller deletes the row.
  */
 import type { CardCanonicalLine, CardCanonicalStatement } from "nw-tracker-contracts";
@@ -29,6 +29,7 @@ import { ccLineOriginCurrency } from "../ccOriginCurrency.js";
 import { buildExpenseKey } from "../expenseKeys.js";
 import { keepEvidenceAsHistory } from "../flows/flowEvidence.js";
 import { adoptFlow, foldRetiredFlowOfDocumentInto, refreshFlowFromEvidence } from "../flows/flowAdoption.js";
+import { compareArrival, flowArrival } from "../flows/flowFirstSeen.js";
 
 /** The columns a document line is stored with (the line importer's INSERT). */
 const STORED = [
@@ -229,8 +230,12 @@ export function foldCardLineFlowInto(fromLineId: number, intoLineId: number, acc
   const from = cardLineOnAccount(fromLineId, accountId);
   const into = cardLineOnAccount(intoLineId, accountId);
   if (from.flow_id == null || into.flow_id == null) throw new Error(`card lines ${fromLineId} / ${intoLineId}: no flow`);
-  // The flows first: the fold's arrival rule reads the folded line's evidence as it stood.
-  if (from.flow_id !== into.flow_id) adoptFlow({ survivor: into.flow_id, arriving: from.flow_id }, { prefer: "survivor" });
+  // The flows first: the fold's arrival rule reads the folded line's evidence as it stood. The
+  // earlier arrival's assignments win (ties: the kept line's).
+  if (from.flow_id !== into.flow_id) {
+    const prefer = compareArrival(flowArrival(from.flow_id), flowArrival(into.flow_id)) < 0 ? "arriving" : "survivor";
+    adoptFlow({ survivor: into.flow_id, arriving: from.flow_id }, { prefer });
+  }
   keepEvidenceAsHistory(db, "cc_statement_lines", fromLineId);
   refreshFlowFromEvidence(into.flow_id);
 }

@@ -72,6 +72,8 @@ type FileLineRow = {
   dedupe_key: string | null;
   cuota_purchase_kind: string | null;
   flow_id: number | null;
+  statement_date: string;
+  statement_currency: string;
 };
 
 class RollBack extends Error {}
@@ -108,7 +110,8 @@ export function loadCardStatementLinePlanInput(
   const rows = db
     .prepare(
       `SELECT l.id, l.statement_id, l.transaction_date, l.posting_date, l.merchant, l.amount, l.currency, l.installment_flag,
-              l.nro_cuota_current, l.nro_cuota_total, l.parser_row_id, l.dedupe_key, l.cuota_purchase_kind, l.flow_id
+              l.nro_cuota_current, l.nro_cuota_total, l.parser_row_id, l.dedupe_key, l.cuota_purchase_kind, l.flow_id,
+              s.statement_date, s.currency AS statement_currency
        FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? ORDER BY l.id`
     )
@@ -136,6 +139,7 @@ export function loadCardStatementLinePlanInput(
     parser_row_id: r.parser_row_id,
     dedupe_key: r.dedupe_key,
     cuota_purchase_kind: r.cuota_purchase_kind,
+    statement_close: closeKey(r.statement_date, r.statement_currency),
     plan_match_amount_clp: planAmount.get(r.id) ?? null,
     arrival: arrivalOf(r.flow_id),
     // Only a replaced line can fan out (its signature decides it).
@@ -176,6 +180,7 @@ export function loadCardStatementLinePlanInput(
   }
 
   const incoming: PlanDocStatement[] = [...byStmt].map(([key, { statement, lines }]) => {
+    const close = closeKey(statement.close, statement.currency);
     const cardGroup = ccCardGroupOrDefault(statement.card_group);
     const statementIso = parseDdMmYyToIso(statement.close.trim());
     return {
@@ -183,6 +188,7 @@ export function loadCardStatementLinePlanInput(
       statement_id: afterHeaders.statementIdByKey.get(key)!,
       listing: isListingSourceKind(ccStatementSourceKindOf(statement.document)),
       currency: statement.currency,
+      close,
       lines: lines.map((line) => {
         const columns = storedLineColumns(statement, line);
         const oneShotClp =
@@ -229,6 +235,11 @@ export function loadCardStatementLinePlanInput(
     planted_payments: listPlantedPaymentLines(accountId),
     prepayment_roles,
   };
+}
+
+/** A statement's close as a takeover compares it: its ISO close day and its currency. */
+function closeKey(statementDate: string, currency: string): string {
+  return `${parseDdMmYyToIso(statementDate.trim()) ?? statementDate.trim()}\t${currency}`;
 }
 
 /** The highest line id in the table outside `statementIds` (0 when none). */

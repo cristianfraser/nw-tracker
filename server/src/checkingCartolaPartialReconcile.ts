@@ -59,7 +59,7 @@ export function parsePartialMovementNote(note: string): ParsedPartialMovementNot
  * and mojibake for accents diverges ("SEBASTIÃ,N" vs "SebastiÃ¡n"). Reduce to the A-Z0-9 skeleton
  * so only the stable characters compare.
  */
-function normalizeForPartialMatch(description: string): string {
+export function normalizeForPartialMatch(description: string): string {
   return description.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 

@@ -428,6 +428,8 @@ describe("statement-line plan applied, against today's import", () => {
     expect(changes()).toEqual(before);
   });
 
+  const lineIdOfParser = (prid: string) => (db.prepare(`SELECT id FROM cc_statement_lines WHERE parser_row_id = ?`).get(prid) as { id: number }).id;
+
   /** A bucket line the feed stopped listing, kept as an annulled purchase (its flow, with a category). */
   function annulledPurchase(iso: string, merchant: string, amount: number): { id: number; flow: number; category: number } {
     const lineId = bucketLine(iso, merchant, amount);
@@ -524,6 +526,27 @@ describe("statement-line plan applied, against today's import", () => {
       expect(replaceStatementLines(accountId, [clp, usd], { replaceStatementKeys: statementKeysOf([clp, usd]) }).keep_rows.wrote).toBe(false);
     });
 
+    for (const [name, lateStamp, winner] of [
+      ["the earlier listing's category wins over the line's", "2026-06-04T10:00:00.000Z", "late"],
+      ["the line's category wins over a later listing's", "2026-06-30T10:00:00.000Z", "line"],
+    ] as const) {
+      it(`a fold into a line on file keeps the earlier arrival's assignments: ${name}`, () => {
+        usdOnFile();
+        const usd = statement([line("2026-06-04", "STREAMING CO", 9.99, { currency: "usd", id: `kra-e2e-dir-${winner}` })], "usd");
+        replaceStatementLines(accountId, [usd], { replaceStatementKeys: statementKeysOf([usd]) });
+        const onFile = lineByMerchant("STREAMING CO");
+        const cats = db.prepare(`SELECT id FROM cc_expense_categories ORDER BY id LIMIT 2`).all() as { id: number }[];
+        db.prepare(`INSERT INTO flow_categories (flow_id, portion, piece_seq, account_id, category_id) VALUES (?, 'gastos', -1, ?, ?)`).run(onFile.flow_id, accountId, cats[0]!.id);
+        const late = bucketLine("2026-06-04", "STREAMING CO", 9.99, { currency: "usd", stamp: lateStamp });
+        db.prepare(`INSERT INTO flow_categories (flow_id, portion, piece_seq, account_id, category_id) VALUES ((SELECT flow_id FROM cc_statement_lines WHERE id = ?), 'gastos', -1, ?, ?)`).run(late, accountId, cats[1]!.id);
+        const clp = statement([line("2026-06-03", "FARMACIA", 8_500, { id: `kra-e2e-dir-farm-${winner}` })]);
+        replaceStatementLines(accountId, [clp], { replaceStatementKeys: statementKeysOf([clp]) });
+        expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(lineByMerchant("STREAMING CO").flow_id)).toEqual([
+          { category_id: winner === "late" ? cats[1]!.id : cats[0]!.id },
+        ]);
+      });
+    }
+
     it("an annulled purchase a statement line on file billed is settled when the month closes, its category on that line", () => {
       usdOnFile();
       const clp = statement([line("2026-06-05", "TIENDA ONLINE", 84_800, { id: "kra-e2e-tienda" })]);
@@ -536,5 +559,16 @@ describe("statement-line plan applied, against today's import", () => {
       expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(lineByMerchant("TIENDA ONLINE").flow_id)).toEqual([{ category_id: a.category }]);
       expect(replaceStatementLines(accountId, [clp, usd], { replaceStatementKeys: statementKeysOf([clp, usd]) }).keep_rows.wrote).toBe(false);
     });
+  });
+
+  it("a source takeover pairs only lines of the same close", () => {
+    const june = statement([line("2026-06-18", "KIOSCO CENTRO 4321", 5_000, { id: "kra-e2e-close-a" })]);
+    replaceStatementLines(accountId, [june], { replaceStatementKeys: statementKeysOf([june]) });
+    const gone = lineIdOfParser("kra-e2e-close-a");
+    const juneAgain = statement([line("2026-06-10", "LIBRERIA", 7_000, { id: "kra-e2e-close-b" })]);
+    const july = { ...statement([line("2026-06-19", "KIOSCO CENTRO", 5_000, { id: "kra-e2e-close-c" })]), document: "vitest-keep-rows-apply 2026-07-19 clp.pdf", close: "19/07/2026", period_from: "20/06/2026", period_to: "19/07/2026" };
+    const r = replaceStatementLines(accountId, [juneAgain, july], { replaceStatementKeys: statementKeysOf([juneAgain, july]) });
+    expect(r.keep_rows.removed).toContain(gone);
+    expect(r.keep_rows.restated).not.toContain(gone);
   });
 });

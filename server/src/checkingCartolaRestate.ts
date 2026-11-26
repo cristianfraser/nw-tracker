@@ -27,6 +27,7 @@ import { expenseKeyParts, flowIdForKey, mergeFlowInto } from "./flows/flowIdenti
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, occurredOnBasis, recordBankPosting } from "./movementBankPostings.js";
 import { listedFactsOfMovement, recordBankListingFacts, type BankListingFacts } from "./movementListingFacts.js";
 import { foldRetiredFlowOfDocumentInto } from "./flows/flowAdoption.js";
+import { compareArrival, flowArrival } from "./flows/flowFirstSeen.js";
 import { deleteMovements, repointMovementReferences, restateBankRowDocument } from "./movementWrites.js";
 
 type BankRow = { id: number; account_id: number | null; amount: number; currency: string; flow_id: number | null; kind: string | null };
@@ -122,7 +123,9 @@ export function foldMovementInto(movementId: number, intoMovementId: number, acc
   const row = bankRow(movementId, accountId, dbHandle);
   const kept = bankRow(intoMovementId, accountId, dbHandle);
   // The flows first: the fold's arrival rule reads the folded row's evidence as it stood.
-  mergeFlowInto(row.flow_id, kept.flow_id, "to", dbHandle);
+  // The earlier arrival's assignments win (ties: the kept row's).
+  const prefer = compareArrival(flowArrival(row.flow_id, dbHandle), flowArrival(kept.flow_id, dbHandle)) < 0 ? "from" : "to";
+  mergeFlowInto(row.flow_id, kept.flow_id, prefer, dbHandle);
   keepEvidenceAsHistory(dbHandle, "movements", movementId);
   repointMovementReferences(movementId, intoMovementId, dbHandle);
   deleteMovements([movementId], dbHandle);

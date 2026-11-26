@@ -76,6 +76,7 @@ import { carryPlanPrepaymentLines } from "../ccPlanPrepayments.js";
 import { confirmManualPaymentForPlanted, listPlantedPaymentLines } from "../ccPlantedPayments.js";
 import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
 import { adoptFlow, flowExists, rowFlowId } from "../flows/flowAdoption.js";
+import { compareArrival, flowArrival } from "../flows/flowFirstSeen.js";
 import {
   adoptCardLineMoves,
   CC_LINE_REF_SELECT,
@@ -357,7 +358,9 @@ function applyInSession(
     if (!a) throw new Error(`keep-rows apply: annulled purchase ${f.annulmentId} is gone`);
     const survivor = rowFlowId("cc_statement_lines", f.lineId);
     if (flowExists(a.flow_id) && flowExists(survivor) && a.flow_id !== survivor) {
-      adoptFlow({ survivor, arriving: a.flow_id }, { prefer: "survivor" });
+      // The earlier arrival's assignments win (ties: the line's).
+      const prefer = compareArrival(flowArrival(a.flow_id), flowArrival(survivor)) < 0 ? "arriving" : "survivor";
+      adoptFlow({ survivor, arriving: a.flow_id }, { prefer });
     }
     deleteAnnulledPurchase(a.id);
     billed.push(a.id);

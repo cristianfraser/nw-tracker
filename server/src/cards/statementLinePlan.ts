@@ -68,7 +68,7 @@ import {
   type CcLineMove,
   type CcLineRef,
 } from "../flows/cardLineAdoption.js";
-import type { FlowArrival } from "../flows/flowFirstSeen.js";
+import { compareArrival, type FlowArrival } from "../flows/flowFirstSeen.js";
 import type { PlantedPaymentRow } from "../ccPlantedPayments.js";
 
 // ── input ────────────────────────────────────────────────────────────────────────────────────────
@@ -88,6 +88,8 @@ export type PlanFileLine = PlanLineColumns & {
   statement_id: number;
   dedupe_key: string | null;
   cuota_purchase_kind: string | null;
+  /** Its statement's close and currency (`<ISO close>\t<currency>`), for a source takeover. */
+  statement_close: string;
   /** When its flow first reached the ledger (`flowArrival`). */
   arrival: FlowArrival;
   /** What its flow carries (`cardLineAssignmentSignature`), for the re-import fan-out; null when nothing. */
@@ -122,6 +124,8 @@ export type PlanDocStatement = {
   /** A listing (`listing_open` / `listing_other`): out of scope, refused. */
   listing: boolean;
   currency: string;
+  /** Its close and currency (`<ISO close>\t<currency>`). */
+  close: string;
   lines: PlanDocLine[];
 };
 
@@ -703,24 +707,36 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   const movesAll = [...moves.moves, ...fan.moves];
   const pairedFrom = new Set(movesAll.map((m) => m.from.lineId));
   const pairedTo = new Set(movesAll.map((m) => m.to.lineId));
+  // Only lines of the same close (close day and currency) pair, and each pass runs over every gone
+  // line before the next, looser one: the same merchant, then a matching or re-rendered one.
   const takeoverFrom = new Set<number>();
-  for (const id of [...vanished].sort((a, b) => a - b)) {
-    if (hiddenIds.has(id) || pairedFrom.has(id) || removeWhy.get(id)?.why !== "replaced_statement_line_gone") continue;
-    const l = fileById.get(id)!;
-    if (l.installment_flag) continue;
-    const target = [...live.values()]
-      .filter((d) => d.doc && !d.installment_flag && !pairedTo.has(d.id) && !beforeSigs.has(sig(d.id, parserRow(d))))
-      .sort((a, b) => a.id - b.id)
-      .find((d) => {
-        const docCurrency = input.incoming.find((st) => st.statement_id === d.statement_id)?.currency ?? d.currency;
-        if (!sameBucketLineFigures(l, { line: d, currency: docCurrency })) return false;
-        const ra = merchantRenderingKey(String(l.merchant ?? ""));
-        return merchantsMatchForCrossDedupe(l.merchant, d.merchant) || (ra !== "" && ra === merchantRenderingKey(String(d.merchant ?? "")));
+  const closeOfDoc = new Map(input.incoming.map((st) => [st.key, st]));
+  const candidates = [...live.values()]
+    .filter((d) => d.doc && !d.installment_flag && !beforeSigs.has(sig(d.id, parserRow(d))))
+    .sort((a, b) => a.id - b.id);
+  const gone = [...vanished]
+    .sort((a, b) => a - b)
+    .filter((id) => !hiddenIds.has(id) && !pairedFrom.has(id) && removeWhy.get(id)?.why === "replaced_statement_line_gone" && !fileById.get(id)!.installment_flag);
+  const sameMerchant = (a: string | null, b: string | null) => String(a ?? "").trim().toUpperCase() === String(b ?? "").trim().toUpperCase();
+  const renderingMatch = (a: string | null, b: string | null) => {
+    const ra = merchantRenderingKey(String(a ?? ""));
+    return merchantsMatchForCrossDedupe(a, b) || (ra !== "" && ra === merchantRenderingKey(String(b ?? "")));
+  };
+  for (const merchantMatches of [sameMerchant, renderingMatch]) {
+    for (const id of gone) {
+      if (takeoverFrom.has(id)) continue;
+      const l = fileById.get(id)!;
+      const target = candidates.find((d) => {
+        if (pairedTo.has(d.id)) return false;
+        const st = closeOfDoc.get(d.doc!.statement_key)!;
+        if (st.close !== l.statement_close) return false;
+        return sameBucketLineFigures(l, { line: d, currency: st.currency }) && merchantMatches(l.merchant, d.merchant);
       });
-    if (!target) continue;
-    pairedTo.add(target.id);
-    takeoverFrom.add(id);
-    planned.fold(docToken(target.id), lineToken(id));
+      if (!target) continue;
+      pairedTo.add(target.id);
+      takeoverFrom.add(id);
+      planned.fold(docToken(target.id), lineToken(id));
+    }
   }
   if (takeoverFrom.size > 0) {
     plan.ambiguous = plan.ambiguous.filter((a) => !a.rows.every((r) => r.kind === "line" && takeoverFrom.has(r.id)));
@@ -940,18 +956,4 @@ function assertExclusiveOutcomes(plan: CardStatementLinePlan, input: CardStateme
   if (problems.length > 0) throw new Error(`statement-line planner: outcomes overlap: ${problems.join("; ")}`);
 }
 
-/**
- * The order of {@link olderArrival}: a flow on file before the stamps is older than any stamp;
- * between stamps by day, time and order (a missing time or order counts as earlier); a flow that is
- * no arrival (a statement cuota line's) last.
- */
-export function compareArrival(a: FlowArrival, b: FlowArrival): number {
-  const rank = (x: FlowArrival): number => (x.kind === "before_stamps" ? 0 : x.kind === "stamped" ? 1 : 2);
-  if (rank(a) !== rank(b)) return rank(a) - rank(b);
-  if (a.kind !== "stamped" || b.kind !== "stamped") return 0;
-  const ka = [a.stamp.on, a.stamp.at ?? "", a.stamp.seq ?? 0] as const;
-  const kb = [b.stamp.on, b.stamp.at ?? "", b.stamp.seq ?? 0] as const;
-  if (ka[0] !== kb[0]) return ka[0] < kb[0] ? -1 : 1;
-  if (ka[1] !== kb[1]) return ka[1] < kb[1] ? -1 : 1;
-  return ka[2] - kb[2];
-}
+export { compareArrival } from "../flows/flowFirstSeen.js";

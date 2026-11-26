@@ -4,7 +4,7 @@ import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { recordBankPosting } from "./movementBankPostings.js";
 import { dailyListingFacts, recordBankListingFacts } from "./movementListingFacts.js";
-import { partialDescriptionsMatch, partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
+import { normalizeForPartialMatch, partialDescriptionsMatch, partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
@@ -29,8 +29,12 @@ export function partialMovementNote(mv: PartialBankMovement): string {
 
 const noteRows = db.prepare(`SELECT id FROM movements WHERE account_id = ? AND note = ? ORDER BY id`);
 
-/** The daily-listing row on file that `mv` lists again under other text, unless this listing already accounts for it. */
-function relistedDailyRow(accountId: number, mv: PartialBankMovement, claimed: ReadonlySet<number>): number | null {
+/**
+ * The daily-listing row on file that `mv` lists again under other text, unless this listing already
+ * accounts for it: of the rows it matches, the one whose text is closest (the longest), and whether
+ * the listing's text is longer (more informative: only then is the row restated).
+ */
+function relistedDailyRow(accountId: number, mv: PartialBankMovement, claimed: ReadonlySet<number>): { id: number; longer: boolean } | null {
   const rows = db
     .prepare(
       `SELECT m.id, e.stated_description AS description, e.stated_document_no AS document_no FROM movements m
@@ -40,10 +44,11 @@ function relistedDailyRow(accountId: number, mv: PartialBankMovement, claimed: R
     )
     .all(accountId, mv.occurred_on, mv.amount_clp) as { id: number; description: string | null; document_no: string | null }[];
   const doc = String(mv.document_no ?? "").trim();
-  const hit = rows.find(
-    (r) => !claimed.has(r.id) && (r.document_no ?? "") === doc && r.description != null && partialDescriptionsMatch(r.description, mv.description)
-  );
-  return hit?.id ?? null;
+  const len = (d: string) => normalizeForPartialMatch(d).length;
+  const hit = rows
+    .filter((r) => !claimed.has(r.id) && (r.document_no ?? "") === doc && r.description != null && partialDescriptionsMatch(r.description, mv.description))
+    .sort((a, b) => len(b.description!) - len(a.description!) || a.id - b.id)[0];
+  return hit ? { id: hit.id, longer: len(mv.description) > len(hit.description!) } : null;
 }
 
 /** One imported/skipped flow, surfaced to the UI so the import result lists the actual movements. */
@@ -167,13 +172,20 @@ function importPartialMovements(
       }
       // A row on file the bank lists again under other text (a pending movement settled: the same
       // bank day, pesos and document, a description one is a prefix of — `partialDescriptionsMatch`)
-      // is that row: it takes the listing's wording in place, never a second row.
+      // is that row, never a second one: a longer rendering restates it in place.
+      // A shorter or equal rendering is the same movement too: it writes nothing (no flip-flop).
       const relisted = relistedDailyRow(accountId, mv, claimedRows);
+      if (relisted != null && !relisted.longer) {
+        claimedRows.add(relisted.id);
+        skipped_duplicate += 1;
+        skipped_flows.push({ ...flowOf(mv), reason: "duplicate" });
+        continue;
+      }
       if (relisted != null) {
-        claimedRows.add(relisted);
-        restateBankRowDocument(relisted, { note, flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp) });
-        recordBankListingFacts(relisted, dailyListingFacts(mv), db);
-        db.prepare(`UPDATE flows SET description = ? WHERE id = (SELECT flow_id FROM movements WHERE id = ?)`).run(note, relisted);
+        claimedRows.add(relisted.id);
+        restateBankRowDocument(relisted.id, { note, flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp) });
+        recordBankListingFacts(relisted.id, dailyListingFacts(mv), db);
+        db.prepare(`UPDATE flows SET description = ? WHERE id = (SELECT flow_id FROM movements WHERE id = ?)`).run(note, relisted.id);
         restated += 1;
         skipped_flows.push({ ...flowOf(mv), reason: "restated" });
         continue;

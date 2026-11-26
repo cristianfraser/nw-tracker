@@ -6,8 +6,9 @@
  * planner's account of the old end state and the real one. Exits 1 on any disagreement. Never writes.
  *
  * `--apply-new`: instead, runs the production import as its entry point does
- * (`importStatementDocuments` with the statements' replace keys / `importCartolaList`: a month on
- * file is written again only by a fuller file, or with `--force`) inside a rolled-back transaction and prints what it would write: rows restated / inserted / folded / removed, arrival
+ * (`importStatementDocuments` with the statements' replace keys / `applyBankAccountStatements`,
+ * the ingest kind's apply, for a `bank_account.statements` payload or one cartola month wrapped as
+ * `--product=checking|demand_deposit` [`--force`]) inside a rolled-back transaction and prints what it would write: rows restated / inserted / folded / removed, arrival
  * stamps created, whether the card-line session finish ran, the rows changed in all. The tool for
  * validating a statement or cartola on a snapshot copy before deploying.
  *
@@ -83,6 +84,38 @@ async function readStatements(f: string) {
   });
 }
 
+/**
+ * A `bank_account.statements` payload as the ingest kind sends it, or one parsed cartola month
+ * wrapped as a statement of `--product=checking|demand_deposit` (default checking).
+ */
+function readBankPayload(f: string): import("nw-tracker-contracts").BankAccountStatementsPayload {
+  const raw = readJson(f) as Record<string, unknown>;
+  if (raw && typeof raw === "object" && "account" in raw && Array.isArray(raw.statements)) {
+    return raw as unknown as import("nw-tracker-contracts").BankAccountStatementsPayload;
+  }
+  const c = readCartola(f);
+  const product = (arg("product") ?? "checking") as "checking" | "demand_deposit";
+  return {
+    account: { issuer: "santander", product },
+    force_reimport: flag("force"),
+    unreadable: [],
+    statements: [
+      {
+        document: c.source_file,
+        period_month: c.period_month,
+        period_from: c.period_from,
+        period_to: c.period_to,
+        opening_balance: c.saldo_inicial_clp,
+        closing_balance: c.saldo_final_clp,
+        month_closing_balances: c.month_saldo_final_clp ?? null,
+        movements: c.movements.map((m) => ({ date: m.occurred_on, branch: m.branch, description: m.description, document_no: m.document_no, amount: m.amount_clp })),
+        skipped_rows: c.skipped,
+        notes: c.notes,
+      },
+    ],
+  } as import("nw-tracker-contracts").BankAccountStatementsPayload;
+}
+
 function readCartola(f: string): import("../src/checkingCartolaParse.js").ParsedCheckingCartola {
   const cartola = readJson(f) as import("../src/checkingCartolaParse.js").ParsedCheckingCartola;
   if (!cartola || typeof cartola.period_month !== "string" || !Array.isArray(cartola.movements)) {
@@ -97,9 +130,18 @@ if (flag("apply-new")) {
   await import("../src/expenseAssignmentWrites.js");
   const { importStatementDocuments } = await import("../src/cards/statementLinePlanApply.js");
   const { statementKeysOf } = await import("../src/ccInstallmentLedgerMerge.js");
-  const { importCartolaList } = await import("../src/checkingCartolaImport.js");
+  const { applyBankAccountStatements, bankStatementAccountId } = await import("../src/bankAccountStatementsApply.js");
   const statements = statementsFile ? await readStatements(statementsFile) : null;
-  const cartola = cartolaFile ? readCartola(cartolaFile) : null;
+  const bankPayload = cartolaFile ? readBankPayload(cartolaFile) : null;
+  if (bankPayload && bankStatementAccountId(bankPayload.account) !== accountId) {
+    throw new Error(`--account=${accountId} is not the account the payload names (${bankStatementAccountId(bankPayload.account)})`);
+  }
+  const accountRows = () =>
+    new Map(
+      (db.prepare(`SELECT id, note, flow_id FROM movements WHERE account_id = ?`).all(accountId) as { id: number; note: string; flow_id: number }[]).map(
+        (r) => [r.id, r]
+      )
+    );
   class RollBack extends Error {}
   const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
   const totalChanges = () => count(`SELECT total_changes() AS n`);
@@ -121,18 +163,26 @@ if (flag("apply-new")) {
         }
         console.log(`session finish (balances, valuations, financing links): ${k.wrote ? "yes" : "no — nothing changed"}`);
       } else {
-        // As the cartola apply runs it (`applyBankAccountStatements`): a month on file is written again
-        // only when this file replaces it (fuller); `--force` as a forced re-import.
-        const c = cartola!;
-        const logs: Parameters<typeof importCartolaList>[3] = [];
+        // The ingest kind's own apply (`applyBankAccountStatements`): the cuenta vista's month
+        // split, the pruning of months a document no longer covers, the forced re-import's rules.
+        const before = accountRows();
         const flows = { inserted: [] as { description: string }[], skipped: [] as { reason: string }[] };
-        importCartolaList(accountId, [{ cartola: c, label: c.source_file }], { dryRun: false, forceReimport: flag("force") }, logs, flows as never);
-        console.log(`cartola: ${c.source_file} ${c.period_month} (${c.movements.length} movements): ${logs.map((f) => `${f.status}${f.error ? ` — ${f.error}` : ""}`).join("; ")}`);
-        const reasons = new Map<string, number>();
-        for (const s of flows.skipped) reasons.set(s.reason, (reasons.get(s.reason) ?? 0) + 1);
+        const result = applyBankAccountStatements(bankPayload!, flows as never);
+        for (const f of result.files) console.log(`  ${f.file} ${f.period_month}: ${f.status}${f.error ? ` — ${f.error}` : ""}`);
+        const after = accountRows();
+        const restatedRows = [...after].filter(([id, n]) => before.has(id) && before.get(id)!.note !== n.note);
+        const insertedRows = [...after].filter(([id]) => !before.has(id));
+        const goneRows = [...before].filter(([id]) => !after.has(id));
+        const liveFlows = new Set([...after.values()].map((r) => r.flow_id));
+        const folded = goneRows.filter(([, r]) => liveFlows.has(r.flow_id));
+        const removed = goneRows.filter(([, r]) => !liveFlows.has(r.flow_id));
         console.log(
-          `the new import would write: movements inserted ${flows.inserted.length}; kept: ${[...reasons].map(([r, n]) => `${r} ${n}`).join(", ") || "none"}`
+          `the new import would write: restated ${restatedRows.length} · inserted ${insertedRows.length} · folded ${folded.length} · removed ${removed.length}`
         );
+        for (const [id, r] of restatedRows) console.log(`  restate row ${id}: «${before.get(id)!.note}» → «${r.note}»`);
+        for (const [id, r] of insertedRows) console.log(`  insert  row ${id}: «${r.note}»`);
+        for (const [id, r] of folded) console.log(`  fold    row ${id} (flow ${r.flow_id}): «${r.note}»`);
+        for (const [id, r] of removed) console.log(`  remove  row ${id}: «${r.note}»`);
       }
       console.log(`arrival stamps created: ${stamps() - stamps0}`);
       console.log(`rows changed in all (total_changes): ${totalChanges() - changes0}`);

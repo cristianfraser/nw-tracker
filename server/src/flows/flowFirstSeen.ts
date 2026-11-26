@@ -220,3 +220,19 @@ export function flowWriteStampsByFlowId(dbHandle: Database = db): Map<number, { 
     .all() as { flow_id: number; first_seen_at: string; first_seen_seq: number }[];
   return new Map(rows.map((r) => [r.flow_id, { atMs: Date.parse(r.first_seen_at), seq: r.first_seen_seq }]));
 }
+
+/**
+ * The order of {@link olderArrival}: a flow on file before the stamps is older than any stamp;
+ * between stamps by day, time and order (a missing time or order counts as earlier); a flow that is
+ * no arrival (a statement cuota line's) last.
+ */
+export function compareArrival(a: FlowArrival, b: FlowArrival): number {
+  const rank = (x: FlowArrival): number => (x.kind === "before_stamps" ? 0 : x.kind === "stamped" ? 1 : 2);
+  if (rank(a) !== rank(b)) return rank(a) - rank(b);
+  if (a.kind !== "stamped" || b.kind !== "stamped") return 0;
+  const ka = [a.stamp.on, a.stamp.at ?? "", a.stamp.seq ?? 0] as const;
+  const kb = [b.stamp.on, b.stamp.at ?? "", b.stamp.seq ?? 0] as const;
+  if (ka[0] !== kb[0]) return ka[0] < kb[0] ? -1 : 1;
+  if (ka[1] !== kb[1]) return ka[1] < kb[1] ? -1 : 1;
+  return ka[2] - kb[2];
+}

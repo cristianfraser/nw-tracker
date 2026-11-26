@@ -360,6 +360,7 @@ describe("planCardStatementLines (pure)", () => {
       plan_match_amount_clp: amount > 0 ? amount : null,
       dedupe_key: `web:${id}`,
       cuota_purchase_kind: null,
+      statement_close: "2026-06-20\tclp",
       arrival,
       assignment_signature: null,
     };
@@ -385,6 +386,7 @@ describe("planCardStatementLines (pure)", () => {
           statement_id: 20,
           listing: false,
           currency: "clp",
+          close: "2026-06-20\tclp",
           lines: docLines.map((d, i) => ({
             id: 0,
             transaction_date: d.day,
