@@ -46,7 +46,10 @@ import { startIngestRunScheduler } from "./ingestRunScheduler.js";
 import { startJobQueueExecutor } from "./jobQueueExecutor.js";
 import { syncCardToCardPaymentTransfersAtBoot } from "./cardToCardPayments.js";
 import { registerUsageRoutes } from "./routes/usage.js";
-import { startUsageLogFlusher, usageLogEnabled, usageLogMiddleware } from "./usageLog.js";
+import { flushUsageLog, startUsageLogFlusher, usageLogEnabled, usageLogMiddleware } from "./usageLog.js";
+import { installGracefulShutdown } from "./gracefulShutdown.js";
+import { stopAllScheduledJobs } from "./schedulerKernel.js";
+import { db } from "./db.js";
 import { jsonResponseMiddleware } from "./jsonResponse.js";
 import { LIVE_INPUTS_HEADER, liveInputsMiddleware } from "./liveInputsHeader.js";
 import { DisplayUnitRequestError } from "./displayUnits.js";
@@ -154,7 +157,7 @@ app.use(
   }
 );
 
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`nw-tracker API http://${HOST}:${PORT}`);
   startGlobalSyncScheduler();
   startDemoResetScheduler();
@@ -165,5 +168,19 @@ app.listen(PORT, HOST, () => {
   startIngestRunScheduler();
   startJobQueueExecutor();
   if (usageLogEnabled()) startUsageLogFlusher();
+});
+
+// SIGTERM / SIGINT: drain, stop the schedulers, flush, checkpoint and close (gracefulShutdown.ts).
+installGracefulShutdown(process, {
+  closeServer: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
+  closeAllConnections: () => server.closeAllConnections(),
+  stopSchedulers: () => console.log(`shutdown: stopped ${stopAllScheduledJobs()} scheduled jobs`),
+  flushUsageLog: usageLogEnabled() ? () => void flushUsageLog() : undefined,
+  checkpointAndCloseDb: () => {
+    db.pragma("wal_checkpoint(TRUNCATE)");
+    db.close();
+  },
+  exit: (code) => process.exit(code),
+  log: (m) => console.log(m),
 });
 
