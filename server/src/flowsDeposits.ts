@@ -278,7 +278,7 @@ export function flowsDepositsNetTotalUsdByAccount(): Map<number, number> {
  *
  * `withMortgageCarrying` adds the carrying as negative rows on the property (`mortgage_carrying`)
  * so its deposits read amortización only — the flows overview's rule; then the total is the
- * overview's deposits + deposits_pre_tax. Its events must pair one-to-one by deposit movement:
+ * overview's deposits + contributions_outside_payslip. Its events must pair one-to-one by deposit movement:
  * the pesos (`clp`, which pair the events) and the unit's (`unit`).
  */
 export function flowDepositRowsInUnit(

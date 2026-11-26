@@ -37,8 +37,8 @@ export const DTO_SCHEMA_VERSIONS = {
    * purchase's «Por cuota» slice may carry `billing_account_id` (the financing card).
    */
   latest_movements: 7,
-  /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`. */
-  flows_overview: 2,
+  /** `GET /api/flows/overview` (the home «Flujos» periods store its `closed` block); v2 adds `cash_fx`; v3: `deposits_pre_tax` gives way to `contributions_outside_payslip`, the payslips' savings deductions counted in income and deposits. */
+  flows_overview: 3,
 } as const;
 
 export type DtoSchemaVersionName = keyof typeof DTO_SCHEMA_VERSIONS;

@@ -1397,7 +1397,7 @@
       "expensesBasis": "Gastos por mes de compra; cuotas en el mes facturado",
       "savings": "Ahorro",
       "deposits": "Depósitos",
-      "depositsPreTax": "AFP+AFC (cotizaciones)",
+      "contributionsOutsidePayslip": "Aportes fuera de la liquidación",
       "cardSpentMinusPaid": "Tarjetas: gastado − pagado",
       "cashChange": "Variación de caja",
       "cashFx": "Fx de caja",
@@ -1579,6 +1579,8 @@
     "checksPending": "pendiente (parámetros aún no publicados)"
   },
   "deposits": {
+    "partPayrollFunded": "Cuentas financiadas por planilla",
+    "partOther": "Otras cuentas",
     "totalLabel": "Total histórico:",
     "chartTitle": "Aportes por categoría",
     "chartEmpty": "Sin depósitos en este período.",

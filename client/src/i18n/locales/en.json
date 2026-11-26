@@ -1397,7 +1397,7 @@
       "expensesBasis": "Expenses by month of purchase; cuotas in the month billed",
       "savings": "Savings",
       "deposits": "Deposits",
-      "depositsPreTax": "AFP+AFC (contributions)",
+      "contributionsOutsidePayslip": "Contributions outside the payslip",
       "cardSpentMinusPaid": "Cards: spent − paid",
       "cashChange": "Cash change",
       "cashFx": "Cash fx",
@@ -1579,6 +1579,8 @@
     "checksPending": "pending (parameters not published yet)"
   },
   "deposits": {
+    "partPayrollFunded": "Payroll-funded accounts",
+    "partOther": "Other accounts",
     "totalLabel": "All-time total:",
     "chartTitle": "Contributions by category",
     "chartEmpty": "No deposits in this period.",

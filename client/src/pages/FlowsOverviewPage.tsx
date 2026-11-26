@@ -17,7 +17,7 @@ import type { FlowsOverviewTotals } from "../types";
 /** The net-worth change's parts, as the server derives it (`derivedFlowsOverviewFields`). */
 const NET_WORTH_PARTS: readonly { labelKey: string; value: (r: FlowsOverviewTotals) => number }[] = [
   { labelKey: "flows.overview.savings", value: (r) => r.savings },
-  { labelKey: "flows.overview.depositsPreTax", value: (r) => r.deposits_pre_tax },
+  { labelKey: "flows.overview.contributionsOutsidePayslip", value: (r) => r.contributions_outside_payslip },
   { labelKey: "flows.overview.pl", value: (r) => r.pl },
   { labelKey: "flows.overview.cashFx", value: (r) => r.cash_fx },
 ];

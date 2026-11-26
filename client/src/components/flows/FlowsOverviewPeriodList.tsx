@@ -47,7 +47,7 @@ const SUMS: readonly { headKey: string; lines: readonly SumLine[]; total: SumLin
     headKey: "flows.overview.groupInvestments",
     lines: [
       { labelKey: "flows.overview.deposits", value: (r) => r.deposits },
-      { labelKey: "flows.overview.depositsPreTax", value: (r) => r.deposits_pre_tax },
+      { labelKey: "flows.overview.contributionsOutsidePayslip", value: (r) => r.contributions_outside_payslip },
       { labelKey: "flows.overview.pl", value: (r) => r.pl },
     ],
     total: { labelKey: "flows.overview.investmentsChange", value: (r) => r.investments_change },
@@ -56,7 +56,7 @@ const SUMS: readonly { headKey: string; lines: readonly SumLine[]; total: SumLin
     headKey: "flows.overview.groupNetWorth",
     lines: [
       { labelKey: "flows.overview.savings", value: (r) => r.savings },
-      { labelKey: "flows.overview.depositsPreTax", value: (r) => r.deposits_pre_tax },
+      { labelKey: "flows.overview.contributionsOutsidePayslip", value: (r) => r.contributions_outside_payslip },
       { labelKey: "flows.overview.pl", value: (r) => r.pl },
       { labelKey: "flows.overview.cashFx", value: (r) => r.cash_fx },
     ],

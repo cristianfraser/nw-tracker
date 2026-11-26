@@ -6,15 +6,21 @@
  * checking ledger, so the /flows overview and the home dashboard only pick rows.
  *
  * «Caja» = the accounts under Checking accounts (`accountIdsUnderCheckingAccounts`).
- * - income: cartola abonos + manual income (salary/severance on their payroll month) + the
- *   payroll deductions counted as gastos, which never reached the account;
+ * - income: cartola abonos + manual income (salary/severance on their payroll month) + what the
+ *   payslips deducted before the pay reached the account: the deductions counted as gastos and
+ *   the ones that are saving (`loadPayslipSavingsLines`: the pension contribution, the
+ *   unemployment insurance, an APV, a 401(k), an HSA), on the payslip's month;
  * - expenses: gasto del mes of the installment mode; a mortgage-linked payment counts only its
  *   carrying (interés + seguros); refunds count negatively;
  * - savings = income − expenses;
- * - deposits: post-tax net deposits of every account NOT under Checking accounts (a transfer
- *   between two such accounts nets to zero; money back into checking is negative); the linked
- *   mortgage deposit keeps only its amortización;
- * - deposits_pre_tax: AFP/AFC cotizaciones (payroll-deducted, never through checking);
+ * - deposits: net deposits of every account NOT under Checking accounts (a transfer between two
+ *   such accounts nets to zero; money back into checking is negative; the linked mortgage deposit
+ *   keeps only its amortización), plus the payslips' savings deductions into the accounts only
+ *   payroll funds (AFP, AFC, 401(k), HSA: money that was income and went straight in);
+ * - contributions_outside_payslip: what those payroll-funded accounts were credited (their own
+ *   positive deposit events) less the payslips' deductions into them: the employer's share, a
+ *   contribution paid outside payroll, a month with no payslip on file, and the shift between a
+ *   payslip's month and the day the fund credits it. It raises net worth without being income;
  * - card_spent: the card lines' part of the expenses, plus the amortización of a mortgage payment
  *   a card paid (it is in deposits, on the payment day); card_paid: what the cards were paid out of checking, net
  *   of card top-ups into it (`flowsOverviewCash.ts`). Cash leaves when a card is paid, not when
@@ -30,8 +36,8 @@
  *   rate the dollars are held at, a movement in no leg). Shown, never forced to zero;
  * - pl: market P/L of the deposit accounts outside checking (`flowsOverviewPl.ts`), with the
  *   property's mortgage carrying added back (it is in expenses already);
- * - investments_change = deposits + deposits_pre_tax + pl;
- * - net_worth_change = savings + deposits_pre_tax + pl + cash_fx.
+ * - investments_change = deposits + contributions_outside_payslip + pl;
+ * - net_worth_change = savings + contributions_outside_payslip + pl + cash_fx.
  */
 import { lineAmount } from "./lineMoney.js";
 import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
@@ -76,6 +82,8 @@ import {
 } from "./flowsMortgageCarrying.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 import { roundToCurrency } from "./displayUnits.js";
+import { lineValueIn } from "./lineMoney.js";
+import { loadPayslipSavingsLines, type PayslipSavingsLine } from "./payslipExpenseLines.js";
 
 export type FlowsOverviewRow = {
   /** YYYY-MM (month rows) or YYYY-MM-DD (day rows). */
@@ -86,9 +94,10 @@ export type FlowsOverviewRow = {
   expenses: number;
   /** income − expenses. */
   savings: number;
-  /** Deposits of the accounts outside Checking accounts (pre-tax AFP/AFC apart). */
+  /** Deposits of the accounts outside Checking accounts, the payslips' savings deductions included. */
   deposits: number;
-  deposits_pre_tax: number;
+  /** Credited to the payroll-funded accounts beyond the payslips' deductions (see the module comment). */
+  contributions_outside_payslip: number;
   /** The card lines' part of expenses, plus the amortización of a mortgage payment a card paid. */
   card_spent: number;
   /** Card payments out of checking, net of card top-ups into it. */
@@ -102,9 +111,9 @@ export type FlowsOverviewRow = {
   /** cash_change − (savings − deposits + card_spent − card_paid + cash_fx). */
   cash_unexplained: number;
   pl: number;
-  /** deposits + deposits_pre_tax + pl. */
+  /** deposits + contributions_outside_payslip + pl. */
   investments_change: number;
-  /** savings + deposits_pre_tax + pl + cash_fx. */
+  /** savings + contributions_outside_payslip + pl + cash_fx. */
   net_worth_change: number;
 };
 
@@ -159,7 +168,7 @@ type Bucket = {
   income: number;
   expenses: number;
   deposits: number;
-  depositsPreTax: number;
+  contributionsOutsidePayslip: number;
   cardSpent: number;
   cardPaid: number;
   cashChange: number;
@@ -168,7 +177,7 @@ type Bucket = {
 };
 
 function emptyBucket(): Bucket {
-  return { income: 0, expenses: 0, deposits: 0, depositsPreTax: 0, cardSpent: 0, cardPaid: 0, cashChange: 0, cashFx: 0, pl: 0 };
+  return { income: 0, expenses: 0, deposits: 0, contributionsOutsidePayslip: 0, cardSpent: 0, cardPaid: 0, cashChange: 0, cashFx: 0, pl: 0 };
 }
 
 function bucketMap(): { map: Map<string, Bucket>; touch: (key: string) => Bucket } {
@@ -250,6 +259,23 @@ function mortgageCardAmortizationByKey(
   return out;
 }
 
+/**
+ * A payslip's savings deduction: income that went straight into a deposit. Into an account only
+ * payroll funds it is a deposit here too, and comes off what that account was credited outside
+ * the payslip; into a voluntary account (an APV) the account's own deposit event already counts.
+ */
+function addPayslipSavings(bucket: Bucket, line: PayslipSavingsLine, unit: GastosUnit): void {
+  const amount = lineValueIn(line, unit);
+  if (amount == null) {
+    throw new Error(`payslip ${line.payslip_id} line ${line.position}: its savings deduction has no value in ${unit}`);
+  }
+  bucket.income += amount;
+  if (line.destination === "payroll_account") {
+    bucket.deposits += amount;
+    bucket.contributionsOutsidePayslip -= amount;
+  }
+}
+
 function addDeposits(
   rows: readonly FlowsOverviewDepositRow[],
   checkingAccountIds: ReadonlySet<number>,
@@ -263,7 +289,7 @@ function addDeposits(
     const amount = row.amount;
     const bucket = touch(keyOf(row.occurred_on));
     if (isPreTaxDepositRow(row)) {
-      bucket.depositsPreTax += amount;
+      bucket.contributionsOutsidePayslip += amount;
     } else {
       bucket.deposits += amount;
     }
@@ -545,7 +571,7 @@ export function derivedFlowsOverviewFields(p: {
   income: number;
   expenses: number;
   deposits: number;
-  deposits_pre_tax: number;
+  contributions_outside_payslip: number;
   card_spent: number;
   card_paid: number;
   cash_change: number;
@@ -558,7 +584,7 @@ export function derivedFlowsOverviewFields(p: {
     expenses: p.expenses,
     savings,
     deposits: p.deposits,
-    deposits_pre_tax: p.deposits_pre_tax,
+    contributions_outside_payslip: p.contributions_outside_payslip,
     card_spent: p.card_spent,
     card_paid: p.card_paid,
     card_net: p.card_spent - p.card_paid,
@@ -566,8 +592,8 @@ export function derivedFlowsOverviewFields(p: {
     cash_fx: p.cash_fx,
     cash_unexplained: p.cash_change - (savings - p.deposits + p.card_spent - p.card_paid + p.cash_fx),
     pl: p.pl,
-    investments_change: p.deposits + p.deposits_pre_tax + p.pl,
-    net_worth_change: savings + p.deposits_pre_tax + p.pl + p.cash_fx,
+    investments_change: p.deposits + p.contributions_outside_payslip + p.pl,
+    net_worth_change: savings + p.contributions_outside_payslip + p.pl + p.cash_fx,
   };
 }
 
@@ -580,7 +606,7 @@ function rowFromBucket(periodKey: string, asOfDate: string, b: Bucket, unit: Gas
       income: round(b.income),
       expenses: round(b.expenses),
       deposits: round(b.deposits),
-      deposits_pre_tax: round(b.depositsPreTax),
+      contributions_outside_payslip: round(b.contributionsOutsidePayslip),
       card_spent: round(b.cardSpent),
       card_paid: round(b.cardPaid),
       cash_change: round(b.cashChange),
@@ -603,6 +629,8 @@ function latestNonEmptyGastosMonth(byMonth: readonly FlowsOverviewGastosMonth[])
 export type FlowsOverviewMonthInputs = {
   income: FlowsOverviewIncome;
   lines: readonly FlowCcExpenseLineRow[];
+  /** The payslips' savings deductions (`loadPayslipSavingsLines`). */
+  payslipSavings: readonly PayslipSavingsLine[];
   gastosByMonth: readonly FlowsOverviewGastosMonth[];
   deposits: readonly FlowsOverviewDepositRow[];
   plMonthly: readonly PlPoint[];
@@ -646,11 +674,16 @@ export function aggregateFlowsOverviewMonths(
     if (latestGastosMonth != null && row.period_month > latestGastosMonth) continue;
     touch(row.period_month).expenses += row.gastos_mes;
   }
-  // Payroll deductions counted as gastos never reached the account: income here is the net pay
-  // received plus them (gross less the pension savings), so savings does not count them twice.
+  // Payroll deductions never reached the account: income here is the net pay received plus them.
+  // The ones counted as gastos are in expenses, so savings does not count them twice; the ones
+  // that are saving are deposits.
   for (const ln of payslipGastosLines(inputs.lines)) {
     if (latestGastosMonth != null && ln.expense_month > latestGastosMonth) continue;
     touch(ln.expense_month).income += expenseLineGastosAmount(ln, unit);
+  }
+  for (const ln of inputs.payslipSavings) {
+    if (latestGastosMonth != null && ln.expense_month > latestGastosMonth) continue;
+    addPayslipSavings(touch(ln.expense_month), ln, unit);
   }
   for (const ln of inputs.lines) {
     if (ln.source !== "cc") continue;
@@ -713,6 +746,8 @@ function gastosDayForLine(line: FlowCcExpenseLineRow, payByIso: Record<string, s
 export type FlowsOverviewDayInputs = {
   income: FlowsOverviewIncome;
   lines: readonly FlowCcExpenseLineRow[];
+  /** The payslips' savings deductions (`loadPayslipSavingsLines`). */
+  payslipSavings: readonly PayslipSavingsLine[];
   cuotaPayByIso: Record<string, string> | undefined;
   deposits: readonly FlowsOverviewDepositRow[];
   plDaily: readonly PlPoint[];
@@ -742,6 +777,8 @@ export function aggregateFlowsOverviewDays(
     const day = gastosDayForLine(ln, inputs.cuotaPayByIso);
     if (day) touch(day).income += expenseLineGastosAmount(ln, unit);
   }
+  // On the day the pay reached the account, like the payslip's expense lines.
+  for (const ln of inputs.payslipSavings) addPayslipSavings(touch(ln.occurred_on.slice(0, 10)), ln, unit);
 
   for (const ln of inputs.lines) {
     if (!gastosSumMonthForLine(ln, installmentMode)) continue;
@@ -786,12 +823,12 @@ export function aggregateFlowsOverviewDays(
 
 /** Σ of rows (unrounded beyond the rows' own rounding); the derived fields re-derived from the sums. */
 export function flowsOverviewTotals(rows: readonly FlowsOverviewRow[]): FlowsOverviewTotals {
-  const t = { income: 0, expenses: 0, deposits: 0, deposits_pre_tax: 0, card_spent: 0, card_paid: 0, cash_change: 0, cash_fx: 0, pl: 0 };
+  const t = { income: 0, expenses: 0, deposits: 0, contributions_outside_payslip: 0, card_spent: 0, card_paid: 0, cash_change: 0, cash_fx: 0, pl: 0 };
   for (const row of rows) {
     t.income += row.income;
     t.expenses += row.expenses;
     t.deposits += row.deposits;
-    t.deposits_pre_tax += row.deposits_pre_tax;
+    t.contributions_outside_payslip += row.contributions_outside_payslip;
     t.card_spent += row.card_spent;
     t.card_paid += row.card_paid;
     t.cash_change += row.cash_change;
@@ -834,6 +871,7 @@ export function flowsOverviewClosed(
 type OverviewSourceInputs = {
   income: FlowsOverviewIncome;
   lines: FlowCcExpenseLineRow[];
+  payslipSavings: PayslipSavingsLine[];
   cuotaPayByIso: Record<string, string> | undefined;
   /** The deposit rows per unit, built on first use (`depositsInUnit`). */
   depositsByUnit: Map<string, FlowsOverviewDepositRow[]>;
@@ -851,6 +889,7 @@ function overviewSourceInputs(): OverviewSourceInputs {
     return {
       income: buildFlowsCheckingIncomePayload(),
       lines,
+      payslipSavings: loadPayslipSavingsLines(),
       cuotaPayByIso: accountIds.length > 0 ? cuotaPayByIsoByAccountBillingMonth(accountIds) : undefined,
       depositsByUnit: new Map(),
       checkingAccountIds,
@@ -908,6 +947,7 @@ function checkingGridStart(
   eachIncomeEntry(src.income, "clp", "month", (key) => consider(key));
   for (const row of gastosMonths) consider(row.period_month);
   for (const ln of payslipGastosLines(src.lines)) consider(ln.expense_month);
+  for (const ln of src.payslipSavings) consider(ln.expense_month);
   for (const ln of src.lines) if (ln.source === "cc") consider(ln.expense_month);
   for (const row of deposits) consider(row.occurred_on.slice(0, 7));
   for (const p of src.cardPayments) consider(p.occurred_on.slice(0, 7));
@@ -944,6 +984,7 @@ export function buildFlowsOverviewPayload(
       {
         income: src.income,
         lines: src.lines,
+        payslipSavings: src.payslipSavings,
         gastosByMonth: gastosMonths,
         deposits,
         plMonthly,
@@ -962,6 +1003,7 @@ export function buildFlowsOverviewPayload(
         {
           income: src.income,
           lines: src.lines,
+          payslipSavings: src.payslipSavings,
           cuotaPayByIso: src.cuotaPayByIso,
           deposits,
           plDaily: buildFlowsPlDailyChartSeries(unit, days, carrying).map((p) => ({ as_of_date: p.as_of_date, total: p.total })),

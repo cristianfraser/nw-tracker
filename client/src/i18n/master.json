@@ -4316,9 +4316,9 @@
         "en": "Deposits",
         "es": "Depósitos"
       },
-      "depositsPreTax": {
-        "en": "AFP+AFC (contributions)",
-        "es": "AFP+AFC (cotizaciones)"
+      "contributionsOutsidePayslip": {
+        "en": "Contributions outside the payslip",
+        "es": "Aportes fuera de la liquidación"
       },
       "cardSpentMinusPaid": {
         "en": "Cards: spent − paid",
@@ -4975,6 +4975,14 @@
     }
   },
   "deposits": {
+    "partPayrollFunded": {
+      "en": "Payroll-funded accounts",
+      "es": "Cuentas financiadas por planilla"
+    },
+    "partOther": {
+      "en": "Other accounts",
+      "es": "Otras cuentas"
+    },
     "totalLabel": {
       "en": "All-time total:",
       "es": "Total histórico:"

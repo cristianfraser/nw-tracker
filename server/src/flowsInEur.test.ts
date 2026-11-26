@@ -299,7 +299,7 @@ describe("income, payroll and the flows overview in EUR", () => {
     expect(p.months.length).toBeGreaterThan(0);
     expect(p.totals).toEqual(flowsOverviewTotals(p.months));
     for (const r of p.months) {
-      expect(r.investments_change).toBeCloseTo(r.deposits + r.deposits_pre_tax + r.pl, 6);
+      expect(r.investments_change).toBeCloseTo(r.deposits + r.contributions_outside_payslip + r.pl, 6);
       expect(r.savings).toBeCloseTo(r.income - r.expenses, 6);
     }
   });

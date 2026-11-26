@@ -94,10 +94,17 @@ export interface FlowsOverviewRow {
   expenses: number;
   /** income − expenses. */
   savings: number;
-  /** Net deposits of the accounts outside Checking accounts (a linked mortgage deposit keeps only its amortización). */
+  /**
+   * Net deposits of the accounts outside Checking accounts (a linked mortgage deposit keeps only
+   * its amortización), plus the payslips' savings deductions into the accounts only payroll funds.
+   */
   deposits: number;
-  /** AFP/AFC cotizaciones: payroll-deducted, never through checking. */
-  deposits_pre_tax: number;
+  /**
+   * What the payroll-funded accounts (AFP, AFC, 401(k), HSA) were credited beyond the payslips'
+   * deductions into them: the employer's share, a contribution paid outside payroll, a month with
+   * no payslip, the shift between a payslip's month and the fund's credit. Can be negative.
+   */
+  contributions_outside_payslip: number;
   /** The card lines' part of expenses (a mortgage-linked card payment in full). */
   card_spent: number;
   /** Card payments out of checking, net of card top-ups into it. */
@@ -116,9 +123,9 @@ export interface FlowsOverviewRow {
   cash_unexplained: number;
   /** Market P/L of the deposit accounts outside checking. */
   pl: number;
-  /** deposits + deposits_pre_tax + pl. */
+  /** deposits + contributions_outside_payslip + pl. */
   investments_change: number;
-  /** savings + deposits_pre_tax + pl + cash_fx. */
+  /** savings + contributions_outside_payslip + pl + cash_fx. */
   net_worth_change: number;
 }
 
@@ -1445,7 +1452,7 @@ export interface FlowsDepositsResponse {
   chart_monthly: FlowDepositChartPoint[];
   /** Diario: one point per day carrying a deposit, oldest first (server-built). */
   chart_daily: FlowDepositChartPoint[];
-  /** Sum of all row amounts (the flows overview's deposits + deposits_pre_tax). */
+  /** Sum of all row amounts (the flows overview's deposits + contributions_outside_payslip). */
   net_total: number;
   /** AFP/AFC cotizaciones and the rest (Σ = net total). */
   pre_tax_total: number;

@@ -21,6 +21,8 @@ import type { FlowCcExpenseLineRowDraft } from "./expenseLineTypes.js";
 import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
 import { splitPensionLine, type PayrollJurisdiction, type PayslipLineKind, type PayslipLineSide } from "./payslipLineKinds.js";
 import { usPayslipClpPerUsd } from "./payrollUsdRate.js";
+import { withLineMoney } from "./lineMoney.js";
+import type { LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
 
 /** `statement_line_id` of a payslip line: payslip id × this + the line's position (unique, positive). */
 export const PAYSLIP_EXPENSE_LINE_ID_FACTOR = 1000;
@@ -57,7 +59,18 @@ function monthEnd(periodMonth: string): string {
   return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
 }
 
-export function loadPayslipExpenseLineDrafts(): FlowCcExpenseLineRowDraft[] {
+/** A payslip's deduction line with what dates and converts it. */
+type PayslipDeduction = {
+  payslip: PayslipRow;
+  line: LineRow & { kind: PayslipLineKind };
+  /** The day the pay reached the account (the paired deposit, else a USD wire's day, else the month's last day). */
+  day: string;
+  /** Pesos per unit of the line's amount (1 on a peso payslip). */
+  pesosPerUnit: number;
+};
+
+/** Every deduction line of every payslip, in payslip and position order. */
+function loadPayslipDeductions(): PayslipDeduction[] {
   const payslips = db
     .prepare(
       `SELECT p.id, p.period_month, p.employer_name, p.jurisdiction, p.pay_date, p.liquido_currency, p.total_imponible_clp, p.total_haberes_clp,
@@ -75,7 +88,7 @@ export function loadPayslipExpenseLineDrafts(): FlowCcExpenseLineRowDraft[] {
     linesBy.set(l.payslip_id, list);
   }
 
-  const out: FlowCcExpenseLineRowDraft[] = [];
+  const out: PayslipDeduction[] = [];
   for (const p of payslips) {
     const lines = linesBy.get(p.id) ?? [];
     const day = p.paid_on ?? p.pay_date ?? monthEnd(p.period_month);
@@ -93,47 +106,123 @@ export function loadPayslipExpenseLineDrafts(): FlowCcExpenseLineRowDraft[] {
     for (const l of lines) {
       if (l.side !== "descuento") continue;
       if (l.kind == null) throw new Error(`payslip ${p.id}: a line without a kind — re-run the payslip import`);
-      let category: string | undefined;
-      let amount = l.amount;
-      let label = l.label;
-      if (l.kind === "pension") {
-        if (p.total_imponible_clp == null) throw new Error(`payslip ${p.id}: an AFP line without a taxable base to split it`);
-        amount = splitPensionLine(l.amount, p.total_imponible_clp).commission;
-        category = "pension_fees";
-        label = "Comisión AFP";
-      } else {
-        category = CATEGORY_BY_KIND[l.kind];
-      }
-      if (!category || amount <= 0) continue;
-      const amountClp = Math.round(amount * pesosPerUnit);
-      const amountUsd = p.liquido_currency === "usd" ? amount : null; // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
-      const merchant = `${label} · ${p.employer_name}`;
-      out.push({
-        source: "payslip",
-        pre_tax: true,
-        statement_line_id: p.id * PAYSLIP_EXPENSE_LINE_ID_FACTOR + l.position,
-        account_id: 0,
-        expense_month: p.period_month,
-        billing_month: p.period_month,
-        purchase_month: p.period_month,
-        occurred_on: day,
-        purchase_on: day,
-        statement_date: "",
-        amount_clp: amountClp,
-        amount_usd: amountUsd,
-        amount_usd_at_expense: expenseGastosAmountUsdAtDate(amountClp, amountUsd, day),
-        merchant,
-        merchant_key: normalizeCcExpenseMerchantKey(merchant),
-        category_slug: category,
-        category_unique: true,
-        installment_flag: 0,
-        nro_cuota_current: null,
-        nro_cuota_total: null,
-        line_role: "purchase",
-        origin_card_last4: null,
-        primary_card_last4: null,
-      });
+      out.push({ payslip: p, line: { ...l, kind: l.kind }, day, pesosPerUnit });
     }
   }
   return out;
+}
+
+/** The mandatory 10 % of a printed AFP line and the AFP's commission (the rest). */
+function splitPayslipPensionLine(d: PayslipDeduction): { mandatory: number; commission: number } {
+  if (d.payslip.total_imponible_clp == null) {
+    throw new Error(`payslip ${d.payslip.id}: an AFP line without a taxable base to split it`);
+  }
+  return splitPensionLine(d.line.amount, d.payslip.total_imponible_clp);
+}
+
+export function loadPayslipExpenseLineDrafts(): FlowCcExpenseLineRowDraft[] {
+  const out: FlowCcExpenseLineRowDraft[] = [];
+  for (const d of loadPayslipDeductions()) {
+    const { payslip: p, line: l, day, pesosPerUnit } = d;
+    let category: string | undefined;
+    let amount = l.amount;
+    let label = l.label;
+    if (l.kind === "pension") {
+      amount = splitPayslipPensionLine(d).commission;
+      category = "pension_fees";
+      label = "Comisión AFP";
+    } else {
+      category = CATEGORY_BY_KIND[l.kind];
+    }
+    if (!category || amount <= 0) continue;
+    const amountClp = Math.round(amount * pesosPerUnit);
+    const amountUsd = p.liquido_currency === "usd" ? amount : null; // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
+    const merchant = `${label} · ${p.employer_name}`;
+    out.push({
+      source: "payslip",
+      pre_tax: true,
+      statement_line_id: p.id * PAYSLIP_EXPENSE_LINE_ID_FACTOR + l.position,
+      account_id: 0,
+      expense_month: p.period_month,
+      billing_month: p.period_month,
+      purchase_month: p.period_month,
+      occurred_on: day,
+      purchase_on: day,
+      statement_date: "",
+      amount_clp: amountClp,
+      amount_usd: amountUsd,
+      amount_usd_at_expense: expenseGastosAmountUsdAtDate(amountClp, amountUsd, day),
+      merchant,
+      merchant_key: normalizeCcExpenseMerchantKey(merchant),
+      category_slug: category,
+      category_unique: true,
+      installment_flag: 0,
+      nro_cuota_current: null,
+      nro_cuota_total: null,
+      line_role: "purchase",
+      origin_card_last4: null,
+      primary_card_last4: null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Where a payslip's savings deduction went: an account only payroll funds (the AFP, the AFC, a
+ * 401(k), an HSA: `PAYROLL_FUNDED_KINDS`, whose inflows never pass through checking) or a voluntary
+ * pension account (an APV, which checking can fund too, so its deposits are ordinary ones).
+ */
+export type PayslipSavingsDestination = "payroll_account" | "voluntary_account";
+
+const SAVINGS_DESTINATION_BY_KIND: Partial<Record<PayslipLineKind, PayslipSavingsDestination>> = {
+  pension: "payroll_account",
+  unemployment: "payroll_account",
+  retirement_401k_pretax: "payroll_account",
+  retirement_401k_roth: "payroll_account",
+  hsa: "payroll_account",
+  voluntary_pension: "voluntary_account",
+};
+
+/** A payslip deduction that is saving, with its money (`lineValueIn` reads it in any unit). */
+export type PayslipSavingsLine = {
+  payslip_id: number;
+  position: number;
+  destination: PayslipSavingsDestination;
+  /** The payslip's period (the month worked). */
+  expense_month: string;
+  /** The day the pay reached the account. */
+  occurred_on: string;
+  amount?: Money;
+  values?: Record<string, LineUnitValue>;
+};
+
+/**
+ * Payroll deductions that are saving: the mandatory pension contribution (the printed AFP line
+ * less the AFP's commission), the worker's unemployment-insurance share, an APV, and a US stub's
+ * 401(k) and HSA deferrals. The flows overview counts them as income that went straight into a
+ * deposit. Dated and converted like the payslip's expense lines. A finiquito's combined
+ * «cotizaciones de seguridad social» line cannot be split and is left out, as there.
+ */
+export function loadPayslipSavingsLines(): PayslipSavingsLine[] {
+  const drafts: (PayslipSavingsLine & { amount_clp: number; amount_usd: number | null; amount_usd_at_expense: number | null })[] = [];
+  for (const d of loadPayslipDeductions()) {
+    const { payslip: p, line: l, day, pesosPerUnit } = d;
+    const destination = SAVINGS_DESTINATION_BY_KIND[l.kind];
+    if (!destination) continue;
+    const amount = l.kind === "pension" ? splitPayslipPensionLine(d).mandatory : l.amount;
+    if (amount <= 0) continue;
+    const amountClp = Math.round(amount * pesosPerUnit);
+    const amountUsd = p.liquido_currency === "usd" ? amount : null; // convention-ok: a liquidación pays pesos, a US stub or contractor wire dollars
+    drafts.push({
+      payslip_id: p.id,
+      position: l.position,
+      destination,
+      expense_month: p.period_month,
+      occurred_on: day,
+      amount_clp: amountClp,
+      amount_usd: amountUsd,
+      amount_usd_at_expense: expenseGastosAmountUsdAtDate(amountClp, amountUsd, day),
+    });
+  }
+  return withLineMoney(drafts).map(({ amount_clp: _clp, amount_usd: _usd, amount_usd_at_expense: _usdAt, ...line }) => line);
 }
