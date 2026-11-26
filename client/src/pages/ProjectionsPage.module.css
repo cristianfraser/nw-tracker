@@ -2,7 +2,9 @@
    between two hairlines, one column below 880 with the chart first). On a phone the chart is
    shorter, so the rail's figures follow it on the first screen. */
 @media (max-width: 879px) {
-  .band > .chart {
+  /* Doubled: it outranks the position page's own height on the same element, whichever
+     stylesheet loads last. */
+  .band > .chart.chart {
     --chart-panel-min-height: 220px;
     --chart-panel-height: 220px;
   }

@@ -132,7 +132,7 @@ export function ProjectionsPage() {
       <PageGridTile id="projection-band" className={cn("page-grid", band.band, styles.band)}>
         <div className={cn("chart-grid chart-grid--full-line", band.bandChart, styles.chart)}>
           <ProjectionsChart
-            title={t("projections.chartTitle", { age: g?.end_age ?? "" })}
+            title={g ? t("projections.chartTitle", { age: g.end_age }) : " "}
             points={data?.chart.points ?? []}
             lines={data?.chart.lines ?? []}
             strategyLineKeys={g?.strategies.map((s) => s.line_key) ?? []}

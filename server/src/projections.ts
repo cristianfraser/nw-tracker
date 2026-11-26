@@ -373,8 +373,12 @@ export function projectionsGlance(
   const today = Math.round(input.base_total);
   // Growth is rounded from the unrounded parts (a zero real return reads 0, not the ±1 three
   // separate roundings can leave); the contributions take the remainder, so the three add up.
-  const growth = Math.round(total - input.base_total - input.monthly_aporte * engine.accumulation_months);
-  const contributions = total - today - growth;
+  // (Never below zero: a tie in the two roundings goes to growth.)
+  const contributions = Math.max(
+    0,
+    total - today - Math.round(total - input.base_total - input.monthly_aporte * engine.accumulation_months)
+  );
+  const growth = total - today - contributions;
   const span = input.end_age - PROJECTION_RETIRE_AGE;
   const lastsOf = (depletionAge: number | null): Pick<ProjectionsStrategy, "lasts" | "lasts_share"> =>
     depletionAge == null

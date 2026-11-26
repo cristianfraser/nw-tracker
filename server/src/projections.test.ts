@@ -176,6 +176,12 @@ describe("projectionsGlance", () => {
     expect(c.today + c.contributions).toBe(g.net_worth_at_retire);
   });
 
+  it("no contributions never read as a negative amount", () => {
+    const c = glanceOf({ ...BASE, base_total: 100.5, base_invested: 50, monthly_aporte: 0, real_return_pct: 0 }).composition!;
+    expect(c.contributions).toBe(0);
+    expect(c.today + c.growth).toBe(101);
+  });
+
   it("has no composition when today's net worth is not positive", () => {
     expect(glanceOf({ ...BASE, base_total: -5_000_000, base_invested: 0 }).composition).toBeNull();
   });

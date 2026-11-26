@@ -66,7 +66,8 @@ export function ProjectionsAssumptions({
   const baseId = useId();
   const [opened, setOpened] = useState<Readonly<Record<string, boolean>>>({});
   const unitCode = displayUnit.toUpperCase();
-  const age = retireAge ?? "";
+  // Until the first response the retirement age is unknown: titles and labels naming it stay blank.
+  const BLANK = " ";
 
   const valueOf = (f: ProjectionField) => projectionFieldValue(f, overrides, displayUnit, params);
   const fieldError = (f: ProjectionField): string | null => {
@@ -83,7 +84,8 @@ export function ProjectionsAssumptions({
   };
   const fieldLabel = (f: ProjectionField): string => {
     if (f.kind === "inflation") return t("projections.fields.inflation_pct", { code: f.code.toUpperCase() });
-    return t(`projections.fields.${f.key}`, { unit: unitCode, age });
+    if (f.kind === "number" && f.key === "liquidate_other_pct" && retireAge == null) return BLANK;
+    return t(`projections.fields.${f.key}`, { unit: unitCode, age: retireAge });
   };
   /** A closed group's line: its current values. */
   const summary = (group: ProjectionFieldGroup): string => {
@@ -95,8 +97,7 @@ export function ProjectionsAssumptions({
       const v = num(key);
       if (v == null) return "—";
       // An override typed here is in the unit on screen; an echo is in the response's.
-      const f = group.fields.find((x) => projectionFieldKey(x) === key);
-      const typedHere = f != null && typeof overrides[key] === "number" && valueOf(f) === overrides[key];
+      const typedHere = typeof overrides[key] === "number" && overrides[`${key}_currency`] === displayUnit;
       return formatMoney({ value: v, currency: typedHere ? displayUnit : paramsUnit });
     };
     switch (group.id) {
@@ -140,7 +141,7 @@ export function ProjectionsAssumptions({
         const hasError = group.fields.some((f) => fieldError(f) != null);
         const open = !narrow || hasError || (opened[group.id] ?? false);
         const bodyId = `${baseId}-${group.id}`;
-        const title = t(`projections.groups.${group.id}`, { age });
+        const title = group.id === "inflation" || retireAge != null ? t(`projections.groups.${group.id}`, { age: retireAge }) : BLANK;
         return (
           <section key={group.id} className={styles.group} aria-labelledby={`${bodyId}-title`}>
             {narrow ? (

@@ -5,6 +5,7 @@ import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { moneyYAxisProps, type ChartDisplayUnit } from "./chartLayout";
 import { cn } from "../../cn";
 import { formatCompactMoney, formatCurrency, formatGroupedDecimalTrimmed } from "../../format";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 import { useTranslation } from "../../i18n";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 import { loadableClass } from "../ui/Loadable";
@@ -88,7 +89,7 @@ export function ProjectionsChart({
           data={points}
           tooltip={{
             formatValue: (v) => formatCurrency(v, displayUnit),
-            formatLabel: (l) => String(l).slice(0, 7),
+            formatLabel: (l) => formatYearMonthLabel(String(l)),
           }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
