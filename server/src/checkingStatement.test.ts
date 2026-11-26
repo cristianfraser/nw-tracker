@@ -2,7 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { checkingLedgerAnchorNote } from "./checkingCartolaBalances.js";
+import { CHECKING_PAGE_KIND_SLUGS } from "nw-tracker-contracts/dto/apiConstants";
+import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { accountValueAt } from "./accountValue.js";
+import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 import { buildCheckingGlanceForAccount, buildCheckingStatement, isCheckingPageAccount } from "./checkingStatement.js";
 
 const NOTE = "vitest checking statement";
@@ -128,6 +131,7 @@ describe("checking statement of a cash ledger without cartolas", () => {
   let pesoCashId = 0;
   let pesoCheckingId = 0;
   let holdingId = 0;
+  let cardId = 0;
 
   function createCashAccount(leafSuffix: string, name: string, cashCurrency: string): number {
     const bucket = db.prepare(`SELECT id FROM asset_groups WHERE slug LIKE ? ESCAPE '\\' ORDER BY id LIMIT 1`).get(`%\\_\\_${leafSuffix}`) as
@@ -172,6 +176,14 @@ describe("checking statement of a cash ledger without cartolas", () => {
     // Broker pesos: a deposit from checking, then all of it converted into the dollar account.
     transfer.run(pesoCheckingId, pesoCashId, 90000, "clp", null, null, "2025-05-10", CASH_NOTE, null, null);
     transfer.run(pesoCashId, usdId, 90000, "clp", 100, "usd", "2025-05-10", CASH_NOTE, "fx_exchange", null);
+    // The suite's card fixture: a top-up it sends into the peso cash, a dollar debt paid from checking.
+    const card = getVitestSantanderCcMasterAccountId();
+    if (card == null) throw new Error("no card fixture in the test database");
+    cardId = card;
+    transfer.run(cardId, pesoCashId, 7000, "clp", null, null, "2025-06-02", CASH_NOTE, "carga_tarjeta", null);
+    transfer.run(pesoCheckingId, cardId, 45000, "clp", 50, "usd", "2025-06-03", CASH_NOTE, "pago_tarjeta", null);
+    // A units-only row: no money moves on the dollar ledger.
+    single.run(usdId, 0, "usd", "2025-06-04", CASH_NOTE, "cash_fee");
   });
 
   afterAll(() => {
@@ -215,6 +227,7 @@ describe("checking statement of a cash ledger without cartolas", () => {
     expect(sold.counterpart).toMatchObject({ account_id: pesoCheckingId, direction: "out" });
     const trade = rows[4]!;
     expect(trade.units).toBe(2.5);
+    expect(trade.trade_side).toBe("buy");
     expect(trade.counter).toBeNull();
     expect(trade.counterpart).toMatchObject({ account_id: holdingId, direction: "out" });
     expect(rows[3]!.units).toBeNull();
@@ -228,10 +241,11 @@ describe("checking statement of a cash ledger without cartolas", () => {
   it("shows the same conversion from the peso side, with the dollars as its other side", () => {
     const rows = buildCheckingStatement(pesoCashId).months.flatMap((m) => m.rows);
     expect(rows.map((r) => [r.kind, r.amount, r.balance_after])).toEqual([
+      ["own_transfer", 7000, 7000],
       ["conversion", -90000, 0],
       ["own_transfer", 90000, 90000],
     ]);
-    expect(rows[0]!.counter).toEqual({ amount: 100, currency: "usd", rate: 900 });
+    expect(rows[1]!.counter).toEqual({ amount: 100, currency: "usd", rate: 900 });
 
     const checking = buildCheckingStatement(pesoCheckingId).months.flatMap((m) => m.rows);
     expect(checking.find((r) => r.kind === "conversion")).toMatchObject({
@@ -251,6 +265,33 @@ describe("checking statement of a cash ledger without cartolas", () => {
     expect(kinds({ q: "400" })).toEqual(["trade"]);
     // Digits without the currency's decimals are whole units, never cents.
     expect(kinds({ q: "40025" })).toEqual([]);
+    // A figure as the page prints it: symbol, sign, one decimal.
+    expect(kinds({ q: "US$400,25" })).toEqual(["trade"]);
+    expect(kinds({ q: "\u2212400,25" })).toEqual(["trade"]);
+    expect(kinds({ q: "10,1" })).toEqual(["dividend"]);
+    expect(kinds({ q: "1.000,50" })).toEqual(["other"]);
+  });
+
+  it("reads money a card sends in as an own transfer, and a card's dollar debt paid from pesos with its dollars", () => {
+    // The card's top-up into the peso cash is the first row of the peso statement (asserted above); here its kind by direction.
+    const topUp = buildCheckingStatement(pesoCashId).months.flatMap((m) => m.rows)[0]!;
+    expect(topUp).toMatchObject({ kind: "own_transfer", counterpart: { account_id: cardId, direction: "in" } });
+    const paid = buildCheckingStatement(pesoCheckingId)
+      .months.flatMap((m) => m.rows)
+      .find((r) => r.kind === "card_payment")!;
+    expect(paid).toMatchObject({ amount: -45000, counter: { amount: 50, currency: "usd", rate: 900 } });
+  });
+
+  it("lists no row that moves nothing in the ledger", () => {
+    const days = buildCheckingStatement(usdId).months.flatMap((m) => m.rows.map((r) => r.occurred_on));
+    expect(days).not.toContain("2025-06-04");
+  });
+
+  it("agrees with the kinds the client mounts the page from, for every account", () => {
+    const hinted = new Set(CHECKING_PAGE_KIND_SLUGS);
+    const ids = (db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[]).map((r) => r.id);
+    const disagree = ids.filter((id) => hinted.has(accountKindSlugForAccountId(id) ?? "") !== isCheckingPageAccount(id));
+    expect(disagree).toEqual([]);
   });
 
   it("heads the page with the dollar balance, its value in the display unit and the kinds it holds", () => {

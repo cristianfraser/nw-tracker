@@ -1,3 +1,4 @@
+import { CHECKING_PAGE_KIND_SLUGS } from "nw-tracker-contracts/dto/apiConstants";
 import { CheckingAccountDetailPage } from "./accountDetail/CheckingAccountDetailPage";
 import { CreditCardAccountDetailPage } from "./accountDetail/CreditCardAccountDetailPage";
 import { DeptoAccountDetailPage } from "./accountDetail/DeptoAccountDetailPage";
@@ -12,17 +13,11 @@ import {
 import { isCreditCardAccountNavNode } from "../portfolioNavFromApi";
 
 /**
- * The account kinds whose page is the checking page while the bundle is not in: a cuenta corriente /
- * cuenta vista and the cash ledger leaves (a broker's peso or dollar cash, a foreign-currency
- * account). Once the bundle is in, the server's `checking_glance` decides (`isCheckingPageAccount`).
+ * The account kinds whose page is the checking page while the bundle is not in (the contracts'
+ * list, which a server test holds to the server's rule). Once the bundle is in, the server's
+ * `checking_glance` decides.
  */
-const CHECKING_PAGE_CATEGORY_SLUGS: ReadonlySet<string> = new Set([
-  "cuenta_corriente",
-  "cuenta_vista",
-  "clp",
-  "usd",
-  "foreign_cash",
-]);
+const CHECKING_PAGE_CATEGORY_SLUGS: ReadonlySet<string> = new Set(CHECKING_PAGE_KIND_SLUGS);
 
 export function AccountDetailPage() {
   const data = useAccountDetailPageData();

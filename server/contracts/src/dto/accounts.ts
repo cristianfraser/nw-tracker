@@ -526,11 +526,13 @@ export interface CheckingStatementRowDto {
   /**
    * A conversion's other side (and a card payment's, when it paid a debt in another currency):
    * what left or reached the other account, in its currency, and the
-   * operation's rate (home currency per unit of the foreign one; between two foreign currencies,
-   * the other side's amount per unit of this account's), rounded for display: two decimals from 20 up,
+   * operation's rate, the same on both accounts (home currency per unit of the foreign one; between
+   * two foreign currencies, the one whose code sorts later per unit of the other), rounded for display: two decimals from 20 up,
    * four below. Null on every other row.
    */
   counter: { amount: number; currency: string; rate: number } | null;
+  /** A trade's side, from the movement's kind; null on every other row. */
+  trade_side: "buy" | "sell" | null;
   /** A trade's units (shares, contracts, coins), unsigned; null on every other row. */
   units: number | null;
   /** Signed: into the account positive. */

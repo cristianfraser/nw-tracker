@@ -35,7 +35,9 @@ import type {
   CheckingStatementVendorDto,
   CheckingStripRange,
 } from "nw-tracker-contracts/dto/accounts";
-import { HOME_CURRENCY, isHomeCurrency, roundToCurrency, currencyMinorDigits } from "./displayUnits.js";
+import { HOME_CURRENCY, isHomeCurrency, roundToCurrency, currencyMinorDigits, currencySmallestCoin } from "./displayUnits.js";
+import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
+import { OPTION_PREMIUM_PAID_FLOW_KINDS, OPTION_PREMIUM_RECEIVED_FLOW_KINDS } from "./optionFlowKinds.js";
 import { accountProfileOptional } from "./accountProfile.js";
 import { accountValueAt } from "./accountValue.js";
 import { clpCashBalanceLive } from "./clpCashAccounts.js";
@@ -141,8 +143,9 @@ function rowKind(r: FlowsApiRow, incomeIds: ReadonlySet<number>): CheckingStatem
 
 /**
  * A conversion's other side, seen from a ledger in `currency`: the stored leg in the other
- * currency and the operation's rate (home currency per unit of the foreign one; between two
- * foreign currencies, the other side's amount per unit of this ledger's).
+ * currency and the operation's rate. The rate reads the same on both accounts: home currency per
+ * unit of the foreign one; between two foreign currencies, the one whose code sorts later per unit
+ * of the other (dollars per euro).
  */
 function conversionCounter(m: MovementTransferRow, currency: string): NonNullable<CheckingStatementRowDto["counter"]> {
   if (m.counter_amount == null || m.counter_currency == null) {
@@ -158,10 +161,18 @@ function conversionCounter(m: MovementTransferRow, currency: string): NonNullabl
   if (!(own.amount > 0) || !(other.amount > 0)) {
     throw new Error(`checking statement: conversion ${m.id} has an empty leg`);
   }
-  const raw = isHomeCurrency(own.currency) ? own.amount / other.amount : other.amount / own.amount;
+  const ownIsQuote = isHomeCurrency(own.currency) || (!isHomeCurrency(other.currency) && own.currency > other.currency);
+  const raw = ownIsQuote ? own.amount / other.amount : other.amount / own.amount;
   // Two decimals for a rate in the hundreds (pesos per dollar), four for one near 1 (dollars per euro).
   const digits = raw >= 20 ? 2 : 4;
   return { amount: other.amount, currency: other.currency, rate: Number(raw.toFixed(digits)) };
+}
+
+/** Which side of a trade the movement is, from its kind; null when it is not a trade. */
+function tradeSide(flowKind: string | null): CheckingStatementRowDto["trade_side"] {
+  if (flowKind === "stock_buy" || (OPTION_PREMIUM_PAID_FLOW_KINDS as readonly string[]).includes(flowKind ?? "")) return "buy";
+  if (flowKind === "stock_sell" || (OPTION_PREMIUM_RECEIVED_FLOW_KINDS as readonly string[]).includes(flowKind ?? "")) return "sell";
+  return null;
 }
 
 /** The balance the rest of the app shows for the account today, in its own currency. */
@@ -170,8 +181,12 @@ function liveBalance(accountId: number, ledger: CheckingPageLedger, today: strin
   return isHomeCurrency(ledger.currency) ? clpCashBalanceLive(accountId).value_clp : foreignCashBalanceAt(accountId, today);
 }
 
-/** The ledger of a checking page account, oldest first, each row with the balance after it. */
-function loadLedger(accountId: number): Ledger {
+/**
+ * The ledger of a checking page account, oldest first, each row with the balance after it.
+ * `withNames` false (the page's head) leaves every row unnamed and reads neither the transfer
+ * mails nor the name catalog: the head needs balances and kinds only.
+ */
+function loadLedger(accountId: number, withNames = true): Ledger {
   const pageLedger = checkingPageLedger(accountId);
   if (pageLedger == null) {
     throw new Error(`checking statement: account ${accountId} is not a cash ledger (${kindSlugForAccount(accountId)})`);
@@ -183,8 +198,12 @@ function loadLedger(accountId: number): Ledger {
   const postedOn = new Map(
     (postingsStmt.all(accountId) as { movement_id: number; posted_on: string }[]).map((p) => [p.movement_id, p.posted_on])
   );
-  const income = cachedFlowsIncome();
-  const incomeIds = new Set(income.lines.filter((l) => l.account_id === accountId).map((l) => l.movement_id));
+  // Income credits exist only on the accounts under Checking accounts (the income builder's own
+  // list): any other cash ledger (a broker's cash) never asks the income pipeline.
+  const income = accountIdsUnderCheckingAccounts().includes(accountId) ? cachedFlowsIncome() : null;
+  const incomeIds = new Set(
+    (income?.lines ?? []).filter((l) => l.account_id === accountId).map((l) => l.movement_id)
+  );
 
   const ordered = [...flows].sort((a, b) => {
     const da = a.occurred_on > today ? today : a.occurred_on;
@@ -202,8 +221,9 @@ function loadLedger(accountId: number): Ledger {
       : signedNativeDeltaForAccountMovement(m, accountId, currency);
 
   // A bank movement's names: the expense rows' own rule (catalog, counterparty from a transfer mail).
-  const counterparties = transferCounterpartiesByMovementSide();
-  const nameContext = loadDisplayNameContext([]);
+  const names = withNames
+    ? { counterparties: transferCounterpartiesByMovementSide(), nameContext: loadDisplayNameContext([]) }
+    : null;
 
   let balance = 0;
   let opening: Ledger["opening"] = null;
@@ -220,12 +240,16 @@ function loadLedger(accountId: number): Ledger {
       opening = { occurred_on: r.occurred_on, amount };
       continue;
     }
+    // A row that moves nothing in this ledger's currency (units only, another currency's single
+    // leg) is not a line of its statement.
+    if (amount === 0) continue;
     const kind = rowKind(r, incomeIds);
     const transfer = r.counterpart_account_id != null && r.from_account_id != null;
     const posted = postedOn.get(r.id);
     let vendor: CheckingStatementVendorDto | null = null;
     let party: CheckingStatementRowDto["party"] = null;
-    if (!transfer) {
+    if (!transfer && names != null) {
+      const { counterparties, nameContext } = names;
       const merchant = cartolaDescriptionFromNote(r.note);
       const counterparty = counterparties.get(`${r.id}|${accountId}`);
       vendor = {
@@ -256,7 +280,8 @@ function loadLedger(accountId: number): Ledger {
         posted_on: posted != null && posted !== r.occurred_on ? posted : null,
         forward_posted: r.forward_posted,
         kind,
-        income_kind: kind === "income" ? (income.income_kind_by_movement_id[r.id] ?? null) : null,
+        income_kind: kind === "income" ? (income?.income_kind_by_movement_id[r.id] ?? null) : null,
+        trade_side: kind === "trade" ? tradeSide(r.flow_kind) : null,
         vendor,
         party,
         type_label: r.flow_type_label,
@@ -282,7 +307,9 @@ function loadLedger(accountId: number): Ledger {
     });
   }
   const live = liveBalance(accountId, pageLedger, today);
-  if (roundToCurrency(balance, currency) !== live) {
+  // The reader adds the same deltas in its own order and rounds to the coin: the two float sums may
+  // sit either side of a half coin, never further apart.
+  if (Math.abs(balance - live) > currencySmallestCoin(currency) / 2 + 1e-6) {
     throw new Error(
       `checking statement: account ${accountId}'s walk ends at ${roundToCurrency(balance, currency)}, the balance reads ${live}`
     );
@@ -389,7 +416,7 @@ function displayValue(accountId: number, ledger: Ledger, unit: CurrencyCode): Ch
 /** The checking page's head, its `display_value` in `unit`; null when the account is not a checking page account. */
 export function buildCheckingGlanceForAccount(accountId: number, unit: CurrencyCode): CheckingGlanceDto | null {
   if (!isCheckingPageAccount(accountId)) return null;
-  const ledger = loadLedger(accountId);
+  const ledger = loadLedger(accountId, false);
   const endOfDay = makeEndOfDay(ledger);
   const today = ledger.today;
   const firstDay = ledger.opening?.occurred_on ?? ledger.rows[0]?.on ?? today;
@@ -417,20 +444,39 @@ export type CheckingStatementQuery = {
   hideOwn?: boolean;
 };
 
+/**
+ * A search text that is an amount, as a figure copied from the page or typed: a sign, a currency
+ * symbol or code and spaces dropped («US$63,52», «−150.000», «$ 2.650,00»). A last mark followed
+ * by one digit, or by as many as the currency's decimals, is the decimal mark (`exact`: the row's
+ * amount to the coin); any other mark groups thousands and the figure is whole units. Null when
+ * the text is not an amount.
+ */
+function typedAmount(q: string, currency: string): { value: number; exact: boolean } | null {
+  const text = q
+    .replace(/^[-\u2212+(]\s*/, "")
+    .replace(/\)$/, "")
+    .replace(/^(?:[a-z]{0,3}\$|[a-z]{3}\b|\u20ac)\s*/, "")
+    .replace(/\s/g, "");
+  if (!/^\d[\d.,]*$/.test(text)) return null;
+  const minor = currencyMinorDigits(currency);
+  const decimals = minor > 0 ? /^(.*)[.,](\d+)$/.exec(text) : null;
+  if (decimals && (decimals[2]!.length === 1 || decimals[2]!.length === minor) && decimals[2]!.length <= minor) {
+    const whole = decimals[1]!.replace(/[.,]/g, "");
+    return { value: Number(`${whole || "0"}.${decimals[2]}`), exact: true };
+  }
+  return { value: Number(text.replace(/[.,]/g, "")), exact: false };
+}
+
 function rowMatches(r: LedgerRow, query: CheckingStatementQuery, currency: string): boolean {
   const kind = r.row.kind;
   if (query.hideOwn && (kind === "own_transfer" || kind === "conversion")) return false;
   if (query.kind && kind !== query.kind) return false;
   const q = query.q?.trim().toLowerCase();
   if (q) {
-    const digits = q.replace(/[$.,\s]/g, "");
-    if (/^\d+$/.test(digits)) {
-      const typed = Number(digits);
+    const typed = typedAmount(q, currency);
+    if (typed != null) {
       const abs = Math.abs(r.row.amount);
-      // Typed with the currency's decimals («2.650,00», «15.00»): the exact amount; else whole units.
-      const minor = currencyMinorDigits(currency);
-      const withDecimals = minor > 0 && new RegExp(`[.,]\\d{${minor}}$`).test(q);
-      return withDecimals ? Math.round(abs * 10 ** minor) === typed : Math.round(abs) === typed;
+      return typed.exact ? roundToCurrency(abs, currency) === typed.value : Math.round(abs) === typed.value;
     }
     return r.haystack.includes(q);
   }

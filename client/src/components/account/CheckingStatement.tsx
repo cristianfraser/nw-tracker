@@ -139,8 +139,7 @@ function rowTypeLabel(row: CheckingStatementRowDto, t: (key: string) => string):
   if (row.kind === "fee") return null;
   if (row.kind === "conversion") return t("accountDetail.checking.statement.type.conversion");
   if (row.kind === "dividend") return t("accountDetail.checking.statement.type.dividend");
-  // A trade by what the cash did: it left for a purchase, it arrived from a sale.
-  if (row.kind === "trade") return t(row.amount < 0 ? "accountDetail.checking.statement.type.buy" : "accountDetail.checking.statement.type.sell");
+  if (row.trade_side != null) return t(`accountDetail.checking.statement.type.${row.trade_side}`);
   if (row.income_kind != null && LABELLED_INCOME_KINDS.has(row.income_kind)) return t(`income.chart.${row.income_kind}`);
   return t(row.amount > 0 ? "accountDetail.checking.statement.type.deposit" : "accountDetail.checking.statement.type.withdrawal");
 }
