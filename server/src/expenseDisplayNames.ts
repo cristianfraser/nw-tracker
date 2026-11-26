@@ -32,7 +32,7 @@
  */
 import { addDaysIso, normalizeRut, rutVerifierHolds, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH, daysBetweenIso } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import type { CategoryRuleLinkDto, ExpenseLinkLabel, FlowCcExpenseLineRow } from "./expenseLineTypes.js";
+import type { CategoryRuleLinkDto, ExpenseLineRecurring, ExpenseLinkLabel, FlowCcExpenseLineRow } from "./expenseLineTypes.js";
 
 export type { CategoryRuleLinkDto, ExpenseLinkLabel };
 import type { TransferCounterpartyDto } from "./bankTransferNotices.js";
@@ -626,7 +626,7 @@ export function checkingMovementShownName(
 }
 
 /** Every line with the names it shows (last step of the expense lines). */
-export function withExpenseDisplayNames<L extends FlowCcExpenseLineRow>(lines: L[]): L[] {
+export function withExpenseDisplayNames<L extends ExpenseLineRecurring>(lines: L[]): L[] {
   if (lines.length === 0) return lines;
   const ctx = loadDisplayNameContext(lines);
   return lines.map((l) => {

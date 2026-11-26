@@ -1,5 +1,5 @@
 import { isNotaDeCreditoMerchant, NOTA_DE_CREDITO_MATCH_MIN_CLP } from "./cards/notaDeCredito.js";
-import type { FlowCcExpenseLineRowDraft, NotaDeCreditoRole } from "./expenseLineTypes.js";
+import type { ExpenseLineNotaPaired, FlowCcExpenseLineRowDraft, NotaDeCreditoRole } from "./expenseLineTypes.js";
 
 export type { NotaDeCreditoRole };
 
@@ -100,7 +100,7 @@ export function notaDeCreditoRoleForLine(
 
 export function enrichLinesWithNotaDeCreditoPairing(
   lines: readonly FlowCcExpenseLineRowDraft[]
-): FlowCcExpenseLineRowDraft[] {
+): ExpenseLineNotaPaired[] {
   const pairing = pairNotaDeCreditoAnnulments(lines);
   return lines.map((line) => {
     const role = notaDeCreditoRoleForLine(line, pairing);

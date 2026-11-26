@@ -54,12 +54,15 @@ export function lineMoneyFromBuilderFields(l: MoneyFields): { amount: Money; val
   return { amount, values };
 }
 
+/** A line once the «line money» step saw it: its money set, the builder's rate hint gone. */
+export type WithLineMoney<L> = Omit<L, "clp_rate_source" | "amount"> & ReturnType<typeof lineMoneyFromBuilderFields>;
+
 /** The «line money» step: every line gets its `amount` and `values`. */
-export function withLineMoney<L extends MoneyFields>(lines: readonly L[]): L[] {
+export function withLineMoney<L extends MoneyFields>(lines: readonly L[]): WithLineMoney<L>[] {
   return lines.map((l) => {
     // The money fields go last (a builder that stated `amount` does not move it on the wire).
     const { clp_rate_source: _hint, amount: _preset, ...rest } = l;
-    return { ...rest, ...lineMoneyFromBuilderFields(l) } as L;
+    return { ...rest, ...lineMoneyFromBuilderFields(l) };
   });
 }
 

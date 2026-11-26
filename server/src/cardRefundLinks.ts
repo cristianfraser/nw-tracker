@@ -16,7 +16,7 @@
 import { db } from "./db.js";
 import { findLines, oneShotLinesSupersededByPlans } from "./cards/purchases.js";
 import { withRefundLinks } from "./expenseRefundLinks.js";
-import type { FlowCcExpenseLineRow } from "./expenseLineTypes.js";
+import type { ExpenseLineCardRefundLinked, ExpenseLineWithMoney, FlowCcExpenseLineRow } from "./expenseLineTypes.js";
 import { lineAmount } from "./lineMoney.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 
@@ -167,10 +167,10 @@ export function supersedingPlanFromDb(): SupersedingPlan {
  * an unlinked credit with a single same-merchant candidate carries it as `refund_suggestion`.
  */
 export function withCardRefundLinks(
-  lines: readonly Line[],
+  lines: readonly ExpenseLineWithMoney[],
   links: Map<number, number> = loadCardRefundLinks(),
   supersedingPlan: SupersedingPlan = supersedingPlanFromDb()
-): Line[] {
+): ExpenseLineCardRefundLinked[] {
   const refunds = new Set(lines.filter((l) => isLinkableCardRefund(l)));
   if (refunds.size === 0) return [...lines];
   const byFlow = new Map<number, Line>();

@@ -91,7 +91,7 @@ describe("an expense line in EUR", () => {
       occurred_on: "2099-03-15",
       amount_clp: 95_000,
       ...lineMoneyFromBuilderFields({ amount_clp: 95_000, amount_usd: 100, amount_usd_at_expense: 100, clp_rate_source: "live" }),
-    };
+    } as Parameters<typeof toWireExpenseLine>[0]; // only the fields the money seam reads
     const wire = toWireExpenseLine(line, "eur");
     expect(wire.converted).toEqual({ value: 95, currency: "eur", rate_source: "live" });
     expect(wire.value_clp).toBe(95_000);

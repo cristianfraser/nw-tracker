@@ -34,7 +34,12 @@ type RefundLinkLine = {
   };
 };
 
-export function withRefundLinks<L extends RefundLinkLine>(lines: readonly L[]): L[] {
+/** A line once the «refund links» step saw it: a refund carries its purchase, no longer its line id. */
+export type WithRefundLink<L> = L | (Omit<L, "refund_of_line_id"> & { refund_of: RefundOf });
+
+type RefundOf = NonNullable<RefundLinkLine["refund_of"]>;
+
+export function withRefundLinks<L extends RefundLinkLine>(lines: readonly L[]): WithRefundLink<L>[] {
   if (!lines.some((l) => l.refund_of_line_id != null)) return [...lines];
   const purchases = new Map<string, L>();
   for (const l of lines) {
@@ -61,6 +66,6 @@ export function withRefundLinks<L extends RefundLinkLine>(lines: readonly L[]): 
         ...(purchase.link_label != null ? { link_label: purchase.link_label } : {}),
         ...(purchase.payment_receipt != null ? { payment_receipt: purchase.payment_receipt } : {}),
       },
-    } as unknown as L;
+    };
   });
 }

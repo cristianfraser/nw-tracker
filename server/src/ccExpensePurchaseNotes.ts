@@ -6,7 +6,7 @@ import { listForeignCheckingAccountIds } from "./checkingCartolaLoaders.js";
 import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 import { mergeAutoDepositMatchNote } from "./ccExpenseDepositMatchNotes.js";
 import { mergeAutoAdditionalCardNote } from "./ccAdditionalCardNoteText.js";
-import type { FlowCcExpenseLineRow } from "./expenseLineTypes.js";
+import type { ExpenseLineKeyed, ExpenseLinePieced } from "./expenseLineTypes.js";
 
 export function purchaseNotesMapKey(accountId: number, purchaseKey: string): string {
   return `${accountId}|${purchaseKey}`;
@@ -65,21 +65,13 @@ export function setCcExpensePurchaseNote(opts: {
   return { notes: text };
 }
 
-export type FlowCcExpenseLineBeforeNotes = Omit<
-  FlowCcExpenseLineRow,
-  "purchase_key" | "purchase_notes" | "origin_label" | "origin" | "big_group_slug"
-> & {
-  /** Checking-only: deposit-paired portion of a movement (distinct purchase_key). */
-  checking_purchase_portion?: "deposit";
-  auto_deposit_match_note?: string;
-  auto_additional_card_note?: string;
-  split_purchase_key_suffix?: string;
-};
+/** The line the «purchase notes» step reads: a draft through the steps before it. */
+export type FlowCcExpenseLineBeforeNotes = ExpenseLinePieced;
 
 export function enrichFlowLinesWithPurchaseNotes(
   lines: FlowCcExpenseLineBeforeNotes[],
   notesByKey?: Map<string, string>
-): Omit<FlowCcExpenseLineRow, "origin_label" | "origin" | "big_group_slug">[] {
+): ExpenseLineKeyed[] {
   const accountIds = [...new Set(lines.map((ln) => ln.account_id))];
   const notes =
     notesByKey ??

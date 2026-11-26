@@ -360,10 +360,60 @@ export type FlowCcExpenseLineRow = {
 
 };
 
-export type FlowCcExpenseLineRowDraft = Omit<
-  FlowCcExpenseLineRow,
-  "origin_label" | "origin" | "purchase_key" | "purchase_notes" | "big_group_slug"
-> & {
+/**
+ * The fields a step of the expense-line pipeline sets (`EXPENSE_LINE_STEPS` in `flowsExpenses.ts`),
+ * none of them on a draft: each stage type below adds the fields of the step that produces it, so a
+ * step typed on its stage cannot read a field only a later step sets. The builders may state
+ * `amount`, `card_refund`, `refund_of_line_id`, `checking_refund`, `pre_tax` and the rest of the
+ * line on the draft itself.
+ */
+type ExpenseLineStepField =
+  | "purchase_key"
+  | "purchase_notes"
+  | "big_group_slug"
+  | "origin_label"
+  | "origin"
+  | "nota_credito_role"
+  | "piece_seq"
+  | "pieces_remainder"
+  | "installment_purchase_id"
+  | "installment_source"
+  | "expense_deposit_links"
+  | "transfer_counterparty"
+  | "payment_receipt"
+  | "recurring_payment"
+  | "display_merchant"
+  | "merchant_processor"
+  | "link_label"
+  | "category_link"
+  | "branch_choices"
+  | "payment_name"
+  | "category_specific"
+  | "gastos_scope"
+  | "refund_of"
+  | "billing_account_id"
+  | "is_financing_cost"
+  | "flow_id"
+  | "values"
+  | "refund_suggestion"
+  | "refund_link_broken"
+  | ExpenseLineShapeField;
+
+/** The fields the last step («line shapes», `expenseLineShapes.ts`) sets. */
+type ExpenseLineShapeField =
+  | "abono"
+  | "pending_classification"
+  | "can_delete"
+  | "can_make_installment"
+  | "can_edit_installment"
+  | "can_edit_pieces"
+  | "can_link_refund";
+
+/** The fields of the finished line a stage adds. */
+type Adds<K extends keyof FlowCcExpenseLineRow> = Pick<FlowCcExpenseLineRow, K>;
+
+/** Stage 0, what the line builders return: the line without any step's field. */
+export type FlowCcExpenseLineRowDraft = Omit<FlowCcExpenseLineRow, ExpenseLineStepField> & {
   /** Checking-only: distinct purchase_key for deposit-paired portion of a movement. */
   checking_purchase_portion?: "deposit";
   /** Ephemeral auto-match note merged into purchase_notes at enrich time. */
@@ -372,6 +422,56 @@ export type FlowCcExpenseLineRowDraft = Omit<
   /** Appended to the computed purchase_key for split sub-lines (ensures uniqueness in dedupe/notes). */
   split_purchase_key_suffix?: string;
 };
+
+// The stages of the expense-line pipeline, in its order: each is the line after the step it names.
+
+/** «nota de crédito pairing»: a nota and the purchase it annuls know their role. */
+export type ExpenseLineNotaPaired = FlowCcExpenseLineRowDraft & Adds<"nota_credito_role">;
+/** «line pieces»: a line broken into pieces is its pieces and what they leave of it. */
+export type ExpenseLinePieced = ExpenseLineNotaPaired & Adds<"piece_seq" | "pieces_remainder">;
+/** «purchase notes»: the line's purchase key (the draft's key hints folded in) and its note. */
+export type ExpenseLineKeyed = Omit<
+  ExpenseLinePieced,
+  "auto_deposit_match_note" | "auto_additional_card_note" | "split_purchase_key_suffix"
+> &
+  Adds<"purchase_key" | "purchase_notes">;
+/** «big groups». */
+export type ExpenseLineGrouped = ExpenseLineKeyed & Adds<"big_group_slug">;
+/** «origin labels»: every required field of the line is set from here on. */
+export type ExpenseLineOriginated = ExpenseLineGrouped & Adds<"origin_label" | "origin">;
+/** «installment plans»: a plan's own line names its plan. */
+export type ExpenseLinePlanned = ExpenseLineOriginated & Adds<"installment_purchase_id" | "installment_source">;
+/** «expense deposit links». */
+export type ExpenseLineDepositLinked = ExpenseLinePlanned & Adds<"expense_deposit_links">;
+/** «transfer counterparties». */
+export type ExpenseLineCounterparted = ExpenseLineDepositLinked & Adds<"transfer_counterparty">;
+/** «payment receipts». */
+export type ExpenseLineReceipted = ExpenseLineCounterparted & Adds<"payment_receipt">;
+/** «recurring payment names» (the «subscription category» step after it adds no field). */
+export type ExpenseLineRecurring = ExpenseLineReceipted & Adds<"recurring_payment">;
+/** «display names». */
+export type ExpenseLineNamed = ExpenseLineRecurring &
+  Adds<"display_merchant" | "merchant_processor" | "link_label" | "category_link" | "branch_choices">;
+/** «payment names». */
+export type ExpenseLinePaymentNamed = ExpenseLineNamed & Adds<"payment_name">;
+/** «specific category rules». */
+export type ExpenseLineRuled = ExpenseLinePaymentNamed & Adds<"category_specific">;
+/** «plan prepayment refunds»: a prepaid plan's credit counts in «Total» only. */
+export type ExpenseLineScoped = ExpenseLineRuled & Adds<"gastos_scope">;
+/** «refund links»: a refund carries its purchase as the purchase finally reads. */
+export type ExpenseLineRefundLinked = ExpenseLineScoped & Adds<"refund_of">;
+/** «facturado financing projection»: a financed purchase's slices name the card that bills them. */
+export type ExpenseLineProjected = ExpenseLineRefundLinked & Adds<"billing_account_id">;
+/** «financing cost lines». */
+export type ExpenseLineCosted = ExpenseLineProjected & Adds<"is_financing_cost">;
+/** «flow ids». */
+export type ExpenseLineWithFlow = ExpenseLineCosted & Adds<"flow_id">;
+/** «line money»: every line has its money. */
+export type ExpenseLineWithMoney = ExpenseLineWithFlow & Required<Adds<"amount" | "values">>;
+/** «card refund links». */
+export type ExpenseLineCardRefundLinked = ExpenseLineWithMoney & Adds<"refund_suggestion" | "refund_link_broken">;
+/** «line shapes», the last step: the finished line ({@link FlowCcExpenseLineRow} with its money). */
+export type ExpenseLineShaped = ExpenseLineCardRefundLinked & Adds<ExpenseLineShapeField>;
 
 export type FlowCcExpenseMonthRow = {
   period_month: string;

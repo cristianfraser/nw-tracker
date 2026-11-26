@@ -8,7 +8,9 @@ import {
 import type { ExpenseDepositLinkDto } from "./expenseLineTypes.js";
 import { splittableMortgageLinkOf } from "./expenseDepositLinks.js";
 import { db } from "./db.js";
-import type { FlowCcExpenseLineRow } from "./expenseLineTypes.js";
+import type { ExpenseLineProjected, ExpenseLineRefundLinked } from "./expenseLineTypes.js";
+
+
 
 /**
  * Facturado-financing projection.
@@ -96,7 +98,7 @@ function splitIntegerEvenly(total: number, n: number): number[] {
 const PROJECTION_SYNTHETIC_ID_BASE = -1_000_000_000;
 
 function makeProjectedLine(
-  base: FlowCcExpenseLineRow,
+  base: ExpenseLineProjected,
   overrides: {
     statementLineId: number;
     amountClp: number;
@@ -116,7 +118,7 @@ function makeProjectedLine(
     purchaseKey: string;
     expenseDepositLinks?: ExpenseDepositLinkDto[];
   }
-): FlowCcExpenseLineRow {
+): ExpenseLineProjected {
   const occurredOn = `${overrides.month}-28`;
   // USD allocates by CLP share of the base line (same FX date), so month slices sum back
   // to the base USD; gap lines convert at the anchor's implied rate the same way.
@@ -166,15 +168,15 @@ function makeProjectedLine(
  * Returns a new array; input lines are copied (never mutated). No links → input returned as-is.
  */
 export function applyCcFacturadoFinancingProjection(
-  lines: readonly FlowCcExpenseLineRow[],
+  lines: readonly ExpenseLineRefundLinked[],
   links: CcFacturadoFinancingLink[] = listCcFacturadoFinancingLinks(),
   facturadoClpFor: FacturadoClpResolver = statementFacturadoClpForBillingMonth
-): FlowCcExpenseLineRow[] {
+): ExpenseLineProjected[] {
   if (links.length === 0) return [...lines];
 
   // Scope overrides keyed by array index, plus synthetic lines to append.
   const scopeByIndex = new Map<number, "total_only" | "excluded">();
-  const projected: FlowCcExpenseLineRow[] = [];
+  const projected: ExpenseLineProjected[] = [];
   let nextSyntheticId = PROJECTION_SYNTHETIC_ID_BASE;
 
   for (const link of links) {

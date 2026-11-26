@@ -9,27 +9,35 @@
  * Every route that sends lines sends them through this. Typed structurally (no import of the server
  * line type) so the line builders can use it without an import cycle.
  */
-import type { FlowCcExpenseLineRow as WireExpenseLine, LineUnitValue } from "nw-tracker-contracts/dto/flows";
+import type { FlowCcExpenseLineRow as WireExpenseLine, LineUnitValue, Money } from "nw-tracker-contracts/dto/flows";
 import { shownNameFields, type ShownNameSource } from "./expenseShownName.js";
 import { lineAmount, lineConvertedForWire, linePesos } from "./lineMoney.js";
 
-type ServerLine = ShownNameSource & {
-  source: string;
-  purchase_key: string;
-  refund_of?: ShownNameSource & Record<string, unknown>;
-  refund_suggestion?: ShownNameSource & { line_id: number; purchase_date: string; amount: { value: number; currency: string } };
-  amount_clp: number;
-  amount_usd?: number | null;
-  amount_usd_at_expense?: number | null;
-  clp_rate_source?: unknown;
-  amount?: { value: number; currency: string };
-  values?: Record<string, LineUnitValue>;
-  occurred_on?: string;
-  purchase_on?: string | null;
-};
+/** The wire fields a server line carries as they go out; the seam builds the others. */
+type WirePassThrough = Omit<
+  WireExpenseLine,
+  "amount" | "converted" | "value_clp" | "name" | "name_detail" | "manual_description" | "refund_of" | "refund_suggestion"
+>;
+
+type ServerLine = WirePassThrough &
+  ShownNameSource & {
+    refund_of?: ShownNameSource & NonNullable<WireExpenseLine["refund_of"]>;
+    refund_suggestion?: ShownNameSource & { line_id: number; purchase_date: string; amount: Money };
+    amount_clp: number;
+    amount_usd?: number | null;
+    amount_usd_at_expense?: number | null;
+    clp_rate_source?: unknown;
+    amount?: Money;
+    values?: Record<string, LineUnitValue>;
+  };
+
+/** Throws on a line the «line money» step has not seen (`lineAmount`); past it the line has its money. */
+function assertLineMoney<L extends { amount?: Money }>(l: L): asserts l is L & { amount: Money } {
+  lineAmount(l);
+}
 
 export function toWireExpenseLine(l: ServerLine, unit: string): WireExpenseLine {
-  lineAmount(l); // throws on a line the «line money» step has not seen
+  assertLineMoney(l);
   const converted = lineConvertedForWire(l, unit);
   const value_clp = linePesos(l);
   const {
@@ -50,7 +58,7 @@ export function toWireExpenseLine(l: ServerLine, unit: string): WireExpenseLine 
   const refund = refund_of
     ? (({ merchant: _rm, display_merchant: _rdm, payment_name: _rpn, merchant_processor: _rmp, ...rest }) => rest)(refund_of)
     : undefined;
-  return {
+  const line: WireExpenseLine = {
     ...wire,
     ...names,
     ...(l.source === "manual" && merchant != null ? { manual_description: merchant } : {}),
@@ -67,7 +75,8 @@ export function toWireExpenseLine(l: ServerLine, unit: string): WireExpenseLine 
       : {}),
     converted,
     value_clp,
-  } as unknown as WireExpenseLine;
+  };
+  return line;
 }
 
 export function toWireExpenseLines(lines: readonly ServerLine[], unit: string): WireExpenseLine[] {
