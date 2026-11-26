@@ -1,3 +1,4 @@
+import { parseNumberInput } from "../format";
 import { categorySlugFromTicker } from "./stockAccountFormTypes";
 
 /**
@@ -83,14 +84,25 @@ export type PanelAccountCreateBody = {
 };
 
 /**
- * The strike as typed: a plain decimal number with a period (an option's strike is quoted in
- * dollars; the form is not a locale-aware money field). Null when it is not a positive number.
+ * A strike typed as one mark followed by exactly three digits («2.125», «1,500»): the one shape
+ * `parseNumberInput` reads by the separator setting, so it could be three decimals or thousands.
+ * A contract is never created on a guess — the form asks for it written another way.
+ */
+export function isAmbiguousOptionStrike(raw: string): boolean {
+  return /^\d+[.,]\d{3}$/.test(raw.trim());
+}
+
+/**
+ * The strike as typed, read like every number field (`parseNumberInput`: «600,5» or «600.5»).
+ * Null when it is ambiguous ({@link isAmbiguousOptionStrike}) or not a positive number of at most
+ * three decimals.
  */
 export function parseOptionStrike(raw: string): number | null {
-  const s = raw.trim();
-  if (!/^\d+(\.\d{1,3})?$/.test(s)) return null;
-  const n = Number(s);
-  return n > 0 ? n : null;
+  if (isAmbiguousOptionStrike(raw)) return null;
+  const parsed = parseNumberInput(raw);
+  if (!parsed.ok || parsed.value == null) return null;
+  const n = parsed.value;
+  return n > 0 && Number(n.toFixed(3)) === n ? n : null;
 }
 
 export function buildPanelAccountCreatePreview(

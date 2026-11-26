@@ -61,6 +61,7 @@ function navNodeWithChartBuckets(
     kind_slug: null,
     dashboard_bucket_slug: "brokerage",
     investment_glance: false,
+    cash_glance: false,
     api_group: "brokerage",
     api_subgroup: null,
     color_rgb: null,

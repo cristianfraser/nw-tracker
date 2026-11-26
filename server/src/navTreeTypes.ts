@@ -52,6 +52,11 @@ export type NavTreeNodeDto = {
    * or under «Inversiones» (`isInvestmentGroup`) that is not a basket. False on every other node.
    */
   investment_glance: boolean;
+  /**
+   * The node's page is the group page in its cash form (`group_glance.kind` "cash"): a group of
+   * the cash bucket (`isCashGroup`) that is not a basket. False on every other node.
+   */
+  cash_glance: boolean;
   /** `nav_bucket` = sidebar grouping only (e.g. inversiones, efectivo); `liability_group` = Pasivos root. */
   group_kind: "bucket" | "reference" | "nav_bucket" | "liability_group";
   /**

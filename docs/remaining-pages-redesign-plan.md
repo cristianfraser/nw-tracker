@@ -25,7 +25,7 @@ proposed split into one-session work items.
 |---|---|---|
 | `/` | `DashboardPage` (`DemoHomePage` wraps it on the demo) | redesigned |
 | `/inversiones/*` | `GroupInfoPage` → `InvestmentGroupPage` / `BasketGroupPage` | redesigned |
-| `/cash_eqs`, `/cash_eqs/savings`, `/cash_eqs/checking` | `GroupInfoPage` → generic `GroupInfoBase` | **old** (item C) |
+| `/cash_eqs`, `/cash_eqs/savings`, `/cash_eqs/checking` | `GroupInfoPage` → `InvestmentGroupPage` (cash form) | redesigned |
 | `/real_estate` | `GroupInfoPage` → generic `GroupInfoBase` | **old** (item A) |
 | `/liabilities`, `/liabilities/mortgage`, `/liabilities/:subgroup` | `LiabilitiesPage`, `MortgageGroupPage`, `LiabilitiesGroupPage` | redesigned |
 | `/account/:id` card | `CreditCardAccountDetailPage` | redesigned |
@@ -43,7 +43,7 @@ proposed split into one-session work items.
 | `/watchlist` | `WatchlistPage` | redesigned |
 | `/panel/notifications` | `NotificationsPage` (messages table) | redesigned |
 | `/panel/mirror-pairs` | `MirrorPairsPanelPage` | redesigned |
-| `/panel/accounts` | `AccountsPanelPage` | **old** except its accounts tree (item H) |
+| `/panel/accounts` | `AccountsPanelPage` | redesigned |
 | `/panel/import-sync` | `ImportSyncPage` | **old** except its message list (item F) |
 | `/panel/usage` | `UsagePanelPage` | old, low value (item K) |
 | `/panel/settings` | `SettingsPage` | residency form redesigned; the rest is two small blocks (item K) |
@@ -99,6 +99,14 @@ Two different kinds of account land here, and the page fits neither.
 
 ### C. `/cash_eqs`, `/cash_eqs/savings`, `/cash_eqs/checking` — generic group page
 
+> **Done (2026-11-26):** cash groups open `InvestmentGroupPage` in its cash form (nav flag
+> `cash_glance`, `group_glance.kind` "cash", `groupGlance.ts`): balance by currency and the change
+> of the balance in the strip, a table of balances in each account's own currency beside the
+> value in the unit, the linked cards as a negative row where the group nets them, no return
+> figures. The generic branch of `GroupInfoPage` and the chart section only it used are deleted.
+> `GroupInfoBase` stays: it is the shell of the dashboard, the Pasivos group page, the basket
+> page and the glance page itself. The value map keeps its day / month / year colour.
+
 - Same `GroupInfoBase` stack as A, 5,500–6,100px on a phone. Cash groups get P/L-style «Δ by
   account» and «Monthly Δ and accumulated earnings» charts, and no view of what a cash group is
   for: balance per account and per currency, what came in and went out this month, the cards
@@ -151,6 +159,12 @@ Two different kinds of account land here, and the page fits neither.
 
 ### H. `/panel/accounts`
 
+> **Done (2026-11-26):** one tile, «Accounts»: the accounts tree with the controls on its rows
+> (`NavAccountsTree` `rowExtras`; the user picked the ⋯ variant, an account's actions open under
+> its row). «Account list» and «Portfolio groups» are gone; accounts in no group of the tree are
+> listed under it. «New account» and the edit modal use the residency form's layout
+> (`PanelForm.module.css`); the option strike is read through `parseNumberInput`.
+
 - «New account» is bare browser controls stacked without spacing; the checkbox label prints a
   column name (`exclude_from_group_totals`).
 - «Account list» on a phone stacks the four column headers into one cell («Account / Bucket /
@@ -183,8 +197,8 @@ Two different kinds of account land here, and the page fits neither.
 - `/panel/usage`: two `ColumnTable`s, phone rendering exists; not seen with data.
 - `/panel/settings`: language / separator / chart-style controls above the redesigned residency
   form.
-- After A and C, `GroupInfoBase` and the generic branch of `GroupInfoPage` have no route left:
-  delete them.
+- After A and C the generic branch of `GroupInfoPage` had no route left and was deleted with C
+  (`GroupInfoBase` itself stays, the shell of the dashboard, Pasivos, basket and glance pages).
 
 ## Work items
 
