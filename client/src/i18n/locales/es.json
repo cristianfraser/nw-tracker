@@ -2083,34 +2083,68 @@
     "noChartData": "Sin datos de proyección.",
     "invalidRange": "Debe estar entre {{min}} y {{max}}",
     "reset": "Restablecer",
-    "params": {
-      "real_return_pct": "Retorno real % (acum.)",
-      "monthly_aporte": "Aporte mensual {{unit}}",
-      "inflation_pct": "Inflación {{code}} %",
-      "retire_return_pct": "Retorno real % (retiro)",
+    "subline": "Patrimonio a los {{age}} · {{month}} · dinero de hoy",
+    "chartTitle": "Patrimonio hasta los {{age}}",
+    "assumptions": "Supuestos",
+    "lines": {
+      "total_nw": "Patrimonio neto",
+      "invested": "Invertido",
+      "proj_nw": "Proyectado",
+      "proj_invested": "Invertido, proyectado",
+      "proj_nw_nominal": "Proyectado, nominal ({{code}} {{pct}}%)",
+      "proj_swr": "Retiro, SWR",
+      "proj_pct_balance": "Retiro, % del saldo",
+      "proj_fixed_income": "Retiro, renta fija",
+      "milestones": "{{from}}–{{to}}"
+    },
+    "rail": {
+      "netWorthAt": "patrimonio a los {{age}}",
+      "today": "hoy",
+      "contributions": "aportes",
+      "realGrowth": "crecimiento real",
+      "invested": "Invertido a los {{age}}",
+      "other": "Propiedades y efectivo",
+      "pot": "Fondo de retiro · invertido + {{pct}} del resto",
+      "incomeTitle": "Renta mensual desde los {{age}}",
+      "lastsHead": "dura",
+      "strategyAria": "{{name}}: {{amount}} al mes, {{lasts}}",
+      "rentNote": "Cada monto incluye {{amount}} de renta pasiva; la renta fija retira del fondo solo lo que esa renta no cubre.",
+      "initialNote": "% del saldo: la renta del primer mes; luego sigue al saldo."
+    },
+    "strategy": {
+      "swr": "SWR {{pct}}",
+      "pct_balance": "{{pct}} del saldo",
+      "fixed_income": "Renta fija"
+    },
+    "lasts": {
+      "end_age": "hasta los {{age}}",
+      "depleted": "se agota: {{age}}",
+      "always": "siempre"
+    },
+    "groups": {
+      "growth": "Crecimiento hasta los {{age}}",
+      "inflation": "Inflación",
+      "drawdown": "Retiro desde los {{age}}"
+    },
+    "groupSummary": {
+      "growth": "{{pct}} real · {{amount}} / mes",
+      "drawdown": "{{pct}} real · hasta los {{age}} · SWR {{swr}} · {{balance}} del saldo"
+    },
+    "fields": {
+      "real_return_pct": "Retorno real %",
+      "monthly_aporte": "Aporte mensual ({{unit}})",
+      "inflation_pct": "{{code}} %",
+      "retire_return_pct": "Retorno real %",
       "end_age": "Edad final",
       "swr_pct": "SWR %",
       "pct_balance_pct": "% del saldo",
-      "monthly_income": "Renta mensual {{unit}} (0 = SWR)",
-      "liquidate_other_pct": "% no-invertido liquidado a los 65",
-      "monthly_rent": "Renta pasiva mensual {{unit}} (retiro)"
+      "monthly_income": "Renta fija / mes ({{unit}})",
+      "monthly_rent": "Renta pasiva / mes ({{unit}})",
+      "liquidate_other_pct": "% de propiedades y efectivo vendido a los {{age}}"
     },
-    "inflationAssumption": "La inflación por defecto es un supuesto, no un pronóstico: {{list}}. La línea nominal de cada moneda usa la suya.",
-    "summary": {
-      "balanceAtRetire": "Saldo a los {{age}}",
-      "investedLabel": "invertido",
-      "totalLabel": "patrimonio",
-      "todaysMoney": "dinero de hoy",
-      "potDescription": "estrategias sobre {{pot}} = invertido + {{pct}}% del resto",
-      "rentIncluded": "Incluye renta pasiva de {{amount}}/mes en los ingresos; la estrategia de renta fija solo retira del fondo lo que la renta no cubre.",
-      "swr": "SWR {{pct}}%",
-      "pctBalance": "{{pct}}% del saldo",
-      "fixedIncome": "Renta fija",
-      "income": "{{amount}}/mes",
-      "initialIncome": "{{amount}}/mes inicial",
-      "depletes": "se agota a los {{age}} años",
-      "lasts": "dura hasta los {{age}}",
-      "neverDepletes": "nunca se agota; la renta varía con el saldo"
+    "hints": {
+      "inflation": "Los valores por defecto ({{list}}) son supuestos, no pronósticos. La línea nominal de cada moneda usa la suya.",
+      "fixedIncome": "Con renta fija 0 se usa la renta del SWR."
     }
   },
   "routeError": {

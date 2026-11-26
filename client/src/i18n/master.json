@@ -6691,22 +6691,174 @@
       "en": "Reset",
       "es": "Restablecer"
     },
-    "params": {
+    "subline": {
+      "en": "Net worth at {{age}} · {{month}} · today's money",
+      "es": "Patrimonio a los {{age}} · {{month}} · dinero de hoy"
+    },
+    "chartTitle": {
+      "en": "Net worth to {{age}}",
+      "es": "Patrimonio hasta los {{age}}"
+    },
+    "assumptions": {
+      "en": "Assumptions",
+      "es": "Supuestos"
+    },
+    "lines": {
+      "total_nw": {
+        "en": "Net worth",
+        "es": "Patrimonio neto"
+      },
+      "invested": {
+        "en": "Invested",
+        "es": "Invertido"
+      },
+      "proj_nw": {
+        "en": "Projected",
+        "es": "Proyectado"
+      },
+      "proj_invested": {
+        "en": "Invested, projected",
+        "es": "Invertido, proyectado"
+      },
+      "proj_nw_nominal": {
+        "en": "Projected, nominal ({{code}} {{pct}}%)",
+        "es": "Proyectado, nominal ({{code}} {{pct}}%)"
+      },
+      "proj_swr": {
+        "en": "Drawdown, SWR",
+        "es": "Retiro, SWR"
+      },
+      "proj_pct_balance": {
+        "en": "Drawdown, % of balance",
+        "es": "Retiro, % del saldo"
+      },
+      "proj_fixed_income": {
+        "en": "Drawdown, fixed income",
+        "es": "Retiro, renta fija"
+      },
+      "milestones": {
+        "en": "{{from}}–{{to}}",
+        "es": "{{from}}–{{to}}"
+      }
+    },
+    "rail": {
+      "netWorthAt": {
+        "en": "net worth at {{age}}",
+        "es": "patrimonio a los {{age}}"
+      },
+      "today": {
+        "en": "today",
+        "es": "hoy"
+      },
+      "contributions": {
+        "en": "contributions",
+        "es": "aportes"
+      },
+      "realGrowth": {
+        "en": "real growth",
+        "es": "crecimiento real"
+      },
+      "invested": {
+        "en": "Invested at {{age}}",
+        "es": "Invertido a los {{age}}"
+      },
+      "other": {
+        "en": "Property and cash",
+        "es": "Propiedades y efectivo"
+      },
+      "pot": {
+        "en": "Drawdown pot · invested + {{pct}} of the rest",
+        "es": "Fondo de retiro · invertido + {{pct}} del resto"
+      },
+      "incomeTitle": {
+        "en": "Monthly income from {{age}}",
+        "es": "Renta mensual desde los {{age}}"
+      },
+      "lastsHead": {
+        "en": "lasts",
+        "es": "dura"
+      },
+      "strategyAria": {
+        "en": "{{name}}: {{amount}} a month, {{lasts}}",
+        "es": "{{name}}: {{amount}} al mes, {{lasts}}"
+      },
+      "rentNote": {
+        "en": "Each income includes {{amount}} of passive rent; the fixed income draws from the pot only what the rent does not cover.",
+        "es": "Cada monto incluye {{amount}} de renta pasiva; la renta fija retira del fondo solo lo que esa renta no cubre."
+      },
+      "initialNote": {
+        "en": "% of balance: the first month's income; it then follows the balance.",
+        "es": "% del saldo: la renta del primer mes; luego sigue al saldo."
+      }
+    },
+    "strategy": {
+      "swr": {
+        "en": "SWR {{pct}}",
+        "es": "SWR {{pct}}"
+      },
+      "pct_balance": {
+        "en": "{{pct}} of balance",
+        "es": "{{pct}} del saldo"
+      },
+      "fixed_income": {
+        "en": "Fixed income",
+        "es": "Renta fija"
+      }
+    },
+    "lasts": {
+      "end_age": {
+        "en": "to {{age}}",
+        "es": "hasta los {{age}}"
+      },
+      "depleted": {
+        "en": "until {{age}}",
+        "es": "se agota: {{age}}"
+      },
+      "always": {
+        "en": "always",
+        "es": "siempre"
+      }
+    },
+    "groups": {
+      "growth": {
+        "en": "Growth to {{age}}",
+        "es": "Crecimiento hasta los {{age}}"
+      },
+      "inflation": {
+        "en": "Inflation",
+        "es": "Inflación"
+      },
+      "drawdown": {
+        "en": "Drawdown from {{age}}",
+        "es": "Retiro desde los {{age}}"
+      }
+    },
+    "groupSummary": {
+      "growth": {
+        "en": "{{pct}} real · {{amount}} / month",
+        "es": "{{pct}} real · {{amount}} / mes"
+      },
+      "drawdown": {
+        "en": "{{pct}} real · to {{age}} · SWR {{swr}} · {{balance}} of balance",
+        "es": "{{pct}} real · hasta los {{age}} · SWR {{swr}} · {{balance}} del saldo"
+      }
+    },
+    "fields": {
       "real_return_pct": {
-        "en": "Real return % (accum.)",
-        "es": "Retorno real % (acum.)"
+        "en": "Real return %",
+        "es": "Retorno real %"
       },
       "monthly_aporte": {
-        "en": "Monthly contribution {{unit}}",
-        "es": "Aporte mensual {{unit}}"
+        "en": "Monthly contribution ({{unit}})",
+        "es": "Aporte mensual ({{unit}})"
       },
       "inflation_pct": {
-        "en": "{{code}} inflation %",
-        "es": "Inflación {{code}} %"
+        "en": "{{code}} %",
+        "es": "{{code}} %"
       },
       "retire_return_pct": {
-        "en": "Real return % (drawdown)",
-        "es": "Retorno real % (retiro)"
+        "en": "Real return %",
+        "es": "Retorno real %"
       },
       "end_age": {
         "en": "End age",
@@ -6721,78 +6873,26 @@
         "es": "% del saldo"
       },
       "monthly_income": {
-        "en": "Monthly income {{unit}} (0 = SWR)",
-        "es": "Renta mensual {{unit}} (0 = SWR)"
-      },
-      "liquidate_other_pct": {
-        "en": "% of non-invested liquidated at 65",
-        "es": "% no-invertido liquidado a los 65"
+        "en": "Fixed income / month ({{unit}})",
+        "es": "Renta fija / mes ({{unit}})"
       },
       "monthly_rent": {
-        "en": "Monthly passive rent {{unit}} (drawdown)",
-        "es": "Renta pasiva mensual {{unit}} (retiro)"
+        "en": "Passive rent / month ({{unit}})",
+        "es": "Renta pasiva / mes ({{unit}})"
+      },
+      "liquidate_other_pct": {
+        "en": "% of property and cash sold at {{age}}",
+        "es": "% de propiedades y efectivo vendido a los {{age}}"
       }
     },
-    "inflationAssumption": {
-      "en": "Default inflation is an assumption, not a forecast: {{list}}. Each currency's nominal line uses its own.",
-      "es": "La inflación por defecto es un supuesto, no un pronóstico: {{list}}. La línea nominal de cada moneda usa la suya."
-    },
-    "summary": {
-      "balanceAtRetire": {
-        "en": "Balance at {{age}}",
-        "es": "Saldo a los {{age}}"
-      },
-      "investedLabel": {
-        "en": "invested",
-        "es": "invertido"
-      },
-      "totalLabel": {
-        "en": "net worth",
-        "es": "patrimonio"
-      },
-      "todaysMoney": {
-        "en": "today's money",
-        "es": "dinero de hoy"
-      },
-      "potDescription": {
-        "en": "strategies on {{pot}} = invested + {{pct}}% of the rest",
-        "es": "estrategias sobre {{pot}} = invertido + {{pct}}% del resto"
-      },
-      "rentIncluded": {
-        "en": "Includes passive rent of {{amount}}/mo in the income; the fixed-income strategy only draws from the pot what the rent does not cover.",
-        "es": "Incluye renta pasiva de {{amount}}/mes en los ingresos; la estrategia de renta fija solo retira del fondo lo que la renta no cubre."
-      },
-      "swr": {
-        "en": "SWR {{pct}}%",
-        "es": "SWR {{pct}}%"
-      },
-      "pctBalance": {
-        "en": "{{pct}}% of balance",
-        "es": "{{pct}}% del saldo"
+    "hints": {
+      "inflation": {
+        "en": "Defaults ({{list}}) are assumptions, not forecasts. Each currency's nominal line uses its own.",
+        "es": "Los valores por defecto ({{list}}) son supuestos, no pronósticos. La línea nominal de cada moneda usa la suya."
       },
       "fixedIncome": {
-        "en": "Fixed income",
-        "es": "Renta fija"
-      },
-      "income": {
-        "en": "{{amount}}/mo",
-        "es": "{{amount}}/mes"
-      },
-      "initialIncome": {
-        "en": "{{amount}}/mo initial",
-        "es": "{{amount}}/mes inicial"
-      },
-      "depletes": {
-        "en": "depletes at age {{age}}",
-        "es": "se agota a los {{age}} años"
-      },
-      "lasts": {
-        "en": "lasts until age {{age}}",
-        "es": "dura hasta los {{age}}"
-      },
-      "neverDepletes": {
-        "en": "never depletes; the income varies with the balance",
-        "es": "nunca se agota; la renta varía con el saldo"
+        "en": "Fixed income 0 = the SWR income.",
+        "es": "Con renta fija 0 se usa la renta del SWR."
       }
     }
   },

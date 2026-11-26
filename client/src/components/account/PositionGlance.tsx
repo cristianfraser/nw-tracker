@@ -3,7 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
-import { formatInstrumentUnits, formatMoney, formatPct } from "../../format";
+import { formatInstrumentUnits, formatMoney, formatPct, type MoneyFormatOptions } from "../../format";
 import { formatDayMonthShortLabel, formatMonthYearShortLabel } from "../../formatDateLabel";
 import type {
   AccountDetailBundleResponse,
@@ -287,6 +287,7 @@ export function GlanceTitleLine({
   title,
   value,
   valueMissing = false,
+  valueFormat,
   secondary = null,
   secondaryLoading = false,
   day,
@@ -298,6 +299,8 @@ export function GlanceTitleLine({
   value: { value: number; currency: string } | null;
   /** The page is loaded and the account has no value on file: «—» in the value's place. */
   valueMissing?: boolean;
+  /** The value's decimals when not its currency's own (a projection is whole units). */
+  valueFormat?: MoneyFormatOptions;
   /** The same value in another currency, quiet beside it (a foreign cash balance in the display unit). */
   secondary?: { value: number; currency: string } | null;
   /** The secondary value is held from another display unit: it alone dims. */
@@ -315,7 +318,7 @@ export function GlanceTitleLine({
       <div className={styles.titleLine}>
         <h1 className={styles.ticker}>{title || BLANK}</h1>
         <span className={loadableClass(loading, styles.titleFigures)}>
-          <span className={cn("mono", styles.titleValue)}>{value ? formatMoney(value) : valueMissing ? "—" : BLANK}</span>
+          <span className={cn("mono", styles.titleValue)}>{value ? formatMoney(value, valueFormat) : valueMissing ? "—" : BLANK}</span>
           {secondary ? (
             <span className={loadableClass(secondaryLoading, cn("mono", styles.titleSecondary))}>{formatMoney(secondary)}</span>
           ) : null}

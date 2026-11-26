@@ -1,91 +1,39 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { PageGridTile } from "../components/layout/PageGridTile";
+import { cn } from "../cn";
+import { GlanceTitleLine } from "../components/account/PositionGlance";
 import { ProjectionsChart } from "../components/charts/ProjectionsChart";
-import { Loadable, loadableClass } from "../components/ui/Loadable";
+import { PageGridTile } from "../components/layout/PageGridTile";
+import { ProjectionsAssumptions } from "../components/projections/ProjectionsAssumptions";
+import { ProjectionsRail } from "../components/projections/ProjectionsRail";
+import { loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { formatCurrency, formatNumberInput, formatPct, parseNumberInput } from "../format";
-import { useCurrencies, useProjections } from "../queries/hooks";
+import { parseNumberInput } from "../format";
+import { formatYearMonthLabel } from "../formatDateLabel";
 import {
-  projectionInflationKey,
+  projectionFieldGroups,
+  projectionFieldKey,
+  validProjectionOverrides,
+  type ProjectionField,
+} from "../projectionsFields";
+import {
   projectionMoneyCurrencyKey,
   readStoredProjectionOverrides,
   writeStoredProjectionOverrides,
-  type ProjectionMoneyKey,
   type ProjectionOverrides,
 } from "../projectionsOverrides";
-import type { ProjectionParams, ProjectionsResponse } from "../types";
-import { Button, Field, Input } from "@crfrsr/ui";
+import { useCurrencies, useProjections } from "../queries/hooks";
+import { queryLoadError } from "../queries/pageShapeReady";
+import glance from "../components/account/PositionGlance.module.css";
+import band from "./accountDetail/PositionAccountDetailPage.module.css";
+import styles from "./ProjectionsPage.module.css";
 
-/** The plain numeric inputs (no currency), mirroring the server's bounds (projections.ts). */
-const NUMBER_BOUNDS = {
-  real_return_pct: [-5, 20],
-  retire_return_pct: [-5, 20],
-  end_age: [66, 110],
-  swr_pct: [0, 25],
-  pct_balance_pct: [0, 25],
-  liquidate_other_pct: [0, 100],
-} as const;
-type NumberKey = keyof typeof NUMBER_BOUNDS;
-const MONEY_BOUNDS: readonly [number, number] = [0, 1_000_000_000];
-const INFLATION_BOUNDS: readonly [number, number] = [0, 30];
-
-/** One form field: its request key, how it reads the server's echo and its bounds. */
-type FieldSpec =
-  | { kind: "number"; key: NumberKey }
-  | { kind: "money"; key: ProjectionMoneyKey }
-  | { kind: "inflation"; code: string };
-
-function fieldKey(f: FieldSpec): string {
-  return f.kind === "inflation" ? projectionInflationKey(f.code) : f.key;
-}
-
-function fieldBounds(f: FieldSpec): readonly [number, number] {
-  if (f.kind === "number") return NUMBER_BOUNDS[f.key];
-  return f.kind === "money" ? MONEY_BOUNDS : INFLATION_BOUNDS;
-}
-
-function isInBounds(f: FieldSpec, v: number): boolean {
-  const [min, max] = fieldBounds(f);
-  return v >= min && v <= max;
-}
-
-/** Assumption fields in display order; one inflation field per core currency. */
-function fieldSpecs(inflationCodes: readonly string[]): FieldSpec[] {
-  return [
-    { kind: "number", key: "real_return_pct" },
-    { kind: "money", key: "monthly_aporte" },
-    ...inflationCodes.map((code): FieldSpec => ({ kind: "inflation", code })),
-    { kind: "number", key: "retire_return_pct" },
-    { kind: "number", key: "end_age" },
-    { kind: "number", key: "swr_pct" },
-    { kind: "number", key: "pct_balance_pct" },
-    { kind: "money", key: "monthly_income" },
-    { kind: "number", key: "liquidate_other_pct" },
-    { kind: "money", key: "monthly_rent" },
-  ];
-}
-
-/** Summary figures while the first load has nothing to show: zeros, dimmed, never a guess. */
-const EMPTY_SUMMARY: ProjectionsResponse["summary"] = {
-  balance_at_retire: 0,
-  invested_at_retire: 0,
-  total_at_retire: 0,
-  monthly_rent: 0,
-  swr_monthly_income: 0,
-  pct_balance_initial_monthly_income: 0,
-  fixed_monthly_income: 0,
-  swr_depletion_age: null,
-  fixed_income_depletion_age: null,
-};
-
-/** The server's echo of a field, in the response's unit. */
-function echoedValue(f: FieldSpec, params: ProjectionParams | undefined): number | undefined {
-  if (!params) return undefined;
-  if (f.kind === "inflation") return params.inflation_pct[f.code];
-  return params[f.key];
-}
-
+/**
+ * /projections on the position page's layout: the title line (net worth at retirement, today's
+ * money), the chart beside the rail (server `glance`: where that net worth comes from, the
+ * drawdown pot, each strategy's income and how long it lasts), then the inputs in three groups
+ * (`ProjectionsAssumptions`). One column below 880, in that order.
+ */
 export function ProjectionsPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -99,38 +47,30 @@ export function ProjectionsPage() {
     const core = currencies?.currencies.filter((c) => c.tier === "core").map((c) => c.code);
     return core && core.length > 0 ? core : [displayUnit];
   }, [currencies, displayUnit]);
-  const fields = useMemo(() => fieldSpecs(inflationCodes), [inflationCodes]);
+  const groups = useMemo(() => projectionFieldGroups(inflationCodes), [inflationCodes]);
 
-  // Only in-bounds overrides go to the server; invalid fields show inline errors while the
-  // chart keeps rendering with the last valid parameters.
-  const validOverrides = useMemo(() => {
-    const out: ProjectionOverrides = {};
-    for (const f of fields) {
-      const key = fieldKey(f);
-      const v = overrides[key];
-      if (typeof v !== "number" || !Number.isFinite(v) || !isInBounds(f, v)) continue;
-      out[key] = v;
-      if (f.kind === "money") {
-        const ck = projectionMoneyCurrencyKey(f.key);
-        const c = overrides[ck];
-        if (typeof c === "string") out[ck] = c;
-      }
-    }
-    return out;
-  }, [overrides, fields]);
-  const { data, error, isPending } = useProjections(displayUnit, validOverrides);
+  // Only in-bounds overrides go to the server; invalid fields show their message while the
+  // figures and the chart keep the last valid parameters.
+  const validOverrides = useMemo(
+    () => validProjectionOverrides(groups.flatMap((g) => g.fields), overrides),
+    [overrides, groups]
+  );
+  const query = useProjections(displayUnit, validOverrides);
+  const { data, isPending } = query;
+  // A failed refetch keeps the data on screen; the error shows only with nothing to show.
+  const error = queryLoadError(query);
   // The form is inert only until the first response (an edit keeps the previous data on screen);
-  // the summary and chart also dim while the other display unit's numbers are held.
+  // the figures and chart also dim while the other display unit's numbers are held.
   const resultsLoading = isPending || (data != null && data.unit !== displayUnit);
 
   useEffect(() => {
     writeStoredProjectionOverrides(localStorage, overrides);
   }, [overrides]);
 
-  const setParam = (f: FieldSpec, raw: string) => {
-    const key = fieldKey(f);
+  const setParam = (f: ProjectionField, raw: string) => {
+    const key = projectionFieldKey(f);
     setDrafts((prev) => ({ ...prev, [key]: raw }));
-    // A draft that isn't a number keeps the last override and shows its message (see render).
+    // A draft that isn't a number keeps the last override and shows its message.
     const parsed = parseNumberInput(raw);
     if (!parsed.ok) return;
     setOverrides((prev) => {
@@ -148,169 +88,81 @@ export function ProjectionsPage() {
     });
   };
 
-  const commitParam = (f: FieldSpec) => {
+  const commitParam = (f: ProjectionField) => {
     setDrafts((prev) => {
       const next = { ...prev };
-      delete next[fieldKey(f)];
+      delete next[projectionFieldKey(f)];
       return next;
     });
   };
 
-  /** What a field shows when not being edited: an override typed in this unit, else the server's echo. */
-  const effectiveValue = (f: FieldSpec): number | undefined => {
-    const raw = overrides[fieldKey(f)];
-    const typedHere =
-      f.kind !== "money" || overrides[projectionMoneyCurrencyKey(f.key)] === displayUnit;
-    if (typeof raw === "number" && typedHere) return raw;
-    // A held response of another unit shows its echo dimmed until this unit's arrives.
-    return echoedValue(f, data?.params);
-  };
-
-  const fieldLabel = (f: FieldSpec): string => {
-    if (f.kind === "inflation") return t("projections.params.inflation_pct", { code: f.code.toUpperCase() });
-    if (f.kind === "money") return t(`projections.params.${f.key}`, { unit: displayUnit.toUpperCase() });
-    return t(`projections.params.${f.key}`);
-  };
-
-  const inflationDefaults = data?.inflation_default_pct;
-  const inflationAssumption = inflationDefaults
-    ? Object.entries(inflationDefaults)
-        .map(([code, pct]) => `${code.toUpperCase()} ${formatPct(pct, 1)}`)
-        .join(" · ")
-    : null;
-
-  const money = (n: number) => formatCurrency(n, displayUnit);
-  const chartPoints = data?.chart.points ?? [];
-  const milestoneLines = useMemo(
-    () => (data?.chart.lines ?? []).filter((l) => l.dataKey.startsWith("usd_")),
-    [data]
-  );
-  const namedLines = useMemo(
-    () => (data?.chart.lines ?? []).filter((l) => !l.dataKey.startsWith("usd_")),
-    [data]
-  );
-
   if (error) {
     return (
       <main>
+        <h1>{t("projections.title")}</h1>
         <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>
       </main>
     );
   }
 
-  const s = data?.summary ?? EMPTY_SUMMARY;
+  // The figures are the response's, in ITS unit (a held other-unit response shows dimmed, unconverted).
+  const unit = data?.unit ?? displayUnit;
+  const g = data?.glance;
 
   return (
     <main>
-      <h1>{t("projections.title")}</h1>
-
-      {/* Row gap leaves room for a Field's error, which overlays rather than
-          reflowing the form when a value goes out of bounds. */}
-      <Loadable
-        loading={isPending}
-        className="flows-filters"
-        style={{ display: "flex", flexWrap: "wrap", columnGap: "0.75rem", rowGap: "2.5rem" }}
+      <GlanceTitleLine
+        title={t("projections.title")}
+        value={g ? { value: g.net_worth_at_retire, currency: unit } : null}
+        // Projected figures are whole units in every currency.
+        valueFormat={{ digits: 0 }}
+        day={null}
+        loading={resultsLoading}
       >
-        {fields.map((f) => {
-          const key = fieldKey(f);
-          const raw = overrides[key];
-          const invalid = typeof raw === "number" && !isInBounds(f, raw);
-          const [min, max] = fieldBounds(f);
-          const draft = drafts[key];
-          const draftParsed = draft != null ? parseNumberInput(draft) : null;
-          const draftError = draftParsed != null && !draftParsed.ok ? draftParsed.message : null;
-          const effective = effectiveValue(f);
-          return (
-            <Field
-              key={key}
-              label={fieldLabel(f)}
-              error={
-                draftError ?? (invalid ? t("projections.invalidRange", { min, max }) : undefined)
-              }
-            >
-              <Input
-                type="text"
-                // The decimal keypad has no minus key; fields that allow negatives keep the full one.
-                inputMode={min < 0 ? undefined : "decimal"}
-                aria-invalid={draftError != null || invalid || undefined}
-                value={draft ?? (effective != null ? formatNumberInput(effective) : "")}
-                onChange={(e) => setParam(f, e.target.value)}
-                onBlur={() => commitParam(f)}
-              />
-            </Field>
-          );
-        })}
-        <div style={{ alignSelf: "flex-end" }}>
-          <Button variant="secondary"
-            disabled={Object.keys(overrides).length === 0}
-            onClick={() => {
-              setOverrides({});
-              setDrafts({});
-            }}
-          >
-            {t("projections.reset")}
-          </Button>
-        </div>
-      </Loadable>
-      {inflationAssumption ? (
-        <p className="muted">{t("projections.inflationAssumption", { list: inflationAssumption })}</p>
-      ) : null}
-
-      <PageGridTile id="summary" className={loadableClass(resultsLoading)}>
-        <p>
-          <strong>{t("projections.summary.balanceAtRetire", { age: data?.retire_age ?? "—" })}:</strong>{" "}
-          {t("projections.summary.investedLabel")} {money(s.invested_at_retire)} ·{" "}
-          {t("projections.summary.totalLabel")} {money(s.total_at_retire)}{" "}
-          <span className="muted">
-            ({t("projections.summary.todaysMoney")};{" "}
-            {t("projections.summary.potDescription", {
-              pot: money(s.balance_at_retire),
-              pct: validOverrides.liquidate_other_pct ?? data?.params.liquidate_other_pct ?? "—",
-            })}
-            )
+        <div className={loadableClass(resultsLoading, glance.sub)}>
+          <span>
+            {data
+              ? t("projections.subline", { age: data.retire_age, month: formatYearMonthLabel(data.retire_month) })
+              : " "}
           </span>
-        </p>
-        {s.monthly_rent > 0 ? (
-          <p className="muted">{t("projections.summary.rentIncluded", { amount: money(s.monthly_rent) })}</p>
-        ) : null}
-        <p>
-          <strong>{t("projections.summary.swr", { pct: validOverrides.swr_pct ?? data?.params.swr_pct ?? "—" })}:</strong>{" "}
-          {t("projections.summary.income", { amount: money(s.swr_monthly_income) })}{" "}
-          {s.swr_depletion_age != null ? (
-            <span className="error">{t("projections.summary.depletes", { age: s.swr_depletion_age })}</span>
-          ) : (
-            <span className="muted">{t("projections.summary.lasts", { age: validOverrides.end_age ?? data?.params.end_age ?? "—" })}</span>
-          )}
-        </p>
-        <p>
-          <strong>
-            {t("projections.summary.pctBalance", { pct: validOverrides.pct_balance_pct ?? data?.params.pct_balance_pct ?? "—" })}:
-          </strong>{" "}
-          {t("projections.summary.initialIncome", { amount: money(s.pct_balance_initial_monthly_income) })}{" "}
-          <span className="muted">{t("projections.summary.neverDepletes")}</span>
-        </p>
-        <p>
-          <strong>{t("projections.summary.fixedIncome")}:</strong>{" "}
-          {t("projections.summary.income", { amount: money(s.fixed_monthly_income) })}{" "}
-          {s.fixed_income_depletion_age != null ? (
-            <span className="error">
-              {t("projections.summary.depletes", { age: s.fixed_income_depletion_age })}
-            </span>
-          ) : (
-            <span className="muted">{t("projections.summary.lasts", { age: validOverrides.end_age ?? data?.params.end_age ?? "—" })}</span>
-          )}
-        </p>
+        </div>
+      </GlanceTitleLine>
+
+      {/* The chart beside the rail; on a phone the chart first, then the rail's groups. */}
+      <PageGridTile id="projection-band" className={cn("page-grid", band.band, styles.band)}>
+        <div className={cn("chart-grid chart-grid--full-line", band.bandChart, styles.chart)}>
+          <ProjectionsChart
+            title={t("projections.chartTitle", { age: g?.end_age ?? "" })}
+            points={data?.chart.points ?? []}
+            lines={data?.chart.lines ?? []}
+            strategyLineKeys={g?.strategies.map((s) => s.line_key) ?? []}
+            displayUnit={unit}
+            inflationPct={data?.params.inflation_pct[unit]}
+            loading={resultsLoading}
+          />
+        </div>
+        <div className={loadableClass(resultsLoading, band.bandRail)} aria-busy={resultsLoading || undefined}>
+          <ProjectionsRail glance={g} unit={unit} />
+        </div>
       </PageGridTile>
 
-      <Loadable loading={resultsLoading} style={{ width: "100%", height: 420 }}>
-        <ProjectionsChart
-          points={chartPoints}
-          namedLines={namedLines}
-          milestoneLines={milestoneLines}
-          displayUnit={displayUnit}
-          loading={resultsLoading}
-        />
-      </Loadable>
+      <ProjectionsAssumptions
+        groups={groups}
+        overrides={overrides}
+        drafts={drafts}
+        params={data?.params}
+        paramsUnit={unit}
+        displayUnit={displayUnit}
+        retireAge={data?.retire_age}
+        inflationDefaults={data?.inflation_default_pct}
+        loading={isPending}
+        onChange={setParam}
+        onBlur={commitParam}
+        onReset={() => {
+          setOverrides({});
+          setDrafts({});
+        }}
+      />
     </main>
   );
 }

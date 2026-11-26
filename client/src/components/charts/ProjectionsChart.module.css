@@ -1,0 +1,14 @@
+/* The /projections chart's legend: the valuation charts' legend (ValuationLineCharts.module.css)
+   as a list, its rows closer together so the rail follows the chart on a phone's first screen. */
+.legend {
+  margin: 0;
+  padding: 8px 0 4px;
+  row-gap: 4px;
+  list-style: none;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

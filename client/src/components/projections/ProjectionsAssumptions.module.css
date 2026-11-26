@@ -1,0 +1,114 @@
+/* The /projections inputs (ProjectionsAssumptions.tsx): a tile across the page under the band,
+   its three groups side by side from 880 (four columns each, a hairline in the gutter between
+   them) and stacked below it, where each is a line that opens in place. The fields are the
+   settings forms' (PanelForm.module.css). */
+
+/* No hairline of its own: the band above it ends in one. */
+:global(.page-grid).tile {
+  row-gap: 0;
+}
+
+.head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.head h2 {
+  margin: 0;
+}
+
+.group {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.groupTitle {
+  margin: 0 0 0.5rem;
+}
+
+/* A rejected value's message sits under its own field, so the fields align at the top. */
+.form {
+  align-items: flex-start;
+}
+
+.fieldError {
+  font-size: var(--font-size-card-meta);
+}
+
+.hint {
+  font-size: var(--font-size-card-meta);
+}
+
+@media (min-width: 880px) {
+  .group {
+    grid-column: span 4;
+  }
+
+  .group + .group {
+    margin-left: calc(-0.5 * var(--gutter));
+    padding-left: calc(0.5 * var(--gutter));
+    border-left: 1px solid var(--hairline);
+  }
+}
+
+@media (max-width: 879px) {
+  .group {
+    border-top: 1px solid var(--hairline);
+  }
+
+  .groupTitle {
+    margin: 0;
+  }
+
+  .form {
+    padding-bottom: 0.75rem;
+  }
+
+  /* The group's line: its name, its current values (cut with «…»), a chevron. */
+  .toggle {
+    display: flex;
+    align-items: baseline;
+    column-gap: 0.5rem;
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.5rem 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .toggle:disabled {
+    cursor: default;
+  }
+
+  .toggleTitle {
+    flex: none;
+  }
+
+  .summary {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--font-size-card-meta);
+    font-weight: 400;
+  }
+
+  .chevron {
+    flex: none;
+    margin-left: auto;
+  }
+}
+
+/* A closed group's fields (the form's `display` would otherwise win over `hidden`). */
+.form[hidden] {
+  display: none;
+}

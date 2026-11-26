@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ageAtMonth,
   PROJECTION_RETIRE_AGE,
+  projectionsGlance,
   runProjectionEngine,
   type ProjectionEngineInput,
 } from "./projections.js";
@@ -136,6 +137,95 @@ describe("runProjectionEngine", () => {
   });
 });
 
+describe("projectionsGlance", () => {
+  const glanceOf = (input: ProjectionEngineInput) => projectionsGlance(runProjectionEngine(input), input);
+
+  it("splits net worth at retirement into today, the contributions to come and real growth", () => {
+    const g = glanceOf(BASE);
+    // 2026-08 through 2057-01, one aporte each.
+    expect(g.composition!.contributions).toBe(366 * 1_000_000);
+    expect(g.composition!.today).toBe(300_000_000);
+    expect(g.composition!.today + g.composition!.contributions + g.composition!.growth).toBe(g.net_worth_at_retire);
+    expect(g.composition!.segments.map((s) => s.kind)).toEqual(["today", "contributions", "growth"]);
+    expect(g.composition!.segments.reduce((a, s) => a + s.share, 0)).toBeCloseTo(1, 12);
+    expect(g.composition!.value_share).toBe(1);
+  });
+
+  it("draws a negative real return as a loss over the tail of today + contributions", () => {
+    const g = glanceOf({ ...BASE, real_return_pct: -3 });
+    const c = g.composition!;
+    expect(c.growth).toBeLessThan(0);
+    expect(c.segments.map((s) => s.kind)).toEqual(["today", "contributions", "loss"]);
+    const loss = c.segments[2]!;
+    expect(loss.start).toBeCloseTo(c.value_share, 12);
+    expect(loss.start + loss.share).toBeCloseTo(1, 12);
+    expect(c.value_share).toBeCloseTo(g.net_worth_at_retire / (c.today + c.contributions), 12);
+  });
+
+  it("a zero real return has no growth, whatever the parts round to", () => {
+    const g = glanceOf({
+      ...BASE,
+      base_total: 100.4,
+      base_invested: 50.2,
+      monthly_aporte: 0.2,
+      real_return_pct: 0,
+    });
+    const c = g.composition!;
+    expect(c.growth).toBe(0);
+    expect(c.segments.map((s) => s.kind)).toEqual(["today", "contributions"]);
+    expect(c.today + c.contributions).toBe(g.net_worth_at_retire);
+  });
+
+  it("has no composition when today's net worth is not positive", () => {
+    expect(glanceOf({ ...BASE, base_total: -5_000_000, base_invested: 0 }).composition).toBeNull();
+  });
+
+  it("states the pot: invested plus the liquidated share of the rest", () => {
+    const g = glanceOf({ ...BASE, liquidate_other_pct: 50 });
+    expect(g.other_at_retire).toBe(100_000_000);
+    expect(g.invested_at_retire + g.other_at_retire).toBe(g.net_worth_at_retire);
+    expect(g.pot_at_retire).toBe(g.invested_at_retire + 50_000_000);
+    expect(g.liquidate_other_pct).toBe(50);
+  });
+
+  it("lists the three strategies with their income and how long the pot lasts", () => {
+    const engine = runProjectionEngine(BASE);
+    const g = projectionsGlance(engine, BASE);
+    expect(g.strategies.map((s) => [s.kind, s.line_key, s.pct])).toEqual([
+      ["swr", "proj_swr", 4],
+      ["pct_balance", "proj_pct_balance", 5],
+      ["fixed_income", "proj_fixed_income", null],
+    ]);
+    expect(g.strategies[0]).toMatchObject({
+      monthly_income: engine.swr_monthly_income,
+      income_is_initial: false,
+      lasts: { kind: "end_age", age: 95 },
+      lasts_share: 1,
+    });
+    expect(g.strategies[1]).toMatchObject({
+      monthly_income: engine.pct_balance_initial_monthly_income,
+      income_is_initial: true,
+      lasts: { kind: "always" },
+    });
+  });
+
+  it("a strategy that runs out says the age and fills the span up to it", () => {
+    const input = { ...BASE, retire_return_pct: 0, swr_pct: 10 };
+    const engine = runProjectionEngine(input);
+    const swr = projectionsGlance(engine, input).strategies[0]!;
+    // 10 % a year with no return: the pot is gone ten years in.
+    expect(engine.swr_depletion_age).toBe(75);
+    expect(swr.lasts).toEqual({ kind: "depleted", age: 75 });
+    expect(swr.lasts_share).toBeCloseTo(10 / 30, 12);
+  });
+
+  it("carries the rent every income includes", () => {
+    const g = glanceOf({ ...BASE, monthly_rent: 1_000_000 });
+    expect(g.monthly_rent).toBe(1_000_000);
+    expect(g.strategies[0]!.monthly_income).toBe(glanceOf(BASE).strategies[0]!.monthly_income + 1_000_000);
+  });
+});
+
 describe("buildProjectionsPayload in any core unit", () => {
   it("takes money inputs in any core currency and each unit's own inflation, at today's stored rate", async () => {
     const {
@@ -174,9 +264,16 @@ describe("buildProjectionsPayload in any core unit", () => {
     const fx = stored(1, "usd", "clp");
     expect(clp.chart.points[0]!.usd_250k).toBe(Math.round(250_000 * fx));
     expect(usd.chart.points[0]!.usd_250k).toBe(250_000);
-    expect(usd.summary.monthly_rent).toBe(Math.round(stored(500_000, "clp", "usd")));
+    expect(usd.glance.monthly_rent).toBe(Math.round(stored(500_000, "clp", "usd")));
     expect(usd.params.monthly_rent).toBe(Math.round(stored(500_000, "clp", "usd") * 100) / 100);
     expect(usd.inflation_default_pct).toEqual({ clp: 3.5, eur: 2.0, usd: 2.5 });
+    // The glance is the same engine run's figures; the milestone lines say their dollars.
+    expect(usd.glance.strategies).toHaveLength(3);
+    expect(usd.glance.end_age).toBe(usdParams.end_age);
+    const milestones = usd.chart.lines.flatMap((l) => (l.milestone ? [l.milestone] : []));
+    expect(milestones.map((m) => m.value)).toEqual([250_000, 500_000, 750_000, 1_000_000, 1_500_000, 2_000_000]);
+    expect(milestones.every((m) => m.currency === "usd")).toBe(true);
+    expect(usd.chart.lines.find((l) => l.dataKey === "proj_swr")!.milestone).toBeNull();
 
     const { db } = await import("./db.js");
     // One early row of each EUR pair carries forward over the whole history (on-or-before reads).
@@ -189,7 +286,7 @@ describe("buildProjectionsPayload in any core unit", () => {
       const eur = buildProjectionsPayload("eur", eurParams);
       expect(eur.unit).toBe("eur");
       expect(eur.chart.points[0]!.usd_250k).toBe(Math.round(stored(250_000, "usd", "eur")));
-      expect(eur.summary.monthly_rent).toBe(Math.round(stored(500_000, "clp", "eur")));
+      expect(eur.glance.monthly_rent).toBe(Math.round(stored(500_000, "clp", "eur")));
     } finally {
       db.prepare(`DELETE FROM fx_rates WHERE source = 'vitest-projections'`).run();
       db.prepare(`DELETE FROM eur_daily WHERE date = '2000-01-03'`).run();

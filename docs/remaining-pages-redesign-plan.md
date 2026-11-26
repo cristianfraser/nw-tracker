@@ -183,6 +183,10 @@ Two different kinds of account land here, and the page fits neither.
 
 ### I. `/projections` and `/wealth-percentile`
 
+> **Projections done (2026-11-26):** the position page's title line and band (chart | rail) with the
+> inputs under it in three groups that fold on a phone; the paragraph is the server's `glance`
+> (`projectionsGlance` in `projections.ts`). Detail in `.claude/rules/tax.md` «Projections».
+
 - Projections: twelve inputs fill the whole first phone screen before any result; the result is
   a dense paragraph («Balance at 65: … · net worth … (today's money; strategies on …)»); the
   chart comes after both. Inputs are `Input` fields without the residency form's grouping.

@@ -16,6 +16,12 @@ import { accountIdsInPortfolioGroupForTotals } from "./portfolioGroupTree.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { coreCurrencyCodes, roundToCurrency } from "./displayUnits.js";
 import { convertCurrency } from "./rates.js";
+import type {
+  ProjectionsChartLine,
+  ProjectionsCompositionSegment,
+  ProjectionsGlance,
+  ProjectionsStrategy,
+} from "nw-tracker-contracts/dto/projections";
 
 /** User's birth month — retirement age is measured from here. */
 export const PROJECTION_BIRTH_MONTH = "1992-01";
@@ -143,6 +149,8 @@ export type ProjectionEngineInput = {
 export type ProjectionEngineResult = {
   points: Record<string, string | number | null>[];
   retire_month: string;
+  /** Months of accumulation, each adding one aporte (the first projected month through the retirement month). */
+  accumulation_months: number;
   /** The drawdown pot at retirement: invested + liquidate_other_pct% of the remainder. */
   balance_at_retire: number;
   invested_at_retire: number;
@@ -234,6 +242,7 @@ export function runProjectionEngine(input: ProjectionEngineInput): ProjectionEng
   return {
     points,
     retire_month: retireMonth,
+    accumulation_months: monthsFromStart,
     balance_at_retire: Math.round(balanceAtRetire),
     invested_at_retire: Math.round(investedAtRetire),
     total_at_retire: Math.round(totalAtRetire),
@@ -335,16 +344,100 @@ export function projectionParamsFromQuery(query: Record<string, unknown>, unit: 
   };
 }
 
-const LINE_SPECS: { dataKey: string; name: string; valueSeriesType: "data" | "reference" }[] = [
-  { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
-  { dataKey: "invested", name: "Invertido", valueSeriesType: "data" },
-  { dataKey: "proj_nw", name: "Proyección (real)", valueSeriesType: "reference" },
-  { dataKey: "proj_invested", name: "Invertido (proyección)", valueSeriesType: "reference" },
-  { dataKey: "proj_nw_nominal", name: "Proyección (nominal)", valueSeriesType: "reference" },
-  { dataKey: "proj_swr", name: "Retiro SWR", valueSeriesType: "reference" },
-  { dataKey: "proj_pct_balance", name: "Retiro % del saldo", valueSeriesType: "reference" },
-  { dataKey: "proj_fixed_income", name: "Retiro renta fija", valueSeriesType: "reference" },
+/** The page's named lines, in legend order (the client words them by `dataKey`). */
+const LINE_SPECS: { dataKey: string; valueSeriesType: "data" | "reference" }[] = [
+  { dataKey: "total_nw", valueSeriesType: "data" },
+  { dataKey: "invested", valueSeriesType: "data" },
+  { dataKey: "proj_nw", valueSeriesType: "reference" },
+  { dataKey: "proj_invested", valueSeriesType: "reference" },
+  { dataKey: "proj_nw_nominal", valueSeriesType: "reference" },
+  { dataKey: "proj_swr", valueSeriesType: "reference" },
+  { dataKey: "proj_pct_balance", valueSeriesType: "reference" },
+  { dataKey: "proj_fixed_income", valueSeriesType: "reference" },
 ];
+
+/**
+ * The page's figures from an engine run (pure): net worth at retirement split into today's net
+ * worth, the contributions to come and real growth; the pot the strategies draw from; and each
+ * strategy's monthly income with how long its pot lasts. `baseTotal` is today's net worth, the
+ * engine's `base_total`.
+ */
+export function projectionsGlance(
+  engine: ProjectionEngineResult,
+  input: Pick<
+    ProjectionEngineInput,
+    "base_total" | "monthly_aporte" | "end_age" | "swr_pct" | "pct_balance_pct" | "liquidate_other_pct"
+  >
+): ProjectionsGlance {
+  const total = engine.total_at_retire;
+  const today = Math.round(input.base_total);
+  // Growth is rounded from the unrounded parts (a zero real return reads 0, not the ±1 three
+  // separate roundings can leave); the contributions take the remainder, so the three add up.
+  const growth = Math.round(total - input.base_total - input.monthly_aporte * engine.accumulation_months);
+  const contributions = total - today - growth;
+  const span = input.end_age - PROJECTION_RETIRE_AGE;
+  const lastsOf = (depletionAge: number | null): Pick<ProjectionsStrategy, "lasts" | "lasts_share"> =>
+    depletionAge == null
+      ? { lasts: { kind: "end_age", age: input.end_age }, lasts_share: 1 }
+      : {
+          lasts: { kind: "depleted", age: depletionAge },
+          lasts_share: Math.min(1, Math.max(0, (depletionAge - PROJECTION_RETIRE_AGE) / span)),
+        };
+  return {
+    net_worth_at_retire: total,
+    composition: today > 0 && total > 0 ? compositionOf(today, contributions, growth) : null,
+    invested_at_retire: engine.invested_at_retire,
+    other_at_retire: total - engine.invested_at_retire,
+    pot_at_retire: engine.balance_at_retire,
+    liquidate_other_pct: input.liquidate_other_pct,
+    monthly_rent: engine.monthly_rent,
+    retire_age: PROJECTION_RETIRE_AGE,
+    end_age: input.end_age,
+    strategies: [
+      {
+        kind: "swr",
+        line_key: "proj_swr",
+        pct: input.swr_pct,
+        monthly_income: engine.swr_monthly_income,
+        income_is_initial: false,
+        ...lastsOf(engine.swr_depletion_age),
+      },
+      {
+        kind: "pct_balance",
+        line_key: "proj_pct_balance",
+        pct: input.pct_balance_pct,
+        monthly_income: engine.pct_balance_initial_monthly_income,
+        income_is_initial: true,
+        lasts: { kind: "always" },
+        lasts_share: 1,
+      },
+      {
+        kind: "fixed_income",
+        line_key: "proj_fixed_income",
+        pct: null,
+        monthly_income: engine.fixed_monthly_income,
+        income_is_initial: false,
+        ...lastsOf(engine.fixed_income_depletion_age),
+      },
+    ],
+  };
+}
+
+/**
+ * The bar's segments: today, contributions and growth side by side at their shares of the total;
+ * with negative growth the scale is today + contributions and the loss covers its tail.
+ */
+function compositionOf(today: number, contributions: number, growth: number): NonNullable<ProjectionsGlance["composition"]> {
+  const total = today + contributions + growth;
+  const scale = growth < 0 ? today + contributions : total;
+  const segments: ProjectionsCompositionSegment[] = [
+    { kind: "today", start: 0, share: today / scale },
+    { kind: "contributions", start: today / scale, share: contributions / scale },
+  ];
+  if (growth > 0) segments.push({ kind: "growth", start: (today + contributions) / scale, share: growth / scale });
+  if (growth < 0) segments.push({ kind: "loss", start: total / scale, share: -growth / scale });
+  return { today, contributions, growth, value_share: total / scale, segments: segments.filter((s) => s.share > 0) };
+}
 
 /** The display unit's inflation input (every core currency has one). */
 export function inflationPctForUnit(unit: TsUnit, params: ProjectionParams): number {
@@ -407,12 +500,12 @@ export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) 
   );
   const points = [...histRows, ...engine.points.map(decorate)];
 
-  const lines = [
-    ...LINE_SPECS,
+  const lines: ProjectionsChartLine[] = [
+    ...LINE_SPECS.map((l) => ({ ...l, milestone: null })),
     ...PROJECTION_USD_MILESTONES.map((usd) => ({
       dataKey: `usd_${usd / 1000}k`,
-      name: `${usd / 1000}k USD`,
       valueSeriesType: "reference" as const,
+      milestone: { value: usd, currency: "usd" },
     })),
   ];
 
@@ -428,17 +521,14 @@ export function buildProjectionsPayload(unit: TsUnit, params: ProjectionParams) 
     inflation_default_pct: projectionInflationDefaults(),
     retire_month: engine.retire_month,
     retire_age: PROJECTION_RETIRE_AGE,
-    summary: {
-      balance_at_retire: engine.balance_at_retire,
-      invested_at_retire: engine.invested_at_retire,
-      total_at_retire: engine.total_at_retire,
-      monthly_rent: engine.monthly_rent,
-      swr_monthly_income: engine.swr_monthly_income,
-      pct_balance_initial_monthly_income: engine.pct_balance_initial_monthly_income,
-      fixed_monthly_income: engine.fixed_monthly_income,
-      swr_depletion_age: engine.swr_depletion_age,
-      fixed_income_depletion_age: engine.fixed_income_depletion_age,
-    },
+    glance: projectionsGlance(engine, {
+      base_total: baseTotal,
+      monthly_aporte: params.monthly_aporte,
+      end_age: params.end_age,
+      swr_pct: params.swr_pct,
+      pct_balance_pct: params.pct_balance_pct,
+      liquidate_other_pct: params.liquidate_other_pct,
+    }),
     chart: { points, lines },
   };
 }
