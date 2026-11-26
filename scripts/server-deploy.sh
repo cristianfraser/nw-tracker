@@ -189,17 +189,22 @@ fi
 needs_ci() { grep -qE '(^|/)package(-lock)?\.json$|^patches/' <<<"$1"; }
 ingest_changed() { grep -qE '^(ingest/|server/contracts/)|(^|/)package(-lock)?\.json$' <<<"$1"; }
 
-install_and_build() {
-  if needs_ci "$1"; then
-    log "npm ci"
-    npm ci --no-audit --no-fund >>"$LOG" 2>&1 || { log "npm ci failed"; return 1; }
-    # npm 11 skips install scripts it has not been told to allow; the SQLite binding must load.
-    if ! (cd server && node -e 'require("better-sqlite3")' 2>/dev/null); then
-      log "better-sqlite3 did not load; rebuilding it"
-      (cd server/node_modules/better-sqlite3 && npx --yes node-gyp rebuild --release) >>"$LOG" 2>&1 \
-        || { log "better-sqlite3 rebuild failed"; return 1; }
-    fi
+install_deps() {
+  needs_ci "$1" || return 0
+  log "npm ci"
+  npm ci --no-audit --no-fund >>"$LOG" 2>&1 || { log "npm ci failed"; return 1; }
+  # npm 11 skips install scripts it has not been told to allow; the SQLite binding must load.
+  if ! (cd server && node -e 'require("better-sqlite3")' 2>/dev/null); then
+    log "better-sqlite3 did not load; rebuilding it"
+    (cd server/node_modules/better-sqlite3 && npx --yes node-gyp rebuild --release) >>"$LOG" 2>&1 \
+      || { log "better-sqlite3 rebuild failed"; return 1; }
   fi
+}
+
+# 1 once this run swapped a new build into client/dist (the one it replaced is client/dist.prev).
+CLIENT_SWAPPED=0
+
+build_client() {
   # Build beside the served client and swap it in with two renames: an in-place build empties
   # client/dist first, and the running server answered 404 for the whole build.
   log "client build"
@@ -207,8 +212,28 @@ install_and_build() {
   npm run build -w nw-tracker-client -- --outDir dist.next >>"$LOG" 2>&1 || { log "client build failed"; return 1; }
   [[ -f client/dist.next/index.html ]] || { log "client build wrote no index.html"; return 1; }
   rm -rf client/dist.prev
-  [[ -d client/dist ]] && mv client/dist client/dist.prev
+  if [[ -d client/dist ]]; then mv client/dist client/dist.prev; fi
   mv client/dist.next client/dist
+  CLIENT_SWAPPED=1
+}
+
+install_and_build() { install_deps "$1" && build_client; }
+
+# The rollback's client: the build this run replaced, swapped back (no rebuild); a rebuild only
+# when there is none to swap back. Nothing to do when the failed deploy never swapped its client
+# in (the old one is still served). Prints nothing; returns non-zero when the old client is not
+# being served.
+restore_client() {
+  (( CLIENT_SWAPPED )) || return 0
+  if [[ -f client/dist.prev/index.html ]]; then
+    rm -rf client/dist.failed
+    mv client/dist client/dist.failed && mv client/dist.prev client/dist || { log "rollback: swapping client/dist.prev back failed"; return 1; }
+    rm -rf client/dist.failed
+    log "rollback: previous client swapped back from client/dist.prev"
+    return 0
+  fi
+  log "rollback: no client/dist.prev to swap back; rebuilding the client"
+  build_client || { log "rollback: client rebuild failed"; return 1; }
 }
 
 # Register the instruments the registry lacks (docs/demo-app-features-plan.md §4). Runs from the
@@ -268,6 +293,11 @@ STAGE=deploying
 log "Deploying $(git rev-parse --short=8 "$old") → $short"
 echo "$commits" | sed 's/^/    /' | tee -a "$LOG"
 (cd server && npm run -s db:snapshot -- --label="before-deploy-$short") >>"$LOG" 2>&1
+# shellcheck disable=SC2012 # snapshot names carry no spaces (dbSnapshot.ts)
+SNAPSHOT="$(ls -t server/data/snapshots/*-before-deploy-"$short".db 2>/dev/null | head -1 || true)"
+SNAPSHOT="${SNAPSHOT:-server/data/snapshots/<timestamp>-before-deploy-$short.db}"
+# The migrations this deploy brings: they stay applied if it is rolled back (named in the notification).
+new_migrations="$(git diff --name-only --diff-filter=A "$old" "$new" -- server/migrations | sed 's|^server/migrations/||' | tr '\n' ' ')"
 git merge --ff-only --quiet "$new"
 
 if job_heartbeat && install_and_build "$changed" && job_heartbeat && register_instruments && job_heartbeat && restart "$changed" && healthy_at "$new"; then
@@ -283,14 +313,27 @@ fi
 STAGE=finished
 log "Deploy of $short failed; rolling back to $(git rev-parse --short=8 "$old")"
 git reset --hard --quiet "$old"
-install_and_build "$changed" || true
-restart "$changed" || true
+# No automatic database restore: requests may have written since the snapshot. The notification
+# says which migrations stay applied and which snapshot to restore by hand.
+rollback_problems=""
+install_deps "$changed" || rollback_problems+="npm ci on the old commit failed. "
+restore_client || rollback_problems+="The previous client could not be put back (see cfraser/deploy.log). "
+restart "$changed" || rollback_problems+="Restarting the server failed. "
+old_short="$(git rev-parse --short=8 "$old")"
 if healthy_at "$old"; then
-  log "Rolled back to $(git rev-parse --short=8 "$old")"
+  outcome="was rolled back to $old_short"
+  log "Rolled back to $old_short"
   job_complete false "the server did not come back healthy on $short; rolled back"
 else
+  outcome="was rolled back to $old_short, which did not come back healthy either (check cfraser/server.log)"
   log "Rollback did not come back healthy either — check cfraser/server.log"
+  # Complete the job anyway, so it does not hold `server-restart` for the rest of its lease.
+  job_complete false "the server did not come back healthy on $short, nor on $old_short after the rollback"
 fi
-message notification "Deploy failed: $short" "$(printf 'The server did not come back healthy on %s and was rolled back to %s (database snapshot before-deploy-%s). Details in cfraser/deploy.log.\n%s' "$short" "$(git rev-parse --short=8 "$old")" "$short" "$commits")"
+[[ -n "$rollback_problems" ]] && log "rollback problems: $rollback_problems"
+db_note="The database was not restored."
+[[ -n "$new_migrations" ]] && db_note+=" The migrations $short brings stay applied once they ran (the old code now runs on that schema): ${new_migrations% }."
+db_note+=" To undo them, stop the server and restore by hand from $SNAPSHOT (written before the deploy; anything written since is lost)."
+message notification "Deploy failed: $short" "$(printf 'The server did not come back healthy on %s and %s. %s%s Details in cfraser/deploy.log.\n%s' "$short" "$outcome" "$rollback_problems" "$db_note" "$commits")"
 echo "$new:failed" > "$STATE"
 exit 1
