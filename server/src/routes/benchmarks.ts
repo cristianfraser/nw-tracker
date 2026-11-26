@@ -1,7 +1,7 @@
 /** Benchmarks and the Rentabilidad comparison row (shadow portfolio). */
 import express from "express";
 import { benchmarkComparisonForAccount, benchmarkComparisonForGroup } from "../benchmarkComparison.js";
-import { getBenchmark, listBenchmarks } from "../benchmarkLevels.js";
+import { benchmarkFundSeriesHasData, getBenchmark, listBenchmarks } from "../benchmarkLevels.js";
 import { db } from "../db.js";
 import {
   groupHasPeriodReturns,
@@ -22,6 +22,9 @@ export function registerBenchmarkRoutes(app: express.Express): void {
       rate_pct: number | null;
     };
     const benchmarks = listBenchmarks().flatMap((b): BenchmarkOptionDto[] => {
+      // A fund benchmark is offered only while its series has values on file (the demo holds none
+      // of Fintual's): one with no series would compare against nothing.
+      if (b.kind === "fund_unit" && !benchmarkFundSeriesHasData(b.series_key!)) return [];
       if (b.kind !== "portfolio_group") {
         return [{ slug: b.slug, kind: b.kind, label_i18n_key: b.label_i18n_key, rate_pct: b.rate_pct }];
       }

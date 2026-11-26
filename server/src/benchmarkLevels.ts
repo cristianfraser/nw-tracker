@@ -63,6 +63,11 @@ export function listBenchmarks(): BenchmarkRow[] {
     .all() as BenchmarkRow[];
 }
 
+/** Whether a fund series a `fund_unit` benchmark follows has any value on file. */
+export function benchmarkFundSeriesHasData(seriesKey: string): boolean {
+  return db.prepare(`SELECT 1 FROM fund_unit_daily WHERE series_key = ? LIMIT 1`).get(seriesKey) != null;
+}
+
 export function getBenchmark(slug: string): BenchmarkRow | null {
   return listBenchmarks().find((b) => b.slug === slug) ?? null;
 }

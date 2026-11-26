@@ -746,7 +746,10 @@ export function syncStatusPayload(): {
 } {
   const cl = chileWallClockNow();
   const state = loadGlobalSyncState();
-  const sources = allSyncSourceStatuses(cl, state);
+  // A source the deployment profile leaves out (the demo's author-only ones: Fintual and the Risky
+  // Norris filings) is not listed: it is not «not configured», it does not exist there.
+  const profileDisabled = deploymentProfile().disabledSyncSources;
+  const sources = allSyncSourceStatuses(cl, state).filter((r) => !profileDisabled.has(r.source));
   const stale = sources.filter((r) => r.stale).map((r) => r.source);
   return {
     chile: cl,

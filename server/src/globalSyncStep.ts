@@ -6,6 +6,7 @@
  * cleared only after a successful step, unless the source is still naturally stale
  * (e.g. NYSE close not yet published).
  */
+import { deploymentProfile } from "./config.js";
 import type { ChileWallClock } from "./chileDate.js";
 import { clearUserForcedStale, keepUserForcedStaleAfterSuccess, SYNC_SOURCES, type GlobalSyncSource } from "./globalSyncStale.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
@@ -40,7 +41,8 @@ export async function runSyncStepIfStale(
 ): Promise<void> {
   const step = SYNC_SOURCES[source].label;
   if (!stale.includes(source)) {
-    console.log(`sync: ${step} — skip (not stale).`);
+    // A source this deployment never runs (the demo's author-only ones) is not a step at all.
+    if (!deploymentProfile().disabledSyncSources.has(source)) console.log(`sync: ${step} — skip (not stale).`);
     return;
   }
   const errorsBefore = errors.length;
