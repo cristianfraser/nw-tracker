@@ -10,12 +10,12 @@
         "es": "Divisa: "
       },
       "numberFormat": {
-        "en": "Format: ",
-        "es": "Formato: "
+        "en": "Number format",
+        "es": "Formato de números"
       },
       "chartStyle": {
-        "en": "Charts: ",
-        "es": "Gráficos: "
+        "en": "Chart style",
+        "es": "Estilo de gráficos"
       },
       "chartStyles": {
         "plain": { "en": "Normal", "es": "Normal" },
@@ -1414,8 +1414,8 @@
   },
   "settings": {
     "language": {
-      "en": "Language: ",
-      "es": "Idioma: "
+      "en": "Language",
+      "es": "Idioma"
     },
     "languageEs": {
       "en": "Español",
@@ -9435,28 +9435,16 @@
       "es": "Endpoints más lentos"
     },
     "endpointsHint": {
-      "en": "Ordered by p95. Times in ms (estimated from a histogram); total time in s; size in KB.",
-      "es": "Ordenados por p95. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB."
+      "en": "Ordered by p95, the figure on each line. Times in ms (estimated from a histogram); total time in s; size in KB.",
+      "es": "Ordenados por p95, la cifra de cada línea. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB."
     },
     "endpointsEmpty": {
       "en": "No API requests in this window.",
       "es": "Sin solicitudes a la API en este período."
     },
     "trendTitle": {
-      "en": "Daily trend",
-      "es": "Tendencia diaria"
-    },
-    "showTrend": {
-      "en": "trend",
-      "es": "tendencia"
-    },
-    "trendShown": {
-      "en": "shown",
-      "es": "mostrada"
-    },
-    "colPage": {
-      "en": "Page",
-      "es": "Página"
+      "en": "By day (times in ms)",
+      "es": "Por día (tiempos en ms)"
     },
     "colViews": {
       "en": "Views",
@@ -9486,17 +9474,9 @@
       "en": "Last visit",
       "es": "Última visita"
     },
-    "colEndpoint": {
-      "en": "Endpoint",
-      "es": "Endpoint"
-    },
     "colCount": {
       "en": "Requests",
       "es": "Solicitudes"
-    },
-    "colAvg": {
-      "en": "Avg (ms)",
-      "es": "Prom. (ms)"
     },
     "colP50": {
       "en": "p50 (ms)",
@@ -9529,9 +9509,67 @@
     "colDay": {
       "en": "Day",
       "es": "Día"
+    },
+    "lineP50": {
+      "en": "p50 {{ms}} ms",
+      "es": "p50 {{ms}} ms"
+    },
+    "lineP95": {
+      "en": "p95 {{ms}} ms",
+      "es": "p95 {{ms}} ms"
+    },
+    "lineMs": {
+      "en": "{{ms}} ms",
+      "es": "{{ms}} ms"
+    },
+    "lineUnsettled": {
+      "en": "left before loading: {{count}}",
+      "es": "dejadas antes de cargar: {{count}}"
+    },
+    "linePaths": {
+      "en": "paths: {{count}}",
+      "es": "rutas: {{count}}"
+    },
+    "lineRequests": {
+      "en": "requests: {{count}}",
+      "es": "solicitudes: {{count}}"
+    },
+    "lineTotal": {
+      "en": "{{seconds}} s in all",
+      "es": "{{seconds}} s en total"
+    },
+    "lineErrors": {
+      "en": "errors 5xx / 4xx: {{errors}}",
+      "es": "errores 5xx / 4xx: {{errors}}"
+    },
+    "colPaths": {
+      "en": "Paths",
+      "es": "Rutas"
+    },
+    "trendAvg": {
+      "en": "Mean",
+      "es": "Prom."
+    },
+    "trendP50": {
+      "en": "p50",
+      "es": "p50"
+    },
+    "trendP95": {
+      "en": "p95",
+      "es": "p95"
+    },
+    "trendMax": {
+      "en": "Max",
+      "es": "Máx."
     }
   },
   "panelSettings": {
+    "display": {
+      "title": {
+        "en": "Display",
+        "es": "Visualización"
+      }
+    },
     "taxResidency": {
       "title": {
         "en": "Tax residency",

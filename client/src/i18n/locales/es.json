@@ -3,8 +3,8 @@
     "displayPreferences": {
       "toolbarAria": "Divisa de visualización",
       "displayCurrency": "Divisa: ",
-      "numberFormat": "Formato: ",
-      "chartStyle": "Gráficos: ",
+      "numberFormat": "Formato de números",
+      "chartStyle": "Estilo de gráficos",
       "chartStyles": {
         "plain": "Normal",
         "pen": "A mano: lápiz pasta",
@@ -480,7 +480,7 @@
     }
   },
   "settings": {
-    "language": "Idioma: ",
+    "language": "Idioma",
     "languageEs": "Español",
     "languageEn": "English"
   },
@@ -2981,12 +2981,9 @@
     "pagesTitle": "Páginas más visitadas",
     "pagesEmpty": "Sin visitas en este período.",
     "endpointsTitle": "Endpoints más lentos",
-    "endpointsHint": "Ordenados por p95. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB.",
+    "endpointsHint": "Ordenados por p95, la cifra de cada línea. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB.",
     "endpointsEmpty": "Sin solicitudes a la API en este período.",
-    "trendTitle": "Tendencia diaria",
-    "showTrend": "tendencia",
-    "trendShown": "mostrada",
-    "colPage": "Página",
+    "trendTitle": "Por día (tiempos en ms)",
     "colViews": "Visitas",
     "colSettleP50": "Carga p50 (ms)",
     "colSettleP95": "Carga p95 (ms)",
@@ -2994,9 +2991,7 @@
     "colUnsettled": "Dejadas antes de cargar",
     "colFetchedQueries": "Consultas pedidas",
     "colLastViewed": "Última visita",
-    "colEndpoint": "Endpoint",
     "colCount": "Solicitudes",
-    "colAvg": "Prom. (ms)",
     "colP50": "p50 (ms)",
     "colP95": "p95 (ms)",
     "colMax": "Máx. (ms)",
@@ -3004,9 +2999,25 @@
     "colWarm": "Caché caliente",
     "colErrors": "Errores 5xx / 4xx",
     "colSize": "Tamaño (KB)",
-    "colDay": "Día"
+    "colDay": "Día",
+    "lineP50": "p50 {{ms}} ms",
+    "lineP95": "p95 {{ms}} ms",
+    "lineMs": "{{ms}} ms",
+    "lineUnsettled": "dejadas antes de cargar: {{count}}",
+    "linePaths": "rutas: {{count}}",
+    "lineRequests": "solicitudes: {{count}}",
+    "lineTotal": "{{seconds}} s en total",
+    "lineErrors": "errores 5xx / 4xx: {{errors}}",
+    "colPaths": "Rutas",
+    "trendAvg": "Prom.",
+    "trendP50": "p50",
+    "trendP95": "p95",
+    "trendMax": "Máx."
   },
   "panelSettings": {
+    "display": {
+      "title": "Visualización"
+    },
     "taxResidency": {
       "title": "Residencia tributaria",
       "explain": "Dónde eres residente tributario, declarado desde un día: la declaración de renta lo lee para decidir el régimen de cada año (residente, no residente o el año de la partida). Sin períodos declarados eres residente tributario en Chile.",
