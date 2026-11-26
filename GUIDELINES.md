@@ -79,9 +79,9 @@ the other in the same edit.
 ## Async route handlers must be wrapped
 
 An unhandled async rejection in a route handler must become an error response, not a
-process death. (In this repo: Express 4 does not forward async rejections — wrap
-handlers in `asyncHandler` from `server/src/index.ts`; a terminal error middleware turns
-route throws into JSON 500s.)
+process death. (In this repo: Express 5 forwards a rejected async handler to the error
+middleware by itself, and a terminal error middleware turns route throws into JSON 500s;
+`asyncHandler` in `server/src/routes/shared.ts` is a leftover that new routes do not need.)
 
 ## Git commits
 
