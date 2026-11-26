@@ -73,7 +73,6 @@ import { upsertCheckingIncomeMovementOverride } from "../flowsCheckingIncomeOver
 import { syncMortgageExpenseDepositLinksFromSheet } from "../expenseDepositLinks.js";
 import { expenseLinesForDepositLinkSync } from "../flowsExpenses.js";
 import { lineAmount } from "../lineMoney.js";
-import { AFC_CIC_SERIES_KEY } from "../afcCicSeries.js";
 import { isChileBusinessDay, isNyseTradingDay } from "../marketHolidays.js";
 import { recordEquitySplit } from "../equitySplits.js";
 import { ccMasterImportKeyPrefix } from "../ccIssuers.js";
@@ -136,6 +135,12 @@ function ensureAssetGroup(slug: string, label: string, parentSlug: string): numb
   if (!parent) throw new Error(`demo: asset group ${parentSlug} missing (schema seed incomplete?)`);
   return Number(db.prepare(`INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (?, ?, 90, ?)`).run(slug, label, parent.id).lastInsertRowid);
 }
+
+/**
+ * The synthetic unemployment fund's valor cuota series. Not the real `afc_cic` key: an account on
+ * that one configures the Superintendencia sync, which would overwrite these values.
+ */
+const DEMO_AFC_SERIES_KEY = "demo_afc";
 
 function createAccount(groupId: number, name: string, opts: { key?: string; ticker?: string; series?: string } = {}): number {
   return Number(
@@ -200,7 +205,7 @@ function createAccounts(person: Person): Map<Acct, number> {
   // Modelo only for a life that starts before the switch into UNO.
   if (person.firstMonth < AFP_SWITCH_MONTH) ids.set("afpModelo", afp("modelo", "Modelo-A"));
   ids.set("afpUno", afp("uno", "UNO-A"));
-  ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC", { series: AFC_CIC_SERIES_KEY }));
+  ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC", { series: DEMO_AFC_SERIES_KEY }));
   for (const h of person.houses) {
     // The keys give the property its `property` role and the loan `loan_of` it (migration 299);
     // the lender, as the card prints it, is a role written as data.
@@ -668,7 +673,7 @@ function writeAfc(ledger: Ledger, afcId: number, market: MarketReader): void {
         accountId: afcId,
         amount: c.clp,
         currency: HOME_CURRENCY,
-        unitsDelta: Math.round((c.clp / market.fundUnit(AFC_CIC_SERIES_KEY, c.date)) * 1e4) / 1e4,
+        unitsDelta: Math.round((c.clp / market.fundUnit(DEMO_AFC_SERIES_KEY, c.date)) * 1e4) / 1e4,
         occurredOn: c.date,
         note: `Cotización AFC ${c.month}`,
       });
@@ -809,7 +814,7 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
     writeFundSeries(MONEY_MARKET_SERIES_KEY, { annualRatePct: (d) => moneyMarketAnnualRatePct(d) - MONEY_MARKET_FEE_PCT }, prices, fundFrom, today);
   }
   // The unemployment fund grows ~3,5 % a year (the story's figure; no official series is carried).
-  writeFundSeries(AFC_CIC_SERIES_KEY, { annualRatePct: () => 3.5 }, prices, `${person.firstMonth}-01`, today);
+  writeFundSeries(DEMO_AFC_SERIES_KEY, { annualRatePct: () => 3.5 }, prices, `${person.firstMonth}-01`, today);
   if (person.usJobs.length > 0) {
     const first = person.usJobs.map((j) => j.firstPayDate).sort()[0]!;
     writeUsRetirementFundSeries(prices, addDays(first, -60), today);

@@ -15,8 +15,8 @@
  *   (`afpUnoApi.ts`; the Superintendencia de Pensiones refuses connections from Render's
  *   servers); Modelo fund A, which the demo holds until 2020, from the committed snapshot of
  *   the SP's official values (`DEMO_AFP_MODELO_CSV_PATH`, 2018-01 → 2020-03 — the fund the
- *   demo leaves in 2020 never changes). The AFC stays a synthetic book account: no source of
- *   the cesantía fund's values answers Render.
+ *   demo leaves in 2020 never changes). The AFC's valor cuota is synthetic (a series the generator
+ *   writes, `demo_afc`): no source of the cesantía fund's values answers Render.
  *
  * History stops at yesterday (Chile; the last completed UTC day for crypto): today's close is
  * the live sync's. Every source is retried with backoff for up to ~10 minutes; a source still

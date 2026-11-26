@@ -33,7 +33,7 @@ export function isGlobalSyncSource(value: string): value is GlobalSyncSource {
  * Sources the hosted demo never runs: they read the author's own Fintual goals, or only serve
  * the Risky Norris proxy of funds the demo does not hold. The demo syncs only the public market
  * sources its holdings need (stocks, crypto, USD/CLP, Banco Central, AFP UNO — from UNO's own API,
- * `afpUnoOfficialSource`; its AFC is a book account, so `afc_cic` reads «Not configured» too).
+ * `afpUnoOfficialSource`; its AFC holds cuotas of a synthetic series of its own, not `afc_cic`, so that source reads «Not configured» too).
  * Read through the deployment profile (`config.ts`).
  */
 export const DEMO_SYNC_DISABLED_SOURCES: ReadonlySet<GlobalSyncSource> = new Set([

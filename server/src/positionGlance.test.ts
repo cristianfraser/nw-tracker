@@ -950,6 +950,18 @@ describe("position_glance on the account detail bundle", () => {
     expect(c.price.value).toBe(6_000);
   });
 
+  it("has no composition while a stored-balance account is worth less than nothing", async () => {
+    const { buildAccountDetailBundle } = await import("./accountDetailBundle.js");
+    const today = chileCalendarTodayYmd();
+    const dayBefore = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+    const book = account("book below zero", { groupId: leafAssetGroupIdForKindSlug("dap") });
+    valuation(book, dayBefore(30), 500_000);
+    valuation(book, dayBefore(3), -20_000);
+    const g = (await buildAccountDetailBundle(book, "clp", "monthly"))!.position_glance!;
+    expect(g.value!.value).toBe(-20_000);
+    expect(g.composition).toBeNull();
+  });
+
   it("has no composition on an account with no value on file", async () => {
     const { buildAccountDetailBundle } = await import("./accountDetailBundle.js");
     const plain = account("plain bundle");

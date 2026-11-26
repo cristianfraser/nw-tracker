@@ -705,7 +705,8 @@ function bookInstrument(profile: AccountProfile, valuedOn: string | null): Posit
 /**
  * The glance of an account with no unit price to show (`pricing` null): today's value, the periods
  * and — for an asset with a positive value to split — the composition, measured today while the
- * account is worth something, else on the day of its last positive stored balance.
+ * account is worth something, on the day of its last positive stored balance once it is worth
+ * nothing; none while it is worth less than nothing.
  */
 function buildBookGlance(profile: AccountProfile, figures: PositionGlanceBundleFigures, now: Date): PositionGlanceDto {
   const accountId = profile.id;
@@ -722,6 +723,9 @@ function buildBookGlance(profile: AccountProfile, figures: PositionGlanceBundleF
     if (value != null && roundToCurrency(value, unit) > 0) {
       asOf = today;
       valueThen = value;
+    } else if (value != null && roundToCurrency(value, unit) < 0) {
+      // Worth less than nothing today: not an emptied account, and nothing positive to split.
+      return null;
     } else {
       const last = (stmtLastPositiveValuationDay.get(accountId, today) as { d: string | null }).d;
       if (last == null) return null;

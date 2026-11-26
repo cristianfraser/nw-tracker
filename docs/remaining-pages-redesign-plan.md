@@ -96,7 +96,7 @@ Two different kinds of account land here, and the page fits neither.
   left on `StandardAccountDetailPage` and it is deleted.
   > **Done (2026-11-26):** `StandardAccountDetailPage` is deleted. (1) The demo's APV, mutual-fund
   > and money-market accounts hold cuotas of their series through the `fintual_goal` role, and its
-  > AFC account is a cuota ledger on `afc_cic` (the generator writes that series); none stores
+  > AFC account is a cuota ledger on `demo_afc` (a series the generator writes); none stores
   > valuations any more. (2) `position_glance` is served for every account that is not a card, a
   > cash ledger, a property or a loan: a unit position with its price blocks (`pricing`), any other
   > account without them — one valued by stored balances, a position that never held a unit, and
