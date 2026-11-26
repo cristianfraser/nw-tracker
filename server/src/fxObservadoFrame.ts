@@ -85,6 +85,19 @@ export function interbankWindowBounds(ymd: string, now: Date): { start: Date; en
   return { start, end };
 }
 
+/**
+ * A live CLP=X print written at `at` enters that Chile day's interbank-window average
+ * ({@link interbankWindowAverageClpPerUsd} averages every row, a re-stamp at an unchanged price
+ * included), so the write moves what the observado frame reads even when the price did not
+ * move. The writer reports such a print as a change of the live dollar, or figures cached
+ * before it keep the old average while ones built after read the new one (2026-11-26: the APV
+ * rows and the retirement card a few dozen pesos apart, the value map refused).
+ */
+export function printEntersInterbankWindow(at: Date): boolean {
+  const { start, end } = interbankWindowBounds(chileWallClockAt(at).ymd, at);
+  return at.getTime() >= start.getTime() && end.getTime() === at.getTime();
+}
+
 /** Running average of the live CLP=X prints inside day `ymd`'s interbank window, up to `now`. */
 export function interbankWindowAverageClpPerUsd(
   ymd: string,
