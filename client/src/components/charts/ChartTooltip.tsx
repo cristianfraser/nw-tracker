@@ -374,9 +374,14 @@ export function AppChartTooltipContent(props: TooltipContentProps<number, string
  * The recharts `<Tooltip>` element the App* chart wrappers render. Must stay a direct child of the chart root —
  * recharts locates Tooltip by element type, so wrapping it in another component would make it invisible.
  */
-export function appTooltipElement(spec: AppTooltipSpec) {
+export function appTooltipElement(
+  spec: AppTooltipSpec,
+  /** For a chart with its own root (the cupo bar): per-segment tooltips, no animation. */
+  own: Pick<TooltipProps<number, string>, "shared" | "isAnimationActive"> = {}
+) {
   return (
     <Tooltip
+      {...own}
       wrapperStyle={{ transform: "none", width: "100%", height: "100%" }}
       cursor={spec.cursor ?? DEFAULT_TOOLTIP_CURSOR}
       content={(props) => (

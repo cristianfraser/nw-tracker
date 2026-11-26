@@ -1,7 +1,5 @@
 import { useMemo } from "react";
-import { Bar, Legend, Line, XAxis, YAxis } from "recharts";
 import { useTranslation } from "../../i18n";
-import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
 import type { PayrollBreakdownField, PayrollBreakdownPayload, PayrollBreakdownRow } from "../../types";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
@@ -11,22 +9,13 @@ import { SurfaceControls } from "../ui/SurfaceControls";
 import { ChartPanelTitleRow } from "../charts/ChartPanelTitleRow";
 import { ChartEmptyState } from "../charts/ChartEmptyState";
 import { loadableClass } from "../ui/Loadable";
-import { AppComposedChart } from "../charts/AppComposedChart";
-import {
-  AXIS_LINE_STROKE,
-  buildNiceYAxis,
-  CHART_TICK_STYLE,
-  extractSortedAsOfDates,
-  moneyYAxisProps,
-  resolvePeriodXAxis,
-} from "../charts/chartLayout";
+import { PayrollBreakdownChart } from "../charts/PayrollBreakdownChart";
+import { buildNiceYAxis, extractSortedAsOfDates, resolvePeriodXAxis } from "../charts/chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 import { incomeKindColor, PAYROLL_STACK } from "./incomeColors";
 
 /** The chart series for the severance part of net pay (not a breakdown field). */
 const NET_SEVERANCE = "net_severance";
-
-const CHART_ANIM_MS = 90;
 
 /** Stands in for the server payload while it loads: the frame renders with no rows. */
 const EMPTY_BREAKDOWN: PayrollBreakdownPayload = { unit: "clp", payslips: [], months: [], years: [] };
@@ -140,55 +129,15 @@ export function PayrollBreakdownSection({
             <ChartEmptyState loading={loading} message={t("income.chartEmpty")} boxStyle={{ height: 300 }} />
           ) : (
           <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")} style={{ height: 300 }}>
-            <AppComposedChart
-              data={points}
-              tooltip={{
-                formatValue: (v) => formatFlowMoney(v, displayUnit),
-                formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
-                formatName: (entry) => label(String(entry.name ?? entry.dataKey ?? "")),
-                cursor: true,
-              }}
-            >
-              <XAxis
-                dataKey="as_of_date"
-                type="category"
-                {...(xAxis.ticks ? { ticks: xAxis.ticks } : {})}
-                tick={CHART_TICK_STYLE}
-                axisLine={{ stroke: AXIS_LINE_STROKE }}
-                tickLine={{ stroke: AXIS_LINE_STROKE }}
-                tickFormatter={(d: string) => xAxis.formatTick(String(d))}
-              />
-              <YAxis domain={yScale.domain} ticks={yScale.ticks} {...moneyYAxisProps(displayUnit, compactAxis, yScale.ticks)} />
-              <Legend
-                itemSorter={null}
-                wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
-                formatter={(value) => (
-                  <span style={{ color: "var(--muted, #94a3b8)" }}>{label(String(value))}</span>
-                )}
-              />
-              {stack.map((s) => (
-                <Bar
-                  key={s.key}
-                  dataKey={s.key}
-                  name={s.key}
-                  fill={s.color}
-                  stackId="payroll"
-                  isAnimationActive
-                  animationDuration={CHART_ANIM_MS}
-                  maxBarSize={22}
-                />
-              ))}
-              <Line
-                type="monotone"
-                dataKey="gross"
-                name="gross"
-                stroke="#e2e8f0"
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive
-                animationDuration={CHART_ANIM_MS}
-              />
-            </AppComposedChart>
+            <PayrollBreakdownChart
+              points={points}
+              displayUnit={displayUnit}
+              xAxis={xAxis}
+              yScale={yScale}
+              compactAxis={compactAxis}
+              stack={stack}
+              label={label}
+            />
           </div>
           )}
         </section>
