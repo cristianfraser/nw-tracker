@@ -7,7 +7,7 @@ import {
   matrixMonthForCartolaPeriodMonth,
   matrixMonthForCcStatement,
 } from "./importSyncDocumentMonth.js";
-import { buildImportSyncDocumentCoveragePayload } from "./importSyncDocumentCoverage.js";
+import { buildImportSyncDocumentCoveragePayload, buildImportSyncDocumentYears } from "./importSyncDocumentCoverage.js";
 import {
   CcStatementPdfPathError,
   ccCreditCardAccountHasUsdStatements,
@@ -190,4 +190,54 @@ describe("importSyncDocumentCoverage", () => {
     }
     expect(cartolaCellsMatched).toBeGreaterThan(0);
   }, 20_000);
+});
+
+describe("buildImportSyncDocumentYears", () => {
+  const cell = (imported: boolean, file_path: string | null = null, file_sin_movimientos = false) => ({ imported, file_path, file_sin_movimientos });
+
+  it("leaves the months before a column's first document out and adds each year up", () => {
+    // Newest first. Column 0 starts in 2030-11; column 1 has a hole in 2031-01 and a file never imported.
+    const months = ["2031-02", "2031-01", "2030-12", "2030-11", "2030-10"];
+    const { cells, years } = buildImportSyncDocumentYears(months, 2, [
+      [cell(false), cell(false, "/synthetic/b-2031-02.pdf")],
+      [cell(true, "/synthetic/a-2031-01.pdf"), cell(false)],
+      [cell(true), cell(true, "/synthetic/b-2030-12.pdf", true)],
+      [cell(true, "/synthetic/a-2030-11.pdf"), cell(true, "/synthetic/b-2030-11.pdf")],
+      [cell(false), cell(true, "/synthetic/b-2030-10.pdf")],
+    ], "2031-03");
+    expect(cells.map((row) => row.map((c) => c.state))).toEqual([
+      ["missing", "file_not_imported"],
+      ["imported", "missing"],
+      ["imported_no_file", "no_movements"],
+      ["imported", "imported"],
+      ["before_first", "imported"],
+    ]);
+    expect(years).toEqual([
+      { year: 2031, month_indexes: [0, 1], columns: [{ counted: 2, imported: 1 }, { counted: 2, imported: 0 }], columns_counted: 2, columns_complete: 0, incomplete_columns: [0, 1] },
+      { year: 2030, month_indexes: [2, 3, 4], columns: [{ counted: 2, imported: 2 }, { counted: 3, imported: 3 }], columns_counted: 2, columns_complete: 2, incomplete_columns: [] },
+    ]);
+  });
+
+  it("does not count the month in progress while its document is not there", () => {
+    // Column 0 has nothing for the current month yet; column 1's statement already arrived.
+    const { cells, years } = buildImportSyncDocumentYears(
+      ["2031-02", "2031-01"],
+      2,
+      [
+        [cell(false), cell(true, "/synthetic/b-2031-02.pdf")],
+        [cell(true, "/synthetic/a-2031-01.pdf"), cell(true, "/synthetic/b-2031-01.pdf")],
+      ],
+      "2031-02"
+    );
+    expect(cells[0]!.map((c) => c.state)).toEqual(["not_due", "imported"]);
+    expect(years).toEqual([
+      { year: 2031, month_indexes: [0, 1], columns: [{ counted: 1, imported: 1 }, { counted: 2, imported: 2 }], columns_counted: 2, columns_complete: 2, incomplete_columns: [] },
+    ]);
+  });
+
+  it("gives a column with no document at all no counted month", () => {
+    const { cells, years } = buildImportSyncDocumentYears(["2031-01"], 1, [[cell(false)]], "2031-01");
+    expect(cells[0]![0]!.state).toBe("before_first");
+    expect(years).toEqual([{ year: 2031, month_indexes: [0], columns: [null], columns_counted: 0, columns_complete: 0, incomplete_columns: [] }]);
+  });
 });

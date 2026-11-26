@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Loadable } from "../ui/Loadable";
-import { Table } from "../ui/Table";
+import { OpenRow, OpenRows } from "../ui/OpenRows";
 import type { ExpenseGenericUniqueMerchantRow } from "../../types";
 import { Button, Input } from "@crfrsr/ui";
 import {
@@ -9,12 +8,17 @@ import {
   useDeleteGenericUniqueMerchantMutation,
   useUpdateGenericUniqueMerchantMutation,
 } from "../../queries/hooks";
+import styles from "./GenericUniqueMerchantsPanel.module.css";
 
 type Props = {
   merchants: ExpenseGenericUniqueMerchantRow[];
   loading?: boolean;
 };
 
+/**
+ * The merchants whose expenses are tagged «One-off» on import: one line per name with Edit and
+ * Remove (Edit turns the line into the field), and a field to add one.
+ */
 export function GenericUniqueMerchantsPanel({ merchants, loading }: Props) {
   const { t } = useTranslation();
   const createMutation = useCreateGenericUniqueMerchantMutation();
@@ -76,85 +80,67 @@ export function GenericUniqueMerchantsPanel({ merchants, loading }: Props) {
     createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
   return (
-    <Loadable loading={Boolean(loading)}>
-
+    <div>
       {formError ? <p className="error">{formError}</p> : null}
 
-      <Table
-        header={
-          <thead>
-            <tr>
-              <th>{t("importSync.genericUniqueMerchants.colMerchant")}</th>
-              <th>{t("importSync.genericUniqueMerchants.colActions")}</th>
-            </tr>
-          </thead>
-        }
+      <OpenRows
+        loading={loading}
+        empty={merchants.length === 0 && !loading ? t("importSync.genericUniqueMerchants.empty") : undefined}
       >
-        {merchants.length === 0 ? (
-          loading ? null : (
-            <tr>
-              <td colSpan={2} className="muted">
-                {t("importSync.genericUniqueMerchants.empty")}
-              </td>
-            </tr>
+        {merchants.map((row) =>
+          editingId === row.id ? (
+            <OpenRow
+              key={row.id}
+              title={
+                <Input
+                  type="text"
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  disabled={busy}
+                  aria-label={t("importSync.genericUniqueMerchants.colMerchant")}
+                />
+              }
+              action={
+                <>
+                  <Button variant="secondary" size="sm" onClick={() => saveEdit(row.id)} disabled={busy || !editDraft.trim()}>
+                    {updateMutation.isPending
+                      ? t("importSync.genericUniqueMerchants.saving")
+                      : t("importSync.genericUniqueMerchants.save")}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={cancelEdit} disabled={busy}>
+                    {t("importSync.genericUniqueMerchants.cancel")}
+                  </Button>
+                </>
+              }
+            />
+          ) : (
+            <OpenRow
+              key={row.id}
+              title={<span className={styles.name}>{row.merchant_key}</span>}
+              action={
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => startEdit(row)} disabled={busy || editingId != null}>
+                    {t("importSync.genericUniqueMerchants.edit")}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDelete(row.id, row.merchant_key)}
+                    disabled={busy || editingId != null}
+                  >
+                    {deleteMutation.isPending && deleteMutation.variables === row.id
+                      ? t("importSync.genericUniqueMerchants.removing")
+                      : t("importSync.genericUniqueMerchants.remove")}
+                  </Button>
+                </>
+              }
+            />
           )
-        ) : (
-          merchants.map((row) => (
-            <tr key={row.id}>
-              <td>
-                {editingId === row.id ? (
-                  <Input
-                    type="text"
-                    value={editDraft}
-                    onChange={(e) => setEditDraft(e.target.value)}
-                    disabled={busy}
-                    aria-label={t("importSync.genericUniqueMerchants.colMerchant")}
-                  />
-                ) : (
-                  <span className="mono">{row.merchant_key}</span>
-                )}
-              </td>
-              <td>
-                {editingId === row.id ? (
-                  <>
-                    <Button
-                      onClick={() => saveEdit(row.id)}
-                      disabled={busy || !editDraft.trim()}
-                    >
-                      {updateMutation.isPending
-                        ? t("importSync.genericUniqueMerchants.saving")
-                        : t("importSync.genericUniqueMerchants.save")}
-                    </Button>{" "}
-                    <Button onClick={cancelEdit} disabled={busy}>
-                      {t("importSync.genericUniqueMerchants.cancel")}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      onClick={() => startEdit(row)}
-                      disabled={busy || editingId != null}
-                    >
-                      {t("importSync.genericUniqueMerchants.edit")}
-                    </Button>{" "}
-                    <Button
-                      onClick={() => onDelete(row.id, row.merchant_key)}
-                      disabled={busy || editingId != null}
-                    >
-                      {deleteMutation.isPending
-                        ? t("importSync.genericUniqueMerchants.removing")
-                        : t("importSync.genericUniqueMerchants.remove")}
-                    </Button>
-                  </>
-                )}
-              </td>
-            </tr>
-          ))
         )}
-      </Table>
+      </OpenRows>
 
-      <form onSubmit={onAdd} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <div style={{ width: "18rem" }}>
+      <form onSubmit={onAdd} className={styles.addForm}>
+        <div className={styles.addField}>
           <Input
             type="text"
             value={newMerchant}
@@ -164,15 +150,12 @@ export function GenericUniqueMerchantsPanel({ merchants, loading }: Props) {
             aria-label={t("importSync.genericUniqueMerchants.addPlaceholder")}
           />
         </div>
-        <Button
-          type="submit"
-          disabled={busy || editingId != null || !newMerchant.trim()}
-        >
+        <Button type="submit" disabled={busy || editingId != null || !newMerchant.trim()}>
           {createMutation.isPending
             ? t("importSync.genericUniqueMerchants.adding")
             : t("importSync.genericUniqueMerchants.add")}
         </Button>
       </form>
-    </Loadable>
+    </div>
   );
 }

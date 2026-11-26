@@ -1,0 +1,243 @@
+/* Rows that open in place (OpenRows.tsx): the app messages and the import sync panels.
+
+   One rendering at every width. The frame is the container the layout switches on.
+
+   Wide: the list is the grid — lead | title | status | first | action | chevron — and every row's
+   line a subgrid of it, so the cells line up down the list. The title is as wide as the widest
+   title up to 40% of the list (a longer one cuts with an ellipsis while closed and wraps once
+   open); the first line takes the rest and cuts with an ellipsis. The toggle button spans the
+   whole line and the action lies over its own track of the same grid row.
+   Narrow: title, status, action and chevron on one line; the lead and the first line under it. */
+.frame {
+  container: open-rows / inline-size;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: max-content fit-content(40%) max-content minmax(0, 1fr) max-content max-content;
+  column-gap: 1rem;
+  font-size: var(--font-size-prose);
+}
+
+.row,
+.line,
+.toggle {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+}
+
+.row + .row {
+  border-top: 1px solid var(--hairline);
+}
+
+.toggle {
+  grid-row: 1;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.static {
+  cursor: default;
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.lead {
+  grid-column: 1;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.title {
+  grid-column: var(--title-col);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.open .title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* A title that is a field (a row being edited): its focus ring draws outside its box. */
+.title:has(input) {
+  overflow: visible;
+}
+
+.strong {
+  font-weight: 600;
+}
+
+.status {
+  grid-column: 3;
+  white-space: nowrap;
+}
+
+.first {
+  grid-column: var(--first-col);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--font-size-prose-sm);
+}
+
+.action {
+  grid-column: 5;
+  grid-row: 1;
+  align-self: center;
+  display: flex;
+  gap: 0.4rem;
+  /* Over the toggle, which spans the line. */
+  z-index: 1;
+}
+
+.chevron {
+  grid-column: 6;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.open .chevron {
+  transform: rotate(90deg);
+}
+
+.body {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 0 0 0.75rem;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  padding: 0.5rem 0;
+}
+
+.statusWord {
+  white-space: nowrap;
+}
+
+.toneOk {
+  color: var(--positive);
+}
+
+.toneActive {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.toneBad {
+  color: var(--negative);
+  font-weight: 600;
+}
+
+.toneMuted {
+  color: var(--muted);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.15rem 1rem;
+  margin: 0;
+  font-size: var(--font-size-prose-sm);
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+}
+
+.fact dt {
+  color: var(--muted);
+}
+
+.fact dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@container open-rows (max-width: 40rem) {
+  .list,
+  .row {
+    display: block;
+  }
+
+  .line {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
+    column-gap: 0.6rem;
+  }
+
+  .toggle {
+    width: 100%;
+    grid-template-areas:
+      "title status action chevron"
+      "lead lead lead lead"
+      "first first first first";
+  }
+
+  .leadInline .line {
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    column-gap: 0.75rem;
+  }
+
+  .leadInline .toggle {
+    grid-template-areas:
+      "title lead chevron"
+      "first first first";
+  }
+
+  .lead {
+    grid-area: lead;
+    margin-top: 0.15rem;
+  }
+
+  .leadInline .lead {
+    margin-top: 0;
+  }
+
+  .title {
+    grid-area: title;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .status {
+    grid-area: status;
+  }
+
+  .first {
+    grid-area: first;
+    margin-top: 0.15rem;
+  }
+
+  .chevron {
+    grid-area: chevron;
+  }
+
+  /* The toggle is one item of the line's grid, three lines tall: the action stays on its first. */
+  .action {
+    grid-column: 3;
+    align-self: start;
+    margin-top: 0.3rem;
+  }
+}

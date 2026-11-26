@@ -579,7 +579,6 @@
     "genericUniqueMerchantsTitle": "Automatic One-off merchants",
     "genericUniqueMerchants": {
       "colMerchant": "Merchant name",
-      "colActions": "Actions",
       "empty": "No merchants configured.",
       "addPlaceholder": "Merchant name (as it appears on the statement)",
       "add": "Add",
@@ -599,6 +598,18 @@
     "importedNo": "{{account}}: {{month}} document missing",
     "showMore": "Show more…",
     "showLess": "Show less…",
+    "docs": {
+      "allComplete": "all {{n}} complete",
+      "someComplete": "{{complete}} of {{n}} complete",
+      "legendImported": "imported, file on disk",
+      "legendNoFile": "imported, no file",
+      "legendNoMovements": "statement with no movements",
+      "legendFileOnly": "file on disk, not imported",
+      "legendMissing": "missing",
+      "legendNotDue": "month in progress, not due yet",
+      "notDue": "{{account}}: {{month}} is in progress, its document is not due yet",
+      "fileNotImported": "{{account}}: {{month}} file on disk, not imported"
+    },
     "sync": {
       "lastSync": "Last sync: {{time}} ({{ago}})",
       "lastSyncNever": "Last sync: —",
@@ -613,10 +624,8 @@
       "publisherLagDetail": "Latest cuota {{published}} · expected {{expected}} · checked {{checked}}",
       "forceStale": "Mark stale",
       "forceStalePending": "Marking…",
-      "colSource": "Source",
       "colNextSync": "Next sync",
       "colHolidayToday": "Today",
-      "colStatus": "Status",
       "nextSyncNow": "Now",
       "nextSyncDash": "—",
       "nextSyncToday": "Today, {{time}}",
@@ -652,7 +661,10 @@
       "agoHours": "{{n}} h ago",
       "agoHoursMinutes": "{{h}} h {{m}} min ago",
       "agoDay": "1 day ago",
-      "agoDays": "{{n}} days ago"
+      "agoDays": "{{n}} days ago",
+      "nextLine": "next: {{when}}",
+      "todayIs": "{{kind}} today",
+      "factPublisher": "Publisher"
     },
     "ingestRunsTitle": "Bank and e-mail runs",
     "ingest": {
@@ -660,8 +672,6 @@
       "schedulerOff": "The ingest scheduler is off on this server instance: runs can only be started from the primary one.",
       "inFlight": "Running: {{kind}} since {{time}}.",
       "idle": "No run in progress.",
-      "colRun": "Run",
-      "colLatest": "Latest",
       "colNext": "Next",
       "kinds": {
         "hourly": "E-mail poll (hourly)",
@@ -678,15 +688,18 @@
       "failedSteps": "{{n}} failed step(s)",
       "never": "never",
       "runNow": "Run now",
-      "runNowPending": "Starting…"
+      "runNowPending": "Starting…",
+      "nextAt": "next {{time}}",
+      "factReason": "Why",
+      "factRequested": "Requested",
+      "factFinished": "Finished",
+      "factFailedSteps": "Failed",
+      "factError": "Error"
     },
     "jobs": {
       "title": "Queue",
       "summary": "{{running}} running, {{queued}} waiting.",
       "empty": "Nothing has gone through the queue yet.",
-      "colJob": "Job",
-      "colStatus": "Status",
-      "colWhen": "When",
       "colDetail": "Detail",
       "kinds": {
         "ingest_nightly": "Nightly run",
@@ -717,7 +730,16 @@
       "cancel": "Cancel",
       "cancelPending": "Cancelling…",
       "retry": "Retry",
-      "retryPending": "Queuing…"
+      "retryPending": "Queuing…",
+      "factReason": "Why",
+      "factEnqueuedBy": "Queued by",
+      "factResources": "Holds",
+      "factWorker": "Worker",
+      "factCreated": "Queued",
+      "factNotBefore": "Not before",
+      "factStarted": "Started",
+      "factFinished": "Finished",
+      "factError": "Error"
     }
   },
   "detail": {
