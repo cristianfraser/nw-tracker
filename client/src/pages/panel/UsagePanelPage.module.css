@@ -29,6 +29,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+.trendPending {
+  margin-top: 0.75rem;
+  font-size: var(--font-size-prose-sm);
+  color: var(--muted);
+}
+
 .trend caption {
   padding-bottom: 0.2rem;
   font-size: var(--font-size-prose-sm);

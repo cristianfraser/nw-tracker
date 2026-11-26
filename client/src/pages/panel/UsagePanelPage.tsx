@@ -76,7 +76,7 @@ export function UsagePanelPage() {
                   requests: formatCount(data.totals.requests),
                   seconds: formatGroupedDecimal(data.totals.request_ms / 1000, 0),
                 })
-              : " "}
+              : "\u00a0"}
           </p>
           <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
             <span className="muted">{t("usage.windowLabel")}</span>
@@ -139,7 +139,7 @@ function UsageRows({
       </OpenRows>
       {hasHidden ? (
         <Button variant="ghost" onClick={() => setExpanded((e) => !e)}>
-          {expanded ? t("importSync.showLess") : t("importSync.showMore")}
+          {expanded ? t("table.showLess") : t("notifications.showMore")}
         </Button>
       ) : null}
     </>
@@ -193,7 +193,7 @@ function EndpointRow({ row, days }: { row: UsageEndpointRow; days: UsageReportWi
   return (
     <OpenRow
       title={<span className="mono">{endpointLabel(row)}</span>}
-      status={<Figure>{t("usage.lineMs", { ms: formatMs(row.p95_ms) })}</Figure>}
+      status={<Figure>{row.p95_ms != null ? t("usage.lineMs", { ms: formatMs(row.p95_ms) }) : formatMs(null)}</Figure>}
       first={joinParts([
         t("usage.lineRequests", { count: formatCount(row.count) }),
         row.p50_ms != null ? t("usage.lineP50", { ms: formatMs(row.p50_ms) }) : null,
@@ -225,35 +225,41 @@ function EndpointTrend({ row, days }: { row: UsageEndpointRow; days: UsageReport
   if (queryLoadError(trend)) {
     return <p className="error">{trend.error instanceof Error ? trend.error.message : t("common.loadFailed")}</p>;
   }
-  const points = (trend.data?.points ?? []).slice().reverse();
+  // Until the days arrive: the caption alone, dimmed, never a header over no rows.
+  if (!trend.data) {
+    return (
+      <Loadable loading className={styles.trendPending}>
+        {t("usage.trendTitle")}
+      </Loadable>
+    );
+  }
+  const points = trend.data.points.slice().reverse();
   return (
-    <Loadable loading={trend.isPending}>
-      <table className={styles.trend}>
-        <caption>{t("usage.trendTitle")}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t("usage.colDay")}</th>
-            <th scope="col">{t("usage.colCount")}</th>
-            <th scope="col">{t("usage.trendAvg")}</th>
-            <th scope="col">{t("usage.trendP50")}</th>
-            <th scope="col">{t("usage.trendP95")}</th>
-            <th scope="col">{t("usage.trendMax")}</th>
+    <table className={styles.trend}>
+      <caption>{t("usage.trendTitle")}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{t("usage.colDay")}</th>
+          <th scope="col">{t("usage.colCount")}</th>
+          <th scope="col">{t("usage.trendAvg")}</th>
+          <th scope="col">{t("usage.trendP50")}</th>
+          <th scope="col">{t("usage.trendP95")}</th>
+          <th scope="col">{t("usage.trendMax")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {points.map((p) => (
+          <tr key={p.day}>
+            <th scope="row">{p.day}</th>
+            <td>{formatCount(p.count)}</td>
+            <td>{formatMs(p.avg_ms)}</td>
+            <td>{formatMs(p.p50_ms)}</td>
+            <td>{formatMs(p.p95_ms)}</td>
+            <td>{formatMs(p.max_ms)}</td>
           </tr>
-        </thead>
-        <tbody>
-          {points.map((p) => (
-            <tr key={p.day}>
-              <th scope="row">{p.day}</th>
-              <td>{formatCount(p.count)}</td>
-              <td>{formatMs(p.avg_ms)}</td>
-              <td>{formatMs(p.p50_ms)}</td>
-              <td>{formatMs(p.p95_ms)}</td>
-              <td>{formatMs(p.max_ms)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Loadable>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
