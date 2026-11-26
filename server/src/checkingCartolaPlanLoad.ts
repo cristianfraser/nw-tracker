@@ -27,7 +27,11 @@ type MovementRow = ListedFactsEvidence & {
   flow_id: number | null;
 };
 
-/** The planner's input for importing `cartola` into the checking account `accountId`. */
+/**
+ * The planner's input for importing `cartola` into the checking account `accountId`. The rows it
+ * can relate to: the daily-listing rows and the month's own cartola rows (`stated_period`); no
+ * other row of the account names a movement of this month.
+ */
 export function loadCheckingCartolaPlanInput(
   accountId: number,
   cartola: ParsedCheckingCartola,
@@ -38,10 +42,12 @@ export function loadCheckingCartolaPlanInput(
       `SELECT m.id, m.occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, ${BANK_POSTED_ON_SQL} AS bank_posted_on,
               e.source_kind AS kind, e.document_key, m.flow_id, ${LISTED_FACTS_COLUMNS_SQL}
        FROM movements m ${BANK_POSTING_JOIN_SQL}
-       LEFT JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id
-       WHERE m.account_id = ? ORDER BY m.id`
+       JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id
+       WHERE m.account_id = ?
+         AND (e.source_kind = 'daily_listing' OR (e.source_kind = 'cartola' AND e.stated_period = ?))
+       ORDER BY m.id`
     )
-    .all(accountId, accountId) as MovementRow[];
+    .all(accountId, accountId, cartola.period_month) as MovementRow[];
   const fileRows: CheckingFileRow[] = rows.map((r) => ({
     id: r.id,
     kind: r.kind,

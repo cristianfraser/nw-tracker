@@ -15,7 +15,7 @@
  *  - `remove`: a daily row today deletes with nothing taking its flow;
  *  - `ambiguous`: several retired flows for one document (left alone today).
  *
- * The matching is today's, in today's order, through its predicates (`cartolaMovementDedupeKey`,
+ * The matching is today's, in today's order, through its predicates (
  * `pickTransferLegForBankRow`, `pickTransferNoticeMovementForBankRow`,
  * `checkingMovementContentMatches`). A row's listing facts (bank day, amount, description, document)
  * come in structured (`CheckingListedFacts`); nothing here reads a note. The plan departs from today
@@ -25,7 +25,7 @@
  * identical daily row takes the first such movement — both twins' flows end on its row and the
  * second movement's row starts a new flow.
  */
-import { cartolaMovementDedupeKey, type ParsedCheckingMovement } from "./checkingCartolaParse.js";
+import type { ParsedCheckingMovement } from "./checkingCartolaParse.js";
 import { checkingMovementContentMatches } from "./checkingCartolaPartialReconcile.js";
 import { pickTransferLegForBankRow, type TransferLegCandidate } from "./checkingTransferLegReconcile.js";
 import { pickTransferNoticeMovementForBankRow, type TransferNoticeCandidate } from "./transferNoticeMovements.js";
@@ -137,25 +137,41 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
   let nextId = Math.max(0, ...input.rows.map((r) => r.id)) + 1;
   const flowOfNew = new Map<number, { row_id: number } | { retired_flow_id: number } | null>();
 
+  // The month's cartola rows on file pair one to one with the movements, in order: by document
+  // key, then by the same printed figures, then by the tolerant content match the daily rows pair
+  // with (`checkingMovementContentMatches`: case, truncation, marks) — another rendering of the month.
+  const claimedRows = new Set<number>();
+  const monthRow = (r: CartolaRow) => r.movement == null && !claimedRows.has(r.id) && r.listed?.period_month === input.period_month;
   for (const mv of input.movements) {
-    const byKey = input.rows.find((r) => r.document_key === mv.document_key);
+    const byKey = input.rows.find((r) => r.document_key === mv.document_key && !claimedRows.has(r.id));
     if (byKey) {
+      claimedRows.add(byKey.id);
       outcomeOf.set(mv.index, { kind: "row", id: byKey.id, why: "document_key" });
       continue;
     }
-    const sameKeyIndex = input.movements
-      .slice(0, mv.index)
-      .filter((prior) => cartolaMovementDedupeKey(prior) === cartolaMovementDedupeKey(mv)).length;
-    const present = cartolaRows.filter(
+    const exact = cartolaRows.find(
       (r) =>
-        r.listed?.period_month === input.period_month &&
+        monthRow(r) &&
         r.bank_day === mv.occurred_on &&
         r.amount_clp === mv.amount_clp &&
-        r.listed.description === mv.description.trim() &&
-        r.listed.document_no === String(mv.document_no ?? "").trim()
+        r.listed!.description === mv.description.trim() &&
+        r.listed!.document_no === String(mv.document_no ?? "").trim()
     );
-    if (present.length >= sameKeyIndex + 1) {
-      outcomeOf.set(mv.index, { kind: "row", id: present[sameKeyIndex]!.id, why: "already_present" });
+    const present =
+      exact ??
+      cartolaRows.find(
+        (r) =>
+          monthRow(r) &&
+          checkingMovementContentMatches(mv, {
+            occurred_on: r.bank_day,
+            amount_clp: r.amount_clp,
+            description: r.listed!.description,
+            document_no: r.listed!.document_no,
+          })
+      );
+    if (present) {
+      claimedRows.add(present.id);
+      outcomeOf.set(mv.index, { kind: "row", id: present.id, why: "already_present" });
       continue;
     }
     const windowStart = input.window_start[mv.occurred_on] ?? mv.occurred_on;
@@ -250,13 +266,13 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
   const plannedRemoved: CheckingCartolaPlan["remove"] = [];
   for (const daily of dailies) {
     const listed = daily.listed!;
-    const mv = input.movements.find((m) => !claimedMovements.has(m.index) && contentMatches(m, listed));
-    if (!mv) {
-      if (input.movements.some((m) => contentMatches(m, listed))) {
-        plan.ambiguous.push({ what: `daily row ${daily.id}: more identical daily rows than cartola movements`, movement: -1, flow_ids: [] });
-      }
-      continue;
-    }
+    // A movement no other daily row took; else, when every movement it matches is taken (a pending
+    // row re-listed under longer text, a listing that printed it twice), the first of them: several
+    // rows on file for one movement keep the earliest seen and fold the others into it.
+    const mv =
+      input.movements.find((m) => !claimedMovements.has(m.index) && contentMatches(m, listed)) ??
+      input.movements.find((m) => contentMatches(m, listed));
+    if (!mv) continue;
     claimedMovements.add(mv.index);
     if (viaLegOrMail.has(mv.index)) {
       plannedRemoved.push({ row_id: daily.id, movement: mv.index, why: removeWhyOf(mv.index) });

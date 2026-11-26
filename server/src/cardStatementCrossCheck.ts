@@ -1,4 +1,5 @@
 import { normalizeMerchantText } from "nw-tracker-contracts";
+import { merchantRenderingKey } from "./cards/merchantRendering.js";
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { padCcStatementDate } from "./ccStatementJsonSource.js";
 import { db } from "./db.js";
@@ -32,19 +33,6 @@ function loadImportedLines(accountId: number, statementDate: string, currency: s
     merchant: normalizeMerchantText(r.merchant),
     amount: Number(r.amount ?? 0),
   }));
-}
-
-/**
- * A merchant as both renderings agree on it: the JSON keeps an Argentine acquirer's terminal code
- * that the PDF parse drops («KIOSCO 1234» / «KIOSCO») and renders some punctuation differently
- * («ABC] 12 CENTRO» / «ABC! 12 CENTRO»).
- */
-function merchantRenderingKey(value: string): string {
-  return normalizeMerchantText(value)
-    .replace(/ \d{4}$/, "")
-    .replace(/[^A-Z0-9 ]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 export type StatementDiff = {

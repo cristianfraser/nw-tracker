@@ -105,9 +105,10 @@ function applyStatements(
       list.push({ cartola: slice, label: `${label}|${slice.period_month}` });
     }
   }
-  // A forced re-import imports each month again in place (its rows restated). A dry run is the
-  // ingest receiver's rollback.
-  importCartolaList(accountId, list, { dryRun: false, forceReimport: payload.force_reimport }, fileLogs, flows);
+  // A forced re-import imports each month again in place (its rows restated); a cuenta vista
+  // document forces only the months it owns (a straddle slice of a month another document holds
+  // stays that document's). A dry run is the ingest receiver's rollback.
+  importCartolaList(accountId, list, { dryRun: false, forceReimport: payload.force_reimport, forceSameFileOnly: vista }, fileLogs, flows);
   const result = finishCartolaImportRun(accountId, { dryRun: false }, fileLogs, vista ? "cuenta vista" : undefined);
 
   const report = [

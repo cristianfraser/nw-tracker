@@ -6,7 +6,7 @@ import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 
-/** The account's movements of a cartola month (their note names the month). */
+/** The account's cartola rows of a month (the cartola month their evidence states, `stated_period`). */
 export function countExistingCartolaMovementsForMonth(
   accountId: number,
   periodMonth: string,
@@ -14,10 +14,11 @@ export function countExistingCartolaMovementsForMonth(
 ): number {
   const row = dbHandle
     .prepare(
-      `SELECT COUNT(*) AS c FROM movements
-       WHERE account_id = ? AND note LIKE ?`
+      `SELECT COUNT(*) AS c FROM movements m
+       JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id
+       WHERE m.account_id = ? AND e.source_kind = 'cartola' AND e.stated_period = ?`
     )
-    .get(accountId, `import:cartola|${periodMonth}|%`) as { c: number };
+    .get(accountId, periodMonth) as { c: number };
   return Number(row.c) || 0;
 }
 

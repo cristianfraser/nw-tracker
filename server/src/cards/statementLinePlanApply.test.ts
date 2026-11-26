@@ -475,4 +475,66 @@ describe("statement-line plan applied, against today's import", () => {
       )
     ).toThrow(/cannot pair these rows one to one, nothing was written: two document lines end on one flow — rows on file: line 9; document lines: .* line #2/);
   });
+
+  it("through the import: the PDF taking over a JSON close restates its lines, though it prints the merchant without the terminal code", () => {
+    const json = { ...statement([line("2026-06-04", "KIOSCO CENTRO 4321", 5_000, { id: "json:kra-e2e-kiosco" }), line("2026-06-05", "LIBRERIA", 7_000, { id: "json:kra-e2e-libro" })]), document: "import:santander-json|clp|19/06/2026" };
+    replaceStatementLines(accountId, [json], { replaceStatementKeys: statementKeysOf([json]) });
+    const ids = db
+      .prepare(`SELECT l.id, l.flow_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? ORDER BY l.id`)
+      .all(accountId) as { id: number; flow_id: number }[];
+    const category = categorize(ids[0]!.id);
+    const stamps = (db.prepare(`SELECT COUNT(*) AS n FROM flow_first_seen`).get() as { n: number }).n;
+    const pdfSt = statement([line("2026-06-04", "KIOSCO CENTRO", 5_000, { id: "kra-e2e-kiosco-pdf" }), line("2026-06-05", "LIBRERIA", 7_000, { id: "kra-e2e-libro-pdf" })]);
+    const r = replaceStatementLines(accountId, [pdfSt], { replaceStatementKeys: statementKeysOf([pdfSt]) });
+    expect(r.json_closes_superseded_by_pdf).toEqual(["19/06/2026 clp"]);
+    expect(r.keep_rows.inserted).toEqual([]);
+    expect(r.keep_rows.restated.sort()).toEqual(ids.map((x) => x.id).sort());
+    const now = db
+      .prepare(`SELECT l.id, l.flow_id, l.merchant, s.source_pdf FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? ORDER BY l.id`)
+      .all(accountId) as { id: number; flow_id: number; merchant: string; source_pdf: string }[];
+    expect(now.map((x) => [x.id, x.flow_id])).toEqual(ids.map((x) => [x.id, x.flow_id]));
+    expect(now.map((x) => [x.merchant, x.source_pdf])).toEqual([["KIOSCO CENTRO", PDF_CLP], ["LIBRERIA", PDF_CLP]]);
+    expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(ids[0]!.flow_id)).toEqual([{ category_id: category }]);
+    expect((db.prepare(`SELECT COUNT(*) AS n FROM flow_first_seen`).get() as { n: number }).n).toBe(stamps);
+  });
+
+  describe("a settlement by a statement line already on file", () => {
+    const usdOnFile = () =>
+      db.prepare(
+        `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, card_last4, layout, currency)
+         VALUES (?, 'santander', 'vitest-keep-rows-apply 2026-05-19 tarjeta usd.pdf', '19/05/2026', '20/04/2026', '19/05/2026', ?, 'international_usd', 'usd')`
+      ).run(accountId, LAST4);
+    const lineByMerchant = (merchant: string) =>
+      db
+        .prepare(`SELECT l.id, l.flow_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? AND l.merchant = ? AND s.source_kind = 'statement_pdf'`)
+        .get(accountId, merchant) as { id: number; flow_id: number };
+
+    it("a late listing of a purchase its twin's statement already billed folds into that line when the month closes", () => {
+      usdOnFile();
+      const usd = statement([line("2026-06-04", "STREAMING CO", 9.99, { currency: "usd", id: "kra-e2e-stream" })], "usd");
+      replaceStatementLines(accountId, [usd], { replaceStatementKeys: statementKeysOf([usd]) });
+      const late = bucketLine("2026-06-04", "STREAMING CO", 9.99, { currency: "usd" });
+      const category = categorize(late);
+      const clp = statement([line("2026-06-03", "FARMACIA", 8_500, { id: "kra-e2e-farm" })]);
+      const r = replaceStatementLines(accountId, [clp], { replaceStatementKeys: statementKeysOf([clp]) });
+      expect(r.keep_rows.folded).toEqual([late]);
+      expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(late)).toBeUndefined();
+      expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(lineByMerchant("STREAMING CO").flow_id)).toEqual([{ category_id: category }]);
+      // Settled: the same statements again write nothing.
+      expect(replaceStatementLines(accountId, [clp, usd], { replaceStatementKeys: statementKeysOf([clp, usd]) }).keep_rows.wrote).toBe(false);
+    });
+
+    it("an annulled purchase a statement line on file billed is settled when the month closes, its category on that line", () => {
+      usdOnFile();
+      const clp = statement([line("2026-06-05", "TIENDA ONLINE", 84_800, { id: "kra-e2e-tienda" })]);
+      replaceStatementLines(accountId, [clp], { replaceStatementKeys: statementKeysOf([clp]) });
+      const a = annulledPurchase("2026-06-05", "TIENDA ONLINE", 84_800);
+      const usd = statement([line("2026-06-04", "STREAMING CO", 9.99, { currency: "usd", id: "kra-e2e-stream2" })], "usd");
+      const r = replaceStatementLines(accountId, [usd], { replaceStatementKeys: statementKeysOf([usd]) });
+      expect(r.keep_rows.annulments_billed).toEqual([a.id]);
+      expect(db.prepare(`SELECT COUNT(*) AS n FROM cc_annulled_purchases WHERE account_id = ?`).get(accountId)).toEqual({ n: 0 });
+      expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(lineByMerchant("TIENDA ONLINE").flow_id)).toEqual([{ category_id: a.category }]);
+      expect(replaceStatementLines(accountId, [clp, usd], { replaceStatementKeys: statementKeysOf([clp, usd]) }).keep_rows.wrote).toBe(false);
+    });
+  });
 });

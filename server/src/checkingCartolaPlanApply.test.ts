@@ -251,6 +251,7 @@ describe("cartola plan applied, against today's import", () => {
       amount: m.amount_clp,
       flowKind: null,
       listed: cartolaListingFacts(c.period_month, m),
+      cartolaIndex: 0,
     };
   };
 

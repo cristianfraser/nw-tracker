@@ -49,10 +49,13 @@
  */
 import { findPlanAmong, oneShotLinesSupersededAmong, type CardPlanForMatching } from "./purchases.js";
 import { oneShotFuzzyMatchAmong, supersededLinesLessPlanSources } from "../ccCrossImportDedupe.js";
+import { merchantsMatchForCrossDedupe } from "./purchases.js";
+import { merchantRenderingKey } from "./merchantRendering.js";
 import { takeBatchDedupeKeys } from "./statementStorage.js";
 import {
   linePurchaseIso,
   planBucketSettlement,
+  sameBucketLineFigures,
   type BucketSettlementLine,
   type PlanPrepaymentLineRole,
   type StatementLineForMatching,
@@ -191,6 +194,8 @@ export type KeepReason =
   | "reimport_parser_row"
   | "reimport_identity"
   | "reimport_fan_out"
+  /** The same close from another source (a JSON close its PDF takes over), paired by the settle figures. */
+  | "source_takeover"
   | "annulment_billed";
 
 export type CardPlanKeep = {
@@ -691,6 +696,35 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     adoptedBy.set(m.from.lineId, "parser_row_id");
   }
   for (const r of restated) planned.fold(tokenOf(r.to), lineToken(r.from));
+  // A source takeover of the same close (a JSON close its PDF takes over, a statement re-sent):
+  // what the exact pairing left on both sides pairs one to one, in line order, by the bucket's
+  // settle figures (currency, amount to the coin, day within a day) and a merchant that matches or
+  // differs only in rendering (a terminal code, punctuation: `merchantRenderingKey`).
+  const movesAll = [...moves.moves, ...fan.moves];
+  const pairedFrom = new Set(movesAll.map((m) => m.from.lineId));
+  const pairedTo = new Set(movesAll.map((m) => m.to.lineId));
+  const takeoverFrom = new Set<number>();
+  for (const id of [...vanished].sort((a, b) => a - b)) {
+    if (hiddenIds.has(id) || pairedFrom.has(id) || removeWhy.get(id)?.why !== "replaced_statement_line_gone") continue;
+    const l = fileById.get(id)!;
+    if (l.installment_flag) continue;
+    const target = [...live.values()]
+      .filter((d) => d.doc && !d.installment_flag && !pairedTo.has(d.id) && !beforeSigs.has(sig(d.id, parserRow(d))))
+      .sort((a, b) => a.id - b.id)
+      .find((d) => {
+        const docCurrency = input.incoming.find((st) => st.statement_id === d.statement_id)?.currency ?? d.currency;
+        if (!sameBucketLineFigures(l, { line: d, currency: docCurrency })) return false;
+        const ra = merchantRenderingKey(String(l.merchant ?? ""));
+        return merchantsMatchForCrossDedupe(l.merchant, d.merchant) || (ra !== "" && ra === merchantRenderingKey(String(d.merchant ?? "")));
+      });
+    if (!target) continue;
+    pairedTo.add(target.id);
+    takeoverFrom.add(id);
+    planned.fold(docToken(target.id), lineToken(id));
+  }
+  if (takeoverFrom.size > 0) {
+    plan.ambiguous = plan.ambiguous.filter((a) => !a.rows.every((r) => r.kind === "line" && takeoverFrom.has(r.id)));
+  }
 
   const fileRowOfToken = (t: Token): FileRowRef | null => {
     if (t.startsWith("L")) {
@@ -719,6 +753,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     if (settled && settled.to === docVid) return settled.by as KeepReason;
     if (restated.some((r) => r.from === row.id && r.to === docVid)) return "another_shape";
     if (hiddenIds.has(row.id)) return "reimport_parser_row";
+    if (takeoverFrom.has(row.id)) return "source_takeover";
     const by = adoptedBy.get(row.id);
     if (by === "parser_row_id") return "reimport_parser_row";
     if (by === "fan_out") return "reimport_fan_out";
@@ -786,6 +821,24 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       why: "survivor_copy",
       today: "same",
     });
+  }
+  // A settlement by a statement line already on file (its twin's statement arrived first, a late
+  // listing of the purchase sits in the bucket): the bucket line, or the annulled purchase it billed,
+  // folds into that line — the line's assignments win, the bucket line's fill the rest.
+  const docVids = new Set(virtualOfDoc.values());
+  const settledOnFile = (to: number) => !docVids.has(to) && fileById.has(to);
+  const foldOnFile = (row: FileRowRef, into: number, why: KeepReason) => {
+    const key = `${row.kind}:${row.id}`;
+    if (claimed.has(key)) return;
+    claimed.add(key);
+    plan.fold.push({ row, into: { kind: "line", id: into }, doc: null, why, today: "same" });
+  };
+  for (const [from, s] of settledFrom) if (settledOnFile(s.to)) foldOnFile({ kind: "line", id: from }, s.to, s.by as KeepReason);
+  for (const r of restated) if (settledOnFile(r.to)) foldOnFile({ kind: "line", id: r.from }, r.to, "another_shape");
+  for (const [annulmentId, lineId] of billedAnnulments) {
+    if (!settledOnFile(lineId)) continue;
+    const fresh = annulledNew.find((n) => n.vid === annulmentId);
+    foldOnFile(fresh ? { kind: "line", id: fresh.line.id } : { kind: "annulled_purchase", id: annulmentId }, lineId, "annulment_billed");
   }
   // A dedupe or fuzzy hit on a row on file keeps that row — unless the row goes in this import (a
   // plan supersedes it): then the document line writes nothing and the row is removed.

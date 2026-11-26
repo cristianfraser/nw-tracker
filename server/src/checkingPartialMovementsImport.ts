@@ -1,11 +1,10 @@
 
-import { insertBankPesoMovement, movementWrite } from "./movementWrites.js";
+import { insertBankPesoMovement, movementWrite, restateBankRowDocument } from "./movementWrites.js";
 import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { recordBankPosting } from "./movementBankPostings.js";
-import { dailyListingFacts } from "./movementListingFacts.js";
-
-import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
+import { dailyListingFacts, recordBankListingFacts } from "./movementListingFacts.js";
+import { partialDescriptionsMatch, partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
@@ -28,7 +27,24 @@ export function partialMovementNote(mv: PartialBankMovement): string {
   return `import:cartola-partial|${mv.occurred_on}|${mv.amount_clp}|${desc}${doc}`;
 }
 
-const noteExists = db.prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ? LIMIT 1`);
+const noteRows = db.prepare(`SELECT id FROM movements WHERE account_id = ? AND note = ? ORDER BY id`);
+
+/** The daily-listing row on file that `mv` lists again under other text, unless this listing already accounts for it. */
+function relistedDailyRow(accountId: number, mv: PartialBankMovement, claimed: ReadonlySet<number>): number | null {
+  const rows = db
+    .prepare(
+      `SELECT m.id, e.stated_description AS description, e.stated_document_no AS document_no FROM movements m
+       JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id AND e.source_kind = 'daily_listing'
+       WHERE m.account_id = ? AND e.stated_on = ? AND m.amount = ? AND m.currency = 'clp' -- convention-ok: the daily checking listing is in pesos
+       ORDER BY m.id`
+    )
+    .all(accountId, mv.occurred_on, mv.amount_clp) as { id: number; description: string | null; document_no: string | null }[];
+  const doc = String(mv.document_no ?? "").trim();
+  const hit = rows.find(
+    (r) => !claimed.has(r.id) && (r.document_no ?? "") === doc && r.description != null && partialDescriptionsMatch(r.description, mv.description)
+  );
+  return hit?.id ?? null;
+}
 
 /** One imported/skipped flow, surfaced to the UI so the import result lists the actual movements. */
 export type ImportFlowItem = {
@@ -51,6 +67,8 @@ export type SkippedImportFlowItem = ImportFlowItem & { reason: SkippedImportFlow
 
 export type PartialMovementsImportResult = {
   inserted: number;
+  /** Rows on file the listing printed again under other text (a pending row settled), restated in place. */
+  restated: number;
   skipped_duplicate: number;
   skipped_superseded_by_cartola: number;
   skipped_superseded_by_transfer: number;
@@ -107,6 +125,7 @@ function importPartialMovements(
   listingOrder: ListingOrder
 ): PartialMovementsImportResult {
   let inserted = 0;
+  let restated = 0;
   let skipped_duplicate = 0;
   let skipped_superseded_by_cartola = 0;
   let skipped_superseded_by_transfer = 0;
@@ -122,11 +141,21 @@ function importPartialMovements(
   });
 
   const insertedIds: number[] = [];
+  /** Rows on file this listing already accounts for: N identical rows in one listing are N movements. */
+  const claimedRows = new Set<number>();
   const tx = db.transaction(() => {
     const stampsSince = maxFirstSeenSeq();
-    for (const mv of movements) {
+    // First the rows this listing prints exactly as on file: they claim their rows before any other
+    // row of the listing is matched loosely against them.
+    const exactOnFile = movements.map((mv) => {
+      const sameNote = noteRows.all(accountId, partialMovementNote(mv)) as { id: number }[];
+      if (sameNote.length === 0) return false;
+      claimedRows.add((sameNote.find((r) => !claimedRows.has(r.id)) ?? sameNote[0]!).id);
+      return true;
+    });
+    for (const [i, mv] of movements.entries()) {
       const note = partialMovementNote(mv);
-      if (noteExists.get(accountId, note)) {
+      if (exactOnFile[i]) {
         skipped_duplicate += 1;
         skipped_flows.push({ ...flowOf(mv), reason: "duplicate" });
         continue;
@@ -134,6 +163,19 @@ function importPartialMovements(
       if (partialMovementSupersededByCartola(accountId, mv)) {
         skipped_superseded_by_cartola += 1;
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_cartola" });
+        continue;
+      }
+      // A row on file the bank lists again under other text (a pending movement settled: the same
+      // bank day, pesos and document, a description one is a prefix of — `partialDescriptionsMatch`)
+      // is that row: it takes the listing's wording in place, never a second row.
+      const relisted = relistedDailyRow(accountId, mv, claimedRows);
+      if (relisted != null) {
+        claimedRows.add(relisted);
+        restateBankRowDocument(relisted, { note, flowKind: checkingMovementFlowKind(mv.description, mv.amount_clp) });
+        recordBankListingFacts(relisted, dailyListingFacts(mv), db);
+        db.prepare(`UPDATE flows SET description = ? WHERE id = (SELECT flow_id FROM movements WHERE id = ?)`).run(note, relisted);
+        restated += 1;
+        skipped_flows.push({ ...flowOf(mv), reason: "restated" });
         continue;
       }
       const transferLegId = findMatchingInternalTransferLegId(
@@ -175,6 +217,7 @@ function importPartialMovements(
       });
       if (occurredOn !== mv.occurred_on) recordBankPosting(id, accountId, mv.occurred_on, db, "fetch");
       inserted += 1;
+      claimedRows.add(id);
       insertedIds.push(id);
       inserted_flows.push(flowOf(mv));
     }
@@ -188,6 +231,7 @@ function importPartialMovements(
   tx();
   return {
     inserted,
+    restated,
     skipped_duplicate,
     skipped_superseded_by_cartola,
     skipped_superseded_by_transfer,

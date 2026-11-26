@@ -3,6 +3,7 @@ import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { describe, expect, it } from "vitest";
 import { billLinkPurchaseKey, insertBillLink } from "./flows/flowLinks.js";
 import { db } from "./db.js";
+import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import { movementNote } from "./checkingCartolaParse.js";
@@ -369,6 +370,7 @@ describe("checkingCartolaPartialReconcile", () => {
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, amountClp, occurredOn, officialNote);
+    stateListingFactsOfFixtures();
 
     const result = importCheckingPartialMovements(accountId, [
       {
@@ -588,6 +590,7 @@ describe("checkingCartolaPartialReconcile", () => {
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, amountClp, occurredOn, partialNote);
+    stateListingFactsOfFixtures();
 
     const lines = buildCheckingGastosLines({ accountId });
     const hit = lines.find(

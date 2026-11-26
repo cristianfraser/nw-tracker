@@ -497,7 +497,8 @@ export function planPrepaymentLineMatchesStatementLine(
   return sameBucketLineFigures(web, stmt) && PLAN_PREPAYMENT_STATEMENT_MERCHANT[role].test(printed);
 }
 
-function sameBucketLineFigures(web: BucketSettlementLine, stmt: StatementLineForMatching): boolean {
+/** Same currency, amount to the coin, day within the bucket window: the settle figures of a bucket line against a statement line. */
+export function sameBucketLineFigures(web: BucketSettlementLine, stmt: StatementLineForMatching): boolean {
   if (web.installment_flag || stmt.line.installment_flag) return false;
   const currency = bucketLineCurrency(web);
   if (currency !== stmt.currency) return false;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { db } from "./db.js";
+import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import { movementNote } from "./checkingCartolaParse.js";
@@ -135,6 +136,7 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     ).run(accountId, mv.amount_clp, mv.occurred_on, officialNote);
+    stateListingFactsOfFixtures();
 
     const result = importCheckingPartialMovements(accountId, [mv], READ_AFTER_ROWS);
     expect(result.inserted).toBe(0);

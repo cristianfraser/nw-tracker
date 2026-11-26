@@ -5,9 +5,9 @@
  * back, and prints the plan (counts per outcome, then each row) and every disagreement between the
  * planner's account of the old end state and the real one. Exits 1 on any disagreement. Never writes.
  *
- * `--apply-new`: instead, runs the production import (`importStatementDocuments` /
- * `importCheckingCartola`, the month imported again in place when it is on file) inside a rolled-back
- * transaction and prints what it would write: rows restated / inserted / folded / removed, arrival
+ * `--apply-new`: instead, runs the production import as its entry point does
+ * (`importStatementDocuments` with the statements' replace keys / `importCartolaList`: a month on
+ * file is written again only by a fuller file, or with `--force`) inside a rolled-back transaction and prints what it would write: rows restated / inserted / folded / removed, arrival
  * stamps created, whether the card-line session finish ran, the rows changed in all. The tool for
  * validating a statement or cartola on a snapshot copy before deploying.
  *
@@ -97,7 +97,7 @@ if (flag("apply-new")) {
   await import("../src/expenseAssignmentWrites.js");
   const { importStatementDocuments } = await import("../src/cards/statementLinePlanApply.js");
   const { statementKeysOf } = await import("../src/ccInstallmentLedgerMerge.js");
-  const { importCheckingCartola, isCheckingCartolaMonthImported } = await import("../src/checkingCartolaImport.js");
+  const { importCartolaList } = await import("../src/checkingCartolaImport.js");
   const statements = statementsFile ? await readStatements(statementsFile) : null;
   const cartola = cartolaFile ? readCartola(cartolaFile) : null;
   class RollBack extends Error {}
@@ -121,15 +121,18 @@ if (flag("apply-new")) {
         }
         console.log(`session finish (balances, valuations, financing links): ${k.wrote ? "yes" : "no — nothing changed"}`);
       } else {
+        // As the cartola apply runs it (`applyBankAccountStatements`): a month on file is written again
+        // only when this file replaces it (fuller); `--force` as a forced re-import.
         const c = cartola!;
-        const replaceMonth = isCheckingCartolaMonthImported(accountId, c.period_month);
-        const r = importCheckingCartola(accountId, c, db, { replaceMonth });
-        console.log(`cartola: ${c.source_file} ${c.period_month} (${c.movements.length} movements${replaceMonth ? "; the month is on file: imported again in place" : ""})`);
+        const logs: Parameters<typeof importCartolaList>[3] = [];
+        const flows = { inserted: [] as { description: string }[], skipped: [] as { reason: string }[] };
+        importCartolaList(accountId, [{ cartola: c, label: c.source_file }], { dryRun: false, forceReimport: flag("force") }, logs, flows as never);
+        console.log(`cartola: ${c.source_file} ${c.period_month} (${c.movements.length} movements): ${logs.map((f) => `${f.status}${f.error ? ` — ${f.error}` : ""}`).join("; ")}`);
+        const reasons = new Map<string, number>();
+        for (const s of flows.skipped) reasons.set(s.reason, (reasons.get(s.reason) ?? 0) + 1);
         console.log(
-          `the new import would write: daily rows restated ${r.partialsRestated} · folded ${r.partialsFolded} · removed ${r.partialsRemoved} · ` +
-            `movements inserted ${r.movementsInserted} · kept ${r.movementsSkipped} · cartola rows no longer listed removed ${r.cartolaRowsRemoved}`
+          `the new import would write: movements inserted ${flows.inserted.length}; kept: ${[...reasons].map(([r, n]) => `${r} ${n}`).join(", ") || "none"}`
         );
-        console.log(`wrote anything: ${r.wrote ? "yes" : "no"}`);
       }
       console.log(`arrival stamps created: ${stamps() - stamps0}`);
       console.log(`rows changed in all (total_changes): ${totalChanges() - changes0}`);

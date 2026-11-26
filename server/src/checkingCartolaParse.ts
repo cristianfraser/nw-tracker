@@ -112,6 +112,23 @@ export function movementNote(
 }
 
 /** Stable expense category key from cartola movement note (survives movement id changes on re-import). */
+/** A cartola row's purchase key from its parts (the cartola month, its bank day, pesos and position). */
+export function checkingCartolaPurchaseKeyOf(
+  accountId: number,
+  parts: { periodMonth: string; occurredOn: string; amountClp: number | string; cartolaIndex: number },
+  portion: "gastos" | "deposit" = "gastos"
+): string {
+  return buildExpenseKey({
+    kind: "checking_cartola",
+    accountId,
+    periodMonth: parts.periodMonth,
+    occurredOn: parts.occurredOn,
+    amountClp: String(parts.amountClp),
+    cartolaIndex: parts.cartolaIndex,
+    portion,
+  });
+}
+
 export function checkingCartolaStablePurchaseKey(
   accountId: number,
   note: string | null | undefined,
@@ -124,18 +141,10 @@ export function checkingCartolaStablePurchaseKey(
   const amountClp = n.match(/\|amt:([^|]+)/)?.[1]?.trim();
   const cartolaIndex = n.match(/\|idx:(\d+)/)?.[1]?.trim();
   if (!periodMonth || !occurredOn || amountClp == null || cartolaIndex == null) return null;
-  return buildExpenseKey({
-    kind: "checking_cartola",
-    accountId,
-    periodMonth,
-    occurredOn,
-    amountClp,
-    cartolaIndex: Number(cartolaIndex),
-    portion,
-  });
+  return checkingCartolaPurchaseKeyOf(accountId, { periodMonth, occurredOn, amountClp, cartolaIndex: Number(cartolaIndex) }, portion);
 }
 
-/** Description + document parsed back out of an `import:cartola|…` movement note. */
+/** The text of an `import:cartola|…` note: description and document number. */
 export function cartolaNoteContent(
   note: string
 ): { description: string; document_no: string } | null {

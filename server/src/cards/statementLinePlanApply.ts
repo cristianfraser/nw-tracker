@@ -260,23 +260,37 @@ function applyInSession(
     insert.push({ doc: k.doc, statementId: d.statementId, statement: d.statement, line: d.line, dedupeKey: d.dedupeKey, stamp: false });
     annulmentKeeps.push({ doc: k.doc, annulmentId: k.row.id, lineFolds: folds.map((f) => f.row.id) });
   }
+  // Folds into a line that stays (a removed duplicate copy, a bucket line or an annulled purchase a
+  // statement line already on file settles).
   for (const f of plan.fold) {
-    if (f.doc == null && f.row.kind === "line" && f.into.kind === "line") lineFolds.push({ fromLineId: f.row.id, intoLineId: f.into.id });
-    else if (f.doc == null) throw new Error(`keep-rows apply: an annulled purchase (${f.row.kind === "annulled_purchase" ? f.row.id : f.into.id}) folds with no document line`);
+    if (f.doc != null) continue;
+    if (f.into.kind !== "line") throw new Error(`keep-rows apply: row ${f.row.kind} ${f.row.id} folds into an annulled purchase with no document line`);
+    if (f.row.kind === "line") lineFolds.push({ fromLineId: f.row.id, intoLineId: f.into.id });
+    else annulmentFoldsIntoLine.push({ annulmentId: f.row.id, lineId: f.into.id });
   }
   for (const i of plan.insert) {
     const d = docOf(i.doc);
     insert.push({ doc: i.doc, statementId: d.statementId, statement: d.statement, line: d.line, dedupeKey: d.dedupeKey, stamp: i.arrival === "stamp" });
   }
 
-  // A planted payment the statement restates is the bank's line now: its manual payment confirmed.
+  // A planted payment the statement settles is the bank's line now: its manual payment confirmed —
+  // kept and restated by its document line, or folded into the statement line that bills it.
   const planted = new Map(listPlantedPaymentLines(accountId).map((p) => [p.line_id, p]));
+  const merchantOfLine = db.prepare(`SELECT merchant FROM cc_statement_lines WHERE id = ?`);
+  const settledPlanted: { lineId: number; merchant: string | null }[] = [];
   for (const k of plan.keep) {
-    if (k.row.kind !== "line" || isDuplicateKeep(k)) continue;
-    const p = planted.get(k.row.id);
+    if (k.row.kind === "line" && !isDuplicateKeep(k)) settledPlanted.push({ lineId: k.row.id, merchant: docOf(k.doc).line.merchant });
+  }
+  for (const f of plan.fold) {
+    if (f.row.kind !== "line" || f.why !== "planted_payment") continue;
+    const merchant = f.doc ? docOf(f.doc).line.merchant : ((merchantOfLine.get(f.into.id) as { merchant: string | null } | undefined)?.merchant ?? null);
+    settledPlanted.push({ lineId: f.row.id, merchant });
+  }
+  for (const s of settledPlanted) {
+    const p = planted.get(s.lineId);
     if (!p) continue;
-    confirmManualPaymentForPlanted(p, docOf(k.doc).line.merchant);
-    db.prepare(`DELETE FROM cc_planted_payment_lines WHERE line_id = ?`).run(k.row.id);
+    confirmManualPaymentForPlanted(p, s.merchant ?? "");
+    db.prepare(`DELETE FROM cc_planted_payment_lines WHERE line_id = ?`).run(s.lineId);
     noteCardLineWritten(accountId);
   }
   if (restate.length > 0) {

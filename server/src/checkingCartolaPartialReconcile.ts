@@ -6,7 +6,6 @@ import { deleteMovements, redateMovementKeepingBankDay, repointMovementReference
 import { db } from "./db.js";
 import {
   cartolaMovementMatchesImportedRow,
-  cartolaNoteContent,
   checkingCartolaStablePurchaseKey,
   type ParsedCheckingMovement,
 } from "./checkingCartolaParse.js";
@@ -96,18 +95,14 @@ export function partialMovementSupersededByCartola(
 ): boolean {
   const rows = dbHandle
     .prepare(
-      `SELECT m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
-       WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
-         AND ${movementSourceKindInSql("m", ["cartola", "cartola_anchor"])}`
+      `SELECT e.stated_description AS description FROM movements m ${BANK_POSTING_JOIN_SQL}
+       JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id AND e.source_kind = 'cartola'
+       WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?`
     )
-    .all(accountId, accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
-  for (const row of rows) {
-    // Tolerant compare — the últimos web view and the cartola render descriptions/documents
-    // differently (case, truncation, markers), see partialDescriptionsMatch.
-    const content = cartolaNoteContent(row.note);
-    if (content && partialDescriptionsMatch(mv.description, content.description)) return true;
-  }
-  return false;
+    .all(accountId, accountId, mv.occurred_on, mv.amount_clp) as { description: string | null }[];
+  // Tolerant compare on what the cartola printed (its listing facts) — the últimos web view and the
+  // cartola render descriptions differently (case, truncation, markers), see partialDescriptionsMatch.
+  return rows.some((row) => row.description != null && partialDescriptionsMatch(mv.description, row.description));
 }
 
 /** Official cartola movement note in DB matching parsed cartola row content. */

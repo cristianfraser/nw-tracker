@@ -7,6 +7,7 @@ import { foreignCashCurrencyOf } from "./cashCurrency.js";
 import { convertCurrency } from "./rates.js";
 import { HOME_CURRENCY, currencySmallestCoin } from "./displayUnits.js";
 import { CHECKING_LISTED_SOURCE_KINDS, movementSourceKindInSql } from "./flows/flowEvidence.js";
+import { LISTED_FACTS_COLUMNS_SQL, listedFactsOfEvidence, type ListedFactsEvidence } from "./movementListingFacts.js";
 import { TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import {
@@ -16,11 +17,7 @@ import {
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 
 import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaAccounts.js";
-import {
-  isCheckingPartialWithdrawalNote,
-  parsePartialMovementNote,
-  partialMovementSupersededByCartola,
-} from "./checkingCartolaPartialReconcile.js";
+import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import {
   CHECKING_GASTOS_CASH_GROUP,
   cartolaDescriptionFromNote,
@@ -148,28 +145,35 @@ function uniqueDepositCandidatesByClaimKey(candidates: readonly DepositMatchCand
  * the rows rebuilt from the bank's own mails for months whose cartola is lost
  * (`import:santander-mail|…`, `import:mach-mail|…`; `isMailRebuiltCheckingNote`), and incoming
  * transfers' credits written from their mails before the feed lists them (`transfer_notice_movements`).
- * The cartola import deletes the daily rows it supersedes (carrying what hangs off them, see
- * `prunePartialMovementsSupersededByCartola`); a daily row whose cartola row exists but was not
- * pruned (a re-import that skipped the month) is left out here, so a movement never counts twice.
+ * The cartola import restates the daily rows it lists as its own rows (`checkingCartolaPlanApply.ts`);
+ * a daily row a cartola row on file already covers (its listing facts against the cartola's, the
+ * tolerant `partialDescriptionsMatch`) is left out here, so a movement never counts twice.
  * The opening-balance anchor and hand-made rows are not bank movements.
  */
 export function listCheckingMovements(accountId: number, direction: "in" | "out"): CheckingMovementRow[] {
   const rows = db
     .prepare(
-      `SELECT id, occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
-       FROM movements
-       WHERE account_id = ?
+      `SELECT m.id, m.occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, m.note, e.source_kind AS kind, ${LISTED_FACTS_COLUMNS_SQL}
+       FROM movements m
+       LEFT JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id
+       WHERE m.account_id = ?
          AND ${MOVEMENT_CLP_LEG_SQL} ${direction === "in" ? ">" : "<"} 0
-         AND ${movementSourceKindInSql("movements", CHECKING_LISTED_SOURCE_KINDS)}
-       ORDER BY occurred_on, id`
+         AND ${movementSourceKindInSql("m", CHECKING_LISTED_SOURCE_KINDS)}
+       ORDER BY m.occurred_on, m.id`
     )
-    .all(accountId) as CheckingMovementRow[];
-  return rows.filter((row) => {
-    if (!isCheckingPartialWithdrawalNote(row.note)) return true;
-    const parsed = parsePartialMovementNote(String(row.note ?? ""));
-    if (!parsed) throw new Error(`checking movement ${row.id}: unreadable daily-feed note ${row.note}`);
-    return !partialMovementSupersededByCartola(accountId, parsed);
-  });
+    .all(accountId) as (CheckingMovementRow & ListedFactsEvidence & { kind: string | null })[];
+  return rows
+    .filter((row) => {
+      if (row.kind !== "daily_listing") return true;
+      const listed = listedFactsOfEvidence(row.id, row.kind, row)!;
+      return !partialMovementSupersededByCartola(accountId, {
+        occurred_on: listed.bank_day,
+        amount_clp: listed.amount_clp,
+        description: listed.description,
+        document_no: listed.document_no,
+      });
+    })
+    .map(({ id, occurred_on, amount_clp, note }) => ({ id, occurred_on, amount_clp, note }) as CheckingMovementRow);
 }
 
 /**

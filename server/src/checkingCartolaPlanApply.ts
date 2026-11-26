@@ -14,13 +14,13 @@
  *  - `remove`: a daily row a transfer leg or a mail row already represents, or a cartola row of a
  *    replaced month the new cartola no longer lists.
  *
- * Ambiguity (GUIDELINES: no guesses): more identical daily rows than cartola movements fails the
- * import of that cartola, naming the rows, before anything is written. A cartola already on file
- * as it states (same rows, same month record) writes nothing.
+ * Several daily rows of one movement fold into the earliest seen. The caller (`importCartolaList`)
+ * applies a plan only to a month written for the first time or replaced; a restate or record that
+ * already states the cartola writes nothing.
  */
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
-import { movementNote, type ParsedCheckingCartola } from "./checkingCartolaParse.js";
+import { checkingCartolaPurchaseKeyOf, movementNote, type ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import { assertCartolaMonthWrote, recordCartolaMonthImport } from "./checkingCartolaMonthRecord.js";
 import { assertCheckingCartolaSaldoIdentity, validateCartolaSaldoChain } from "./checkingCartolaSaldoValidation.js";
 import { checkingMovementFlowKind } from "./checkingBankCharges.js";
@@ -77,7 +77,14 @@ export function applyCheckingCartolaPlan(
     // row takes its note.
     for (const f of plan.fold) {
       if (f.into_row_id == null) throw new Error(`keep-rows apply: daily row ${f.row_id} folds into no row`);
-      foldMovementInto(f.row_id, f.into_row_id, accountId, dbHandle);
+      const listed = cartola.movements[f.movement]!;
+      const key = checkingCartolaPurchaseKeyOf(accountId, {
+        periodMonth: cartola.period_month,
+        occurredOn: listed.occurred_on,
+        amountClp: listed.amount_clp,
+        cartolaIndex: f.movement,
+      });
+      foldMovementInto(f.row_id, f.into_row_id, accountId, dbHandle, key);
       out.folded.push(f.row_id);
     }
     cartola.movements.forEach((mv, index) => {
@@ -93,7 +100,7 @@ export function applyCheckingCartolaPlan(
         const kind = (kindOf.get(keep.row_id) as { source_kind: string } | undefined)?.source_kind;
         if (kind == null) throw new Error(`keep-rows apply: movement ${index} keeps row ${keep.row_id}, which is gone`);
         if (kind === "daily_listing" || (kind === "cartola" && opts?.replaceMonth)) {
-          if (restateMovementFromCartola({ movementId: keep.row_id, accountId, note, amount: mv.amount_clp, flowKind, listed }, dbHandle)) {
+          if (restateMovementFromCartola({ movementId: keep.row_id, accountId, note, amount: mv.amount_clp, flowKind, listed, cartolaIndex: index }, dbHandle)) {
             out.restated.push(keep.row_id);
           }
           wrote += 1;

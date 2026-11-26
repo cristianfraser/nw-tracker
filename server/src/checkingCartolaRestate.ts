@@ -20,8 +20,7 @@
  */
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
-import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
-import { buildExpenseKey } from "./expenseKeys.js";
+import { checkingCartolaPurchaseKeyOf } from "./checkingCartolaParse.js";
 import { EVIDENCE_COLUMNS, movementEvidenceValues } from "./flows/flowTriggerSpecs.js";
 import { keepEvidenceAsHistory } from "./flows/flowEvidence.js";
 import { expenseKeyParts, flowIdForKey, mergeFlowInto } from "./flows/flowIdentity.js";
@@ -55,6 +54,8 @@ export type CartolaRestate = {
   amount: number;
   flowKind: string | null;
   listed: BankListingFacts;
+  /** The movement's position in its cartola (with the listing facts, the row's purchase key). */
+  cartolaIndex: number;
 };
 
 /**
@@ -81,7 +82,13 @@ export function restateMovementFromCartola(r: CartolaRestate, dbHandle: Database
   recordBankPosting(r.movementId, r.accountId, r.listed.bank_day, dbHandle, occurredOnBasis(r.movementId, r.accountId, dbHandle));
   // An earlier incarnation of this cartola row, retired with what the user put on it, folds in.
   foldRetiredFlowOfDocumentInto(row.flow_id, "movements", r.accountId, r.note, dbHandle);
-  answerToCartolaKey(r.movementId, r.accountId, r.note, row.flow_id, dbHandle);
+  const key = checkingCartolaPurchaseKeyOf(r.accountId, {
+    periodMonth: r.listed.period_month,
+    occurredOn: r.listed.bank_day,
+    amountClp: r.amount,
+    cartolaIndex: r.cartolaIndex,
+  });
+  answerToCartolaKey(r.movementId, key, row.flow_id, dbHandle);
   dbHandle.prepare(`UPDATE flows SET description = ? WHERE id = ?`).run(r.note, row.flow_id);
   return true;
 }
@@ -97,13 +104,8 @@ function alreadyThisCartolaRow(r: CartolaRestate, dbHandle: Database): boolean {
   );
 }
 
-/**
- * The flow of a cartola row answers to the row's key (its cartola identity, else its id), as
- * `adoptPartialIntoCartolaRow` leaves it; a flow already answering to it folds in.
- */
-function answerToCartolaKey(movementId: number, accountId: number, note: string, flowId: number, dbHandle: Database): void {
-  const key =
-    checkingCartolaStablePurchaseKey(accountId, note) ?? buildExpenseKey({ kind: "checking_mv", movementId, portion: "gastos" });
+/** The flow of a cartola row answers to the row's purchase key (its cartola identity); a flow already answering to it folds in. */
+function answerToCartolaKey(movementId: number, key: string, flowId: number, dbHandle: Database): void {
   const flowKey = expenseKeyParts(key)?.flowKey;
   if (!flowKey) throw new Error(`movement ${movementId}: «${key}» is not an expense key`);
   const holder = flowIdForKey(flowKey, dbHandle);
@@ -111,8 +113,11 @@ function answerToCartolaKey(movementId: number, accountId: number, note: string,
   dbHandle.prepare(`UPDATE flows SET legacy_key = ? WHERE id = ?`).run(flowKey, flowId);
 }
 
-/** Folds bank row `movementId` into the kept row `intoMovementId` (see the module doc). */
-export function foldMovementInto(movementId: number, intoMovementId: number, accountId: number, dbHandle: Database = db): void {
+/**
+ * Folds bank row `movementId` into the kept row `intoMovementId` (see the module doc); a kept
+ * cartola row's flow answers to `intoCartolaKey`, the purchase key of the movement it lists.
+ */
+export function foldMovementInto(movementId: number, intoMovementId: number, accountId: number, dbHandle: Database = db, intoCartolaKey?: string): void {
   if (movementId === intoMovementId) throw new Error(`movement ${movementId}: folds into itself`);
   const row = bankRow(movementId, accountId, dbHandle);
   const kept = bankRow(intoMovementId, accountId, dbHandle);
@@ -121,9 +126,8 @@ export function foldMovementInto(movementId: number, intoMovementId: number, acc
   keepEvidenceAsHistory(dbHandle, "movements", movementId);
   repointMovementReferences(movementId, intoMovementId, dbHandle);
   deleteMovements([movementId], dbHandle);
-  // A cartola row kept: its flow answers to its key, as when a daily row was adopted into it.
   if (kept.kind === "cartola") {
-    const note = (dbHandle.prepare(`SELECT note FROM movements WHERE id = ?`).get(intoMovementId) as { note: string }).note;
-    answerToCartolaKey(intoMovementId, accountId, note, kept.flow_id, dbHandle);
+    if (!intoCartolaKey) throw new Error(`movement ${intoMovementId}: a fold into a cartola row names its purchase key`);
+    answerToCartolaKey(intoMovementId, intoCartolaKey, kept.flow_id, dbHandle);
   }
 }

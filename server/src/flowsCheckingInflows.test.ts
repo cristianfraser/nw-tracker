@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
+import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { partialMovementNote } from "./checkingPartialMovementsImport.js";
@@ -28,6 +29,7 @@ function insertCheckingCartolaCredit(
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amountClp, occurredOn, note);
+  stateListingFactsOfFixtures();
   return Number(ins.lastInsertRowid);
 }
 
@@ -49,6 +51,7 @@ function insertCheckingCartolaWithdrawal(
        VALUES (?, ?, 'clp', ?, ?, NULL)`
     )
     .run(accountId, amountClp, occurredOn, note);
+  stateListingFactsOfFixtures();
   return Number(ins.lastInsertRowid);
 }
 
@@ -179,6 +182,7 @@ describe("flowsCheckingInflows", () => {
         .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 2222222, 'clp', '2099-07-31', ?)`)
         .run(corrienteId, partialNote).lastInsertRowid
     );
+    stateListingFactsOfFixtures();
     try {
       const before = buildFlowsCheckingIncomePayload().lines.filter((l) => l.amount_clp === 2_222_222);
       expect(before.map((l) => [l.movement_id, l.description])).toEqual([[partialId, "0076000000K REMUNERACIONES JULIO 2099"]]);

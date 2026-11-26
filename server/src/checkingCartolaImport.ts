@@ -273,13 +273,13 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-function logParseError(file: string, e: unknown): CheckingCartolaFileImportLog {
+function logParseError(file: string, e: unknown, periodMonth = ""): CheckingCartolaFileImportLog {
   const msg = errorMessage(e);
   console.error(`  PARSE ERROR ${file}: ${msg}`);
   if (e instanceof Error && e.stack) console.error(e.stack);
   return {
     file,
-    period_month: "",
+    period_month: periodMonth,
     status: "parse_error",
     movements_parsed: 0,
     movements_imported: 0,
@@ -320,6 +320,14 @@ export function cartolaImportShouldReplaceExisting(
 }
 
 /** Update reference saldos on an already-imported month (movements unchanged). */
+/** Whether the month's record names the cartola's own document (by basename). */
+export function cartolaMonthRecordNamesFile(accountId: number, cartola: ParsedCheckingCartola, dbHandle: Database = db): boolean {
+  const row = dbHandle
+    .prepare(`SELECT source_file FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
+    .get(accountId, cartola.period_month) as { source_file: string } | undefined;
+  return row != null && cartolaSourceFileBasename(row.source_file) === cartolaSourceFileBasename(cartola.source_file);
+}
+
 export function updateCheckingCartolaImportSaldos(
   accountId: number,
   cartola: ParsedCheckingCartola,
@@ -375,7 +383,7 @@ export function shouldBackfillCartolaSaldoRef(
 export function importCartolaList(
   accountId: number,
   cartolas: { cartola: ParsedCheckingCartola; label: string }[],
-  opts: { wipe?: boolean; dryRun?: boolean; forceReimport?: boolean },
+  opts: { wipe?: boolean; dryRun?: boolean; forceReimport?: boolean; forceSameFileOnly?: boolean },
   fileLogs: CheckingCartolaFileImportLog[],
   /** Collects each imported cartola's rows, for an upload's result view. */
   flows?: { inserted: ImportFlowItem[]; skipped: SkippedImportFlowItem[] }
@@ -387,11 +395,15 @@ export function importCartolaList(
       );
       continue;
     }
-    // A month on file is imported again in place: forced, or from a fuller cartola (its rows are
-    // restated, the ones the new cartola no longer lists removed); else the cartola only absorbs
-    // the daily rows it lists, refreshes the printed saldos, or — on file as it states — writes nothing.
+    // A month on file is written again only when the file replaces it: forced (`forceReimport`;
+    // with `forceSameFileOnly`, only a month whose record names this document), or fuller
+    // (`cartolaImportShouldReplaceExisting`). Then it is a diff against the month's rows (restate,
+    // insert, remove what the new file no longer lists); any other rendering of the month — the
+    // same file again, the other format, a slice of the next document — writes nothing (its printed
+    // saldo only refreshes the record of the same file), decided before the account is read.
     const onFile = !opts.wipe && isCheckingCartolaMonthImported(accountId, cartola.period_month);
-    const replaceMonth = onFile && (opts.forceReimport === true || cartolaImportShouldReplaceExisting(accountId, cartola));
+    const forced = opts.forceReimport === true && (!opts.forceSameFileOnly || cartolaMonthRecordNamesFile(accountId, cartola));
+    const replaceMonth = onFile && (forced || cartolaImportShouldReplaceExisting(accountId, cartola));
     if (onFile && !replaceMonth) {
       if (shouldBackfillCartolaSaldoRef(accountId, cartola)) {
         if (!opts.dryRun) {
@@ -404,22 +416,6 @@ export function importCartolaList(
           })
         );
         continue;
-      }
-      if (!opts.dryRun && cartola.movements.length > 0) {
-        try {
-          const r = importCheckingCartola(accountId, cartola);
-          if (r.wrote) {
-            console.log(
-              `  cartola ${cartola.period_month} (on file): ${r.partialsRestated} daily row(s) restated, ${r.partialsFolded} folded, ` +
-                `${r.partialsRemoved} removed, ${r.movementsInserted} movement(s) written`
-            );
-          }
-          flows?.inserted.push(...r.inserted_flows);
-          flows?.skipped.push(...r.skipped_flows);
-        } catch (e) {
-          fileLogs.push(logParseError(label, e));
-          continue;
-        }
       }
       fileLogs.push({
         file: label,
@@ -468,7 +464,7 @@ export function importCartolaList(
         })
       );
     } catch (e) {
-      fileLogs.push(logParseError(label, e));
+      fileLogs.push(logParseError(label, e, cartola.period_month));
     }
   }
 }

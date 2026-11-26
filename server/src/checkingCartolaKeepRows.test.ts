@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { BankAccountStatement, BankAccountStatementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
-import { checkingAccountId } from "./checkingCartolaImport.js";
+import { applyBankAccountStatements, parsedCartolaFromStatement } from "./bankAccountStatementsApply.js";
+import { checkingAccountId, importCartolaList } from "./checkingCartolaImport.js";
 import { importCheckingPartialMovements, partialMovementNote } from "./checkingPartialMovementsImport.js";
 import { insertBankPesoMovement } from "./movementWrites.js";
 import { dailyListingFacts } from "./movementListingFacts.js";
@@ -115,16 +115,83 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
     expect(new Set(after.map((x) => x.flow_id)).size).toBe(2);
   }));
 
-  it("more identical daily rows than cartola movements fail that cartola, naming the rows, and write nothing", inRollback(() => {
+  it("two daily rows of one movement (a pending row re-listed) keep the earliest and fold the other into it", inRollback(() => {
     const account = checkingAccountId();
-    const twin = { occurred_on: "1805-04-12", amount_clp: -6_000, description: `${TAG} Pago Doble`, document_no: "" };
-    const ids = [0, 1].map(() =>
-      insertBankPesoMovement({ accountId: account, amount: twin.amount_clp, occurredOn: twin.occurred_on, note: partialMovementNote(twin), flowKind: null, listed: dailyListingFacts(twin) })
+    const pending = { occurred_on: "1805-04-12", amount_clp: -6_000, description: `${TAG} Pago Luz`, document_no: "" };
+    const settled = { ...pending, description: `${TAG} Pago Luz Cliente 1234` };
+    const ids = [pending, settled].map((m) =>
+      insertBankPesoMovement({ accountId: account, amount: m.amount_clp, occurredOn: m.occurred_on, note: partialMovementNote(m), flowKind: null, listed: dailyListingFacts(m) })
     );
-    const before = rowsOfMonth();
-    const r = applyBankAccountStatements(payload(statement([mv("1805-04-12", -6_000, "Pago Doble")])));
-    expect(r.files.map((f) => f.status)).toEqual(["parse_error"]);
-    expect(r.files[0]!.error).toMatch(new RegExp(`cannot pair the daily rows one to one, nothing was written: daily row ${ids[1]}`));
-    expect(rowsOfMonth()).toEqual(before);
+    const flowOfFirst = rowsOfMonth()[0]!.flow_id;
+    const r = applyBankAccountStatements(payload(statement([mv("1805-04-12", -6_000, "Pago Luz Cliente 1234")])));
+    expect(r.files.map((f) => [f.status, f.movements_imported])).toEqual([["imported", 0]]);
+    expect(rowsOfMonth().map((x) => [x.id, x.flow_id])).toEqual([[ids[0], flowOfFirst]]);
+  }));
+
+  it("the daily listing restates a pending row it lists again under longer text; N identical rows in one listing stay N rows", inRollback(() => {
+    const account = checkingAccountId();
+    const pending = { occurred_on: "1805-04-14", amount_clp: -7_000, description: `${TAG} Pago Agua`, document_no: "" };
+    importCheckingPartialMovements(account, [pending], READ_AFTER_ROWS);
+    const [row] = rowsOfMonth();
+    const relisted = importCheckingPartialMovements(account, [{ ...pending, description: `${TAG} Pago Agua Cliente 99` }], READ_AFTER_ROWS);
+    expect([relisted.inserted, relisted.restated]).toEqual([0, 1]);
+    expect(rowsOfMonth().map((x) => x.id)).toEqual([row!.id]);
+    expect(rowsOfMonth()[0]!.note).toContain("Pago Agua Cliente 99");
+    // The pending row and a second movement of the same pesos listed together: two rows.
+    const twin = { occurred_on: "1805-04-15", amount_clp: -3_000, description: `${TAG} Compra Kiosco`, document_no: "" };
+    const both = importCheckingPartialMovements(account, [twin, { ...twin, description: `${TAG} Compra Kiosco Centro` }], READ_AFTER_ROWS);
+    expect(both.inserted).toBe(2);
+  }));
+
+  function importedMonth() {
+    const rows = rowsOfMonth();
+    const rec = db
+      .prepare(`SELECT source_file, movement_count, saldo_inicial_clp, saldo_final_clp FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
+      .get(checkingAccountId(), MONTH) as Record<string, unknown>;
+    return { count: rows.length, amounts: rows.map((r) => r.amount), saldo: rec.saldo_final_clp };
+  }
+  const xlsx = () => ({ ...statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-05", -8_000, "Compra Dos")]), document: `vitest-keep-rows-${MONTH}.xlsx` });
+  const pdf = () => ({ ...statement([mv("1805-04-03", -12_000, "COMPRA UNO"), mv("1805-04-05", -8_000, "COMPRA DOS")]), document: `vitest-keep-rows-${MONTH}.pdf` });
+
+  for (const [name, order] of [
+    ["xlsx then pdf", [[xlsx], [pdf]]],
+    ["pdf then xlsx", [[pdf], [xlsx]]],
+    ["both every night", [[xlsx, pdf], [xlsx, pdf]]],
+  ] as const) {
+    it(`a month that arrives in two renderings ends the same, and the next night writes nothing (${name})`, inRollback(() => {
+      for (const night of order) applyBankAccountStatements({ ...payload(night[0]!()), statements: night.map((f) => f()) });
+      expect(importedMonth()).toEqual({ count: 2, amounts: [-12_000, -8_000], saldo: 480_000 });
+      const mark = changes();
+      const again = applyBankAccountStatements({ ...payload(xlsx()), statements: [xlsx(), pdf()] });
+      expect(again.files.map((f) => f.status)).toEqual(["skipped_already_imported", "skipped_already_imported"]);
+      expect(changes()).toEqual(mark);
+    }));
+  }
+
+  it("a lesser cartola of a month on file (a straddle slice, a broken chain) writes nothing, the record stays the fuller file's", inRollback(() => {
+    applyBankAccountStatements(payload(statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-28", -8_000, "Compra Dos")])));
+    const before = importedMonth();
+    const slice = { ...statement([mv("1805-04-28", -8_000, "Compra Dos")], 123_456), document: "vitest-keep-rows-next.pdf", closing_balance: null };
+    const mark = changes();
+    for (const night of [1, 2]) {
+      const r = applyBankAccountStatements(payload(slice));
+      expect([night, r.files.map((f) => f.status)]).toEqual([night, ["skipped_already_imported"]]);
+    }
+    // Forced, the cuenta vista rule: only a month whose record names the document is imported again.
+    const logs: Parameters<typeof importCartolaList>[3] = [];
+    importCartolaList(checkingAccountId(), [{ cartola: parsedCartolaFromStatement(slice), label: "slice" }], { forceReimport: true, forceSameFileOnly: true }, logs);
+    expect(logs.map((f) => f.status)).toEqual(["skipped_already_imported"]);
+    expect(changes()).toEqual(mark);
+    expect(importedMonth()).toEqual(before);
+  }));
+
+  it("a month after a gap in the cartola history, sent again, writes nothing", inRollback(() => {
+    const later = { ...statement([mv("1805-06-03", -1_000, "Compra Junio")], 777_000), document: "vitest-keep-rows-1805-06.xlsx", period_month: "1805-06", period_from: "1805-06-01", period_to: "1805-06-30" };
+    applyBankAccountStatements(payload(later));
+    applyBankAccountStatements(payload(statement([mv("1805-04-03", -12_000, "Compra Uno")])));
+    const mark = changes();
+    expect(applyBankAccountStatements(payload(later)).files.map((f) => f.status)).toEqual(["skipped_already_imported"]);
+    expect(changes()).toEqual(mark);
+    db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = '1805-06'`).run(checkingAccountId());
   }));
 });
