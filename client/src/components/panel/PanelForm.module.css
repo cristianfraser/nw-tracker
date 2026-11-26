@@ -23,6 +23,19 @@
   box-sizing: border-box;
 }
 
+/* One height for every control of a row, whatever the browser gives a select, a date field or a
+   text field, so the labels over them sit on one line. */
+.field > :is(select, input:not([type="checkbox"], [type="radio"])) {
+  height: 1.75rem;
+}
+
+/* A paragraph over a form: what the section is, or that it has nothing yet. */
+.note {
+  margin: 0 0 0.75rem;
+  max-width: 60rem;
+  line-height: 1.4;
+}
+
 /* A line of its own at every width: a checkbox with its label, a note, a message. */
 .line {
   flex: 1 1 100%;

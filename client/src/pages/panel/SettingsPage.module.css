@@ -1,9 +1,9 @@
 /* /panel/settings, «Display»: the radios of a field, on the line a select would take (and as
-   tall as one, so the labels of a row of fields stay on one line). */
+   tall as PanelForm's controls, so the labels of a row of fields stay on one line). */
 .choices {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.25rem 1rem;
-  min-height: 1.3125rem;
+  min-height: 1.75rem;
 }

@@ -51,8 +51,8 @@ export function TaxResidencySection() {
   return (
     <section>
       <h2>{t("panelSettings.taxResidency.title")}</h2>
-      <p className="muted">{t("panelSettings.taxResidency.explain")}</p>
-      {periods.length === 0 && !queryShowsLoading(q) ? <p className="muted">{t("panelSettings.taxResidency.none")}</p> : null}
+      <p className={`muted ${styles.note}`}>{t("panelSettings.taxResidency.explain")}</p>
+      {periods.length === 0 && !queryShowsLoading(q) ? <p className={`muted ${styles.note}`}>{t("panelSettings.taxResidency.none")}</p> : null}
       {periods.length > 0 ? (
         <ColumnTable<TaxResidencyPeriodDto>
           rows={periods}
@@ -78,7 +78,7 @@ export function TaxResidencySection() {
         />
       ) : null}
       {DEMO_EDITS_LIMITED ? (
-        <p className="muted">{t("panelSettings.taxResidency.readOnlyDemo")}</p>
+        <p className={`muted ${styles.note}`}>{t("panelSettings.taxResidency.readOnlyDemo")}</p>
       ) : (
         <>
           <form
