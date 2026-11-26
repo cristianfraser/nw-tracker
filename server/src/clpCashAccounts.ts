@@ -8,7 +8,8 @@ import { isPesoCashKindSlug } from "./cashCurrency.js";
  * through a date (parity with USD cash in `usdCashAccounts.ts`, but CLP is the base
  * currency so there is no FX conversion). Any leaf whose slug ends in `__clp` (bucket kind
  * `clp`: a broker's peso balance under Cash savings, a portfolio caja) and the crypto exchange's
- * peso wallet (`buda_clp`); stored `valuations` rows are never read for these accounts.
+ * peso wallet (`buda_clp`); no `valuations` snapshots are stored for these accounts (migration 369
+ * removed the wallet's old marks).
  */
 export function isClpCashKindSlug(kindSlug: string): boolean {
   return isPesoCashKindSlug(kindSlug);
