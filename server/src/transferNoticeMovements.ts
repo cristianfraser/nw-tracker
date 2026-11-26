@@ -43,16 +43,57 @@ export function findTransferNoticeMovementForBankRow(
 ): number | null {
   if (!Number.isFinite(amountClpSigned) || amountClpSigned === 0) return null;
   const windowStart = priorChileBusinessDayYmd(bankDateYmd) ?? bankDateYmd;
-  const rows = dbHandle
+  return pickTransferNoticeMovementForBankRow(
+    listTransferNoticeCandidates(accountId, dbHandle, Math.round(amountClpSigned)),
+    bankDateYmd,
+    windowStart,
+    amountClpSigned,
+    consumed
+  );
+}
+
+/** The account's mail-written movements as the bank-row matcher reads them (of one amount, when given). */
+export function listTransferNoticeCandidates(accountId: number, dbHandle: Database = db, amount?: number): TransferNoticeCandidate[] {
+  return dbHandle
     .prepare(
-      `SELECT c.movement_id
+      `SELECT c.movement_id, c.amount, c.confirmed_on, m.occurred_on
        FROM transfer_notice_movements c JOIN movements m ON m.id = c.movement_id
-       WHERE c.account_id = ? AND c.amount = ?
-         AND (c.confirmed_on = ? OR (c.confirmed_on IS NULL AND m.occurred_on BETWEEN ? AND ?))
-       ORDER BY (c.confirmed_on IS NULL), m.occurred_on, m.id`
+       WHERE c.account_id = ? ${amount != null ? "AND c.amount = ?" : ""}`
     )
-    .all(accountId, Math.round(amountClpSigned), bankDateYmd, windowStart, bankDateYmd) as { movement_id: number }[];
-  return rows.find((r) => !consumed.has(r.movement_id))?.movement_id ?? null;
+    .all(...(amount != null ? [accountId, amount] : [accountId])) as TransferNoticeCandidate[];
+}
+
+/** A mail-written movement on the account, as {@link pickTransferNoticeMovementForBankRow} reads it. */
+export type TransferNoticeCandidate = { movement_id: number; amount: number; confirmed_on: string | null; occurred_on: string };
+
+/**
+ * {@link findTransferNoticeMovementForBankRow}'s rule over given rows (pure): the same amount; the
+ * bank's day when already confirmed, else dated inside `[windowStart, bankDate]`; unconfirmed ones
+ * last; then by day and id; not consumed.
+ */
+export function pickTransferNoticeMovementForBankRow(
+  rows: readonly TransferNoticeCandidate[],
+  bankDateYmd: string,
+  windowStart: string,
+  amountClpSigned: number,
+  consumed: ReadonlySet<number>
+): number | null {
+  if (!Number.isFinite(amountClpSigned) || amountClpSigned === 0) return null;
+  const amount = Math.round(amountClpSigned);
+  const hit = rows
+    .filter(
+      (r) =>
+        r.amount === amount &&
+        (r.confirmed_on === bankDateYmd || (r.confirmed_on == null && r.occurred_on >= windowStart && r.occurred_on <= bankDateYmd))
+    )
+    .sort(
+      (a, b) =>
+        Number(a.confirmed_on == null) - Number(b.confirmed_on == null) ||
+        (a.occurred_on === b.occurred_on ? 0 : a.occurred_on < b.occurred_on ? -1 : 1) ||
+        a.movement_id - b.movement_id
+    )
+    .find((r) => !consumed.has(r.movement_id));
+  return hit?.movement_id ?? null;
 }
 
 /**

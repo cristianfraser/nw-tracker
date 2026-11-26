@@ -147,6 +147,48 @@ export function groupInstallmentLoanChains(
   return chains;
 }
 
+/**
+ * The plan a loan chain is (pure): its rows oldest statement first, the earliest purchase day on
+ * them (else the first statement's close), the largest principal and cuota count (contract-summary
+ * rows aside), the first row's merchant. Null when no row states a cuota count.
+ */
+export function loanChainPlanFacts(chain: CcInstallmentLoanChain): {
+  sorted: CardStatementLineRef[];
+  first: CardStatementLineRef;
+  purchase_date: string;
+  total_amount_clp: number;
+  cuotas_totales: number;
+  merchant: string | null;
+  twin_index: number;
+} | null {
+  const sorted = [...chain.rows].sort((a, b) => stmtSortKey(a.statement.close) - stmtSortKey(b.statement.close));
+  const first = sorted[0]!;
+  let purchaseDate: string | null = null;
+  for (const r of sorted) {
+    const iso = r.line.transaction_date;
+    if (iso && (!purchaseDate || iso < purchaseDate)) purchaseDate = iso;
+  }
+  if (!purchaseDate) purchaseDate = parseDdMmYyToIso(first.statement.close) ?? "2000-01-01";
+  let maxTotal = 0;
+  let maxCuotas = 0;
+  for (const r of sorted) {
+    if (isInstallmentContractSummaryMerchant(r.line.merchant)) continue;
+    maxTotal = Math.max(maxTotal, installmentContractAmountClp(r));
+    const nt = r.line.installment?.count ?? null;
+    if (nt != null && nt > 0) maxCuotas = Math.max(maxCuotas, nt);
+  }
+  if (maxCuotas <= 0) return null;
+  return {
+    sorted,
+    first,
+    purchase_date: purchaseDate,
+    total_amount_clp: maxTotal,
+    cuotas_totales: maxCuotas,
+    merchant: first.line.merchant || null,
+    twin_index: chain.twin_index,
+  };
+}
+
 function stmtSortKey(statementDate: string): number {
   const iso = parseDdMmYyToIso(statementDate);
   if (!iso) return 0;
@@ -308,26 +350,9 @@ function mergeInstallmentLedgerInSession(
     const planIdsByLoan = new Map<string, Map<number, number>>();
     for (const agg of byLoan.values()) {
       const loanKey = agg.loan_key;
-      const sorted = [...agg.rows].sort(
-        (a, b) => stmtSortKey(a.statement.close) - stmtSortKey(b.statement.close)
-      );
-      const first = sorted[0]!;
-      let purchaseDate: string | null = null;
-      for (const r of sorted) {
-        const iso = r.line.transaction_date;
-        if (iso && (!purchaseDate || iso < purchaseDate)) purchaseDate = iso;
-      }
-      if (!purchaseDate) purchaseDate = parseDdMmYyToIso(first.statement.close) ?? "2000-01-01";
-
-      let maxTotal = 0;
-      let maxCuotas = 0;
-      for (const r of sorted) {
-        if (isInstallmentContractSummaryMerchant(r.line.merchant)) continue;
-        maxTotal = Math.max(maxTotal, installmentContractAmountClp(r));
-        const nt = r.line.installment?.count ?? null;
-        if (nt != null && nt > 0) maxCuotas = Math.max(maxCuotas, nt);
-      }
-      if (maxCuotas <= 0) continue;
+      const facts = loanChainPlanFacts(agg);
+      if (!facts) continue;
+      const { sorted, first, purchase_date: purchaseDate, total_amount_clp: maxTotal, cuotas_totales: maxCuotas } = facts;
 
       // Parser-provided baseline match (the Python parser matched it against the archived
       // installments CSV at parse time) — trusted as-is; runtime never re-reads cfraser CSVs.
@@ -542,6 +567,41 @@ function earliestIso(...dates: (string | null | undefined)[]): string | null {
   return out;
 }
 
+/**
+ * The JSON-written statements an incoming PDF takes over (same close and currency): their ids, the
+ * replace keys that keep the reconcile from counting their lines, and the closes, for the report.
+ */
+export function jsonStatementsSupersededByPdf(
+  accountId: number,
+  statements: readonly CardCanonicalStatement[]
+): { json_closes_superseded_by_pdf: string[]; supersededJsonStatementIds: number[]; supersededReplaceKeys: Set<string> } {
+  const jsonOwned = jsonOwnedClosesForAccount(accountId);
+  const json_closes_superseded_by_pdf: string[] = [];
+  const supersededJsonStatementIds: number[] = [];
+  const supersededReplaceKeys = new Set<string>();
+  if (jsonOwned.size > 0) {
+    const incomingPdfCloses = new Set<string>();
+    for (const statement of statements) {
+      const kind = ccStatementSourceKindOf(statement.document);
+      const isRealPdf = kind === "statement_pdf" || kind === "statement_other";
+      if (!isRealPdf) continue;
+      const closeKey = `${padCcStatementDate(statement.close)}\t${statement.currency}`;
+      if (jsonOwned.has(closeKey)) incomingPdfCloses.add(closeKey);
+    }
+    if (incomingPdfCloses.size > 0) {
+      for (const st of listJsonOwnedStatementsForAccount(accountId)) {
+        const closeKey = `${padCcStatementDate(st.statement_date)}\t${st.currency}`;
+        if (!incomingPdfCloses.has(closeKey)) continue;
+        supersededJsonStatementIds.push(st.id);
+        supersededReplaceKeys.add(statementReplaceKey(st));
+        json_closes_superseded_by_pdf.push(closeKey.replace("\t", " "));
+      }
+      json_closes_superseded_by_pdf.sort();
+    }
+  }
+  return { json_closes_superseded_by_pdf, supersededJsonStatementIds, supersededReplaceKeys };
+}
+
 export function mergeCardStatements(
   accountId: number,
   statements: readonly CardCanonicalStatement[],
@@ -583,30 +643,8 @@ function mergeInSession(
   // the reconcile does not count their lines against the incoming PDF (otherwise every superseded
   // close would double and throw), and the delete runs inside the same transaction as the write.
   // Web-paste and JSON-source records pass through untouched.
-  const jsonOwned = jsonOwnedClosesForAccount(accountId);
-  const json_closes_superseded_by_pdf: string[] = [];
-  const supersededJsonStatementIds: number[] = [];
-  const supersededReplaceKeys = new Set<string>();
-  if (jsonOwned.size > 0) {
-    const incomingPdfCloses = new Set<string>();
-    for (const statement of statements) {
-      const kind = ccStatementSourceKindOf(statement.document);
-      const isRealPdf = kind === "statement_pdf" || kind === "statement_other";
-      if (!isRealPdf) continue;
-      const closeKey = `${padCcStatementDate(statement.close)}\t${statement.currency}`;
-      if (jsonOwned.has(closeKey)) incomingPdfCloses.add(closeKey);
-    }
-    if (incomingPdfCloses.size > 0) {
-      for (const st of listJsonOwnedStatementsForAccount(accountId)) {
-        const closeKey = `${padCcStatementDate(st.statement_date)}\t${st.currency}`;
-        if (!incomingPdfCloses.has(closeKey)) continue;
-        supersededJsonStatementIds.push(st.id);
-        supersededReplaceKeys.add(statementReplaceKey(st));
-        json_closes_superseded_by_pdf.push(closeKey.replace("\t", " "));
-      }
-      json_closes_superseded_by_pdf.sort();
-    }
-  }
+  const { json_closes_superseded_by_pdf, supersededJsonStatementIds, supersededReplaceKeys } =
+    jsonStatementsSupersededByPdf(accountId, statements);
   // Only widen the caller's set when there is something to supersede, so a caller that passed
   // `undefined` keeps passing `undefined` in the ordinary case.
   const effectiveReplaceKeys =

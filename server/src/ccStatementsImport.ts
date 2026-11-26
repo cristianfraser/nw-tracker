@@ -26,6 +26,7 @@ import {
   cardStatementFingerprint,
   storedLineColumns,
   storedStatementColumns,
+  takeBatchDedupeKeys,
 } from "./cards/statementStorage.js";
 import {
   cardStatementKey,
@@ -175,6 +176,90 @@ function maybeApplyAdditionalCardNoCuenta(
   return result.applied;
 }
 
+const insStmt = db.prepare(`
+  INSERT INTO cc_statements (
+    account_id, card_group, source_pdf, statement_date, period_from, period_to, pay_by,
+    card_last4, card_product, layout, currency,
+    saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado,
+    monto_pagado_anterior, monto_pagado_anterior_date, next_period_from, next_period_to,
+    import_fingerprint
+  ) VALUES (
+    @account_id, @card_group, @source_pdf, @statement_date, @period_from, @period_to, @pay_by,
+    @card_last4, @card_product, @layout, @currency,
+    @saldo_anterior, @abono, @compras_cargos, @deuda_total, @monto_facturado,
+    @monto_pagado_anterior, @monto_pagado_anterior_date, @next_period_from, @next_period_to,
+    @import_fingerprint
+  )
+`);
+
+const updStmt = db.prepare(`
+  UPDATE cc_statements SET
+    statement_date = @statement_date,
+    period_from = @period_from, period_to = @period_to, pay_by = @pay_by,
+    card_last4 = @card_last4, card_product = @card_product, layout = @layout, currency = @currency,
+    saldo_anterior = @saldo_anterior, abono = @abono, compras_cargos = @compras_cargos,
+    deuda_total = @deuda_total, monto_facturado = @monto_facturado,
+    monto_pagado_anterior = @monto_pagado_anterior,
+    monto_pagado_anterior_date = @monto_pagado_anterior_date,
+    next_period_from = @next_period_from, next_period_to = @next_period_to,
+    import_fingerprint = @import_fingerprint
+  WHERE id = @id
+`);
+
+
+/**
+ * The statement's `cc_statements` row: the row on file for its document and close (else for its
+ * close, card and currency: a re-downloaded statement filed under another name), updated, or a new
+ * one. Writes no line. `lines`: every line the import hands for it (the fingerprint).
+ */
+export function upsertCcStatementHeader(
+  accountId: number,
+  statement: CardCanonicalStatement,
+  lines: readonly CardCanonicalLine[]
+): { statementId: number; existed: boolean } {
+  assertStatementHeader(statement);
+  const stored = storedStatementColumns(statement);
+  const { card_group: cardGroup, source_pdf: sourcePdf, statement_date: statementDate, currency } = stored;
+  const stmtParams = {
+    account_id: accountId,
+    ...stored,
+    // Written here rather than by the caller because only this step knows which row the
+    // statement actually resolved to: the close-date fallback below can match a row filed
+    // under a DIFFERENT source_pdf (a re-downloaded statement), and a fingerprint keyed by
+    // the incoming statement's own identity would silently never land — leaving it
+    // re-importing forever.
+    import_fingerprint: cardStatementFingerprint({ ...statement, lines: [...lines] }),
+  };
+  let existing = findStmtId.get(accountId, cardGroup, sourcePdf, statementDate) as { id: number } | undefined;
+  if (!existing) {
+    existing = findStmtByClose.get(accountId, cardGroup, statementDate, stored.card_last4, currency) as { id: number } | undefined;
+  }
+  if (existing) {
+    updStmt.run({ ...stmtParams, id: existing.id });
+    return { statementId: existing.id, existed: true };
+  }
+  return { statementId: Number(insStmt.run(stmtParams).lastInsertRowid), existed: false };
+}
+
+/**
+ * The import's statements, one entry per ledger statement: a source never names one statement
+ * twice, but a caller may hand several copies of a statement's lines (the parsed corpus re-sent),
+ * which import in order. A statement with no lines writes nothing.
+ */
+export function statementsByLedgerKey(
+  statements: readonly CardCanonicalStatement[]
+): Map<string, { statement: CardCanonicalStatement; lines: CardCanonicalLine[] }> {
+  const byStmt = new Map<string, { statement: CardCanonicalStatement; lines: CardCanonicalLine[] }>();
+  for (const statement of statements) {
+    if (statement.lines.length === 0) continue;
+    const k = cardStatementKey(statement);
+    const entry = byStmt.get(k);
+    if (entry) entry.lines.push(...statement.lines);
+    else byStmt.set(k, { statement, lines: [...statement.lines] });
+  }
+  return byStmt;
+}
+
 export function importCcStatementsMerge(
   accountId: number,
   statements: readonly CardCanonicalStatement[],
@@ -195,47 +280,7 @@ export function importCcStatementsMerge(
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
   }
 
-  // One entry per ledger statement: a source never names one statement twice, but a caller may
-  // hand several copies of a statement's lines (the parsed corpus re-sent), which import in order.
-  const byStmt = new Map<string, { statement: CardCanonicalStatement; lines: CardCanonicalLine[] }>();
-  for (const statement of statements) {
-    // A statement is its lines: one with none writes nothing (a bucket whose rows were all skipped).
-    if (statement.lines.length === 0) continue;
-    const k = cardStatementKey(statement);
-    const entry = byStmt.get(k);
-    if (entry) entry.lines.push(...statement.lines);
-    else byStmt.set(k, { statement, lines: [...statement.lines] });
-  }
-
-  const insStmt = db.prepare(`
-    INSERT INTO cc_statements (
-      account_id, card_group, source_pdf, statement_date, period_from, period_to, pay_by,
-      card_last4, card_product, layout, currency,
-      saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado,
-      monto_pagado_anterior, monto_pagado_anterior_date, next_period_from, next_period_to,
-      import_fingerprint
-    ) VALUES (
-      @account_id, @card_group, @source_pdf, @statement_date, @period_from, @period_to, @pay_by,
-      @card_last4, @card_product, @layout, @currency,
-      @saldo_anterior, @abono, @compras_cargos, @deuda_total, @monto_facturado,
-      @monto_pagado_anterior, @monto_pagado_anterior_date, @next_period_from, @next_period_to,
-      @import_fingerprint
-    )
-  `);
-
-  const updStmt = db.prepare(`
-    UPDATE cc_statements SET
-      statement_date = @statement_date,
-      period_from = @period_from, period_to = @period_to, pay_by = @pay_by,
-      card_last4 = @card_last4, card_product = @card_product, layout = @layout, currency = @currency,
-      saldo_anterior = @saldo_anterior, abono = @abono, compras_cargos = @compras_cargos,
-      deuda_total = @deuda_total, monto_facturado = @monto_facturado,
-      monto_pagado_anterior = @monto_pagado_anterior,
-      monto_pagado_anterior_date = @monto_pagado_anterior_date,
-      next_period_from = @next_period_from, next_period_to = @next_period_to,
-      import_fingerprint = @import_fingerprint
-    WHERE id = @id
-  `);
+  const byStmt = statementsByLedgerKey(statements);
 
   const delLinesForStmt = db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`);
 
@@ -284,7 +329,6 @@ export function importCcStatementsMerge(
       : null;
 
   for (const [key, { statement, lines }] of byStmt) {
-    assertStatementHeader(statement);
     const stored = storedStatementColumns(statement);
     const { card_group: cardGroup, source_pdf: sourcePdf, statement_date: statementDate, currency } = stored;
     // A PDF/JSON statement import must not count open web-paste bucket lines as existing
@@ -301,35 +345,11 @@ export function importCcStatementsMerge(
       earliestInsertedTxDate = paidOn;
     }
 
-    const stmtParams = {
-      account_id: accountId,
-      ...stored,
-      // Written here rather than by the caller because only this loop knows which row the
-      // statement actually resolved to: the close-date fallback below can match a row filed
-      // under a DIFFERENT source_pdf (a re-downloaded statement), and a fingerprint keyed by
-      // the incoming statement's own identity would silently never land — leaving it
-      // re-importing forever.
-      import_fingerprint: cardStatementFingerprint({ ...statement, lines }),
-    };
-
-    let statementId: number;
     const cardLast4 = stored.card_last4;
-    let existing = findStmtId.get(accountId, cardGroup, sourcePdf, statementDate) as
-      | { id: number }
-      | undefined;
-    if (!existing) {
-      existing = findStmtByClose.get(accountId, cardGroup, statementDate, cardLast4, currency) as { id: number } | undefined;
-    }
-
-    if (existing) {
-      statementId = existing.id;
-      updStmt.run({ ...stmtParams, id: statementId });
-      if (replaceKeys?.has(key) || replaceAll) {
-        delLinesForStmt.run(statementId);
-      }
-    } else {
-      const r = insStmt.run(stmtParams);
-      statementId = Number(r.lastInsertRowid);
+    const header = upsertCcStatementHeader(accountId, statement, lines);
+    const statementId = header.statementId;
+    if (header.existed && (replaceKeys?.has(key) || replaceAll)) {
+      delLinesForStmt.run(statementId);
     }
     statementCount += 1;
 
@@ -343,26 +363,19 @@ export function importCcStatementsMerge(
       const columns = storedLineColumns(statement, line);
       const amountClp = columns.amount_clp;
       const flowItem = ccImportFlowItemFromLine(line, statementLabel);
-      let dedupeKeys = canonicalLineDedupeKeys(cardGroup, line);
+      // All keys seen (parser key included) = a truly redundant repeat: skip. A colliding
+      // computed key with a fresh parser key is a genuine same-statement twin (identical
+      // merchant+amount+date twice, e.g. a double PAT charge): occurrence-suffixed so both twins
+      // import and re-imports stay idempotent (`takeBatchDedupeKeys`).
+      const taken = takeBatchDedupeKeys(seenDedupeInBatch, canonicalLineDedupeKeys(cardGroup, line));
+      if (taken === "repeat") {
+        linesSkippedDuplicate += 1;
+        skipped_flows.push({ ...flowItem, reason: "duplicate" });
+        continue;
+      }
+      const dedupeKeys = taken;
 
       if (dedupeKeys.length > 0) {
-        // All keys seen (parser key included) = a truly redundant repeat: skip. A
-        // colliding computed key with a fresh parser key is a genuine same-statement
-        // twin (identical merchant+amount+date twice, e.g. a double PAT charge):
-        // occurrence-suffix the colliding key so both twins import and re-imports
-        // stay idempotent.
-        if (dedupeKeys.every((k) => seenDedupeInBatch.has(k))) {
-          linesSkippedDuplicate += 1;
-          skipped_flows.push({ ...flowItem, reason: "duplicate" });
-          continue;
-        }
-        dedupeKeys = dedupeKeys.map((k) => {
-          if (!seenDedupeInBatch.has(k)) return k;
-          let n = 1;
-          while (seenDedupeInBatch.has(`${k}#dup${n}`)) n += 1;
-          return `${k}#dup${n}`;
-        });
-        for (const k of dedupeKeys) seenDedupeInBatch.add(k);
         if (skipGlobalDedupe && ccLineDedupeKeyExistsOnAccount(accountId, dedupeKeys, dedupeScanOpts)) {
           const originCardLast4 = columns.origin_card_last4;
           const patch = patchCcLineOriginCardOnDedupeHit(accountId, dedupeKeys, originCardLast4, dedupeScanOpts);

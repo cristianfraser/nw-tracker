@@ -6,7 +6,7 @@ import {
 } from "./cards/facturacion.js";
 import { nextPeriodStartIsoForBillingMonth } from "./cards/facturacion.js";
 import { db } from "./db.js";
-import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
+import { listCcStatementLinesForStatement, listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import { cardPrimaryStatementCurrency } from "./cards/cardCurrencies.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
@@ -80,6 +80,26 @@ function ensureOpenWebPasteStatementId(
   return Number(r.lastInsertRowid);
 }
 
+/**
+ * The bucket a line of bucket `bucketBm` belongs in when it is dated on/after the next cycle's first
+ * day (`nextStart`): its own cycle, never before the open month (a stale bucket's line goes to the
+ * open month, the open bucket's close-day line — Santander bills it next — to the month after).
+ * Null when it stays.
+ */
+export function misplacedBucketLineTarget(
+  accountId: number,
+  line: { transaction_date: string | null; posting_date: string | null },
+  bucketBm: string,
+  nextStart: string,
+  openBm: string,
+  statements: readonly CcStatementRow[]
+): string | null {
+  const purchaseIso = linePurchaseIso(line.transaction_date, line.posting_date);
+  if (!purchaseIso || purchaseIso < nextStart) return null;
+  const target = billingMonthForPurchaseFromOpen(accountId, purchaseIso, openBm, statements);
+  return target === bucketBm ? null : target;
+}
+
 export type CcOpenWebPasteRepairResult = {
   lines_moved: number;
   target_billing_month: string;
@@ -120,13 +140,8 @@ export function repairMisplacedOpenWebPasteBuckets(accountId: number): CcOpenWeb
     const nextStart = nextPeriodStartIsoForBillingMonth(accountId, bucketBm, statements).iso;
 
     for (const line of listCcStatementLinesForStatement(st.id)) {
-      const purchaseIso = linePurchaseIso(line.transaction_date, line.posting_date);
-      if (!purchaseIso) continue;
-      if (purchaseIso < nextStart) continue;
-      // Its own cycle, never before the open month: a stale bucket's line goes to the open month,
-      // the open bucket's close-day line (Santander bills it next) to the month after.
-      const target = billingMonthForPurchaseFromOpen(accountId, purchaseIso, openBm, statements);
-      if (target === bucketBm) continue;
+      const target = misplacedBucketLineTarget(accountId, line, bucketBm, nextStart, openBm, statements);
+      if (target == null) continue;
       const toId = targetStmtId(target);
       if (st.id === toId) continue;
       moveLine.run(toId, line.id);

@@ -64,7 +64,7 @@ export function findMatchingTransferLegId(
   const rows = dbHandle
     .prepare(
       `SELECT m.id, m.account_id, m.from_account_id, m.to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL},
-              m.occurred_on, m.note, m.units_delta, m.flow_kind
+              m.occurred_on, m.note, m.units_delta, m.flow_kind, bp.posted_on
        FROM movements m ${BANK_POSTING_JOIN_SQL}
        WHERE m.account_id IS NULL
          AND (m.from_account_id = ? OR m.to_account_id = ?)
@@ -74,10 +74,56 @@ export function findMatchingTransferLegId(
          )
        ORDER BY (bp.posted_on IS NOT NULL) DESC, m.occurred_on DESC, m.id DESC`
     )
-    .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as TransferLegRow[];
-  for (const r of rows) {
+    .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as (TransferLegRow & { posted_on: string | null })[];
+  return pickTransferLegForBankRow(
+    rows.map((r) => ({
+      id: r.id,
+      posted_on: r.posted_on,
+      occurred_on: r.occurred_on,
+      signed_coins: Math.round(signedNativeDeltaForAccountMovement(r, accountId, currency) * coins),
+    })),
+    bankDateYmd,
+    windowStart,
+    target,
+    consumed
+  );
+}
+
+/** A transfer leg touching the account, as {@link pickTransferLegForBankRow} reads it. */
+export type TransferLegCandidate = {
+  id: number;
+  /** The leg's known bank posting on the account (`movement_bank_postings`), else null. */
+  posted_on: string | null;
+  occurred_on: string;
+  /** Its signed delta on the account, in the currency's coin. */
+  signed_coins: number;
+};
+
+/**
+ * {@link findMatchingTransferLegId}'s rule over given legs (pure): a leg with a known posting
+ * matches only that day, one with none the window `[windowStart, bankDate]`; the same signed coin;
+ * not consumed; legs with a known posting first, then the latest day, then the higher id.
+ */
+export function pickTransferLegForBankRow(
+  legs: readonly TransferLegCandidate[],
+  bankDateYmd: string,
+  windowStart: string,
+  targetCoins: number,
+  consumed: ReadonlySet<number>
+): number | null {
+  const candidates = legs
+    .filter((r) =>
+      r.posted_on != null ? r.posted_on === bankDateYmd : r.occurred_on >= windowStart && r.occurred_on <= bankDateYmd
+    )
+    .sort(
+      (a, b) =>
+        Number(b.posted_on != null) - Number(a.posted_on != null) ||
+        (a.occurred_on === b.occurred_on ? 0 : a.occurred_on < b.occurred_on ? 1 : -1) ||
+        b.id - a.id
+    );
+  for (const r of candidates) {
     if (consumed.has(r.id)) continue;
-    if (Math.round(signedNativeDeltaForAccountMovement(r, accountId, currency) * coins) === target) return r.id;
+    if (r.signed_coins === targetCoins) return r.id;
   }
   return null;
 }

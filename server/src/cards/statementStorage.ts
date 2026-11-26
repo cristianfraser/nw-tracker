@@ -272,3 +272,23 @@ export function cardStatementFingerprint(statement: CardCanonicalStatement): str
     statementLinesLessRepeats(statement).map((line) => storedLineColumnsForFingerprint(statement, line))
   );
 }
+
+/**
+ * The import's rule (`importCcStatementsMerge`): a line's dedupe keys against the keys earlier lines of its statement took (`seen`, updated): every
+ * key already taken is a truly redundant repeat (`"repeat"`); otherwise each colliding key gets the
+ * occurrence suffix `#dupN` (a same-statement twin: identical merchant, amount and day twice) and
+ * the keys as stored are returned (the last one is the line's `dedupe_key`). A line with no keys
+ * returns none.
+ */
+export function takeBatchDedupeKeys(seen: Set<string>, keys: readonly string[]): string[] | "repeat" {
+  if (keys.length === 0) return [];
+  if (keys.every((k) => seen.has(k))) return "repeat";
+  const out = keys.map((k) => {
+    if (!seen.has(k)) return k;
+    let n = 1;
+    while (seen.has(`${k}#dup${n}`)) n += 1;
+    return `${k}#dup${n}`;
+  });
+  for (const k of out) seen.add(k);
+  return out;
+}

@@ -131,15 +131,27 @@ const selTaggedKind = db.prepare(`SELECT cuota_purchase_kind FROM cc_statement_l
  * keeps the delete the reconcile always did.
  */
 export function bucketLineAnnullable(line: { id: number; installment_flag: boolean | number; amount: number | null }): boolean {
+  return bucketLineAnnullableGiven(line, bucketLineCuotaPurchaseKind(line.id));
+}
+
+/** A bucket line's cuota-purchase tag (`cc_statement_lines.cuota_purchase_kind`), else null. */
+export function bucketLineCuotaPurchaseKind(lineId: number): string | null {
+  return (selTaggedKind.get(lineId) as { cuota_purchase_kind: string | null } | undefined)?.cuota_purchase_kind ?? null;
+}
+
+/** {@link bucketLineAnnullable} with the line's cuota-purchase tag given (pure). */
+export function bucketLineAnnullableGiven(
+  line: { installment_flag: boolean | number; amount: number | null },
+  cuotaPurchaseKind: string | null
+): boolean {
   if (line.installment_flag) return false;
   const amount = listingLineAmount(line);
   if (amount == null || !(amount > 0)) return false;
-  const tagged = (selTaggedKind.get(line.id) as { cuota_purchase_kind: string | null } | undefined)?.cuota_purchase_kind;
-  return tagged == null;
+  return cuotaPurchaseKind == null;
 }
 
 /** A statement line as the annulment matchers read it: its amount in its own currency. */
-type StatementChargeLike = {
+export type StatementChargeLike = {
   id: number;
   merchant: string | null;
   amount: number | null;
@@ -157,10 +169,18 @@ export function statementRestatesBucketLine(
   bucket: { id: number; merchant: string | null; currency: string; amount: number | null; iso: string },
   statementLines: readonly StatementChargeLike[]
 ): boolean {
+  return statementLineRestatingBucketLine(bucket, statementLines) != null;
+}
+
+/** The first statement line that restates the bucket line ({@link statementRestatesBucketLine}), if any. */
+export function statementLineRestatingBucketLine<S extends StatementChargeLike>(
+  bucket: { id: number; merchant: string | null; currency: string; amount: number | null; iso: string },
+  statementLines: readonly S[]
+): S | undefined {
   const currency = listingLineCurrency(bucket);
   const amount = listingLineAmount(bucket) ?? 0;
   const window = MATCH_WINDOWS.feed_mirror.daysAfter;
-  return statementLines.some((s) => {
+  return statementLines.find((s) => {
     if (s.currency !== currency || s.iso == null) return false;
     if (Math.abs(daysBetweenIso(bucket.iso, s.iso)) > window) return false;
     const sAmount = s.amount;
@@ -197,13 +217,57 @@ export function settleAnnulmentsAgainstStatement(
   usedLineIds: ReadonlySet<number>,
   opts?: { dryRun?: boolean }
 ): CcAnnulmentSettled[] {
-  const open = listAnnulledPurchases(accountId).filter((a) => !a.bank_credit);
+  const open = listAnnulledPurchases(accountId);
+  const out: CcAnnulmentSettled[] = [];
+  for (const s of planAnnulmentSettlements(open, statementLines, usedLineIds)) {
+    const a = s.annulment;
+    if (s.outcome === "billed") {
+      let folded = false;
+      if (!opts?.dryRun) {
+        const survivor = a.flow_id;
+        const arriving = rowFlowId("cc_statement_lines", s.statement_line_id);
+        if (flowExists(survivor) && flowExists(arriving) && survivor !== arriving) {
+          adoptFlow(
+            { survivor, arriving },
+            { prefer: "survivor", key: resolveCcExpensePurchaseKey(s.statement_line_id), previousKey: a.purchase_key }
+          );
+          folded = true;
+        }
+        deleteAnnulledPurchase(a.id);
+      }
+      out.push({ annulled_purchase_id: a.id, outcome: "billed", statement_line_id: s.statement_line_id, folded });
+      continue;
+    }
+    if (!opts?.dryRun) markAnnulledPurchaseBankCredited(a.id, s.credit_iso);
+    out.push({ annulled_purchase_id: a.id, outcome: "bank_credit", statement_line_id: s.statement_line_id, folded: false });
+  }
+  return out;
+}
+
+/** An annulled purchase as the statement settlement reads it. */
+export type AnnulmentForSettlement = Pick<CcAnnulledPurchase, "id" | "currency" | "amount" | "merchant" | "purchase_date" | "bank_credit" | "flow_id" | "purchase_key">;
+
+/** What a statement does to one annulment ({@link settleAnnulmentsAgainstStatement}). */
+export type AnnulmentSettlementDecision<A extends AnnulmentForSettlement> =
+  | { annulment: A; outcome: "billed"; statement_line_id: number }
+  | { annulment: A; outcome: "bank_credit"; statement_line_id: number; credit_iso: string };
+
+/**
+ * The settlement rule of {@link settleAnnulmentsAgainstStatement}, pure: `annulments` in the order
+ * the card lists them (purchase day, then id); bank-credited ones are skipped.
+ */
+export function planAnnulmentSettlements<A extends AnnulmentForSettlement>(
+  annulments: readonly A[],
+  statementLines: readonly StatementChargeLike[],
+  usedLineIds: ReadonlySet<number>
+): AnnulmentSettlementDecision<A>[] {
+  const open = annulments.filter((a) => !a.bank_credit);
   if (open.length === 0) return [];
   const window = MATCH_WINDOWS.feed_mirror.daysAfter;
   const free = statementLines.filter((s) => !usedLineIds.has(s.id) && s.iso != null);
   const taken = new Set<number>();
-  const out: CcAnnulmentSettled[] = [];
-  const sameMoney = (a: CcAnnulledPurchase, s: StatementChargeLike, sign: 1 | -1): boolean => {
+  const out: AnnulmentSettlementDecision<A>[] = [];
+  const sameMoney = (a: A, s: StatementChargeLike, sign: 1 | -1): boolean => {
     if (s.currency !== a.currency) return false;
     const v = s.amount;
     return v != null && sign * v > 0 && sameCoin(Math.abs(v), a.amount, s.currency);
@@ -218,17 +282,7 @@ export function settleAnnulmentsAgainstStatement(
     );
     if (billed) {
       taken.add(billed.id);
-      let folded = false;
-      if (!opts?.dryRun) {
-        const survivor = a.flow_id;
-        const arriving = rowFlowId("cc_statement_lines", billed.id);
-        if (flowExists(survivor) && flowExists(arriving) && survivor !== arriving) {
-          adoptFlow({ survivor, arriving }, { prefer: "survivor", key: resolveCcExpensePurchaseKey(billed.id), previousKey: a.purchase_key });
-          folded = true;
-        }
-        deleteAnnulledPurchase(a.id);
-      }
-      out.push({ annulled_purchase_id: a.id, outcome: "billed", statement_line_id: billed.id, folded });
+      out.push({ annulment: a, outcome: "billed", statement_line_id: billed.id });
       continue;
     }
     const credit = free.find(
@@ -241,8 +295,7 @@ export function settleAnnulmentsAgainstStatement(
     );
     if (credit) {
       taken.add(credit.id);
-      if (!opts?.dryRun) markAnnulledPurchaseBankCredited(a.id, credit.iso!);
-      out.push({ annulled_purchase_id: a.id, outcome: "bank_credit", statement_line_id: credit.id, folded: false });
+      out.push({ annulment: a, outcome: "bank_credit", statement_line_id: credit.id, credit_iso: credit.iso! });
     }
   }
   return out;

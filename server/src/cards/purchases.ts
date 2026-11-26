@@ -197,9 +197,19 @@ export function findPlanForOneShotLine(
   purchaseDateIso: string | null,
   amountClp: number
 ): CardPlanForMatching | null {
+  return findPlanAmong(listPlansForLineMatching(accountId), merchant, purchaseDateIso, amountClp);
+}
+
+/** {@link findPlanForOneShotLine} over given plans (one per identity, as the matchers read them). */
+export function findPlanAmong<P extends CardPlanForMatching>(
+  plans: readonly P[],
+  merchant: string | null,
+  purchaseDateIso: string | null,
+  amountClp: number
+): P | null {
   const abs = Math.abs(Math.trunc(amountClp));
   if (abs <= 0) return null;
-  for (const p of listPlansForLineMatching(accountId)) {
+  for (const p of plans) {
     if (planMatchesOneShotLine(p, merchant, purchaseDateIso, abs)) return p;
   }
   return null;
@@ -289,10 +299,18 @@ export function findOneShotLinesOfPlan(accountId: number, plan: CardPlanForMatch
 
 /** Each one-shot line a plan supersedes, with that plan (the first one that matches). */
 export function oneShotLinesSupersededByPlans(accountId: number): Map<number, CardPlanForMatching> {
-  const superseded = new Map<number, CardPlanForMatching>();
   const plans = listPlansForLineMatching(accountId);
-  if (plans.length === 0) return superseded;
-  for (const line of listOneShotLinesForAccount(accountId)) {
+  if (plans.length === 0) return new Map();
+  return oneShotLinesSupersededAmong(listOneShotLinesForAccount(accountId), plans);
+}
+
+/** {@link oneShotLinesSupersededByPlans} over given lines and plans (pure). */
+export function oneShotLinesSupersededAmong<P extends CardPlanForMatching>(
+  lines: readonly Pick<CardOneShotLine, "statement_line_id" | "merchant" | "purchase_date_iso" | "amount_clp">[],
+  plans: readonly P[]
+): Map<number, P> {
+  const superseded = new Map<number, P>();
+  for (const line of lines) {
     for (const p of plans) {
       if (planMatchesOneShotLine(p, line.merchant, line.purchase_date_iso, line.amount_clp)) {
         superseded.set(line.statement_line_id, p);

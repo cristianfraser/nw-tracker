@@ -342,10 +342,21 @@ export function fanOutUniformGroups(groups: readonly { olds: CcLineRef[]; news: 
   moves: CcLineMove[];
   fannedOut: Set<number>;
 } {
+  return fanOutUniformGroupsGiven(groups, assignmentSignature);
+}
+
+/** {@link fanOutUniformGroups} with each line's assignment signature given (pure). */
+export function fanOutUniformGroupsGiven(
+  groups: readonly { olds: CcLineRef[]; news: CcLineRef[] }[],
+  signature: (ref: CcLineRef) => string | null
+): {
+  moves: CcLineMove[];
+  fannedOut: Set<number>;
+} {
   const moves: CcLineMove[] = [];
   const fannedOut = new Set<number>();
   for (const { olds, news } of groups) {
-    const sigs = olds.map(assignmentSignature);
+    const sigs = olds.map(signature);
     if (sigs[0] == null || sigs.some((x) => x !== sigs[0])) continue;
     const n = Math.min(olds.length, news.length);
     // Copies first: the adoptions below fold the source flows away.
@@ -377,6 +388,10 @@ export function copyOntoNewSiblings(groups: readonly { survivors: CcLineRef[]; n
 }
 
 /** What a line's flow carries, comparable across lines (null when it carries nothing). */
+export function cardLineAssignmentSignature(ref: CcLineRef): string | null {
+  return assignmentSignature(ref);
+}
+
 function assignmentSignature(ref: CcLineRef): string | null {
   const flowId = keyedRowsFlowId(ref);
   const partsFlowId = refFlowId(ref);

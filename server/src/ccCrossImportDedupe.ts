@@ -86,13 +86,27 @@ export function oneShotLineFuzzyMatchExists(
     transaction_date: string | null;
     posting_date: string | null;
   }[];
-  for (const row of rows) {
-    if (opts?.excludeLineIds?.has(row.id)) continue;
+  return oneShotFuzzyMatchAmong(rows, merchant, purchaseDateIso, opts?.excludeLineIds) != null;
+}
+
+/**
+ * The first of `candidates` (one-shot lines of the same peso amount, in id order) that is the same
+ * purchase by {@link oneShotLineFuzzyMatchExists}'s rule: the same purchase day and a fuzzy-matching
+ * merchant. Pure.
+ */
+export function oneShotFuzzyMatchAmong<L extends { id: number; merchant: string | null; transaction_date: string | null; posting_date: string | null }>(
+  candidates: readonly L[],
+  merchant: string | null,
+  purchaseDateIso: string,
+  excludeLineIds?: ReadonlySet<number>
+): L | null {
+  for (const row of candidates) {
+    if (excludeLineIds?.has(row.id)) continue;
     const rowDateIso = purchaseDateIsoFromLine(row.transaction_date, row.posting_date);
     if (rowDateIso !== purchaseDateIso) continue;
-    if (merchantsMatchForCrossDedupe(row.merchant, merchant)) return true;
+    if (merchantsMatchForCrossDedupe(row.merchant, merchant)) return row;
   }
-  return false;
+  return null;
 }
 
 const delLines = db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`);
@@ -162,15 +176,10 @@ export type CcCrossImportDedupePlan = CardLinePlan & { removed_line_ids: number[
  * converted from (`cc_installment_purchases.source_line_id`) stays: the plan overlays it.
  */
 export function planOneShotLinesSupersededByInstallmentPurchases(accountId: number): CcCrossImportDedupePlan {
-  const superseded = oneShotLinesSupersededByPlans(accountId);
   const sourceLineByPlan = sourceLinesOfPlans(accountId);
-  const kept = new Set(sourceLineByPlan.values());
   const ids: number[] = [];
   const arrivalsOntoPlans: { fromLineId: number; planId: number }[] = [];
-  for (const [lineId, purchase] of superseded) {
-    // A plan converted from a line has its line: another line of the same facts is another
-    // purchase (identical twins of one day), never this plan's to settle.
-    if (kept.has(lineId) || sourceLineByPlan.has(purchase.id)) continue;
+  for (const [lineId, purchase] of supersededLinesLessPlanSources(oneShotLinesSupersededByPlans(accountId), sourceLineByPlan)) {
     const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
     if (cat?.category_id != null) {
       const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
@@ -186,6 +195,19 @@ export function planOneShotLinesSupersededByInstallmentPurchases(accountId: numb
     arrivalsOntoPlans.push({ fromLineId: lineId, planId: purchase.id });
   }
   return { removed_line_ids: ids, deleteLineIds: ids, carry: [], arrivalsOntoPlans };
+}
+
+/**
+ * The superseded lines a plan settles (pure): a plan converted from a line has its line — another
+ * line of the same facts is another purchase (identical twins of one day), never this plan's to
+ * settle — and the line a plan was converted from stays (the plan overlays it).
+ */
+export function supersededLinesLessPlanSources<P extends { id: number }>(
+  superseded: ReadonlyMap<number, P>,
+  sourceLineByPlan: ReadonlyMap<number, number>
+): [number, P][] {
+  const kept = new Set(sourceLineByPlan.values());
+  return [...superseded].filter(([lineId, purchase]) => !kept.has(lineId) && !sourceLineByPlan.has(purchase.id));
 }
 
 /** Plan id → the line it was converted from, on the account: the plan overlays it, nothing deletes it. */
