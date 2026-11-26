@@ -52,6 +52,7 @@ export const resources = {
     { queryKey: queryKeys.accountDetail(String(accountId), unit, "monthly") },
     { queryKey: queryKeys.deptoPrepaymentsAll() },
     { queryKey: queryKeys.mortgageGroupGlanceAll() },
+    { queryKey: queryKeys.realEstateGroupGlanceAll() },
     { queryKey: queryKeys.liabilitiesGlanceAll() },
     { queryKey: queryKeys.portfolioGroupCcLanesAll() },
   ],
@@ -73,6 +74,7 @@ export const resources = {
     { queryKey: queryKeys.dashboardAll() },
     { queryKey: queryKeys.portfolioGroupAll() },
     { queryKey: queryKeys.mortgageGroupGlanceAll() },
+    { queryKey: queryKeys.realEstateGroupGlanceAll() },
     { queryKey: queryKeys.liabilitiesGlanceAll() },
     { queryKey: queryKeys.portfolioGroupCcLanesAll() },
     { queryKey: queryKeys.accountDetailAll() },
@@ -90,6 +92,7 @@ export const resources = {
     { queryKey: queryKeys.accountFlowsAll() },
     // A movement on a loan's or a card's page moves the mortgage group and Liabilities pages.
     { queryKey: queryKeys.mortgageGroupGlanceAll() },
+    { queryKey: queryKeys.realEstateGroupGlanceAll() },
     { queryKey: queryKeys.liabilitiesGlanceAll() },
     { queryKey: queryKeys.deptoPrepaymentsAll() },
     { queryKey: queryKeys.dashboard(unit) },

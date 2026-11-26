@@ -333,7 +333,7 @@ export function costKindColor(kind: string): string {
  * server's cap; an equity side over the cap is cut and its total printed under the bar. The rail's
  * 12 months are shaded; months after them (bills still coming) are faint.
  */
-export function CostChart({ cost, unit, w, h }: { cost: DeptoCostBandDto; unit: string; w: number; h: number }) {
+export function CostChart({ cost, unit, w, h }: { cost: Omit<DeptoCostBandDto, "place_slug">; unit: string; w: number; h: number }) {
   const months = cost.months;
   if (months.length === 0) return null;
   const tickLabels = cost.axis.ticks.map((t) => axisCompact(t, unit));

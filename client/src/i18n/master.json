@@ -640,6 +640,22 @@
     }
   },
   "realEstate": {
+    "group": {
+      "propertyCount": { "en": "{{count}} properties", "es": "{{count}} propiedades" },
+      "propertiesLabel": { "en": "Properties", "es": "Propiedades" },
+      "colProperty": { "en": "property", "es": "propiedad" },
+      "colEquity": { "en": "net equity", "es": "patrimonio neto" },
+      "colOwned": { "en": "owned", "es": "propio" },
+      "ownedOf": { "en": "of {{appraisal}}", "es": "de {{appraisal}}" },
+      "noLoan": { "en": "no loan", "es": "sin crédito" },
+      "noLedger": { "en": "No payments on file yet.", "es": "Aún no tiene pagos registrados." },
+      "none": { "en": "No property has payments on file yet.", "es": "Ninguna propiedad tiene pagos registrados aún." },
+      "valueChart": { "en": "Value, mortgages and net equity by property", "es": "Valor, hipotecas y patrimonio neto por propiedad" },
+      "appraisal": { "en": "appraisal", "es": "tasación" },
+      "atPurchase": { "en": "at purchase", "es": "a la compra" },
+      "downPayment": { "en": "down payments", "es": "pies" },
+      "expensesLink": { "en": "real-estate expenses", "es": "gastos de inmuebles" }
+    },
     "propertyValue": {
       "en": "value",
       "es": "valor"

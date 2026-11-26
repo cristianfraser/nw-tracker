@@ -1,0 +1,178 @@
+/* The real-estate group page's property list (RealEstatePropertyList.tsx): each property's own
+   header as a row. One rendering at every width: wide rows are subgrids of the list under a
+   header; below 52rem of its frame (room for six nine-digit figures) a property is its name and net equity, the owned share, then
+   día / mes | año / total, each figure naming itself. */
+
+.frame {
+  container-type: inline-size;
+  container-name: real-estate-properties;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1.4fr) repeat(6, minmax(max-content, 1fr));
+  column-gap: 18px;
+  margin: 0;
+  padding: 0;
+  font-size: 0.78rem;
+  list-style: none;
+}
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  padding: 7px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.head {
+  padding-top: 0;
+  border-top: 0;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.r {
+  text-align: right;
+}
+
+.name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.name a {
+  overflow: hidden;
+  color: var(--accent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sw {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+}
+
+.sub {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* A figure's % under its amount, so a column is as wide as the amount alone. */
+.pct {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* A figure's own label. Wide: the header names the columns, so the label stays for screen readers
+   only (the header is aria-hidden), visually hidden like the global .visually-hidden. */
+.lbl {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  font-style: normal;
+  color: var(--muted);
+}
+
+.empty {
+  grid-column: 2 / -1;
+  color: var(--muted);
+}
+
+@container real-estate-properties (max-width: 52rem) {
+  .list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .head {
+    display: none;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "name equity"
+      "owned owned"
+      "day month"
+      "year total";
+    row-gap: 4px;
+    column-gap: 10px;
+    align-items: baseline;
+  }
+
+  .cName {
+    grid-area: name;
+  }
+
+  .cEquity {
+    grid-area: equity;
+  }
+
+  /* The share and what it is of on one line. */
+  .cOwned {
+    grid-area: owned;
+    text-align: left;
+  }
+
+  .cOwned .sub {
+    display: inline;
+    margin-left: 6px;
+  }
+
+  .cDay {
+    grid-area: day;
+    text-align: left;
+  }
+
+  .cMonth {
+    grid-area: month;
+  }
+
+  .cYear {
+    grid-area: year;
+    text-align: left;
+  }
+
+  .cTotal {
+    grid-area: total;
+  }
+
+  .lbl {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip-path: none;
+  }
+
+  .pct {
+    display: inline;
+  }
+
+  /* A property with no figures: its name, then the note. */
+  .rowEmpty {
+    grid-template-areas: none;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .empty {
+    grid-column: 1 / -1;
+  }
+}
