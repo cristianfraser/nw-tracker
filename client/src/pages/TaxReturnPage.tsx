@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Button } from "@crfrsr/ui";
 import { useTranslation } from "react-i18next";
 import { Loadable } from "../components/ui/Loadable";
 import { useTaxReturn, useUsTaxReturn } from "../queries/hooks";
@@ -72,7 +73,19 @@ export function TaxReturnPage() {
   return (
     <main>
       <h1>{t("taxReturn.title")}</h1>
-      {queryLoadError(q) ? <p className="error">{(q.error as Error).message}</p> : null}
+      {queryLoadError(q) ? (
+        <>
+          <p className="error">{(q.error as Error).message}</p>
+          {/* The picker needs a loaded year: a chosen year that fails leaves a way back to the default one. */}
+          {taxYear != null ? (
+            <p>
+              <Button variant="secondary" onClick={() => setTaxYear(null)}>
+                {t("taxReturn.backToDefaultYear")}
+              </Button>
+            </p>
+          ) : null}
+        </>
+      ) : null}
       {jurisdiction === "us" && queryLoadError(usQ) ? <p className="error">{(usQ.error as Error).message}</p> : null}
       {queryLoadError(q) ? null : (
         <Loadable loading={loading} className="page-grid">

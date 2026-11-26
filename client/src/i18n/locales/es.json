@@ -2242,7 +2242,7 @@
       "viewLabel": "Vista de la lista",
       "viewAll": "Todos",
       "viewFlagged": "Diferencias ({{count}})",
-      "noneFlagged": "Nada difiere de lo presentado."
+      "noneFlagged": "Sin diferencias: todas las fuentes coinciden."
     },
     "groups": {
       "income": "Rentas",
@@ -2806,6 +2806,7 @@
       "provisional": "El reajuste a diciembre llega hasta {{month}}, el último IPC publicado."
     },
     "dividends": {
+      "summaryGross": "bruto",
       "pendingCount": "{{count}} pendientes",
       "title": "Dividendos del extranjero",
       "explain": "Convertidos al dólar observado del 31 de diciembre de {{year}} ({{rate}}): código 1104 el neto, 748 el impuesto retenido, 1018 su crédito.",
@@ -2916,6 +2917,7 @@
     },
     "provisionalYear": "{{year}} no ha cerrado: la UTA, el dólar y el IPC de diciembre son los últimos publicados, así que el borrador es una estimación.",
     "salaryIncomplete": "Liquidaciones sin cotizaciones o totales leídos ({{months}}): el sueldo de esos meses queda sobrestimado o falta.",
+    "backToDefaultYear": "Volver al último año",
     "taxYearLabel": "Año tributario",
     "taxYearOption": "AT{{year}} (ingresos {{income}})",
     "estimatedTitle": "Estimado desde la app hasta que el tercero lo informe",

@@ -17,7 +17,10 @@ export type TaxCodeRow = {
   /** Draft less filed where the draft changes the filed value. */
   difference: number | null;
   changed: boolean;
-  informedMismatch: boolean;
+  /** The third-party figure is unlike the filed one (or the draft's, with no filed form). */
+  informedDiffers: boolean;
+  /** Listed by «Differences»: the server's flag. */
+  flagged: boolean;
   /** Every source that states the row states the same value. */
   sourcesAgree: boolean;
   estimated: boolean;
@@ -32,7 +35,7 @@ type View = "all" | "flagged";
  * difference under a header; a row whose sources agree prints its repeated values muted. Wrapped:
  * code, concept, the value and a mark per source that states it; a row whose sources differ adds
  * a line naming each value. A code the draft changes carries a red rule, a third-party figure
- * unlike the filed one an amber rule; «Differences» lists only those.
+ * that differs an amber rule; «Differences» lists only those.
  */
 export function TaxCodeList({
   title,
@@ -59,7 +62,7 @@ export function TaxCodeList({
 }) {
   const { t } = useTranslation();
   const [view, setView] = useState<View>("all");
-  const shown = view === "flagged" ? rows.filter((r) => r.changed || r.informedMismatch) : rows;
+  const shown = view === "flagged" ? rows.filter((r) => r.flagged) : rows;
   const cell = (n: number | null) => (n == null ? "—" : money(n));
   const value = (label: string, n: number | null, className?: string, prefix = "") => (
     <span className={cn(styles.num, n == null && styles.empty, className)}>
@@ -144,7 +147,7 @@ export function TaxCodeList({
                     styles.codeRow,
                     r.strong && styles.strong,
                     r.faint && styles.faint,
-                    r.changed ? styles.changed : r.informedMismatch ? styles.mismatch : undefined,
+                    r.changed ? styles.changed : r.informedDiffers ? styles.mismatch : undefined,
                     !r.sourcesAgree && styles.differs
                   )}
                 >
@@ -167,7 +170,7 @@ export function TaxCodeList({
                   </span>
                   <span className={styles.values}>
                     {value(labels.filed, r.filed)}
-                    {withInformed ? value(labels.informed, r.informed, r.informedMismatch ? styles.warn : repeat) : null}
+                    {withInformed ? value(labels.informed, r.informed, r.informedDiffers ? styles.warn : repeat) : null}
                     <span
                    
                       className={cn(styles.num, r.draft == null && styles.empty, repeat)}

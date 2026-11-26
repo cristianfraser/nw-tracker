@@ -257,15 +257,14 @@ function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   const w = data.payroll_withholding;
   if (w.payslips === 0) return null;
-  const anyDiffers = w.months.some((m) => m.differs);
   return (
     <TaxSection
       id="payroll-withholding"
       title={t("taxReturn.payroll.title")}
       summary={
         <>
-          {countLabel(t, "taxReturn.count.payslips", "taxReturn.count.payslipsOne", w.months.length)} ·{" "}
-          <span className={anyDiffers ? styles.bad : undefined}>
+          {countLabel(t, "taxReturn.count.payslips", "taxReturn.count.payslipsOne", w.checked_payslips)} ·{" "}
+          <span className={w.differs ? styles.bad : undefined}>
             {t("taxReturn.payroll.summaryDifference", { difference: formatF22Pesos(w.difference) })}
           </span>
         </>
@@ -355,7 +354,7 @@ function CryptoSection({ data }: { data: TaxReturnResponse }) {
 function DividendsSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   if (data.dividends.length === 0) return null;
-  const missing = data.dividends.filter((d) => d.gross_usd == null).length;
+  const missing = data.dividends_pending;
   const usdOrMissing = (n: number | null) => (n == null ? t("taxReturn.dividends.missingDetail") : formatTaxDocumentDollars(n));
   return (
     <TaxSection
@@ -363,7 +362,8 @@ function DividendsSection({ data }: { data: TaxReturnResponse }) {
       title={t("taxReturn.dividends.title")}
       summary={
         <>
-          {countLabel(t, "taxReturn.count.lines", "taxReturn.count.linesOne", data.dividends.length)} · <b>{formatF22Pesos(data.dividends_gross_clp)}</b>
+          {countLabel(t, "taxReturn.count.lines", "taxReturn.count.linesOne", data.dividends.length)} · {t("taxReturn.dividends.summaryGross")}{" "}
+          <b>{formatF22Pesos(data.dividends_gross_clp)}</b>
           {missing > 0 ? <span className={styles.bad}> · {t("taxReturn.dividends.pendingCount", { count: missing })}</span> : null}
         </>
       }
@@ -675,7 +675,7 @@ function ForeignFxSection({ data }: { data: TaxReturnResponse }) {
       title={t("taxReturn.foreignFx.title")}
       summary={
         <>
-          {countLabel(t, "taxReturn.count.lines", "taxReturn.count.linesOne", f.disposals.length + f.fees.length + f.deferred.length)} ·{" "}
+          {countLabel(t, "taxReturn.count.lines", "taxReturn.count.linesOne", f.listed_lines)} ·{" "}
           <b>{formatF22Pesos(f.result_december_clp)}</b>
         </>
       }
@@ -770,7 +770,8 @@ export function F22ReturnSections({ data, loading, controls }: { data: TaxReturn
     draft: r.draft,
     difference: r.difference,
     changed: r.changed,
-    informedMismatch: r.informed_mismatch,
+    informedDiffers: r.informed_differs,
+    flagged: r.flagged,
     sourcesAgree: r.sources_agree,
     estimated: r.estimated,
     strong: r.section === "subtotal" || r.section === "result",
@@ -788,6 +789,7 @@ export function F22ReturnSections({ data, loading, controls }: { data: TaxReturn
       </PageGridTile>
       <PageGridTile id="f22">
         <TaxCodeList
+          key={data?.tax_year ?? "pending"}
           title={t("taxReturn.list.f22Title", { year: data?.tax_year ?? "" })}
           rows={rows}
           flaggedCount={data?.flagged_codes ?? 0}
@@ -815,7 +817,7 @@ export function F22ReturnSections({ data, loading, controls }: { data: TaxReturn
       {/* The sections are server-decided absences; they wait for the response so none shows up for
           a year that has not loaded. */}
       {data ? (
-        <PageGridTile id="f22-sections">
+        <PageGridTile id="f22-sections" key={data.tax_year}>
           <BasisSection data={data} />
           <SettlementSection data={data} />
           <LossOffsetSection data={data} />

@@ -109,10 +109,6 @@
   color: var(--negative);
 }
 
-.ok {
-  color: var(--positive);
-}
-
 .warn {
   color: #f59e0b;
 }

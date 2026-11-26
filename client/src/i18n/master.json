@@ -7235,8 +7235,8 @@
         "es": "Diferencias ({{count}})"
       },
       "noneFlagged": {
-        "en": "Nothing differs from what was filed.",
-        "es": "Nada difiere de lo presentado."
+        "en": "No difference: every source agrees.",
+        "es": "Sin diferencias: todas las fuentes coinciden."
       }
     },
     "groups": {
@@ -8875,6 +8875,10 @@
       }
     },
     "dividends": {
+      "summaryGross": {
+        "en": "gross",
+        "es": "bruto"
+      },
       "pendingCount": {
         "en": "{{count}} pending",
         "es": "{{count}} pendientes"
@@ -9239,6 +9243,10 @@
     "salaryIncomplete": {
       "en": "Payslips with contributions or totals not read ({{months}}): the salary of those months is overstated or missing.",
       "es": "Liquidaciones sin cotizaciones o totales leídos ({{months}}): el sueldo de esos meses queda sobrestimado o falta."
+    },
+    "backToDefaultYear": {
+      "en": "Back to the latest year",
+      "es": "Volver al último año"
     },
     "taxYearLabel": {
       "en": "Tax year",

@@ -40,6 +40,10 @@ export type F22PayloadRow = {
   difference: number | null;
   /** Informed by a third party and ≠ filed. */
   informed_mismatch: boolean;
+  /** The third-party figure is unlike the value it stands beside: the filed one, or the draft's in a year with no filed form. */
+  informed_differs: boolean;
+  /** Listed by the «differences» view and marked in the list: a changed code, or one whose third-party figure differs. */
+  flagged: boolean;
   /** Every source that states the code (filed, informed, draft) states the same value. */
   sources_agree: boolean;
   /** The draft's value is the app's estimate of a code a third party reports later. */
@@ -121,20 +125,26 @@ const ROW_GROUP: ReadonlyMap<number, F22RowGroup> = (() => {
 /**
  * How a code's three sources compare. `changed` needs filed and draft and never marks the payment
  * section (the draft leaves it to the SII); `sources_agree` holds while every source that states
- * the code states one value, so a code only the draft has agrees.
+ * the code states one value, so a code only the draft has agrees. The third-party figure is read
+ * against the filed value, or against the draft's in a year with no filed form (the year being
+ * prepared), and a code is `flagged` when the draft changes it or that figure differs.
  */
 export function f22RowComparison(
   section: F22RowSection,
   filed: number | null,
   informed: number | null,
   draft: number | null
-): Pick<F22PayloadRow, "changed" | "difference" | "informed_mismatch" | "sources_agree"> {
+): Pick<F22PayloadRow, "changed" | "difference" | "informed_mismatch" | "informed_differs" | "flagged" | "sources_agree"> {
   const changed = section !== "payment" && filed != null && draft != null && draft !== filed;
   const stated = [filed, informed, draft].filter((v): v is number => v != null);
+  const beside = filed ?? draft;
+  const informedDiffers = informed != null && beside != null && informed !== beside;
   return {
     changed,
     difference: changed ? draft - filed : null,
     informed_mismatch: informed != null && filed != null && informed !== filed,
+    informed_differs: informedDiffers,
+    flagged: changed || informedDiffers,
     sources_agree: stated.every((v) => v === stated[0]),
   };
 }
@@ -288,14 +298,15 @@ export function buildF22Payload(taxYear: number) {
     settlement: f22Settlement(d.taxYear, d.filed),
     payroll_withholding: (() => {
       const checks = buildPayslipChecks();
-      return { ...payrollWithholdingYear(d.incomeYear, checks), months: payrollWithholdingMonths(d.incomeYear, checks) };
+      const months = payrollWithholdingMonths(d.incomeYear, checks);
+      return { ...payrollWithholdingYear(d.incomeYear, checks), checked_payslips: months.length, differs: months.some((m) => m.differs), months };
     })(),
     rows,
     tax_filed: taxFiled,
     tax_draft: taxDraft,
     tax_difference: taxFiled != null && taxDraft != null ? taxDraft - taxFiled : null,
     changed_codes: rows.filter((r) => r.changed).length,
-    flagged_codes: rows.filter((r) => r.changed || r.informed_mismatch).length,
+    flagged_codes: rows.filter((r) => r.flagged).length,
     crypto: {
       method: d.crypto.method,
       fee_policy: d.crypto.feePolicy,
@@ -318,6 +329,7 @@ export function buildF22Payload(taxYear: number) {
     },
     dividends: dividendRows,
     dividends_gross_clp: dividendRows.reduce((a, x) => a + (x.gross_clp ?? 0), 0),
+    dividends_pending: dividendRows.filter((x) => x.gross_usd == null).length,
     loss_offset: {
       parts: d.lossOffset.parts.map((x) => ({ source: x.source, gain_clp: x.gainClp, loss_clp: x.lossClp })),
       ...offsetBalancePayload(d.lossOffset),
@@ -446,6 +458,7 @@ export function buildF22Payload(taxYear: number) {
         gain_clp: x.gainClp,
       })),
       deferred_clp: d.foreignFx.deferredClp,
+      listed_lines: d.foreignFx.disposals.length + d.foreignFx.fees.length,
       by_currency: d.foreignFx.byCurrency.map((c) => ({
         currency: c.currency,
         disposals: c.disposals,

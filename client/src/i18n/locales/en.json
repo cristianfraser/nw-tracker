@@ -2242,7 +2242,7 @@
       "viewLabel": "List view",
       "viewAll": "All",
       "viewFlagged": "Differences ({{count}})",
-      "noneFlagged": "Nothing differs from what was filed."
+      "noneFlagged": "No difference: every source agrees."
     },
     "groups": {
       "income": "Income",
@@ -2806,6 +2806,7 @@
       "provisional": "The reajuste to December runs to {{month}}, the latest IPC published."
     },
     "dividends": {
+      "summaryGross": "gross",
       "pendingCount": "{{count}} pending",
       "title": "Foreign dividends",
       "explain": "Converted at the dólar observado of December 31, {{year}} ({{rate}}): code 1104 the net, 748 the tax withheld, 1018 its credit.",
@@ -2916,6 +2917,7 @@
     },
     "provisionalYear": "{{year}} has not closed: December's UTA, dollar and IPC are the latest published, so the draft is an estimate.",
     "salaryIncomplete": "Payslips with contributions or totals not read ({{months}}): the salary of those months is overstated or missing.",
+    "backToDefaultYear": "Back to the latest year",
     "taxYearLabel": "Tax year",
     "taxYearOption": "AT{{year}} (income {{income}})",
     "estimatedTitle": "Estimated from the ledger until the third party reports it",

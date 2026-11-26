@@ -190,7 +190,7 @@ export function buildF1040Payload(taxYear: number, todayYmd: string = chileWallC
     },
     rows,
     schedules: schedules(d),
-    schedule_b: { interest: d.scheduleB.interestRows, dividends: d.scheduleB.dividendRows, qualified_dividends: d.scheduleB.qualifiedDividends },
+    schedule_b: { interest: d.scheduleB.interestRows, dividends: d.scheduleB.dividendRows, qualified_dividends: d.scheduleB.qualifiedDividends, lines: d.scheduleB.interestRows.length + d.scheduleB.dividendRows.length },
     form_8949: d.form8949.map((r) => ({
       box: r.box,
       term: r.term,

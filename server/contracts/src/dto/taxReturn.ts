@@ -24,6 +24,10 @@ export type TaxReturnRow = {
   /** Draft less filed for a `changed` code; null otherwise. */
   difference: number | null;
   informed_mismatch: boolean;
+  /** The third-party figure is unlike the value it stands beside: the filed one, or the draft's in a year with no filed form. */
+  informed_differs: boolean;
+  /** Listed by the «differences» view and marked in the list: a changed code, or one whose third-party figure differs. */
+  flagged: boolean;
   /** Every source that states the code (filed, informed, draft) states the same value. */
   sources_agree: boolean;
   estimated: boolean;
@@ -149,6 +153,8 @@ export type TaxReturnForeignFx = {
   /** What the other posture would have realized (information only). */
   deferred: { date: string; account_name: string; currency: string; amount: number; gain_clp: number }[]; // convention-ok: an F22 figure is stated in pesos by law
   deferred_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  /** How many rows the section lists: the realized outflows and the fees (the deferred ones are one total). */
+  listed_lines: number;
   /** Each currency's share of the year, in pesos (the codes take their sum). */
   by_currency: {
     currency: string;
@@ -367,6 +373,10 @@ export type TaxReturnResponse = {
     by_table: number;
     difference: number;
     months_with_differences: string[];
+    /** The payslips checked against the table (a payslip waiting for its month's parameters is not): the rows of `months`. */
+    checked_payslips: number;
+    /** Some checked payslip withheld something other than the table's tax. */
+    differs: boolean;
     months: { payslip_id: number; period_month: string; origin: "document" | "rebuilt"; withheld: number; by_table: number; difference: number; differs: boolean }[];
   };
   rows: TaxReturnRow[];
@@ -377,7 +387,7 @@ export type TaxReturnResponse = {
   tax_difference: number | null;
   /** How many codes the draft changes against the filed form. */
   changed_codes: number;
-  /** How many rows the «differences» view lists: a changed code, or a third-party figure unlike the filed one. */
+  /** How many rows the «differences» view lists (`flagged`). */
   flagged_codes: number;
   crypto: {
     method: "fifo" | "lifo" | "average";
@@ -392,6 +402,8 @@ export type TaxReturnResponse = {
   dividends: TaxReturnDividend[];
   /** The dividends' gross in pesos, the ones with their broker detail (the rest are pending). */
   dividends_gross_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  /** How many dividends wait for their broker detail. */
+  dividends_pending: number;
   loss_offset: TaxReturnLossOffset;
   /** Foreign share sales netted among themselves: a loss offsets nothing else. */
   foreign_share_offset: TaxReturnOffsetBalance;
@@ -623,7 +635,8 @@ export type UsTaxReturnResponse = {
   rows: UsTaxReturnRow[];
   /** The schedules and worksheets behind the lines (empty when not drafted). */
   schedules: UsTaxReturnSchedule[];
-  schedule_b: { interest: UsTaxReturnPayerRow[]; dividends: UsTaxReturnPayerRow[]; qualified_dividends: number } | null;
+  /** `lines`: how many payer rows the two parts list together. */
+  schedule_b: { interest: UsTaxReturnPayerRow[]; dividends: UsTaxReturnPayerRow[]; qualified_dividends: number; lines: number } | null;
   form_8949: UsTaxReturnForm8949Row[];
   /** Capital loss carried in from last year and out to next year (positive losses). */
   capital_loss_carryover: { in: { short_term: number; long_term: number }; out: { short_term: number; long_term: number } } | null;

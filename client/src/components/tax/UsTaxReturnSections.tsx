@@ -160,7 +160,7 @@ function UsScheduleBSection({ data }: { data: UsTaxReturnResponse }) {
     />
   );
   return (
-    <TaxSection id="f1040-schedule-b" title={t("taxReturn.us.scheduleB.title")} summary={countLabel(t, "taxReturn.count.lines", "taxReturn.count.linesOne", b.interest.length + b.dividends.length)}>
+    <TaxSection id="f1040-schedule-b" title={t("taxReturn.us.scheduleB.title")} summary={countLabel(t, "taxReturn.count.lines", "taxReturn.count.linesOne", b.lines)}>
       {b.interest.length > 0 ? (
         <>
           <h3>{t("taxReturn.us.scheduleB.interest")}</h3>
@@ -550,7 +550,8 @@ export function UsTaxReturnSections({
     draft: r.draft,
     difference: r.difference,
     changed: r.changed,
-    informedMismatch: false,
+    informedDiffers: false,
+    flagged: r.changed,
     sourcesAgree: !r.changed,
     estimated: false,
     strong: r.section === "subtotal" || r.section === "result",
@@ -579,6 +580,7 @@ export function UsTaxReturnSections({
       {!data || data.drafted ? (
         <PageGridTile id="f1040">
           <TaxCodeList
+            key={data?.tax_year ?? "pending"}
             title={t("taxReturn.us.title", { year: data?.tax_year ?? "" })}
             rows={rows}
             flaggedCount={data?.changed_lines ?? 0}
@@ -599,7 +601,7 @@ export function UsTaxReturnSections({
         </PageGridTile>
       ) : null}
       {data ? (
-        <PageGridTile id="f1040-sections" className={loadableClass(loading)}>
+        <PageGridTile id="f1040-sections" key={data.tax_year} className={loadableClass(loading)}>
           <UsNotesSection data={data} />
           <UsSettlementSection data={data} />
           {data.drafted ? <UsSchedulesSection data={data} /> : null}

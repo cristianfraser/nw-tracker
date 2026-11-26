@@ -166,18 +166,19 @@ describe("art. 107 fund on the F22 draft", () => {
     // The list's groups follow the layout: art. 107's result sits with the income codes, its tax with the taxes.
     expect(row(1813)).toMatchObject({ group: "income", sources_agree: false, changed: false, difference: null });
     expect(row(1830)).toMatchObject({ group: "tax", sources_agree: true });
-    expect(p.flagged_codes).toBe(p.rows.filter((r) => r.changed || r.informed_mismatch).length);
+    expect(row(1813)).toMatchObject({ flagged: true });
+    expect(p.flagged_codes).toBe(p.rows.filter((r) => r.flagged).length);
   });
 });
 
 describe("f22RowComparison", () => {
   it("marks a draft unlike the filed value, with its difference", () => {
-    expect(f22RowComparison("income", 100, null, 130)).toEqual({ changed: true, difference: 30, informed_mismatch: false, sources_agree: false });
-    expect(f22RowComparison("income", 100, 100, 100)).toEqual({ changed: false, difference: null, informed_mismatch: false, sources_agree: true });
+    expect(f22RowComparison("income", 100, null, 130)).toEqual({ changed: true, difference: 30, informed_mismatch: false, informed_differs: false, flagged: true, sources_agree: false });
+    expect(f22RowComparison("income", 100, 100, 100)).toEqual({ changed: false, difference: null, informed_mismatch: false, informed_differs: false, flagged: false, sources_agree: true });
   });
 
   it("marks a third-party figure unlike the filed one without calling the code changed", () => {
-    expect(f22RowComparison("memo", 100, 250, 100)).toEqual({ changed: false, difference: null, informed_mismatch: true, sources_agree: false });
+    expect(f22RowComparison("memo", 100, 250, 100)).toEqual({ changed: false, difference: null, informed_mismatch: true, informed_differs: true, flagged: true, sources_agree: false });
   });
 
   it("never marks the payment section, which the draft leaves to the SII", () => {
@@ -186,6 +187,11 @@ describe("f22RowComparison", () => {
 
   it("reads a code only one source states as agreeing", () => {
     expect(f22RowComparison("income", null, null, 130)).toMatchObject({ changed: false, sources_agree: true });
-    expect(f22RowComparison("memo", null, 80, null)).toMatchObject({ informed_mismatch: false, sources_agree: true });
+    expect(f22RowComparison("memo", null, 80, null)).toMatchObject({ informed_mismatch: false, flagged: false, sources_agree: true });
+  });
+
+  it("reads the third-party figure against the draft in a year with no filed form", () => {
+    expect(f22RowComparison("memo", null, 300, 180)).toMatchObject({ changed: false, informed_mismatch: false, informed_differs: true, flagged: true, sources_agree: false });
+    expect(f22RowComparison("memo", null, 180, 180)).toMatchObject({ informed_differs: false, flagged: false, sources_agree: true });
   });
 });
