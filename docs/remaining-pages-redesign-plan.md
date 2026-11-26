@@ -32,13 +32,13 @@ proposed split into one-session work items.
 | `/account/:id` cuenta corriente / vista, and every other cash ledger (a broker's peso or dollar cash, the exchange's peso wallet, a foreign-currency account; item B1, done) | `CheckingAccountDetailPage` | redesigned |
 | `/account/:id` property, mortgage | `DeptoAccountDetailPage` | redesigned |
 | `/account/:id` everything else: stock, coin, fund (AFP, AFC, APV), an account valued by stored balances, an option contract (item B2, done) | `PositionAccountDetailPage` | redesigned |
-| `/flows` | `FlowsOverviewPage` | **old**, mild (item J) |
+| `/flows` | `FlowsOverviewPage` | redesigned |
 | `/flows/income`, `/flows/expenses`, `/flows/expenses/groceries`, `/flows/expenses/real_estate[/:slug]`, `/flows/deposits`, `/flows/pl` | income, expenses, groceries, flows tables | redesigned |
 | `/flows/deposits/reconciliation` | `DepositsReconciliationPage` | **old** (item E) |
 | `/rates` | `RatesPage` | redesigned |
 | `/tax-return` | `TaxReturnPage`, `UsTaxReturnSections` | **old** (item G) |
-| `/projections` | `ProjectionsPage` | **old** (item I) |
-| `/wealth-percentile` | `WealthPercentilePage` | **old** (item I) |
+| `/projections` (item I, done) | `ProjectionsPage` | redesigned |
+| `/wealth-percentile` (item I, done) | `WealthPercentilePage` | redesigned |
 | `/watchlist` | `WatchlistPage` | redesigned |
 | `/panel/notifications` | `NotificationsPage` (messages table) | redesigned |
 | `/panel/mirror-pairs` | `MirrorPairsPanelPage` | redesigned |
@@ -190,6 +190,17 @@ Two different kinds of account land here, and the page fits neither.
 
 ### I. `/projections` and `/wealth-percentile`
 
+> **Projections done (2026-11-26):** the position page's title line and band (chart | rail) with the
+> inputs under it in three groups that fold on a phone; the paragraph is the server's `glance`
+> (`projectionsGlance` in `projections.ts`). Detail in `.claude/rules/tax.md` «Projections».
+
+> **Wealth percentile done (2026-11-26):** the same title line (today's percentile in Chile as the
+> figure) and band (the chart | a rail that is its legend and holds the country buttons) over one
+> year list on the dashboard Returns list's base, whose years open into their thresholds; the
+> footnote marks are words. The payload is the display shape (`wealthPercentile.ts`: `today`,
+> `rows` newest first with `notes`, `chart`, `benchmark_order`). Detail in `.claude/rules/tax.md`
+> «Wealth percentile».
+
 - Projections: twelve inputs fill the whole first phone screen before any result; the result is
   a dense paragraph («Balance at 65: … · net worth … (today's money; strategies on …)»); the
   chart comes after both. Inputs are `Input` fields without the residency form's grouping.
@@ -200,6 +211,11 @@ Two different kinds of account land here, and the page fits neither.
   returns table for the percentile years.
 
 ### J. `/flows` overview
+
+> **Done (2026-11-26):** `FlowsOverviewPeriodList` on the income page's month rows. The user's
+> steer on the mockup: the row's bar is centred on zero like the «Flows and P/L» chart (expenses
+> left, deposits and P/L right, negatives on the other side). `/flows/pl` got the same rows
+> afterwards (`FlowsPlPeriodList`: P/L by bucket around zero, opening into its running totals).
 
 - Chart plus a paginated `ColumnTable` «Month detail». It has a phone rendering and does not
   overflow (3,700px). Its issue is consistency: the income and expenses pages next to it now
@@ -253,7 +269,7 @@ item is a group, the group page with a single account shows that account page's 
 | F | Import-sync panels | No (check at start) | `components/sync/*` |
 | G | Tax return | Check at start; the F22 rows are server-built, a «differs from filed» flag per code may be missing | `TaxReturnPage.tsx`, `components/tax/` |
 | H | Accounts panel | No | `AccountsPanelPage.tsx`, `components/panel/` |
-| I | Projections and wealth percentile | Projections: the summary sentence as structured figures. Percentile: no | `ProjectionsPage.tsx`, `WealthPercentilePage.tsx` |
+| I (done) | Projections and wealth percentile | Done: projections serve their `glance`; the percentile payload carries the headline, the row and country order and each year's notes | `ProjectionsPage.tsx`, `WealthPercentilePage.tsx` |
 | J | Flows overview: its «Month detail» table replaced by the income / deposits period table component, not a new table | No | `FlowsOverviewPage.tsx` |
 | K | Leftovers (usage, settings top, dead code) | No | small |
 

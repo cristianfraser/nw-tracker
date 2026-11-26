@@ -4,7 +4,11 @@
    two hairlines, then row A [P/L mensual 7 | Rentabilidad 5] split by a hairline
    in the gutter, then Movimientos and Detalle each across the page (side by side their rows
    could not stay on one line at the app's sizes). One column below 880, in DOM order (the chart
-   before the rail). */
+   before the rail).
+
+   The band's classes (`band`, `bandChart`, `bandRail`) are also the wealth-percentile page's
+   (WealthPercentilePage.tsx) and the projections page's (ProjectionsPage.tsx): a change to them
+   changes the three pages. */
 
 :global(.page-grid).band {
   border-top: 1px solid var(--hairline);

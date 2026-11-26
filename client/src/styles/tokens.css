@@ -65,6 +65,8 @@
   --cuota-billed: #f59e0b;
   /** Dividends received (the stock page's composition bar). */
   --dividends: #f59e0b;
+  /** A figure that is an own estimate, not a printed source's (the wealth percentile's notes). */
+  --estimate: #f59e0b;
   /** The APV state bonus inside a fund's value (the unit-position page's composition bar). */
   --state-bonus: #a78bfa;
   --chart-panel-min-height: 420px;

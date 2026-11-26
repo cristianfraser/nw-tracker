@@ -1,29 +1,18 @@
 import { useMemo } from "react";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { FlowsPlChart } from "../components/charts/FlowsPlChart";
-import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
 import { FlowsPlAccountRows } from "../components/flows/FlowsPlAccountRows";
-import { ColumnTable, type TableColumn } from "../components/ui/ColumnTable";
+import { FlowsPlPeriodList } from "../components/flows/FlowsPlPeriodList";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { loadableClass } from "../components/ui/Loadable";
-import {
-  flowTableGranularity,
-  flowPeriodLabel,
-  formatFlowMoney,
-} from "../flowsDisplay";
+import { flowTableGranularity, formatFlowMoney } from "../flowsDisplay";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import { rollupFlowsPlChartPointsByYear } from "../flowsPlAggregate";
 import { flowsPlBucketLabel, useTranslation } from "../i18n";
 import { useFlowsPl } from "../queries/hooks";
-import type { FlowsPlBucketSlug } from "../types";
 import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
-
-const PAGE_SIZE = 12;
-
-/** The table's bucket columns, in the server's bucket order (`FLOWS_PL_BUCKETS`). */
-const PL_TABLE_BUCKETS: FlowsPlBucketSlug[] = ["brokerage", "retirement", "cash", "real_estate"];
 
 /** Flows → PL: monthly market P/L of the buckets (brokerage / retiro / efectivo / inmuebles) — the flows overview's P/L. */
 export function FlowsPlPage() {
@@ -41,7 +30,7 @@ export function FlowsPlPage() {
     />
   );
   const chartGranularity = metricsPeriod;
-  // The detail table owns its período (month/year) and always covers full history.
+  // The period list owns its período (month/year) and always covers full history.
   const tablePrefs = useSurfacePrefs("flows.pl.table", "month", "total");
   const tableGranularity = flowTableGranularity(
     tablePrefs.period
@@ -73,42 +62,6 @@ export function FlowsPlPage() {
     );
   }, [chartGranularity, data, timeRange]);
 
-  /** Table rows: FULL history (no range clip), rolled to the table's own período. */
-  const tableRows = useMemo(() => {
-    if (!data) return [];
-    const monthly = data.chart_monthly;
-    const rows = tableGranularity === "year" ? rollupFlowsPlChartPointsByYear(monthly) : monthly;
-    return [...rows].reverse();
-  }, [data, tableGranularity]);
-  const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
-
-  type TableRow = (typeof pageRows)[number];
-  const moneyColumn = (
-    key: string,
-    header: string,
-    value: (row: TableRow) => number,
-    muted = false
-  ): TableColumn<TableRow> => ({
-    key,
-    header,
-    className: muted ? "mono muted" : "mono",
-    cardClassName: "mono",
-    cell: (row) => formatFlowMoney(value(row), displayUnit),
-  });
-  const tableColumns: TableColumn<TableRow>[] = [
-    {
-      key: "period",
-      header: t("flows.overview.colMonth"),
-      className: "mono",
-      cell: (row) => flowPeriodLabel(row.as_of_date, tableGranularity),
-      title: true,
-    },
-    ...PL_TABLE_BUCKETS.map((slug) => moneyColumn(slug, flowsPlBucketLabel(slug), (row) => row[slug])),
-    moneyColumn("total", t("flows.pl.colTotal"), (row) => row.total),
-    moneyColumn("ytd", t("flows.pl.colYtd"), (row) => row.ytd_total, true),
-    moneyColumn("cumulative", t("flows.pl.colCumulative"), (row) => row.cumulative_total, true),
-  ];
-
   if (err) {
     return <p className="error">{err}</p>;
   }
@@ -130,22 +83,21 @@ export function FlowsPlPage() {
 
       <PageGridTile id="detail">
         <div className="chart-panel-title-row">
-          <h3>{t("flows.overview.detailTitle")}</h3>
+          <h3>{t(tableGranularity === "year" ? "flows.pl.sectionYearly" : "flows.pl.sectionMonthly")}</h3>
           <SurfaceControls
             period={tablePrefs.period}
             onPeriodChange={tablePrefs.setPeriod}
             periodOptions={["month", "year"]}
           />
         </div>
-        <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-          <ColumnTable
-            rows={pageRows}
-            columns={tableColumns}
-            rowKey={(row) => row.as_of_date}
-            cardLayout="flat"
-            tableStyle={{ fontSize: "var(--font-size-prose)" }}
-          />
-        </PaginatedTable>
+        {/* Keyed by grain: the open rows and the page are the month view's or the year view's. */}
+        <FlowsPlPeriodList
+          key={tableGranularity}
+          months={data?.chart_monthly ?? null}
+          granularity={tableGranularity}
+          displayUnit={displayUnit}
+          loading={loading}
+        />
       </PageGridTile>
 
       <PageGridTile id="breakdown" className="page-grid">

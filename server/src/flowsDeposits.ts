@@ -88,9 +88,10 @@ export type FlowDepositRow = {
 
 
 /**
- * An AFP/AFC cotización (a positive pension event): payroll-deducted, shown apart from the
- * post-tax deposits by the flows overview and the /flows/deposits page. A negative one (a retiro
- * that reached checking) is an ordinary deposit row.
+ * A credit of an account only payroll funds (AFP, AFC, 401(k), HSA: a positive event). The
+ * /flows/deposits page shows these apart from the other accounts' deposits; the flows overview
+ * nets them against the payslips' deductions (`contributions_outside_payslip`). A negative one (a
+ * retiro that reached checking) is an ordinary deposit row.
  */
 export function isPreTaxDepositRow(row: Pick<FlowDepositRow, "kind_slug" | "amount_clp" | "pension_switch">): boolean {
   if (row.pension_switch) return true;
@@ -278,7 +279,7 @@ export function flowsDepositsNetTotalUsdByAccount(): Map<number, number> {
  *
  * `withMortgageCarrying` adds the carrying as negative rows on the property (`mortgage_carrying`)
  * so its deposits read amortización only — the flows overview's rule; then the total is the
- * overview's deposits + deposits_pre_tax. Its events must pair one-to-one by deposit movement:
+ * overview's deposits + contributions_outside_payslip. Its events must pair one-to-one by deposit movement:
  * the pesos (`clp`, which pair the events) and the unit's (`unit`).
  */
 export function flowDepositRowsInUnit(

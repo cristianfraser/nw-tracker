@@ -3,8 +3,8 @@
     "displayPreferences": {
       "toolbarAria": "Divisa de visualización",
       "displayCurrency": "Divisa: ",
-      "numberFormat": "Formato: ",
-      "chartStyle": "Gráficos: ",
+      "numberFormat": "Formato de números",
+      "chartStyle": "Estilo de gráficos",
       "chartStyles": {
         "plain": "Normal",
         "pen": "A mano: lápiz pasta",
@@ -480,7 +480,7 @@
     }
   },
   "settings": {
-    "language": "Idioma: ",
+    "language": "Idioma",
     "languageEs": "Español",
     "languageEn": "English"
   },
@@ -1397,21 +1397,23 @@
       "expensesBasis": "Gastos por mes de compra; cuotas en el mes facturado",
       "savings": "Ahorro",
       "deposits": "Depósitos",
-      "depositsPreTax": "AFP+AFC (cotizaciones)",
-      "depositsPreTaxShort": "Pre-impuesto",
+      "contributionsOutsidePayslip": "Aportes fuera de la liquidación",
       "cardSpentMinusPaid": "Tarjetas: gastado − pagado",
-      "cardSpentMinusPaidShort": "Tarjetas gastado − pagado",
       "cashChange": "Variación de caja",
       "cashFx": "Fx de caja",
       "cashUnexplained": "Sin explicar",
       "pl": "PL",
       "investmentsChange": "Variación inversiones",
-      "investmentsChangeShort": "Var. inversiones",
       "netWorthChange": "Variación patrimonio",
-      "netWorthChangeShort": "Var. patrimonio",
-      "detailTitle": "Detalle del mes",
-      "totalsLabel": "Totales:",
-      "colMonth": "Mes"
+      "summaryLabel": "Variación patrimonio histórica:",
+      "sectionMonthly": "Resumen mensual",
+      "sectionYearly": "Resumen anual",
+      "groupCash": "Caja",
+      "groupInvestments": "Inversiones",
+      "groupNetWorth": "Patrimonio",
+      "legendTotal": "total: variación patrimonio",
+      "rowLabel": "{{period}}: variación patrimonio {{total}} ({{parts}})",
+      "emptyMonths": "Sin datos de flujos."
     },
     "pl": {
       "title": "PL",
@@ -1423,7 +1425,12 @@
       "colYtd": "YTD",
       "colCumulative": "Acumulado",
       "totalsLabel": "Total",
-      "breakdownTitle": "Desglose por cuenta"
+      "breakdownTitle": "Desglose por cuenta",
+      "sectionMonthly": "Resumen mensual",
+      "sectionYearly": "Resumen anual",
+      "groupBuckets": "Por bucket",
+      "groupRunning": "Acumulados",
+      "rowLabel": "{{period}}: PL {{total}} ({{parts}})"
     },
     "filters": {
       "year": "Año",
@@ -1575,6 +1582,8 @@
     "checksPending": "pendiente (parámetros aún no publicados)"
   },
   "deposits": {
+    "partPayrollFunded": "Cuentas financiadas por planilla",
+    "partOther": "Otras cuentas",
     "totalLabel": "Total histórico:",
     "chartTitle": "Aportes por categoría",
     "chartEmpty": "Sin depósitos en este período.",
@@ -2039,17 +2048,7 @@
   "wealthPercentile": {
     "title": "Percentil de riqueza",
     "empty": "Sin datos de percentil.",
-    "chart": {
-      "seriesTotal": "Percentil total (CL)",
-      "seriesFinancial": "Percentil financiero (CL)",
-      "seriesBenchmark": "Percentil ({{country}})",
-      "scaleLabel": "Escala",
-      "scaleLinear": "Lineal",
-      "scaleLog": "Log (top %)"
-    },
-    "settings": {
-      "title": "Países de referencia"
-    },
+    "belowSupport": "< p10",
     "countries": {
       "US": "Estados Unidos",
       "ES": "España",
@@ -2062,20 +2061,57 @@
       "BR": "Brasil",
       "CN": "China continental"
     },
-    "tables": {
-      "myData": "Mis datos",
-      "countryData": "Datos país"
+    "headline": {
+      "inChile": "en Chile",
+      "top": "top {{percent}} %",
+      "financial": "Patrimonio financiero",
+      "netWorth": "patrimonio",
+      "asOf": "al {{date}}, contra la distribución de {{year}}"
     },
-    "table": {
+    "chart": {
+      "title": "Percentil por año",
+      "scaleLabel": "Escala",
+      "scaleLinear": "Lineal",
+      "scaleLog": "Log",
+      "scaleLinearName": "Escala lineal",
+      "scaleLogName": "Escala logarítmica (top %)"
+    },
+    "series": {
+      "chile": "Chile",
+      "chileFinancial": "Chile · financiero",
+      "chileFinancialWealth": "Chile · patrimonio financiero"
+    },
+    "rail": {
+      "title": "Hoy, por país",
+      "compareWith": "Comparar con"
+    },
+    "years": {
+      "title": "Por año",
       "year": "Año",
       "netWorth": "Patrimonio",
-      "finNetWorth": "Patr. financiero"
+      "financial": "Financiero",
+      "chileFinancial": "Chile fin.",
+      "financialDetail": "financiero {{percentile}} · {{amount}}",
+      "rowLabel": "{{year}}: {{percentile}} en Chile, patrimonio {{netWorth}}, patrimonio financiero {{financialPercentile}}, {{financialNetWorth}}",
+      "thresholds": {
+        "title": "Cuánto pedía cada percentil en {{year}} y dónde estabas",
+        "distribution": "Distribución",
+        "you": "Tú"
+      }
     },
-    "belowSupport": "< p10",
-    "markers": {
-      "distributionYear": "* usa la distribución del último databook disponible ({{year}})",
-      "interpolated": "† parámetros interpolados 2022→2025",
-      "reconstructed": "‡ reconstrucción propia (no es cifra oficial de UBS)"
+    "notes": {
+      "latestDistribution": {
+        "tag": "distribución {{year}}",
+        "text": "aún no hay databook del año, así que se ubica en el último disponible."
+      },
+      "interpolated": {
+        "tag": "interpolada",
+        "text": "distribución interpolada entre el databook anterior y el siguiente, de metodologías distintas."
+      },
+      "reconstructed": {
+        "tag": "estimación propia",
+        "text": "distribución de Chile reconstruida con el Gini y el número de millonarios del informe; no es una cifra impresa de UBS."
+      }
     }
   },
   "projections": {
@@ -2083,34 +2119,68 @@
     "noChartData": "Sin datos de proyección.",
     "invalidRange": "Debe estar entre {{min}} y {{max}}",
     "reset": "Restablecer",
-    "params": {
-      "real_return_pct": "Retorno real % (acum.)",
-      "monthly_aporte": "Aporte mensual {{unit}}",
-      "inflation_pct": "Inflación {{code}} %",
-      "retire_return_pct": "Retorno real % (retiro)",
+    "subline": "Patrimonio a los {{age}} · {{month}} · dinero de hoy",
+    "chartTitle": "Patrimonio hasta los {{age}}",
+    "assumptions": "Supuestos",
+    "lines": {
+      "total_nw": "Patrimonio neto",
+      "invested": "Invertido",
+      "proj_nw": "Proyectado",
+      "proj_invested": "Invertido, proyectado",
+      "proj_nw_nominal": "Proyectado, nominal ({{code}} {{pct}}%)",
+      "proj_swr": "Retiro, SWR",
+      "proj_pct_balance": "Retiro, % del saldo",
+      "proj_fixed_income": "Retiro, renta fija",
+      "milestones": "{{from}}–{{to}}"
+    },
+    "rail": {
+      "netWorthAt": "patrimonio a los {{age}}",
+      "today": "hoy",
+      "contributions": "aportes",
+      "realGrowth": "crecimiento real",
+      "invested": "Invertido a los {{age}}",
+      "other": "Propiedades y efectivo",
+      "pot": "Fondo de retiro · invertido + {{pct}} del resto",
+      "incomeTitle": "Renta mensual desde los {{age}}",
+      "lastsHead": "dura",
+      "strategyAria": "{{name}}: {{amount}} al mes, {{lasts}}",
+      "rentNote": "Cada monto incluye {{amount}} de renta pasiva; la renta fija retira del fondo solo lo que esa renta no cubre.",
+      "initialNote": "% del saldo: la renta del primer mes; luego sigue al saldo."
+    },
+    "strategy": {
+      "swr": "SWR {{pct}}",
+      "pct_balance": "{{pct}} del saldo",
+      "fixed_income": "Renta fija"
+    },
+    "lasts": {
+      "end_age": "hasta los {{age}}",
+      "depleted": "se agota: {{age}}",
+      "always": "siempre"
+    },
+    "groups": {
+      "growth": "Crecimiento hasta los {{age}}",
+      "inflation": "Inflación",
+      "drawdown": "Retiro desde los {{age}}"
+    },
+    "groupSummary": {
+      "growth": "{{pct}} real · {{amount}} / mes",
+      "drawdown": "{{pct}} real · hasta los {{age}} · SWR {{swr}} · {{balance}} del saldo"
+    },
+    "fields": {
+      "real_return_pct": "Retorno real %",
+      "monthly_aporte": "Aporte mensual ({{unit}})",
+      "inflation_pct": "{{code}} %",
+      "retire_return_pct": "Retorno real %",
       "end_age": "Edad final",
       "swr_pct": "SWR %",
       "pct_balance_pct": "% del saldo",
-      "monthly_income": "Renta mensual {{unit}} (0 = SWR)",
-      "liquidate_other_pct": "% no-invertido liquidado a los 65",
-      "monthly_rent": "Renta pasiva mensual {{unit}} (retiro)"
+      "monthly_income": "Renta fija / mes ({{unit}})",
+      "monthly_rent": "Renta pasiva / mes ({{unit}})",
+      "liquidate_other_pct": "% de propiedades y efectivo vendido a los {{age}}"
     },
-    "inflationAssumption": "La inflación por defecto es un supuesto, no un pronóstico: {{list}}. La línea nominal de cada moneda usa la suya.",
-    "summary": {
-      "balanceAtRetire": "Saldo a los {{age}}",
-      "investedLabel": "invertido",
-      "totalLabel": "patrimonio",
-      "todaysMoney": "dinero de hoy",
-      "potDescription": "estrategias sobre {{pot}} = invertido + {{pct}}% del resto",
-      "rentIncluded": "Incluye renta pasiva de {{amount}}/mes en los ingresos; la estrategia de renta fija solo retira del fondo lo que la renta no cubre.",
-      "swr": "SWR {{pct}}%",
-      "pctBalance": "{{pct}}% del saldo",
-      "fixedIncome": "Renta fija",
-      "income": "{{amount}}/mes",
-      "initialIncome": "{{amount}}/mes inicial",
-      "depletes": "se agota a los {{age}} años",
-      "lasts": "dura hasta los {{age}}",
-      "neverDepletes": "nunca se agota; la renta varía con el saldo"
+    "hints": {
+      "inflation": "Los valores por defecto ({{list}}) son supuestos, no pronósticos. La línea nominal de cada moneda usa la suya.",
+      "fixedIncome": "Con renta fija 0 se usa la renta del SWR."
     }
   },
   "routeError": {
@@ -3059,12 +3129,9 @@
     "pagesTitle": "Páginas más visitadas",
     "pagesEmpty": "Sin visitas en este período.",
     "endpointsTitle": "Endpoints más lentos",
-    "endpointsHint": "Ordenados por p95. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB.",
+    "endpointsHint": "Ordenados por p95, la cifra de cada línea. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB.",
     "endpointsEmpty": "Sin solicitudes a la API en este período.",
-    "trendTitle": "Tendencia diaria",
-    "showTrend": "tendencia",
-    "trendShown": "mostrada",
-    "colPage": "Página",
+    "trendTitle": "Por día (tiempos en ms)",
     "colViews": "Visitas",
     "colSettleP50": "Carga p50 (ms)",
     "colSettleP95": "Carga p95 (ms)",
@@ -3072,9 +3139,7 @@
     "colUnsettled": "Dejadas antes de cargar",
     "colFetchedQueries": "Consultas pedidas",
     "colLastViewed": "Última visita",
-    "colEndpoint": "Endpoint",
     "colCount": "Solicitudes",
-    "colAvg": "Prom. (ms)",
     "colP50": "p50 (ms)",
     "colP95": "p95 (ms)",
     "colMax": "Máx. (ms)",
@@ -3082,9 +3147,25 @@
     "colWarm": "Caché caliente",
     "colErrors": "Errores 5xx / 4xx",
     "colSize": "Tamaño (KB)",
-    "colDay": "Día"
+    "colDay": "Día",
+    "lineP50": "p50 {{ms}} ms",
+    "lineP95": "p95 {{ms}} ms",
+    "lineMs": "{{ms}} ms",
+    "lineUnsettled": "dejadas antes de cargar: {{count}}",
+    "linePaths": "rutas: {{count}}",
+    "lineRequests": "solicitudes: {{count}}",
+    "lineTotal": "{{seconds}} s en total",
+    "lineErrors": "errores 5xx / 4xx: {{errors}}",
+    "colPaths": "Rutas",
+    "trendAvg": "Prom.",
+    "trendP50": "p50",
+    "trendP95": "p95",
+    "trendMax": "Máx."
   },
   "panelSettings": {
+    "display": {
+      "title": "Visualización"
+    },
     "taxResidency": {
       "title": "Residencia tributaria",
       "explain": "Dónde eres residente tributario, declarado desde un día: la declaración de renta lo lee para decidir el régimen de cada año (residente, no residente o el año de la partida). Sin períodos declarados eres residente tributario en Chile.",

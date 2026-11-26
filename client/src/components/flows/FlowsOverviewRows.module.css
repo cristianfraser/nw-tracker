@@ -1,0 +1,85 @@
+/* The flows overview's and the P/L page's period rows (FlowsOverviewPeriodList.tsx,
+   FlowsPlPeriodList.tsx): the income page's month rows (IncomeRows.module.css: frame, list, row,
+   parts, sub) with a bar around zero (ZeroBar.tsx) and, in an open row, the period's figures as
+   sums. The query below reads the income rows' frame (container
+   `income-rows`), on its own breakpoint. */
+
+/* A bar around zero, at the middle: what went out to the left, what came in to the right. */
+.bar {
+  display: flex;
+  height: 0.4rem;
+  min-width: 0;
+}
+
+.side {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  min-width: 0;
+  background: color-mix(in srgb, var(--hairline) 55%, transparent);
+}
+
+.side > i {
+  display: block;
+  height: 100%;
+}
+
+/* Segments run outward from zero. */
+.out {
+  flex-direction: row-reverse;
+  border-radius: 2px 0 0 2px;
+}
+
+.in {
+  border-radius: 0 2px 2px 0;
+}
+
+/* Zero: a line across the bar, between its two sides. */
+.in::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -0.2rem;
+  bottom: -0.2rem;
+  width: 1px;
+  background: var(--text);
+}
+
+/* A chart's line series (income, a total): a mark across the bar. */
+.side > .mark {
+  position: absolute;
+  top: -0.15rem;
+  bottom: -0.15rem;
+  width: 2px;
+  height: auto;
+}
+
+.side > .markIn {
+  margin-left: -1px;
+}
+
+.side > .markOut {
+  margin-right: -1px;
+}
+
+.line {
+  display: inline-block;
+  width: 2px;
+  height: 0.7rem;
+  margin-right: 0.3rem;
+  vertical-align: -0.1rem;
+}
+
+/* An open period: its figures as up to three sums. */
+.sums {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 22rem));
+  gap: 0.5rem 2rem;
+  padding: 0.5rem 0.15rem 0.5rem;
+}
+
+@container income-rows (max-width: 46rem) {
+  .sums {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

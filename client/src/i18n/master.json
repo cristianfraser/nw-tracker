@@ -10,12 +10,12 @@
         "es": "Divisa: "
       },
       "numberFormat": {
-        "en": "Format: ",
-        "es": "Formato: "
+        "en": "Number format",
+        "es": "Formato de números"
       },
       "chartStyle": {
-        "en": "Charts: ",
-        "es": "Gráficos: "
+        "en": "Chart style",
+        "es": "Estilo de gráficos"
       },
       "chartStyles": {
         "plain": { "en": "Normal", "es": "Normal" },
@@ -1414,8 +1414,8 @@
   },
   "settings": {
     "language": {
-      "en": "Language: ",
-      "es": "Idioma: "
+      "en": "Language",
+      "es": "Idioma"
     },
     "languageEs": {
       "en": "Español",
@@ -4316,21 +4316,13 @@
         "en": "Deposits",
         "es": "Depósitos"
       },
-      "depositsPreTax": {
-        "en": "AFP+AFC (contributions)",
-        "es": "AFP+AFC (cotizaciones)"
-      },
-      "depositsPreTaxShort": {
-        "en": "Pre-tax",
-        "es": "Pre-impuesto"
+      "contributionsOutsidePayslip": {
+        "en": "Contributions outside the payslip",
+        "es": "Aportes fuera de la liquidación"
       },
       "cardSpentMinusPaid": {
         "en": "Cards: spent − paid",
         "es": "Tarjetas: gastado − pagado"
-      },
-      "cardSpentMinusPaidShort": {
-        "en": "Cards spent − paid",
-        "es": "Tarjetas gastado − pagado"
       },
       "cashChange": {
         "en": "Cash change",
@@ -4352,29 +4344,45 @@
         "en": "Investments change",
         "es": "Variación inversiones"
       },
-      "investmentsChangeShort": {
-        "en": "Inv. change",
-        "es": "Var. inversiones"
-      },
       "netWorthChange": {
         "en": "Net-worth change",
         "es": "Variación patrimonio"
       },
-      "netWorthChangeShort": {
-        "en": "NW change",
-        "es": "Var. patrimonio"
+      "summaryLabel": {
+        "en": "Net-worth change, all time:",
+        "es": "Variación patrimonio histórica:"
       },
-      "detailTitle": {
-        "en": "Month detail",
-        "es": "Detalle del mes"
+      "sectionMonthly": {
+        "en": "Monthly summary",
+        "es": "Resumen mensual"
       },
-      "totalsLabel": {
-        "en": "Totals:",
-        "es": "Totales:"
+      "sectionYearly": {
+        "en": "Yearly summary",
+        "es": "Resumen anual"
       },
-      "colMonth": {
-        "en": "Month",
-        "es": "Mes"
+      "groupCash": {
+        "en": "Cash",
+        "es": "Caja"
+      },
+      "groupInvestments": {
+        "en": "Investments",
+        "es": "Inversiones"
+      },
+      "groupNetWorth": {
+        "en": "Net worth",
+        "es": "Patrimonio"
+      },
+      "legendTotal": {
+        "en": "total: net-worth change",
+        "es": "total: variación patrimonio"
+      },
+      "rowLabel": {
+        "en": "{{period}}: net-worth change {{total}} ({{parts}})",
+        "es": "{{period}}: variación patrimonio {{total}} ({{parts}})"
+      },
+      "emptyMonths": {
+        "en": "No flow data.",
+        "es": "Sin datos de flujos."
       }
     },
     "pl": {
@@ -4417,6 +4425,26 @@
       "breakdownTitle": {
         "en": "Breakdown by account",
         "es": "Desglose por cuenta"
+      },
+      "sectionMonthly": {
+        "en": "Monthly summary",
+        "es": "Resumen mensual"
+      },
+      "sectionYearly": {
+        "en": "Yearly summary",
+        "es": "Resumen anual"
+      },
+      "groupBuckets": {
+        "en": "By bucket",
+        "es": "Por bucket"
+      },
+      "groupRunning": {
+        "en": "Running totals",
+        "es": "Acumulados"
+      },
+      "rowLabel": {
+        "en": "{{period}}: P/L {{total}} ({{parts}})",
+        "es": "{{period}}: PL {{total}} ({{parts}})"
       }
     },
     "filters": {
@@ -4959,6 +4987,14 @@
     }
   },
   "deposits": {
+    "partPayrollFunded": {
+      "en": "Payroll-funded accounts",
+      "es": "Cuentas financiadas por planilla"
+    },
+    "partOther": {
+      "en": "Other accounts",
+      "es": "Otras cuentas"
+    },
     "totalLabel": {
       "en": "All-time total:",
       "es": "Total histórico:"
@@ -6557,37 +6593,9 @@
       "en": "No percentile data.",
       "es": "Sin datos de percentil."
     },
-    "chart": {
-      "seriesTotal": {
-        "en": "Total percentile (CL)",
-        "es": "Percentil total (CL)"
-      },
-      "seriesFinancial": {
-        "en": "Financial percentile (CL)",
-        "es": "Percentil financiero (CL)"
-      },
-      "seriesBenchmark": {
-        "en": "Percentile ({{country}})",
-        "es": "Percentil ({{country}})"
-      },
-      "scaleLabel": {
-        "en": "Scale",
-        "es": "Escala"
-      },
-      "scaleLinear": {
-        "en": "Linear",
-        "es": "Lineal"
-      },
-      "scaleLog": {
-        "en": "Log (top %)",
-        "es": "Log (top %)"
-      }
-    },
-    "settings": {
-      "title": {
-        "en": "Benchmark countries",
-        "es": "Países de referencia"
-      }
+    "belowSupport": {
+      "en": "< p10",
+      "es": "< p10"
     },
     "countries": {
       "US": {
@@ -6631,17 +6639,83 @@
         "es": "China continental"
       }
     },
-    "tables": {
-      "myData": {
-        "en": "My data",
-        "es": "Mis datos"
+    "headline": {
+      "inChile": {
+        "en": "in Chile",
+        "es": "en Chile"
       },
-      "countryData": {
-        "en": "Country data",
-        "es": "Datos país"
+      "top": {
+        "en": "top {{percent}} %",
+        "es": "top {{percent}} %"
+      },
+      "financial": {
+        "en": "Financial wealth",
+        "es": "Patrimonio financiero"
+      },
+      "netWorth": {
+        "en": "net worth",
+        "es": "patrimonio"
+      },
+      "asOf": {
+        "en": "on {{date}}, against the {{year}} distribution",
+        "es": "al {{date}}, contra la distribución de {{year}}"
       }
     },
-    "table": {
+    "chart": {
+      "title": {
+        "en": "Percentile by year",
+        "es": "Percentil por año"
+      },
+      "scaleLabel": {
+        "en": "Scale",
+        "es": "Escala"
+      },
+      "scaleLinear": {
+        "en": "Linear",
+        "es": "Lineal"
+      },
+      "scaleLog": {
+        "en": "Log",
+        "es": "Log"
+      },
+      "scaleLinearName": {
+        "en": "Linear scale",
+        "es": "Escala lineal"
+      },
+      "scaleLogName": {
+        "en": "Log scale (top %)",
+        "es": "Escala logarítmica (top %)"
+      }
+    },
+    "series": {
+      "chile": {
+        "en": "Chile",
+        "es": "Chile"
+      },
+      "chileFinancial": {
+        "en": "Chile · financial",
+        "es": "Chile · financiero"
+      },
+      "chileFinancialWealth": {
+        "en": "Chile · financial wealth",
+        "es": "Chile · patrimonio financiero"
+      }
+    },
+    "rail": {
+      "title": {
+        "en": "Today, by country",
+        "es": "Hoy, por país"
+      },
+      "compareWith": {
+        "en": "Compare with",
+        "es": "Comparar con"
+      }
+    },
+    "years": {
+      "title": {
+        "en": "By year",
+        "es": "Por año"
+      },
       "year": {
         "en": "Year",
         "es": "Año"
@@ -6650,27 +6724,67 @@
         "en": "Net worth",
         "es": "Patrimonio"
       },
-      "finNetWorth": {
-        "en": "Fin. net worth",
-        "es": "Patr. financiero"
+      "financial": {
+        "en": "Financial",
+        "es": "Financiero"
+      },
+      "chileFinancial": {
+        "en": "Chile fin.",
+        "es": "Chile fin."
+      },
+      "financialDetail": {
+        "en": "financial {{percentile}} · {{amount}}",
+        "es": "financiero {{percentile}} · {{amount}}"
+      },
+      "rowLabel": {
+        "en": "{{year}}: {{percentile}} in Chile, net worth {{netWorth}}, financial wealth {{financialPercentile}}, {{financialNetWorth}}",
+        "es": "{{year}}: {{percentile}} en Chile, patrimonio {{netWorth}}, patrimonio financiero {{financialPercentile}}, {{financialNetWorth}}"
+      },
+      "thresholds": {
+        "title": {
+          "en": "What each percentile took in {{year}}, and where you stood",
+          "es": "Cuánto pedía cada percentil en {{year}} y dónde estabas"
+        },
+        "distribution": {
+          "en": "Distribution",
+          "es": "Distribución"
+        },
+        "you": {
+          "en": "You",
+          "es": "Tú"
+        }
       }
     },
-    "belowSupport": {
-      "en": "< p10",
-      "es": "< p10"
-    },
-    "markers": {
-      "distributionYear": {
-        "en": "* uses the latest available databook distribution ({{year}})",
-        "es": "* usa la distribución del último databook disponible ({{year}})"
+    "notes": {
+      "latestDistribution": {
+        "tag": {
+          "en": "{{year}} distribution",
+          "es": "distribución {{year}}"
+        },
+        "text": {
+          "en": "no databook for the year yet, so it is placed in the latest one.",
+          "es": "aún no hay databook del año, así que se ubica en el último disponible."
+        }
       },
       "interpolated": {
-        "en": "† parameters interpolated 2022→2025",
-        "es": "† parámetros interpolados 2022→2025"
+        "tag": {
+          "en": "interpolated",
+          "es": "interpolada"
+        },
+        "text": {
+          "en": "distribution interpolated between the databooks before and after it, whose methods differ.",
+          "es": "distribución interpolada entre el databook anterior y el siguiente, de metodologías distintas."
+        }
       },
       "reconstructed": {
-        "en": "‡ own reconstruction (not an official UBS figure)",
-        "es": "‡ reconstrucción propia (no es cifra oficial de UBS)"
+        "tag": {
+          "en": "own estimate",
+          "es": "estimación propia"
+        },
+        "text": {
+          "en": "Chile's distribution rebuilt from the report's Gini and millionaire count, not a printed UBS figure.",
+          "es": "distribución de Chile reconstruida con el Gini y el número de millonarios del informe; no es una cifra impresa de UBS."
+        }
       }
     }
   },
@@ -6691,22 +6805,174 @@
       "en": "Reset",
       "es": "Restablecer"
     },
-    "params": {
+    "subline": {
+      "en": "Net worth at {{age}} · {{month}} · today's money",
+      "es": "Patrimonio a los {{age}} · {{month}} · dinero de hoy"
+    },
+    "chartTitle": {
+      "en": "Net worth to {{age}}",
+      "es": "Patrimonio hasta los {{age}}"
+    },
+    "assumptions": {
+      "en": "Assumptions",
+      "es": "Supuestos"
+    },
+    "lines": {
+      "total_nw": {
+        "en": "Net worth",
+        "es": "Patrimonio neto"
+      },
+      "invested": {
+        "en": "Invested",
+        "es": "Invertido"
+      },
+      "proj_nw": {
+        "en": "Projected",
+        "es": "Proyectado"
+      },
+      "proj_invested": {
+        "en": "Invested, projected",
+        "es": "Invertido, proyectado"
+      },
+      "proj_nw_nominal": {
+        "en": "Projected, nominal ({{code}} {{pct}}%)",
+        "es": "Proyectado, nominal ({{code}} {{pct}}%)"
+      },
+      "proj_swr": {
+        "en": "Drawdown, SWR",
+        "es": "Retiro, SWR"
+      },
+      "proj_pct_balance": {
+        "en": "Drawdown, % of balance",
+        "es": "Retiro, % del saldo"
+      },
+      "proj_fixed_income": {
+        "en": "Drawdown, fixed income",
+        "es": "Retiro, renta fija"
+      },
+      "milestones": {
+        "en": "{{from}}–{{to}}",
+        "es": "{{from}}–{{to}}"
+      }
+    },
+    "rail": {
+      "netWorthAt": {
+        "en": "net worth at {{age}}",
+        "es": "patrimonio a los {{age}}"
+      },
+      "today": {
+        "en": "today",
+        "es": "hoy"
+      },
+      "contributions": {
+        "en": "contributions",
+        "es": "aportes"
+      },
+      "realGrowth": {
+        "en": "real growth",
+        "es": "crecimiento real"
+      },
+      "invested": {
+        "en": "Invested at {{age}}",
+        "es": "Invertido a los {{age}}"
+      },
+      "other": {
+        "en": "Property and cash",
+        "es": "Propiedades y efectivo"
+      },
+      "pot": {
+        "en": "Drawdown pot · invested + {{pct}} of the rest",
+        "es": "Fondo de retiro · invertido + {{pct}} del resto"
+      },
+      "incomeTitle": {
+        "en": "Monthly income from {{age}}",
+        "es": "Renta mensual desde los {{age}}"
+      },
+      "lastsHead": {
+        "en": "lasts",
+        "es": "dura"
+      },
+      "strategyAria": {
+        "en": "{{name}}: {{amount}} a month, {{lasts}}",
+        "es": "{{name}}: {{amount}} al mes, {{lasts}}"
+      },
+      "rentNote": {
+        "en": "Each income includes {{amount}} of passive rent; the fixed income draws from the pot only what the rent does not cover.",
+        "es": "Cada monto incluye {{amount}} de renta pasiva; la renta fija retira del fondo solo lo que esa renta no cubre."
+      },
+      "initialNote": {
+        "en": "% of balance: the first month's income; it then follows the balance.",
+        "es": "% del saldo: la renta del primer mes; luego sigue al saldo."
+      }
+    },
+    "strategy": {
+      "swr": {
+        "en": "SWR {{pct}}",
+        "es": "SWR {{pct}}"
+      },
+      "pct_balance": {
+        "en": "{{pct}} of balance",
+        "es": "{{pct}} del saldo"
+      },
+      "fixed_income": {
+        "en": "Fixed income",
+        "es": "Renta fija"
+      }
+    },
+    "lasts": {
+      "end_age": {
+        "en": "to {{age}}",
+        "es": "hasta los {{age}}"
+      },
+      "depleted": {
+        "en": "until {{age}}",
+        "es": "se agota: {{age}}"
+      },
+      "always": {
+        "en": "always",
+        "es": "siempre"
+      }
+    },
+    "groups": {
+      "growth": {
+        "en": "Growth to {{age}}",
+        "es": "Crecimiento hasta los {{age}}"
+      },
+      "inflation": {
+        "en": "Inflation",
+        "es": "Inflación"
+      },
+      "drawdown": {
+        "en": "Drawdown from {{age}}",
+        "es": "Retiro desde los {{age}}"
+      }
+    },
+    "groupSummary": {
+      "growth": {
+        "en": "{{pct}} real · {{amount}} / month",
+        "es": "{{pct}} real · {{amount}} / mes"
+      },
+      "drawdown": {
+        "en": "{{pct}} real · to {{age}} · SWR {{swr}} · {{balance}} of balance",
+        "es": "{{pct}} real · hasta los {{age}} · SWR {{swr}} · {{balance}} del saldo"
+      }
+    },
+    "fields": {
       "real_return_pct": {
-        "en": "Real return % (accum.)",
-        "es": "Retorno real % (acum.)"
+        "en": "Real return %",
+        "es": "Retorno real %"
       },
       "monthly_aporte": {
-        "en": "Monthly contribution {{unit}}",
-        "es": "Aporte mensual {{unit}}"
+        "en": "Monthly contribution ({{unit}})",
+        "es": "Aporte mensual ({{unit}})"
       },
       "inflation_pct": {
-        "en": "{{code}} inflation %",
-        "es": "Inflación {{code}} %"
+        "en": "{{code}} %",
+        "es": "{{code}} %"
       },
       "retire_return_pct": {
-        "en": "Real return % (drawdown)",
-        "es": "Retorno real % (retiro)"
+        "en": "Real return %",
+        "es": "Retorno real %"
       },
       "end_age": {
         "en": "End age",
@@ -6721,78 +6987,26 @@
         "es": "% del saldo"
       },
       "monthly_income": {
-        "en": "Monthly income {{unit}} (0 = SWR)",
-        "es": "Renta mensual {{unit}} (0 = SWR)"
-      },
-      "liquidate_other_pct": {
-        "en": "% of non-invested liquidated at 65",
-        "es": "% no-invertido liquidado a los 65"
+        "en": "Fixed income / month ({{unit}})",
+        "es": "Renta fija / mes ({{unit}})"
       },
       "monthly_rent": {
-        "en": "Monthly passive rent {{unit}} (drawdown)",
-        "es": "Renta pasiva mensual {{unit}} (retiro)"
+        "en": "Passive rent / month ({{unit}})",
+        "es": "Renta pasiva / mes ({{unit}})"
+      },
+      "liquidate_other_pct": {
+        "en": "% of property and cash sold at {{age}}",
+        "es": "% de propiedades y efectivo vendido a los {{age}}"
       }
     },
-    "inflationAssumption": {
-      "en": "Default inflation is an assumption, not a forecast: {{list}}. Each currency's nominal line uses its own.",
-      "es": "La inflación por defecto es un supuesto, no un pronóstico: {{list}}. La línea nominal de cada moneda usa la suya."
-    },
-    "summary": {
-      "balanceAtRetire": {
-        "en": "Balance at {{age}}",
-        "es": "Saldo a los {{age}}"
-      },
-      "investedLabel": {
-        "en": "invested",
-        "es": "invertido"
-      },
-      "totalLabel": {
-        "en": "net worth",
-        "es": "patrimonio"
-      },
-      "todaysMoney": {
-        "en": "today's money",
-        "es": "dinero de hoy"
-      },
-      "potDescription": {
-        "en": "strategies on {{pot}} = invested + {{pct}}% of the rest",
-        "es": "estrategias sobre {{pot}} = invertido + {{pct}}% del resto"
-      },
-      "rentIncluded": {
-        "en": "Includes passive rent of {{amount}}/mo in the income; the fixed-income strategy only draws from the pot what the rent does not cover.",
-        "es": "Incluye renta pasiva de {{amount}}/mes en los ingresos; la estrategia de renta fija solo retira del fondo lo que la renta no cubre."
-      },
-      "swr": {
-        "en": "SWR {{pct}}%",
-        "es": "SWR {{pct}}%"
-      },
-      "pctBalance": {
-        "en": "{{pct}}% of balance",
-        "es": "{{pct}}% del saldo"
+    "hints": {
+      "inflation": {
+        "en": "Defaults ({{list}}) are assumptions, not forecasts. Each currency's nominal line uses its own.",
+        "es": "Los valores por defecto ({{list}}) son supuestos, no pronósticos. La línea nominal de cada moneda usa la suya."
       },
       "fixedIncome": {
-        "en": "Fixed income",
-        "es": "Renta fija"
-      },
-      "income": {
-        "en": "{{amount}}/mo",
-        "es": "{{amount}}/mes"
-      },
-      "initialIncome": {
-        "en": "{{amount}}/mo initial",
-        "es": "{{amount}}/mes inicial"
-      },
-      "depletes": {
-        "en": "depletes at age {{age}}",
-        "es": "se agota a los {{age}} años"
-      },
-      "lasts": {
-        "en": "lasts until age {{age}}",
-        "es": "dura hasta los {{age}}"
-      },
-      "neverDepletes": {
-        "en": "never depletes; the income varies with the balance",
-        "es": "nunca se agota; la renta varía con el saldo"
+        "en": "Fixed income 0 = the SWR income.",
+        "es": "Con renta fija 0 se usa la renta del SWR."
       }
     }
   },
@@ -9711,28 +9925,16 @@
       "es": "Endpoints más lentos"
     },
     "endpointsHint": {
-      "en": "Ordered by p95. Times in ms (estimated from a histogram); total time in s; size in KB.",
-      "es": "Ordenados por p95. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB."
+      "en": "Ordered by p95, the figure on each line. Times in ms (estimated from a histogram); total time in s; size in KB.",
+      "es": "Ordenados por p95, la cifra de cada línea. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB."
     },
     "endpointsEmpty": {
       "en": "No API requests in this window.",
       "es": "Sin solicitudes a la API en este período."
     },
     "trendTitle": {
-      "en": "Daily trend",
-      "es": "Tendencia diaria"
-    },
-    "showTrend": {
-      "en": "trend",
-      "es": "tendencia"
-    },
-    "trendShown": {
-      "en": "shown",
-      "es": "mostrada"
-    },
-    "colPage": {
-      "en": "Page",
-      "es": "Página"
+      "en": "By day (times in ms)",
+      "es": "Por día (tiempos en ms)"
     },
     "colViews": {
       "en": "Views",
@@ -9762,17 +9964,9 @@
       "en": "Last visit",
       "es": "Última visita"
     },
-    "colEndpoint": {
-      "en": "Endpoint",
-      "es": "Endpoint"
-    },
     "colCount": {
       "en": "Requests",
       "es": "Solicitudes"
-    },
-    "colAvg": {
-      "en": "Avg (ms)",
-      "es": "Prom. (ms)"
     },
     "colP50": {
       "en": "p50 (ms)",
@@ -9805,9 +9999,67 @@
     "colDay": {
       "en": "Day",
       "es": "Día"
+    },
+    "lineP50": {
+      "en": "p50 {{ms}} ms",
+      "es": "p50 {{ms}} ms"
+    },
+    "lineP95": {
+      "en": "p95 {{ms}} ms",
+      "es": "p95 {{ms}} ms"
+    },
+    "lineMs": {
+      "en": "{{ms}} ms",
+      "es": "{{ms}} ms"
+    },
+    "lineUnsettled": {
+      "en": "left before loading: {{count}}",
+      "es": "dejadas antes de cargar: {{count}}"
+    },
+    "linePaths": {
+      "en": "paths: {{count}}",
+      "es": "rutas: {{count}}"
+    },
+    "lineRequests": {
+      "en": "requests: {{count}}",
+      "es": "solicitudes: {{count}}"
+    },
+    "lineTotal": {
+      "en": "{{seconds}} s in all",
+      "es": "{{seconds}} s en total"
+    },
+    "lineErrors": {
+      "en": "errors 5xx / 4xx: {{errors}}",
+      "es": "errores 5xx / 4xx: {{errors}}"
+    },
+    "colPaths": {
+      "en": "Paths",
+      "es": "Rutas"
+    },
+    "trendAvg": {
+      "en": "Mean",
+      "es": "Prom."
+    },
+    "trendP50": {
+      "en": "p50",
+      "es": "p50"
+    },
+    "trendP95": {
+      "en": "p95",
+      "es": "p95"
+    },
+    "trendMax": {
+      "en": "Max",
+      "es": "Máx."
     }
   },
   "panelSettings": {
+    "display": {
+      "title": {
+        "en": "Display",
+        "es": "Visualización"
+      }
+    },
     "taxResidency": {
       "title": {
         "en": "Tax residency",

@@ -11,7 +11,7 @@ const FIELDS = [
   "expenses",
   "savings",
   "deposits",
-  "deposits_pre_tax",
+  "contributions_outside_payslip",
   "card_spent",
   "card_paid",
   "card_net",

@@ -57,7 +57,7 @@ export function DepositsPage() {
   }, [chartGranularity, data, timeRange]);
 
   const total = data ? data.net_total : 0;
-  /** The total's two parts, as the flows overview reads them: post-tax deposits and AFP/AFC. */
+  /** The total's two parts: the accounts only payroll funds (AFP, AFC, 401(k), HSA) and every other account. */
   const postTaxTotal = data ? data.post_tax_total : 0;
   const preTaxTotal = data ? data.pre_tax_total : 0;
 
@@ -81,18 +81,18 @@ export function DepositsPage() {
 
       <p className={loadableClass(loading, "muted")}>
         {t("deposits.totalLabel")}{" "}
-        <span className="mono" style={{ color: "var(--text)" }}>
+        <span className="mono flow-summary-value">
           {formatFlowMoney(total, displayUnit)}
         </span>
-        <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
-          ({t("flows.overview.deposits")}{" "}
+        <span className="muted flow-summary-note">
+          ({t("deposits.partOther")}{" "}
           <span className="mono">{formatFlowMoney(postTaxTotal, displayUnit)}</span>
           {" · "}
-          {t("flows.overview.depositsPreTax")}{" "}
+          {t("deposits.partPayrollFunded")}{" "}
           <span className="mono">{formatFlowMoney(preTaxTotal, displayUnit)}</span>)
         </span>
         {timeRange !== "total" ? (
-          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
+          <span className="muted flow-summary-note">
             · {t("flows.rangeTotalLabel")}{" "}
             <span className="mono">{formatFlowMoney(rangeTotal, displayUnit)}</span>
           </span>

@@ -4,11 +4,10 @@ import { ChartEmptyState } from "./ChartEmptyState";
 import { loadableClass } from "../ui/Loadable";
 import { Bar, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
-import { allocationBucketColor } from "../../chartColors";
 import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
 import { flowsPlBucketLabel, useTranslation } from "../../i18n";
-import type { FlowsPlBucketSlug, FlowsPlChartPoint } from "../../types";
+import type { FlowsPlChartPoint } from "../../types";
 import { AppComposedChart } from "./AppComposedChart";
 import {
   AXIS_LINE_STROKE,
@@ -22,17 +21,13 @@ import {
 } from "./chartLayout";
 import { UNDER_SERIES_Z_INDEX } from "./chartZIndex";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
+import { FLOWS_PL_BUCKET_SERIES, FLOWS_PL_TOTAL_COLOR } from "../flows/flowsPlBuckets";
 
 const BAR_MAX_SIZE = 22;
 
 const CHART_ANIM_MS = 90;
 
-const PL_CHART_BUCKETS: { dataKey: FlowsPlBucketSlug; color: string }[] = [
-  { dataKey: "brokerage", color: allocationBucketColor("brokerage") },
-  { dataKey: "retirement", color: allocationBucketColor("retirement") },
-  { dataKey: "cash", color: allocationBucketColor("cash_eqs") },
-  { dataKey: "real_estate", color: allocationBucketColor("real_estate") },
-];
+const PL_CHART_BUCKETS = FLOWS_PL_BUCKET_SERIES.map((b) => ({ dataKey: b.slug, color: b.color }));
 
 export function FlowsPlChart({
   title,
@@ -133,7 +128,7 @@ export function FlowsPlChart({
               type="monotone"
               dataKey="total"
               name={t("flows.pl.colTotal")}
-              stroke="#e2e8f0"
+              stroke={FLOWS_PL_TOTAL_COLOR}
               strokeWidth={2}
               dot={false}
               isAnimationActive

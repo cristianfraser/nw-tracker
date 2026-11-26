@@ -61,7 +61,7 @@ type SummaryLine = {
 };
 
 /**
- * The summary's lines (pre-tax deposits and what the cash change leaves unexplained stay on the
+ * The summary's lines (contributions outside the payslip and what the cash change leaves unexplained stay on the
  * /flows page): what came in and went out, then where the savings went — deposits, the cards
  * (cash leaves when a card is paid) and the cash change — then the market's part and the change
  * in investments and net worth.

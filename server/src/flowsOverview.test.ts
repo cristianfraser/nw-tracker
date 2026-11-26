@@ -14,6 +14,7 @@ import { buildFlowsPlPayload } from "./flowsPl.js";
 import {
   aggregateFlowsOverviewDays,
   aggregateFlowsOverviewMonths,
+  payslipSavingsCounted,
   buildFlowsIncomeAggregates,
   buildFlowsOverviewPayload,
   flowsOverviewClosed,
@@ -23,7 +24,8 @@ import {
   type FlowsOverviewMonthInputs,
 } from "./flowsOverview.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
-import { lineMoneyFromBuilderFields } from "./lineMoney.js";
+import { lineMoneyFromBuilderFields, lineValueIn } from "./lineMoney.js";
+import { loadPayslipSavingsLines, type PayslipSavingsLine } from "./payslipExpenseLines.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 
 const TODAY = "2024-04-15";
@@ -111,7 +113,23 @@ function depositRow(overrides: Partial<FlowsOverviewDepositRow> = {}): FlowsOver
 }
 
 const NO_FX: ReadonlyMap<string, number> = new Map();
-const DAY_EXTRA = { checkingAccountIds: CHECKING, cardPayments: [], checkingValueByDay: checkingValue(), cashFxByDay: NO_FX };
+const DAY_EXTRA = { payslipSavings: [], checkingAccountIds: CHECKING, cardPayments: [], checkingValueByDay: checkingValue(), cashFxByDay: NO_FX };
+
+/** A payslip savings deduction of March 2024, paid on the 29th, in pesos (dollars at 900). */
+function savingsLine(o: { destination: PayslipSavingsLine["destination"]; amount_clp: number }): PayslipSavingsLine {
+  return {
+    payslip_id: 7,
+    position: 3,
+    destination: o.destination,
+    expense_month: "2024-03",
+    occurred_on: "2024-03-29",
+    amount: { value: o.amount_clp, currency: "clp" },
+    values: {
+      clp: { value: o.amount_clp, rate_source: "native" },
+      usd: { value: o.amount_clp / 900, rate_source: "day" },
+    },
+  };
+}
 
 const marchDeposits = [depositRow(), depositRow({ kind_slug: "spy", amount_clp: 500_000 })];
 
@@ -130,6 +148,7 @@ function months(
     {
       income: incomePayload(),
       lines: [],
+      payslipSavings: [],
       gastosByMonth: [],
       deposits: marchDeposits,
       plMonthly: [],
@@ -233,7 +252,90 @@ describe("aggregateFlowsOverviewMonths", () => {
     }
   });
 
-  it("splits pre-tax AFP/AFC cotizaciones out of post-tax deposits", () => {
+  it("a payslip's pension deduction is income that went into a deposit; the fund's credit beyond it stays apart", () => {
+    const afpCredit = depositRow({ kind_slug: "afp", amount_clp: 300_000, occurred_on: "2024-03-12" });
+    const before = march(months({ deposits: [...marchDeposits, afpCredit] }));
+    const after = march(
+      months({
+        deposits: [...marchDeposits, afpCredit],
+        payslipSavings: [savingsLine({ destination: "payroll_account", amount_clp: 250_000 })],
+      })
+    );
+    expect(after.income - before.income).toBe(250_000);
+    expect(after.savings - before.savings).toBe(250_000);
+    expect(after.deposits - before.deposits).toBe(250_000);
+    // The fund credited 300.000: 50.000 came from outside the payslip (the employer's share).
+    expect(before.contributions_outside_payslip).toBe(300_000);
+    expect(after.contributions_outside_payslip).toBe(50_000);
+    // What the accounts gained and what cash explains do not move.
+    expect(after.investments_change).toBe(before.investments_change);
+    expect(after.net_worth_change).toBe(before.net_worth_change);
+    expect(after.cash_unexplained).toBe(before.cash_unexplained);
+  });
+
+  it("a payslip month the fund has not credited yet reads as a negative rest, undone the month it is credited", () => {
+    const rows = months({
+      deposits: [...marchDeposits, depositRow({ kind_slug: "afp", amount_clp: 250_000, occurred_on: "2024-04-08" })],
+      payslipSavings: [savingsLine({ destination: "payroll_account", amount_clp: 250_000 })],
+    });
+    expect(march(rows).contributions_outside_payslip).toBe(-250_000);
+    expect(rows.find((r) => r.period_month === "2024-04")!.contributions_outside_payslip).toBe(250_000);
+    expect(flowsOverviewTotals(rows).contributions_outside_payslip).toBe(0);
+  });
+
+  it("a payslip's APV deduction is income; the APV account's own deposit event is the deposit", () => {
+    const apvDeposit = depositRow({ kind_slug: "apv", amount_clp: 100_000 });
+    const before = march(months({ deposits: [...marchDeposits, apvDeposit] }));
+    const after = march(
+      months({
+        deposits: [...marchDeposits, apvDeposit],
+        payslipSavings: [savingsLine({ destination: "voluntary_account", amount_clp: 100_000 })],
+      })
+    );
+    expect(after.income - before.income).toBe(100_000);
+    expect(after.deposits).toBe(before.deposits);
+    expect(after.contributions_outside_payslip).toBe(before.contributions_outside_payslip);
+    // The deposit never left checking: with the deduction in income, cash explains it.
+    expect(after.cash_unexplained - before.cash_unexplained).toBe(-100_000);
+    expect(after.net_worth_change - before.net_worth_change).toBe(100_000);
+  });
+
+  it("counts a payslip's APV deduction only with its deposit on file, each deposit once", () => {
+    const apv = (amount_clp: number) => savingsLine({ destination: "voluntary_account", amount_clp });
+    const afp = savingsLine({ destination: "payroll_account", amount_clp: 250_000 });
+    const withDeposit = apv(100_000);
+    const noDeposit = apv(70_000);
+    const second = { ...apv(100_000), payslip_id: 8 };
+    const deposits = [
+      depositRow({ kind_slug: "apv", amount_clp: 100_000, occurred_on: "2024-04-09" }),
+      // Too late for a March payslip, another kind, a withdrawal: none of them is its deposit.
+      depositRow({ kind_slug: "apv", amount_clp: 70_000, occurred_on: "2024-06-03" }),
+      depositRow({ kind_slug: "spy", amount_clp: 70_000 }),
+      depositRow({ kind_slug: "apv", amount_clp: -70_000 }),
+    ];
+    expect(payslipSavingsCounted([afp, withDeposit, noDeposit, second], deposits)).toEqual([afp, withDeposit]);
+  });
+
+  it("a payslip's savings deduction sits on the day the pay arrived in the day rows", () => {
+    const days = aggregateFlowsOverviewDays(
+      {
+        income: NO_INCOME,
+        lines: [],
+        cuotaPayByIso: {},
+        deposits: [],
+        plDaily: [],
+        ...DAY_EXTRA,
+        payslipSavings: [savingsLine({ destination: "payroll_account", amount_clp: 250_000 })],
+      },
+      "split",
+      "clp"
+    );
+    expect(days).toEqual([
+      expect.objectContaining({ as_of_date: "2024-03-29", income: 250_000, deposits: 250_000, contributions_outside_payslip: -250_000 }),
+    ]);
+  });
+
+  it("keeps the payroll-funded accounts' credits apart from the deposits out of checking", () => {
     const m = march(
       months({
         deposits: [
@@ -244,7 +346,7 @@ describe("aggregateFlowsOverviewMonths", () => {
         ],
       })
     );
-    expect(m.deposits_pre_tax).toBe(300_000);
+    expect(m.contributions_outside_payslip).toBe(300_000);
     expect(m.deposits).toBe(1_500_000 - 200_000);
     expect(m.net_worth_change).toBe(m.savings + 300_000);
   });
@@ -289,7 +391,7 @@ describe("aggregateFlowsOverviewMonths", () => {
     expect(totals.income).toBe(2_000_000);
     expect(totals.pl).toBe(25_000);
     expect(totals.savings).toBe(totals.income - totals.expenses);
-    expect(totals.net_worth_change).toBe(totals.savings + totals.deposits_pre_tax + totals.pl);
+    expect(totals.net_worth_change).toBe(totals.savings + totals.contributions_outside_payslip + totals.pl);
     // April (today's month) is in progress: only March and the months before it count.
     const closed = flowsOverviewClosed(rows, TODAY);
     expect(closed.last_month).toMatchObject({ period_month: "2024-03", income: 2_000_000 });
@@ -424,7 +526,7 @@ describe("aggregateFlowsOverviewDays", () => {
     const plDay = rows.find((r) => r.as_of_date === "2024-03-20")!;
     expect(plDay.pl).toBe(75_000);
     expect(plDay.savings).toBe(0);
-    for (const r of rows) expect(r.investments_change).toBe(r.deposits + r.deposits_pre_tax + r.pl);
+    for (const r of rows) expect(r.investments_change).toBe(r.deposits + r.contributions_outside_payslip + r.pl);
   });
 
   it("day totals reconcile with the month row over the same month", () => {
@@ -724,10 +826,16 @@ describe("buildFlowsOverviewPayload", () => {
       const coin = unit === "clp" ? 1 : 0.01;
       for (const r of overview.months) {
         const page_ = byMonth.get(r.period_month) ?? 0;
-        if (unit === "clp") expect(r.deposits + r.deposits_pre_tax).toBe(Math.round(page_));
-        else expect(Math.abs(r.deposits + r.deposits_pre_tax - page_)).toBeLessThanOrEqual(coin);
+        if (unit === "clp") expect(r.deposits + r.contributions_outside_payslip).toBe(Math.round(page_));
+        else expect(Math.abs(r.deposits + r.contributions_outside_payslip - page_)).toBeLessThanOrEqual(coin);
       }
-      expect(Math.abs(page.pre_tax_total - overview.totals.deposits_pre_tax)).toBeLessThanOrEqual(coin * overview.months.length);
+      // What the payroll-funded accounts were credited, less the payslips' deductions into them.
+      const fromPayslips = payslipSavingsCounted(loadPayslipSavingsLines(), [])
+        .filter((l) => l.destination === "payroll_account")
+        .reduce((sum, l) => sum + lineValueIn(l, unit)!, 0);
+      expect(
+        Math.abs(page.pre_tax_total - fromPayslips - overview.totals.contributions_outside_payslip)
+      ).toBeLessThanOrEqual(coin * overview.months.length);
     });
   }
 
@@ -741,8 +849,8 @@ describe("buildFlowsOverviewPayload", () => {
     for (const r of [...p.months, ...p.days!]) {
       expect(r.savings).toBe(r.income - r.expenses);
       expect(r.cash_unexplained).toBe(r.cash_change - (r.savings - r.deposits + r.card_spent - r.card_paid + r.cash_fx));
-      expect(r.investments_change).toBe(r.deposits + r.deposits_pre_tax + r.pl);
-      expect(r.net_worth_change).toBe(r.savings + r.deposits_pre_tax + r.pl + r.cash_fx);
+      expect(r.investments_change).toBe(r.deposits + r.contributions_outside_payslip + r.pl);
+      expect(r.net_worth_change).toBe(r.savings + r.contributions_outside_payslip + r.pl + r.cash_fx);
     }
     const windowStart = chileCalendarAddDays(today, -29);
     for (const r of p.days!) expect(r.as_of_date >= windowStart).toBe(true);

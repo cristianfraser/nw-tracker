@@ -3,8 +3,8 @@
     "displayPreferences": {
       "toolbarAria": "Display currency",
       "displayCurrency": "Currency: ",
-      "numberFormat": "Format: ",
-      "chartStyle": "Charts: ",
+      "numberFormat": "Number format",
+      "chartStyle": "Chart style",
       "chartStyles": {
         "plain": "Normal",
         "pen": "Hand-drawn: pen",
@@ -480,7 +480,7 @@
     }
   },
   "settings": {
-    "language": "Language: ",
+    "language": "Language",
     "languageEs": "Español",
     "languageEn": "English"
   },
@@ -1397,21 +1397,23 @@
       "expensesBasis": "Expenses by month of purchase; cuotas in the month billed",
       "savings": "Savings",
       "deposits": "Deposits",
-      "depositsPreTax": "AFP+AFC (contributions)",
-      "depositsPreTaxShort": "Pre-tax",
+      "contributionsOutsidePayslip": "Contributions outside the payslip",
       "cardSpentMinusPaid": "Cards: spent − paid",
-      "cardSpentMinusPaidShort": "Cards spent − paid",
       "cashChange": "Cash change",
       "cashFx": "Cash fx",
       "cashUnexplained": "Unexplained",
       "pl": "P/L",
       "investmentsChange": "Investments change",
-      "investmentsChangeShort": "Inv. change",
       "netWorthChange": "Net-worth change",
-      "netWorthChangeShort": "NW change",
-      "detailTitle": "Month detail",
-      "totalsLabel": "Totals:",
-      "colMonth": "Month"
+      "summaryLabel": "Net-worth change, all time:",
+      "sectionMonthly": "Monthly summary",
+      "sectionYearly": "Yearly summary",
+      "groupCash": "Cash",
+      "groupInvestments": "Investments",
+      "groupNetWorth": "Net worth",
+      "legendTotal": "total: net-worth change",
+      "rowLabel": "{{period}}: net-worth change {{total}} ({{parts}})",
+      "emptyMonths": "No flow data."
     },
     "pl": {
       "title": "P/L",
@@ -1423,7 +1425,12 @@
       "colYtd": "YTD",
       "colCumulative": "Cumulative",
       "totalsLabel": "Total",
-      "breakdownTitle": "Breakdown by account"
+      "breakdownTitle": "Breakdown by account",
+      "sectionMonthly": "Monthly summary",
+      "sectionYearly": "Yearly summary",
+      "groupBuckets": "By bucket",
+      "groupRunning": "Running totals",
+      "rowLabel": "{{period}}: P/L {{total}} ({{parts}})"
     },
     "filters": {
       "year": "Year",
@@ -1575,6 +1582,8 @@
     "checksPending": "pending (parameters not published yet)"
   },
   "deposits": {
+    "partPayrollFunded": "Payroll-funded accounts",
+    "partOther": "Other accounts",
     "totalLabel": "All-time total:",
     "chartTitle": "Contributions by category",
     "chartEmpty": "No deposits in this period.",
@@ -2039,17 +2048,7 @@
   "wealthPercentile": {
     "title": "Wealth percentile",
     "empty": "No percentile data.",
-    "chart": {
-      "seriesTotal": "Total percentile (CL)",
-      "seriesFinancial": "Financial percentile (CL)",
-      "seriesBenchmark": "Percentile ({{country}})",
-      "scaleLabel": "Scale",
-      "scaleLinear": "Linear",
-      "scaleLog": "Log (top %)"
-    },
-    "settings": {
-      "title": "Benchmark countries"
-    },
+    "belowSupport": "< p10",
     "countries": {
       "US": "United States",
       "ES": "Spain",
@@ -2062,20 +2061,57 @@
       "BR": "Brazil",
       "CN": "Mainland China"
     },
-    "tables": {
-      "myData": "My data",
-      "countryData": "Country data"
+    "headline": {
+      "inChile": "in Chile",
+      "top": "top {{percent}} %",
+      "financial": "Financial wealth",
+      "netWorth": "net worth",
+      "asOf": "on {{date}}, against the {{year}} distribution"
     },
-    "table": {
+    "chart": {
+      "title": "Percentile by year",
+      "scaleLabel": "Scale",
+      "scaleLinear": "Linear",
+      "scaleLog": "Log",
+      "scaleLinearName": "Linear scale",
+      "scaleLogName": "Log scale (top %)"
+    },
+    "series": {
+      "chile": "Chile",
+      "chileFinancial": "Chile · financial",
+      "chileFinancialWealth": "Chile · financial wealth"
+    },
+    "rail": {
+      "title": "Today, by country",
+      "compareWith": "Compare with"
+    },
+    "years": {
+      "title": "By year",
       "year": "Year",
       "netWorth": "Net worth",
-      "finNetWorth": "Fin. net worth"
+      "financial": "Financial",
+      "chileFinancial": "Chile fin.",
+      "financialDetail": "financial {{percentile}} · {{amount}}",
+      "rowLabel": "{{year}}: {{percentile}} in Chile, net worth {{netWorth}}, financial wealth {{financialPercentile}}, {{financialNetWorth}}",
+      "thresholds": {
+        "title": "What each percentile took in {{year}}, and where you stood",
+        "distribution": "Distribution",
+        "you": "You"
+      }
     },
-    "belowSupport": "< p10",
-    "markers": {
-      "distributionYear": "* uses the latest available databook distribution ({{year}})",
-      "interpolated": "† parameters interpolated 2022→2025",
-      "reconstructed": "‡ own reconstruction (not an official UBS figure)"
+    "notes": {
+      "latestDistribution": {
+        "tag": "{{year}} distribution",
+        "text": "no databook for the year yet, so it is placed in the latest one."
+      },
+      "interpolated": {
+        "tag": "interpolated",
+        "text": "distribution interpolated between the databooks before and after it, whose methods differ."
+      },
+      "reconstructed": {
+        "tag": "own estimate",
+        "text": "Chile's distribution rebuilt from the report's Gini and millionaire count, not a printed UBS figure."
+      }
     }
   },
   "projections": {
@@ -2083,34 +2119,68 @@
     "noChartData": "No projection data.",
     "invalidRange": "Must be between {{min}} and {{max}}",
     "reset": "Reset",
-    "params": {
-      "real_return_pct": "Real return % (accum.)",
-      "monthly_aporte": "Monthly contribution {{unit}}",
-      "inflation_pct": "{{code}} inflation %",
-      "retire_return_pct": "Real return % (drawdown)",
+    "subline": "Net worth at {{age}} · {{month}} · today's money",
+    "chartTitle": "Net worth to {{age}}",
+    "assumptions": "Assumptions",
+    "lines": {
+      "total_nw": "Net worth",
+      "invested": "Invested",
+      "proj_nw": "Projected",
+      "proj_invested": "Invested, projected",
+      "proj_nw_nominal": "Projected, nominal ({{code}} {{pct}}%)",
+      "proj_swr": "Drawdown, SWR",
+      "proj_pct_balance": "Drawdown, % of balance",
+      "proj_fixed_income": "Drawdown, fixed income",
+      "milestones": "{{from}}–{{to}}"
+    },
+    "rail": {
+      "netWorthAt": "net worth at {{age}}",
+      "today": "today",
+      "contributions": "contributions",
+      "realGrowth": "real growth",
+      "invested": "Invested at {{age}}",
+      "other": "Property and cash",
+      "pot": "Drawdown pot · invested + {{pct}} of the rest",
+      "incomeTitle": "Monthly income from {{age}}",
+      "lastsHead": "lasts",
+      "strategyAria": "{{name}}: {{amount}} a month, {{lasts}}",
+      "rentNote": "Each income includes {{amount}} of passive rent; the fixed income draws from the pot only what the rent does not cover.",
+      "initialNote": "% of balance: the first month's income; it then follows the balance."
+    },
+    "strategy": {
+      "swr": "SWR {{pct}}",
+      "pct_balance": "{{pct}} of balance",
+      "fixed_income": "Fixed income"
+    },
+    "lasts": {
+      "end_age": "to {{age}}",
+      "depleted": "until {{age}}",
+      "always": "always"
+    },
+    "groups": {
+      "growth": "Growth to {{age}}",
+      "inflation": "Inflation",
+      "drawdown": "Drawdown from {{age}}"
+    },
+    "groupSummary": {
+      "growth": "{{pct}} real · {{amount}} / month",
+      "drawdown": "{{pct}} real · to {{age}} · SWR {{swr}} · {{balance}} of balance"
+    },
+    "fields": {
+      "real_return_pct": "Real return %",
+      "monthly_aporte": "Monthly contribution ({{unit}})",
+      "inflation_pct": "{{code}} %",
+      "retire_return_pct": "Real return %",
       "end_age": "End age",
       "swr_pct": "SWR %",
       "pct_balance_pct": "% of balance",
-      "monthly_income": "Monthly income {{unit}} (0 = SWR)",
-      "liquidate_other_pct": "% of non-invested liquidated at 65",
-      "monthly_rent": "Monthly passive rent {{unit}} (drawdown)"
+      "monthly_income": "Fixed income / month ({{unit}})",
+      "monthly_rent": "Passive rent / month ({{unit}})",
+      "liquidate_other_pct": "% of property and cash sold at {{age}}"
     },
-    "inflationAssumption": "Default inflation is an assumption, not a forecast: {{list}}. Each currency's nominal line uses its own.",
-    "summary": {
-      "balanceAtRetire": "Balance at {{age}}",
-      "investedLabel": "invested",
-      "totalLabel": "net worth",
-      "todaysMoney": "today's money",
-      "potDescription": "strategies on {{pot}} = invested + {{pct}}% of the rest",
-      "rentIncluded": "Includes passive rent of {{amount}}/mo in the income; the fixed-income strategy only draws from the pot what the rent does not cover.",
-      "swr": "SWR {{pct}}%",
-      "pctBalance": "{{pct}}% of balance",
-      "fixedIncome": "Fixed income",
-      "income": "{{amount}}/mo",
-      "initialIncome": "{{amount}}/mo initial",
-      "depletes": "depletes at age {{age}}",
-      "lasts": "lasts until age {{age}}",
-      "neverDepletes": "never depletes; the income varies with the balance"
+    "hints": {
+      "inflation": "Defaults ({{list}}) are assumptions, not forecasts. Each currency's nominal line uses its own.",
+      "fixedIncome": "Fixed income 0 = the SWR income."
     }
   },
   "routeError": {
@@ -3059,12 +3129,9 @@
     "pagesTitle": "Most visited pages",
     "pagesEmpty": "No page views in this window.",
     "endpointsTitle": "Slowest endpoints",
-    "endpointsHint": "Ordered by p95. Times in ms (estimated from a histogram); total time in s; size in KB.",
+    "endpointsHint": "Ordered by p95, the figure on each line. Times in ms (estimated from a histogram); total time in s; size in KB.",
     "endpointsEmpty": "No API requests in this window.",
-    "trendTitle": "Daily trend",
-    "showTrend": "trend",
-    "trendShown": "shown",
-    "colPage": "Page",
+    "trendTitle": "By day (times in ms)",
     "colViews": "Views",
     "colSettleP50": "Load p50 (ms)",
     "colSettleP95": "Load p95 (ms)",
@@ -3072,9 +3139,7 @@
     "colUnsettled": "Left before loading",
     "colFetchedQueries": "Queries fetched",
     "colLastViewed": "Last visit",
-    "colEndpoint": "Endpoint",
     "colCount": "Requests",
-    "colAvg": "Avg (ms)",
     "colP50": "p50 (ms)",
     "colP95": "p95 (ms)",
     "colMax": "Max (ms)",
@@ -3082,9 +3147,25 @@
     "colWarm": "Warm cache",
     "colErrors": "Errors 5xx / 4xx",
     "colSize": "Size (KB)",
-    "colDay": "Day"
+    "colDay": "Day",
+    "lineP50": "p50 {{ms}} ms",
+    "lineP95": "p95 {{ms}} ms",
+    "lineMs": "{{ms}} ms",
+    "lineUnsettled": "left before loading: {{count}}",
+    "linePaths": "paths: {{count}}",
+    "lineRequests": "requests: {{count}}",
+    "lineTotal": "{{seconds}} s in all",
+    "lineErrors": "errors 5xx / 4xx: {{errors}}",
+    "colPaths": "Paths",
+    "trendAvg": "Mean",
+    "trendP50": "p50",
+    "trendP95": "p95",
+    "trendMax": "Max"
   },
   "panelSettings": {
+    "display": {
+      "title": "Display"
+    },
     "taxResidency": {
       "title": "Tax residency",
       "explain": "Where you are a tax resident, declared from a day: the tax return reads it to decide each year's regime (resident, non-resident, or the departure year). With no period declared you are a Chilean tax resident.",
