@@ -483,18 +483,12 @@
   },
   "panelAccounts": {
     "addAccountTitle": "Nueva cuenta",
-    "accountsTitle": "Lista de cuentas",
-    "portfolioGroupsTitle": "Grupos de portfolio (desde Patrimonio neto)",
-    "netWorthTreeTitle": "Árbol de cuentas (Patrimonio neto)",
-    "colGroupKind": "Tipo",
-    "colAccount": "Cuenta",
-    "colBucket": "Bucket",
+    "accountsTileTitle": "Cuentas",
+    "notInTree": "Fuera del árbol",
+    "outOfTotalsTag": "fuera de los totales",
+    "rowActions": "Acciones de {{name}}",
     "colBasket": "Canasta",
     "groupBasketToggle": "Declarar este grupo una canasta",
-    "colExclude": "No sumar en totales",
-    "colActions": "Acciones",
-    "colSlug": "Slug",
-    "colAccounts": "N cuentas",
     "deleteBtn": "Eliminar",
     "deleteConfirm": "¿Eliminar la cuenta #{{id}} ({{name}})? Esta acción no se puede deshacer.",
     "editBtn": "Editar",
@@ -502,7 +496,6 @@
       "title": "Editar cuenta #{{id}}",
       "keepBucket": "(mantener grupo actual)"
     },
-    "emptyAccounts": "No hay cuentas.",
     "emptyTree": "No se encontró el bucket maestro de patrimonio neto en el árbol de navegación.",
     "flowKinds": {
       "deposit": "Depósito",
@@ -534,9 +527,10 @@
       "accountType.usdCash": "Efectivo USD",
       "displayName": "Nombre de la cuenta",
       "displayNamePlaceholder": "p. ej. QQQ",
-      "tickerSymbol": "Ticker (Yahoo / equity_daily)",
-      "bucket": "Grupo portfolio (hoja)",
-      "excludeFromTotals": "No sumar en totales de bucket (exclude_from_group_totals)",
+      "tickerSymbol": "Ticker",
+      "bucket": "Grupo",
+      "excludeFromTotals": "No sumar en los totales de su grupo",
+      "strikeAmbiguous": "«{{strike}}» puede ser miles o tres decimales. Escribe el strike sin separador de miles (1500), o con un cuarto decimal (2,1250).",
       "initialMovementsTitle": "Movimientos iniciales (opcional)",
       "noMovements": "Sin movimientos iniciales. La cuenta quedaría vacía hasta importar o cargar movimientos.",
       "movementDate": "Fecha",
@@ -552,9 +546,7 @@
       "resetBtn": "Limpiar",
       "createSuccess": "Cuenta creada (#{{id}}).",
       "previewInvalid": "Completa nombre, ticker, categoría y fecha en cada movimiento con fila."
-    },
-    "groupSubGroupsCount": "({{count}} subgrupos)",
-    "groupAccountsCount": "({{count}} cuentas)"
+    }
   },
   "messages": {
     "readAt": "Leído {{when}}",

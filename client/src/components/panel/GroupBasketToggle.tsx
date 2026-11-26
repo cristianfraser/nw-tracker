@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { invalidateResources, resources } from "../../queries/resources";
+import { cn } from "../../cn";
+import styles from "./PanelForm.module.css";
 
 type Props = {
   slug: string;
@@ -17,12 +19,15 @@ export function GroupBasketToggle({ slug, basket }: Props) {
     onSuccess: () => invalidateResources(queryClient, resources.panelAccounts()),
   });
   return (
-    <input
-      type="checkbox"
-      checked={basket}
-      disabled={mutation.isPending}
-      aria-label={t("panelAccounts.groupBasketToggle")}
-      onChange={(e) => mutation.mutate(e.target.checked)}
-    />
+    <label className={cn("muted", styles.check)} title={t("panelAccounts.groupBasketToggle")}>
+      <input
+        type="checkbox"
+        checked={basket}
+        disabled={mutation.isPending}
+        aria-label={t("panelAccounts.groupBasketToggle")}
+        onChange={(e) => mutation.mutate(e.target.checked)}
+      />
+      <span>{t("panelAccounts.colBasket")}</span>
+    </label>
   );
 }

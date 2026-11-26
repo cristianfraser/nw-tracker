@@ -483,18 +483,12 @@
   },
   "panelAccounts": {
     "addAccountTitle": "New account",
-    "accountsTitle": "Account list",
-    "portfolioGroupsTitle": "Portfolio groups (from Net worth)",
-    "netWorthTreeTitle": "Account tree (Net worth)",
-    "colGroupKind": "Kind",
-    "colAccount": "Account",
-    "colBucket": "Bucket",
+    "accountsTileTitle": "Accounts",
+    "notInTree": "Not in the tree",
+    "outOfTotalsTag": "out of totals",
+    "rowActions": "Actions for {{name}}",
     "colBasket": "Basket",
     "groupBasketToggle": "Declare this group a basket",
-    "colExclude": "Exclude from totals",
-    "colActions": "Actions",
-    "colSlug": "Slug",
-    "colAccounts": "N accounts",
     "deleteBtn": "Delete",
     "deleteConfirm": "Delete account #{{id}} ({{name}})? This cannot be undone.",
     "editBtn": "Edit",
@@ -502,7 +496,6 @@
       "title": "Edit account #{{id}}",
       "keepBucket": "(keep current group)"
     },
-    "emptyAccounts": "No accounts.",
     "emptyTree": "The net-worth master bucket was not found in the navigation tree.",
     "flowKinds": {
       "deposit": "Deposit",
@@ -534,9 +527,10 @@
       "accountType.usdCash": "USD cash",
       "displayName": "Account name",
       "displayNamePlaceholder": "e.g. QQQ",
-      "tickerSymbol": "Ticker (Yahoo / equity_daily)",
-      "bucket": "Portfolio group (leaf)",
-      "excludeFromTotals": "Exclude from bucket totals (exclude_from_group_totals)",
+      "tickerSymbol": "Ticker",
+      "bucket": "Group",
+      "excludeFromTotals": "Leave out of its group's totals",
+      "strikeAmbiguous": "«{{strike}}» could be thousands or three decimals. Write the strike without a thousands mark (1500), or with a fourth decimal (2.1250).",
       "initialMovementsTitle": "Initial movements (optional)",
       "noMovements": "No initial movements. The account would stay empty until you import or load movements.",
       "movementDate": "Date",
@@ -552,9 +546,7 @@
       "resetBtn": "Clear",
       "createSuccess": "Account created (#{{id}}).",
       "previewInvalid": "Fill in name, ticker, category, and a date on every movement row."
-    },
-    "groupSubGroupsCount": "({{count}} sub-groups)",
-    "groupAccountsCount": "({{count}} accounts)"
+    }
   },
   "messages": {
     "readAt": "Read {{when}}",
