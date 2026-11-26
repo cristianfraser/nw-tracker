@@ -1,16 +1,17 @@
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { sumClpThroughDisplayDate } from "./movementTransfer.js";
+import { isPesoCashKindSlug } from "./cashCurrency.js";
 
 /**
  * Ledger (flows-based) CLP cash accounts: balance = Σ signed CLP movements/transfer legs
  * through a date (parity with USD cash in `usdCashAccounts.ts`, but CLP is the base
  * currency so there is no FX conversion). Any leaf whose slug ends in `__clp` (bucket kind
- * `clp`: a broker's peso balance under Cash savings, a portfolio caja); no `valuations`
- * snapshots are stored for these accounts.
+ * `clp`: a broker's peso balance under Cash savings, a portfolio caja) and the crypto exchange's
+ * peso wallet (`buda_clp`); stored `valuations` rows are never read for these accounts.
  */
 export function isClpCashKindSlug(kindSlug: string): boolean {
-  return kindSlug === "clp";
+  return isPesoCashKindSlug(kindSlug);
 }
 
 export function isClpCashAccount(accountId: number): boolean {

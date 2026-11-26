@@ -27,4 +27,11 @@ export function isHomeCurrency(code: string): boolean {
  * before the detail bundle is in; the server's own rule is the account profile
  * (`isCheckingPageAccount`, `checkingStatement.ts`), and a server test holds the two together.
  */
-export const CHECKING_PAGE_KIND_SLUGS: readonly string[] = ["cuenta_corriente", "cuenta_vista", "clp", "usd", "foreign_cash"];
+export const CHECKING_PAGE_KIND_SLUGS: readonly string[] = [
+  "cuenta_corriente",
+  "cuenta_vista",
+  "clp",
+  "usd",
+  "foreign_cash",
+  "buda_clp",
+];

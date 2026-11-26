@@ -310,3 +310,50 @@ describe("checking statement of a cash ledger without cartolas", () => {
     });
   });
 });
+
+/** The crypto exchange's peso wallet: a peso cash ledger, whatever marks were once stored for it. */
+describe("checking statement of the exchange's peso wallet", () => {
+  let walletId = 0;
+  let fromId = 0;
+
+  beforeAll(() => {
+    const bucket = db.prepare(`SELECT id FROM asset_groups WHERE slug = 'brokerage_crypto__buda_clp'`).get() as
+      | { id: number }
+      | undefined;
+    if (!bucket) throw new Error("no exchange peso wallet leaf in the test database");
+    walletId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, 'Vitest · exchange pesos', 'vitest:exchange-wallet')`)
+        .run(bucket.id).lastInsertRowid
+    );
+    fromId = createCuentaVista("Vitest · exchange wallet source");
+    db.prepare(
+      `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note) VALUES (?, ?, 50000, 'clp', '2025-02-10', 'vitest exchange wallet')`
+    ).run(fromId, walletId);
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, -30000, 'clp', '2025-02-11', 'vitest exchange wallet')`
+    ).run(walletId);
+    // A mark stored while the wallet was book-valued, disagreeing with the ledger: never read.
+    db.prepare(`INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, '2025-02-28', 999, 'clp')`).run(walletId);
+  });
+
+  afterAll(() => {
+    db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(walletId);
+    db.prepare(`DELETE FROM movements WHERE account_id = ? OR to_account_id = ? OR from_account_id = ?`).run(walletId, walletId, fromId);
+    db.prepare(`DELETE FROM accounts WHERE id IN (?, ?)`).run(walletId, fromId);
+  });
+
+  it("is valued by its peso movements on every day, not by a stored mark", () => {
+    expect(isCheckingPageAccount(walletId)).toBe(true);
+    const today = chileCalendarTodayYmd();
+    expect(accountValueAt(walletId, today, "clp")).toMatchObject({ value: 20000 });
+    expect(accountValueAt(walletId, "2025-02-28", "clp")).toMatchObject({ value: 20000 });
+    expect(accountValueAt(walletId, "2025-02-10", "clp")).toMatchObject({ value: 50000 });
+    expect(buildCheckingGlanceForAccount(walletId, "clp")).toMatchObject({ currency: "clp", balance: 20000 });
+    const rows = buildCheckingStatement(walletId).months.flatMap((m) => m.rows);
+    expect(rows.map((r) => [r.kind, r.amount, r.balance_after])).toEqual([
+      ["other", -30000, 20000],
+      ["own_transfer", 50000, 50000],
+    ]);
+  });
+});
