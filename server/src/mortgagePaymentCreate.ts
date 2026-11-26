@@ -26,6 +26,8 @@ import {
 } from "./mortgagePaymentCompute.js";
 import { mortgageLedgerRowDto } from "./mortgageLedgerDto.js";
 import { syncLoanPaymentFlowParts } from "./flows/loanPaymentParts.js";
+import { mortgagePaymentBodySchema } from "nw-tracker-contracts/requests/mortgage";
+import { parseRequestBody } from "nw-tracker-contracts/requests/issues";
 
 export type { MortgagePaymentCreateSchema, MortgagePaymentPreviewResponse };
 
@@ -192,35 +194,24 @@ export function commitMortgagePayment(
   return result;
 }
 
-/** The form's body (`MortgagePaymentInputDto`: role-named keys) as the compute's input. */
-export function parseMortgagePaymentBody(body: Record<string, unknown>): MortgagePaymentInput {
-  const optionalNumber = (key: string): number | null => {
-    const raw = body[key];
-    if (raw === undefined || raw === null) return null;
-    const n = Number(raw);
-    if (!Number.isFinite(n)) throw new InputError(`${key} must be a number when provided`);
-    return n;
-  };
-  const requiredNumber = (key: string): number => {
-    const n = Number(body[key]);
-    if (!Number.isFinite(n)) throw new InputError(`${key} is required`);
-    return n;
-  };
-  const occurred_on = String(body.occurred_on ?? "").trim();
-  if (!occurred_on) throw new InputError("occurred_on is required");
-  const pago_clp = requiredNumber("pago_pay");
-  const interes_clp = requiredNumber("interes_pay");
-  const incendio_clp = requiredNumber("incendio_pay");
+/**
+ * The form's body (`MortgagePaymentInputDto`: role-named keys, read by the contracts'
+ * `mortgagePaymentBodySchema`) as the compute's input; a body it refuses is an `InputError`.
+ */
+export function parseMortgagePaymentBody(raw: unknown): MortgagePaymentInput {
+  const parsed = parseRequestBody(mortgagePaymentBodySchema, raw);
+  if (!parsed.ok) throw new InputError(parsed.error);
+  const body = parsed.data;
   return {
-    occurred_on,
-    pago_clp,
-    interes_clp,
-    incendio_clp,
-    desgravamen_clp: optionalNumber("desgravamen_pay"),
-    cuota: body.cuota === undefined || body.cuota === null ? null : String(body.cuota).trim(),
-    min_uf: optionalNumber("min_loan"),
-    max_uf: optionalNumber("max_loan"),
-    amortizacion_ext_clp: optionalNumber("amortizacion_ext_pay"),
-    credito_restante_uf: optionalNumber("credito_restante_loan"),
+    occurred_on: body.occurred_on,
+    pago_clp: body.pago_pay,
+    interes_clp: body.interes_pay,
+    incendio_clp: body.incendio_pay,
+    desgravamen_clp: body.desgravamen_pay ?? null,
+    cuota: body.cuota ?? null,
+    min_uf: body.min_loan ?? null,
+    max_uf: body.max_loan ?? null,
+    amortizacion_ext_clp: body.amortizacion_ext_pay ?? null,
+    credito_restante_uf: body.credito_restante_loan ?? null,
   };
 }

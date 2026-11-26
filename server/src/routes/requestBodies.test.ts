@@ -10,6 +10,8 @@ import { registerAccountsRoutes } from "./accounts.js";
 import { registerCreditCardRoutes } from "./creditCard.js";
 import { registerGroceriesRoutes } from "./groceries.js";
 import { registerMovementsRoutes } from "./movements.js";
+import { registerMovementMirrorsRoutes } from "./movementMirrors.js";
+import { registerMortgageRoutes } from "./mortgage.js";
 
 /**
  * Write routes read their bodies through `parseBody` (contracts `requests/` schemas): a malformed
@@ -35,6 +37,8 @@ beforeAll(async () => {
   registerCreditCardRoutes(app);
   registerGroceriesRoutes(app);
   registerMovementsRoutes(app);
+  registerMovementMirrorsRoutes(app);
+  registerMortgageRoutes(app);
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err), terminal: true });
   });
@@ -136,6 +140,29 @@ describe("movements routes", () => {
     expect(await call("POST", `/api/accounts/${UNKNOWN_ID}/valuations`, { as_of_date: "2031-01-31", value_clp: "1" })).toEqual({
       status: 400,
       json: { error: "value_clp must be a finite number" },
+    });
+  });
+});
+
+describe("mirror-pair routes", () => {
+  it("a pair list that is empty or names no inflow is a 400", async () => {
+    expect(await call("POST", "/api/movement-mirrors/reject", { pairs: [] })).toEqual({
+      status: 400,
+      json: { error: "pairs must be a non-empty array of {out_movement_id, in_movement_id}" },
+    });
+    expect(await call("POST", "/api/movement-mirrors/convert", { pairs: [{ out_movement_id: UNKNOWN_ID }] })).toEqual({
+      status: 400,
+      json: { error: "pairs.0.in_movement_id is required" },
+    });
+  });
+});
+
+describe("mortgage routes", () => {
+  it("a figure that is no number is a 400 naming it", async () => {
+    const body = { occurred_on: "2031-01-10", pago_pay: 500_000, interes_pay: "200000", incendio_pay: 10_000 };
+    expect(await call("POST", `/api/accounts/${UNKNOWN_ID}/mortgage-payments/preview`, body)).toEqual({
+      status: 400,
+      json: { error: "interes_pay is required" },
     });
   });
 });

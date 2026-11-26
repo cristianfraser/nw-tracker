@@ -78,13 +78,13 @@ app.get("/api/portfolio-groups/:slug/mortgage-prepayments", (req, res) => {
 // cannot be computed from (no UF for the day, a prior row without its appraisal) is a 500.
 app.post("/api/accounts/:id/mortgage-payments/preview", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
-  const input = parseMortgagePaymentBody((req.body ?? {}) as Record<string, unknown>);
+  const input = parseMortgagePaymentBody(req.body);
   res.json(previewMortgagePayment(id, input));
 }));
 
 app.post("/api/accounts/:id/mortgage-payments", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
-  const input = parseMortgagePaymentBody((req.body ?? {}) as Record<string, unknown>);
+  const input = parseMortgagePaymentBody(req.body);
   const committed = commitMortgagePayment(id, input);
   res.status(201).json({ ...committed, sheet_row: mortgageLedgerRowDto(committed.sheet_row) });
 }));
