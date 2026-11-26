@@ -10,7 +10,7 @@ import { invalidateResources, resources } from "../../queries/resources";
 import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import type { TaxJurisdiction, TaxResidencyPeriodDto } from "../../types";
-import styles from "./TaxResidencySection.module.css";
+import styles from "./PanelForm.module.css";
 
 const JURISDICTIONS: readonly TaxJurisdiction[] = ["cl", "us"];
 

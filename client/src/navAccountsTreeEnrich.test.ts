@@ -25,6 +25,7 @@ function groupNode(slug: string, members: number[], children: NavTreeNodeDto[] =
     kind_slug: null,
     dashboard_bucket_slug: null,
     investment_glance: false,
+    cash_glance: false,
     group_kind: "bucket",
     member_account_ids: members,
     children,
@@ -53,6 +54,7 @@ function accountLeaf(id: number): NavTreeNodeDto {
     kind_slug: null,
     dashboard_bucket_slug: null,
     investment_glance: false,
+    cash_glance: false,
     group_kind: "bucket",
     children: [],
   };

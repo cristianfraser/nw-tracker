@@ -8,6 +8,7 @@ import {
   PANEL_ACCOUNT_TYPES,
   buildPanelAccountCreatePreview,
   defaultPanelAccountFormDraft,
+  isAmbiguousOptionStrike,
   isEquityPanelAccountType,
   isOptionPanelAccountType,
   type OptionRight,
@@ -15,7 +16,10 @@ import {
   type PanelAccountType,
 } from "../../panelAccounts/panelAccountFormTypes";
 import type { NavTreeNodeDto } from "../../types";
-import { Button, Field, Input } from "@crfrsr/ui";
+import { Button } from "@crfrsr/ui";
+import { cn } from "../../cn";
+import { formatNumberInput } from "../../format";
+import styles from "./PanelForm.module.css";
 
 const ACCOUNT_TYPE_LABEL_KEYS: Record<PanelAccountType, string> = {
   equity: "panelAccounts.addAccount.accountType.equity",
@@ -85,6 +89,10 @@ export function AddAccountForm({ netWorthRoot }: Props) {
     e.preventDefault();
     setFormError(null);
     setCreatedAccountId(null);
+    if (isOptionPanelAccountType(draft.accountType) && isAmbiguousOptionStrike(draft.optionStrike)) {
+      setFormError(t("panelAccounts.addAccount.strikeAmbiguous", { strike: draft.optionStrike.trim() }));
+      return;
+    }
     const payload = buildPanelAccountCreatePreview(draft);
     if (!payload) {
       setFormError(t("panelAccounts.addAccount.previewInvalid"));
@@ -102,8 +110,9 @@ export function AddAccountForm({ netWorthRoot }: Props) {
       : t("panelAccounts.addUsdAccount.displayNamePlaceholder");
 
   return (
-    <form onSubmit={onCreateSubmit}>
-      <Field label={t("panelAccounts.addAccount.accountType")}>
+    <form className={styles.form} onSubmit={onCreateSubmit}>
+      <label className={styles.field}>
+        <span className="muted">{t("panelAccounts.addAccount.accountType")}</span>
         <select
           value={draft.accountType}
           onChange={(e) => onAccountTypeChange(e.target.value as PanelAccountType)}
@@ -114,30 +123,33 @@ export function AddAccountForm({ netWorthRoot }: Props) {
             </option>
           ))}
         </select>
-      </Field>
+      </label>
 
-      <Field label={t("panelAccounts.addAccount.displayName")}>
-        <Input
+      <label className={cn(styles.field, styles.fieldWide)}>
+        <span className="muted">{t("panelAccounts.addAccount.displayName")}</span>
+        <input
           type="text"
           value={draft.displayName}
           onChange={(e) => updateDraft({ displayName: e.target.value })}
           placeholder={displayNamePlaceholder}
           required={!isOption}
         />
-      </Field>
+      </label>
 
       {isOption ? (
         <>
-          <Field label={t("options.addAccount.underlying")}>
-            <Input
+          <label className={cn(styles.field, styles.fieldNarrow)}>
+            <span className="muted">{t("options.addAccount.underlying")}</span>
+            <input
               type="text"
               value={draft.optionUnderlying}
               onChange={(e) => updateDraft({ optionUnderlying: e.target.value.toUpperCase() })}
               placeholder="SPY"
               required
             />
-          </Field>
-          <Field label={t("options.addAccount.right")}>
+          </label>
+          <label className={cn(styles.field, styles.fieldNarrow)}>
+            <span className="muted">{t("options.addAccount.right")}</span>
             <select
               value={draft.optionRight}
               onChange={(e) => updateDraft({ optionRight: e.target.value as OptionRight })}
@@ -145,45 +157,47 @@ export function AddAccountForm({ netWorthRoot }: Props) {
               <option value="C">{t("options.terms.call")}</option>
               <option value="P">{t("options.terms.put")}</option>
             </select>
-          </Field>
-          <Field label={t("options.addAccount.strike")}>
-            <Input
+          </label>
+          <label className={cn(styles.field, styles.fieldNarrow)}>
+            <span className="muted">{t("options.addAccount.strike")}</span>
+            <input
               type="text"
               inputMode="decimal"
               value={draft.optionStrike}
               onChange={(e) => updateDraft({ optionStrike: e.target.value })}
-              placeholder="600"
+              placeholder={formatNumberInput(600)}
               required
             />
-          </Field>
-          <Field label={t("options.addAccount.expiry")}>
-            <Input
+          </label>
+          <label className={styles.field}>
+            <span className="muted">{t("options.addAccount.expiry")}</span>
+            <input
               type="date"
               value={draft.optionExpiry}
               onChange={(e) => updateDraft({ optionExpiry: e.target.value })}
               required
             />
-          </Field>
-          <p className="muted" style={{ margin: 0 }}>
-            {t("options.addAccount.bucketNote")}
-          </p>
+          </label>
+          <p className={cn("muted", styles.line)}>{t("options.addAccount.bucketNote")}</p>
         </>
       ) : null}
 
       {isEquity ? (
-        <Field label={t("panelAccounts.addAccount.tickerSymbol")}>
-          <Input
+        <label className={cn(styles.field, styles.fieldNarrow)}>
+          <span className="muted">{t("panelAccounts.addAccount.tickerSymbol")}</span>
+          <input
             type="text"
             value={draft.tickerSymbol}
             onChange={(e) => onTickerChange(e.target.value)}
             placeholder="QQQ"
             required
           />
-        </Field>
+        </label>
       ) : null}
 
       {isOption ? null : (
-        <Field label={t("panelAccounts.addAccount.bucket")}>
+        <label className={styles.field}>
+          <span className="muted">{t("panelAccounts.addAccount.bucket")}</span>
           <select
             value={draft.bucketSlug}
             onChange={(e) => updateDraft({ bucketSlug: e.target.value })}
@@ -194,19 +208,21 @@ export function AddAccountForm({ netWorthRoot }: Props) {
               </option>
             ))}
           </select>
-        </Field>
+        </label>
       )}
 
-      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <input
-          type="checkbox"
-          checked={draft.excludeFromGroupTotals}
-          onChange={(e) => updateDraft({ excludeFromGroupTotals: e.target.checked })}
-        />
-        <span>{t("panelAccounts.addAccount.excludeFromTotals")}</span>
-      </label>
+      <div className={styles.line}>
+        <label className={styles.check}>
+          <input
+            type="checkbox"
+            checked={draft.excludeFromGroupTotals}
+            onChange={(e) => updateDraft({ excludeFromGroupTotals: e.target.checked })}
+          />
+          <span>{t("panelAccounts.addAccount.excludeFromTotals")}</span>
+        </label>
+      </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+      <div className={styles.actions}>
         <Button type="submit" disabled={createMutation.isPending}>
           {createMutation.isPending
             ? t("common.loading")
@@ -217,13 +233,9 @@ export function AddAccountForm({ netWorthRoot }: Props) {
         </Button>
       </div>
 
-      {formError ? (
-        <p className="error" style={{ margin: 0 }}>
-          {formError}
-        </p>
-      ) : null}
+      {formError ? <p className={cn("error", styles.line)}>{formError}</p> : null}
       {createdAccountId != null ? (
-        <p style={{ margin: 0 }}>
+        <p className={styles.line}>
           {t("panelAccounts.addAccount.createSuccess", { id: createdAccountId })}
         </p>
       ) : null}

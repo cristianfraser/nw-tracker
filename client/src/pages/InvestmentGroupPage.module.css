@@ -72,6 +72,11 @@
     grid-column: span 6;
   }
 
+  /* A cash group: the one chart of the pair takes the row. */
+  .pair > .pairAlone {
+    grid-column: 1 / -1;
+  }
+
   .pair > .pairSecond {
     margin-left: calc(-0.5 * var(--gutter));
     padding-left: calc(0.5 * var(--gutter));

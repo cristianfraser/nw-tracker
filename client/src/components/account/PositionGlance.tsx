@@ -290,6 +290,7 @@ export function GlanceTitleLine({
   secondary = null,
   secondaryLoading = false,
   day,
+  dayLabel,
   loading = false,
   children,
 }: {
@@ -302,6 +303,8 @@ export function GlanceTitleLine({
   /** The secondary value is held from another display unit: it alone dims. */
   secondaryLoading?: boolean;
   day: PositionGlancePeriodDto | null;
+  /** What the day figure is, for its tooltip (default: the day's P/L). */
+  dayLabel?: string;
   /** Held or pending figures dim (the name does not). */
   loading?: boolean;
   children?: ReactNode;
@@ -317,7 +320,7 @@ export function GlanceTitleLine({
             <span className={loadableClass(secondaryLoading, cn("mono", styles.titleSecondary))}>{formatMoney(secondary)}</span>
           ) : null}
           {day?.pl ? (
-            <span className={cn("mono", styles.titleDay, directionClass(day.direction))} title={t("accountDetail.positionGlance.dayPl")}>
+            <span className={cn("mono", styles.titleDay, directionClass(day.direction))} title={dayLabel ?? t("accountDetail.positionGlance.dayPl")}>
               {directionArrow(day.direction)}
               {formatMoney({ value: Math.abs(day.pl.value), currency: day.pl.currency })}
               {day.pct != null ? ` (${formatPct(Math.abs(day.pct) * 100)})` : null}

@@ -14,6 +14,3 @@ export type ColdStripShape = {
 
 /** Home: Net worth + Inversiones summary cards, then the four bucket cards. */
 export const DASHBOARD_COLD_STRIP: ColdStripShape = { summary: 2, detail: 4 };
-
-/** Group and Pasivos pages: the page's own summary card. */
-export const GROUP_COLD_STRIP: ColdStripShape = { summary: 1, detail: 0 };

@@ -1,4 +1,3 @@
-import { navAccountIdSet } from "../portfolioNavDashboardCards";
 import type { NavTreeNodeDto } from "../types";
 
 /**
@@ -29,10 +28,6 @@ export function listLeafPortfolioGroupBuckets(
   };
   walk(netWorthRoot);
   return out;
-}
-
-export function countAccountsInNavSubtree(node: NavTreeNodeDto): number {
-  return navAccountIdSet(node).size;
 }
 
 /** Slug of the deepest portfolio group holding the account as a direct child (its current home bucket). */

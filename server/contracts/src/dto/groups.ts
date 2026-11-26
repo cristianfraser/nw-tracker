@@ -114,9 +114,10 @@ export interface DashboardNavContextResponse {
    */
   basket_glance?: BasketGlanceDto | null;
   /**
-   * The investment group page's «at a glance» block when the page's node (`root`) has
-   * `NavTreeNodeDto.investment_glance` (a group at or under «Inversiones», not a basket); null for
-   * every other root. Built with this payload (`groupGlance.ts`), so it shares its cache entry.
+   * The group page's «at a glance» block when the page's node (`root`) has
+   * `NavTreeNodeDto.investment_glance` (a group at or under «Inversiones», not a basket) or
+   * `NavTreeNodeDto.cash_glance` (a group of the cash bucket); null for every other root. Built
+   * with this payload (`groupGlance.ts`), so it shares its cache entry.
    */
   group_glance?: GroupGlanceDto | null;
 }
@@ -127,9 +128,13 @@ export interface DashboardNavContextResponse {
  * row (an account), so the table equals the cards and «Detalle».
  */
 export interface GroupGlanceRowDto {
-  /** "group" = a child nav group (or the page's own group for the total row), "account" = a direct account. */
-  kind: "group" | "account";
-  /** Group rows. */
+  /**
+   * "group" = a child nav group (or the page's own group for the total row), "account" = a direct
+   * account, "linked_cards" = what the linked credit cards owe, as the negative amount a cash
+   * group's total nets (a cash glance only; `slug` and `route_path` are the cards' group's).
+   */
+  kind: "group" | "account" | "linked_cards";
+  /** Group and linked-cards rows. */
   slug: string | null;
   /** Account rows. */
   account_id: number | null;
@@ -147,7 +152,10 @@ export interface GroupGlanceRowDto {
   color_rgb: string | null;
   /** Today, display unit. */
   value: Money;
-  /** value ÷ the group's value (0..1); 1 on the total row; 0 when sold out. */
+  /**
+   * value ÷ the group's value (0..1); 1 on the total row; 0 when sold out. On a cash glance the
+   * base is the accounts' positive balances (0 for an account worth 0 or less and for the cards).
+   */
   share: number;
   /** The card's chained %s (a child: `row_pct`; the total row: `parent_pct`; an account: its row's `pct_*`). */
   day_pct: number | null;
@@ -159,6 +167,17 @@ export interface GroupGlanceRowDto {
   total_pct: number | null;
   /** Lifetime aportes (net deposits). */
   deposits: Money | null;
+  /**
+   * A cash glance's rows: the balance in the currency each account holds, one entry per currency,
+   * largest value in the display unit first (an account has one; a group one per currency its
+   * accounts hold; the linked cards their peso total, negative). Empty on an investment glance.
+   */
+  native: Money[];
+  /**
+   * A cash glance's rows: today's value less the value at the end of the previous month / year,
+   * each at its own day's rate, in the display unit. Null on an investment glance.
+   */
+  change: { month: Money; year: Money } | null;
   /** Holds something today. */
   held: boolean;
   /** One year ending today, own scale: up to ~60 points, x/y in 0..1 (x by calendar day from today−364). */
@@ -180,16 +199,59 @@ export interface GroupGlanceRowDto {
   members: GroupGlanceRowDto[];
 }
 
-/** The investment group page's «at a glance» block (`groupGlance.ts`); the client only picks and formats. */
+/** One currency of a cash group: what its accounts hold in it. */
+export interface GroupGlanceCurrencyDto {
+  currency: string;
+  /** Σ of the balances held in the currency, in that currency. */
+  native: Money;
+  /** The same balances in the display unit (Σ of the accounts' values). */
+  value: Money;
+  /** value ÷ Σ of the currencies' positive values (0..1); 0 for a currency worth 0 or less. */
+  share: number;
+}
+
+/** What a cash group's page shows in place of the investment figures (`GroupGlanceDto.cash`). */
+export interface GroupGlanceCashDto {
+  /** The accounts' balances by the currency they hold, largest value first; the linked cards are not in it. */
+  by_currency: GroupGlanceCurrencyDto[];
+  /**
+   * What the linked credit cards owe, as the negative amount the group's value nets; null for a
+   * group that nets none (or cards owing nothing).
+   */
+  linked_cards: { label: string; label_i18n_key: string | null; route_path: string; value: Money } | null;
+  /**
+   * The change of the group's value over the day, the month and the year (today less yesterday's,
+   * the previous month-end's and the previous year-end's value, each at its own day's rate): `pl`
+   * is the change, `pct` always null, `share` its size against the largest of the three.
+   */
+  change: { day: PositionGlancePeriodDto; month: PositionGlancePeriodDto; year: PositionGlancePeriodDto };
+}
+
+/** The group page's «at a glance» block (`groupGlance.ts`); the client only picks and formats. */
 export interface GroupGlanceDto {
   slug: string;
   title: string;
   unit: DisplayUnitCode;
+  /**
+   * "investment": a group at or under «Inversiones». "cash": a group of the cash bucket — no
+   * return figures (`composition` null, the rows' % and P/L null, no `perf_spark`), `cash` set,
+   * and `value` the node's value by the node-value rule: its accounts less the linked cards where
+   * the group nets them, so the rows add up to it.
+   */
+  kind: "investment" | "cash";
+  /** A cash group's own figures; null on an investment glance. */
+  cash: GroupGlanceCashDto | null;
   value: Money;
+  /**
+   * `day` and `periods` are the group's page card on both kinds: its P/L and %. On a cash glance
+   * that is the result of holding the cash (the fx on another currency, interest, fees), without
+   * the linked cards — not the change of the balance, which is `cash.change`.
+   */
   day: PositionGlancePeriodDto;
   /**
    * Summed over the group's member accounts on the last day any held something (today while one
-   * does), the basket composition's rule; null only when the deposited figure cannot be computed.
+   * does), the basket composition's rule; null when the deposited figure cannot be computed and
+   * on a cash glance.
    */
   composition: PositionGlanceDto["composition"];
   periods: { day: PositionGlancePeriodDto; month: PositionGlancePeriodDto; year: PositionGlancePeriodDto };
@@ -521,6 +583,11 @@ export interface NavTreeNodeDto {
    * or under «Inversiones» that is not a basket. False on every other node.
    */
   investment_glance: boolean;
+  /**
+   * The node's page is the same group page in its cash form (`group_glance.kind` "cash"): a group
+   * of the cash bucket that is not a basket. False on every other node.
+   */
+  cash_glance: boolean;
   api_group: string | null;
   api_subgroup: string | null;
   color_rgb: string | null;

@@ -9,7 +9,9 @@ import {
 } from "../../panelAccounts/portfolioNavBuckets";
 import { Modal } from "../ui/Modal";
 import type { AccountListRow, NavTreeNodeDto } from "../../types";
-import { Button, Input } from "@crfrsr/ui";
+import { Button } from "@crfrsr/ui";
+import { cn } from "../../cn";
+import styles from "./PanelForm.module.css";
 
 type Props = {
   account: AccountListRow;
@@ -71,10 +73,10 @@ export function EditAccountModal({ account, netWorthRoot, onClose }: Props) {
       }
     >
       {error ? <p className="error">{error}</p> : null}
-      <p>
-        <label>
-          {t("panelAccounts.addAccount.displayName")}{" "}
-          <Input
+      <div className={cn(styles.form, styles.stacked)}>
+        <label className={styles.field}>
+          <span className="muted">{t("panelAccounts.addAccount.displayName")}</span>
+          <input
             type="text"
             value={name}
             onChange={(e) => {
@@ -83,10 +85,8 @@ export function EditAccountModal({ account, netWorthRoot, onClose }: Props) {
             }}
           />
         </label>
-      </p>
-      <p>
-        <label>
-          {t("panelAccounts.addAccount.bucket")}{" "}
+        <label className={styles.field}>
+          <span className="muted">{t("panelAccounts.addAccount.bucket")}</span>
           <select
             value={bucketSlug}
             onChange={(e) => {
@@ -104,7 +104,7 @@ export function EditAccountModal({ account, netWorthRoot, onClose }: Props) {
             ))}
           </select>
         </label>
-      </p>
+      </div>
     </Modal>
   );
 }

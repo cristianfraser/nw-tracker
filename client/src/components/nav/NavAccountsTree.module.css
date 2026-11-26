@@ -117,7 +117,9 @@
   white-space: nowrap;
 }
 
+/* The grey text gives way well before the group's name does. */
 .slug {
+  flex-shrink: 8;
   margin-left: 0.25rem;
   min-width: 0;
   overflow: hidden;
@@ -135,6 +137,66 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* An account row with a page's extras: the same indent, its name cut with «…», the extras at the
+   end; what the row opens sits on a line under it. */
+.leafRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0.05rem 0.25rem 0.05rem 1.6rem;
+  border-radius: 4px;
+}
+
+.leafRow:hover {
+  background: var(--surface);
+}
+
+.leafLink {
+  min-width: 3rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A row's controls, pushed to its end; they keep their width, the names give way. */
+.end {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  padding-left: 0.4rem;
+}
+
+/* An account's text mark, beside its controls: it is cut well before the name is, down to a
+   few letters, and never under its controls. */
+.tagSlot {
+  flex: 0 8 auto;
+  display: inline-flex;
+  min-width: 3.5rem;
+  overflow: hidden;
+  margin-left: auto;
+}
+
+.tagSlot + .end {
+  margin-left: 0;
+}
+
+/* Accounts outside the tree, under it. */
+.loose {
+  margin-top: var(--space-xs);
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--border);
+}
+
+.looseTitle {
+  margin: 0 0 0.15rem;
+  font-size: var(--font-size-caption);
+  font-weight: 400;
+  color: var(--muted);
 }
 
 .id {

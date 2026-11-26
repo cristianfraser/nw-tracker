@@ -22,9 +22,9 @@ export const DTO_SCHEMA_VERSIONS = {
   /**
    * `GET /api/meta/sidebar-nav`: v5 `chart_coverage`, v6 `member_account_ids`, v7 Retirement by
    * country, v8 `investment_glance` on every node, v9 no `chart_coverage` (the Liabilities page
-   * always draws the coverage chart).
+   * always draws the coverage chart), v10 `cash_glance` on every node.
    */
-  sidebar_nav: 9,
+  sidebar_nav: 10,
   /** The page bundle's `upcoming_payments` («Próximos pagos»); v7: bills as money values (`amount`, `total`, the card's `billed`). */
   upcoming_payments: 7,
   /**
