@@ -28,6 +28,9 @@ Writes:
 Per-PDF parse cache (skip re-parse when PDF and parser unchanged):
   cfraser/cc-statements-parsing-output/per-pdf/<sha256>.json
   Override dir: CC_PARSE_CACHE_DIR. Flags: --no-cache, --force-reparse.
+  A parse the statements import accepted is kept across parser versions (cc_parse_acceptance.py);
+  `--audit` re-reads those with the current parser and reports what it would read differently,
+  `--audit --adopt` takes the new readings, `--audit --if-stale` reports once per parser version.
 
 Reconciliation runs after parse (skip with --no-reconcile). Exit 1 if any statement
 fails totals check; all PDFs are still processed and failures are listed.
@@ -37,6 +40,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+from datetime import datetime
 import json
 import os
 import re
@@ -98,6 +102,7 @@ from statement_values import (  # noqa: E402
     parse_dd_mm_yy_to_iso,
     repair_jammed_year,
 )
+import cc_parse_acceptance as acceptance  # noqa: E402
 from cc_statement_reconcile import (  # noqa: E402
     merge_section_totals_into_meta,
     reconcile_statement,
@@ -134,12 +139,17 @@ def parse_cache_file_path(pdf_hash: str) -> Path:
 
 
 def load_parse_cache(
-    pdf_path: Path, parser_version: str, *, force: bool = False
+    pdf_path: Path,
+    parser_version: str,
+    accepted: Dict[str, Dict[str, Any]],
+    *,
+    force: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """
-    Cache identity is (PDF bytes sha256, parser version) — nothing else. mtime/size must not
-    participate: backup/copy round-trips drift mtimes by nanoseconds without changing a byte,
-    which turned into permanent false misses (4 statements re-parsed every night).
+    Cache identity is the PDF bytes sha256, read by the current parser version or accepted as
+    the version that read it (`cc_parse_acceptance.cache_entry_serves`) — nothing else.
+    mtime/size must not participate: backup/copy round-trips drift mtimes by nanoseconds without
+    changing a byte, which turned into permanent false misses (4 statements re-parsed every night).
     """
     if force:
         return None
@@ -153,23 +163,160 @@ def load_parse_cache(
         payload = json.loads(cache_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    if str(payload.get("parser_version") or "") != parser_version:
-        return None
-    if str(payload.get("pdf_sha256") or "") != pdf_hash:
+    if not acceptance.cache_entry_serves(payload, pdf_hash, parser_version, accepted):
         return None
     return payload
 
 
-def save_parse_cache(pdf_path: Path, parser_version: str, payload: Dict[str, Any]) -> None:
+def save_parse_cache(
+    pdf_path: Path,
+    parser_version: str,
+    payload: Dict[str, Any],
+    *,
+    per_pdf_dir: Optional[Path] = None,
+) -> str:
+    """Store one parse under its PDF's sha256 (returned); `per_pdf_dir` defaults to the parse cache."""
     pdf_hash = pdf_content_sha256(pdf_path)
     out = {
         "parser_version": parser_version,
         "pdf_sha256": pdf_hash,
         **payload,
     }
-    cache_path = parse_cache_file_path(pdf_hash)
+    cache_path = (per_pdf_dir or PARSE_CACHE_PER_PDF_DIR) / f"{pdf_hash}.json"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    return pdf_hash
+
+
+def parse_cache_payload(pdf_path: Path, card_group: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """What the cache keeps of one parse (`cc_parse_acceptance.PARSE_PAYLOAD_FIELDS`)."""
+    return {
+        "source_pdf": pdf_path.name,
+        "card_group": card_group,
+        "effective_group": "INTL" if ctx["parser"] == "international_usd" else card_group,
+        "parser": ctx["parser"],
+        "meta": ctx["meta"],
+        "parsed": ctx["parsed"],
+        "full": ctx["full"],
+        "layout": ctx["layout"],
+    }
+
+
+def run_parse_audit(
+    jobs: List[Tuple[str, Path]],
+    parser_version: str,
+    baseline: List[Dict[str, Any]],
+    *,
+    pdfs_dir: Path,
+    adopt: bool,
+    if_stale: bool,
+) -> int:
+    """
+    Re-read every accepted parse an older parser version made, with the current parser, and
+    compare. Identical: the entry moves to the current version. Different: reported (exit 1) or,
+    with `adopt`, taken into the cache to be accepted by the next import. Each reading is kept
+    under `per-pdf-audit/`, so adopting after a report parses nothing again. `if_stale` (the
+    nightly) reports a parser version's differences once.
+    """
+    stale = dict(acceptance.stale_accepted_entries(PARSE_CACHE_DIR, parser_version))
+    if not stale:
+        print(f"# parse audit: every accepted parse is of the current parser version ({parser_version})")
+        return 0
+    state_path = acceptance.audit_state_path(PARSE_CACHE_DIR)
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+    if if_stale and not adopt and state.get("parser_version") == parser_version:
+        print(
+            f"# parse audit: parser version {parser_version} was audited on {state.get('audited_at')}; "
+            f"{len(state.get('differences') or [])} statement(s) still wait for `--audit --adopt`"
+        )
+        return 0
+    audit_per_pdf = acceptance.audit_dir(PARSE_CACHE_DIR)
+    accepted = acceptance.load_accepted(PARSE_CACHE_DIR)
+    seen: set = set()
+    same = 0
+    differences: List[Dict[str, Any]] = []
+    problems: List[str] = []
+    for card_group, p in jobs:
+        if not p.is_file():
+            continue
+        pdf_hash = pdf_content_sha256(p)
+        if pdf_hash not in stale or pdf_hash in seen:
+            continue
+        seen.add(pdf_hash)
+        old = stale[pdf_hash]
+        shadow_path = audit_per_pdf / f"{pdf_hash}.json"
+        new: Optional[Dict[str, Any]] = None
+        if shadow_path.is_file():
+            shadow = json.loads(shadow_path.read_text(encoding="utf-8"))
+            if shadow.get("parser_version") == parser_version and shadow.get("pdf_sha256") == pdf_hash:
+                new = shadow
+        if new is None:
+            try:
+                _rows, ctx = parse_one_pdf(card_group, p, baseline, cc_root=pdfs_dir)
+            except Exception as e:
+                problems.append(f"{p.name}: the current parser cannot read it ({e})")
+                continue
+            parsed_path = Path(str(ctx.get("pdf_path") or p))
+            if parsed_path != p or pdf_content_sha256(parsed_path) != pdf_hash:
+                problems.append(f"{p.name}: the parse renamed or rewrote the PDF ({parsed_path})")
+                continue
+            new = {
+                "parser_version": parser_version,
+                "pdf_sha256": pdf_hash,
+                **parse_cache_payload(p, card_group, ctx),
+            }
+            save_parse_cache(p, parser_version, parse_cache_payload(p, card_group, ctx), per_pdf_dir=audit_per_pdf)
+        diff = acceptance.describe_parse_difference(old, new)
+        if not diff:
+            # The same reading: the accepted parse now stands for the current parser too.
+            save_parse_cache(p, parser_version, acceptance.parse_payload(new))
+            accepted[pdf_hash] = {**accepted[pdf_hash], "parser_version": parser_version}
+            same += 1
+            continue
+        differences.append({"pdf_sha256": pdf_hash, "source_pdf": p.name, "changes": diff})
+        if adopt:
+            # Taken, not yet accepted: the next import decides.
+            save_parse_cache(p, parser_version, acceptance.parse_payload(new))
+            del accepted[pdf_hash]
+    acceptance.save_accepted(PARSE_CACHE_DIR, accepted)
+    missing = len(stale) - len(seen)
+    print(f"# parse audit (parser version {parser_version}): {len(seen)} accepted parse(s) re-read")
+    print(f"#   same reading: {same}")
+    print(f"#   different reading: {len(differences)}{' — adopted' if adopt and differences else ''}")
+    for d in differences:
+        print(f"# DIFF\t{d['source_pdf']}")
+        for line in d["changes"]:
+            print(f"#   {line}")
+    for problem in problems:
+        print(f"# FAIL\t{problem}", file=sys.stderr)
+    if missing:
+        print(f"#   {missing} accepted parse(s) have no PDF in {pdfs_dir} any more (left as they are)")
+    if adopt:
+        if state_path.is_file():
+            state_path.unlink()
+    else:
+        state_path.write_text(
+            json.dumps(
+                {
+                    "parser_version": parser_version,
+                    "audited_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "differences": differences,
+                },
+                ensure_ascii=False,
+                indent=1,
+            ),
+            encoding="utf-8",
+        )
+    if differences and not adopt:
+        print("# The current parser reads these statements differently. Review, then take the new readings with:")
+        print("#   npm run audit:cc-parse -w nw-tracker-ingest -- --adopt   (then import:cfraser-inbox)")
+        problems = [
+            f"{d['source_pdf']}: {'; '.join(d['changes'])}" for d in differences
+        ] + problems
+    if problems:
+        acceptance.report_step_problems(problems)
+        return 1
+    return 0
 
 
 def rows_from_parse_payload(
@@ -3543,6 +3690,25 @@ def main() -> int:
     out_all = os.environ.get("CC_PARSE_OUTPUT_CSV")
     parser_version = parser_cache_version()
     jobs = discover_pdf_jobs(pdfs_dir)
+    if "--audit" in sys.argv:
+        if not jobs:
+            print(f"# FAIL: no statement PDF under {pdfs_dir}", file=sys.stderr)
+            return 2
+        return run_parse_audit(
+            jobs,
+            parser_version,
+            load_baseline_rows(BASELINE_CSV),
+            pdfs_dir=pdfs_dir,
+            adopt="--adopt" in sys.argv,
+            if_stale="--if-stale" in sys.argv,
+        )
+    # A manifest stands only for the corpus run that wrote it; a side run with its own output CSV
+    # (one uploaded statement) leaves it alone.
+    if not out_all:
+        acceptance.clear_manifest(PARSE_CACHE_DIR)
+    accepted = {} if no_cache else acceptance.load_accepted(PARSE_CACHE_DIR)
+    manifest_entries: List[Dict[str, str]] = []
+    kept_from_older_parser = 0
     if not jobs:
         # No fallback directory: the parser renames the files it reads, and an empty source
         # (a wrong CFRASER_PDFS_DIR, a checkout without cfraser/) once sent it to ~/Downloads.
@@ -3578,9 +3744,7 @@ def main() -> int:
             continue
         cached: Optional[Dict[str, Any]] = None
         if not no_cache:
-            cached = load_parse_cache(
-                p, parser_version, force=force_reparse
-            )
+            cached = load_parse_cache(p, parser_version, accepted, force=force_reparse)
         if cached is None:
             # Readability gate + one-shot qpdf repair, cache-miss files only. This is the
             # ONLY place that reads the PDF outside parse_one_pdf; for image-only scans the
@@ -3605,9 +3769,19 @@ def main() -> int:
         try:
             if cached is not None:
                 cache_hits += 1
+                cached_version = str(cached.get("parser_version") or "")
+                if cached_version != parser_version:
+                    kept_from_older_parser += 1
+                manifest_entries.append(
+                    {
+                        "pdf_sha256": str(cached["pdf_sha256"]),
+                        "parser_version": cached_version,
+                        "source_pdf": p.name,
+                    }
+                )
                 meta = dict(cached.get("meta") or {})
-                # Cached meta was finalized by parse_one_pdf under this same parser version
-                # (finalize logic is part of the version hash), so re-deriving it here would
+                # Cached meta was finalized by parse_one_pdf under the parser version that read
+                # it (this one, or the one its acceptance names), so re-deriving it here would
                 # re-read the PDF — pdftotext -layout per file, full OCR for scans — on every
                 # hit. Validate instead of re-derive.
                 require_statement_meta(meta, p.name)
@@ -3649,36 +3823,16 @@ def main() -> int:
                 if source_pdf in pdf_context:
                     print(f"# skip duplicate statement copy\t{p}\t(already parsed: {source_pdf})")
                     if not no_cache:
-                        save_parse_cache(
-                            p,
-                            parser_version,
-                            {
-                                "source_pdf": p.name,
-                                "card_group": card_group,
-                                "effective_group": effective_group,
-                                "parser": ctx["parser"],
-                                "meta": ctx["meta"],
-                                "parsed": ctx["parsed"],
-                                "full": ctx["full"],
-                                "layout": ctx["layout"],
-                            },
+                        pdf_hash = save_parse_cache(p, parser_version, parse_cache_payload(p, card_group, ctx))
+                        manifest_entries.append(
+                            {"pdf_sha256": pdf_hash, "parser_version": parser_version, "source_pdf": p.name}
                         )
                     continue
                 pdf_context[source_pdf] = ctx
                 if not no_cache:
-                    save_parse_cache(
-                        p,
-                        parser_version,
-                        {
-                            "source_pdf": p.name,
-                            "card_group": card_group,
-                            "effective_group": effective_group,
-                            "parser": ctx["parser"],
-                            "meta": ctx["meta"],
-                            "parsed": ctx["parsed"],
-                            "full": ctx["full"],
-                            "layout": ctx["layout"],
-                        },
+                    pdf_hash = save_parse_cache(p, parser_version, parse_cache_payload(p, card_group, ctx))
+                    manifest_entries.append(
+                        {"pdf_sha256": pdf_hash, "parser_version": parser_version, "source_pdf": p.name}
                     )
             all_rows.extend(rows)
             per_pdf_counts[str(ctx.get("pdf_path") or p.name)] = len(rows)
@@ -3707,6 +3861,11 @@ def main() -> int:
 
     if not no_cache:
         print(f"# parse cache hits={cache_hits} misses={cache_misses}")
+        if kept_from_older_parser:
+            print(
+                f"# {kept_from_older_parser} accepted parse(s) kept from an earlier parser version "
+                "(what this one would read differently: npm run audit:cc-parse -w nw-tracker-ingest)"
+            )
 
     # Dedupe across statements (oldest statement wins canonical)
     by_key_first: Dict[str, str] = {}
@@ -3792,7 +3951,8 @@ def main() -> int:
             reconcile_results,
         )
 
-    write_csv(Path(out_all) if out_all else CFRASER_DIR / "cc-statements-parsed-all.csv", all_rows_sorted)
+    parsed_csv_path = Path(out_all) if out_all else CFRASER_DIR / "cc-statements-parsed-all.csv"
+    write_csv(parsed_csv_path, all_rows_sorted)
     if out_all:
         print(f"# wrote {out_all} rows={len(all_rows_sorted)}")
         return 0
@@ -3861,7 +4021,12 @@ def main() -> int:
         print(f"# WARN zero_rows_fatal={len(zero_row_fatal)}")
         for name in zero_row_fatal:
             print(f"# WARN zero_rows_fatal\t{name}")
-    return 1 if failures or zero_row_fatal or reconcile_exit else 0
+    if failures or zero_row_fatal or reconcile_exit:
+        return 1
+    if not no_cache:
+        # What the statements import accepts once it succeeds (`accept:cc-parses`).
+        acceptance.write_manifest(PARSE_CACHE_DIR, parsed_csv_path, manifest_entries)
+    return 0
 
 
 def _row_to_pr(r: Dict[str, Any]) -> Dict[str, Any]:

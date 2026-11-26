@@ -58,6 +58,7 @@ describe("runNightly", () => {
       "fetch:apple-mail",
       "fetch:afc-cartolas",
       "import:cfraser-inbox",
+      "audit:cc-parse --if-stale",
       "import:santander-movements",
       "import:checking-usd-movements",
       "fetch:lider-bci --retry-turnstile",

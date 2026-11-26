@@ -76,6 +76,11 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   else if (o.fullReimport) await x.step("inbox pipeline (full re-reconcile)", ingest("import:cfraser-inbox", "--full"));
   else await x.step("inbox pipeline", ingest("import:cfraser-inbox"));
 
+  // 2b. After a parser change: what the current parser would read differently in the statements
+  // accepted under an earlier one. Fails (once per parser version) naming each statement; nothing
+  // is imported from it — `audit:cc-parse -- --adopt` takes the new readings.
+  if (!o.dryRun) await x.step("Card statement parser audit", ingest("audit:cc-parse", "--if-stale"));
+
   // 3. The card movements step 1 staged; 3a Lider BCI's card listing (its own session, fetched and
   // imported here); 3b the second payment-mirror pass (a same-day payment's card evidence only
   // lands with the feeds); 3c the banks' own cupos against the app's.
