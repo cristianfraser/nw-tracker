@@ -206,7 +206,11 @@ export function RatesPage() {
         <Link to={DASHBOARD_PATH}>{t("common.backToDashboard")}</Link>
       </p>
       <h1>{t("rates.pageTitle")}</h1>
-      <RatesCoverageNotices notices={payload?.coverage_notices ?? []} syncStale={syncStale} />
+      <RatesCoverageNotices
+        notices={payload?.coverage_notices ?? []}
+        syncStale={syncStale}
+        loading={payload != null && seriesPending}
+      />
 
       <div className={styles.viewRow}>
         <div className="surface-controls">

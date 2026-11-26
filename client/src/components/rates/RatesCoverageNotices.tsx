@@ -3,6 +3,7 @@ import { formatCurrencyFine, formatGroupedDecimal } from "../../format";
 import { useTranslation } from "../../i18n";
 import type { RatesCoverageNotice } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
+import { loadableClass } from "../ui/Loadable";
 import { OpenRow, OpenRows, RowFacts, StatusWord, type StatusTone } from "../ui/OpenRows";
 import { ratesPairLabel } from "./ratesSeries";
 import styles from "./Rates.module.css";
@@ -87,8 +88,11 @@ function noticeCopy(n: RatesCoverageNotice, t: (key: string, vars?: Record<strin
 export function RatesCoverageNotices({
   notices,
   syncStale,
+  loading,
 }: {
   notices: readonly RatesCoverageNotice[];
+  /** The notices are a held payload's (the previous display unit's): dimmed until this unit's land. */
+  loading?: boolean;
   /** A rate source's sync is stale or failed (the sync status' own list). */
   syncStale: boolean;
 }) {
@@ -96,7 +100,7 @@ export function RatesCoverageNotices({
   if (notices.length === 0 && !syncStale) return null;
   const syncLink = <Link to="/panel/import-sync">{t("panel.importSyncTitle")}</Link>;
   return (
-    <PageGridTile id="rates-coverage" aria-label={t("rates.coverage.title")}>
+    <PageGridTile id="rates-coverage" className={loadableClass(loading)} aria-label={t("rates.coverage.title")}>
       <OpenRows>
         {syncStale ? (
           <OpenRow

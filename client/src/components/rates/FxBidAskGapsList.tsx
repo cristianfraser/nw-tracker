@@ -75,7 +75,8 @@ function YearDays({ year }: { year: FxBidAskGapYear }) {
     try {
       await api.upsertFxBidAsk(gap.date, buy, sell);
       setDraft(null);
-      await invalidateResources(queryClient, resources.ratesPage(), resources.dashboard());
+      // Not awaited: the list unlocks once the rate is stored, not after the page's series refetch.
+      void invalidateResources(queryClient, resources.ratesPage(), resources.dashboard());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

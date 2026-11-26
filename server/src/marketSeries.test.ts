@@ -2,6 +2,7 @@ import { describe, expect, it, beforeAll, beforeEach, afterAll } from "vitest";
 import { db } from "./db.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 import { getMarketSeriesPayload } from "./marketSeries.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 
 // The payload reads whole tables; pin every input so assertions are exact.
 const restoreTables = snapshotTables([
@@ -182,6 +183,15 @@ describe("getMarketSeriesPayload", () => {
       { date: "2024-01-02", value: 470, change_pct: null },
     ]);
     expect(p.recent[`fund_unit:${FUND_KEY}`]).toEqual([{ date: "2024-01-04", value: 1234.5 / 910, change_pct: null }]);
+  });
+
+  it("lists no entry stored for a day after today, and keeps it on the chart", () => {
+    // The UF is published about a month ahead.
+    const ahead = chileCalendarAddDays(chileCalendarTodayYmd(), 20);
+    db.prepare(`INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`).run(ahead, 40_000);
+    const p = getMarketSeriesPayload();
+    expect(p.recent.uf_clp).toEqual([{ date: "2024-01-03", value: 36_000, change_pct: null }]);
+    expect(p.points.find((pt) => pt.as_of_date === ahead)?.clp_per_uf).toBe(40_000);
   });
 
   it("keeps five entries of a longer series", () => {
