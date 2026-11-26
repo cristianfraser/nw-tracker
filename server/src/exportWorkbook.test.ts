@@ -38,6 +38,8 @@ beforeAll(() => {
   const val = db.prepare(
     `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?,?,?,'clp')`
   );
+  // Valued from the day money arrives (the daily series refuses money without a value).
+  val.run(accountId, "2025-01-10", 1_000_000);
   val.run(accountId, "2025-01-31", 1_010_000);
   val.run(accountId, "2025-02-28", 1_540_000);
   val.run(accountId, "2025-03-31", 1_360_000);
@@ -130,11 +132,9 @@ describe("buildAccountExportWorkbook in EUR", () => {
       `INSERT INTO movements (from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note)
        VALUES (?, ?, 55000, 'clp', 50, 'eur', '2025-02-20', ?)`
     ).run(eurAccountId, accountId, `${NOTE}|eur-leg`);
-    db.prepare(`INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?,?,?,'clp')`).run(
-      eurAccountId,
-      "2025-01-31",
-      2_100_000
-    );
+    const eurVal = db.prepare(`INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?,?,?,'clp')`);
+    eurVal.run(eurAccountId, "2025-01-10", 2_000_000); // valued from the day money arrives
+    eurVal.run(eurAccountId, "2025-01-31", 2_100_000);
     clearAggregationCache();
   });
 

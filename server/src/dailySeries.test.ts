@@ -230,6 +230,51 @@ describe("getBucketDailySeries — stored-valuations account with mid-window dep
     }
   });
 
+  it("throws when money enters an account before its first value", () => {
+    if (leafSlug == null) return;
+    const leaf = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(leafSlug) as
+      | { id: number }
+      | undefined;
+    if (!leaf) return;
+
+    const accountId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'Vitest · daily series unvalued', 'vitest-daily-series-unvalued', 'vitest-daily-series-unvalued')`
+        )
+        .run(leaf.id).lastInsertRowid
+    );
+    // Money on 03-21, first value on 03-24: three days with money and no value.
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+       VALUES (?, 50000, 'clp', '2026-03-21', 'vitest-daily-series-unvalued-deposit')`
+    ).run(accountId);
+    db.prepare(`INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, '2026-03-24', 51000, 'clp')`).run(
+      accountId
+    );
+
+    try {
+      const build = () =>
+        getBucketDailySeries([{ account_id: accountId, bucket_slug: leafSlug! }], { unit: "clp", days: 6, now: NOW });
+      expect(build).toThrow(`account #${accountId}`);
+      expect(build).toThrow("holds money from 2026-03-21 but has no value until 2026-03-24");
+      // Valued from the deposit day (what the repair script writes): the build reads it.
+      db.prepare(`INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, '2026-03-21', 50000, 'clp')`).run(
+        accountId
+      );
+      clearAggregationCache();
+      const s = build();
+      expect(s.points[2]!.pl).toBe(0); // 03-21: the deposit is valued at itself
+      expect(s.points[4]!.pl).toBe(1000); // 03-24: the first stored value's gain
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+      clearAggregationCache();
+    }
+  });
+
   it("a withdrawal larger than the prior close reads its gain against that close, not −100%", () => {
     if (leafSlug == null) return;
     const leaf = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(leafSlug) as

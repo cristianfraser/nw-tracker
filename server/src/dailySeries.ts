@@ -159,20 +159,21 @@ export function chileCalendarDaysListEndingAt(endYmd: string, count: number): st
  * subtracts them from a *falling* balance.
  */
 /**
- * Grid days a member's money was in the bucket without a value: a run of days with no mark that
- * money entered (a flow inside the run) and that ends in a mark later on — e.g. an AFP whose first
- * contributions predate its first valuation. The bucket sums only the members that have a mark,
- * so on those days it would count the money in and not its value (−79% on the day it arrived,
- * +358% on the day the value appeared). Flags the run and the day the mark appears; the caller
- * gives those days no return. A member that was never valued (not yet open) or is no longer
- * valued (closed, the run never ends) is not flagged. `flows[g − 1]` is grid day g's flow, as
- * `gridFlows` builds it. Pure; exported for tests.
+ * The first time a member held money without a value: a run of grid days with no mark that money
+ * entered (a flow inside the run) and that ends in a mark later on. The bucket sums only the
+ * members that have a mark, so on those days it would count the money in and not its value
+ * (−79% on the day it arrived, +358% on the day the value appeared, for the 2017 AFP before its
+ * ledger was rebuilt). Stored history is repaired so this never happens (an account is valued
+ * from the day money enters it: `scripts/value-accounts-from-first-deposit.ts`), and the daily
+ * build throws when it finds one. A member never valued (not yet open) or no longer valued
+ * (closed: the run never ends) is fine. Returns the grid index of the run's first day with money
+ * in and of the mark that ends it, or null. `flows[g − 1]` is grid day g's flow, as `gridFlows`
+ * builds it. Pure; exported for the repair script and tests.
  */
-export function unvaluedMemberDays(
+export function fundedUnvaluedRun(
   marks: readonly (number | null)[],
   flows: readonly number[] | undefined
-): boolean[] {
-  const out = new Array<boolean>(marks.length).fill(false);
+): { flowGi: number; markGi: number } | null {
   const has = (g: number) => marks[g] != null && Number.isFinite(marks[g]!);
   let g = 0;
   while (g < marks.length) {
@@ -182,16 +183,12 @@ export function unvaluedMemberDays(
     }
     const start = g;
     while (g < marks.length && !has(g)) g += 1;
-    const end = g - 1; // last unmarked day of the run
-    if (g >= marks.length) break; // never valued again
-    let moneyIn = false;
-    for (let d = Math.max(start, 1); d <= end; d++) {
-      if ((flows?.[d - 1] ?? 0) !== 0) moneyIn = true;
+    if (g >= marks.length) return null; // never valued again
+    for (let d = Math.max(start, 1); d < g; d++) {
+      if ((flows?.[d - 1] ?? 0) !== 0) return { flowGi: d, markGi: g };
     }
-    if (!moneyIn) continue;
-    for (let d = start; d <= end + 1; d++) out[d] = true;
   }
-  return out;
+  return null;
 }
 
 function gridFlows(
@@ -613,11 +610,16 @@ export function getBucketDailySeries(
     return accFlows ? [{ ai, accFlows, sign: isLiability[ai] ? -1 : 1 }] : [];
   });
 
-  // Days a member held money without a value give the bucket no return (`unvaluedMemberDays`).
-  const unvalued = new Array<boolean>(grid.length).fill(false);
+  // A member holding money without a value is a data error (`fundedUnvaluedRun`).
   included.forEach((a, ai) => {
-    const flagged = unvaluedMemberDays(marksByAccount[ai]!, flowsByAccount.get(a.account_id));
-    for (let g = 0; g < grid.length; g++) if (flagged[g]) unvalued[g] = true;
+    const run = fundedUnvaluedRun(marksByAccount[ai]!, flowsByAccount.get(a.account_id));
+    if (run) {
+      throw new Error(
+        `daily series: account #${a.account_id} (${a.name ?? "?"}) holds money from ${grid[run.flowGi]} ` +
+          `but has no value until ${grid[run.markGi]}; record its value on the day the money arrived ` +
+          `(npx tsx scripts/value-accounts-from-first-deposit.ts)`
+      );
+    }
   });
 
   const points: DailySeriesPoint[] = [];
@@ -632,7 +634,7 @@ export function getBucketDailySeries(
     const wealthNow = wealth[i]!;
     const wealthPrev = wealth[i - 1]!;
     const pl =
-      wealthNow != null && wealthPrev != null && !unvalued[i]
+      wealthNow != null && wealthPrev != null
         ? periodPl({ valueStart: wealthPrev, valueEnd: wealthNow, flow, side: "asset" })
         : null;
     // Capital base = what was at work before today's P/L: assets grow with their flows, debt

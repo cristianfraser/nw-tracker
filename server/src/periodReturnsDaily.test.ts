@@ -55,18 +55,19 @@ describe("withDailyChainedReturns", () => {
   });
 });
 
-describe("unvaluedMemberDays", () => {
-  it("flags a run without a mark that money entered and that ends in a mark", async () => {
-    const { unvaluedMemberDays } = await import("./dailySeries.js");
+describe("fundedUnvaluedRun", () => {
+  it("finds the first day money entered a run without a mark that ends in a mark", async () => {
+    const { fundedUnvaluedRun } = await import("./dailySeries.js");
     // grid days 0..6; flows[g − 1] is day g's flow. Money arrives on day 2, the mark on day 4.
-    const marks = [null, null, null, null, 100, 101, 102];
-    const flows = [0, 50, 0, 0, 0, 0];
-    expect(unvaluedMemberDays(marks, flows)).toEqual([true, true, true, true, true, false, false]);
+    expect(fundedUnvaluedRun([null, null, null, null, 100, 101, 102], [0, 50, 0, 0, 0, 0])).toEqual({
+      flowGi: 2,
+      markGi: 4,
+    });
   });
 
-  it("leaves alone an account opened with a mark the day money arrives, and one never valued again", async () => {
-    const { unvaluedMemberDays } = await import("./dailySeries.js");
-    expect(unvaluedMemberDays([null, null, 100, 90], [0, 100, 0])).toEqual([false, false, false, false]);
-    expect(unvaluedMemberDays([100, 0, null, null], [0, -100, 5])).toEqual([false, false, false, false]);
+  it("leaves alone an account valued the day money arrives, and one never valued again", async () => {
+    const { fundedUnvaluedRun } = await import("./dailySeries.js");
+    expect(fundedUnvaluedRun([null, null, 100, 90], [0, 100, 0])).toBeNull();
+    expect(fundedUnvaluedRun([100, 0, null, null], [0, -100, 5])).toBeNull();
   });
 });
