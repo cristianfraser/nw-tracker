@@ -191,7 +191,7 @@ item is a group, the group page with a single account shows that account page's 
 | A | The property account page (`components/depto/`); `MortgageGroupPage` only as the precedent for composing glances server-side |
 | B1 | `CheckingAccountDetailPage` |
 | B2 | `PositionAccountDetailPage` |
-| C | `CheckingAccountDetailPage` (balance strip, statement) for the content, in the `InvestmentGroupPage` frame |
+| C | `InvestmentGroupPage` itself: cash groups are wired into the existing group page (the server marks the nav node and builds its `group_glance`), with the columns that make no sense for cash left out; no new page |
 | D | `WatchlistPage` for the glance per pair; the position page's chart tiles |
 | E | The deposits table on `/flows/deposits` (`components/flows/`) |
 | F | The messages table (`components/messages/`) |
@@ -206,15 +206,27 @@ item is a group, the group page with a single account shows that account page's 
 | A | Real-estate group page | Yes: a `real-estate-glance` on the model of `mortgage-glance` (`mortgageGroupGlance.ts`), composed from each property's own cached `depto_glance` so the group's figures are the pages' figures: appraisal, debt, net equity, loan-to-value, equity over time, rent and running costs per property | new `RealEstateGroupPage`, new server module, one dispatch branch in `GroupInfoPage.tsx` |
 | B1 | Cash accounts onto the checking page | Yes: extend `CHECKING_PAGE_KIND_SLUGS` and the checking payload to broker / exchange cash and foreign-currency checking (balance in the account's `cash_currency`) | `AccountDetailPage.tsx`, `CheckingAccountDetailPage.tsx`, checking payload builder |
 | B2 | Every remaining account onto the position page: the demo's APV / AFC accounts get units; valuation-on-date accounts get a glance without the price blocks | Yes: demo generator (`server/src/demoData/`, `scripts/generate-demo-data.ts`); `positionGlance.ts` builds a no-price glance for an account valued by stored valuations | `AccountDetailPage.tsx`, `PositionAccountDetailPage.tsx`, `components/account/PositionGlance`; then delete `StandardAccountDetailPage` |
-| C | Cash group pages | Yes: a cash group glance (balance per account and currency, month in / out) | new `CashGroupPage`, dispatch branch in `GroupInfoPage.tsx`; then delete `GroupInfoBase` |
+| C | Cash group pages wired into the existing group page | Yes: the nav flag that sends a group to `InvestmentGroupPage` (`investment_glance`, `navTreeTypes.ts`) and its `group_glance` (`groupGlance.ts`) extended to cash groups: balance per account in its own currency and the display unit, no price or return columns | `groupGlance.ts`, `GroupInfoPage.tsx`, `InvestmentGroupPage.tsx`, `components/group/GroupGlance`; then delete `GroupInfoBase` |
 | D | Rates page | Yes: today's glance per pair and the recent-entries tail built server-side (drop `ratesDailyTailClip.ts`); coverage message as structured data | `RatesPage.tsx`, `components/rates/`, rates route |
 | E | Deposits reconciliation | Probably small: rows grouped by month server-side if they are not already | `DepositsReconciliationPage.tsx` |
 | F | Import-sync panels | No (check at start) | `components/sync/*` |
 | G | Tax return | Check at start; the F22 rows are server-built, a «differs from filed» flag per code may be missing | `TaxReturnPage.tsx`, `components/tax/` |
 | H | Accounts panel | No | `AccountsPanelPage.tsx`, `components/panel/` |
 | I | Projections and wealth percentile | Projections: the summary sentence as structured figures. Percentile: no | `ProjectionsPage.tsx`, `WealthPercentilePage.tsx` |
-| J | Flows overview | No | `FlowsOverviewPage.tsx` |
+| J | Flows overview: its «Month detail» table replaced by the income / deposits period table component, not a new table | No | `FlowsOverviewPage.tsx` |
 | K | Leftovers (usage, settings top, dead code) | No | small |
+
+### Which findings depend on the demo data
+
+The pages were judged on the synthetic demo database. What that changes:
+
+- **B2**: the problem itself was demo-only for APV and AFC (see B2 above).
+- **D**: the red «exchange rate incomplete» block is the demo's incomplete rate history and
+  probably does not show on real data; the page length and the client-side clip are code.
+- **F**, **K**: the runs, queue and usage panels were empty in the demo; F's session filled
+  them with synthetic rows, K still needs the same before judging.
+- **A**, **C**, **E**, **G**, **H**, **I**, **J**: the route renders the same component whatever
+  the data, so the finding holds; only sizes (page heights) will differ.
 
 ### Order by value
 
