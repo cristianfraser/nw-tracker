@@ -45,6 +45,8 @@
     "import:checking-cartolas": "tsx src/santander/importCartolasMain.ts --account=checking",
     "import:cuenta-vista-cartolas": "tsx src/santander/importCartolasMain.ts --account=cuenta-vista",
     "check:cc-parse": "PYTHONPATH=python/.pdf_deps python3 python/check-cc-statement-parse.py",
+    "accept:cc-parses": "PYTHONPATH=python/.pdf_deps python3 python/cc_parse_acceptance.py",
+    "audit:cc-parse": "PYTHONPATH=python/.pdf_deps python3 python/parse-cc-statement-pdfs.py --audit",
     "test:python": "cd python && for t in *_test.py; do PYTHONPATH=.pdf_deps python3 \"$t\" || exit 1; done",
     "service": "tsx src/service/main.ts",
     "import:checking-movements": "tsx src/santander/importCheckingMovementsMain.ts",

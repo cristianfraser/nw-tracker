@@ -182,6 +182,12 @@ async function main(): Promise<void> {
     if (csv) importArgs.push(`--csv=${csv}`);
     const code = runStep("Import parsed credit-card statements (ingest)", "npm", importArgs);
     if (code !== 0) process.exit(code);
+    // The import took this run's parses: they are accepted, and a later parser version keeps
+    // them (python/cc_parse_acceptance.py). Only for the parse this run made, really imported.
+    if (!dryRun && !skipParse && !csv) {
+      const accepted = runStep("Accept the imported statement parses", "npm", ["run", "accept:cc-parses", "-w", "nw-tracker-ingest"]);
+      if (accepted !== 0) process.exit(accepted);
+    }
   } else {
     console.log("\n=== Import parsed credit-card CSV (skipped) ===");
   }

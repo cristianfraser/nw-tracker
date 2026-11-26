@@ -6,17 +6,30 @@ Requires: poppler, tesseract, pymupdf in `ingest/python/.pdf_deps`.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
-from ocr_tessdata import use_expected_tessdata
+from ocr_tessdata import EXPECTED_ENG_TRAINEDDATA_SHA256, use_expected_tessdata
 from statement_values import parse_clp_amount
 
 CC_PDF_OCR_DPI = int(os.environ.get("CC_PDF_OCR_DPI", "400"))
+
+# OCR text is kept per PDF, apart from the parse cache: what Tesseract reads depends on the PDF's
+# bytes, the model, the resolution and the PyMuPDF build — never on the parser — so a parser edit
+# must not pay for it again (a scanned statement takes 30–45 s per read on the home server, and one
+# parse reads it up to three times).
+OCR_TEXT_CACHE_DIR = Path(
+    os.environ.get(
+        "CC_OCR_TEXT_CACHE_DIR",
+        str(Path(__file__).resolve().parent.parent.parent / "cfraser" / "ocr-text-cache"),
+    )
+)
 
 RE_OCR_INTL_ROW = re.compile(
     r"(\d{2}/\d{2}/\d{2})\s+(.+?)\s+([\d.]+,\d{2})\s+([\d.,]+)"
@@ -48,14 +61,22 @@ RE_OCR_PERIOD_DESDE_HASTA = re.compile(
 )
 
 
-def extract_cc_pdf_ocr_flat(pdf_path: Path) -> str:
+def _file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _ocr_engine_id() -> str:
     import fitz  # type: ignore
 
-    use_expected_tessdata()
-    if not shutil.which("tesseract"):
-        raise RuntimeError(
-            "Tesseract is required for image-scan credit-card PDFs. Install: brew install tesseract"
-        )
+    return f"pymupdf {fitz.VersionBind}"
+
+
+def _run_ocr_flat(pdf_path: Path) -> str:
+    import fitz  # type: ignore
 
     doc = fitz.open(str(pdf_path))
     chunks: List[str] = []
@@ -68,6 +89,51 @@ def extract_cc_pdf_ocr_flat(pdf_path: Path) -> str:
     finally:
         doc.close()
     return re.sub(r"\s+", " ", " ".join(chunks)).strip()
+
+
+def cached_ocr_flat(
+    pdf_path: Path,
+    *,
+    cache_dir: Path,
+    model_sha256: str,
+    dpi: int,
+    engine: str,
+    run_ocr: Callable[[Path], str],
+) -> str:
+    """
+    The OCR text of a PDF, read once per (PDF bytes, model, dpi, engine).
+
+    An entry made under another model, resolution or engine is replaced, never served.
+    """
+    pdf_hash = _file_sha256(pdf_path)
+    identity = {"pdf_sha256": pdf_hash, "model_sha256": model_sha256, "dpi": dpi, "engine": engine}
+    entry_path = cache_dir / f"{pdf_hash}.json"
+    if entry_path.is_file():
+        entry = json.loads(entry_path.read_text(encoding="utf-8"))
+        if all(entry.get(k) == v for k, v in identity.items()):
+            return str(entry["text"])
+    text = run_ocr(pdf_path)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    tmp = entry_path.with_name(f"{entry_path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps({**identity, "text": text}, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(entry_path)
+    return text
+
+
+def extract_cc_pdf_ocr_flat(pdf_path: Path) -> str:
+    use_expected_tessdata()
+    if not shutil.which("tesseract"):
+        raise RuntimeError(
+            "Tesseract is required for image-scan credit-card PDFs. Install: brew install tesseract"
+        )
+    return cached_ocr_flat(
+        pdf_path,
+        cache_dir=OCR_TEXT_CACHE_DIR,
+        model_sha256=EXPECTED_ENG_TRAINEDDATA_SHA256,
+        dpi=CC_PDF_OCR_DPI,
+        engine=_ocr_engine_id(),
+        run_ocr=_run_ocr_flat,
+    )
 
 
 def peek_pdf_text_pdftotext(path: Path) -> str:
