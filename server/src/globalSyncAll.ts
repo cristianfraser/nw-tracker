@@ -443,7 +443,8 @@ async function runFintual(
   const appliedRows = resolutions.map((r) => r.row);
   const picked = pickFintualApplySnapshot(appliedRows, overrides, pollCl, state, publishYmd);
   const snap = picked.snap;
-  writeGoalsSnapshot(snap);
+  // The snapshot's `fetchedAt` feeds the publisher-lag rule: a dry run must not move it.
+  if (!syncDryRun) writeGoalsSnapshot(snap);
 
   const sig = fintualMappedGoalsApiSignature(resolutions);
   // Per-fund term: sig/publish-date equality cannot see a held fund whose publish-day bar is
@@ -787,7 +788,7 @@ async function runAfcCic(
 }
 
 async function runFxPairs(notes: SyncStepNote[]): Promise<void> {
-  const result = await syncFxPairsFromYahoo();
+  const result = await syncFxPairsFromYahoo({ dryRun: syncDryRun });
   for (const p of result.pairs) {
     notes.push({ step: `Yahoo ${p.code.toUpperCase()}`, message: `ok — ${p.inserted} row(s) inserted into fx_rates (write-once); latest ${p.latest ?? "—"}` });
   }

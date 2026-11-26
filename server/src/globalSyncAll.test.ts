@@ -198,9 +198,7 @@ describe("runGlobalSyncAll: dry run", () => {
     expect(invalidations).not.toContain("historical");
   });
 
-  // BUG: `runFxPairs` (globalSyncAll.ts) calls `syncFxPairsFromYahoo()` without `dryRun`, so a
-  // dry run inserts the EUR/USD bars into `fx_rates`. Flip to `it` once it passes `syncDryRun`.
-  it.fails("writes no currency-pair row either", async () => {
+  it("writes no currency-pair row either", async () => {
     routes = [yahooRoute];
 
     const code = await runGlobalSyncAll({ dryRun: true, sources: ["fx_pairs"] });
