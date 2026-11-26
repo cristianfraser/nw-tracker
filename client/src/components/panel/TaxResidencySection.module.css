@@ -1,0 +1,139 @@
+/* The tax residency (Settings): a headline — where you are resident now —, the form that opens
+   under it, and the periods as a row list, one rendering at every width. Wide, a row is a subgrid
+   of the list (where | dates | note | action); under 34rem of the section the dates and the note
+   take lines of their own under the place. */
+.frame {
+  container: tax-residency / inline-size;
+  max-width: 60rem;
+  font-size: var(--font-size-ui);
+}
+
+.now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.25rem 0 0.75rem;
+}
+
+.nowWhere {
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.nowAction {
+  margin-left: auto;
+}
+
+.declare {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem;
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.periods {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr) max-content;
+  column-gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.period {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.period:last-child {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.where {
+  font-weight: 500;
+}
+
+/* The open period's square is lit; a closed one's is quiet. */
+.mark,
+.markOpen {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 0.5rem;
+  vertical-align: 2px;
+  background: var(--muted);
+}
+
+.markOpen {
+  background: var(--accent);
+}
+
+.dates {
+  color: var(--muted);
+  font-size: var(--font-size-prose-sm);
+}
+
+.day {
+  color: var(--text);
+}
+
+.noteCell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--font-size-prose-sm);
+  cursor: pointer;
+}
+
+.remove:hover:not(:disabled) {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.implied .where {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.hint {
+  margin: 0.6rem 0 0;
+  max-width: 40rem;
+  font-size: var(--font-size-prose-sm);
+  line-height: 1.4;
+}
+
+@container tax-residency (max-width: 34rem) {
+  .periods {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .dates {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .noteCell {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    white-space: normal;
+  }
+
+  .action {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}

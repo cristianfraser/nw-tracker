@@ -465,7 +465,6 @@
   },
   "chartStylesLab": {
     "title": "Estilos de gráficos",
-    "previewButton": "Ver estilos",
     "intro": "Los mismos dos gráficos bajo cada estilo. El ajuste «Gráficos» aplica un estilo a todas las páginas.",
     "lineTitle": "Patrimonio neto (muestra)",
     "comboTitle": "Δ mensual y depósitos (muestra)",
@@ -3170,13 +3169,31 @@
   },
   "panelSettings": {
     "display": {
-      "title": "Visualización"
+      "title": "Visualización",
+      "languageWhat": "Todos los textos y los nombres de los meses.",
+      "numberFormatWhat": "Cómo se escriben y se ingresan los montos.",
+      "chartStyleWhat": "Cómo se dibuja cada gráfico.",
+      "compareCharts": "Comparar en gráficos reales",
+      "chartStyleShort": {
+        "plain": "Normal",
+        "pen": "Lápiz pasta",
+        "pencil": "Grafito",
+        "marker": "Plumón",
+        "watercolor": "Acuarela",
+        "crayon": "Crayón"
+      }
     },
     "taxResidency": {
       "title": "Residencia tributaria",
-      "explain": "Dónde eres residente tributario, declarado desde un día: la declaración de renta lo lee para decidir el régimen de cada año (residente, no residente o el año de la partida). Sin períodos declarados eres residente tributario en Chile.",
-      "none": "Sin períodos declarados.",
-      "jurisdiction": "Jurisdicción",
+      "explain": "La declaración de renta lee esto para decidir el régimen de cada año: residente, no residente o el año de la partida.",
+      "none": "nada declarado",
+      "since": "desde {{from}}",
+      "declareChange": "Declarar un cambio",
+      "willDo": "Esto cierra {{previous}} el {{to}} y abre {{next}} desde {{from}}.",
+      "assumedOnly": "Se asume mientras no haya un período declarado.",
+      "assumedBefore": "Se asume antes de la primera declaración.",
+      "remove": "Quitar",
+      "jurisdiction": "Residente en",
       "jurisdictions": {
         "cl": "Chile",
         "us": "Estados Unidos"
@@ -3186,7 +3203,6 @@
       "open": "abierto",
       "note": "Nota",
       "declare": "Declarar",
-      "deleteLatest": "Borrar el último período",
       "deleteConfirm": "¿Borrar el período desde {{from}}? El anterior vuelve a quedar abierto.",
       "readOnlyDemo": "La residencia de la demo es parte de su historia; no se cambia aquí."
     }

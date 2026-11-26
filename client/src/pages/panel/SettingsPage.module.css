@@ -1,9 +1,122 @@
-/* /panel/settings, «Display»: the radios of a field, on the line a select would take (and as
-   tall as PanelForm's controls, so the labels of a row of fields stay on one line). */
-.choices {
-  display: flex;
-  flex-wrap: wrap;
+/* /panel/settings, «Display»: a list of settings, one rendering at every width. A line is the
+   setting's name over what it changes, with its choices beside it; under 34rem of the section the
+   choices move under the name. */
+.frame {
+  container: settings-list / inline-size;
+}
+
+.settings {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  max-width: 60rem;
+  font-size: var(--font-size-ui);
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  gap: 0.125rem 1.5rem;
   align-items: center;
-  gap: 0.25rem 1rem;
-  min-height: 1.75rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.setting:last-child {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.name {
+  font-weight: 500;
+}
+
+.what {
+  grid-column: 1;
+  font-size: var(--font-size-prose-sm);
+}
+
+.choice {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-width: 0;
+}
+
+.choice :global(.surface-controls__set) {
+  gap: 0.25rem 1.125rem;
+  font-size: var(--font-size-ui);
+}
+
+/* The link that opens the styles on real charts, in the line that says what the setting does. */
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+/* The chart styles: each choice a sample of its own line over its name. */
+.styles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.5rem;
+  max-width: 36rem;
+}
+
+.style {
+  min-width: 0;
+  padding: 0.3rem 0.25rem 0.25rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--font-size-card-label);
+  text-align: center;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style:hover {
+  color: var(--text);
+  border-color: var(--hairline);
+}
+
+.styleOn,
+.styleOn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.sample {
+  display: block;
+  width: 100%;
+  height: 1.875rem;
+  margin-bottom: 0.2rem;
+  overflow: visible;
+}
+
+@container settings-list (max-width: 34rem) {
+  .setting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .choice {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 0.45rem;
+  }
+
+  .styles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: none;
+  }
 }

@@ -1386,10 +1386,6 @@
       "en": "Chart styles",
       "es": "Estilos de gráficos"
     },
-    "previewButton": {
-      "en": "Preview styles",
-      "es": "Ver estilos"
-    },
     "intro": {
       "en": "The same two charts under each style. The «Charts» setting applies a style to every page.",
       "es": "Los mismos dos gráficos bajo cada estilo. El ajuste «Gráficos» aplica un estilo a todas las páginas."
@@ -10082,6 +10078,30 @@
       "title": {
         "en": "Display",
         "es": "Visualización"
+      },
+      "languageWhat": {
+        "en": "Every label and month name.",
+        "es": "Todos los textos y los nombres de los meses."
+      },
+      "numberFormatWhat": {
+        "en": "How amounts are written and typed.",
+        "es": "Cómo se escriben y se ingresan los montos."
+      },
+      "chartStyleWhat": {
+        "en": "How every chart is drawn.",
+        "es": "Cómo se dibuja cada gráfico."
+      },
+      "compareCharts": {
+        "en": "Compare on real charts",
+        "es": "Comparar en gráficos reales"
+      },
+      "chartStyleShort": {
+        "plain": { "en": "Normal", "es": "Normal" },
+        "pen": { "en": "Pen", "es": "Lápiz pasta" },
+        "pencil": { "en": "Pencil", "es": "Grafito" },
+        "marker": { "en": "Marker", "es": "Plumón" },
+        "watercolor": { "en": "Watercolor", "es": "Acuarela" },
+        "crayon": { "en": "Crayon", "es": "Crayón" }
       }
     },
     "taxResidency": {
@@ -10090,16 +10110,40 @@
         "es": "Residencia tributaria"
       },
       "explain": {
-        "en": "Where you are a tax resident, declared from a day: the tax return reads it to decide each year's regime (resident, non-resident, or the departure year). With no period declared you are a Chilean tax resident.",
-        "es": "Dónde eres residente tributario, declarado desde un día: la declaración de renta lo lee para decidir el régimen de cada año (residente, no residente o el año de la partida). Sin períodos declarados eres residente tributario en Chile."
+        "en": "The tax return reads this to decide each year's regime: resident, non-resident, or the departure year.",
+        "es": "La declaración de renta lee esto para decidir el régimen de cada año: residente, no residente o el año de la partida."
       },
       "none": {
-        "en": "No period declared.",
-        "es": "Sin períodos declarados."
+        "en": "nothing declared",
+        "es": "nada declarado"
+      },
+      "since": {
+        "en": "since {{from}}",
+        "es": "desde {{from}}"
+      },
+      "declareChange": {
+        "en": "Declare a change",
+        "es": "Declarar un cambio"
+      },
+      "willDo": {
+        "en": "This closes {{previous}} on {{to}} and opens {{next}} from {{from}}.",
+        "es": "Esto cierra {{previous}} el {{to}} y abre {{next}} desde {{from}}."
+      },
+      "assumedOnly": {
+        "en": "Assumed while no period is declared.",
+        "es": "Se asume mientras no haya un período declarado."
+      },
+      "assumedBefore": {
+        "en": "Assumed before the first declaration.",
+        "es": "Se asume antes de la primera declaración."
+      },
+      "remove": {
+        "en": "Remove",
+        "es": "Quitar"
       },
       "jurisdiction": {
-        "en": "Jurisdiction",
-        "es": "Jurisdicción"
+        "en": "Resident in",
+        "es": "Residente en"
       },
       "jurisdictions": {
         "cl": {
@@ -10130,10 +10174,6 @@
       "declare": {
         "en": "Declare",
         "es": "Declarar"
-      },
-      "deleteLatest": {
-        "en": "Delete the latest period",
-        "es": "Borrar el último período"
       },
       "deleteConfirm": {
         "en": "Delete the period from {{from}}? The one before it reopens.",

@@ -465,7 +465,6 @@
   },
   "chartStylesLab": {
     "title": "Chart styles",
-    "previewButton": "Preview styles",
     "intro": "The same two charts under each style. The «Charts» setting applies a style to every page.",
     "lineTitle": "Net worth (sample)",
     "comboTitle": "Monthly Δ and deposits (sample)",
@@ -3170,13 +3169,31 @@
   },
   "panelSettings": {
     "display": {
-      "title": "Display"
+      "title": "Display",
+      "languageWhat": "Every label and month name.",
+      "numberFormatWhat": "How amounts are written and typed.",
+      "chartStyleWhat": "How every chart is drawn.",
+      "compareCharts": "Compare on real charts",
+      "chartStyleShort": {
+        "plain": "Normal",
+        "pen": "Pen",
+        "pencil": "Pencil",
+        "marker": "Marker",
+        "watercolor": "Watercolor",
+        "crayon": "Crayon"
+      }
     },
     "taxResidency": {
       "title": "Tax residency",
-      "explain": "Where you are a tax resident, declared from a day: the tax return reads it to decide each year's regime (resident, non-resident, or the departure year). With no period declared you are a Chilean tax resident.",
-      "none": "No period declared.",
-      "jurisdiction": "Jurisdiction",
+      "explain": "The tax return reads this to decide each year's regime: resident, non-resident, or the departure year.",
+      "none": "nothing declared",
+      "since": "since {{from}}",
+      "declareChange": "Declare a change",
+      "willDo": "This closes {{previous}} on {{to}} and opens {{next}} from {{from}}.",
+      "assumedOnly": "Assumed while no period is declared.",
+      "assumedBefore": "Assumed before the first declaration.",
+      "remove": "Remove",
+      "jurisdiction": "Resident in",
       "jurisdictions": {
         "cl": "Chile",
         "us": "United States"
@@ -3186,7 +3203,6 @@
       "open": "open",
       "note": "Note",
       "declare": "Declare",
-      "deleteLatest": "Delete the latest period",
       "deleteConfirm": "Delete the period from {{from}}? The one before it reopens.",
       "readOnlyDemo": "The demo's residency is part of its story; it cannot be changed here."
     }
