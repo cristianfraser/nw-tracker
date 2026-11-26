@@ -4,12 +4,11 @@ import { latestPublishedFintualCuotaDay } from "./fintualFundUnitDaily.js";
 import { fintualPollDayCaughtUp } from "./fintualPublishDate.js";
 import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
+import { isChileBusinessDay, isNyseTradingDay, nextChileBusinessDayYmd } from "./marketHolidays.js";
 import {
-  isChileBusinessDay,
-  isNyseTradingDay,
-  nextChileBusinessDayYmd,
-  priorNyseSessionYmd,
-} from "./marketHolidays.js";
+  heldProxyValuationDayYmd,
+  proxyValuationDayOnOrBefore,
+} from "./rnProxyValuationDay.js";
 import {
   isBeforeNyseRegularOpen,
   isNyseRegularSessionOpen,
@@ -77,42 +76,25 @@ export function fintualGlobalSyncSettledForChileDay(ymd: string): boolean {
 }
 
 /**
- * The NYSE session whose close the proxy would be holding right now: the current session once
- * it has opened, otherwise the previous trading session (yesterday's, or Friday's on a weekend
- * or a US holiday).
+ * The Chile day whose cuota is the first that reflects a proxy valuation day: the day itself
+ * when Chile worked that day (always so for an fx-only day), else the next Chile business day
+ * (Fintual prints a flat carry for the whole non-business block).
  */
-function heldNyseSessionYmd(now: Date): string | null {
-  const sessionYmd = nyseWallClock(now).ymd;
-  if (isNyseTradingDay(sessionYmd) && !isBeforeNyseRegularOpen(now)) return sessionYmd;
-  return priorNyseSessionYmd(sessionYmd);
+function valuationDayCuotaDay(valuationDay: string): string | null {
+  return isChileBusinessDay(valuationDay) ? valuationDay : nextChileBusinessDayYmd(valuationDay);
 }
 
 /**
- * The NYSE session a calendar date's value reflects: the date itself when NYSE traded that day,
- * else the previous session (Friday's for a weekend day, Thursday's for a US holiday).
- */
-function nyseSessionOnOrBefore(ymd: string): string | null {
-  return isNyseTradingDay(ymd) ? ymd : priorNyseSessionYmd(ymd);
-}
-
-/**
- * The Chile day whose cuota is the first that reflects an NYSE session: the session day itself
- * when Chile worked that day, else the next Chile business day (Fintual prints a flat carry for
- * the whole non-business block).
- */
-function sessionCuotaDay(session: string): string | null {
-  return isChileBusinessDay(session) ? session : nextChileBusinessDayYmd(session);
-}
-
-/**
- * The cuota that reflects `session` is not in the database yet: the series' latest PUBLISHED
- * cuota (never a carry or a stand-in) is dated before the session's cuota day. Two cases, one
- * rule:
+ * The cuota that reflects the proxy valuation day `valuationDay` (an NYSE session or an fx-only
+ * day, `rnProxyValuationDay.ts`) is not in the database yet: the series' latest PUBLISHED
+ * cuota (never a carry or a stand-in) is dated before the valuation day's cuota day. The
+ * cases, one rule:
  * - a session on a Chile holiday, until the next Chile business day's cuota lands (Fiestas
  *   Patrias 2026-09-18: Friday's close through the weekend and Monday);
  * - a session on a Chile business day whose cuota Fintual has not published (2026-11-24: nothing
  *   by midnight, so Wednesday read Tuesday's proxy against Monday's official bar and showed
- *   Tuesday's move as its own).
+ *   Tuesday's move as its own);
+ * - an fx-only day (a US holiday Chile works), until that day's own cuota lands.
  *
  * Read from the series' own rows, never from the sync state: the state's applied publish day
  * follows whatever closure date the last poll reported, and Fintual has reported an older one
@@ -121,17 +103,17 @@ function sessionCuotaDay(session: string): string | null {
  * cuota closes every earlier session: a day Fintual skipped keeps its stand-in until the
  * official serie replaces it.
  */
-function sessionCuotaPending(seriesKey: string, session: string): boolean {
+function valuationDayCuotaPending(seriesKey: string, valuationDay: string): boolean {
   const latest = latestPublishedFintualCuotaDay(seriesKey);
   if (latest == null) return false;
-  const cuotaDay = sessionCuotaDay(session);
+  const cuotaDay = valuationDayCuotaDay(valuationDay);
   return cuotaDay != null && latest < cuotaDay;
 }
 
 /**
- * Per-DATE form of the pending-cuota hold, for historical marks: a date whose session's cuota is
- * not in the database ({@link sessionCuotaPending}) is valued through the EOD proxy, exactly like
- * today, instead of the last official bar on or before it. Without this the day after read the
+ * Per-DATE form of the pending-cuota hold, for historical marks: a date whose valuation day's
+ * cuota (its NYSE session, or the date itself on an fx-only day) is not in the database
+ * ({@link valuationDayCuotaPending}) is valued through the EOD proxy, exactly like today, instead of the last official bar on or before it. Without this the day after read the
  * whole move a second time: today = held proxy, yesterday = a bar that never saw the session
  * (2026-09-19 00:07 after the Friday holiday: APV-A/B +278k/+125k, then again on Sunday and
  * Monday pre-open). Once the cuota is written the predicate turns off and the dates read the
@@ -144,14 +126,21 @@ function sessionCuotaPending(seriesKey: string, session: string): boolean {
  * (SPYM, listed 2025-07) had no bar.
  */
 export function riskyNorrisProxyAppliesOnYmd(seriesKey: string, ymd: string): boolean {
-  const session = nyseSessionOnOrBefore(ymd);
-  return session != null && sessionCuotaPending(seriesKey, session);
+  const day = proxyValuationDayOnOrBefore(ymd);
+  return day != null && valuationDayCuotaPending(seriesKey, day);
 }
 
 /**
  * Pending-cuota hold for today: the proxy overrides the official cuota while the cuota that
- * reflects the session the proxy is holding (see {@link heldNyseSessionYmd}) is not in the
- * database ({@link sessionCuotaPending}).
+ * reflects the day the proxy is holding (see {@link heldProxyValuationDayYmd}) is not in the
+ * database ({@link valuationDayCuotaPending}).
+ *
+ * On a US holiday that Chile works (an fx-only day, `isFxOnlyProxyDay`) the held day is the
+ * holiday itself once its interbank window has prints (09:00 Chile): the basket sits at the last
+ * session's closes and the fx leg follows the day's observado frame, until that evening's cuota
+ * lands (Thanksgiving 2026-11-26: the APV accounts read flat all day while the dollar moved, and
+ * the cuota then jumped by the fx move at the evening poll). Before the next session's open the
+ * holiday's value is still held while its cuota is late.
  *
  * On a Chile holiday that NYSE trades, Fintual publishes a flat carry cuota for the day and
  * forward-publishes the whole non-business block; the first cuota that CAN reflect the session
@@ -166,8 +155,8 @@ export function riskyNorrisProxyAppliesOnYmd(seriesKey: string, ymd: string): bo
  * (a Saturday 00:30 Chile is still Friday's session in New York).
  */
 export function inPendingCuotaProxyHold(seriesKey: string, now = new Date()): boolean {
-  const held = heldNyseSessionYmd(now);
-  return held != null && sessionCuotaPending(seriesKey, held);
+  const held = heldProxyValuationDayYmd(now);
+  return held != null && valuationDayCuotaPending(seriesKey, held);
 }
 
 /**
@@ -206,9 +195,10 @@ export function shouldUseRiskyNorrisProxyMtm(seriesKey: string, now = new Date()
  * Live or EOD RN basket proxy valor cuota (CLP) for MTM. Throws when proxy is required but cannot be computed.
  *
  * `asOfYmd` (default Chile today) picks the day. The value is carried on the SESSION the day
- * reflects — the live session, else the held one (Friday's on a weekend or Monday pre-open;
- * the date's own session for a historical date, its previous one for a historical weekend day)
- * — never on the calendar day itself, so every day of a held block values identically and the
+ * reflects — the live session, else the held one (Friday's on a weekend or Monday pre-open; a
+ * US holiday Chile works is its own day, at the last closes and its own fx; the date's own
+ * session for a historical date, its previous one for a historical weekend day) — never on the
+ * calendar day itself, so every day of a held block values identically and the
  * day P/L inside the block is 0 by construction.
  */
 export function riskyNorrisProxyCuotaForMtm(seriesKey: string, now = new Date(), asOfYmd?: string): number {
@@ -224,11 +214,13 @@ export function riskyNorrisProxyCuotaForMtm(seriesKey: string, now = new Date(),
   const today = chileCalendarTodayYmd();
   const isToday = asOfYmd == null || asOfYmd === today;
   const preferLive = isToday && isNyseRegularSessionOpen(now);
+  // On an fx-only day the valuation day is the holiday itself: the basket's EOD reads resolve on
+  // or before it (the last session's closes) and the fx leg is that day's observado frame.
   const valuationYmd = preferLive
     ? today
     : isToday
-      ? (heldNyseSessionYmd(now) ?? today)
-      : (nyseSessionOnOrBefore(asOfYmd) ?? asOfYmd);
+      ? (heldProxyValuationDayYmd(now) ?? today)
+      : (proxyValuationDayOnOrBefore(asOfYmd) ?? asOfYmd);
   const proxyRn = proxyClpFromMeta(meta, holdings, valuationYmd, { preferLive, now });
 
   if (!isRiskyNorrisApvMtmSeries(seriesKey)) {

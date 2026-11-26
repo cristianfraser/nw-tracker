@@ -8,8 +8,7 @@ import {
   resolveEquityQuote,
 } from "./equityQuote.js";
 import { observadoFrameFxForDay } from "./fxObservadoFrame.js";
-import { priorNyseSessionYmd } from "./marketHolidays.js";
-import { nyseDisplaySessionYmd } from "./nyseSession.js";
+import { heldProxyValuationDayYmd, priorProxyValuationDayYmd } from "./rnProxyValuationDay.js";
 
 export const RISKY_NORRIS_PROXY_BUCKET = "fintual_risky_norris_proxy";
 
@@ -248,15 +247,20 @@ export function compositeLiveStats(
   if (meta == null || holdings.length === 0) {
     return { value: null, as_of_date: null, day_pct: null };
   }
-  // Same session rules as plain NYSE tickers: before open the display session is the
-  // just-closed one (so 1D shows that session's move, not a flat 0% against itself),
-  // and live quotes only apply while the session is the current one.
-  const sessionYmd = nyseDisplaySessionYmd(now);
+  // The day the account marks value (`heldProxyValuationDayYmd`): before open the just-closed
+  // session (so 1D shows that session's move, not a flat 0% against itself), and on a US holiday
+  // Chile works the holiday itself once its fx window has prints — the basket at its last closes,
+  // the fx leg on the day — so the chip and the APV accounts describe the same day. Live quotes
+  // only apply while the session is the current one.
+  const sessionYmd = heldProxyValuationDayYmd(now);
+  if (sessionYmd == null) {
+    throw new Error(`composite ${bucketSlug}: no proxy valuation day within two weeks of ${now.toISOString()}`);
+  }
   const live = tryProxyClp(meta, holdings, sessionYmd, { preferLive: true, now });
   if (live == null) {
     return { value: null, as_of_date: null, day_pct: null };
   }
-  const priorSession = priorNyseSessionYmd(sessionYmd);
+  const priorSession = priorProxyValuationDayYmd(sessionYmd);
   const prior =
     priorSession != null
       ? tryProxyClp(meta, holdings, priorSession, { preferLive: false, now })
