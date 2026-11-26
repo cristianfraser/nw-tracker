@@ -288,7 +288,7 @@ export async function buildAccountDetailBundle(
   });
 
   // The checking page's head (`checkingStatement.ts`): today's balance, its moves, the balance strip.
-  const checking_glance = buildCheckingGlanceForAccount(accountId);
+  const checking_glance = buildCheckingGlanceForAccount(accountId, unit);
 
   // The property and mortgage pages (`deptoGlance.ts`): one ledger, every figure both pages draw.
   const depto_glance = buildDeptoGlanceForAccount(accountId, {

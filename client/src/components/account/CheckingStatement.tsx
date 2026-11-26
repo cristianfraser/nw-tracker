@@ -26,7 +26,6 @@ import type {
 import styles from "./CheckingStatement.module.css";
 
 const RANGES: readonly CheckingStripRange[] = ["90d", "1y", "5y", "total"];
-const KINDS: readonly (CheckingStatementKindFilter | "all")[] = ["all", "income", "card_payment", "own_transfer", "other", "fee"];
 /** Income kinds with a label of their own (`income.chart.*`). */
 const LABELLED_INCOME_KINDS = new Set(["salary", "severance", "parent_gift", "rent"]);
 const BLANK = " ";
@@ -138,8 +137,26 @@ function BalanceStrip({
 function rowTypeLabel(row: CheckingStatementRowDto, t: (key: string) => string): string | null {
   if (row.kind === "card_payment") return t("accountDetail.checking.statement.type.cardPayment");
   if (row.kind === "fee") return null;
+  if (row.kind === "conversion") return t("accountDetail.checking.statement.type.conversion");
+  if (row.kind === "dividend") return t("accountDetail.checking.statement.type.dividend");
+  // A trade by what the cash did: it left for a purchase, it arrived from a sale.
+  if (row.kind === "trade") return t(row.amount < 0 ? "accountDetail.checking.statement.type.buy" : "accountDetail.checking.statement.type.sell");
   if (row.income_kind != null && LABELLED_INCOME_KINDS.has(row.income_kind)) return t(`income.chart.${row.income_kind}`);
   return t(row.amount > 0 ? "accountDetail.checking.statement.type.deposit" : "accountDetail.checking.statement.type.withdrawal");
+}
+
+/**
+ * What a row adds beside its amount: a conversion's other side with the operation's rate
+ * («$2.536.608 · 957,21»), a trade's units («2,6465 uds.»). Null on every other row.
+ */
+function rowSideText(row: CheckingStatementRowDto, t: (key: string, opts?: Record<string, unknown>) => string): string | null {
+  if (row.counter) {
+    return `${formatMoney({ value: row.counter.amount, currency: row.counter.currency })} \u00b7 ${formatGroupedDecimal(row.counter.rate, 2, 4)}`;
+  }
+  if (row.units != null) {
+    return t("accountDetail.checking.statement.units", { units: formatGroupedDecimal(row.units, 0, 4) });
+  }
+  return null;
 }
 
 /** A row that is not a bank movement (a transfer between own accounts) has nothing for the ⓘ card. */
@@ -177,6 +194,7 @@ function RowText({ row }: { row: CheckingStatementRowDto }) {
   const { t } = useTranslation();
   const linkLabel = useExpenseVendorLinkLabel(row.vendor ?? NO_VENDOR);
   const type = rowTypeLabel(row, t);
+  const side = rowSideText(row, t);
   const party = row.counterpart
     ? { direction: row.counterpart.direction, label: row.counterpart.name, own: true }
     : row.party
@@ -204,6 +222,8 @@ function RowText({ row }: { row: CheckingStatementRowDto }) {
           ) : null}
         </>
       ) : null}
+      {/* A wide list only: a narrow one carries it on the type's line. */}
+      {side ? <span className={cn("mono", styles.side, styles.sideWide)}>{side}</span> : null}
       <RowInfo row={row} />
       {row.forward_posted ? <span className={styles.tag}>{t("accountDetail.checking.statement.forwardPosted")}</span> : null}
     </>
@@ -235,7 +255,7 @@ function MonthHead({
       </span>
     ) : rec.status === "open" ? (
       <span className={styles.status}>{t("accountDetail.checking.statement.open")}</span>
-    ) : (
+    ) : rec.status === "none" ? null : (
       <span className={styles.status}>{t("accountDetail.checking.statement.noStatement")}</span>
     );
   return (
@@ -285,7 +305,9 @@ function MonthSection({
             {formatDayWeekdayLabel(day[0]!.occurred_on)}
           </div>
           <div className={styles.dayRows}>
-          {day.map((row, i) => (
+          {day.map((row, i) => {
+            const side = rowSideText(row, t);
+            return (
             <div
               key={row.movement_id}
               className={cn(styles.row, i === 0 && styles.dayStart, row.income_kind === "salary" && styles.salary)}
@@ -294,14 +316,18 @@ function MonthSection({
                 {/* The day and its weekday: the month and year are the month's head. */}
                 {i === 0 ? formatDayWeekdayLabel(row.occurred_on) : BLANK}
               </span>
-              <span className={cn(styles.typeTop, styles.type)}>{rowTypeLabel(row, t) ?? BLANK}</span>
+              <span className={cn(styles.typeTop, styles.type)}>
+                {rowTypeLabel(row, t) ?? BLANK}
+                {side ? <span className={cn("mono", styles.side)}>{side}</span> : null}
+              </span>
               <span className={styles.what}>
                 <RowText row={row} />
               </span>
               <span className={cn("mono", styles.amount, row.amount > 0 && styles.in)}>{signed(row.amount, currency)}</span>
               <span className={cn("mono", styles.balance)}>{plain(row.balance_after, currency)}</span>
             </div>
-          ))}
+            );
+          })}
           </div>
         </div>
       ))}
@@ -349,7 +375,12 @@ export function CheckingStatement({
     return () => window.clearTimeout(id);
   }, [search]);
 
-  const query = useCheckingStatement(accountId, { kind: kind === "all" ? undefined : kind, q: q || undefined, hideOwn });
+  // The chips are the kinds this account's ledger holds (the server's list); a chip picked on
+  // another account that this one does not offer reads as «all».
+  const kinds: readonly (CheckingStatementKindFilter | "all")[] = ["all", ...(glance?.kinds ?? [])];
+  const activeKind = kinds.includes(kind) ? kind : "all";
+
+  const query = useCheckingStatement(accountId, { kind: activeKind === "all" ? undefined : activeKind, q: q || undefined, hideOwn });
   const statementLoading = loading || queryShowsLoading(query);
   const pages = query.data?.pages ?? [];
   const months = pages.flatMap((p) => p.months);
@@ -433,11 +464,11 @@ export function CheckingStatement({
             onChange={(e) => setSearch(e.target.value)}
           />
           <span className={styles.kinds}>
-            {KINDS.map((k) => (
+            {kinds.map((k) => (
               <button
                 key={k}
                 type="button"
-                className={cn(styles.chip, k === kind && styles.chipOn)}
+                className={cn(styles.chip, k === activeKind && styles.chipOn)}
                 onClick={() => setKind(k)}
               >
                 {t(`accountDetail.checking.statement.kind.${k}`)}

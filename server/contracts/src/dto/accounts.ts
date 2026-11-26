@@ -164,7 +164,7 @@ export interface AccountDetailBundleResponse {
    * client placeholder bundle may leave it out (read absent as «not loaded»).
    */
   position_glance?: PositionGlanceDto | null;
-  /** A cuenta corriente / cuenta vista page's head (server `checkingStatement.ts`); null on every other account. Optional like `position_glance`. */
+  /** A checking page's head (server `checkingStatement.ts`: a cuenta corriente / cuenta vista, or any other cash ledger); null on every other account. Optional like `position_glance`. */
   checking_glance?: CheckingGlanceDto | null;
   /**
    * The property and mortgage pages (server `deptoGlance.ts`): every figure, series and bar share
@@ -433,15 +433,23 @@ export interface CartolaDerivedAnchorDto {
 
 /**
  * The checking account page's head (server `checkingStatement.ts`, built with the detail bundle for
- * a cuenta corriente / cuenta vista): today's balance and the balance strip. Every
- * amount is in the account's own currency (`currency`): a checking ledger is a document in its coin,
- * not a display-unit figure.
+ * a cuenta corriente / cuenta vista and for every other cash ledger: a broker's cash, a
+ * foreign-currency account): today's balance and the balance strip. Every amount is in the
+ * account's own currency (`currency`): a cash ledger is a document in its coin, not a display-unit
+ * figure. The one display-unit figure is `display_value`.
  */
 export interface CheckingGlanceDto {
   currency: string;
   /** Today's balance (the ledger's display read: a row the bank dates after today already counts). */
   balance: number;
   as_of: string;
+  /**
+   * Today's balance in the request's display unit (the account's own value, converted once at
+   * today's rate); null when the unit is the account's currency or the pair has no rate on file.
+   */
+  display_value: { value: number; currency: string } | null;
+  /** The filter chips this account's statement offers: the row kinds its ledger holds, in chip order. */
+  kinds: CheckingStatementKindFilter[];
   strips: CheckingBalanceStripDto[];
 }
 
@@ -465,10 +473,21 @@ export interface CheckingBalanceStripDto {
 }
 
 /** What a statement row is, from structured state only (never the description text). */
-export type CheckingStatementRowKind = "income" | "card_payment" | "own_transfer" | "fee" | "other";
+export type CheckingStatementRowKind =
+  | "income"
+  | "card_payment"
+  | "own_transfer"
+  | "fee"
+  | "other"
+  /** A purchase or sale settled in this cash (shares, contracts, coins): the counterpart is the instrument's account. */
+  | "trade"
+  /** A dividend paid into this cash by a holding's account. */
+  | "dividend"
+  /** A transfer between own accounts in two currencies (`counter` carries the other side). */
+  | "conversion";
 
-/** The statement's filter chips (`kind` query parameter). */
-export type CheckingStatementKindFilter = "income" | "card_payment" | "own_transfer" | "other" | "fee";
+/** The statement's filter chips (`kind` query parameter): every row kind. */
+export type CheckingStatementKindFilter = CheckingStatementRowKind;
 
 /** What `ExpenseVendorLabel` reads for a checking movement: its shown name, the bank text behind it, its links. */
 export interface CheckingStatementVendorDto {
@@ -504,6 +523,16 @@ export interface CheckingStatementRowDto {
    * cash withdrawal, a fee, a known merchant) and on a transfer between own accounts.
    */
   party: { direction: "in" | "out"; label: string } | null;
+  /**
+   * A conversion's other side (and a card payment's, when it paid a debt in another currency):
+   * what left or reached the other account, in its currency, and the
+   * operation's rate (home currency per unit of the foreign one; between two foreign currencies,
+   * the other side's amount per unit of this account's), rounded for display: two decimals from 20 up,
+   * four below. Null on every other row.
+   */
+  counter: { amount: number; currency: string; rate: number } | null;
+  /** A trade's units (shares, contracts, coins), unsigned; null on every other row. */
+  units: number | null;
   /** Signed: into the account positive. */
   amount: number;
   /** The balance after this row (rows run newest first; the next row's balance + this amount). */
@@ -514,7 +543,9 @@ export type CheckingMonthReconciliation =
   | { status: "matches" }
   | { status: "differs"; difference: number }
   | { status: "no_statement" }
-  | { status: "open" };
+  | { status: "open" }
+  /** The account has no bank statements to hold a month against (a broker's cash, a foreign-currency account). */
+  | { status: "none" };
 
 export interface CheckingStatementMonthDto {
   period_month: string;
@@ -522,7 +553,7 @@ export interface CheckingStatementMonthDto {
   closing_balance: number;
   money_in: number;
   money_out: number;
-  /** The month's cartola against the ledger at month-end by the bank's posting day; `open` for the current month. */
+  /** The month's cartola against the ledger at month-end by the bank's posting day; `open` for the current month; `none` on an account without cartolas. */
   reconciliation: CheckingMonthReconciliation;
   /** Rows newest first, after the request's filters. */
   rows: CheckingStatementRowDto[];

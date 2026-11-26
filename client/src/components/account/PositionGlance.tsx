@@ -230,12 +230,18 @@ export function PositionGlanceTitle({
 export function GlanceTitleLine({
   title,
   value,
+  secondary = null,
+  secondaryLoading = false,
   day,
   loading = false,
   children,
 }: {
   title: string;
   value: { value: number; currency: string } | null;
+  /** The same value in another currency, quiet beside it (a foreign cash balance in the display unit). */
+  secondary?: { value: number; currency: string } | null;
+  /** The secondary value is held from another display unit: it alone dims. */
+  secondaryLoading?: boolean;
   day: PositionGlancePeriodDto | null;
   /** Held or pending figures dim (the name does not). */
   loading?: boolean;
@@ -248,6 +254,9 @@ export function GlanceTitleLine({
         <h1 className={styles.ticker}>{title || BLANK}</h1>
         <span className={loadableClass(loading, styles.titleFigures)}>
           <span className={cn("mono", styles.titleValue)}>{value ? formatMoney(value) : BLANK}</span>
+          {secondary ? (
+            <span className={loadableClass(secondaryLoading, cn("mono", styles.titleSecondary))}>{formatMoney(secondary)}</span>
+          ) : null}
           {day?.pl ? (
             <span className={cn("mono", styles.titleDay, directionClass(day.direction))} title={t("accountDetail.positionGlance.dayPl")}>
               {directionArrow(day.direction)}

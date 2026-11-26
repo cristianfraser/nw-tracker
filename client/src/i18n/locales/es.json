@@ -951,6 +951,9 @@
           "income": "ingresos",
           "card_payment": "tarjetas",
           "own_transfer": "mis cuentas",
+          "conversion": "divisas",
+          "trade": "operaciones",
+          "dividend": "dividendos",
           "other": "terceros",
           "fee": "comisiones"
         },
@@ -970,8 +973,13 @@
         "type": {
           "deposit": "Depósito",
           "withdrawal": "Retiro",
-          "cardPayment": "Pago tarjeta"
-        }
+          "cardPayment": "Pago tarjeta",
+          "conversion": "Cambio de divisas",
+          "buy": "Compra",
+          "sell": "Venta",
+          "dividend": "Dividendo"
+        },
+        "units": "{{units}} uds."
       }
     },
     "creditCard": {

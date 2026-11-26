@@ -951,6 +951,9 @@
           "income": "income",
           "card_payment": "cards",
           "own_transfer": "my accounts",
+          "conversion": "currency exchange",
+          "trade": "trades",
+          "dividend": "dividends",
           "other": "third parties",
           "fee": "fees"
         },
@@ -970,8 +973,13 @@
         "type": {
           "deposit": "Deposit",
           "withdrawal": "Withdrawal",
-          "cardPayment": "Card payment"
-        }
+          "cardPayment": "Card payment",
+          "conversion": "Currency exchange",
+          "buy": "Buy",
+          "sell": "Sell",
+          "dividend": "Dividend"
+        },
+        "units": "{{units}} units"
       }
     },
     "creditCard": {

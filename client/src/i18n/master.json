@@ -3156,6 +3156,18 @@
             "en": "my accounts",
             "es": "mis cuentas"
           },
+          "conversion": {
+            "en": "currency exchange",
+            "es": "divisas"
+          },
+          "trade": {
+            "en": "trades",
+            "es": "operaciones"
+          },
+          "dividend": {
+            "en": "dividends",
+            "es": "dividendos"
+          },
           "other": {
             "en": "third parties",
             "es": "terceros"
@@ -3229,7 +3241,27 @@
           "cardPayment": {
             "en": "Card payment",
             "es": "Pago tarjeta"
+          },
+          "conversion": {
+            "en": "Currency exchange",
+            "es": "Cambio de divisas"
+          },
+          "buy": {
+            "en": "Buy",
+            "es": "Compra"
+          },
+          "sell": {
+            "en": "Sell",
+            "es": "Venta"
+          },
+          "dividend": {
+            "en": "Dividend",
+            "es": "Dividendo"
           }
+        },
+        "units": {
+          "en": "{{units}} units",
+          "es": "{{units}} uds."
         }
       }
     },

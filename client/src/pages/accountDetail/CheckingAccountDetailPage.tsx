@@ -16,9 +16,11 @@ type Props = {
 };
 
 /**
- * A cuenta corriente / cuenta vista: a balance and its ledger. The title line carries today's balance;
- * the statement (`CheckingStatement`) is the page, its balance strip following the month
- * in view. The ledger anchor is the statement's first line, edited in a modal.
+ * A cash ledger (a cuenta corriente / cuenta vista, a broker's cash, a foreign-currency account): a
+ * balance and its ledger. The title line carries today's balance in the account's own currency, with
+ * its value in the display unit beside it when that is another currency; the statement
+ * (`CheckingStatement`) is the page, its balance strip following the month in view. A cartola
+ * account's ledger anchor is the statement's first line, edited in a modal.
  */
 export function CheckingAccountDetailPage({ data }: Props) {
   const { t } = useTranslation();
@@ -34,6 +36,9 @@ export function CheckingAccountDetailPage({ data }: Props) {
         <GlanceTitleLine
           title={data.ts.name}
           value={glance ? { value: glance.balance, currency: glance.currency } : null}
+          secondary={glance?.display_value ?? null}
+          // A unit switch holds the previous unit's bundle: its converted value dims until the new one lands.
+          secondaryLoading={loading}
           day={null}
           loading={glance === undefined}
         />
@@ -43,7 +48,9 @@ export function CheckingAccountDetailPage({ data }: Props) {
       loading={loading}
     >
       <PageGridTile id="statement">
+        {/* Keyed by account: the filters, the search and the range are this account's. */}
         <CheckingStatement
+          key={summary.account_id}
           accountId={summary.account_id}
           glance={glance}
           loading={loading}

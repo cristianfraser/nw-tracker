@@ -1,15 +1,20 @@
 /**
- * The checking account page (cuenta corriente / cuenta vista): its head (`CheckingGlanceDto`: today's
+ * The checking account page (a cuenta corriente / cuenta vista, and every other cash ledger: a
+ * broker's cash, a foreign-currency account, `isCheckingPageAccount`): its head (`CheckingGlanceDto`: today's
  * balance and the balance strip) and its statement (`CheckingStatementResponse`: every movement
  * newest first with the balance after it, grouped by month, each month opening and closing).
  *
  * One walk of the ledger feeds both, with the balance reader's accounting (`accountFlowRows` →
- * `signedClpDeltaForAccountMovement`, transfer legs included): a row the bank dates after today counts
- * today (`displayLedgerCutoffYmd`) and is listed under today. The walk's end must equal the balance the
- * rest of the app shows (`checkingMovementBalanceLive`), or this throws. The ledger anchor (the opening
- * balance carrier) is the statement's first line, not a movement of its month.
+ * `signedClpDeltaForAccountMovement` for a peso ledger, `signedNativeDeltaForAccountMovement` for a
+ * foreign one, transfer legs included): a row the bank dates after today counts today
+ * (`displayLedgerCutoffYmd`) and is listed under today. The walk's end must equal the balance the
+ * rest of the app shows (the account's own balance reader), or this throws. The ledger anchor (the
+ * opening balance carrier of a cartola account) is the statement's first line, not a movement of
+ * its month.
  *
- * Amounts are the account's own pesos: a checking ledger is a document in its coin.
+ * Amounts are in the account's own currency: a cash ledger is a document in its coin. The one
+ * display-unit figure is the head's `display_value`, the account's value converted once
+ * (`accountValueAt`).
  */
 import {
   addCalendarMonths,
@@ -30,7 +35,13 @@ import type {
   CheckingStatementVendorDto,
   CheckingStripRange,
 } from "nw-tracker-contracts/dto/accounts";
-import { HOME_CURRENCY } from "./displayUnits.js";
+import { HOME_CURRENCY, isHomeCurrency, roundToCurrency, currencyMinorDigits } from "./displayUnits.js";
+import { accountProfileOptional } from "./accountProfile.js";
+import { accountValueAt } from "./accountValue.js";
+import { clpCashBalanceLive } from "./clpCashAccounts.js";
+import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
+import { isOptionFlowKind } from "./optionFlowKinds.js";
+import type { CurrencyCode } from "./rates.js";
 import { accountFlowRows, type FlowsApiRow } from "./flowsApi.js";
 import { checkingMovementBalanceAtMonthEnd, checkingMovementBalanceLive, isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
 import { loadCartolaImportsByMonth } from "./checkingCartolaMonthSummary.js";
@@ -40,12 +51,49 @@ import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
 import { checkingMovementShownName, checkingTransferParty, loadDisplayNameContext } from "./expenseDisplayNames.js";
 import { shownNameSearchText } from "./expenseShownName.js";
 import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
-import { listMovementRowsForAccount, signedClpDeltaForAccountMovement } from "./movementTransfer.js";
+import {
+  listMovementRowsForAccount,
+  signedClpDeltaForAccountMovement,
+  signedNativeDeltaForAccountMovement,
+  type MovementTransferRow,
+} from "./movementTransfer.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 
-/** The account kinds whose page is the checking page. */
-export const CHECKING_PAGE_KIND_SLUGS: ReadonlySet<string> = new Set(["cuenta_corriente", "cuenta_vista"]);
+/**
+ * How a checking page account's ledger is read: a cartola account (cuenta corriente / cuenta
+ * vista: pesos, bank statements, a ledger anchor) or any other cash ledger in its `currency` (a
+ * broker's cash, a foreign-currency account: no statements, no anchor). Null: not a checking page
+ * account (its value is not the sum of its movements in one currency).
+ */
+type CheckingPageLedger = { cartola: boolean; currency: string };
+
+function checkingPageLedger(accountId: number): CheckingPageLedger | null {
+  const q = accountProfileOptional(accountId)?.quantity;
+  if (q == null) return null;
+  // A cartola checking account is a peso ledger by its kind (its balance reader signs the peso leg).
+  if (q.kind === "checking_ledger") return { cartola: true, currency: HOME_CURRENCY };
+  if (q.kind === "clp_ledger") return { cartola: false, currency: HOME_CURRENCY };
+  if (q.kind === "foreign_ledger") return { cartola: false, currency: q.currency };
+  return null;
+}
+
+/** The accounts whose page is the checking page: every cash ledger (a balance that is the sum of its movements in one currency). */
+export function isCheckingPageAccount(accountId: number): boolean {
+  return checkingPageLedger(accountId) != null;
+}
+
+/** The filter chips in their order; a statement offers the ones its ledger holds. */
+const KIND_ORDER: readonly CheckingStatementRowKind[] = [
+  "income",
+  "card_payment",
+  "own_transfer",
+  "conversion",
+  "trade",
+  "dividend",
+  "other",
+  "fee",
+];
 
 /** A statement page reads whole months, newest first, until it holds at least this many rows. */
 const STATEMENT_PAGE_MIN_ROWS = 40;
@@ -60,6 +108,8 @@ type LedgerRow = {
 
 type Ledger = {
   currency: string;
+  /** The account has bank statements (cartolas) and a ledger anchor. */
+  cartola: boolean;
   today: string;
   /** Oldest first (the walk's order). */
   rows: LedgerRow[];
@@ -74,21 +124,59 @@ const postingsStmt = db.prepare(
 function rowKind(r: FlowsApiRow, incomeIds: ReadonlySet<number>): CheckingStatementRowKind {
   if (r.flow_kind === "cash_fee") return "fee";
   if (r.counterpart_account_id != null && r.from_account_id != null) {
-    return r.flow_kind === "pago_tarjeta" || kindSlugForAccount(r.counterpart_account_id) === "credit_card"
-      ? "card_payment"
-      : "own_transfer";
+    if (r.flow_kind === "stock_buy" || r.flow_kind === "stock_sell" || isOptionFlowKind(r.flow_kind)) return "trade";
+    if (r.flow_kind === "dividend_payout") return "dividend";
+    // A payment is money leaving for the card; money a card sends here (a `carga_tarjeta` top-up)
+    // is a transfer between own accounts.
+    if (
+      r.flow_kind === "pago_tarjeta" ||
+      (r.transfer_direction === "out" && kindSlugForAccount(r.counterpart_account_id) === "credit_card")
+    ) {
+      return "card_payment";
+    }
+    return r.counter_currency != null ? "conversion" : "own_transfer";
   }
   return incomeIds.has(r.id) ? "income" : "other";
 }
 
+/**
+ * A conversion's other side, seen from a ledger in `currency`: the stored leg in the other
+ * currency and the operation's rate (home currency per unit of the foreign one; between two
+ * foreign currencies, the other side's amount per unit of this ledger's).
+ */
+function conversionCounter(m: MovementTransferRow, currency: string): NonNullable<CheckingStatementRowDto["counter"]> {
+  if (m.counter_amount == null || m.counter_currency == null) {
+    throw new Error(`checking statement: conversion ${m.id} has no counter leg`);
+  }
+  const legs = [
+    { amount: Math.abs(m.amount), currency: m.currency },
+    { amount: Math.abs(m.counter_amount), currency: m.counter_currency },
+  ];
+  const own = legs.find((l) => l.currency === currency);
+  const other = legs.find((l) => l.currency !== currency);
+  if (!own || !other) throw new Error(`checking statement: conversion ${m.id} has no ${currency} leg`);
+  if (!(own.amount > 0) || !(other.amount > 0)) {
+    throw new Error(`checking statement: conversion ${m.id} has an empty leg`);
+  }
+  const raw = isHomeCurrency(own.currency) ? own.amount / other.amount : other.amount / own.amount;
+  // Two decimals for a rate in the hundreds (pesos per dollar), four for one near 1 (dollars per euro).
+  const digits = raw >= 20 ? 2 : 4;
+  return { amount: other.amount, currency: other.currency, rate: Number(raw.toFixed(digits)) };
+}
+
+/** The balance the rest of the app shows for the account today, in its own currency. */
+function liveBalance(accountId: number, ledger: CheckingPageLedger, today: string): number {
+  if (ledger.cartola) return checkingMovementBalanceLive(accountId).value_clp;
+  return isHomeCurrency(ledger.currency) ? clpCashBalanceLive(accountId).value_clp : foreignCashBalanceAt(accountId, today);
+}
+
 /** The ledger of a checking page account, oldest first, each row with the balance after it. */
 function loadLedger(accountId: number): Ledger {
-  const kind = kindSlugForAccount(accountId);
-  if (kind == null || !CHECKING_PAGE_KIND_SLUGS.has(kind)) {
-    throw new Error(`checking statement: account ${accountId} is not a cuenta corriente / cuenta vista (${kind})`);
+  const pageLedger = checkingPageLedger(accountId);
+  if (pageLedger == null) {
+    throw new Error(`checking statement: account ${accountId} is not a cash ledger (${kindSlugForAccount(accountId)})`);
   }
-  // A cartola checking account is a peso ledger by its kind (its balance reader signs the peso leg).
-  const currency = HOME_CURRENCY;
+  const { currency, cartola } = pageLedger;
   const flows = accountFlowRows(accountId);
   if (flows == null) throw new Error(`checking statement: account ${accountId} not found`);
   const today = chileCalendarTodayYmd();
@@ -104,11 +192,14 @@ function loadLedger(accountId: number): Ledger {
     return da < dbb ? -1 : da > dbb ? 1 : a.id - b.id;
   });
 
-  // Each row moves the account by its peso leg, signed for this account: the balance reader's
-  // accounting, so a currency exchange (a dollar leg with a peso counter leg) counts its pesos.
-  const pesoDelta = new Map(
-    listMovementRowsForAccount(accountId).map((m) => [m.id!, signedClpDeltaForAccountMovement(m, accountId)])
-  );
+  // Each row moves the account by its leg in the ledger's currency, signed for this account: the
+  // balance reader's accounting, so a currency exchange counts the leg this account holds and a
+  // share purchase the cash that left.
+  const stored = new Map(listMovementRowsForAccount(accountId).map((m) => [m.id!, m]));
+  const ledgerDelta = (m: MovementTransferRow): number =>
+    isHomeCurrency(currency)
+      ? signedClpDeltaForAccountMovement(m, accountId)
+      : signedNativeDeltaForAccountMovement(m, accountId, currency);
 
   // A bank movement's names: the expense rows' own rule (catalog, counterparty from a transfer mail).
   const counterparties = transferCounterpartiesByMovementSide();
@@ -118,10 +209,11 @@ function loadLedger(accountId: number): Ledger {
   let opening: Ledger["opening"] = null;
   const rows: LedgerRow[] = [];
   for (const r of ordered) {
-    const amount = pesoDelta.get(r.id);
-    if (amount == null) throw new Error(`checking statement: movement ${r.id} on account ${accountId} has no ledger row`);
+    const movement = stored.get(r.id);
+    if (movement == null) throw new Error(`checking statement: movement ${r.id} on account ${accountId} has no ledger row`);
+    const amount = ledgerDelta(movement);
     balance += amount;
-    if (isCheckingLedgerAnchorNote(r.note)) {
+    if (cartola && isCheckingLedgerAnchorNote(r.note)) {
       if (rows.length > 0 || opening != null) {
         throw new Error(`checking statement: account ${accountId}'s ledger anchor ${r.id} is not its first movement`);
       }
@@ -175,16 +267,27 @@ function loadLedger(accountId: number): Ledger {
               direction: r.transfer_direction === "in" ? "in" : "out",
             }
           : null,
+        // A conversion's other side; a card's foreign debt paid from this account shows what it paid there too.
+        counter:
+          kind === "conversion" || (kind === "card_payment" && movement.counter_currency != null)
+            ? conversionCounter(movement, currency)
+            : null,
+        units:
+          kind === "trade" && movement.units_delta != null && movement.units_delta !== 0
+            ? Math.abs(movement.units_delta)
+            : null,
         amount,
-        balance_after: Math.round(balance),
+        balance_after: roundToCurrency(balance, currency),
       },
     });
   }
-  const live = checkingMovementBalanceLive(accountId).value_clp;
-  if (Math.round(balance) !== live) {
-    throw new Error(`checking statement: account ${accountId}'s walk ends at ${Math.round(balance)}, the balance reads ${live}`);
+  const live = liveBalance(accountId, pageLedger, today);
+  if (roundToCurrency(balance, currency) !== live) {
+    throw new Error(
+      `checking statement: account ${accountId}'s walk ends at ${roundToCurrency(balance, currency)}, the balance reads ${live}`
+    );
   }
-  return { currency, today, rows, opening, balance: live };
+  return { currency, cartola, today, rows, opening, balance: live };
 }
 
 /** End-of-day balance on `day`: the last row on or before it (rows oldest first), else the opening, else 0. */
@@ -198,7 +301,7 @@ function makeEndOfDay(ledger: Ledger): (day: string) => number {
       values.push(row.balance_after);
     }
   }
-  const before = ledger.opening != null ? Math.round(ledger.opening.amount) : 0;
+  const before = ledger.opening != null ? roundToCurrency(ledger.opening.amount, ledger.currency) : 0;
   return (day) => {
     let lo = 0;
     let hi = days.length - 1;
@@ -271,18 +374,32 @@ function buildStrip(
   };
 }
 
-/** The checking page's head; null when the account is not a checking page account. */
-export function buildCheckingGlanceForAccount(accountId: number): CheckingGlanceDto | null {
-  const kind = kindSlugForAccount(accountId);
-  if (kind == null || !CHECKING_PAGE_KIND_SLUGS.has(kind)) return null;
+/**
+ * Today's balance in `unit`: the account's own value converted once (`accountValueAt`, today's
+ * rate at the account's side); null when the unit is the ledger's currency.
+ */
+function displayValue(accountId: number, ledger: Ledger, unit: CurrencyCode): CheckingGlanceDto["display_value"] {
+  if (unit === ledger.currency) return null;
+  const v = accountValueAt(accountId, ledger.today, unit);
+  // No rate on file for the pair: no figure, like the bundle's own `latest_valuation` (the fx
+  // coverage banner names the missing pair).
+  return v == null ? null : { value: v.value, currency: unit };
+}
+
+/** The checking page's head, its `display_value` in `unit`; null when the account is not a checking page account. */
+export function buildCheckingGlanceForAccount(accountId: number, unit: CurrencyCode): CheckingGlanceDto | null {
+  if (!isCheckingPageAccount(accountId)) return null;
   const ledger = loadLedger(accountId);
   const endOfDay = makeEndOfDay(ledger);
   const today = ledger.today;
   const firstDay = ledger.opening?.occurred_on ?? ledger.rows[0]?.on ?? today;
+  const held = new Set(ledger.rows.map((r) => r.row.kind));
   return {
     currency: ledger.currency,
     balance: ledger.balance,
     as_of: today,
+    display_value: displayValue(accountId, ledger, unit),
+    kinds: KIND_ORDER.filter((k) => held.has(k)),
     strips: STRIP_RANGES.map((r) => buildStrip(r, ledger, endOfDay, firstDay)),
   };
 }
@@ -291,20 +408,30 @@ export type CheckingStatementQuery = {
   /** Only months before this one (YYYY-MM); absent = from today's month. */
   before?: string;
   kind?: CheckingStatementKindFilter;
-  /** Text in the description, account, note or type; or, all digits once «$ . ,» are dropped, the exact amount. */
+  /**
+   * Text in the description, account, note or type; or, all digits once «$ . ,» are dropped, the
+   * exact amount: whole units («2650») or with the currency's decimals («2.650,00»).
+   */
   q?: string;
-  /** Leave out transfers between own accounts. */
+  /** Leave out transfers between own accounts (conversions between them included). */
   hideOwn?: boolean;
 };
 
-function rowMatches(r: LedgerRow, query: CheckingStatementQuery): boolean {
+function rowMatches(r: LedgerRow, query: CheckingStatementQuery, currency: string): boolean {
   const kind = r.row.kind;
-  if (query.hideOwn && kind === "own_transfer") return false;
+  if (query.hideOwn && (kind === "own_transfer" || kind === "conversion")) return false;
   if (query.kind && kind !== query.kind) return false;
   const q = query.q?.trim().toLowerCase();
   if (q) {
     const digits = q.replace(/[$.,\s]/g, "");
-    if (/^\d+$/.test(digits)) return Math.round(Math.abs(r.row.amount)) === Number(digits);
+    if (/^\d+$/.test(digits)) {
+      const typed = Number(digits);
+      const abs = Math.abs(r.row.amount);
+      // Typed with the currency's decimals («2.650,00», «15.00»): the exact amount; else whole units.
+      const minor = currencyMinorDigits(currency);
+      const withDecimals = minor > 0 && new RegExp(`[.,]\\d{${minor}}$`).test(q);
+      return withDecimals ? Math.round(abs * 10 ** minor) === typed : Math.round(abs) === typed;
+    }
     return r.haystack.includes(q);
   }
   return true;
@@ -314,9 +441,12 @@ function reconciliation(
   accountId: number,
   periodMonth: string,
   todayMonth: string,
-  imports: ReturnType<typeof loadCartolaImportsByMonth>
+  imports: ReturnType<typeof loadCartolaImportsByMonth>,
+  cartola: boolean
 ): CheckingMonthReconciliation {
   if (periodMonth === todayMonth) return { status: "open" };
+  // No bank statements to hold the month against (a broker's cash, a foreign-currency account).
+  if (!cartola) return { status: "none" };
   const imp = imports?.get(periodMonth);
   if (imp?.saldo_final_clp == null) return { status: "no_statement" };
   const difference = checkingMovementBalanceAtMonthEnd(accountId, periodMonth) - imp.saldo_final_clp;
@@ -327,8 +457,9 @@ function reconciliation(
 export function buildCheckingStatement(accountId: number, query: CheckingStatementQuery = {}): CheckingStatementResponse {
   const ledger = loadLedger(accountId);
   const todayMonth = ledger.today.slice(0, 7);
-  const imports = loadCartolaImportsByMonth(accountId);
-  const opening = ledger.opening != null ? Math.round(ledger.opening.amount) : 0;
+  const imports = ledger.cartola ? loadCartolaImportsByMonth(accountId) : null;
+  const round = (v: number) => roundToCurrency(v, ledger.currency);
+  const opening = ledger.opening != null ? round(ledger.opening.amount) : 0;
 
   const byMonth = new Map<string, LedgerRow[]>();
   for (const r of ledger.rows) {
@@ -362,7 +493,7 @@ export function buildCheckingStatement(accountId: number, query: CheckingStateme
     }
     lastRead = ym;
     const all = byMonth.get(ym) ?? [];
-    const kept = all.filter((r) => rowMatches(r, query));
+    const kept = all.filter((r) => rowMatches(r, query, ledger.currency));
     const filtered = kept.length !== all.length;
     if (filtered && kept.length === 0) continue;
     const openingBalance = closingBefore(ym);
@@ -377,13 +508,13 @@ export function buildCheckingStatement(accountId: number, query: CheckingStateme
       period_month: ym,
       opening_balance: openingBalance,
       closing_balance: all.length > 0 ? all[all.length - 1]!.row.balance_after : openingBalance,
-      money_in: Math.round(moneyIn),
-      money_out: Math.round(moneyOut),
-      reconciliation: reconciliation(accountId, ym, todayMonth, imports),
+      money_in: round(moneyIn),
+      money_out: round(moneyOut),
+      reconciliation: reconciliation(accountId, ym, todayMonth, imports, ledger.cartola),
       rows: kept.map((r) => r.row).reverse(),
       hidden:
         hiddenRows.length > 0
-          ? { count: hiddenRows.length, net: Math.round(hiddenRows.reduce((s, r) => s + r.row.amount, 0)) }
+          ? { count: hiddenRows.length, net: round(hiddenRows.reduce((s, r) => s + r.row.amount, 0)) }
           : null,
     });
     shown += kept.length;

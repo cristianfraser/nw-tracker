@@ -29,10 +29,10 @@ proposed split into one-session work items.
 | `/real_estate` | `GroupInfoPage` → generic `GroupInfoBase` | **old** (item A) |
 | `/liabilities`, `/liabilities/mortgage`, `/liabilities/:subgroup` | `LiabilitiesPage`, `MortgageGroupPage`, `LiabilitiesGroupPage` | redesigned |
 | `/account/:id` card | `CreditCardAccountDetailPage` | redesigned |
-| `/account/:id` cuenta corriente / vista | `CheckingAccountDetailPage` | redesigned |
+| `/account/:id` cuenta corriente / vista, and every other cash ledger (a broker's peso or dollar cash, a foreign-currency account; item B1, done) | `CheckingAccountDetailPage` | redesigned |
 | `/account/:id` property, mortgage | `DeptoAccountDetailPage` | redesigned |
 | `/account/:id` stock, coin, fund (AFP funds included) | `PositionAccountDetailPage` | redesigned |
-| `/account/:id` everything else: APV, AFC, broker and exchange cash, foreign-currency checking | `StandardAccountDetailPage` | **old** (items B1, B2) |
+| `/account/:id` everything else: APV, AFC, the exchange's peso buffer (book-valued, not a cash ledger) | `StandardAccountDetailPage` | **old** (item B2) |
 | `/flows` | `FlowsOverviewPage` | **old**, mild (item J) |
 | `/flows/income`, `/flows/expenses`, `/flows/expenses/groceries`, `/flows/expenses/real_estate[/:slug]`, `/flows/deposits`, `/flows/pl` | income, expenses, groceries, flows tables | redesigned |
 | `/flows/deposits/reconciliation` | `DepositsReconciliationPage` | **old** (item E) |

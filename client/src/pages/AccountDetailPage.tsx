@@ -11,8 +11,18 @@ import {
 } from "../components/account/PositionGlance";
 import { isCreditCardAccountNavNode } from "../portfolioNavFromApi";
 
-/** The account kinds whose page is the checking page (server `CHECKING_PAGE_KIND_SLUGS`). */
-const CHECKING_PAGE_CATEGORY_SLUGS: ReadonlySet<string> = new Set(["cuenta_corriente", "cuenta_vista"]);
+/**
+ * The account kinds whose page is the checking page while the bundle is not in: a cuenta corriente /
+ * cuenta vista and the cash ledger leaves (a broker's peso or dollar cash, a foreign-currency
+ * account). Once the bundle is in, the server's `checking_glance` decides (`isCheckingPageAccount`).
+ */
+const CHECKING_PAGE_CATEGORY_SLUGS: ReadonlySet<string> = new Set([
+  "cuenta_corriente",
+  "cuenta_vista",
+  "clp",
+  "usd",
+  "foreign_cash",
+]);
 
 export function AccountDetailPage() {
   const data = useAccountDetailPageData();
@@ -35,8 +45,12 @@ export function AccountDetailPage() {
   if (isCreditCard) {
     return <CreditCardAccountDetailPage data={data} />;
   }
-  // A cuenta corriente / cuenta vista: its category is known from the placeholder, so the page mounts at first paint.
-  if (CHECKING_PAGE_CATEGORY_SLUGS.has(data.summary.category_slug ?? "")) {
+  // A cash ledger (checking, a broker's cash, a foreign-currency account): the server says so with
+  // the bundle's head; before that its category, known from the placeholder, mounts the page at first paint.
+  const isChecking =
+    data.checkingGlance != null ||
+    (data.checkingGlance === undefined && CHECKING_PAGE_CATEGORY_SLUGS.has(data.summary.category_slug ?? ""));
+  if (isChecking) {
     return <CheckingAccountDetailPage data={data} />;
   }
   // A property or its mortgage: the category is known from the placeholder, so the page mounts at first paint.
