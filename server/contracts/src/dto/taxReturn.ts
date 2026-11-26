@@ -10,14 +10,22 @@ export type TaxReturnRowSection =
   | "payment"
   | "other";
 
+/** Where a code sits in the list the page draws: the groups follow each other in this order. */
+export type TaxReturnRowGroup = "income" | "base" | "tax" | "result" | "payment" | "other";
+
 export type TaxReturnRow = {
   code: number;
   section: TaxReturnRowSection;
+  group: TaxReturnRowGroup;
   filed: number | null;
   informed: number | null;
   draft: number | null;
   changed: boolean;
+  /** Draft less filed for a `changed` code; null otherwise. */
+  difference: number | null;
   informed_mismatch: boolean;
+  /** Every source that states the code (filed, informed, draft) states the same value. */
+  sources_agree: boolean;
   estimated: boolean;
 };
 
@@ -359,12 +367,18 @@ export type TaxReturnResponse = {
     by_table: number;
     difference: number;
     months_with_differences: string[];
-    months: { payslip_id: number; period_month: string; origin: "document" | "rebuilt"; withheld: number; by_table: number; difference: number }[];
+    months: { payslip_id: number; period_month: string; origin: "document" | "rebuilt"; withheld: number; by_table: number; difference: number; differs: boolean }[];
   };
   rows: TaxReturnRow[];
   /** The income tax determined as filed / as drafted: the IGC (304) plus the Impuesto Adicional (34). */
   tax_filed: number | null;
   tax_draft: number | null;
+  /** `tax_draft` less `tax_filed`; null unless both are stated. */
+  tax_difference: number | null;
+  /** How many codes the draft changes against the filed form. */
+  changed_codes: number;
+  /** How many rows the «differences» view lists: a changed code, or a third-party figure unlike the filed one. */
+  flagged_codes: number;
   crypto: {
     method: "fifo" | "lifo" | "average";
     fee_policy: "excluded" | "included";
@@ -376,6 +390,8 @@ export type TaxReturnResponse = {
     sales: TaxReturnCryptoSale[];
   };
   dividends: TaxReturnDividend[];
+  /** The dividends' gross in pesos, the ones with their broker detail (the rest are pending). */
+  dividends_gross_clp: number; // convention-ok: an F22 figure is stated in pesos by law
   loss_offset: TaxReturnLossOffset;
   /** Foreign share sales netted among themselves: a loss offsets nothing else. */
   foreign_share_offset: TaxReturnOffsetBalance;
@@ -395,16 +411,22 @@ export type TaxReturnResponse = {
 /** GET /api/tax-return/us — the local Form 1040 (server: us1040/payload.ts). */
 export type UsTaxReturnRowSection = "income" | "subtotal" | "deduction" | "tax" | "credit" | "payment" | "result";
 
+/** Where a 1040 line sits in the list the page draws, in the form's order. */
+export type UsTaxReturnRowGroup = "income" | "deductions" | "tax" | "payments" | "result";
+
 /** One 1040 line; whole dollars. `line` is the role (the 2024 form's numbering: «1a», «12», «35a»), `printed_line` the year's number («12e» on the 2025 form). */
 export type UsTaxReturnRow = {
   line: string;
   printed_line: string;
   section: UsTaxReturnRowSection;
+  group: UsTaxReturnRowGroup;
   /** Null without a filed return; a line the filed return leaves out reads 0. */
   filed: number | null;
   draft: number;
   /** Filed and draft both present and different. */
   changed: boolean;
+  /** Draft less filed for a `changed` line; null otherwise. */
+  difference: number | null;
 };
 
 /** A W-2 rebuilt from the year's pay stubs (dollars to the cent). */
@@ -617,6 +639,10 @@ export type UsTaxReturnResponse = {
   /** Line 24 (total tax) as filed / as drafted. */
   tax_filed: number | null;
   tax_draft: number;
+  /** `tax_draft` less `tax_filed`; null without a filed return. */
+  tax_difference: number | null;
+  /** How many lines the draft changes against the filed return. */
+  changed_lines: number;
   /** Line 35a / line 37 of the draft. */
   refund_draft: number;
   owed_draft: number;

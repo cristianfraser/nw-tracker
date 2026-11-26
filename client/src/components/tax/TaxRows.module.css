@@ -1,0 +1,539 @@
+/* The tax return page (F22 and Form 1040): the result figures, the code list, the folded sections
+   and their detail lists. Built on the income page's row vocabulary (IncomeRows.module.css): one
+   rendering at every width, a grid of subgrid rows while the list is wide, wrapped rows below its
+   breakpoint.
+
+   One container name for every list: each frame states its breakpoint as its font-size and the
+   query reads `1em`, which a container query resolves against the container (never a list of
+   containers: Safari drops the whole rule). The list sets its own font-size, so the frame's
+   reaches no text. */
+
+/* ---- header: the year and return controls, the result figures, the short facts ---- */
+.returnField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.returnSwitch {
+  font-size: var(--font-size-ui);
+  min-height: 1.5rem;
+}
+
+/* The figures go two by two by their own width, not the viewport's: from 880 the sidebar leaves
+   the content narrower than a phone in landscape. */
+.figuresFrame {
+  container: tax-figures / inline-size;
+  margin: 0.9rem 0 0;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.figure {
+  margin: 0;
+  padding: 0.6rem 0.75rem 0.6rem 0;
+  min-width: 0;
+}
+
+.figure + .figure {
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--hairline);
+}
+
+.figureLabel {
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.figureValue {
+  margin: 0.1rem 0 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.2rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.figureSub {
+  margin: 0.1rem 0 0;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+@container tax-figures (max-width: 46rem) {
+  .figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .figure:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .figure:nth-child(n + 3) {
+    border-top: 1px solid var(--hairline);
+  }
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 1rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-prose-sm);
+  color: var(--muted);
+}
+
+.facts b {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.notice {
+  margin: 0.5rem 0 0;
+  font-size: var(--font-size-prose);
+}
+
+.bad {
+  color: var(--negative);
+}
+
+.ok {
+  color: var(--positive);
+}
+
+.warn {
+  color: #f59e0b;
+}
+
+.quiet {
+  color: var(--muted);
+}
+
+/* ---- shared row pieces ---- */
+.frame {
+  container: tax-rows / inline-size;
+}
+
+.list {
+  display: grid;
+  column-gap: 1rem;
+  font-size: var(--font-size-prose);
+}
+
+.row {
+  /* Holds the visually-hidden figure names (absolute). */
+  position: relative;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  padding: 0.4rem 0.15rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
+  min-width: 0;
+}
+
+.head {
+  padding-top: 0.1rem;
+  padding-bottom: 0.25rem;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.lead {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A figure's name: read by a screen reader while the header row names the column, shown inline
+   once the row wraps. */
+.label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.strong {
+  font-weight: 600;
+}
+
+.faint {
+  opacity: 0.7;
+}
+
+/* ---- the code list: code, concept, filed, (informed,) draft, difference ---- */
+.codeFrame {
+  font-size: 52rem;
+}
+
+.codeFrameTwo {
+  font-size: 44rem;
+}
+
+.codes {
+  grid-template-columns: max-content minmax(0, 1fr) repeat(4, max-content);
+}
+
+.codesTwo {
+  grid-template-columns: max-content minmax(0, 1fr) repeat(3, max-content);
+}
+
+.codeRow {
+  padding-left: 0.5rem;
+  border-left: 2px solid transparent;
+}
+
+.changed {
+  border-left-color: var(--negative);
+  background: color-mix(in srgb, var(--negative) 7%, transparent);
+}
+
+.changed > .lead {
+  color: var(--negative);
+}
+
+.mismatch {
+  border-left-color: #f59e0b;
+}
+
+.group {
+  grid-column: 1 / -1;
+  padding: 0.7rem 0.15rem 0.2rem 0.65rem;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.values {
+  display: contents;
+}
+
+/* Wrapped only: the one value a code has when its sources agree, and which sources state it. */
+.one,
+.marks,
+.legend {
+  display: none;
+}
+
+.mark {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-left: 0.15rem;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--hairline) 80%, transparent);
+}
+
+.markFiled {
+  background: var(--muted);
+}
+
+.markInformed {
+  background: #22b8cf;
+}
+
+.markDraft {
+  background: var(--accent);
+}
+
+.legend {
+  flex-wrap: wrap;
+  gap: 0.1rem 0.75rem;
+  margin: 0 0 0.3rem;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+.legend .mark {
+  margin: 0 0.25rem 0 0;
+}
+
+.listNote {
+  margin: 0.5rem 0 0;
+  font-size: var(--font-size-prose-sm);
+  color: var(--muted);
+}
+
+/* ---- folded sections: the income page's side lists ---- */
+.section {
+  border-top: 1px solid var(--hairline);
+}
+
+.sectionHeading {
+  margin: 0;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0.15rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sectionHead:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.chevron {
+  align-self: center;
+  flex: none;
+  color: var(--muted);
+  transform: rotate(-90deg);
+}
+
+.sectionOpen .sectionHead .chevron {
+  transform: none;
+}
+
+.sectionTitle {
+  flex: 1;
+  /* The title keeps its line; the summary wraps under it when it does not fit beside it. */
+  min-width: 9rem;
+}
+
+.sectionOpen .sectionHead .sectionTitle {
+  color: var(--text);
+}
+
+.sectionSummary {
+  font-size: var(--font-size-prose-sm);
+  font-weight: 400;
+  text-align: right;
+}
+
+.sectionSummary b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.sectionBody {
+  padding: 0 0.15rem 0.9rem;
+  min-width: 0;
+}
+
+.sectionBody > p,
+.sectionBody > ul {
+  max-width: 62rem;
+  margin: 0 0 0.5rem;
+  font-size: var(--font-size-prose);
+}
+
+.sectionBody > ul {
+  padding-left: 1.1rem;
+}
+
+.sectionBody > h3 {
+  margin: 0.9rem 0 0.3rem;
+}
+
+.sectionBody > .frame {
+  margin-bottom: 0.5rem;
+}
+
+/* ---- a detail list: (lead,) name, the other figures, the headline figure ---- */
+.detailFrameFew {
+  font-size: 32rem;
+}
+
+.detailFrameSome {
+  font-size: 54rem;
+}
+
+.detailFrameMany {
+  font-size: 72rem;
+}
+
+.detail {
+  grid-template-columns: var(--detail-cols);
+}
+
+.parts {
+  display: contents;
+}
+
+.text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.6rem;
+  padding: 0.45rem 0.15rem 0;
+  font-size: var(--font-size-prose);
+}
+
+.linkButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+/* Label and amount pairs (a W-2's boxes), as a payslip's receipt. */
+.pairs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 0.15rem 1rem;
+  max-width: 26rem;
+  margin: 0 0 0.6rem;
+  font-size: var(--font-size-prose);
+}
+
+.sectionBody > .pairsHead {
+  margin: 0 0 0.2rem;
+  font-size: var(--font-size-card-meta);
+  color: var(--muted);
+}
+
+.pairs dt {
+  min-width: 0;
+}
+
+.pairs dd {
+  margin: 0;
+}
+
+/* ---- wrapped ---- */
+@container tax-rows (max-width: 1em) {
+  .list {
+    display: block;
+  }
+
+  .row {
+    grid-column: auto;
+    column-gap: 0.6rem;
+    row-gap: 0.15rem;
+  }
+
+  .label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    margin-right: 0.3rem;
+    color: var(--muted);
+  }
+
+  /* The code list: code, concept, the value and its sources; a code whose sources differ adds a
+     line naming each value. */
+  .codeHead {
+    display: none;
+  }
+
+  .legend {
+    display: flex;
+  }
+
+  .codeRow {
+    grid-template-columns: 2.6rem minmax(0, 1fr) max-content max-content;
+  }
+
+  .one,
+  .marks {
+    display: inline;
+    white-space: nowrap;
+  }
+
+  .values {
+    display: none;
+  }
+
+  /* A code whose sources differ: each stated value, named, on a wrapped line under the concept. */
+  .differs > .values {
+    grid-column: 2 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.9rem;
+    font-size: var(--font-size-prose-sm);
+  }
+
+  .differs > .values > .empty {
+    display: none;
+  }
+
+  /* A detail row: (lead,) name and the headline figure, the other figures named on wrapped lines. */
+  .detailHead {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .detailHead > :not(:last-child) {
+    display: none;
+  }
+
+  .detail > .row {
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+  }
+
+  .detail.noLead > .row {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .headline {
+    grid-row: 1;
+    grid-column: -2 / -1;
+  }
+
+  .parts {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.75rem;
+    font-size: var(--font-size-prose-sm);
+    color: var(--muted);
+  }
+
+  .parts > .num,
+  .parts > .text {
+    text-align: left;
+    white-space: normal;
+  }
+}

@@ -3,7 +3,7 @@ import { employmentPayslipsKind, payrollParametersKind, type ClPayslip } from "n
 import { db } from "./db.js";
 import { igcTax } from "./legalParameters.js";
 import { applyPayrollParameters } from "./payrollParametersApply.js";
-import { buildPayslipChecks, payrollWithholdingYear } from "./payslipChecks.js";
+import { buildPayslipChecks, payrollWithholdingMonths, payrollWithholdingYear } from "./payslipChecks.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
 
 const DOC = "vitest-payslip-checks/2099-03.pdf";
@@ -81,6 +81,8 @@ describe("payslip checks", () => {
     const row = buildPayslipChecks().find((c) => c.period_month === "2099-03")!;
     expect(row.differences).toEqual([{ check: "income_tax", expected: tax, printed: tax - 500, difference: -500 }]);
     expect(payrollWithholdingYear(2099)).toMatchObject({ payslips: 1, difference: -500, months_with_differences: ["2099-03"] });
+    // The page marks the payslip's own row, not its month.
+    expect(payrollWithholdingMonths(2099)).toMatchObject([{ period_month: "2099-03", difference: -500, differs: true }]);
   });
 
   it("a payslip newer than the newest published parameters waits; an older month without them is an error", () => {

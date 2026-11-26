@@ -7205,7 +7205,367 @@
     }
   },
   "taxReturn": {
+    "list": {
+      "f22Title": {
+        "en": "Formulario 22 · AT{{year}}",
+        "es": "Formulario 22 · AT{{year}}"
+      },
+      "showMore": {
+        "en": "Show {{count}} more",
+        "es": "Ver {{count}} más"
+      },
+      "showAll": {
+        "en": "Show all {{count}}",
+        "es": "Ver todo ({{count}})"
+      },
+      "shown": {
+        "en": "{{shown}} of {{total}}",
+        "es": "{{shown}} de {{total}}"
+      },
+      "viewLabel": {
+        "en": "List view",
+        "es": "Vista de la lista"
+      },
+      "viewAll": {
+        "en": "All",
+        "es": "Todos"
+      },
+      "viewFlagged": {
+        "en": "Differences ({{count}})",
+        "es": "Diferencias ({{count}})"
+      },
+      "noneFlagged": {
+        "en": "Nothing differs from what was filed.",
+        "es": "Nada difiere de lo presentado."
+      }
+    },
+    "groups": {
+      "income": {
+        "en": "Income",
+        "es": "Rentas"
+      },
+      "base": {
+        "en": "Deductions and taxable base",
+        "es": "Rebajas y base imponible"
+      },
+      "tax": {
+        "en": "Taxes and credits",
+        "es": "Impuestos y créditos"
+      },
+      "result": {
+        "en": "Result",
+        "es": "Resultado"
+      },
+      "payment": {
+        "en": "Payment section",
+        "es": "Sección de pago"
+      },
+      "other": {
+        "en": "Other codes",
+        "es": "Otros códigos"
+      }
+    },
+    "figures": {
+      "filed": {
+        "en": "Tax filed",
+        "es": "Impuesto declarado"
+      },
+      "draft": {
+        "en": "Draft",
+        "es": "Borrador"
+      },
+      "difference": {
+        "en": "Difference",
+        "es": "Diferencia"
+      },
+      "settlement": {
+        "en": "Settlement",
+        "es": "Pago o devolución"
+      },
+      "refund": {
+        "en": "Refund",
+        "es": "Devolución"
+      },
+      "payment": {
+        "en": "To pay",
+        "es": "A pagar"
+      },
+      "notFiled": {
+        "en": "no filed return",
+        "es": "sin declaración presentada"
+      },
+      "codeIgc": {
+        "en": "code 304",
+        "es": "código 304"
+      },
+      "codesAdicional": {
+        "en": "codes 304 + 34",
+        "es": "códigos 304 + 34"
+      },
+      "draftSub": {
+        "en": "what the app computes",
+        "es": "lo que calcula la app"
+      },
+      "draftOpen": {
+        "en": "the year has not closed",
+        "es": "el año no ha cerrado"
+      },
+      "draftNone": {
+        "en": "no tax computed",
+        "es": "sin impuesto calculado"
+      },
+      "codesAgree": {
+        "en": "every code agrees",
+        "es": "todos los códigos coinciden"
+      },
+      "codesDiffer": {
+        "en": "{{count}} codes differ",
+        "es": "{{count}} códigos difieren"
+      },
+      "codesDifferOne": {
+        "en": "1 code differs",
+        "es": "1 código difiere"
+      },
+      "nothingToSettle": {
+        "en": "nothing to settle",
+        "es": "nada que pagar ni devolver"
+      }
+    },
+    "facts": {
+      "baseLabel": {
+        "en": "Base",
+        "es": "Base"
+      },
+      "base": {
+        "filed": {
+          "en": "the filed return",
+          "es": "la declaración presentada"
+        },
+        "informed": {
+          "en": "third-party statements (DJ)",
+          "es": "declaraciones juradas de terceros"
+        },
+        "payroll": {
+          "en": "imported payslips ({{months}})",
+          "es": "liquidaciones importadas ({{months}})"
+        },
+        "fees": {
+          "en": "boletas de honorarios issued",
+          "es": "boletas de honorarios emitidas"
+        },
+        "none": {
+          "en": "the app's codes only",
+          "es": "solo los códigos de la app"
+        }
+      },
+      "regimeLabel": {
+        "en": "Regime",
+        "es": "Régimen"
+      },
+      "regime": {
+        "resident": {
+          "en": "resident all year",
+          "es": "residente todo el año"
+        },
+        "nonresident": {
+          "en": "non-resident",
+          "es": "no residente"
+        },
+        "split": {
+          "en": "departure year, resident through {{through}}, non-resident from {{from}}",
+          "es": "año de salida, residente hasta {{through}}, no residente desde {{from}}"
+        }
+      },
+      "residencyLabel": {
+        "en": "Residency",
+        "es": "Residencia"
+      },
+      "declared": {
+        "en": "declared",
+        "es": "declarada"
+      },
+      "undeclared": {
+        "en": "not declared",
+        "es": "no declarada"
+      },
+      "provisional": {
+        "en": "{{year}} has not closed",
+        "es": "{{year}} no ha cerrado"
+      }
+    },
+    "sections": {
+      "basis": {
+        "en": "Residency and basis",
+        "es": "Residencia y base"
+      }
+    },
+    "count": {
+      "lines": {
+        "en": "{{count}} lines",
+        "es": "{{count}} líneas"
+      },
+      "linesOne": {
+        "en": "1 line",
+        "es": "1 línea"
+      },
+      "sales": {
+        "en": "{{count}} sales",
+        "es": "{{count}} ventas"
+      },
+      "salesOne": {
+        "en": "1 sale",
+        "es": "1 venta"
+      },
+      "places": {
+        "en": "{{count}} places",
+        "es": "{{count}} lugares"
+      },
+      "placesOne": {
+        "en": "1 place",
+        "es": "1 lugar"
+      },
+      "items": {
+        "en": "{{count}} items",
+        "es": "{{count}} conceptos"
+      },
+      "itemsOne": {
+        "en": "1 item",
+        "es": "1 concepto"
+      },
+      "payslips": {
+        "en": "{{count}} payslips",
+        "es": "{{count}} liquidaciones"
+      },
+      "payslipsOne": {
+        "en": "1 payslip",
+        "es": "1 liquidación"
+      },
+      "payStubs": {
+        "en": "{{count}} pay stubs",
+        "es": "{{count}} colillas de pago"
+      },
+      "payStubsOne": {
+        "en": "1 pay stub",
+        "es": "1 colilla de pago"
+      },
+      "notes": {
+        "en": "{{count}} notes",
+        "es": "{{count}} notas"
+      },
+      "notesOne": {
+        "en": "1 note",
+        "es": "1 nota"
+      },
+      "forms": {
+        "en": "{{count}} forms",
+        "es": "{{count}} formularios"
+      },
+      "formsOne": {
+        "en": "1 form",
+        "es": "1 formulario"
+      },
+      "accounts": {
+        "en": "{{count}} accounts",
+        "es": "{{count}} cuentas"
+      },
+      "accountsOne": {
+        "en": "1 account",
+        "es": "1 cuenta"
+      },
+      "holdings": {
+        "en": "{{count}} holdings",
+        "es": "{{count}} posiciones"
+      },
+      "holdingsOne": {
+        "en": "1 holding",
+        "es": "1 posición"
+      },
+      "employers": {
+        "en": "{{count}} employers",
+        "es": "{{count}} empleadores"
+      },
+      "employersOne": {
+        "en": "1 employer",
+        "es": "1 empleador"
+      }
+    },
     "us": {
+      "figures": {
+        "filed": {
+          "en": "Total tax filed",
+          "es": "Impuesto total declarado"
+        },
+        "draftSub": {
+          "en": "line 24",
+          "es": "línea 24"
+        },
+        "draftOpen": {
+          "en": "the year has not ended",
+          "es": "el año no ha terminado"
+        },
+        "notDrafted": {
+          "en": "not drafted",
+          "es": "sin borrador"
+        },
+        "linesAgree": {
+          "en": "every line agrees",
+          "es": "todas las líneas coinciden"
+        },
+        "linesDiffer": {
+          "en": "{{count}} lines differ",
+          "es": "{{count}} líneas difieren"
+        },
+        "linesDifferOne": {
+          "en": "1 line differs",
+          "es": "1 línea difiere"
+        },
+        "balance": {
+          "en": "Refund or amount owed",
+          "es": "Devolución o saldo a pagar"
+        },
+        "refund": {
+          "en": "Refund",
+          "es": "Devolución"
+        },
+        "owed": {
+          "en": "Amount owed",
+          "es": "Saldo a pagar"
+        }
+      },
+      "facts": {
+        "filingStatus": {
+          "en": "Filing status",
+          "es": "Estado civil tributario"
+        }
+      },
+      "groups": {
+        "income": {
+          "en": "Income",
+          "es": "Ingresos"
+        },
+        "deductions": {
+          "en": "Deductions",
+          "es": "Deducciones"
+        },
+        "tax": {
+          "en": "Tax and credits",
+          "es": "Impuesto y créditos"
+        },
+        "payments": {
+          "en": "Payments",
+          "es": "Pagos"
+        },
+        "result": {
+          "en": "Refund or amount owed",
+          "es": "Devolución o saldo a pagar"
+        }
+      },
+      "sections": {
+        "notes": {
+          "en": "Readings and what is not modelled",
+          "es": "Lecturas y lo que no se modela"
+        }
+      },
       "tabsLabel": {
         "en": "Return",
         "es": "Declaración"
@@ -7361,26 +7721,6 @@
           "en": "The straddle rules on covered calls (§1092: loss deferral, the stock's holding period suspended) are not modelled.",
           "es": "No se modelan las reglas de straddle de las opciones de compra cubiertas (§1092: diferimiento de pérdidas, suspensión del plazo de tenencia de la acción)."
         }
-      },
-      "summaryFiled": {
-        "en": "Total tax filed: {{amount}}",
-        "es": "Impuesto total declarado: {{amount}}"
-      },
-      "summaryDraft": {
-        "en": "drafted: {{amount}}",
-        "es": "borrador: {{amount}}"
-      },
-      "summaryDiff": {
-        "en": "difference {{amount}}",
-        "es": "diferencia {{amount}}"
-      },
-      "refund": {
-        "en": "Refund {{amount}}",
-        "es": "Devolución {{amount}}"
-      },
-      "owed": {
-        "en": "Amount owed {{amount}}",
-        "es": "Monto a pagar {{amount}}"
       },
       "even": {
         "en": "Neither a refund nor an amount owed",
@@ -7944,6 +8284,10 @@
         }
       },
       "form1116": {
+        "summaryCredit": {
+          "en": "credit",
+          "es": "crédito"
+        },
         "title": {
           "en": "Form 1116 · foreign tax credit (passive)",
           "es": "Formulario 1116 · crédito por impuestos extranjeros (pasivo)"
@@ -8006,6 +8350,10 @@
         }
       },
       "form8621": {
+        "partVShort": {
+          "en": "Part V may apply",
+          "es": "puede aplicar la parte V"
+        },
         "title": {
           "en": "Form 8621 · PFIC mark to market (Part IV)",
           "es": "Formulario 8621 · PFIC a valor de mercado (parte IV)"
@@ -8313,6 +8661,14 @@
       }
     },
     "residency": {
+      "excludedKind": {
+        "en": "Item",
+        "es": "Concepto"
+      },
+      "excludedReason": {
+        "en": "Reason",
+        "es": "Motivo"
+      },
       "undeclared": {
         "en": "No tax residency declared: the return assumes a Chilean tax resident the whole year.",
         "es": "Sin residencia tributaria declarada: la declaración asume residente tributario en Chile todo el año."
@@ -8358,10 +8714,6 @@
       "excludedExplain": {
         "en": "Items of the non-resident window the return does not declare, each with its reason.",
         "es": "Partidas de la ventana no residente que la declaración no incluye, cada una con su razón."
-      },
-      "excludedItem": {
-        "en": "{{kind}}: {{clp}} — {{reason}}",
-        "es": "{{kind}}: {{clp}} — {{reason}}"
       },
       "kind": {
         "us_salary": {
@@ -8523,6 +8875,10 @@
       }
     },
     "dividends": {
+      "pendingCount": {
+        "en": "{{count}} pending",
+        "es": "{{count}} pendientes"
+      },
       "title": {
         "en": "Foreign dividends",
         "es": "Dividendos del extranjero"
@@ -8601,6 +8957,10 @@
       }
     },
     "rentals": {
+      "summaryTaxable": {
+        "en": "taxable",
+        "es": "afecto"
+      },
       "title": {
         "en": "Rents",
         "es": "Arriendos"
@@ -8691,6 +9051,10 @@
       }
     },
     "art107": {
+      "summaryTax": {
+        "en": "tax",
+        "es": "impuesto"
+      },
       "title": {
         "en": "Art. 107 LIR: fund and share sales",
         "es": "Art. 107 LIR: ventas de fondos y acciones"
@@ -8846,18 +9210,6 @@
         "es": "El año no ha cerrado: el IPC llega hasta el último mes publicado, así que los reajustes y la pérdida de arrastre son provisorios."
       }
     },
-    "summaryFiled": {
-      "en": "Tax (code 304) filed: {{amount}}",
-      "es": "Impuesto (código 304) presentado: {{amount}}"
-    },
-    "summaryDraft": {
-      "en": "draft: {{amount}}",
-      "es": "borrador: {{amount}}"
-    },
-    "summaryDiff": {
-      "en": "difference: {{amount}}",
-      "es": "diferencia: {{amount}}"
-    },
     "base": {
       "filed": {
         "en": "Draft base: the filed return, with the codes the app calculates replaced.",
@@ -8905,6 +9257,18 @@
       "es": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC) e intereses del crédito hipotecario. Los reemplazan las DJ que los terceros presentan en marzo."
     },
     "lossOffset": {
+      "title": {
+        "en": "Loss offset",
+        "es": "Compensación de pérdidas"
+      },
+      "summaryUnused": {
+        "en": "loss left unused",
+        "es": "pérdida sin compensar"
+      },
+      "summaryTaxed": {
+        "en": "gain not offset",
+        "es": "ganancia sin compensar"
+      },
       "unusedOpen": {
         "en": "Uncompensated loss in {{year}}: {{amount}}. Gains up to {{amount}} in the same pool (crypto, funds, interest, foreign shares or dividends) realized by {{year}}-12-31 would pay no tax.",
         "es": "Pérdida sin compensar en {{year}}: {{amount}}. Ganancias de hasta {{amount}} en el mismo grupo (cripto, fondos, intereses, acciones o dividendos extranjeros) realizadas antes del {{year}}-12-31 no pagarían impuesto."
@@ -8969,6 +9333,10 @@
       }
     },
     "payroll": {
+      "summaryDifference": {
+        "en": "difference {{difference}}",
+        "es": "diferencia {{difference}}"
+      },
       "title": {
         "en": "Tax withheld from salary",
         "es": "Impuesto retenido en liquidaciones"

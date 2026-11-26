@@ -2234,7 +2234,115 @@
     }
   },
   "taxReturn": {
+    "list": {
+      "f22Title": "Formulario 22 · AT{{year}}",
+      "showMore": "Show {{count}} more",
+      "showAll": "Show all {{count}}",
+      "shown": "{{shown}} of {{total}}",
+      "viewLabel": "List view",
+      "viewAll": "All",
+      "viewFlagged": "Differences ({{count}})",
+      "noneFlagged": "Nothing differs from what was filed."
+    },
+    "groups": {
+      "income": "Income",
+      "base": "Deductions and taxable base",
+      "tax": "Taxes and credits",
+      "result": "Result",
+      "payment": "Payment section",
+      "other": "Other codes"
+    },
+    "figures": {
+      "filed": "Tax filed",
+      "draft": "Draft",
+      "difference": "Difference",
+      "settlement": "Settlement",
+      "refund": "Refund",
+      "payment": "To pay",
+      "notFiled": "no filed return",
+      "codeIgc": "code 304",
+      "codesAdicional": "codes 304 + 34",
+      "draftSub": "what the app computes",
+      "draftOpen": "the year has not closed",
+      "draftNone": "no tax computed",
+      "codesAgree": "every code agrees",
+      "codesDiffer": "{{count}} codes differ",
+      "codesDifferOne": "1 code differs",
+      "nothingToSettle": "nothing to settle"
+    },
+    "facts": {
+      "baseLabel": "Base",
+      "base": {
+        "filed": "the filed return",
+        "informed": "third-party statements (DJ)",
+        "payroll": "imported payslips ({{months}})",
+        "fees": "boletas de honorarios issued",
+        "none": "the app's codes only"
+      },
+      "regimeLabel": "Regime",
+      "regime": {
+        "resident": "resident all year",
+        "nonresident": "non-resident",
+        "split": "departure year, resident through {{through}}, non-resident from {{from}}"
+      },
+      "residencyLabel": "Residency",
+      "declared": "declared",
+      "undeclared": "not declared",
+      "provisional": "{{year}} has not closed"
+    },
+    "sections": {
+      "basis": "Residency and basis"
+    },
+    "count": {
+      "lines": "{{count}} lines",
+      "linesOne": "1 line",
+      "sales": "{{count}} sales",
+      "salesOne": "1 sale",
+      "places": "{{count}} places",
+      "placesOne": "1 place",
+      "items": "{{count}} items",
+      "itemsOne": "1 item",
+      "payslips": "{{count}} payslips",
+      "payslipsOne": "1 payslip",
+      "payStubs": "{{count}} pay stubs",
+      "payStubsOne": "1 pay stub",
+      "notes": "{{count}} notes",
+      "notesOne": "1 note",
+      "forms": "{{count}} forms",
+      "formsOne": "1 form",
+      "accounts": "{{count}} accounts",
+      "accountsOne": "1 account",
+      "holdings": "{{count}} holdings",
+      "holdingsOne": "1 holding",
+      "employers": "{{count}} employers",
+      "employersOne": "1 employer"
+    },
     "us": {
+      "figures": {
+        "filed": "Total tax filed",
+        "draftSub": "line 24",
+        "draftOpen": "the year has not ended",
+        "notDrafted": "not drafted",
+        "linesAgree": "every line agrees",
+        "linesDiffer": "{{count}} lines differ",
+        "linesDifferOne": "1 line differs",
+        "balance": "Refund or amount owed",
+        "refund": "Refund",
+        "owed": "Amount owed"
+      },
+      "facts": {
+        "filingStatus": "Filing status"
+      },
+      "groups": {
+        "income": "Income",
+        "deductions": "Deductions",
+        "tax": "Tax and credits",
+        "payments": "Payments",
+        "result": "Refund or amount owed"
+      },
+      "sections": {
+        "notes": "Readings and what is not modelled"
+      },
       "tabsLabel": "Return",
       "tabChile": "Chile (F22)",
       "tabUs": "United States (1040)",
@@ -2277,11 +2385,6 @@
         "options_written_short_term": "A written option's result is short-term whatever its length (§1234(b)); a bought option's follows its holding period. An assigned option has no row: its premium is in the shares' basis or the sale's proceeds.",
         "covered_call_straddle_not_modelled": "The straddle rules on covered calls (§1092: loss deferral, the stock's holding period suspended) are not modelled."
       },
-      "summaryFiled": "Total tax filed: {{amount}}",
-      "summaryDraft": "drafted: {{amount}}",
-      "summaryDiff": "difference {{amount}}",
-      "refund": "Refund {{amount}}",
-      "owed": "Amount owed {{amount}}",
       "even": "Neither a refund nor an amount owed",
       "filedOn": "Filed on {{date}}",
       "notFiled": "Not filed",
@@ -2535,6 +2638,7 @@
         "summary": "Modified AGI {{magi}}: special allowance {{allowance}} (of {{before}}). Loss to limit {{limited}} (carried in {{prior}}, absorbed {{absorbed}}) → allowed {{allowed}}, suspended to next year {{suspended}}. Schedule 1 line 5: {{included}}."
       },
       "form1116": {
+        "summaryCredit": "credit",
         "title": "Form 1116 · foreign tax credit (passive)",
         "chile": "Chile's taxes on the US-resident months, from the F22 AT{{taxYear}} ({{source}}): Impuesto Adicional {{adicional}}, art. 107 único {{unico}}; translated at {{rate}} CLP per US$ (the year's average).",
         "noChile": "Chile taxed nothing in the US-resident months: only the carryovers.",
@@ -2555,6 +2659,7 @@
         "carryover": "{{year}}: {{amount}}"
       },
       "form8621": {
+        "partVShort": "Part V may apply",
         "title": "Form 8621 · PFIC mark to market (Part IV)",
         "explain": "Each PFIC at its December 31 value against its adjusted basis: an excess is ordinary income, a decline deductible only up to earlier inclusions; the result goes to Schedule 1 line 8z. The first US year starts from the greater of value and cost on January 1.",
         "holding": "Holding",
@@ -2637,6 +2742,8 @@
       "1901": "Income taxed under IDPC, art. 20 N°5 (exchange result on dollars; line 58 d)"
     },
     "residency": {
+      "excludedKind": "Item",
+      "excludedReason": "Reason",
       "undeclared": "No tax residency declared: the return assumes a Chilean tax resident the whole year.",
       "regime": {
         "resident": "Declared: Chilean tax resident the whole year ({{period}}).",
@@ -2650,7 +2757,6 @@
       "nonresidentArt107": "Art. 107 sales in the non-resident part: {{sales}}, result {{result}}, 10 % single tax {{tax}} — at the general-rule cost (art. 107 N°7), withheld by the broker (N°6; no withholding record is on file).",
       "excludedTitle": "Not declared (non-resident)",
       "excludedExplain": "Items of the non-resident window the return does not declare, each with its reason.",
-      "excludedItem": "{{kind}}: {{clp}} — {{reason}}",
       "kind": {
         "us_salary": "US salary (gross)",
         "foreign_dividends": "Foreign dividends (net)",
@@ -2700,6 +2806,7 @@
       "provisional": "The reajuste to December runs to {{month}}, the latest IPC published."
     },
     "dividends": {
+      "pendingCount": "{{count}} pending",
       "title": "Foreign dividends",
       "explain": "Converted at the dólar observado of December 31, {{year}} ({{rate}}): code 1104 the net, 748 the tax withheld, 1018 its credit.",
       "date": "Date",
@@ -2724,6 +2831,7 @@
       }
     },
     "rentals": {
+      "summaryTaxable": "taxable",
       "title": "Rents",
       "explain": "The year's rent by place, reajustada to December. A DFL-2 place's rent is not declared (DFL N° 2 art. 15); any other place's is line 5 code 1849, and its contribuciones paid in the year credit the IGC (code 1637) up to the IGC on that rent, with no refund.",
       "provisional": "The year has not closed: the reajuste uses the latest published IPC.",
@@ -2751,6 +2859,7 @@
       "interest": "Interest from a foreign broker: {{usd}} at the 31-December observado → {{clp}}, in 1104 (no US tax withheld, no credit)."
     },
     "art107": {
+      "summaryTax": "tax",
       "title": "Art. 107 LIR: fund and share sales",
       "explain": "Sales of fund units and shares on the exchange are taxed under art. 107 LIR. The mayor valor pays a flat 10% single tax (impuesto único) on sales from 2022-09-02 through 2026-12-31, and is ingreso no renta before 2022-09-02 and from {{inrFrom}}: no tax and no effect on the IGC. Lots are sold {{method}}; a loss offsets only other art. 107 gains.",
       "lotMethod": {
@@ -2798,9 +2907,6 @@
       "distributionsTotal": "Total distributions {{amount}}.",
       "provisional": "The year has not closed: the IPC runs to the latest published month, so the reajustes and the carried loss are provisional."
     },
-    "summaryFiled": "Tax (code 304) filed: {{amount}}",
-    "summaryDraft": "draft: {{amount}}",
-    "summaryDiff": "difference: {{amount}}",
     "base": {
       "filed": "Draft base: the filed return, with the codes the app calculates replaced.",
       "informed": "No filed return: the draft starts from what third parties informed (DJ).",
@@ -2815,6 +2921,9 @@
     "estimatedTitle": "Estimated from the ledger until the third party reports it",
     "estimatedNote": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost) and mortgage interest. They are replaced by the DJs third parties file in March.",
     "lossOffset": {
+      "title": "Loss offset",
+      "summaryUnused": "loss left unused",
+      "summaryTaxed": "gain not offset",
       "unusedOpen": "Uncompensated loss in {{year}}: {{amount}}. Gains up to {{amount}} in the same pool (crypto, funds, interest, foreign shares or dividends) realized by {{year}}-12-31 would pay no tax.",
       "unusedOpenTax": "Without the loss they would cost ≈ {{tax}} of IGC. Losses do not carry over to the next year.",
       "unusedClosed": "{{amount}} of loss went uncompensated in {{year}}: the pool had no gains to absorb it, and losses do not carry over.",
@@ -2834,6 +2943,7 @@
       "foreignTaxedOpen": "Foreign share gain in {{year}}: {{amount}}. Selling foreign shares, crypto or funds at a loss of up to {{amount}} by {{year}}-12-31 would offset it."
     },
     "payroll": {
+      "summaryDifference": "difference {{difference}}",
       "title": "Tax withheld from salary",
       "explain": "Each payslip's withheld tax against the monthly table applied to its own taxable amount (health deducted up to the legal 7 %). A difference is the employer's; the annual return settles it.",
       "summary": "Withheld {{withheld}} · by the table {{byTable}} · difference {{difference}}",
