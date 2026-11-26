@@ -288,7 +288,7 @@ describe("the annulment writers' pure rules", () => {
     ).toBeUndefined();
   });
 
-  const annulment = (id: number, merchant: string, amount: number, purchase: string, bankCredit = 0): AnnulmentForSettlement => ({
+  const annulment = (id: number, merchant: string, amount: number, purchase: string, bankCredit: 0 | 1 = 0): AnnulmentForSettlement => ({
     id,
     currency: "clp",
     amount,
