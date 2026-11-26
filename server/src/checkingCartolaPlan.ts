@@ -19,8 +19,11 @@
  * `pickTransferLegForBankRow`, `pickTransferNoticeMovementForBankRow`,
  * `checkingMovementContentMatches`). A row's listing facts (bank day, amount, description, document)
  * come in structured (`CheckingListedFacts`); nothing here reads a note. The plan departs from today
- * in one declared way (`today: "differs"`): of several rows of one movement the earliest seen is the
- * kept one, where today the last daily row adopted keeps its flow.
+ * in two declared ways (`today: "differs"`): of several rows of one movement the earliest seen is the
+ * kept one, where today the last daily row adopted keeps its flow; and daily rows pair one-to-one
+ * with movements (the Nth identical daily row with the Nth identical movement), where today every
+ * identical daily row takes the first such movement — both twins' flows end on its row and the
+ * second movement's row starts a new flow.
  */
 import { cartolaMovementDedupeKey, type ParsedCheckingMovement } from "./checkingCartolaParse.js";
 import { checkingMovementContentMatches } from "./checkingCartolaPartialReconcile.js";
@@ -82,7 +85,7 @@ export type CheckingKeepReason = "document_key" | "already_present" | "daily_lis
 export type CheckingCartolaPlan = {
   keep: { row_id: number; movement: number; why: CheckingKeepReason; redate: { occurred_on: string; bank_day: string } | null; today: "same" | "differs" }[];
   confirm: { row_id: number; movement: number; why: "transfer_leg" | "mail_notice" }[];
-  insert: { movement: number; retired_flow_id: number | null }[];
+  insert: { movement: number; retired_flow_id: number | null; today: "same" | "differs" }[];
   fold: { row_id: number; into_row_id: number | null; movement: number; why: "daily_listing"; today: "same" | "differs" }[];
   remove: { row_id: number; movement: number; why: "cartola_row_not_found" | "listed_by_transfer_leg" | "listed_by_mail" }[];
   ambiguous: { what: string; movement: number; flow_ids: number[] }[];
@@ -197,12 +200,25 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
   const adoptedInto = new Map<number, number[]>();
   const redates = new Map<number, { occurred_on: string; bank_day: string }>();
   const removed: { row_id: number; movement: number; why: CheckingCartolaPlan["remove"][number]["why"] }[] = [];
-  for (const daily of input.rows.filter((r) => r.kind === "daily_listing").sort((a, b) => a.id - b.id)) {
-    const listed = daily.listed;
-    if (!listed) continue;
-    const mv = input.movements.find((m) =>
-      checkingMovementContentMatches(m, { occurred_on: listed.bank_day, amount_clp: listed.amount_clp, description: listed.description, document_no: listed.document_no })
-    );
+  const dailies = input.rows.filter((r) => r.kind === "daily_listing" && r.listed != null).sort((a, b) => a.id - b.id);
+  const contentMatches = (m: CheckingCartolaMovement, listed: CheckingListedFacts): boolean =>
+    checkingMovementContentMatches(m, {
+      occurred_on: listed.bank_day,
+      amount_clp: listed.amount_clp,
+      description: listed.description,
+      document_no: listed.document_no,
+    });
+  const removeWhyOf = (mvIndex: number): CheckingCartolaPlan["remove"][number]["why"] => {
+    const via = viaLegOrMail.get(mvIndex);
+    return via === "transfer_leg" ? "listed_by_transfer_leg" : via === "mail_notice" ? "listed_by_mail" : "cartola_row_not_found";
+  };
+
+  // Today (`prunePartialMovementsSupersededByCartola`): each daily row takes the FIRST movement whose
+  // content matches — never claimed, so identical twins both take the first — and the first cartola
+  // row of that movement's figures, on that movement's day.
+  for (const daily of dailies) {
+    const listed = daily.listed!;
+    const mv = input.movements.find((m) => contentMatches(m, listed));
     if (!mv) continue;
     const official = cartolaRows.find(
       (r) =>
@@ -217,8 +233,7 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
       ? cartolaRows.find((r) => r.document_key === official.document_key && r.occurred_on === mv.occurred_on)
       : undefined;
     if (!target) {
-      const via = viaLegOrMail.get(mv.index);
-      removed.push({ row_id: daily.id, movement: mv.index, why: via === "transfer_leg" ? "listed_by_transfer_leg" : via === "mail_notice" ? "listed_by_mail" : "cartola_row_not_found" });
+      removed.push({ row_id: daily.id, movement: mv.index, why: removeWhyOf(mv.index) });
       continue;
     }
     if (daily.occurred_on !== listed.bank_day) {
@@ -228,46 +243,80 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
     adoptedInto.set(target.id, [...(adoptedInto.get(target.id) ?? []), daily.id]);
   }
 
+  // The plan: one-to-one — the Nth daily row of a movement's content takes the Nth such movement
+  // (the occurrence rule of the card side's `#dupN`), whose own row it restates.
+  const claimedMovements = new Set<number>();
+  const plannedInto = new Map<number, number[]>();
+  const plannedRemoved: CheckingCartolaPlan["remove"] = [];
+  for (const daily of dailies) {
+    const listed = daily.listed!;
+    const mv = input.movements.find((m) => !claimedMovements.has(m.index) && contentMatches(m, listed));
+    if (!mv) {
+      if (input.movements.some((m) => contentMatches(m, listed))) {
+        plan.ambiguous.push({ what: `daily row ${daily.id}: more identical daily rows than cartola movements`, movement: -1, flow_ids: [] });
+      }
+      continue;
+    }
+    claimedMovements.add(mv.index);
+    if (viaLegOrMail.has(mv.index)) {
+      plannedRemoved.push({ row_id: daily.id, movement: mv.index, why: removeWhyOf(mv.index) });
+      continue;
+    }
+    plannedInto.set(mv.index, [...(plannedInto.get(mv.index) ?? []), daily.id]);
+  }
+
   // Assemble: per movement, the rows on file that end on its row.
   const earliest = (ids: number[]): number[] =>
     [...ids].sort((a, b) => compareArrival(rowById.get(a)!.arrival, rowById.get(b)!.arrival) || a - b);
+  const sameMembers = (a: number[], b: number[]): boolean => a.length === b.length && a.every((x) => b.includes(x));
+  const redateOf = (rowId: number): { occurred_on: string; bank_day: string } | null => {
+    const r = rowById.get(rowId);
+    return r?.kind === "daily_listing" && r.listed && r.occurred_on !== r.listed.bank_day
+      ? { occurred_on: r.occurred_on, bank_day: r.listed.bank_day }
+      : null;
+  };
   for (const mv of input.movements) {
     const o = outcomeOf.get(mv.index);
     if (!o) continue;
+    const planned = plannedInto.get(mv.index) ?? [];
     if (o.kind === "row") {
-      const dailies = adoptedInto.get(o.id) ?? [];
+      const todayDailies = adoptedInto.get(o.id) ?? [];
       plan.today.movements.push({ movement: mv.index, outcome: { row_on_file: o.id, why: o.why } });
-      const members = earliest([o.id, ...dailies]);
+      const members = earliest([o.id, ...planned]);
       const kept = members[0]!;
       // Today the row on file stays and the last daily row adopted keeps its flow there.
-      const todaySurvivor = dailies.length > 0 ? dailies[dailies.length - 1]! : o.id;
-      plan.keep.push({ row_id: kept, movement: mv.index, why: kept === o.id ? o.why : "daily_listing", redate: redates.get(o.id) ?? null, today: kept === todaySurvivor ? "same" : "differs" });
-      for (const d of members.slice(1)) plan.fold.push({ row_id: d, into_row_id: kept, movement: mv.index, why: "daily_listing", today: kept === todaySurvivor ? "same" : "differs" });
+      const todaySurvivor = todayDailies.length > 0 ? todayDailies[todayDailies.length - 1]! : o.id;
+      const same = sameMembers(members, [o.id, ...todayDailies]) && kept === todaySurvivor ? "same" : "differs";
+      plan.keep.push({ row_id: kept, movement: mv.index, why: kept === o.id ? o.why : "daily_listing", redate: redateOf(kept), today: same });
+      for (const d of members.slice(1)) plan.fold.push({ row_id: d, into_row_id: kept, movement: mv.index, why: "daily_listing", today: same });
       continue;
     }
-    const dailies = adoptedInto.get(o.vid) ?? [];
+    const todayDailies = adoptedInto.get(o.vid) ?? [];
     const retired = flowOfNew.get(o.vid) ?? null;
-    const todayFlow = dailies.length > 0 ? { row_id: dailies[dailies.length - 1]! } : retired;
+    const todayFlow = todayDailies.length > 0 ? { row_id: todayDailies[todayDailies.length - 1]! } : retired;
     plan.today.movements.push({
       movement: mv.index,
       outcome: { row: "new", flow_of: todayFlow, occurred_on: cartolaRowById.get(o.vid)!.occurred_on },
     });
-    if (dailies.length === 0) {
-      plan.insert.push({ movement: mv.index, retired_flow_id: retired && "retired_flow_id" in retired ? retired.retired_flow_id : null });
+    if (planned.length === 0) {
+      plan.insert.push({
+        movement: mv.index,
+        retired_flow_id: retired && "retired_flow_id" in retired ? retired.retired_flow_id : null,
+        today: todayDailies.length === 0 ? "same" : "differs",
+      });
       continue;
     }
-    const members = earliest(dailies);
+    const members = earliest(planned);
     const kept = members[0]!;
-    const survivor = dailies[dailies.length - 1]!;
-    plan.keep.push({ row_id: kept, movement: mv.index, why: "daily_listing", redate: redates.get(o.vid) ?? null, today: kept === survivor ? "same" : "differs" });
-    for (const d of members.slice(1)) plan.fold.push({ row_id: d, into_row_id: kept, movement: mv.index, why: "daily_listing", today: kept === survivor ? "same" : "differs" });
+    const survivor = todayDailies[todayDailies.length - 1];
+    const same = sameMembers(members, todayDailies) && kept === survivor ? "same" : "differs";
+    plan.keep.push({ row_id: kept, movement: mv.index, why: "daily_listing", redate: redateOf(kept), today: same });
+    for (const d of members.slice(1)) plan.fold.push({ row_id: d, into_row_id: kept, movement: mv.index, why: "daily_listing", today: same });
   }
-  for (const dailies of adoptedInto.values()) {
-    dailies.forEach((d, i) => plan.today.daily_rows.push({ row_id: d, fate: i === dailies.length - 1 ? "on_cartola_row" : "merged" }));
+  for (const dailiesOf of adoptedInto.values()) {
+    dailiesOf.forEach((d, i) => plan.today.daily_rows.push({ row_id: d, fate: i === dailiesOf.length - 1 ? "on_cartola_row" : "merged" }));
   }
-  for (const r of removed) {
-    plan.remove.push(r);
-    plan.today.daily_rows.push({ row_id: r.row_id, fate: "gone" });
-  }
+  for (const r of removed) plan.today.daily_rows.push({ row_id: r.row_id, fate: "gone" });
+  plan.remove.push(...plannedRemoved);
   return plan;
 }

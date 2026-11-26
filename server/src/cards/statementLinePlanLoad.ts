@@ -209,16 +209,10 @@ export function loadCardStatementLinePlanInput(
   return {
     account_id: accountId,
     statements: afterHeaders.statements,
-    replaced_statement_ids: [...replacedStatementIds],
+    json_superseded_statement_ids: [...json.supersededJsonStatementIds],
+    replaced_statement_ids: [...replacedStatementIds].filter((id) => !json.supersededJsonStatementIds.includes(id)),
     file_lines,
-    next_line_id:
-      ((
-        db
-          .prepare(
-            `SELECT MAX(id) AS m FROM cc_statement_lines WHERE statement_id NOT IN (${[...replacedStatementIds].map(() => "?").join(",") || "NULL"})`
-          )
-          .get(...replacedStatementIds) as { m: number | null }
-      ).m ?? 0) + 1,
+    max_line_id_outside_replaced: maxLineIdOutside(replacedStatementIds),
     bucket_repair_moves: afterHeaders.bucketRepairMoves,
     incoming,
     plans_before: listPlansForLineMatching(accountId),
@@ -230,6 +224,13 @@ export function loadCardStatementLinePlanInput(
     planted_payments: listPlantedPaymentLines(accountId),
     prepayment_roles,
   };
+}
+
+/** The highest line id in the table outside `statementIds` (0 when none). */
+function maxLineIdOutside(statementIds: ReadonlySet<number>): number {
+  const ids = [...statementIds];
+  const where = ids.length > 0 ? `WHERE statement_id NOT IN (${ids.map(() => "?").join(",")})` : "";
+  return (db.prepare(`SELECT MAX(id) AS m FROM cc_statement_lines ${where}`).get(...ids) as { m: number | null }).m ?? 0;
 }
 
 /** The facts that depend on the incoming headers, read with them written in a rolled-back savepoint. */

@@ -9,6 +9,7 @@ import { snapshotTables } from "../test/snapshotTables.js";
 import { createTempCardMaster, deleteTempCardMaster } from "../test/tempCardMaster.js";
 import { openWebPasteSourcePdf } from "../ccOpenWebPasteRepair.js";
 import { compareCardStatementImport } from "./statementLinePlanCompare.js";
+import { loadCardStatementLinePlanInput } from "./statementLinePlanLoad.js";
 import { compareArrival, planCardStatementLines, type CardStatementLinePlanInput, type PlanFileLine } from "./statementLinePlan.js";
 import type { FlowArrival } from "../flows/flowFirstSeen.js";
 import { replaceStatementLines } from "./lineWrites.js";
@@ -98,16 +99,21 @@ describe("card statement-line planner against today's import", () => {
   }
 
   /** A listing line in the open bucket (padded day, as stored). */
-  function bucketLine(iso: string, merchant: string, amount: number, opts: { currency?: "clp" | "usd"; stamp?: string } = {}): number {
+  function bucketLine(
+    iso: string,
+    merchant: string,
+    amount: number,
+    opts: { currency?: "clp" | "usd"; stamp?: string; id?: number | null } = {}
+  ): number {
     const [y, m, d] = iso.split("-");
     const key = `vitest-kr-web|${iso}|${merchant}|${amount}|${++lineSeq}`;
     const id = Number(
       db
         .prepare(
-          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key, parser_row_id, raw_line)
-           VALUES (?, ?, ?, ?, ?, 0, ?, ?, 'vitest')`
+          `INSERT INTO cc_statement_lines (id, statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key, parser_row_id, raw_line)
+           VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, 'vitest')`
         )
-        .run(bucketId, `${d}/${m}/${y}`, merchant, amount, opts.currency ?? "clp", key, `web:${key}`).lastInsertRowid
+        .run(opts.id ?? null, bucketId, `${d}/${m}/${y}`, merchant, amount, opts.currency ?? "clp", key, `web:${key}`).lastInsertRowid
     );
     if (opts.stamp) {
       const flow = (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
@@ -270,6 +276,66 @@ describe("card statement-line planner against today's import", () => {
     expect(plan.keep).toEqual([{ row: { kind: "line", id: prepayment }, doc: doc(sts, 0, 0), why: "plan_prepayment", today: "same" }]);
     expect(plan.kept_plan_prepayment).toEqual([credit]);
   });
+
+  it("a first-time import on an account with low-id lines writes above the table's highest id", () => {
+    // A line of the account under a low id (a gap below the table's highest), as on a ledger with years of lines.
+    const gap = (
+      db
+        .prepare(`SELECT MIN(id + 1) AS g FROM cc_statement_lines WHERE id + 1 NOT IN (SELECT id FROM cc_statement_lines) AND id + 1 < (SELECT MAX(id) FROM cc_statement_lines)`)
+        .get() as { g: number | null }
+    ).g;
+    const low = bucketLine("2026-06-02", "ACME STORE", 12_000, { id: gap });
+    if (gap != null) expect(low).toBe(gap);
+    const sts = [statement([line("2026-06-02", "ACME STORE", 12_000), line("2026-06-03", "LIBRERIA", 5_000)])];
+    const input = loadCardStatementLinePlanInput(accountId, sts, { replaceStatementKeys: statementKeysOf(sts) });
+    expect(input.max_line_id_outside_replaced).toBe((db.prepare(`SELECT MAX(id) AS m FROM cc_statement_lines`).get() as { m: number }).m);
+    const { plan } = expectAgrees(sts);
+    expect(plan.keep).toEqual([{ row: { kind: "line", id: low }, doc: doc(sts, 0, 0), why: "same_purchase", today: "same" }]);
+    expect(plan.insert.map((i) => i.doc.index)).toEqual([1]);
+  });
+
+  it("re-imported twin statements: each statement's lines go when the import reaches it, so ids are not handed out again", () => {
+    const twins = () => [
+      statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kr-g" })]),
+      statement([line("2026-06-02", "APP STORE", 9.99, { currency: "usd", id: "kr-h" })], "usd"),
+    ];
+    const first = twins();
+    replaceStatementLines(accountId, first, { replaceStatementKeys: statementKeysOf(first) });
+    const byPrid = new Map(
+      (db.prepare(`SELECT id, parser_row_id FROM cc_statement_lines WHERE parser_row_id LIKE 'kr-%'`).all() as { id: number; parser_row_id: string }[]).map(
+        (r) => [r.parser_row_id, r.id]
+      )
+    );
+    const { plan } = expectAgrees(twins());
+    // The pesos are re-written above the dollars (still on file), the dollars above those: both pair by parser row.
+    expect(plan.keep.map((k) => [k.row.id, k.why, k.today])).toEqual([
+      [byPrid.get("kr-g"), "reimport_parser_row", "same"],
+      [byPrid.get("kr-h"), "reimport_parser_row", "same"],
+    ]);
+  });
+
+  it("a dedupe hit on a line this import's plan supersedes: the line goes to the plan, nothing is kept", () => {
+    const may = [
+      {
+        ...statement([line("2026-05-10", "TIENDA MUEBLES", 90_000, { id: "kr-x" })]),
+        document: "vitest-keep-rows 2026-05-19 clp.pdf",
+        close: "19/05/2026",
+        period_from: "20/04/2026",
+        period_to: "19/05/2026",
+      },
+    ];
+    replaceStatementLines(accountId, may, { replaceStatementKeys: statementKeysOf(may) });
+    const oneShot = (db.prepare(`SELECT id FROM cc_statement_lines WHERE parser_row_id = 'kr-x'`).get() as { id: number }).id;
+    const cuota = line("2026-05-10", "TIENDA MUEBLES", 30_000, {
+      id: "kr-x-cuota",
+      installment: { number: 1, count: 3, cuota_amount: 30_000, total_amount: 90_000, interest_rate_text: null, cuota_type: null, plan_id: "vitest-kr-plan-x" },
+    });
+    const sts = [statement([line("2026-05-10", "TIENDA MUEBLES", 90_000, { id: "kr-x" }), cuota])];
+    const { plan } = expectAgrees(sts);
+    expect(plan.keep).toEqual([]);
+    expect(plan.skip).toEqual([{ doc: doc(sts, 0, 0), why: "dedupe_key", same_as_row: oneShot }]);
+    expect(plan.remove).toEqual([{ row: { kind: "line", id: oneShot }, why: "superseded_by_plan", plan_id: expect.any(Number) }]);
+  });
 });
 
 // ── pure planner ─────────────────────────────────────────────────────────────────────────────────
@@ -306,9 +372,10 @@ describe("planCardStatementLines (pure)", () => {
         { id: 20, key: "santander\tst.pdf\t20/06/2026", source_kind: "statement_pdf", currency: "clp", bucket_billing_month: null },
         { id: 10, key: "santander\timport:web-paste|open|2026-06\t20/06/2026", source_kind: "listing_open", currency: "clp", bucket_billing_month: "2026-06" },
       ],
+      json_superseded_statement_ids: [],
       replaced_statement_ids: [],
       file_lines: file,
-      next_line_id: 100,
+      max_line_id_outside_replaced: 99,
       bucket_repair_moves: [],
       incoming: [
         {

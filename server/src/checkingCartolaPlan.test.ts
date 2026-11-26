@@ -84,7 +84,7 @@ describe("cartola planner against today's import", () => {
     const row = daily("1803-04-03", -45_000, "TRANSFERENCIA A JUAN PEREZ SOTO");
     const { plan } = expectAgrees(cartola([mv("1803-04-03", -45_000, "Transferencia A Juan Perez"), mv("1803-04-05", -1_000, "Comision")]));
     expect(plan.keep).toEqual([{ row_id: row, movement: 0, why: "daily_listing", redate: null, today: "same" }]);
-    expect(plan.insert).toEqual([{ movement: 1, retired_flow_id: null }]);
+    expect(plan.insert).toEqual([{ movement: 1, retired_flow_id: null, today: "same" }]);
   });
 
   it("carries a daily row's receipt-corrected day onto the cartola row", () => {
@@ -133,6 +133,24 @@ describe("cartola planner against today's import", () => {
     ]);
     // The cartola row is on file before the daily row's stamp: it is kept; today the daily row's flow survives on it.
     expect(plan.fold).toEqual([{ row_id: leftover, into_row_id: ids[1], movement: 1, why: "daily_listing", today: "differs" }]);
+  });
+
+  it("identical twin daily rows pair one-to-one with identical twin movements (today both take the first)", () => {
+    const a = daily("1803-04-22", -3_500, "PEAJE AUTOPISTA CENTRAL");
+    const b = daily("1803-04-22", -3_500, "PEAJE AUTOPISTA CENTRAL");
+    const { plan } = expectAgrees(cartola([mv("1803-04-22", -3_500, "Peaje Autopista Central"), mv("1803-04-22", -3_500, "Peaje Autopista Central")]));
+    // Today: both daily rows adopt into movement #0's row (two charges on one flow; b's survives) and
+    // #1's row starts a new flow — the comparison above checks that this is what the import does.
+    expect(plan.today.daily_rows).toEqual([
+      { row_id: a, fate: "merged" },
+      { row_id: b, fate: "on_cartola_row" },
+    ]);
+    expect(plan.keep).toEqual([
+      { row_id: a, movement: 0, why: "daily_listing", redate: null, today: "differs" },
+      { row_id: b, movement: 1, why: "daily_listing", redate: null, today: "differs" },
+    ]);
+    expect(plan.fold).toEqual([]);
+    expect(plan.insert).toEqual([]);
   });
 
   it("reads a bank row's listing facts from its note (the one adapter)", () => {

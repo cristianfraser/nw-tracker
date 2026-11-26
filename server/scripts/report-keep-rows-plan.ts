@@ -4,17 +4,19 @@
  * plan (counts per outcome, then each row) and every disagreement between the planner's account of
  * today's end state and the real one. Exits 1 on any disagreement. Never writes.
  *
- *   npx tsx scripts/report-keep-rows-plan.ts --account=<id> --statements=<file.json> [--db=<file>] [--migrate]
- *   npx tsx scripts/report-keep-rows-plan.ts --account=<id> --cartola=<file.json> [--db=<file>] [--migrate]
+ *   npx tsx scripts/report-keep-rows-plan.ts --db=<snapshot copy> --account=<id> --statements=<file.json> [--migrate]
+ *   npx tsx scripts/report-keep-rows-plan.ts --db=<snapshot copy> --account=<id> --cartola=<file.json> [--migrate]
  *
  * `--statements`: the canonical statements the import hands `mergeCardStatements` (an array of
  * `CardCanonicalStatement`, or a `card.statement` payload in its canonical format —
  * `{ "format": "canonical", "statements": [...] }`, what the ingest parser answers for a PDF; an
  * issuer-format statement JSON is converted by its importer first). They are imported as the statement paths do,
  * replacing the stored copies of the same statements. `--cartola`: one parsed cartola month
- * (`ParsedCheckingCartola`). `--db`: the database (default: `NW_TRACKER_TEST_DB`, else
- * `data/nw-tracker.db`) — point it at a COPY of a snapshot to validate on real data. A database with
- * pending migrations is refused unless `--migrate` is passed.
+ * (`ParsedCheckingCartola`). `--db` is required: run it on a COPY of a snapshot, never on the
+ * running primary — today's import runs whole (with the card-line write's recompute) inside one
+ * write transaction, which would hold the database past the server's busy timeout. The checkout's
+ * own `data/nw-tracker.db` is refused unless `--allow-live` is passed. A database with pending
+ * migrations is refused unless `--migrate` is passed.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -32,15 +34,14 @@ const cartolaFile = arg("cartola");
 if ((statementsFile == null) === (cartolaFile == null)) throw new Error("pass exactly one of --statements=<file> or --cartola=<file>");
 
 const dbArg = arg("db");
-if (dbArg) process.env.NW_TRACKER_TEST_DB = path.resolve(dbArg);
-function databasePath(): string {
-  const override = process.env.NW_TRACKER_TEST_DB?.trim();
-  if (!override) return path.join(serverDir, "data", "nw-tracker.db");
-  if (override === ":memory:") throw new Error("NW_TRACKER_TEST_DB=:memory: has nothing to report on");
-  return path.isAbsolute(override) ? override : path.join(serverDir, "data", override);
-}
-const file = databasePath();
+if (!dbArg) throw new Error("--db=<a copy of a snapshot> is required (never the running primary)");
+const file = path.resolve(dbArg);
 if (!fs.existsSync(file)) throw new Error(`no database at ${file}`);
+const live = path.join(serverDir, "data", "nw-tracker.db");
+if (fs.existsSync(live) && fs.realpathSync(file) === fs.realpathSync(live) && !flag("allow-live")) {
+  throw new Error(`${file} is the live database: run on a snapshot copy, or pass --allow-live with the server stopped`);
+}
+process.env.NW_TRACKER_TEST_DB = file;
 {
   const dbi = new Database(file, { readonly: true, fileMustExist: true });
   const files = fs.readdirSync(path.join(serverDir, "migrations")).filter((f) => f.endsWith(".sql"));
@@ -117,7 +118,7 @@ if (statementsFile) {
     console.log(`  keep    row ${k.row_id} ↔ ${mv(k.movement)}  (${k.why}${redate}${k.today === "differs" ? "; today differs" : ""})`);
   }
   for (const c of p.confirm) console.log(`  confirm row ${c.row_id} ↔ ${mv(c.movement)}  (${c.why})`);
-  for (const i of p.insert) console.log(`  insert  ${mv(i.movement)}${i.retired_flow_id != null ? `  (takes retired flow ${i.retired_flow_id})` : ""}`);
+  for (const i of p.insert) console.log(`  insert  ${mv(i.movement)}${i.retired_flow_id != null ? `  (takes retired flow ${i.retired_flow_id})` : ""}${i.today === "differs" ? "  (today differs)" : ""}`);
   for (const f of p.fold) console.log(`  fold    row ${f.row_id} → row ${f.into_row_id} on ${mv(f.movement)}${f.today === "differs" ? "  (today differs)" : ""}`);
   for (const x of p.remove) console.log(`  remove  row ${x.row_id}  (${x.why}; ${mv(x.movement)})`);
   for (const a of p.ambiguous) console.log(`  AMBIGUOUS ${a.what}: ${mv(a.movement)} flows ${a.flow_ids.join(", ")}`);

@@ -209,6 +209,16 @@ function compareEndStates(
   // Rows on file.
   const flowOnRow = new Map<number, number>();
   for (const l of s.after.values()) if (l.flow_id != null && s.flowsAlive.has(l.flow_id)) flowOnRow.set(l.flow_id, l.id);
+  // Every kept row survives today's import: as itself (a dedupe or fuzzy hit), else as its flow on a
+  // written line — unless the plan says today ends otherwise.
+  for (const k of plan.keep) {
+    if (k.today === "differs" || k.row.kind !== "line") continue;
+    const stillThere = s.after.has(k.row.id) && !s.newLines.has(k.row.id);
+    const flow = s.before.get(k.row.id)?.flow_id ?? null;
+    const onWritten = flow != null && s.flowsAlive.has(flow) && s.newLines.has(flowOnRow.get(flow) ?? -1);
+    const ok = k.why === "dedupe_key" || k.why === "fuzzy_duplicate" ? stillThere : onWritten;
+    if (!ok) out.push(`keep ${rowLabel(k.row)} ↔ ${docLabel(k.doc)} (${k.why}): today's import does not keep that row`);
+  }
   const flowOnAnnulment = new Set(
     [...s.annulmentsAfter.values()].map((a) => a.flow_id).filter((f): f is number => f != null && s.flowsAlive.has(f))
   );

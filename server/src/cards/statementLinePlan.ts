@@ -19,7 +19,8 @@
  * `oneShotFuzzyMatchAmong`, `oneShotLinesSupersededAmong` / `supersededLinesLessPlanSources`,
  * `planBucketSettlement`, `planAnnulmentSettlements`, `planCcLineMoves` / `fanOutUniformGroupsGiven`):
  *
- *  1. the replaced statements' lines go (a re-import with replace keys, a JSON close a PDF takes over);
+ *  1. a JSON close a PDF takes over goes first; a statement the import replaces (replace keys) loses
+ *     its lines when the import reaches it, just before its own are written (ids follow from that);
  *  2. each document line in order: a repeat inside its statement, a dedupe-key hit, a plan on file
  *     that is the one-shot line's purchase, a fuzzy duplicate (same day, pesos, merchant) — else
  *     written;
@@ -136,16 +137,22 @@ export type CardStatementLinePlanInput = {
   account_id: number;
   /** The account's statements once the headers are written (order matters: the reconcile's). */
   statements: PlanStatement[];
-  /** Statements whose lines the import replaces (replace keys, a JSON close a PDF takes over). */
+  /** JSON closes a PDF takes over: deleted, lines and all, before any line is written. */
+  json_superseded_statement_ids: number[];
+  /**
+   * Incoming statements whose lines on file the import replaces (replace keys): each statement's
+   * lines go when the import reaches it, just before its own lines are written.
+   */
   replaced_statement_ids: number[];
   /** Every card line of the account, by id. */
   file_lines: PlanFileLine[];
   /**
-   * The id the first written line gets: the highest id left in the whole table once the replaced
-   * statements' lines are gone, plus one (SQLite's rowid rule — a replaced statement's lines can come
-   * back under their old ids, which the re-import adoption reads as no change).
+   * The highest line id in the whole table outside the account's replaced and superseded statements
+   * (0 when none). A written line takes the highest id left at that moment plus one (SQLite's rowid
+   * rule), so a replaced statement's lines can come back under their old ids — which the re-import
+   * adoption reads as no change.
    */
-  next_line_id: number;
+  max_line_id_outside_replaced: number;
   /** Bucket lines the bucket repair moves: line id → the bucket statement it lands in (an id of `statements`, or a new bucket's negative id). */
   bucket_repair_moves: { line_id: number; to_statement_id: number; to_billing_month: string }[];
   incoming: PlanDocStatement[];
@@ -222,6 +229,8 @@ export type CardPlanSkip = {
   why: "repeat_in_statement" | "dedupe_key" | "fuzzy_duplicate" | "plan_on_file" | "superseded_by_plan";
   /** The document line it repeats (a dedupe or fuzzy hit on a line this import writes). */
   same_as?: DocLineRef;
+  /** The row on file it repeats when that row goes in this import (a plan supersedes it). */
+  same_as_row?: number;
   plan_id?: number;
 };
 
@@ -323,18 +332,22 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     return st != null && (st.source_kind === "listing_open" || st.source_kind === "listing_other");
   };
   const fileById = new Map(input.file_lines.map((l) => [l.id, l]));
-  const replaced = new Set(input.replaced_statement_ids);
+  const jsonSuperseded = new Set(input.json_superseded_statement_ids);
+  const replacedPending = new Set(input.replaced_statement_ids);
 
   const live = new Map<number, LiveLine>();
+  const vanished = new Set<number>();
+  const removeWhy = new Map<number, { why: RemoveReason; plan_id?: number }>();
   for (const l of input.file_lines) {
-    if (replaced.has(l.statement_id)) continue;
+    if (jsonSuperseded.has(l.statement_id)) {
+      vanished.add(l.id);
+      removeWhy.set(l.id, { why: "replaced_statement_line_gone" });
+      continue;
+    }
     live.set(l.id, { ...l, listing: listingStatement(l.statement_id), doc: null });
   }
-  const vanished = new Set<number>(input.file_lines.filter((l) => replaced.has(l.statement_id)).map((l) => l.id));
-  const removeWhy = new Map<number, { why: RemoveReason; plan_id?: number }>();
-  for (const id of vanished) removeWhy.set(id, { why: "replaced_statement_line_gone" });
-
-  let nextId = input.next_line_id;
+  /** The id the next written line gets: the highest id in the table now, plus one. */
+  const nextId = (): number => Math.max(input.max_line_id_outside_replaced, ...live.keys()) + 1;
   const docOfVirtual = new Map<number, DocLineRef>();
   const virtualOfDoc = new Map<string, number>();
   const plan: CardStatementLinePlan = {
@@ -357,6 +370,15 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
 
   // 2. Each document line, in the import's order.
   for (const st of input.incoming) {
+    // A statement it replaces loses its lines on file when the import reaches it.
+    if (replacedPending.delete(st.statement_id)) {
+      for (const l of [...live.values()]) {
+        if (l.doc || l.statement_id !== st.statement_id) continue;
+        live.delete(l.id);
+        vanished.add(l.id);
+        removeWhy.set(l.id, { why: "replaced_statement_line_gone" });
+      }
+    }
     const seen = new Set<string>();
     const writtenHere = new Set<number>();
     st.lines.forEach((line, index) => {
@@ -366,7 +388,8 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
         skips.set(refOf(doc), { doc, why: "repeat_in_statement" });
         return;
       }
-      const onFile = [...live.values()].filter((l) => !l.listing);
+      // In id order: the import's `LIMIT 1` reads the lowest id.
+      const onFile = [...live.values()].filter((l) => !l.listing).sort((a, b) => a.id - b.id);
       if (keys.length > 0) {
         let hit: LiveLine | undefined;
         for (const k of keys) {
@@ -397,7 +420,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
           }
         }
       }
-      const id = nextId++;
+      const id = nextId();
       live.set(id, {
         ...line,
         id,
@@ -709,7 +732,11 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       .sort(earliestFirst);
     if (sharing.length > 1 && refOf(sharing[0]!) !== refOf(doc)) {
       // Today's adoption leaves this line on the flow another document line ends with.
-      plan.ambiguous.push({ what: "two document lines end on one flow", rows: members, docs: sharing });
+      plan.ambiguous.push({
+        what: `two document lines end on one flow (with ${refOf(sharing[0]!).replace(/\t/g, " | ")})`,
+        rows: members,
+        docs: [doc],
+      });
       continue;
     }
     if (members.length === 0) {
@@ -742,8 +769,13 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       today: "same",
     });
   }
+  // A dedupe or fuzzy hit on a row on file keeps that row — unless the row goes in this import (a
+  // plan supersedes it): then the document line writes nothing and the row is removed.
+  const settledDocs = new Set<string>();
   for (const k of skipKeeps) {
+    if (vanished.has(k.row)) continue;
     const key = `line:${k.row}`;
+    settledDocs.add(refOf(k.doc));
     if (claimed.has(key)) {
       plan.ambiguous.push({ what: "a row on file another document line already restates is also a dedupe/fuzzy hit", rows: [{ kind: "line", id: k.row }], docs: [k.doc] });
       continue;
@@ -752,13 +784,9 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     plan.keep.push({ row: { kind: "line", id: k.row }, doc: k.doc, why: k.why, today: "same" });
   }
   for (const s of skips.values()) {
-    const { same_as_row, ...skip } = s;
-    plan.today.docs.push({ doc: s.doc, outcome: { skipped: s.why, ...(same_as_row != null ? { same_as_row } : {}) } });
-    if (s.why === "dedupe_key" || s.why === "fuzzy_duplicate") {
-      if (s.same_as) plan.skip.push(skip);
-      continue;
-    }
-    plan.skip.push(skip);
+    plan.today.docs.push({ doc: s.doc, outcome: { skipped: s.why, ...(s.same_as_row != null ? { same_as_row: s.same_as_row } : {}) } });
+    if (settledDocs.has(refOf(s.doc))) continue;
+    plan.skip.push(s);
   }
 
   // Rows on file: annulled, moved, kept prepayment lines, removed.
@@ -807,7 +835,40 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     else if (annulRoots.has(root)) plan.today.rows.push({ row, fate: "annulled" });
     else plan.today.rows.push({ row, fate: "retired" });
   }
+  assertExclusiveOutcomes(plan, input, { touched: new Set([...vanished, ...movedLines.keys(), ...keptPrepayment]) });
   return plan;
+}
+
+/**
+ * Every document line ends in exactly one outcome (keep, insert, skip, ambiguous) and every row on
+ * file the import touches in exactly one (keep, fold, remove, annul, move, kept prepayment); a row
+ * in none of them is untouched. Throws otherwise: the outcome sets are a partition by construction.
+ */
+function assertExclusiveOutcomes(plan: CardStatementLinePlan, input: CardStatementLinePlanInput, opts: { touched: ReadonlySet<number> }): void {
+  const docs = new Map<string, number>();
+  const countDoc = (d: DocLineRef) => docs.set(refOf(d), (docs.get(refOf(d)) ?? 0) + 1);
+  for (const k of plan.keep) countDoc(k.doc);
+  for (const i of plan.insert) countDoc(i.doc);
+  for (const s of plan.skip) countDoc(s.doc);
+  for (const a of plan.ambiguous) a.docs.forEach(countDoc);
+  const problems: string[] = [];
+  for (const st of input.incoming) {
+    st.lines.forEach((_, index) => {
+      const n = docs.get(refOf({ statement_key: st.key, index })) ?? 0;
+      if (n !== 1) problems.push(`document line ${st.key.replace(/\t/g, " | ")} #${index} is in ${n} outcomes`);
+    });
+  }
+  const rows = new Map<string, number>();
+  const countRow = (key: string) => rows.set(key, (rows.get(key) ?? 0) + 1);
+  for (const k of plan.keep) countRow(`${k.row.kind}:${k.row.id}`);
+  for (const f of plan.fold) countRow(`${f.row.kind}:${f.row.id}`);
+  for (const r of plan.remove) countRow(`line:${r.row.id}`);
+  for (const a of plan.annul) countRow(`line:${a.line_id}`);
+  for (const m of plan.move_to_open) countRow(`line:${m.line_id}`);
+  for (const id of plan.kept_plan_prepayment) countRow(`line:${id}`);
+  for (const [key, n] of rows) if (n !== 1) problems.push(`${key} is in ${n} outcomes`);
+  for (const id of opts.touched) if (!rows.has(`line:${id}`)) problems.push(`line:${id} is touched but in no outcome`);
+  if (problems.length > 0) throw new Error(`statement-line planner: outcomes overlap: ${problems.join("; ")}`);
 }
 
 /**
