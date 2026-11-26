@@ -8,6 +8,8 @@ import { parseBody } from "./shared.js";
 import { registerFlowsRoutes } from "./flows.js";
 import { registerAccountsRoutes } from "./accounts.js";
 import { registerCreditCardRoutes } from "./creditCard.js";
+import { registerGroceriesRoutes } from "./groceries.js";
+import { registerMovementsRoutes } from "./movements.js";
 
 /**
  * Write routes read their bodies through `parseBody` (contracts `requests/` schemas): a malformed
@@ -31,6 +33,8 @@ beforeAll(async () => {
   registerFlowsRoutes(app);
   registerAccountsRoutes(app);
   registerCreditCardRoutes(app);
+  registerGroceriesRoutes(app);
+  registerMovementsRoutes(app);
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err), terminal: true });
   });
@@ -105,6 +109,33 @@ describe("credit-card routes", () => {
     expect(await call("POST", `/api/accounts/${UNKNOWN_ID}/annulled-purchases`, { line_id: 0, annulled_on: "2031-01-02" })).toEqual({
       status: 400,
       json: { error: "line_id: invalid statement line id" },
+    });
+  });
+});
+
+describe("groceries routes", () => {
+  it("a body without its fields is a 400 with the route's message", async () => {
+    expect(await call("POST", "/api/groceries/brands", {})).toEqual({ status: 400, json: { error: "name required" } });
+    expect(await call("POST", "/api/groceries/classify", { store_chain: "lider", targets: [] })).toEqual({
+      status: 400,
+      json: { error: "store_chain and targets are required" },
+    });
+    expect(await call("PATCH", `/api/groceries/aliases/${UNKNOWN_ID}`, { content_value: 500 })).toEqual({
+      status: 400,
+      json: { error: "content_unit required with content_value" },
+    });
+  });
+});
+
+describe("movements routes", () => {
+  it("a valuation with a malformed day or value is a 400 before any write", async () => {
+    expect(await call("POST", `/api/accounts/${UNKNOWN_ID}/valuations`, { as_of_date: "2031/01/31", value_clp: 1 })).toEqual({
+      status: 400,
+      json: { error: "as_of_date must be YYYY-MM-DD" },
+    });
+    expect(await call("POST", `/api/accounts/${UNKNOWN_ID}/valuations`, { as_of_date: "2031-01-31", value_clp: "1" })).toEqual({
+      status: 400,
+      json: { error: "value_clp must be a finite number" },
     });
   });
 });

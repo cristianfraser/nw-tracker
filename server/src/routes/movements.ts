@@ -12,21 +12,26 @@ import { insertMovement } from "../movementWrites.js";
 import { clearAggregationCache } from "../cacheRegistry.js";
 import { supersedeImportedCheckingRowsForTransfer } from "../checkingTransferLegReconcile.js";
 import { isCheckingLedgerAnchorNote, maybeSyncCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
-import { isFiniteNumber, isYmdString } from "../requestValidation.js";
-import { accountIdFromReq } from "./shared.js";
+import { accountIdFromReq, parseBody } from "./shared.js";
+import { writeHandler } from "../inputError.js";
+import {
+  movementCreateBodySchema,
+  optionAssignmentSchema,
+  valuationUpsertSchema,
+} from "nw-tracker-contracts/requests/movements";
 import { cryptoEquityTickerForAccount } from "../cryptoValuation.js";
 import { assignOptionContract } from "../optionAssignment.js";
 import { isOptionContractAccount } from "../optionContracts.js";
 
 export function registerMovementsRoutes(app: express.Express): void {
-app.post("/api/accounts/:id/movements", (req, res) => {
+app.post("/api/accounts/:id/movements", writeHandler((req, res) => {
   const accountId = accountIdFromReq(req);
   const account = accountRowForId(accountId);
   if (!account) {
     res.status(404).json({ error: "Account not found." });
     return;
   }
-  const validated = validateMovementCreate(account, req.body as Record<string, unknown>, accountId);
+  const validated = validateMovementCreate(account, parseBody(movementCreateBodySchema, req), accountId);
   if (!validated.ok) {
     res.status(validated.status).json({ error: validated.error });
     return;
@@ -92,28 +97,27 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     maybeSyncCheckingLedgerAnchor(accountId, bucketKind);
   }
   res.status(201).json({ id, units_delta });
-});
+}));
 
 /**
  * An option assignment or exercise on contract account `:id`: the `option_assign` row and the
  * share leg at the strike, written together (`optionAssignment.ts`).
  */
-app.post("/api/accounts/:id/option-assignments", (req, res) => {
+app.post("/api/accounts/:id/option-assignments", writeHandler((req, res) => {
   const accountId = accountIdFromReq(req);
   if (!isOptionContractAccount(accountId)) {
     res.status(404).json({ error: "Account is not an option contract." });
     return;
   }
-  const body = req.body as Record<string, unknown>;
-  const num = (v: unknown): number => (typeof v === "number" ? v : Number(v));
+  const body = parseBody(optionAssignmentSchema, req);
   try {
     const result = assignOptionContract({
       contract_account_id: accountId,
-      stock_account_id: num(body.stock_account_id),
-      cash_account_id: num(body.cash_account_id),
-      occurred_on: typeof body.occurred_on === "string" ? body.occurred_on.trim() : "",
-      contracts: num(body.contracts),
-      note: typeof body.note === "string" ? body.note : null,
+      stock_account_id: body.stock_account_id,
+      cash_account_id: body.cash_account_id,
+      occurred_on: body.occurred_on,
+      contracts: body.contracts,
+      note: body.note ?? null,
     });
     res.status(201).json(result);
   } catch (e) {
@@ -121,7 +125,7 @@ app.post("/api/accounts/:id/option-assignments", (req, res) => {
     const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
     res.status(status).json({ error: err.message || "option assignment failed" });
   }
-});
+}));
 
 app.get("/api/accounts/:id/valuations", (req, res) => {
   const id = accountIdFromReq(req);
@@ -133,19 +137,11 @@ app.get("/api/accounts/:id/valuations", (req, res) => {
   res.json({ valuations: rows });
 });
 
-app.post("/api/accounts/:id/valuations", (req, res) => {
+app.post("/api/accounts/:id/valuations", writeHandler((req, res) => {
   const accountId = accountIdFromReq(req);
-  const { as_of_date, value_clp } = req.body as { as_of_date?: unknown; value_clp?: unknown };
-  // Validate BEFORE the write: dates are compared lexically everywhere, so one malformed
+  // Validated BEFORE the write: dates are compared lexically everywhere, so one malformed
   // as_of_date row poisons every on-or-before lookup for this account.
-  if (!isYmdString(as_of_date)) {
-    res.status(400).json({ error: "as_of_date must be YYYY-MM-DD" });
-    return;
-  }
-  if (!isFiniteNumber(value_clp)) {
-    res.status(400).json({ error: "value_clp must be a finite number" });
-    return;
-  }
+  const { as_of_date, value_clp } = parseBody(valuationUpsertSchema, req);
   // A property's valuations are its appraisals in UF (written with its payments), never pesos.
   if (valuationsAreAppraisals(accountKindSlugForAccountId(accountId) ?? "")) {
     res.status(400).json({ error: "a property's valuations are its UF appraisals; no peso valuations" });
@@ -167,7 +163,7 @@ app.post("/api/accounts/:id/valuations", (req, res) => {
      ON CONFLICT(account_id, as_of_date) DO UPDATE SET value = excluded.value, currency = excluded.currency`
   ).run(accountId, as_of_date, value_clp);
   res.json({ ok: true });
-});
+}));
 
 app.post("/api/panel/cache/aggregation/clear", (_req, res) => {
   clearAggregationCache();

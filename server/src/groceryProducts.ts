@@ -10,6 +10,7 @@
  * alias ones by construction.
  */
 import { db } from "./db.js";
+import type { GroceryBaseUnit } from "nw-tracker-contracts/requests/groceries";
 import type { GroceryCardLineStatus } from "./groceryBranchLearning.js";
 
 export type UnclassifiedGroup = {
@@ -428,7 +429,8 @@ export function classifyGroceryGroups(input: {
 
 // ── Product config: base units, global brands, alias contents, merge ──────────────────────────
 
-export type GroceryBaseUnit = "un" | "g" | "kg" | "ml" | "l" | "m";
+/** The request schema's list of units (`nw-tracker-contracts/requests/groceries`). */
+export type { GroceryBaseUnit };
 
 type UnitDimension = "count" | "mass" | "volume" | "length";
 

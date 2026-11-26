@@ -1,6 +1,8 @@
 import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import type * as FlowsReq from "nw-tracker-contracts/requests/flows";
 import type * as AccountsReq from "nw-tracker-contracts/requests/accounts";
+import type * as GroceriesReq from "nw-tracker-contracts/requests/groceries";
+import type * as MovementsReq from "nw-tracker-contracts/requests/movements";
 import i18n from "./i18n";
 import type { DisplayUnit } from "./queries/keys";
 import { attachLiveInputs, LIVE_INPUTS_HEADER, parseLiveInputs, type LiveQuoteMoves } from "./liveInputs";
@@ -518,7 +520,7 @@ export const api = {
       `/api/groups/${encodeURIComponent(slug)}/performance-monthly${qs ? `?${qs}` : ""}`
     );
   },
-  createAccountMovement: (id: string | number, body: Record<string, unknown>) =>
+  createAccountMovement: (id: string | number, body: MovementsReq.MovementCreateBody) =>
     j<{ id: number; units_delta: number | null; flow_kind?: string }>(
       `/api/accounts/${id}/movements`,
       { method: "POST", body: JSON.stringify(body) }
@@ -539,7 +541,7 @@ export const api = {
     ),
   createAccountValuation: (
     id: string | number,
-    body: { as_of_date: string; value_clp: number }
+    body: MovementsReq.ValuationUpsert
   ) =>
     j<{ ok: true }>(`/api/accounts/${id}/valuations`, {
       method: "POST",
@@ -967,7 +969,7 @@ export const api = {
     ),
   groceriesProductDetail: (productId: number) =>
     j<import("./types/groceries").GroceryProductDetail>(`/api/groceries/products/${productId}`),
-  groceriesUpdateProduct: (productId: number, body: { base_unit: string }) =>
+  groceriesUpdateProduct: (productId: number, body: GroceriesReq.GroceryProductPatch) =>
     j<import("./types/groceries").GroceryProductDetail>(`/api/groceries/products/${productId}`, {
       method: "PATCH",
       body: JSON.stringify(body),
@@ -981,23 +983,13 @@ export const api = {
     j<{ brands: import("./types/groceries").GroceryBrandRow[] }>("/api/groceries/brands"),
   groceriesUpdateAlias: (
     aliasId: number,
-    body: {
-      brand_name?: string;
-      brand_id?: number | null;
-      content_value?: number | null;
-      content_unit?: string;
-    }
+    body: GroceriesReq.GroceryAliasPatch
   ) =>
     j<{ ok: boolean }>(`/api/groceries/aliases/${aliasId}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-  groceriesClassify: (body: {
-    store_chain: string;
-    targets: { barcode: string | null; description: string }[];
-    product_id?: number;
-    new_product_name?: string;
-  }) =>
+  groceriesClassify: (body: GroceriesReq.GroceryClassify) =>
     j<{ product_id: number; aliases: number; stamped: number }>("/api/groceries/classify", {
       method: "POST",
       body: JSON.stringify(body),
