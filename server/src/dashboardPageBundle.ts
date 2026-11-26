@@ -26,9 +26,7 @@ export type DashboardPageBundle = Awaited<ReturnType<typeof buildDashboardPageBu
  * @heavy Cold build runs account rows, full valuation TS, group perf charts, and flows deposits.
  */
 export function buildDashboardPageBundle(unit: TsUnit): Promise<DashboardPageBundle> {
-  return getAggregationCached(cacheKeyDashboardPageBundle(unit), () => {
-    return withPortfolioGroupIndex(() => buildDashboardPageBundleInner(unit));
-  });
+  return getAggregationCached(cacheKeyDashboardPageBundle(unit), () => buildDashboardPageBundleInner(unit));
 }
 
 /** Let queued I/O (a request, a health check) run before the next heavy piece. */
@@ -38,26 +36,36 @@ const nextMacrotask = (): Promise<void> => new Promise((resolve) => setImmediate
  * The pieces run one after another with a macrotask between them: each is synchronous work on
  * the one thread, and chained as microtasks they would hold the event loop for the whole
  * bundle (a cold build takes many seconds — long enough for a host's health check to fail).
+ *
+ * Each piece reads its own portfolio tree index (`withPortfolioGroupIndex`): one held across a
+ * macrotask would serve a tree a write in the gap changed to the later pieces, and the entries
+ * they cache on the way would outlive that write. The bundle itself is a cached promise from the
+ * start, so a drop in a gap takes it whole.
  */
 async function buildDashboardPageBundleInner(unit: TsUnit) {
   clearFxConversionWarnings();
   const dash = await timeHeavyAsync(HeavyWork.dashboardPayload, () => buildDashboardPagePayload(unit));
   await nextMacrotask();
-  const tsRaw = timeHeavy(HeavyWork.dashboardValuationTimeseries, () =>
-    attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit)
+  const tsRaw = withPortfolioGroupIndex(() =>
+    timeHeavy(HeavyWork.dashboardValuationTimeseries, () =>
+      attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit)
+    )
   );
   await nextMacrotask();
   // The class P/L combo, from the inversiones consolidation.
-  const inversionesPerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () => buildInversionesPerfMonthly(unit));
+  const inversionesPerf = withPortfolioGroupIndex(() =>
+    timeHeavy(HeavyWork.groupMonthlyPerformance, () => buildInversionesPerfMonthly(unit))
+  );
   await nextMacrotask();
-  const upcomingPayments = buildUpcomingPayments(undefined, unit);
-
-  return {
-    dash,
-    ts: tsRaw,
-    // Every rate pair a conversion into the unit walks (`rates.ts`), from each held currency.
-    fx_coverage: buildFxCoverageWithConversionWarnings(unit),
-    inversionesPerf,
-    upcoming_payments: upcomingPayments,
-  };
+  return withPortfolioGroupIndex(() => {
+    const upcomingPayments = buildUpcomingPayments(undefined, unit);
+    return {
+      dash,
+      ts: tsRaw,
+      // Every rate pair a conversion into the unit walks (`rates.ts`), from each held currency.
+      fx_coverage: buildFxCoverageWithConversionWarnings(unit),
+      inversionesPerf,
+      upcoming_payments: upcomingPayments,
+    };
+  });
 }

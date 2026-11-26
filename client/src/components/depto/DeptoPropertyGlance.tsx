@@ -4,7 +4,7 @@ import { cn } from "../../cn";
 import { expenseKindLabel, useTranslation } from "../../i18n";
 import { PageGridTile } from "../layout/PageGridTile";
 import { loadableClass } from "../ui/Loadable";
-import type { DeptoCostBandDto, DeptoPropertyGlanceDto, DeptoMonthSplitDto } from "../../types";
+import type { DeptoCostBandDto, DeptoPropertyGlanceDto, DeptoPropertyPlBandDto, DeptoMonthSplitDto } from "../../types";
 import { ChartBox, CostChart, PlChart, ValueChart, costKindColor, type PlMode } from "./DeptoCharts";
 import { pct0, pct1, pct1Signed, signedMoney, toneOf } from "./deptoFormat";
 import styles from "./Depto.module.css";
@@ -38,7 +38,8 @@ export function DeptoPropertyBands({
   unit: string;
   loanCurrency: string | undefined;
   loading: boolean;
-  onToggleMovements: () => void;
+  /** Opens the account's movements under the bands; null where there is no such list (the group page). */
+  onToggleMovements: (() => void) | null;
 }) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<PlMode>("pl");
@@ -70,7 +71,7 @@ export function DeptoPropertyBands({
         </ChartBox>
       </div>
       <div className={loadableClass(loading, styles.bandRail)}>
-        {glance && loanCurrency ? <PlRail glance={glance} unit={unit} loanCurrency={loanCurrency} /> : <PendingGroups lines={[3, 3]} />}
+        {glance && loanCurrency ? <PlRail pl={glance.pl} unit={unit} currencyLabel={loanCurrency.toUpperCase()} /> : <PendingGroups lines={[3, 3]} />}
       </div>
 
       {/* cost of living: absent when no tracked place names this property */}
@@ -90,10 +91,10 @@ export function DeptoPropertyBands({
           </div>
           <div className={loadableClass(loading, styles.bandRail)}>
             {cost ? <CostRail cost={cost} unit={unit} /> : <PendingGroups lines={[3, 8]} />}
-            {glance ? <MovementsGroup count={glance.movement_count} onToggle={onToggleMovements} /> : null}
+            {glance && onToggleMovements ? <MovementsGroup count={glance.movement_count} onToggle={onToggleMovements} /> : null}
           </div>
         </>
-      ) : glance ? (
+      ) : glance && onToggleMovements ? (
         <div className={styles.bandRail}>
           <MovementsGroup count={glance.movement_count} onToggle={onToggleMovements} />
         </div>
@@ -103,7 +104,7 @@ export function DeptoPropertyBands({
 }
 
 /** Rail groups while the bundle is pending: blank lines at the loaded groups' rough height. */
-function PendingGroups({ lines }: { lines: readonly number[] }) {
+export function PendingGroups({ lines }: { lines: readonly number[] }) {
   return (
     <>
       {lines.map((n, i) => (
@@ -151,8 +152,9 @@ function ValueRail({ glance, unit, loanCurrency }: { glance: DeptoPropertyGlance
   );
 }
 
-function PlRail({ glance, unit, loanCurrency }: { glance: DeptoPropertyGlanceDto; unit: string; loanCurrency: string }) {
-  const { total, years, this_month: month } = glance.pl;
+/** The P/L band's rail: total, years, this month's split (`currencyLabel` names the currency part's side). */
+export function PlRail({ pl, unit, currencyLabel }: { pl: DeptoPropertyPlBandDto; unit: string; currencyLabel: string }) {
+  const { total, years, this_month: month } = pl;
   return (
     <>
       <div className={styles.grp}>
@@ -171,13 +173,13 @@ function PlRail({ glance, unit, loanCurrency }: { glance: DeptoPropertyGlanceDto
           ))}
         </div>
       </div>
-      {month ? <MonthSplit month={month} unit={unit} loanCurrency={loanCurrency} /> : null}
+      {month ? <MonthSplit month={month} unit={unit} currencyLabel={currencyLabel} /> : null}
     </>
   );
 }
 
 /** This month's P/L as two parts: the cuotas' part that did not become equity, and the currency's move. */
-function MonthSplit({ month, unit, loanCurrency }: { month: DeptoMonthSplitDto; unit: string; loanCurrency: string }) {
+function MonthSplit({ month, unit, currencyLabel }: { month: DeptoMonthSplitDto; unit: string; currencyLabel: string }) {
   const { t } = useTranslation();
   return (
     <div className={styles.grp}>
@@ -209,7 +211,7 @@ function MonthSplit({ month, unit, loanCurrency }: { month: DeptoMonthSplitDto; 
         {month.currency_part != null ? (
           <span>
             <b className={styles[toneOf(month.currency_part) ?? "muted"]}>{signedMoney(month.currency_part, unit)}</b>{" "}
-            <em>{loanCurrency.toUpperCase()}</em>
+            <em>{currencyLabel}</em>
           </span>
         ) : null}
       </div>
@@ -217,7 +219,8 @@ function MonthSplit({ month, unit, loanCurrency }: { month: DeptoMonthSplitDto; 
   );
 }
 
-function CostRail({ cost, unit }: { cost: DeptoCostBandDto; unit: string }) {
+/** The cost band's rail: the 12-month window's total, its cost | equity split, a row per kind. */
+export function CostRail({ cost, unit }: { cost: Pick<DeptoCostBandDto, "window">; unit: string }) {
   const win = cost.window;
   if (!win) return null;
   const costRows = win.rows.filter((r) => r.direction === "cost");

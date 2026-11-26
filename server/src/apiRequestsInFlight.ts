@@ -9,7 +9,8 @@ import { requestContext, type RequestKind } from "./requestContext.js";
  *
  * Only the gaps between the warmer's steps wait. A step itself never does: a request may be
  * awaiting the very promise the step is building (the page bundle, the nav context), and waiting
- * there would hold that request until it turned stale.
+ * there would hold that request until it turned stale. Steps are short ({@link warmSlicer}), so
+ * the gaps come often.
  */
 
 /**
@@ -135,6 +136,38 @@ export async function whenNoApiRequestsInFlight(opts: WhenNoApiRequestsInFlightO
     }
     await waitForRequestDoneOr(Math.min(wakeIn, leftOfMax));
   }
+}
+
+/**
+ * How long a warm piece may hold the event loop before {@link warmSlicer} gives it back. On the
+ * hosted demo (half a CPU, ~9× a laptop) 40 ms here is under half a second there, well inside its
+ * host's 5 s health check.
+ */
+export const WARM_SLICE_MS = 40;
+
+/**
+ * A yield point for background work split into pieces: called between pieces, it resolves at once
+ * while the work has held the event loop less than `budgetMs` since the last yield, and otherwise
+ * gives the loop back — one macrotask at least (a health check is answered), and until no API
+ * request is in flight ({@link whenNoApiRequestsInFlight}). Only for work no request awaits: a
+ * request waiting on it would wait behind other requests too.
+ */
+export type WarmSlicer = {
+  /** Gives the event loop back when the budget is spent (see {@link warmSlicer}). */
+  (): Promise<void>;
+  /** Whether the work has held the loop `budgetMs` since the last yield (a synchronous loop's cue to stop). */
+  due(): boolean;
+};
+
+export function warmSlicer(budgetMs: number = WARM_SLICE_MS, opts: WhenNoApiRequestsInFlightOptions = {}): WarmSlicer {
+  let since = nowMs();
+  const due = () => nowMs() - since >= budgetMs;
+  const slicer = async () => {
+    if (!due()) return;
+    await whenNoApiRequestsInFlight(opts);
+    since = nowMs();
+  };
+  return Object.assign(slicer, { due });
 }
 
 /** Forgets every counted request (tests). */

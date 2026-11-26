@@ -930,24 +930,32 @@ export function runExpenseLineSteps(
   steps: readonly ExpenseLineStep[]
 ): FlowCcExpenseLineRow[] {
   let lines = drafts as unknown as FlowCcExpenseLineRow[];
-  for (const step of steps) {
-    const before = (selTotalChanges.get() as { n: number }).n;
-    lines = step.run(lines);
-    if ((selTotalChanges.get() as { n: number }).n !== before) {
-      throw new Error(`expense lines: the «${step.name}» step wrote to the database — the read pipeline only reads`);
-    }
-  }
+  for (const step of steps) lines = runExpenseLineStep(lines, step);
   return lines;
+}
+
+function runExpenseLineStep(lines: FlowCcExpenseLineRow[], step: ExpenseLineStep): FlowCcExpenseLineRow[] {
+  const before = (selTotalChanges.get() as { n: number }).n;
+  const out = step.run(lines);
+  if ((selTotalChanges.get() as { n: number }).n !== before) {
+    throw new Error(`expense lines: the «${step.name}» step wrote to the database — the read pipeline only reads`);
+  }
+  return out;
+}
+
+/** The expense-line drafts by source, in order: card lines (none without cards), checking, manual, payslip. */
+function expenseLineDraftSources(accountIds: readonly number[]): (() => FlowCcExpenseLineRowDraft[])[] {
+  return [
+    () => (accountIds.length > 0 ? buildCcExpenseLines([...accountIds]) : []),
+    () => loadCheckingGastosLinesForExpenses(),
+    () => loadManualExpenseGastosLineDrafts(),
+    () => loadPayslipExpenseLineDrafts(),
+  ];
 }
 
 /** Every expense-line draft: card lines (none without cards), checking, manual, payslip. */
 function expenseLineDrafts(accountIds: readonly number[]): FlowCcExpenseLineRowDraft[] {
-  return [
-    ...(accountIds.length > 0 ? buildCcExpenseLines([...accountIds]) : []),
-    ...loadCheckingGastosLinesForExpenses(),
-    ...loadManualExpenseGastosLineDrafts(),
-    ...loadPayslipExpenseLineDrafts(),
-  ];
+  return expenseLineDraftSources(accountIds).flatMap((source) => source());
 }
 
 /**
@@ -1065,6 +1073,27 @@ export function isPreTaxExpenseLine(line: Pick<FlowCcExpenseLineRow, "source">):
 /** Every gastos line the Expenses page lists: card, checking, manual, mirror and payslip lines. */
 export function buildFlowsExpenseLines(accountIds: readonly number[] = listCreditCardMasterAccountIds()): FlowCcExpenseLineRow[] {
   return runExpenseLineSteps(expenseLineDrafts(accountIds), EXPENSE_LINE_STEPS);
+}
+
+/**
+ * {@link buildFlowsExpenseLines}, the same lines, built source by source and step by step with
+ * `between()` awaited after each (the cache warmer's yield points, `warmAggregationInPieces`).
+ */
+export async function buildFlowsExpenseLinesInPieces(
+  accountIds: readonly number[],
+  between: () => Promise<void>
+): Promise<FlowCcExpenseLineRow[]> {
+  const drafts: FlowCcExpenseLineRowDraft[] = [];
+  for (const source of expenseLineDraftSources(accountIds)) {
+    drafts.push(...source());
+    await between();
+  }
+  let lines = drafts as unknown as FlowCcExpenseLineRow[];
+  for (const step of EXPENSE_LINE_STEPS) {
+    lines = runExpenseLineStep(lines, step);
+    await between();
+  }
+  return lines;
 }
 
 export function buildFlowsExpensesPayload(unit: string = "clp"): FlowsExpensesPayload {

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { Bar, BarChart, Tooltip, XAxis, YAxis } from "recharts";
-import type { BarShapeProps, TooltipContentProps } from "recharts";
-import { AppChartTooltipContent, ChartTooltipRows, type AppTooltipSpec } from "./ChartTooltip";
+import { Bar, BarChart, XAxis, YAxis } from "recharts";
+import type { BarShapeProps } from "recharts";
+import { appTooltipElement, ChartTooltipRows, type AppTooltipSpec } from "./ChartTooltip";
 import { useElementSize } from "./useElementSize";
 
 /** One segment of a cupo bar, everything it shows decided by the caller (already formatted). */
@@ -67,15 +67,7 @@ export function CcGlanceCupoBar({
         >
           <XAxis type="number" domain={[0, 1]} hide allowDataOverflow />
           <YAxis type="category" hide />
-          <Tooltip
-            shared={false}
-            wrapperStyle={{ transform: "none", width: "100%", height: "100%" }}
-            cursor={false}
-            isAnimationActive={false}
-            content={(props) => (
-              <AppChartTooltipContent {...(props as TooltipContentProps<number, string>)} spec={spec} />
-            )}
-          />
+          {appTooltipElement(spec, { shared: false, isAnimationActive: false })}
           {segments.map((s, i) => (
             <Bar
               key={s.key}

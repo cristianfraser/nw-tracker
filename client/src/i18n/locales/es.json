@@ -217,6 +217,22 @@
     }
   },
   "realEstate": {
+    "group": {
+      "propertyCount": "{{count}} propiedades",
+      "propertiesLabel": "Propiedades",
+      "colProperty": "propiedad",
+      "colEquity": "patrimonio neto",
+      "colOwned": "propio",
+      "ownedOf": "de {{appraisal}}",
+      "noLoan": "sin crédito",
+      "noLedger": "Aún no tiene pagos registrados.",
+      "none": "Ninguna propiedad tiene pagos registrados aún.",
+      "valueChart": "Valor, hipotecas y patrimonio neto por propiedad",
+      "appraisal": "tasación",
+      "atPurchase": "a la compra",
+      "downPayment": "pies",
+      "expensesLink": "gastos de inmuebles"
+    },
     "propertyValue": "valor",
     "mortgage": "hipoteca",
     "propertyValueOfProperty": "valor · {{property}}",

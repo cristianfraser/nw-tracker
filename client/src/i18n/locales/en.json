@@ -217,6 +217,22 @@
     }
   },
   "realEstate": {
+    "group": {
+      "propertyCount": "{{count}} properties",
+      "propertiesLabel": "Properties",
+      "colProperty": "property",
+      "colEquity": "net equity",
+      "colOwned": "owned",
+      "ownedOf": "of {{appraisal}}",
+      "noLoan": "no loan",
+      "noLedger": "No payments on file yet.",
+      "none": "No property has payments on file yet.",
+      "valueChart": "Value, mortgages and net equity by property",
+      "appraisal": "appraisal",
+      "atPurchase": "at purchase",
+      "downPayment": "down payments",
+      "expensesLink": "real-estate expenses"
+    },
     "propertyValue": "value",
     "mortgage": "mortgage",
     "propertyValueOfProperty": "value · {{property}}",

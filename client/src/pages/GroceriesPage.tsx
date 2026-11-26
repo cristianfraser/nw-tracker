@@ -2,10 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input } from "@crfrsr/ui";
 import { ChevronIcon } from "../components/ui/ChevronIcon";
-import { CartesianGrid, Line, XAxis, YAxis } from "recharts";
 import { api } from "../api";
 import { PageGridTile } from "../components/layout/PageGridTile";
-import { AppLineChart } from "../components/charts/AppLineChart";
+import { GroceryPriceChart } from "../components/charts/GroceryPriceChart";
 import { buildNiceYAxis, minMaxForKeys } from "../components/charts/chartLayout";
 import { ProductConfigPanel } from "../components/groceries/ProductConfigPanel";
 import {
@@ -537,24 +536,7 @@ export function GroceriesPage() {
         ) : null}
         {chartData.length > 1 ? (
           <div className={styles.chart}>
-            <AppLineChart
-              data={chartData}
-              tooltip={{
-                formatValue: (v) => formatReceiptPesos(Number(v)),
-                formatLabel: (l) => String(l),
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="date" tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={24} />
-              <YAxis
-                tick={{ fill: "var(--muted)", fontSize: 10 }}
-                width={52}
-                tickFormatter={(v: number) => formatReceiptPesos(v)}
-                domain={yScale.domain}
-                ticks={yScale.ticks}
-              />
-              <Line type="monotone" dataKey="price" stroke="var(--accent, #2f81f7)" strokeWidth={2} dot />
-            </AppLineChart>
+            <GroceryPriceChart data={chartData} yScale={yScale} formatPrice={formatReceiptPesos} />
           </div>
         ) : null}
         <ColumnTable

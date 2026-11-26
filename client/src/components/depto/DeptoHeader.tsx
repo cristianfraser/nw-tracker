@@ -2,7 +2,7 @@ import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { loadableClass } from "../ui/Loadable";
 import { ExportToolbarButton } from "../export/ExportModal";
-import type { DeptoGlanceDto } from "../../types";
+import type { DeptoGlanceDto, DeptoGlanceHeaderDto } from "../../types";
 import { pct1, pct1Signed, signedMoney, toneOf } from "./deptoFormat";
 import styles from "./Depto.module.css";
 import { formatCurrency, formatMoney } from "../../format";
@@ -31,9 +31,49 @@ export function DeptoHeader({
   exportPath: string;
   loading: boolean;
 }) {
-  const { t } = useTranslation();
   const header = glance?.header;
-  const unit = glance?.unit;
+  return (
+    <DeptoHeaderView
+      title={title}
+      figures={
+        header && glance
+          ? {
+              unit: glance.unit,
+              hero: formatCurrency(header.hero_loan, glance.loan_currency),
+              sub: header.hero != null ? formatMoney({ value: header.hero, currency: glance.unit }) : null,
+              strip: header.strip,
+            }
+          : undefined
+      }
+      exportPath={exportPath}
+      loading={loading}
+    />
+  );
+}
+
+/**
+ * The depto header's frame over figures already picked: the hero as text (the caller formats it in
+ * its currency), an optional second line, the strip in `unit`. The property and mortgage pages, and
+ * the real-estate group page (its hero the properties' net equity in the unit).
+ */
+export function DeptoHeaderView({
+  title,
+  figures,
+  wideHero = false,
+  exportPath,
+  loading,
+}: {
+  title: string;
+  figures: { unit: string; hero: string; sub: string | null; strip: DeptoGlanceHeaderDto["strip"] } | undefined;
+  /** The hero is a display-unit amount (longer than a loan-currency one): on a phone it keeps clear of «exportar». */
+  wideHero?: boolean;
+  /** Undefined until the page knows what it exports: no «exportar» yet. */
+  exportPath: string | undefined;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  const header = figures;
+  const unit = figures?.unit;
   const cells: { key: string; label: string; value: number | null | undefined; pct: number | null | undefined }[] = [
     { key: "day", label: t("accountDetail.depto.day"), value: header?.strip.day, pct: null },
     { key: "month", label: t("accountDetail.depto.month"), value: header?.strip.month, pct: null },
@@ -43,11 +83,9 @@ export function DeptoHeader({
   return (
     <header className={cn(styles.scope, styles.head)}>
       <h1>{title || BLANK}</h1>
-      <div className={loadableClass(loading, styles.hero)}>
-        <span className={cn("mono", styles.heroBig)}>
-          {header && glance ? formatCurrency(header.hero_loan, glance.loan_currency) : BLANK}
-        </span>
-        {header?.hero != null && unit ? <span className={cn("mono", styles.heroSec)}>{formatMoney({ value: header.hero, currency: unit })}</span> : null}
+      <div className={loadableClass(loading, cn(styles.hero, wideHero && styles.heroWide))}>
+        <span className={cn("mono", styles.heroBig)}>{header ? header.hero : BLANK}</span>
+        {header?.sub != null ? <span className={cn("mono", styles.heroSec)}>{header.sub}</span> : null}
       </div>
       <div className={cn("mono", styles.strip)}>
         {cells.map((c) => (
@@ -63,9 +101,11 @@ export function DeptoHeader({
             </span>
           </div>
         ))}
-        <div className={styles.exp}>
-          <ExportToolbarButton exportPath={exportPath} triggerClassName={styles.lnk} />
-        </div>
+        {exportPath ? (
+          <div className={styles.exp}>
+            <ExportToolbarButton exportPath={exportPath} triggerClassName={styles.lnk} />
+          </div>
+        ) : null}
       </div>
     </header>
   );

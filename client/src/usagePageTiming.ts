@@ -36,6 +36,7 @@ let notFoundPathname: string | null = null;
  * renders before any effect of that commit runs. Idempotent, so a repeated render is harmless.
  */
 export function useMarkUsagePageNotFound(): void {
+  // eslint-disable-next-line react-hooks/globals -- set while rendering on purpose (see above): the view may be reported before any effect of this commit runs
   notFoundPathname = useLocation().pathname;
 }
 
@@ -87,7 +88,6 @@ export function useUsagePageTiming(): void {
     let lastIdleAt = performance.now();
     let done = false;
     let quietTimer: ReturnType<typeof setTimeout> | undefined;
-    let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
 
     const stop = () => {
       done = true;
@@ -131,7 +131,7 @@ export function useUsagePageTiming(): void {
       if (document.visibilityState === "hidden") finish("hidden");
     };
     document.addEventListener("visibilitychange", onVisibility);
-    timeoutTimer = setTimeout(() => finish("timeout"), TIMEOUT_MS);
+    const timeoutTimer = setTimeout(() => finish("timeout"), TIMEOUT_MS);
     armQuiet();
     // StrictMode (dev) mounts every effect twice in the same commit: a cleanup before this
     // microtask is that rehearsal, not a page left — drop it and keep the view for the re-run.

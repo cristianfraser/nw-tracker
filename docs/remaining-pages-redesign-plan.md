@@ -53,6 +53,12 @@ proposed split into one-session work items.
 
 ### A. `/real_estate` — generic group page
 
+> **Done (2026-11-26):** `RealEstateGroupPage` on `real-estate-glance` (`realEstateGroupGlance.ts`).
+> The user's steer after the first mockups: the page is the property account page for every
+> property together, not a new design — one property shows that property's page block untouched,
+> several show each property's header as a row and the page's three bands added up. Rent is left
+> out (the property page has no rent figure; no per-place monthly rent series exists yet).
+
 - Renders `GroupInfoBase`: a «Total» card and one card per account with Today / Month / Year /
   Total rows, then «Valuation and contributions», «Current value by account», «Δ by account /
   subgroup», «Monthly Δ (consolidated)», «Monthly detail», «Flows», «Accounts in this view».

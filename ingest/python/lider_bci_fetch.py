@@ -313,7 +313,19 @@ def main() -> None:
     def read_feed(page: Any) -> None:
         national = wait_for(page, lambda: latest.get(EP_NATIONAL), 30)
         if not national:
-            raise RuntimeError(f"the national «Por facturar» list ({EP_NATIONAL}) never arrived")
+            # About one fetch in 25 the movements page right after the login lands on the site's root
+            # and renders blank, so the list is never asked for (2026-11-16 → 11-26; the next hourly
+            # fetch always worked). Reopen it once in the same session — no second login, so the
+            # clave is never presented again.
+            result["movements_reopened_from"] = page.url
+            log(f"the «Por facturar» list did not arrive (page at {page.url}) — opening the movements page once more")
+            page.goto(MOVEMENTS_URL, wait_until="domcontentloaded")
+            national = wait_for(page, lambda: latest.get(EP_NATIONAL), 30)
+        if not national:
+            raise RuntimeError(
+                f"the national «Por facturar» list ({EP_NATIONAL}) never arrived, also after reopening "
+                f"the movements page; page at {page.url}; bank answers seen: {', '.join(seen_order) or 'none'}"
+            )
         staged["national"] = national
         mark = len(seen_order)
         tab = page.get_by_text("Internacionales", exact=True).first
