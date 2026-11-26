@@ -24,16 +24,28 @@ export type F22RowSection =
   | "payment"
   | "other";
 
+export type F22RowGroup = "income" | "base" | "tax" | "result" | "payment" | "other";
+
 export type F22PayloadRow = {
   code: number;
   section: F22RowSection;
+  /** The part of the list the code is drawn in; the groups follow ROW_LAYOUT's order. */
+  group: F22RowGroup;
   filed: number | null;
   informed: number | null;
   draft: number | null;
   /** Both filed and draft present and different (never the payment section, which the draft leaves to the SII). */
   changed: boolean;
+  /** Draft less filed for a `changed` code; null otherwise. */
+  difference: number | null;
   /** Informed by a third party and ≠ filed. */
   informed_mismatch: boolean;
+  /** The third-party figure is unlike the value it stands beside: the filed one, or the draft's in a year with no filed form. */
+  informed_differs: boolean;
+  /** Listed by the «differences» view and marked in the list: a changed code, or one whose third-party figure differs. */
+  flagged: boolean;
+  /** Every source that states the code (filed, informed, draft) states the same value. */
+  sources_agree: boolean;
   /** The draft's value is the app's estimate of a code a third party reports later. */
   estimated: boolean;
 };
@@ -89,6 +101,53 @@ const ROW_LAYOUT: readonly [number, F22RowSection][] = [
   [305, "result"],
   [31, "result"],
 ];
+
+/** The list's groups: income through the sub total (158), the deductions and the base (170), taxes and credits, the result. */
+const GROUP_STARTS: readonly [number, F22RowGroup][] = [
+  [1098, "income"],
+  [750, "base"],
+  [157, "tax"],
+  [304, "result"],
+];
+
+const ROW_GROUP: ReadonlyMap<number, F22RowGroup> = (() => {
+  const starts = new Map(GROUP_STARTS);
+  const out = new Map<number, F22RowGroup>();
+  let group: F22RowGroup | null = null;
+  for (const [code] of ROW_LAYOUT) {
+    group = starts.get(code) ?? group;
+    if (group == null) throw new Error(`F22 row layout: code ${code} comes before the first group`);
+    out.set(code, group);
+  }
+  return out;
+})();
+
+/**
+ * How a code's three sources compare. `changed` needs filed and draft and never marks the payment
+ * section (the draft leaves it to the SII); `sources_agree` holds while every source that states
+ * the code states one value, so a code only the draft has agrees. The third-party figure is read
+ * against the filed value, or against the draft's in a year with no filed form (the year being
+ * prepared), and a code is `flagged` when the draft changes it or that figure differs.
+ */
+export function f22RowComparison(
+  section: F22RowSection,
+  filed: number | null,
+  informed: number | null,
+  draft: number | null
+): Pick<F22PayloadRow, "changed" | "difference" | "informed_mismatch" | "informed_differs" | "flagged" | "sources_agree"> {
+  const changed = section !== "payment" && filed != null && draft != null && draft !== filed;
+  const stated = [filed, informed, draft].filter((v): v is number => v != null);
+  const beside = filed ?? draft;
+  const informedDiffers = informed != null && beside != null && informed !== beside;
+  return {
+    changed,
+    difference: changed ? draft - filed : null,
+    informed_mismatch: informed != null && filed != null && informed !== filed,
+    informed_differs: informedDiffers,
+    flagged: changed || informedDiffers,
+    sources_agree: stated.every((v) => v === stated[0]),
+  };
+}
 
 /**
  * Every año tributario from the one declaring the portfolio's first year through the current
@@ -158,11 +217,11 @@ export function buildF22Payload(taxYear: number) {
     return {
       code,
       section,
+      group: section === "payment" ? "payment" : (ROW_GROUP.get(code) ?? "other"),
       filed,
       informed,
       draft,
-      changed: section !== "payment" && filed != null && draft != null && draft !== filed,
-      informed_mismatch: informed != null && filed != null && informed !== filed,
+      ...f22RowComparison(section, filed, informed, draft),
       estimated: d.estimatedCodes.includes(code),
     };
   });
@@ -170,6 +229,16 @@ export function buildF22Payload(taxYear: number) {
   const determined = (codes: Record<number, number> | null) => (codes == null ? null : (codes[304] ?? 0) + (codes[34] ?? 0));
   const windowPayload = (w: { fromYmd: string; throughYmd: string }) => ({ from: w.fromYmd, through: w.throughYmd });
   const residencyPeriod = (p: TaxResidencyPeriod) => ({ id: p.id, jurisdiction: p.jurisdiction, from: p.fromDate, to: p.toDate, note: p.note });
+  const taxFiled = determined(d.filed);
+  const taxDraft = d.taxComputed ? determined(d.draft) : null;
+  const dividendRows = d.dividends.map((x) => ({
+    date: x.date,
+    net_usd: x.netUsd,
+    gross_usd: x.grossUsd,
+    withholding_usd: x.withholdingUsd,
+    gross_clp: x.grossUsd == null ? null : x.grossUsd * d.yearEndObservado,
+    withholding_clp: x.withholdingUsd == null ? null : x.withholdingUsd * d.yearEndObservado,
+  }));
   return {
     tax_year: d.taxYear,
     income_year: d.incomeYear,
@@ -229,11 +298,15 @@ export function buildF22Payload(taxYear: number) {
     settlement: f22Settlement(d.taxYear, d.filed),
     payroll_withholding: (() => {
       const checks = buildPayslipChecks();
-      return { ...payrollWithholdingYear(d.incomeYear, checks), months: payrollWithholdingMonths(d.incomeYear, checks) };
+      const months = payrollWithholdingMonths(d.incomeYear, checks);
+      return { ...payrollWithholdingYear(d.incomeYear, checks), checked_payslips: months.length, differs: months.some((m) => m.differs), months };
     })(),
     rows,
-    tax_filed: determined(d.filed),
-    tax_draft: d.taxComputed ? determined(d.draft) : null,
+    tax_filed: taxFiled,
+    tax_draft: taxDraft,
+    tax_difference: taxFiled != null && taxDraft != null ? taxDraft - taxFiled : null,
+    changed_codes: rows.filter((r) => r.changed).length,
+    flagged_codes: rows.filter((r) => r.flagged).length,
     crypto: {
       method: d.crypto.method,
       fee_policy: d.crypto.feePolicy,
@@ -254,14 +327,9 @@ export function buildF22Payload(taxYear: number) {
         gain_december_clp: s.gainDecemberClp,
       })),
     },
-    dividends: d.dividends.map((x) => ({
-      date: x.date,
-      net_usd: x.netUsd,
-      gross_usd: x.grossUsd,
-      withholding_usd: x.withholdingUsd,
-      gross_clp: x.grossUsd == null ? null : x.grossUsd * d.yearEndObservado,
-      withholding_clp: x.withholdingUsd == null ? null : x.withholdingUsd * d.yearEndObservado,
-    })),
+    dividends: dividendRows,
+    dividends_gross_clp: dividendRows.reduce((a, x) => a + (x.gross_clp ?? 0), 0),
+    dividends_pending: dividendRows.filter((x) => x.gross_usd == null).length,
     loss_offset: {
       parts: d.lossOffset.parts.map((x) => ({ source: x.source, gain_clp: x.gainClp, loss_clp: x.lossClp })),
       ...offsetBalancePayload(d.lossOffset),
@@ -390,6 +458,7 @@ export function buildF22Payload(taxYear: number) {
         gain_clp: x.gainClp,
       })),
       deferred_clp: d.foreignFx.deferredClp,
+      listed_lines: d.foreignFx.disposals.length + d.foreignFx.fees.length,
       by_currency: d.foreignFx.byCurrency.map((c) => ({
         currency: c.currency,
         disposals: c.disposals,

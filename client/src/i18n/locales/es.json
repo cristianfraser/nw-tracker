@@ -2305,7 +2305,115 @@
     }
   },
   "taxReturn": {
+    "list": {
+      "f22Title": "Formulario 22 · AT{{year}}",
+      "showMore": "Ver {{count}} más",
+      "showAll": "Ver todo ({{count}})",
+      "shown": "{{shown}} de {{total}}",
+      "viewLabel": "Vista de la lista",
+      "viewAll": "Todos",
+      "viewFlagged": "Diferencias ({{count}})",
+      "noneFlagged": "Sin diferencias: todas las fuentes coinciden."
+    },
+    "groups": {
+      "income": "Rentas",
+      "base": "Rebajas y base imponible",
+      "tax": "Impuestos y créditos",
+      "result": "Resultado",
+      "payment": "Sección de pago",
+      "other": "Otros códigos"
+    },
+    "figures": {
+      "filed": "Impuesto declarado",
+      "draft": "Borrador",
+      "difference": "Diferencia",
+      "settlement": "Pago o devolución",
+      "refund": "Devolución",
+      "payment": "A pagar",
+      "notFiled": "sin declaración presentada",
+      "codeIgc": "código 304",
+      "codesAdicional": "códigos 304 + 34",
+      "draftSub": "lo que calcula la app",
+      "draftOpen": "el año no ha cerrado",
+      "draftNone": "sin impuesto calculado",
+      "codesAgree": "todos los códigos coinciden",
+      "codesDiffer": "{{count}} códigos difieren",
+      "codesDifferOne": "1 código difiere",
+      "nothingToSettle": "nada que pagar ni devolver"
+    },
+    "facts": {
+      "baseLabel": "Base",
+      "base": {
+        "filed": "la declaración presentada",
+        "informed": "declaraciones juradas de terceros",
+        "payroll": "liquidaciones importadas ({{months}})",
+        "fees": "boletas de honorarios emitidas",
+        "none": "solo los códigos de la app"
+      },
+      "regimeLabel": "Régimen",
+      "regime": {
+        "resident": "residente todo el año",
+        "nonresident": "no residente",
+        "split": "año de salida, residente hasta {{through}}, no residente desde {{from}}"
+      },
+      "residencyLabel": "Residencia",
+      "declared": "declarada",
+      "undeclared": "no declarada",
+      "provisional": "{{year}} no ha cerrado"
+    },
+    "sections": {
+      "basis": "Residencia y base"
+    },
+    "count": {
+      "lines": "{{count}} líneas",
+      "linesOne": "1 línea",
+      "sales": "{{count}} ventas",
+      "salesOne": "1 venta",
+      "places": "{{count}} lugares",
+      "placesOne": "1 lugar",
+      "items": "{{count}} conceptos",
+      "itemsOne": "1 concepto",
+      "payslips": "{{count}} liquidaciones",
+      "payslipsOne": "1 liquidación",
+      "payStubs": "{{count}} colillas de pago",
+      "payStubsOne": "1 colilla de pago",
+      "notes": "{{count}} notas",
+      "notesOne": "1 nota",
+      "forms": "{{count}} formularios",
+      "formsOne": "1 formulario",
+      "accounts": "{{count}} cuentas",
+      "accountsOne": "1 cuenta",
+      "holdings": "{{count}} posiciones",
+      "holdingsOne": "1 posición",
+      "employers": "{{count}} empleadores",
+      "employersOne": "1 empleador"
+    },
     "us": {
+      "figures": {
+        "filed": "Impuesto total declarado",
+        "draftSub": "línea 24",
+        "draftOpen": "el año no ha terminado",
+        "notDrafted": "sin borrador",
+        "linesAgree": "todas las líneas coinciden",
+        "linesDiffer": "{{count}} líneas difieren",
+        "linesDifferOne": "1 línea difiere",
+        "balance": "Devolución o saldo a pagar",
+        "refund": "Devolución",
+        "owed": "Saldo a pagar"
+      },
+      "facts": {
+        "filingStatus": "Estado civil tributario"
+      },
+      "groups": {
+        "income": "Ingresos",
+        "deductions": "Deducciones",
+        "tax": "Impuesto y créditos",
+        "payments": "Pagos",
+        "result": "Devolución o saldo a pagar"
+      },
+      "sections": {
+        "notes": "Lecturas y lo que no se modela"
+      },
       "tabsLabel": "Declaración",
       "tabChile": "Chile (F22)",
       "tabUs": "Estados Unidos (1040)",
@@ -2348,11 +2456,6 @@
         "options_written_short_term": "El resultado de una opción vendida es de corto plazo sea cual sea su duración (§1234(b)); el de una opción comprada sigue su plazo de tenencia. Una opción asignada no tiene fila: su prima está en la base de las acciones o en el precio de venta.",
         "covered_call_straddle_not_modelled": "No se modelan las reglas de straddle de las opciones de compra cubiertas (§1092: diferimiento de pérdidas, suspensión del plazo de tenencia de la acción)."
       },
-      "summaryFiled": "Impuesto total declarado: {{amount}}",
-      "summaryDraft": "borrador: {{amount}}",
-      "summaryDiff": "diferencia {{amount}}",
-      "refund": "Devolución {{amount}}",
-      "owed": "Monto a pagar {{amount}}",
       "even": "Ni devolución ni monto a pagar",
       "filedOn": "Presentada el {{date}}",
       "notFiled": "No presentada",
@@ -2606,6 +2709,7 @@
         "summary": "AGI modificado {{magi}}: asignación especial {{allowance}} (de {{before}}). Pérdida a limitar {{limited}} (arrastrada {{prior}}, absorbida {{absorbed}}) → permitida {{allowed}}, suspendida al año siguiente {{suspended}}. Anexo 1 línea 5: {{included}}."
       },
       "form1116": {
+        "summaryCredit": "crédito",
         "title": "Formulario 1116 · crédito por impuestos extranjeros (pasivo)",
         "chile": "Impuestos chilenos de los meses como residente en EE.UU., del F22 AT{{taxYear}} ({{source}}): Impuesto Adicional {{adicional}}, impuesto único del art. 107 {{unico}}; convertidos a {{rate}} CLP por US$ (promedio del año).",
         "noChile": "Chile no gravó nada en los meses como residente en EE.UU.: solo los arrastres.",
@@ -2626,6 +2730,7 @@
         "carryover": "{{year}}: {{amount}}"
       },
       "form8621": {
+        "partVShort": "puede aplicar la parte V",
         "title": "Formulario 8621 · PFIC a valor de mercado (parte IV)",
         "explain": "Cada PFIC a su valor al 31 de diciembre contra su base ajustada: el exceso es renta ordinaria, una baja se deduce solo hasta las inclusiones anteriores; el resultado va al anexo 1 línea 8z. El primer año en EE.UU. parte del mayor entre valor y costo al 1 de enero.",
         "holding": "Inversión",
@@ -2708,6 +2813,8 @@
       "1901": "Rentas afectas al IDPC, art. 20 N°5 (diferencia de cambio en dólares; línea 58 d)"
     },
     "residency": {
+      "excludedKind": "Concepto",
+      "excludedReason": "Motivo",
       "undeclared": "Sin residencia tributaria declarada: la declaración asume residente tributario en Chile todo el año.",
       "regime": {
         "resident": "Declarada: residente tributario en Chile todo el año ({{period}}).",
@@ -2721,7 +2828,6 @@
       "nonresidentArt107": "Ventas art. 107 en la parte no residente: {{sales}}, resultado {{result}}, impuesto único 10 % {{tax}} — al costo de las normas generales (art. 107 N°7), retenido por el corredor (N°6; no hay registro de la retención).",
       "excludedTitle": "No declarado (no residente)",
       "excludedExplain": "Partidas de la ventana no residente que la declaración no incluye, cada una con su razón.",
-      "excludedItem": "{{kind}}: {{clp}} — {{reason}}",
       "kind": {
         "us_salary": "Sueldo en EE. UU. (bruto)",
         "foreign_dividends": "Dividendos extranjeros (netos)",
@@ -2771,6 +2877,8 @@
       "provisional": "El reajuste a diciembre llega hasta {{month}}, el último IPC publicado."
     },
     "dividends": {
+      "summaryGross": "bruto",
+      "pendingCount": "{{count}} pendientes",
       "title": "Dividendos del extranjero",
       "explain": "Convertidos al dólar observado del 31 de diciembre de {{year}} ({{rate}}): código 1104 el neto, 748 el impuesto retenido, 1018 su crédito.",
       "date": "Fecha",
@@ -2795,6 +2903,7 @@
       }
     },
     "rentals": {
+      "summaryTaxable": "afecto",
       "title": "Arriendos",
       "explain": "El arriendo del año por lugar, reajustado a diciembre. El arriendo de un lugar DFL-2 no se declara (DFL N° 2 art. 15); el de cualquier otro va a la línea 5, código 1849, y sus contribuciones pagadas en el año son crédito contra el IGC (código 1637) hasta el IGC de ese arriendo, sin devolución.",
       "provisional": "El año no ha cerrado: el reajuste usa el último IPC publicado.",
@@ -2822,6 +2931,7 @@
       "interest": "Intereses de un corredor extranjero: {{usd}} al observado del 31 de diciembre → {{clp}}, en 1104 (sin impuesto retenido en EE.UU., sin crédito)."
     },
     "art107": {
+      "summaryTax": "impuesto",
       "title": "Art. 107 LIR: ventas de fondos y acciones",
       "explain": "Las ventas en bolsa de cuotas de fondos y de acciones tributan bajo el art. 107 LIR. El mayor valor paga un impuesto único de 10% en las ventas desde el 2022-09-02 hasta el 2026-12-31, y es ingreso no renta antes del 2022-09-02 y desde el {{inrFrom}}: sin impuesto y sin efecto en el IGC. Los lotes se venden {{method}}; una pérdida solo compensa otras ganancias del art. 107.",
       "lotMethod": {
@@ -2869,9 +2979,6 @@
       "distributionsTotal": "Total distribuciones {{amount}}.",
       "provisional": "El año no ha cerrado: el IPC llega hasta el último mes publicado, así que los reajustes y la pérdida de arrastre son provisorios."
     },
-    "summaryFiled": "Impuesto (código 304) presentado: {{amount}}",
-    "summaryDraft": "borrador: {{amount}}",
-    "summaryDiff": "diferencia: {{amount}}",
     "base": {
       "filed": "Base del borrador: la declaración presentada, con los códigos que calcula la app reemplazados.",
       "informed": "Sin declaración presentada: el borrador parte de lo que informaron terceros (DJ).",
@@ -2881,11 +2988,15 @@
     },
     "provisionalYear": "{{year}} no ha cerrado: la UTA, el dólar y el IPC de diciembre son los últimos publicados, así que el borrador es una estimación.",
     "salaryIncomplete": "Liquidaciones sin cotizaciones o totales leídos ({{months}}): el sueldo de esos meses queda sobrestimado o falta.",
+    "backToDefaultYear": "Volver al último año",
     "taxYearLabel": "Año tributario",
     "taxYearOption": "AT{{year}} (ingresos {{income}})",
     "estimatedTitle": "Estimado desde la app hasta que el tercero lo informe",
     "estimatedNote": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC) e intereses del crédito hipotecario. Los reemplazan las DJ que los terceros presentan en marzo.",
     "lossOffset": {
+      "title": "Compensación de pérdidas",
+      "summaryUnused": "pérdida sin compensar",
+      "summaryTaxed": "ganancia sin compensar",
       "unusedOpen": "Pérdida sin compensar en {{year}}: {{amount}}. Ganancias de hasta {{amount}} en el mismo grupo (cripto, fondos, intereses, acciones o dividendos extranjeros) realizadas antes del {{year}}-12-31 no pagarían impuesto.",
       "unusedOpenTax": "Sin la pérdida costarían ≈ {{tax}} de IGC. Las pérdidas no se arrastran al año siguiente.",
       "unusedClosed": "{{amount}} de pérdida quedaron sin compensar en {{year}}: el grupo no tenía ganancias para absorberla, y las pérdidas no se arrastran.",
@@ -2905,6 +3016,7 @@
       "foreignTaxedOpen": "Ganancia en acciones extranjeras en {{year}}: {{amount}}. Vender acciones extranjeras, cripto o fondos con pérdida de hasta {{amount}} antes del {{year}}-12-31 la compensaría."
     },
     "payroll": {
+      "summaryDifference": "diferencia {{difference}}",
       "title": "Impuesto retenido en liquidaciones",
       "explain": "El impuesto retenido de cada liquidación contra la tabla mensual sobre su propia renta tributable (salud descontada hasta el 7 % legal). Una diferencia es del empleador; la declaración anual la ajusta.",
       "summary": "Retenido {{withheld}} · según tabla {{byTable}} · diferencia {{difference}}",

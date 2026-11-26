@@ -10,14 +10,26 @@ export type TaxReturnRowSection =
   | "payment"
   | "other";
 
+/** Where a code sits in the list the page draws: the groups follow each other in this order. */
+export type TaxReturnRowGroup = "income" | "base" | "tax" | "result" | "payment" | "other";
+
 export type TaxReturnRow = {
   code: number;
   section: TaxReturnRowSection;
+  group: TaxReturnRowGroup;
   filed: number | null;
   informed: number | null;
   draft: number | null;
   changed: boolean;
+  /** Draft less filed for a `changed` code; null otherwise. */
+  difference: number | null;
   informed_mismatch: boolean;
+  /** The third-party figure is unlike the value it stands beside: the filed one, or the draft's in a year with no filed form. */
+  informed_differs: boolean;
+  /** Listed by the «differences» view and marked in the list: a changed code, or one whose third-party figure differs. */
+  flagged: boolean;
+  /** Every source that states the code (filed, informed, draft) states the same value. */
+  sources_agree: boolean;
   estimated: boolean;
 };
 
@@ -141,6 +153,8 @@ export type TaxReturnForeignFx = {
   /** What the other posture would have realized (information only). */
   deferred: { date: string; account_name: string; currency: string; amount: number; gain_clp: number }[]; // convention-ok: an F22 figure is stated in pesos by law
   deferred_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  /** How many rows the section lists: the realized outflows and the fees (the deferred ones are one total). */
+  listed_lines: number;
   /** Each currency's share of the year, in pesos (the codes take their sum). */
   by_currency: {
     currency: string;
@@ -359,12 +373,22 @@ export type TaxReturnResponse = {
     by_table: number;
     difference: number;
     months_with_differences: string[];
-    months: { payslip_id: number; period_month: string; origin: "document" | "rebuilt"; withheld: number; by_table: number; difference: number }[];
+    /** The payslips checked against the table (a payslip waiting for its month's parameters is not): the rows of `months`. */
+    checked_payslips: number;
+    /** Some checked payslip withheld something other than the table's tax. */
+    differs: boolean;
+    months: { payslip_id: number; period_month: string; origin: "document" | "rebuilt"; withheld: number; by_table: number; difference: number; differs: boolean }[];
   };
   rows: TaxReturnRow[];
   /** The income tax determined as filed / as drafted: the IGC (304) plus the Impuesto Adicional (34). */
   tax_filed: number | null;
   tax_draft: number | null;
+  /** `tax_draft` less `tax_filed`; null unless both are stated. */
+  tax_difference: number | null;
+  /** How many codes the draft changes against the filed form. */
+  changed_codes: number;
+  /** How many rows the «differences» view lists (`flagged`). */
+  flagged_codes: number;
   crypto: {
     method: "fifo" | "lifo" | "average";
     fee_policy: "excluded" | "included";
@@ -376,6 +400,10 @@ export type TaxReturnResponse = {
     sales: TaxReturnCryptoSale[];
   };
   dividends: TaxReturnDividend[];
+  /** The dividends' gross in pesos, the ones with their broker detail (the rest are pending). */
+  dividends_gross_clp: number; // convention-ok: an F22 figure is stated in pesos by law
+  /** How many dividends wait for their broker detail. */
+  dividends_pending: number;
   loss_offset: TaxReturnLossOffset;
   /** Foreign share sales netted among themselves: a loss offsets nothing else. */
   foreign_share_offset: TaxReturnOffsetBalance;
@@ -395,16 +423,22 @@ export type TaxReturnResponse = {
 /** GET /api/tax-return/us — the local Form 1040 (server: us1040/payload.ts). */
 export type UsTaxReturnRowSection = "income" | "subtotal" | "deduction" | "tax" | "credit" | "payment" | "result";
 
+/** Where a 1040 line sits in the list the page draws, in the form's order. */
+export type UsTaxReturnRowGroup = "income" | "deductions" | "tax" | "payments" | "result";
+
 /** One 1040 line; whole dollars. `line` is the role (the 2024 form's numbering: «1a», «12», «35a»), `printed_line` the year's number («12e» on the 2025 form). */
 export type UsTaxReturnRow = {
   line: string;
   printed_line: string;
   section: UsTaxReturnRowSection;
+  group: UsTaxReturnRowGroup;
   /** Null without a filed return; a line the filed return leaves out reads 0. */
   filed: number | null;
   draft: number;
   /** Filed and draft both present and different. */
   changed: boolean;
+  /** Draft less filed for a `changed` line; null otherwise. */
+  difference: number | null;
 };
 
 /** A W-2 rebuilt from the year's pay stubs (dollars to the cent). */
@@ -601,7 +635,8 @@ export type UsTaxReturnResponse = {
   rows: UsTaxReturnRow[];
   /** The schedules and worksheets behind the lines (empty when not drafted). */
   schedules: UsTaxReturnSchedule[];
-  schedule_b: { interest: UsTaxReturnPayerRow[]; dividends: UsTaxReturnPayerRow[]; qualified_dividends: number } | null;
+  /** `lines`: how many payer rows the two parts list together. */
+  schedule_b: { interest: UsTaxReturnPayerRow[]; dividends: UsTaxReturnPayerRow[]; qualified_dividends: number; lines: number } | null;
   form_8949: UsTaxReturnForm8949Row[];
   /** Capital loss carried in from last year and out to next year (positive losses). */
   capital_loss_carryover: { in: { short_term: number; long_term: number }; out: { short_term: number; long_term: number } } | null;
@@ -617,6 +652,10 @@ export type UsTaxReturnResponse = {
   /** Line 24 (total tax) as filed / as drafted. */
   tax_filed: number | null;
   tax_draft: number;
+  /** `tax_draft` less `tax_filed`; null without a filed return. */
+  tax_difference: number | null;
+  /** How many lines the draft changes against the filed return. */
+  changed_lines: number;
   /** Line 35a / line 37 of the draft. */
   refund_draft: number;
   owed_draft: number;

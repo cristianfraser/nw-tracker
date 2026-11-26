@@ -157,6 +157,13 @@ Two different kinds of account land here, and the page fits neither.
 
 ### G. `/tax-return`
 
+> **Done (2026-11-26):** the result as four figures, both forms' codes as one row list with the
+> differs mark (`TaxCodeList`), every detail section folded under a heading with its count and
+> headline figure (`TaxSection`, `TaxDetailList`). Measured on a freshly generated demo person the
+> page was 8,500–38,000px at 390px (the 200 «exchange differences» lines as cards were 30,000px);
+> folded it is about 1,700px. The per-code flag existed; the server now also states each row's
+> difference, group and whether its sources agree, and the totals the page used to derive.
+
 - 11,250px on a phone. Every F22 code is a card of three label / value lines (Filed / Informed
   by third parties / Draft), so about five codes fit a screen and equal rows read as noise.
 - Header is three paragraphs of prose, one of them the actual result (tax filed vs draft).

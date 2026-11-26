@@ -9,6 +9,7 @@
 import type {
   UsTaxReturnResponse,
   UsTaxReturnRow,
+  UsTaxReturnRowGroup,
   UsTaxReturnRowSection,
   UsTaxReturnSchedule,
 } from "nw-tracker-contracts/dto/taxReturn";
@@ -60,6 +61,27 @@ const ROW_SECTION: Record<F1040Line, UsTaxReturnRowSection> = {
   "36": "result",
   "37": "result",
 };
+
+/** The list's groups, each from its first line in the form's order. */
+const GROUP_STARTS: readonly [F1040Line, UsTaxReturnRowGroup][] = [
+  ["1a", "income"],
+  ["10", "deductions"],
+  ["16", "tax"],
+  ["25a", "payments"],
+  ["34", "result"],
+];
+
+const ROW_GROUP: ReadonlyMap<F1040Line, UsTaxReturnRowGroup> = (() => {
+  const starts = new Map(GROUP_STARTS);
+  const out = new Map<F1040Line, UsTaxReturnRowGroup>();
+  let group: UsTaxReturnRowGroup | null = null;
+  for (const line of F1040_LINES) {
+    group = starts.get(line) ?? group;
+    if (group == null) throw new Error(`1040 rows: line ${line} comes before the first group`);
+    out.set(line, group);
+  }
+  return out;
+})();
 
 /** Lines shown even at zero: the chain from wages to what is owed or refunded. */
 const ALWAYS_SHOWN = new Set<F1040Line>(["1a", "11", "12", "15", "16", "24", "25a", "25d", "33"]);
@@ -117,6 +139,8 @@ export function buildF1040Payload(taxYear: number, todayYmd: string = chileWallC
       form_8621: [],
       tax_filed: null,
       tax_draft: 0,
+      tax_difference: null,
+      changed_lines: 0,
       refund_draft: 0,
       owed_draft: 0,
       filed: null,
@@ -130,13 +154,16 @@ export function buildF1040Payload(taxYear: number, todayYmd: string = chileWallC
   ).map((line) => {
     const filed = filedLines ? (filedLines[line] ?? 0) : null;
     const draft = d.lines[line] ?? 0;
+    const changed = filed != null && filed !== draft;
     return {
       line,
       printed_line: f1040PrintedLine(line, d.taxYear),
       section: ROW_SECTION[line],
+      group: ROW_GROUP.get(line)!,
       filed,
       draft,
-      changed: filed != null && filed !== draft,
+      changed,
+      difference: changed ? draft - filed : null,
     };
   });
   const s = d.dualStatusStatement;
@@ -163,7 +190,7 @@ export function buildF1040Payload(taxYear: number, todayYmd: string = chileWallC
     },
     rows,
     schedules: schedules(d),
-    schedule_b: { interest: d.scheduleB.interestRows, dividends: d.scheduleB.dividendRows, qualified_dividends: d.scheduleB.qualifiedDividends },
+    schedule_b: { interest: d.scheduleB.interestRows, dividends: d.scheduleB.dividendRows, qualified_dividends: d.scheduleB.qualifiedDividends, lines: d.scheduleB.interestRows.length + d.scheduleB.dividendRows.length },
     form_8949: d.form8949.map((r) => ({
       box: r.box,
       term: r.term,
@@ -210,6 +237,8 @@ export function buildF1040Payload(taxYear: number, todayYmd: string = chileWallC
     ...wiredSections(d),
     tax_filed: filedLines ? (filedLines["24"] ?? 0) : null,
     tax_draft: d.lines["24"] ?? 0,
+    tax_difference: filedLines ? (d.lines["24"] ?? 0) - (filedLines["24"] ?? 0) : null,
+    changed_lines: rows.filter((r) => r.changed).length,
     refund_draft: d.lines["35a"] ?? 0,
     owed_draft: d.lines["37"] ?? 0,
     filed: d.filed ? { filed_on: d.filed.filedOn, filing_status: d.filed.filingStatus, source_file: d.filed.sourceFile } : null,

@@ -353,8 +353,11 @@ describe("the 1040 draft", () => {
 
     const p = buildF1040Payload(2025, TODAY);
     const row = (line: string) => p.rows.find((r) => r.line === line)!;
-    expect(row("16")).toMatchObject({ filed: d.lines["16"]! - 200, draft: d.lines["16"], changed: true });
-    expect(row("1a")).toMatchObject({ changed: false });
+    expect(row("16")).toMatchObject({ filed: d.lines["16"]! - 200, draft: d.lines["16"], changed: true, difference: 200, group: "tax" });
+    expect(row("1a")).toMatchObject({ changed: false, difference: null, group: "income" });
+    expect(row("25a")).toMatchObject({ group: "payments" });
+    expect(p.tax_difference).toBe(200);
+    expect(p.changed_lines).toBe(p.rows.filter((r) => r.changed).length);
     // Rows carry the role and the 2025 form's own number.
     expect(row("12")).toMatchObject({ printed_line: "12e" });
     expect(row("11")).toMatchObject({ printed_line: "11a" });

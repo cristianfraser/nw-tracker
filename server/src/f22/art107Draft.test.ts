@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { art107DistributionsForYear, art107GainsForYear } from "./art107.js";
 import { db } from "../db.js";
 import { buildF22Draft } from "./draft.js";
-import { buildF22Payload } from "./payload.js";
+import { buildF22Payload, f22RowComparison } from "./payload.js";
 import { foreignShareGainsForYear } from "./foreignShares.js";
 import { loadOfficialIpcLookup, officialIpcVariationPctBetween } from "../siiOfficialIpc.js";
 
@@ -163,5 +163,35 @@ describe("art. 107 fund on the F22 draft", () => {
     expect(row(1830)).toMatchObject({ section: "tax", draft: 18_000 });
     expect(row(1813)).toMatchObject({ section: "memo", informed: 300_000, draft: 180_000 });
     expect(row(105)).toMatchObject({ section: "income", draft: 12_345, estimated: true });
+    // The list's groups follow the layout: art. 107's result sits with the income codes, its tax with the taxes.
+    expect(row(1813)).toMatchObject({ group: "income", sources_agree: false, changed: false, difference: null });
+    expect(row(1830)).toMatchObject({ group: "tax", sources_agree: true });
+    expect(row(1813)).toMatchObject({ flagged: true });
+    expect(p.flagged_codes).toBe(p.rows.filter((r) => r.flagged).length);
+  });
+});
+
+describe("f22RowComparison", () => {
+  it("marks a draft unlike the filed value, with its difference", () => {
+    expect(f22RowComparison("income", 100, null, 130)).toEqual({ changed: true, difference: 30, informed_mismatch: false, informed_differs: false, flagged: true, sources_agree: false });
+    expect(f22RowComparison("income", 100, 100, 100)).toEqual({ changed: false, difference: null, informed_mismatch: false, informed_differs: false, flagged: false, sources_agree: true });
+  });
+
+  it("marks a third-party figure unlike the filed one without calling the code changed", () => {
+    expect(f22RowComparison("memo", 100, 250, 100)).toEqual({ changed: false, difference: null, informed_mismatch: true, informed_differs: true, flagged: true, sources_agree: false });
+  });
+
+  it("never marks the payment section, which the draft leaves to the SII", () => {
+    expect(f22RowComparison("payment", 100, null, 130)).toMatchObject({ changed: false, difference: null, sources_agree: false });
+  });
+
+  it("reads a code only one source states as agreeing", () => {
+    expect(f22RowComparison("income", null, null, 130)).toMatchObject({ changed: false, sources_agree: true });
+    expect(f22RowComparison("memo", null, 80, null)).toMatchObject({ informed_mismatch: false, flagged: false, sources_agree: true });
+  });
+
+  it("reads the third-party figure against the draft in a year with no filed form", () => {
+    expect(f22RowComparison("memo", null, 300, 180)).toMatchObject({ changed: false, informed_mismatch: false, informed_differs: true, flagged: true, sources_agree: false });
+    expect(f22RowComparison("memo", null, 180, 180)).toMatchObject({ informed_differs: false, flagged: false, sources_agree: true });
   });
 });

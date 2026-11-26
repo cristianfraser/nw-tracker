@@ -290,7 +290,12 @@ export type PayrollWithholdingMonth = {
   withheld: number;
   by_table: number;
   difference: number;
+  /** The payslip withheld something other than the table's tax (more than a peso apart), the year rule's own test. */
+  differs: boolean;
 };
+
+/** A payslip's withheld tax is unlike the table's: more than a peso apart (the table rounds). */
+const withholdingDiffers = (difference: number): boolean => Math.abs(difference) > 1;
 
 /** One row per Chilean salary payslip of the year: the impuesto único it withheld against the table's. */
 export function payrollWithholdingMonths(incomeYear: number, checks = buildPayslipChecks()): PayrollWithholdingMonth[] {
@@ -298,7 +303,7 @@ export function payrollWithholdingMonths(incomeYear: number, checks = buildPaysl
     .filter((c) => c.jurisdiction === "cl" && c.period_month.startsWith(`${incomeYear}-`) && !c.pending)
     .map((c) => {
       const t = c.checks.find((x) => x.check === "income_tax")!;
-      return { payslip_id: c.payslip_id, period_month: c.period_month, origin: c.origin, withheld: t.printed, by_table: t.expected, difference: t.difference };
+      return { payslip_id: c.payslip_id, period_month: c.period_month, origin: c.origin, withheld: t.printed, by_table: t.expected, difference: t.difference, differs: withholdingDiffers(t.difference) };
     });
 }
 
@@ -313,7 +318,7 @@ export function payrollWithholdingYear(incomeYear: number, checks = buildPayslip
     if (!t) continue;
     withheld += t.printed;
     byTable += t.expected;
-    if (Math.abs(t.difference) > 1) months.push(r.period_month);
+    if (withholdingDiffers(t.difference)) months.push(r.period_month);
   }
   return { income_year: incomeYear, payslips: rows.length, withheld, by_table: byTable, difference: withheld - byTable, months_with_differences: months };
 }
