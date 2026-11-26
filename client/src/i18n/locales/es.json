@@ -2039,17 +2039,7 @@
   "wealthPercentile": {
     "title": "Percentil de riqueza",
     "empty": "Sin datos de percentil.",
-    "chart": {
-      "seriesTotal": "Percentil total (CL)",
-      "seriesFinancial": "Percentil financiero (CL)",
-      "seriesBenchmark": "Percentil ({{country}})",
-      "scaleLabel": "Escala",
-      "scaleLinear": "Lineal",
-      "scaleLog": "Log (top %)"
-    },
-    "settings": {
-      "title": "Países de referencia"
-    },
+    "belowSupport": "< p10",
     "countries": {
       "US": "Estados Unidos",
       "ES": "España",
@@ -2062,20 +2052,57 @@
       "BR": "Brasil",
       "CN": "China continental"
     },
-    "tables": {
-      "myData": "Mis datos",
-      "countryData": "Datos país"
+    "headline": {
+      "inChile": "en Chile",
+      "top": "top {{percent}} %",
+      "financial": "Patrimonio financiero",
+      "netWorth": "patrimonio",
+      "asOf": "al {{date}}, contra la distribución de {{year}}"
     },
-    "table": {
+    "chart": {
+      "title": "Percentil por año",
+      "scaleLabel": "Escala",
+      "scaleLinear": "Lineal",
+      "scaleLog": "Log",
+      "scaleLinearName": "Escala lineal",
+      "scaleLogName": "Escala logarítmica (top %)"
+    },
+    "series": {
+      "chile": "Chile",
+      "chileFinancial": "Chile · financiero",
+      "chileFinancialWealth": "Chile · patrimonio financiero"
+    },
+    "rail": {
+      "title": "Hoy, por país",
+      "compareWith": "Comparar con"
+    },
+    "years": {
+      "title": "Por año",
       "year": "Año",
       "netWorth": "Patrimonio",
-      "finNetWorth": "Patr. financiero"
+      "financial": "Financiero",
+      "chileFinancial": "Chile fin.",
+      "financialDetail": "financiero {{percentile}} · {{amount}}",
+      "rowLabel": "{{year}}: {{percentile}} en Chile, patrimonio {{netWorth}}, patrimonio financiero {{financialPercentile}}, {{financialNetWorth}}",
+      "thresholds": {
+        "title": "Cuánto pedía cada percentil en {{year}} y dónde estabas",
+        "distribution": "Distribución",
+        "you": "Tú"
+      }
     },
-    "belowSupport": "< p10",
-    "markers": {
-      "distributionYear": "* usa la distribución del último databook disponible ({{year}})",
-      "interpolated": "† parámetros interpolados 2022→2025",
-      "reconstructed": "‡ reconstrucción propia (no es cifra oficial de UBS)"
+    "notes": {
+      "latestDistribution": {
+        "tag": "distribución {{year}}",
+        "text": "aún no hay databook del año, así que se ubica en el último disponible."
+      },
+      "interpolated": {
+        "tag": "interpolada",
+        "text": "distribución interpolada entre el databook anterior y el siguiente, de metodologías distintas."
+      },
+      "reconstructed": {
+        "tag": "estimación propia",
+        "text": "distribución de Chile reconstruida con el Gini y el número de millonarios del informe; no es una cifra impresa de UBS."
+      }
     }
   },
   "projections": {

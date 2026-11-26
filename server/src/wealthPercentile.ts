@@ -3,8 +3,11 @@
  * today, the user's net worth placed in every seeded country's lognormal wealth
  * distribution (`wealthDistributions.ts`), plus p50/p90/p99 thresholds.
  *
- * One payload carries the whole page — Chile total + financial cells and the four
- * benchmark countries (total mode) — so the net worth per year-end is computed once.
+ * One payload carries the whole page — Chile total + financial cells and every benchmark
+ * country (total mode) — so the net worth per year-end is computed once. It is the page's
+ * display shape: the headline (`today`), the year list newest first (`rows`, each with the
+ * words for its distribution, `notes`), the chart's points oldest first (`chart`) and the
+ * benchmark countries in the order drawn (`benchmark_order`); the client only picks.
  *
  * - Net worth at each year-end reuses the dashboard bucket primitive
  *   (`buildDashboardBucketValueTotals`): total = the headline NW sum; financial =
@@ -85,6 +88,8 @@ export type WealthPercentileYearRow = {
   interpolated: boolean;
   /** CL distribution is an own reconstruction (2025), not an official UBS figure. */
   reconstructed: boolean;
+  /** What to say about the distribution behind the row, in the order shown; empty for a printed databook year. */
+  notes: WealthDistributionNote[];
   /** CLP per one unit of the payload's `unit` at the row's year-end (1 for CLP, the observado for USD). */
   clp_per_unit: number;
   /** Net worth in the payload's unit. */
@@ -99,10 +104,50 @@ export type WealthPercentileYearRow = {
   benchmarks: Record<WealthBenchmarkCountry, WealthPercentileCell>;
 };
 
+/**
+ * `latest_distribution`: the year has no databook yet and is placed in the newest one;
+ * `interpolated`: parameters bridged across the 2022→2025 methodology break;
+ * `reconstructed`: Chile's distribution is an own reconstruction, not a printed UBS figure.
+ */
+export type WealthDistributionNote = "latest_distribution" | "interpolated" | "reconstructed";
+
+/** One year of the chart: the percentile (0–100, null below support) of each line. */
+export type WealthPercentileChartPoint = {
+  year: number;
+  cl_total: number | null;
+  cl_financial: number | null;
+  benchmarks: Record<WealthBenchmarkCountry, number | null>;
+};
+
+/** The page's headline: the newest row's standing in Chile, rounded to the decimal shown. */
+export type WealthPercentileToday = {
+  year: number;
+  as_of_date: string;
+  distribution_year: number;
+  net_worth: number;
+  fin_net_worth: number;
+  /** Total net worth in Chile's distribution, one decimal; null below support. */
+  percentile: number | null;
+  /** 100 − `percentile`, one decimal. */
+  top_percent: number | null;
+  /** Financial net worth in Chile's financial-wealth distribution, one decimal. */
+  financial_percentile: number | null;
+};
+
 export type WealthPercentilePayload = {
   unit: DisplayUnitCode;
+  today: WealthPercentileToday;
+  /** Every benchmark country, by today's percentile, highest first (below support last); ties keep the list's order. */
+  benchmark_order: WealthBenchmarkCountry[];
+  /** One row per year, newest first (the year list). */
   rows: WealthPercentileYearRow[];
+  /** The same years, oldest first (the chart). */
+  chart: WealthPercentileChartPoint[];
 };
+
+function roundToOneDecimal(n: number): number {
+  return Math.round(n * 10) / 10;
+}
 
 /**
  * CLP per one `unit` at `asOfYmd`: 1 for pesos; the observado for USD (the frame the USD
@@ -141,6 +186,32 @@ function cellFor(
     p90: Math.round((p90Usd * fxClpPerUsd) / clpPerUnit),
     p99: Math.round((p99Usd * fxClpPerUsd) / clpPerUnit),
   };
+}
+
+/** The headline of a year's row: its standing in Chile at the one decimal shown. */
+export function wealthTodayOf(latest: WealthPercentileYearRow): WealthPercentileToday {
+  const percentile = latest.cl_total.percentile == null ? null : roundToOneDecimal(latest.cl_total.percentile);
+  return {
+    year: latest.year,
+    as_of_date: latest.as_of_date,
+    distribution_year: latest.distribution_year,
+    net_worth: latest.net_worth,
+    fin_net_worth: latest.fin_net_worth,
+    percentile,
+    top_percent: percentile == null ? null : roundToOneDecimal(100 - percentile),
+    financial_percentile:
+      latest.cl_financial.percentile == null ? null : roundToOneDecimal(latest.cl_financial.percentile),
+  };
+}
+
+/**
+ * Every benchmark country by a row's percentile, highest first; a country the net worth is below
+ * the support of goes last. A stable sort: countries with the same standing keep the list's order.
+ */
+export function wealthBenchmarkOrderOf(latest: WealthPercentileYearRow): WealthBenchmarkCountry[] {
+  return [...WEALTH_BENCHMARK_COUNTRIES].sort(
+    (a, b) => (latest.benchmarks[b].percentile ?? -1) - (latest.benchmarks[a].percentile ?? -1)
+  );
 }
 
 export function buildWealthPercentilePayload(unit: DisplayUnitCode = "clp"): WealthPercentilePayload {
@@ -197,6 +268,11 @@ export function buildWealthPercentilePayload(unit: DisplayUnitCode = "clp"): Wea
       fx_date: fxRow.date,
       interpolated: clRecord.interpolated === true,
       reconstructed: clRecord.reconstructed === true,
+      notes: [
+        ...(distributionYear < year ? (["latest_distribution"] as const) : []),
+        ...(clRecord.interpolated === true ? (["interpolated"] as const) : []),
+        ...(clRecord.reconstructed === true ? (["reconstructed"] as const) : []),
+      ],
       clp_per_unit: clpPerUnit,
       net_worth: Math.round(netWorthClp / clpPerUnit),
       fin_net_worth: Math.round(finNetWorthClp / clpPerUnit),
@@ -211,7 +287,26 @@ export function buildWealthPercentilePayload(unit: DisplayUnitCode = "clp"): Wea
     });
   }
 
-  return { unit, rows };
+  const latest = rows[rows.length - 1];
+  if (!latest) throw new Error("wealthPercentile: no year between the portfolio start and today");
+  const chart = rows.map(
+    (r): WealthPercentileChartPoint => ({
+      year: r.year,
+      cl_total: r.cl_total.percentile,
+      cl_financial: r.cl_financial.percentile,
+      benchmarks: Object.fromEntries(
+        WEALTH_BENCHMARK_COUNTRIES.map((c) => [c, r.benchmarks[c].percentile])
+      ) as Record<WealthBenchmarkCountry, number | null>,
+    })
+  );
+
+  return {
+    unit,
+    today: wealthTodayOf(latest),
+    benchmark_order: wealthBenchmarkOrderOf(latest),
+    rows: [...rows].reverse(),
+    chart,
+  };
 }
 
 export type { WealthCountry, WealthMode };

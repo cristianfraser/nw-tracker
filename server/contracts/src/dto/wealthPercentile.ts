@@ -42,6 +42,8 @@ export interface WealthPercentileYearRow {
   interpolated: boolean;
   /** CL distribution is an own reconstruction (2025), not an official UBS figure. */
   reconstructed: boolean;
+  /** What to say about the distribution behind the row, in the order shown; empty for a printed databook year. */
+  notes: WealthDistributionNote[];
   /** CLP per one unit of the response's `unit` at the row's year-end (1 for CLP, the observado for USD). */
   clp_per_unit: number;
   /** Net worth in the response's `unit`. */
@@ -53,8 +55,44 @@ export interface WealthPercentileYearRow {
   benchmarks: Record<WealthBenchmarkCountry, WealthPercentileCell>;
 }
 
+/**
+ * `latest_distribution`: the year has no databook yet and is placed in the newest one;
+ * `interpolated`: parameters bridged across the 2022→2025 methodology break;
+ * `reconstructed`: Chile's distribution is an own reconstruction, not a printed UBS figure.
+ */
+export type WealthDistributionNote = "latest_distribution" | "interpolated" | "reconstructed";
+
+/** One year of the chart: the percentile (0–100, null below support) of each line. */
+export interface WealthPercentileChartPoint {
+  year: number;
+  cl_total: number | null;
+  cl_financial: number | null;
+  benchmarks: Record<WealthBenchmarkCountry, number | null>;
+}
+
+/** The page's headline: the newest row's standing in Chile, rounded to the decimal shown. */
+export interface WealthPercentileToday {
+  year: number;
+  as_of_date: string;
+  distribution_year: number;
+  net_worth: number;
+  fin_net_worth: number;
+  /** Total net worth in Chile's distribution, one decimal; null below support. */
+  percentile: number | null;
+  /** 100 − `percentile`, one decimal. */
+  top_percent: number | null;
+  /** Financial net worth in Chile's financial-wealth distribution, one decimal. */
+  financial_percentile: number | null;
+}
+
 /** `GET /api/wealth-percentile?unit=` */
 export interface WealthPercentileResponse {
   unit: DisplayUnitCode;
+  today: WealthPercentileToday;
+  /** Every benchmark country, by today's percentile, highest first. */
+  benchmark_order: WealthBenchmarkCountry[];
+  /** One row per year, newest first (the year list). */
   rows: WealthPercentileYearRow[];
+  /** The same years, oldest first (the chart). */
+  chart: WealthPercentileChartPoint[];
 }
