@@ -27,8 +27,8 @@ import { requestExpenseLinkSync } from "../expenseLinkSync.js";
 // Registers the expense-link sync the finish asks for.
 import "../expenseAssignmentWrites.js";
 import type { CardCanonicalStatement } from "nw-tracker-contracts";
-import { mergeCardStatements, type CcAccountImportMergeResult } from "../ccInstallmentLedgerMerge.js";
-import type { CcStatementsMergeOpts } from "../ccStatementsImport.js";
+import { mergeCardStatements } from "../ccInstallmentLedgerMerge.js";
+import { importStatementDocuments, type StatementDocumentsImportResult } from "./statementLinePlanApply.js";
 import type { CcImportFlowItem, SkippedCcImportFlowItem } from "../ccStatementsImport.js";
 import {
   creditCardMasterMetaForAccount,
@@ -117,21 +117,20 @@ export function deleteLines(
 }
 
 /**
- * Canonical statements (PDF, JSON, the parsed corpus): they replace the stored copies of the same
- * statements (`replaceStatementKeys`), the plans and the bucket follow.
+ * Canonical statements (PDF, JSON, the parsed corpus, an estimate): they restate the stored copies
+ * of the same statements (`replaceStatementKeys`) and the open bucket they bill — rows on file stay
+ * and take the document's line, only what differs is written (`statementLinePlanApply.ts`); the
+ * plans and the bucket follow. A document already on file as it states writes nothing.
  */
 export function replaceStatementLines(
   accountId: number,
   statements: readonly CardCanonicalStatement[],
-  opts: { replaceStatementKeys: Set<string>; replaceLedger?: boolean; statements?: CcStatementsMergeOpts }
-): CcAccountImportMergeResult {
-  return withCardLineSession(accountId, "this statement import", () =>
-    mergeCardStatements(accountId, statements, {
-      replaceLedger: opts.replaceLedger ?? false,
-      replaceStatementKeys: opts.replaceStatementKeys,
-      statements: opts.statements,
-    })
-  );
+  opts: { replaceStatementKeys: Set<string>; replaceLedger?: boolean }
+): StatementDocumentsImportResult {
+  return importStatementDocuments(accountId, statements, {
+    replaceLedger: opts.replaceLedger ?? false,
+    replaceStatementKeys: opts.replaceStatementKeys,
+  });
 }
 
 function assertCreditCardAccount(accountId: number): void {

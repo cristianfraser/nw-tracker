@@ -15,6 +15,7 @@ export type CcStatementImportAccountLog = {
   csv_rows: number;
   statements_merged: number;
   lines_inserted: number;
+  lines_restated: number;
   lines_skipped_duplicate: number;
   lines_skipped_installment_overlap: number;
   purchase_upserts: number;
@@ -50,6 +51,8 @@ export function buildCcStatementImportAccountLog(
   stats: {
     statements_merged: number;
     lines_inserted: number;
+    /** Rows on file the statements restated in place. */
+    lines_restated: number;
     lines_skipped_duplicate: number;
     lines_skipped_installment_overlap: number;
     purchase_upserts: number;
@@ -61,9 +64,9 @@ export function buildCcStatementImportAccountLog(
   const warnings: string[] = [];
   if (lineCount === 0) {
     warnings.push("no CSV rows for this account in the import batch");
-  } else if (stats.lines_inserted === 0 && stats.lines_skipped_duplicate === 0) {
+  } else if (stats.lines_inserted === 0 && stats.lines_restated === 0 && stats.lines_skipped_duplicate === 0) {
     warnings.push("CSV rows present but no statement lines inserted — check parse/organize");
-  } else if (stats.lines_inserted === 0 && stats.lines_skipped_duplicate > 0) {
+  } else if (stats.lines_inserted === 0 && stats.lines_restated === 0 && stats.lines_skipped_duplicate > 0) {
     warnings.push("all lines skipped as duplicates — statement may already be imported");
   }
   for (const pdf of pdfs) {
@@ -92,7 +95,7 @@ export function formatCcStatementImportLogBody(log: CcStatementImportRunLog): st
   for (const acc of log.accounts) {
     lines.push(
       `\nAccount ${acc.account_id} (${acc.account_label}): ${acc.csv_rows} CSV row(s), ` +
-        `${acc.statements_merged} statement(s), ${acc.lines_inserted} line(s) inserted, ` +
+        `${acc.statements_merged} statement(s), ${acc.lines_inserted} line(s) inserted, ${acc.lines_restated} restated, ` +
         `${acc.lines_skipped_duplicate} duplicate skip(s), ` +
         `${acc.purchase_upserts} purchase(s), ${acc.payment_upserts} payment(s).`
     );

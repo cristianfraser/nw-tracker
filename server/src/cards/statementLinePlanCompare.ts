@@ -1,7 +1,8 @@
 /**
- * The statement-line plan against today's import (report only): plans the import, then runs
- * today's import (`replaceStatementLines`, the statement path's funnel) inside a transaction that is
- * rolled back, and compares the end states. Every bare flow is first held by a probe row
+ * The statement-line plan against the import it replaced (report only): plans the import, then runs
+ * the listing merge on the statements («today's import» below: `mergeCardStatements`, insert every
+ * line then settle the bucket and adopt — the statement path until the plan took over, kept until
+ * keep-rows phase 4 as the reference) inside a transaction that is rolled back, and compares the end states. Every bare flow is first held by a probe row
  * (`flow_link_rejections` against a throwaway expense entry: a holding table no import matcher reads
  * and a merge never refuses) inside that transaction, so a
  * flow outlives its row and the pairing today's pipeline performs is observable as «this old row's
@@ -13,8 +14,9 @@
 import type { CardCanonicalStatement } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { clearAggregationCache } from "../cacheRegistry.js";
-import { replaceStatementLines } from "./lineWrites.js";
-import { statementKeysOf } from "../ccInstallmentLedgerMerge.js";
+// Loads the card-line write funnel the merge writes through.
+import "./lineWrites.js";
+import { mergeCardStatements, statementKeysOf } from "../ccInstallmentLedgerMerge.js";
 import { loadCardStatementLinePlanInput } from "./statementLinePlanLoad.js";
 import { planCardStatementLines, type CardStatementLinePlan, type DocLineRef, type FileRowRef } from "./statementLinePlan.js";
 
@@ -47,7 +49,7 @@ export function compareCardStatementImport(
       const before = readLines(accountId);
       const annulmentsBefore = readAnnulments(accountId);
       const writes = trackWrites(["cc_statement_lines", "flows", "cc_annulled_purchases"]);
-      replaceStatementLines(accountId, statements, { replaceStatementKeys });
+      mergeCardStatements(accountId, statements, { replaceLedger: false, replaceStatementKeys, reference: true });
       const written = writes.read();
       const after = readLines(accountId);
       const annulmentsAfter = readAnnulments(accountId);

@@ -110,6 +110,8 @@ export type CardParsedStatementsApplyDetails = {
     statements_unchanged: number;
     statements_imported: number;
     lines_inserted: number;
+    /** Rows on file the statements restated in place. */
+    lines_restated: number;
     lines_skipped_duplicate: number;
     lines_skipped_installment_overlap: number;
     purchase_upserts: number;

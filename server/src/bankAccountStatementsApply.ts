@@ -1,7 +1,6 @@
 import type { BankAccountStatement, BankAccountStatementsApplyDetails, BankAccountStatementsPayload } from "nw-tracker-contracts";
 import {
   checkingAccountId,
-  deleteCheckingCartolaImportsForSourceFile,
   finishCartolaImportRun,
   importCartolaList,
   prunePhantomBoundaryMonthCartolaImports,
@@ -23,7 +22,8 @@ import { movementWrite } from "./movementWrites.js";
  *
  * The cuenta vista prints periods that straddle calendar months, so each of its statements is
  * split by month (`splitCuentaVistaCartolaByCalendarMonth`) after the months its document no
- * longer covers are pruned.
+ * longer covers are pruned. A month imported again (forced, or from a fuller cartola) is restated
+ * in place (`importCheckingCartola`): its rows keep their ids and flows.
  */
 
 /** The import log names a PDF statement `pdf:<file>`, as the cartola import always has. */
@@ -101,19 +101,13 @@ function applyStatements(
       continue;
     }
     pruneStaleCartolaMonthImportsForSourceFile(accountId, cartola.source_file, cartolaCalendarMonths(cartola));
-    if (payload.force_reimport) {
-      const cleared = deleteCheckingCartolaImportsForSourceFile(accountId, cartola.source_file);
-      if (cleared.imports > 0 || cleared.movements > 0) {
-        console.log(`  cleared prior import for ${cartola.source_file}: ${cleared.movements} movement(s), ${cleared.imports} registry row(s)`);
-      }
-    }
     for (const slice of splitCuentaVistaCartolaByCalendarMonth(cartola)) {
       list.push({ cartola: slice, label: `${label}|${slice.period_month}` });
     }
   }
-  // The cuenta vista already cleared a re-imported document's months above.
-  // A dry run is the ingest receiver's rollback.
-  importCartolaList(accountId, list, { dryRun: false, forceReimport: vista ? false : payload.force_reimport }, fileLogs, flows);
+  // A forced re-import imports each month again in place (its rows restated). A dry run is the
+  // ingest receiver's rollback.
+  importCartolaList(accountId, list, { dryRun: false, forceReimport: payload.force_reimport }, fileLogs, flows);
   const result = finishCartolaImportRun(accountId, { dryRun: false }, fileLogs, vista ? "cuenta vista" : undefined);
 
   const report = [

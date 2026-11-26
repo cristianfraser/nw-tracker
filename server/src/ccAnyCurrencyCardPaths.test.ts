@@ -381,7 +381,7 @@ for (const fx of FIXTURES) {
       try {
         const written = applyCardStatementToAccount(cardId, statementPayload(64.13));
         expect(written.statements.map((s) => [s.currency, s.outcome])).toEqual([[fx.currency, "written"]]);
-        expect(written.written).toEqual({ currencies: [fx.currency], lines_inserted: 1 });
+        expect(written.written).toEqual({ currencies: [fx.currency], lines_inserted: 1, lines_restated: 0 });
         // The main statement: the payment is folded into the header, the line is in the card's currency.
         expect(stored()).toEqual([
           {

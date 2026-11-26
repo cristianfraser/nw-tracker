@@ -368,6 +368,8 @@ describe("planCardStatementLines (pure)", () => {
   function input(file: PlanFileLine[], docLines: { day: string; iso: string; merchant: string; amount: number }[]): CardStatementLinePlanInput {
     return {
       account_id: 1,
+      headers_on_file: false,
+      document_plans_new: 0,
       statements: [
         { id: 20, key: "santander\tst.pdf\t20/06/2026", source_kind: "statement_pdf", currency: "clp", bucket_billing_month: null },
         { id: 10, key: "santander\timport:web-paste|open|2026-06\t20/06/2026", source_kind: "listing_open", currency: "clp", bucket_billing_month: "2026-06" },

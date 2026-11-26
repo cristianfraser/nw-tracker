@@ -21,8 +21,8 @@
  * pending-review) is listed and left alone.
  *
  * Report by default. `--apply` repairs each account in one transaction: the copies are deleted
- * (their lines cascade) and each P is re-imported through `mergeCardStatements` with its
- * lines replaced — the same merge the importer runs, so every import gate (reconcile, feed closes,
+ * (their lines cascade) and each P is re-imported through `importStatementDocuments` restating
+ * its lines — the same import the importer runs, so every import gate (reconcile, feed closes,
  * valuations) applies — and the converted card payments that had evidence before must still find
  * it afterwards (`assertCcPaymentEvidenceKept`), else the whole account rolls back.
  *
@@ -41,7 +41,9 @@ import {
   type CardCanonicalStatement,
 } from "nw-tracker-contracts";
 import { ccImportFlowItemFromLine } from "../src/ccStatementsImport.js";
-import { mergeCardStatements } from "../src/ccInstallmentLedgerMerge.js";
+// Loads the card-line write funnel the import writes through.
+import "../src/cards/lineWrites.js";
+import { importStatementDocuments } from "../src/cards/statementLinePlanApply.js";
 import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { padCcStatementDate } from "../src/ccStatementJsonSource.js";
 import {
@@ -240,7 +242,7 @@ for (const [accountId, list] of byAccount) {
   const result = db.transaction(() => {
     const before = ccPaymentPairingIdsWithEvidence(accountId);
     for (const pl of list) delStatement.run(pl.copy.id);
-    const merged = mergeCardStatements(accountId, list.map((pl) => pl.target.statement), {
+    const merged = importStatementDocuments(accountId, list.map((pl) => pl.target.statement), {
       replaceLedger: false,
       replaceStatementKeys: new Set(list.map((pl) => pl.target.key)),
     });

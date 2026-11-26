@@ -31,6 +31,7 @@ const SKIP_REASON_KEY: Record<string, string> = {
   superseded_by_cartola: "accountDetail.import.resultSkipReasonSupersededByCartola",
   superseded_by_transfer: "accountDetail.import.resultSkipReasonSupersededByTransfer",
   superseded_by_mail: "accountDetail.import.resultSkipReasonSupersededByMail",
+  restated: "accountDetail.import.resultSkipReasonRestated",
 };
 
 function isFlowItem(v: unknown): v is ImportFlowItem {
@@ -113,6 +114,7 @@ function summaryCountParts(data: Record<string, unknown>, t: TFn): string[] {
   };
   push("summaryParsed", numField(data, "lines_parsed", "lineCount"), true);
   push("summaryInserted", numField(data, "inserted", "linesInserted"), true);
+  push("summaryRestated", numField(data, "restated", "linesRestated"));
   push("summarySkippedDuplicate", numField(data, "skipped_duplicate", "linesSkippedDuplicate"), true);
   push("summarySkippedFuzzyDuplicate", numField(data, "skipped_fuzzy_duplicate", "linesSkippedFuzzyDuplicate"));
   push("summarySkippedInstallmentOverlap", numField(data, "skipped_installment_overlap", "linesSkippedInstallmentOverlap"));

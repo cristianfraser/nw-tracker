@@ -169,7 +169,7 @@ export function applyCardStatementToAccount(accountId: number, payload: CardIssu
   const toWrite = pending.filter((r) => r.write != null);
   if (toWrite.length > 0) {
     const result = writeSantanderStatements(accountId, toWrite.map((r) => r.write!));
-    written = { currencies: result.currencies, lines_inserted: result.lineCount };
+    written = { currencies: result.currencies, lines_inserted: result.linesInserted, lines_restated: result.linesRestated };
     for (const review of toWrite) {
       const post = diffStatementAgainstLedger(accountId, statementDate, review.statement);
       const unexplained = unexplainedDifferences(post);
@@ -177,7 +177,9 @@ export function applyCardStatementToAccount(accountId: number, payload: CardIssu
         throw new Error(`Post-write verification failed for ${post.file}: ${unexplained} unexplained difference(s)`);
       }
       review.outcome = "written";
-      review.report.push(`  ✓ written (${result.lineCount} line(s) inserted across ${result.currencies.join("+")}), post-write verification clean`);
+      review.report.push(
+        `  ✓ written (${result.linesInserted} line(s) inserted, ${result.linesRestated} restated in place, across ${result.currencies.join("+")}), post-write verification clean`
+      );
     }
   }
   return {

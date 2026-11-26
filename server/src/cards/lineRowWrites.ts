@@ -132,6 +132,13 @@ const MONEY_OR_DAY = new Set<string>([
 
 const same = (a: unknown, b: unknown): boolean => (a ?? null) === (b ?? null) || (typeof a === "number" && typeof b === "number" && a === b);
 
+/** Whether line `lineId` already states exactly the stored document line `row` (a restate would write nothing). */
+export function cardLineStatesRow(lineId: number, row: StoredCardLine): boolean {
+  const stored = db.prepare(`SELECT ${STORED.join(", ")} FROM cc_statement_lines WHERE id = ?`).get(lineId) as StoredCardLine | undefined;
+  if (!stored) throw new Error(`card line ${lineId}: gone`);
+  return STORED.every((c) => same(stored[c], row[c]));
+}
+
 export type CardLineRestateOutcome = {
   before: LineBefore;
   /** Nothing differed: nothing was written. */

@@ -43,7 +43,9 @@ export type SkippedImportFlowReason =
   | "superseded_by_transfer"
   /** A credit already written from the transfer's mail (`transfer_notice_movements`). */
   | "superseded_by_mail"
-  | "already_present";
+  | "already_present"
+  /** A row on file the cartola restated in place (the daily listing's row of the movement). */
+  | "restated";
 
 export type SkippedImportFlowItem = ImportFlowItem & { reason: SkippedImportFlowReason };
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
+import { importCheckingCartolaInsertThenPrune } from "./checkingCartolaLegacyImport.js";
 import { movementNote, type ParsedCheckingCartola, type ParsedCheckingMovement } from "./checkingCartolaParse.js";
 import { partialMovementNote } from "./checkingPartialMovementsImport.js";
 import { insertBankPesoMovement, insertMovement, redateMovementKeepingBankDay } from "./movementWrites.js";
@@ -16,7 +17,7 @@ import { buildExpenseKey } from "./expenseKeys.js";
 
 /**
  * The cartola plan applied (`applyCheckingCartolaPlan`) against today's import
- * (`importCheckingCartola`), each on its own copy of the same fixture (a rolled-back transaction):
+ * it replaced (`importCheckingCartolaInsertThenPrune`, kept until keep-rows phase 4), each on its own copy of the same fixture (a rolled-back transaction):
  * the same movements (day, amount, note, kind, bank posting), the same month record and balance,
  * the same assignments per movement; a kept daily row keeps its id, flow and arrival stamp, its
  * listing staying on the flow as history; its flow states the cartola's wording (today the daily
@@ -138,7 +139,7 @@ describe("cartola plan applied, against today's import", () => {
     const kept = plan.keep.map((k) => k.row_id);
     const keptBefore = kept.map(rowState);
     const today = rolledBack(() => {
-      importCheckingCartola(checking, c);
+      importCheckingCartolaInsertThenPrune(checking, c);
       return ledgerFacts();
     });
     const applied = rolledBack(() => {

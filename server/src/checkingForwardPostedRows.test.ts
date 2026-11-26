@@ -14,6 +14,8 @@ import {
 import { applyForwardPostedRedates, planForwardPostedRedates } from "./forwardPostedCheckingRedate.js";
 import { IngestRefusal } from "./ingestReceiver.js";
 import { bankPostedOn, occurredOnBasis } from "./movementBankPostings.js";
+import { insertBankPesoMovement } from "./movementWrites.js";
+import { dailyListingFacts } from "./movementListingFacts.js";
 
 // Santander's bank day ends at 14:00: a movement after the cutoff is listed under the next
 // workday. The listing is stored on the day it was read, the bank's day kept as posting day.
@@ -112,12 +114,14 @@ describe("a recent-movements row the bank dated after the day the listing was re
       notes: [],
     };
     try {
+      const dailyId = stored(account, late)!.id;
       const imported = importCheckingCartola(account, cartola);
-      expect(imported.partialsRemoved).toBe(1);
+      expect(imported.partialsRestated).toBe(1);
       expect(stored(account, late)).toBeUndefined();
       const official = db
         .prepare(`SELECT id, occurred_on FROM movements WHERE account_id = ? AND note LIKE ?`)
         .get(account, `import:cartola|1801-03|%${PREFIX}%`) as { id: number; occurred_on: string };
+      expect(official.id).toBe(dailyId);
       expect(official.occurred_on).toBe("1801-03-15");
       expect(bankPostedOn(official.id, account)).toBe("1801-03-16");
       expect(occurredOnBasis(official.id, account)).toBe("fetch");
@@ -172,12 +176,7 @@ describe("re-dating rows stored before the fetch-day rule", () => {
     const replaced = row("1801-06-12", -4_000, "replaced by cartola");
     // As the import stored them before the rule: on the bank's day.
     for (const mv of [daily]) {
-      db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`).run(
-        account,
-        mv.amount_clp,
-        mv.occurred_on,
-        partialMovementNote(mv)
-      );
+      insertBankPesoMovement({ accountId: account, amount: mv.amount_clp, occurredOn: mv.occurred_on, note: partialMovementNote(mv), flowKind: null, listed: dailyListingFacts(mv) });
     }
     const cartola: ParsedCheckingCartola = {
       source_file: `${PREFIX}-cartola-06.xlsx`,

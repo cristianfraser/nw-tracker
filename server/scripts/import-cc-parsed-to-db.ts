@@ -232,6 +232,7 @@ function main() {
       buildCcStatementImportAccountLog(accountId, accountLabelForId(accountId), accountRecords, {
         statements_merged: statementCount,
         lines_inserted: statementLineCount,
+        lines_restated: 0,
         lines_skipped_duplicate: linesSkippedDuplicate,
         lines_skipped_installment_overlap: linesSkippedInstallmentOverlap,
         purchase_upserts: purchaseUpserts,

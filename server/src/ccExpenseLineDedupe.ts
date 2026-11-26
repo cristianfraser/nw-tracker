@@ -25,10 +25,9 @@ const dbCheckDedupeKey = db.prepare(
    LIMIT 1`
 );
 
-// Web-paste bucket lines are NOT durable evidence for a PDF statement import: the same merge
-// deletes them right after (`reconcileOpenWebPasteAfterPdfImports`), so a skip against one
-// destroys the purchase from both places — the 2026-08 ·0101 facturación lost 9 lines
-// (1.xxx.xxx CLP) this way. The listing kinds are `ccStatementSourceKind.ts`'s.
+// Web-paste bucket lines are no twins of a statement's lines: the statement settles its bucket
+// (the billed bucket line restated by its statement line), so a statement-side scan skips them.
+// The listing kinds are `ccStatementSourceKind.ts`'s.
 const dbCheckDedupeKeyNoWebPaste = db.prepare(
   `SELECT 1 AS o FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id

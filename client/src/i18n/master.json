@@ -3018,6 +3018,10 @@
         "en": "already entered from the transfer e-mail",
         "es": "ya ingresado desde el correo de la transferencia"
       },
+      "resultSkipReasonRestated": {
+        "en": "already on file: kept, as the document states it",
+        "es": "ya registrado: se conserva como lo indica el documento"
+      },
       "resultCuotaTag": {
         "en": "installment {{cuota}}",
         "es": "cuota {{cuota}}"
@@ -3029,6 +3033,10 @@
       "summaryInserted": {
         "en": "inserted: {{n}}",
         "es": "insertados: {{n}}"
+      },
+      "summaryRestated": {
+        "en": "restated in place: {{n}}",
+        "es": "actualizados en su lugar: {{n}}"
       },
       "summarySkippedDuplicate": {
         "en": "skipped (duplicate): {{n}}",

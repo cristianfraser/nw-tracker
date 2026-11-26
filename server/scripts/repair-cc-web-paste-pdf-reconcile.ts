@@ -1,46 +1,15 @@
 /**
- * Settle the `open|{M}` web-paste bucket against month M's statement(s) — every currency once M is
- * fully closed, only the arrived twin's currency before (`reconcileOpenWebPasteAfterPdfClose`) —
- * then re-sync the card's valuation stamps from the earliest deleted line.
+ * Refused: a statement settles its open bucket when it is imported (`importStatementDocuments`,
+ * `cards/statementLinePlanApply.ts`) — the bucket lines it bills are restated in place, the others
+ * annulled or moved on. This repair settled a month after the fact by deleting the billed bucket
+ * lines, which would now delete rows the statement keeps. To re-settle a bucket, send the statement
+ * again (`import:cc-parsed -- --full`, or the statement JSON apply): a line the earlier import did
+ * not settle is settled by the plan, and a statement already settled writes nothing.
  *
- *   npm run repair:cc-web-paste-pdf-reconcile -w nw-tracker-server -- --account-id=32 --billing-month=2026-06
- *   npm run repair:cc-web-paste-pdf-reconcile -w nw-tracker-server -- --account-id=32 --billing-month=2026-06 --apply
+ *   npm run repair:cc-web-paste-pdf-reconcile -w nw-tracker-server -- …   (exits 1)
  */
-// Loads the card-line write funnel the reconcile writes through (as the server does at boot).
-import "../src/cards/lineWrites.js";
-import { reconcileOpenWebPasteAfterPdfClose } from "../src/ccOpenWebPastePdfReconcile.js";
-import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
-
-function readArg(name: string): string | null {
-  const prefix = `--${name}=`;
-  const hit = process.argv.find((a) => a.startsWith(prefix));
-  return hit ? hit.slice(prefix.length).trim() : null;
-}
-
-function main(): void {
-  const accountIdRaw = readArg("account-id");
-  const billingMonth = readArg("billing-month");
-  if (!accountIdRaw || !billingMonth) {
-    console.error("Usage: --account-id=N --billing-month=YYYY-MM [--apply]");
-    process.exit(1);
-  }
-  const accountId = Number(accountIdRaw);
-  if (!Number.isFinite(accountId) || accountId <= 0) {
-    console.error(`Invalid --account-id=${accountIdRaw}`);
-    process.exit(1);
-  }
-  const dryRun = !process.argv.includes("--apply");
-  const result = reconcileOpenWebPasteAfterPdfClose(accountId, billingMonth, { dryRun });
-  if (!dryRun && (result.deleted_count > 0 || result.moved_count > 0)) {
-    // The deleted lines were owed-walk evidence on their own dates: stamps after them are stale.
-    upsertCreditCardValuationsFromLedger(accountId, {
-      affectedEvidenceFromYmd: result.earliest_deleted_iso,
-    });
-  }
-  console.log(JSON.stringify(result, null, 2));
-  if (dryRun && result.deleted_count > 0) {
-    console.log("Dry run only — pass --apply to delete matched web-paste lines.");
-  }
-}
-
-main();
+console.error(
+  "repair-cc-web-paste-pdf-reconcile: refused — a statement import settles its bucket in place; " +
+    "re-send the statement (import:cc-parsed -- --full, or the statement JSON apply) instead."
+);
+process.exit(1);

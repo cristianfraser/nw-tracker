@@ -9,7 +9,8 @@ import {
   archivedCreditCardStatementPdfFileName,
   canonicalCcStatementPdfName,
 } from "./importSyncDocumentFilePath.js";
-import { mergeCardStatements, statementKeysOf } from "./ccInstallmentLedgerMerge.js";
+import { statementKeysOf } from "./ccInstallmentLedgerMerge.js";
+import { importStatementDocuments } from "./cards/statementLinePlanApply.js";
 import type { CcImportFlowItem, SkippedCcImportFlowItem } from "./ccStatementsImport.js";
 import { cardAccountForStatement, cardLast4OfStatement } from "./cards/documentAccount.js";
 
@@ -28,6 +29,8 @@ export type CcStatementPdfImportResult = {
   /** Flat counters + per-line arrays — the shape the import panel reads (parity with checking). */
   lines_parsed: number;
   inserted: number;
+  /** Rows on file the statements restated in place (their open-bucket lines, a re-imported copy). */
+  restated: number;
   skipped_duplicate: number;
   skipped_fuzzy_duplicate: number;
   skipped_installment_overlap: number;
@@ -200,7 +203,7 @@ export async function importCcStatementPdfsForAccount(
     }
 
     const replaceKeys = statementKeysOf(statements);
-    const merged = mergeCardStatements(accountId, statements, {
+    const merged = importStatementDocuments(accountId, statements, {
       replaceStatementKeys: replaceKeys,
       replaceLedger: false,
     });
@@ -218,6 +221,7 @@ export async function importCcStatementPdfsForAccount(
       csv_rows: lineCount,
       lines_parsed: lineCount,
       inserted: merged.statements.linesInserted,
+      restated: merged.statements.linesRestated,
       skipped_duplicate: merged.statements.linesSkippedDuplicate,
       skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,
       skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,

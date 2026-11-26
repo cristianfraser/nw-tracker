@@ -3,15 +3,15 @@
  *
  * Builds the canonical statements of a `card.statement` (the fetched statement JSON, decoded by
  * ingest: `ingest/src/santander/statementJson.ts`) and writes them through
- * the SAME pipeline as PDF statements (`mergeCardStatements`) — reconcile gate,
- * installment ledger, web-paste supersede, traspaso links and valuation re-sync included. A
- * JSON statement is a real statement (it counts toward facturación close and open-bucket
- * supersede exactly like a PDF, via its `source_kind`); the PDF stays the permanent
- * archive and the cross-check when it arrives later.
+ * the SAME pipeline as PDF statements (`importStatementDocuments`) — reconcile gate,
+ * installment ledger, the open bucket's settlement, traspaso links and valuation re-sync included.
+ * A JSON statement is a real statement (it counts toward facturación close and settles the open
+ * bucket exactly like a PDF, via its `source_kind`); the PDF stays the permanent archive and the
+ * cross-check when it arrives later.
  *
  * Ownership guard: a (close, currency) already written from a PDF is never rewritten from
- * JSON — those statements get the report-only diff. The symmetric PDF-side guard lives in
- * `mergeCardStatements` (drops PDF records for JSON-owned closes).
+ * JSON — those statements get the report-only diff. The PDF-side rule lives in the statement
+ * import (`jsonStatementsSupersededByPdf`: a PDF takes over a JSON-owned close).
  *
  * Field mapping was validated empirically against the 2026-07-23 facturación (card ·0901,
  * statements 321/322) — see `ingest/src/santander/statementJson.ts` for the per-field traps. Header
@@ -32,7 +32,8 @@
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { padCcStatementDate, santanderJsonSourcePdf } from "./ccStatementJsonSource.js";
-import { mergeCardStatements, statementKeysOf } from "./ccInstallmentLedgerMerge.js";
+import { statementKeysOf } from "./ccInstallmentLedgerMerge.js";
+import { importStatementDocuments } from "./cards/statementLinePlanApply.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
 import { db } from "./db.js";
 
@@ -355,7 +356,10 @@ export type SantanderStatementWriteResult = {
   accountId: number;
   statementDate: string;
   currencies: string[];
-  lineCount: number;
+  /** Lines the facturación's documents wrote as new rows. */
+  linesInserted: number;
+  /** Rows on file they restated in place (an open-bucket line, the close's earlier copy). */
+  linesRestated: number;
 };
 
 /** Write one facturación (every currency together, so a traspaso month links atomically). */
@@ -375,7 +379,7 @@ export function writeSantanderStatements(
   for (const last4 of new Set(statements.map((st) => st.card_last4 ?? ""))) {
     assertNoCardRoutingConflict(accountId, last4 || null);
   }
-  const merged = mergeCardStatements(accountId, statements, {
+  const merged = importStatementDocuments(accountId, statements, {
     replaceLedger: false,
     replaceStatementKeys: statementKeysOf(statements),
   });
@@ -383,7 +387,8 @@ export function writeSantanderStatements(
     accountId,
     statementDate: statements[0]!.close,
     currencies: [...new Set(statements.map((st) => requireCardCurrency(st.currency, accountId, "card.statement")))],
-    lineCount: merged.statements.linesInserted,
+    linesInserted: merged.statements.linesInserted,
+    linesRestated: merged.statements.linesRestated,
   };
 }
 

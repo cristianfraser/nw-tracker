@@ -8,12 +8,14 @@ import { clearAggregationCache } from "../cacheRegistry.js";
 import { statementKeysOf } from "../ccInstallmentLedgerMerge.js";
 import { loadCardStatementLinePlanInput } from "./statementLinePlanLoad.js";
 import { planCardStatementLines, type CardStatementLinePlan } from "./statementLinePlan.js";
-import { applyStatementLinePlan } from "./statementLinePlanApply.js";
+import { applyStatementLinePlan, resolveStatementPlanAmbiguity } from "./statementLinePlanApply.js";
 import { applyLinePlan, replaceStatementLines } from "./lineWrites.js";
+import { mergeCardStatements } from "../ccInstallmentLedgerMerge.js";
+import { annulOpenBucketLines } from "../ccAnnulledPurchases.js";
 
 /**
- * The statement-line plan applied (`applyStatementLinePlan`) against today's import
- * (`replaceStatementLines`), each run on its own copy of the same fixture (a rolled-back
+ * The statement-line plan applied (`applyStatementLinePlan`) against the import it replaced
+ * (`mergeCardStatements`: insert every line, then settle and adopt — kept until keep-rows phase 4), each run on its own copy of the same fixture (a rolled-back
  * transaction): the same ledger facts — the lines and what they state, the statements, the
  * billing-month figures, the annulled purchases, the plans, each line's flow facts and assignments —
  * and only the intended differences: a kept row keeps its id, its flow and its arrival stamp, and
@@ -210,7 +212,7 @@ describe("statement-line plan applied, against today's import", () => {
     const kept = plan.keep.filter((k) => k.why !== "dedupe_key" && k.why !== "fuzzy_duplicate").map((k) => k.row.id);
     const keptBefore = rowsOf(kept);
     const today = rolledBack(() => {
-      replaceStatementLines(accountId, sts, { replaceStatementKeys });
+      mergeCardStatements(accountId, sts, { replaceLedger: false, replaceStatementKeys, reference: true });
       return ledgerFacts();
     });
     const applied = rolledBack(() => {
@@ -380,5 +382,97 @@ describe("statement-line plan applied, against today's import", () => {
     } finally {
       deleteTempCardMaster(other);
     }
+  });
+
+  it("through the import: twin statements arriving on different days restate their own currency's bucket lines; sent again, nothing is written", () => {
+    // The card bills dollars too (a dollar statement on file), so a close waits for both twins.
+    db.prepare(
+      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, card_last4, layout, currency)
+       VALUES (?, 'santander', 'vitest-keep-rows-apply 2026-05-19 tarjeta usd.pdf', '19/05/2026', '20/04/2026', '19/05/2026', ?, 'international_usd', 'usd')`
+    ).run(accountId, LAST4);
+    const pesos = bucketLine("2026-06-03", "FARMACIA CENTRAL", 8_500, { stamp: "2026-06-03T12:00:00.000Z" });
+    const dollars = bucketLine("2026-06-04", "STREAMING CO", 9.99, { currency: "usd" });
+    const flowsBefore = rowsOf([pesos, dollars]);
+    const cuota = line("2026-05-08", "ELECTRO HOGAR", 100_000, {
+      id: "kra-e2e-cuota",
+      installment: { number: 2, count: 3, cuota_amount: 100_000, total_amount: 300_000, interest_rate_text: null, cuota_type: null, plan_id: "vitest-kra-e2e-plan" },
+    });
+    const clp = statement([line("2026-06-04", "FARMACIA CENTRAL (T)", 8_500, { id: "kra-e2e-a" }), cuota]);
+    const usd = statement([line("2026-06-04", "STREAMING CO", 9.99, { currency: "usd", id: "kra-e2e-b" })], "usd");
+    const onBucket = (id: number) =>
+      (db.prepare(`SELECT s.source_pdf FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE l.id = ?`).get(id) as { source_pdf: string }).source_pdf;
+
+    // The pesos statement first: its bucket line is restated, the dollar one waits for its twin.
+    const first = replaceStatementLines(accountId, [clp], { replaceStatementKeys: statementKeysOf([clp]) });
+    expect(first.keep_rows.restated).toEqual([pesos]);
+    expect(onBucket(pesos)).toBe(PDF_CLP);
+    expect(onBucket(dollars)).toBe(openWebPasteSourcePdf("2026-06"));
+    // The dollar statement the next day.
+    vi.setSystemTime(new Date("2026-06-26T15:00:00Z"));
+    const second = replaceStatementLines(accountId, [usd], { replaceStatementKeys: statementKeysOf([usd]) });
+    expect(second.keep_rows.restated).toEqual([dollars]);
+    expect(onBucket(dollars)).toBe(PDF_USD);
+    expect(rowsOf([pesos, dollars])).toEqual(flowsBefore);
+
+    // The corpus re-sent: both statements, cuota line included, are on file as they state.
+    const changes = () => ({
+      total: (db.prepare(`SELECT total_changes() AS n`).get() as { n: number }).n,
+      logged: (db.prepare(`SELECT COALESCE(MAX(id), 0) AS n FROM mark_input_changes`).get() as { n: number }).n,
+      metrics: db.prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(rowid), 0) AS m FROM cc_billing_month_metrics WHERE account_id = ?`).get(accountId),
+    });
+    const before = changes();
+    const again = replaceStatementLines(accountId, [clp, usd], { replaceStatementKeys: statementKeysOf([clp, usd]) });
+    expect(again.keep_rows.wrote).toBe(false);
+    expect(again.statements.linesInserted).toBe(0);
+    expect(again.statements.linesRestated).toBe(3);
+    expect(changes()).toEqual(before);
+  });
+
+  /** A bucket line the feed stopped listing, kept as an annulled purchase (its flow, with a category). */
+  function annulledPurchase(iso: string, merchant: string, amount: number): { id: number; flow: number; category: number } {
+    const lineId = bucketLine(iso, merchant, amount);
+    const category = categorize(lineId);
+    const flow = flowOfLineId(lineId);
+    const res = annulOpenBucketLines(accountId, [lineId], { annulledOn: "2026-06-10", basis: "feed_drop", evidence: null });
+    applyLinePlan(accountId, "vitest annul", res.plan);
+    return { id: res.annulled[0]!.id, flow, category };
+  }
+  const flowOfLineId = (id: number) => (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+
+  it("through the import: an annulled purchase the statement bills after all becomes its line, on the annulment's flow", () => {
+    const a = annulledPurchase("2026-06-05", "TIENDA ONLINE", 84_800);
+    const st = statement([line("2026-06-06", "TIENDA ONLINE", 84_800, { id: "kra-e2e-billed" })]);
+    const r = replaceStatementLines(accountId, [st], { replaceStatementKeys: statementKeysOf([st]) });
+    expect(r.keep_rows.annulments_billed).toEqual([a.id]);
+    expect(db.prepare(`SELECT 1 FROM cc_annulled_purchases WHERE id = ?`).get(a.id)).toBeUndefined();
+    const billed = db.prepare(`SELECT l.flow_id FROM cc_statement_lines l WHERE l.parser_row_id = 'kra-e2e-billed'`).get() as { flow_id: number };
+    expect(billed.flow_id).toBe(a.flow);
+    expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(a.flow)).toEqual([{ category_id: a.category }]);
+  });
+
+  it("through the import: an annulled purchase the statement refunds with a real credit stays the purchase, credited on the credit's day", () => {
+    const a = annulledPurchase("2026-06-05", "TIENDA ONLINE", 84_800);
+    const st = statement([line("2026-06-15", "TIENDA ONLINE", -84_800, { id: "kra-e2e-credit" })]);
+    const r = replaceStatementLines(accountId, [st], { replaceStatementKeys: statementKeysOf([st]) });
+    expect(r.keep_rows.annulments_credited).toEqual([a.id]);
+    expect(db.prepare(`SELECT bank_credit, annulled_on FROM cc_annulled_purchases WHERE id = ?`).get(a.id)).toEqual({ bank_credit: 1, annulled_on: "2026-06-15" });
+    expect(r.statements.linesInserted).toBe(1);
+  });
+
+  it("an ambiguity with a defined outcome is reported, any other fails naming the rows", () => {
+    const base = planCardStatementLines(loadCardStatementLinePlanInput(accountId, [statement([line("2026-06-02", "ACME STORE", 12_000)])]));
+    const removedRow = { ...base, remove: [{ row: { kind: "line" as const, id: 7 }, why: "replaced_statement_line_gone" as const }] };
+    const unpaired = resolveStatementPlanAmbiguity(
+      { ...removedRow, ambiguous: [{ what: "re-import identity group whose counts differ (left unpaired)", rows: [{ kind: "line", id: 7 }], docs: [] }] },
+      "Account x"
+    );
+    expect(unpaired.unpaired).toEqual([7]);
+    expect(unpaired.plan.ambiguous).toEqual([]);
+    expect(() =>
+      resolveStatementPlanAmbiguity(
+        { ...base, ambiguous: [{ what: "two document lines end on one flow", rows: [{ kind: "line", id: 9 }], docs: [{ statement_key: `santander\t${PDF_CLP}\t19/06/2026`, index: 1 }] }] },
+        "Account x"
+      )
+    ).toThrow(/cannot pair these rows one to one, nothing was written: two document lines end on one flow — rows on file: line 9; document lines: .* line #2/);
   });
 });

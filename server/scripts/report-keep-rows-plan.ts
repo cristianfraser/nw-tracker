@@ -1,11 +1,18 @@
 /**
- * Report only: what the keep-rows planners say an import does, against what today's import does.
- * Plans the documents, runs today's import inside a transaction that is rolled back, and prints the
- * plan (counts per outcome, then each row) and every disagreement between the planner's account of
- * today's end state and the real one. Exits 1 on any disagreement. Never writes.
+ * Report only: what the keep-rows planners say an import does, against the import the plan replaced
+ * (`mergeCardStatements` / `importCheckingCartolaInsertThenPrune`, kept until keep-rows phase 4 as
+ * the reference). Plans the documents, runs the old import inside a transaction that is rolled
+ * back, and prints the plan (counts per outcome, then each row) and every disagreement between the
+ * planner's account of the old end state and the real one. Exits 1 on any disagreement. Never writes.
  *
- *   npx tsx scripts/report-keep-rows-plan.ts --db=<snapshot copy> --account=<id> --statements=<file.json> [--migrate]
- *   npx tsx scripts/report-keep-rows-plan.ts --db=<snapshot copy> --account=<id> --cartola=<file.json> [--migrate]
+ * `--apply-new`: instead, runs the production import (`importStatementDocuments` /
+ * `importCheckingCartola`, the month imported again in place when it is on file) inside a rolled-back
+ * transaction and prints what it would write: rows restated / inserted / folded / removed, arrival
+ * stamps created, whether the card-line session finish ran, the rows changed in all. The tool for
+ * validating a statement or cartola on a snapshot copy before deploying.
+ *
+ *   npx tsx scripts/report-keep-rows-plan.ts --db=<snapshot copy> --account=<id> --statements=<file.json> [--apply-new] [--migrate]
+ *   npx tsx scripts/report-keep-rows-plan.ts --db=<snapshot copy> --account=<id> --cartola=<file.json> [--apply-new] [--migrate]
  *
  * `--statements`: the canonical statements the import hands `mergeCardStatements` (an array of
  * `CardCanonicalStatement`, or a `card.statement` payload in its canonical format —
@@ -64,16 +71,78 @@ console.log(`account: ${accountId}`);
 let disagreements: string[];
 let deviations: string[];
 
-if (statementsFile) {
+async function readStatements(f: string) {
   const { cardCanonicalStatementSchema } = await import("nw-tracker-contracts");
-  const raw = readJson(statementsFile);
+  const raw = readJson(f);
   const list = Array.isArray(raw) ? raw : (raw as { statements?: unknown }).statements;
-  if (!Array.isArray(list)) throw new Error(`${statementsFile}: expected an array of statements or { statements: [...] }`);
-  const statements = list.map((s, i) => {
+  if (!Array.isArray(list)) throw new Error(`${f}: expected an array of statements or { statements: [...] }`);
+  return list.map((s, i) => {
     const parsed = cardCanonicalStatementSchema.safeParse(s);
-    if (!parsed.success) throw new Error(`${statementsFile}: statement ${i}: ${parsed.error.message}`);
+    if (!parsed.success) throw new Error(`${f}: statement ${i}: ${parsed.error.message}`);
     return parsed.data;
   });
+}
+
+function readCartola(f: string): import("../src/checkingCartolaParse.js").ParsedCheckingCartola {
+  const cartola = readJson(f) as import("../src/checkingCartolaParse.js").ParsedCheckingCartola;
+  if (!cartola || typeof cartola.period_month !== "string" || !Array.isArray(cartola.movements)) {
+    throw new Error(`${f}: expected a parsed cartola month ({ period_month, movements: [...], … })`);
+  }
+  return cartola;
+}
+
+if (flag("apply-new")) {
+  const { db } = await import("../src/db.js");
+  await import("../src/cards/lineWrites.js");
+  await import("../src/expenseAssignmentWrites.js");
+  const { importStatementDocuments } = await import("../src/cards/statementLinePlanApply.js");
+  const { statementKeysOf } = await import("../src/ccInstallmentLedgerMerge.js");
+  const { importCheckingCartola, isCheckingCartolaMonthImported } = await import("../src/checkingCartolaImport.js");
+  const statements = statementsFile ? await readStatements(statementsFile) : null;
+  const cartola = cartolaFile ? readCartola(cartolaFile) : null;
+  class RollBack extends Error {}
+  const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+  const totalChanges = () => count(`SELECT total_changes() AS n`);
+  const stamps = () => count(`SELECT COUNT(*) AS n FROM flow_first_seen`);
+  try {
+    db.transaction(() => {
+      const changes0 = totalChanges();
+      const stamps0 = stamps();
+      if (statements) {
+        const r = importStatementDocuments(accountId, statements, { replaceStatementKeys: statementKeysOf(statements) });
+        const k = r.keep_rows;
+        console.log(`statements: ${statements.map((s) => `${s.document} ${s.close} ${s.currency} (${s.lines.length} lines)`).join("; ")}`);
+        console.log(
+          `the new import would write: restated ${k.restated.length} · inserted ${k.inserted.length} · folded ${k.folded.length} · removed ${k.removed.length} · ` +
+            `annulled ${k.annulled.length} · moved ${k.moved.length} · annulments billed ${k.annulments_billed.length} · credited ${k.annulments_credited.length} · unpaired ${k.unpaired.length}`
+        );
+        for (const [what, ids] of Object.entries({ restated: k.restated, inserted: k.inserted, folded: k.folded, removed: k.removed, annulled: k.annulled, moved: k.moved, unpaired: k.unpaired })) {
+          if (ids.length > 0) console.log(`  ${what}: lines ${ids.join(", ")}`);
+        }
+        console.log(`session finish (balances, valuations, financing links): ${k.wrote ? "yes" : "no — nothing changed"}`);
+      } else {
+        const c = cartola!;
+        const replaceMonth = isCheckingCartolaMonthImported(accountId, c.period_month);
+        const r = importCheckingCartola(accountId, c, db, { replaceMonth });
+        console.log(`cartola: ${c.source_file} ${c.period_month} (${c.movements.length} movements${replaceMonth ? "; the month is on file: imported again in place" : ""})`);
+        console.log(
+          `the new import would write: daily rows restated ${r.partialsRestated} · folded ${r.partialsFolded} · removed ${r.partialsRemoved} · ` +
+            `movements inserted ${r.movementsInserted} · kept ${r.movementsSkipped} · cartola rows no longer listed removed ${r.cartolaRowsRemoved}`
+        );
+        console.log(`wrote anything: ${r.wrote ? "yes" : "no"}`);
+      }
+      console.log(`arrival stamps created: ${stamps() - stamps0}`);
+      console.log(`rows changed in all (total_changes): ${totalChanges() - changes0}`);
+      throw new RollBack();
+    })();
+  } catch (e) {
+    if (!(e instanceof RollBack)) throw e;
+  }
+  process.exit(0);
+}
+
+if (statementsFile) {
+  const statements = await readStatements(statementsFile);
   const { compareCardStatementImport } = await import("../src/cards/statementLinePlanCompare.js");
   const r = compareCardStatementImport(accountId, statements);
   const p = r.plan;
@@ -98,14 +167,12 @@ if (statementsFile) {
   disagreements = r.disagreements;
   deviations = r.deviations;
 } else {
-  const cartola = readJson(cartolaFile!) as import("../src/checkingCartolaParse.js").ParsedCheckingCartola;
-  if (!cartola || typeof cartola.period_month !== "string" || !Array.isArray(cartola.movements)) {
-    throw new Error(`${cartolaFile}: expected a parsed cartola month ({ period_month, movements: [...], … })`);
-  }
+  const cartola = readCartola(cartolaFile!);
   const { compareCheckingCartolaImport } = await import("../src/checkingCartolaPlanCompare.js");
   const r = compareCheckingCartolaImport(accountId, cartola);
   const p = r.plan;
   const mv = (i: number) => {
+    if (i < 0) return "no movement";
     const m = cartola.movements[i]!;
     return `#${i} ${m.occurred_on} ${m.amount_clp} «${m.description}»`;
   };

@@ -23,11 +23,16 @@ import { adoptRetiredMovementFlow, type RetiredMovementAdoption } from "./flows/
 import { recordMovementFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { recordBankListingFacts, type BankListingFacts } from "./movementListingFacts.js";
 
-/** Runs an import's movement writes; the expense deposit links re-sync once when it ends. */
+/**
+ * Runs an import's movement writes; the expense deposit links re-sync once when it ends — unless it
+ * wrote nothing (a document already on file as it states), which leaves every link as it was.
+ */
 export function movementWrite<T>(body: () => T): T {
+  const changes = () => (db.prepare(`SELECT total_changes() AS n`).get() as { n: number }).n;
   return withExpenseLinkSyncDeferred(() => {
+    const before = changes();
     const result = body();
-    requestExpenseLinkSync();
+    if (changes() !== before) requestExpenseLinkSync();
     return result;
   });
 }

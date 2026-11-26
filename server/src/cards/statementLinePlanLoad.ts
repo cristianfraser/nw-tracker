@@ -2,13 +2,15 @@
  * Reads what the statement-line planner (`statementLinePlan.ts`) needs for one statement import,
  * from the ledger as it stands. Writes nothing: the facts that depend on the incoming headers (the
  * facturaciones they close, the next cycle's first day, the open month, where the bucket repair
- * moves a line) are read with the headers written inside a savepoint that is rolled back.
+ * moves a line) are read with the headers written inside a savepoint that is rolled back — or, when
+ * every header is on file exactly as the import would write it and no JSON close is taken over
+ * ({@link cardStatementHeadersOnFile}), straight from the ledger, touching nothing at all.
  */
 import type { CardCanonicalStatement } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "../ccStatementSourceKind.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount, type CcStatementRow } from "../ccStatementsDb.js";
-import { statementsByLedgerKey, upsertCcStatementHeader } from "../ccStatementsImport.js";
+import { resolveCcStatementHeader, statementsByLedgerKey, upsertCcStatementHeader } from "../ccStatementsImport.js";
 import { deleteJsonStatementsByIds } from "../ccStatementJsonSource.js";
 import {
   groupInstallmentLoanChains,
@@ -101,6 +103,7 @@ export function loadCardStatementLinePlanInput(
   const byStmt = statementsByLedgerKey(statements);
   const json = jsonStatementsSupersededByPdf(accountId, statements);
   const replaceKeys = new Set<string>([...(opts?.replaceStatementKeys ?? []), ...json.supersededReplaceKeys]);
+  const headersOnFile = json.supersededJsonStatementIds.length === 0 && cardStatementHeadersOnFile(accountId, statements);
 
   const rows = db
     .prepare(
@@ -111,7 +114,7 @@ export function loadCardStatementLinePlanInput(
     )
     .all(accountId) as FileLineRow[];
   const planAmount = new Map(listOneShotLinesForAccount(accountId).map((l) => [l.statement_line_id, l.amount_clp]));
-  const afterHeaders = readFactsAfterHeaders(accountId, statements, byStmt, json.supersededJsonStatementIds, replaceKeys);
+  const afterHeaders = readFactsAfterHeaders(accountId, statements, byStmt, json.supersededJsonStatementIds, replaceKeys, headersOnFile);
   const replacedStatementIds = afterHeaders.replacedStatementIds;
   const refRows = new Map(
     (db.prepare(`${CC_LINE_REF_SELECT} WHERE s.account_id = ?`).all(accountId) as Parameters<typeof ccLineRefFromRow>[0][]).map((r) => [
@@ -208,6 +211,8 @@ export function loadCardStatementLinePlanInput(
 
   return {
     account_id: accountId,
+    headers_on_file: headersOnFile,
+    document_plans_new: documentPlans.length,
     statements: afterHeaders.statements,
     json_superseded_statement_ids: [...json.supersededJsonStatementIds],
     replaced_statement_ids: [...replacedStatementIds].filter((id) => !json.supersededJsonStatementIds.includes(id)),
@@ -233,13 +238,31 @@ function maxLineIdOutside(statementIds: ReadonlySet<number>): number {
   return (db.prepare(`SELECT MAX(id) AS m FROM cc_statement_lines ${where}`).get(...ids) as { m: number | null }).m ?? 0;
 }
 
-/** The facts that depend on the incoming headers, read with them written in a rolled-back savepoint. */
+/**
+ * Whether every statement of the import has its header on file exactly as the import would write it
+ * (`resolveCcStatementHeader`: same row, same columns, same fingerprint). Read only.
+ */
+export function cardStatementHeadersOnFile(accountId: number, statements: readonly CardCanonicalStatement[]): boolean {
+  const byStmt = statementsByLedgerKey(statements);
+  if (byStmt.size === 0) return false;
+  for (const { statement, lines } of byStmt.values()) {
+    const r = resolveCcStatementHeader(accountId, statement, lines);
+    if (r.statementId == null || !r.unchanged) return false;
+  }
+  return true;
+}
+
+/**
+ * The facts that depend on the incoming headers, read with them written in a rolled-back savepoint;
+ * `headersOnFile`: they are on file as the import would write them, read as they stand.
+ */
 function readFactsAfterHeaders(
   accountId: number,
   statements: readonly CardCanonicalStatement[],
   byStmt: ReturnType<typeof statementsByLedgerKey>,
   supersededJsonStatementIds: readonly number[],
-  replaceKeys: ReadonlySet<string>
+  replaceKeys: ReadonlySet<string>,
+  headersOnFile: boolean
 ): {
   statementIdByKey: Map<string, number>;
   /** Statements whose lines the import deletes first: a superseded JSON close, a statement it replaces. */
@@ -250,13 +273,14 @@ function readFactsAfterHeaders(
   bucketRepairMoves: CardStatementLinePlanInput["bucket_repair_moves"];
 } {
   let out: ReturnType<typeof readFactsAfterHeaders> | null = null;
-  try {
-    db.transaction(() => {
-      deleteJsonStatementsByIds(supersededJsonStatementIds);
+  const read = () => {
+      if (!headersOnFile) deleteJsonStatementsByIds(supersededJsonStatementIds);
       const statementIdByKey = new Map<string, number>();
       const replacedStatementIds = new Set<number>(supersededJsonStatementIds);
       for (const [key, { statement, lines }] of byStmt) {
-        const header = upsertCcStatementHeader(accountId, statement, lines);
+        const header = headersOnFile
+          ? { statementId: resolveCcStatementHeader(accountId, statement, lines).statementId!, existed: true }
+          : upsertCcStatementHeader(accountId, statement, lines);
         statementIdByKey.set(key, header.statementId);
         if (header.existed && replaceKeys.has(key)) replacedStatementIds.add(header.statementId);
       }
@@ -306,6 +330,14 @@ function readFactsAfterHeaders(
         openBillingMonth: billingMonthForManualLedgerPurchase(accountId),
         bucketRepairMoves,
       };
+  };
+  if (headersOnFile) {
+    read();
+    return out!;
+  }
+  try {
+    db.transaction(() => {
+      read();
       throw new RollBack();
     })();
   } catch (e) {

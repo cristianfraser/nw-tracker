@@ -2,7 +2,7 @@ import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecor
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { snapshotTables } from "./test/snapshotTables.js";
 import { jsonOwnedClosesForAccount, santanderJsonSourcePdf, statementSourceOwnerForClose } from "./ccStatementJsonSource.js";
-import { mergeCardStatements } from "./ccInstallmentLedgerMerge.js";
+import { importStatementDocuments } from "./cards/statementLinePlanApply.js";
 import { db } from "./db.js";
 import { assertNoCardRoutingConflict, buildSantanderStatement, inheritedStatementCtx, resolveJsonCuotaCanonicalRowId, secondaryStatementIsStaleEcho, writeSantanderStatements } from "./santanderStatementImport.js";
 import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
@@ -215,13 +215,13 @@ describe("santanderStatementImport", () => {
 
     expect(statementSourceOwnerForClose(id, "20/09/2026", "clp")).toBe(null);
     const write = writeSantanderStatements(id, [statement]);
-    expect(write.lineCount).toBe(2);
+    expect(write.linesInserted).toBe(2);
     expect(statementSourceOwnerForClose(id, "20/09/2026", "clp")).toBe("json");
     expect(jsonOwnedClosesForAccount(id).has("20/09/2026\tclp")).toBe(true);
 
-    // Idempotent rewrite: replacement keeps exactly the same two lines.
+    // Idempotent rewrite: the same two lines are kept in place, nothing written again.
     const rewrite = writeSantanderStatements(id, [statement]);
-    expect(rewrite.lineCount).toBe(2);
+    expect([rewrite.linesInserted, rewrite.linesRestated]).toEqual([0, 2]);
     const stored = db
       .prepare(
         `SELECT COUNT(*) AS n FROM cc_statement_lines l
@@ -248,7 +248,7 @@ describe("santanderStatementImport", () => {
       row_id: "vitest-json-guard-1",
       ...over,
     });
-    const merged = mergeCardStatements(id, parsedStatements([
+    const merged = importStatementDocuments(id, parsedStatements([
       pdfRecord({}),
       pdfRecord({
         source_pdf: "vitest-json-guard-2.pdf",
@@ -308,8 +308,8 @@ describe("santanderStatementImport", () => {
       periodFrom: "20/09/2026",
       payBy: "10/11/2026",
     });
-    expect(writeSantanderStatements(id, [september]).lineCount).toBe(1);
-    expect(writeSantanderStatements(id, [october]).lineCount).toBe(1);
+    expect(writeSantanderStatements(id, [september]).linesInserted).toBe(1);
+    expect(writeSantanderStatements(id, [october]).linesInserted).toBe(1);
   });
 
   it("writes one facturación per call", () => {

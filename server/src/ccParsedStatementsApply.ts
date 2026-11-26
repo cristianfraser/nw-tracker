@@ -122,6 +122,7 @@ function applyStatements(
       statements_unchanged: 0,
       statements_imported: 0,
       lines_inserted: 0,
+      lines_restated: 0,
       lines_skipped_duplicate: 0,
       lines_skipped_installment_overlap: 0,
       purchase_upserts: 0,
@@ -148,6 +149,7 @@ function applyStatements(
       });
       statementsMerged = merged.statements.statementCount;
       row.lines_inserted = merged.statements.linesInserted;
+      row.lines_restated = merged.statements.linesRestated;
       row.lines_skipped_duplicate = merged.statements.linesSkippedDuplicate;
       row.lines_skipped_installment_overlap = merged.statements.linesSkippedInstallmentOverlap;
       row.purchase_upserts = merged.ledger.purchaseUpserts;
@@ -164,7 +166,7 @@ function applyStatements(
       }
       report.push(
         `Account ${accountId}: ${row.purchase_upserts} purchases, ${row.payment_upserts} payments, statements ${merged.statements.statementCount} ` +
-          `(${row.lines_inserted} lines), categories restored ${merged.statements.categoriesRestored}, gap-fill ${merged.ledger.gapFilled}.`
+          `(${row.lines_inserted} lines inserted, ${row.lines_restated} restated), categories restored ${merged.statements.categoriesRestored}, gap-fill ${merged.ledger.gapFilled}.`
       );
     } else {
       const chains = groupInstallmentLoanChains(filtered.changed);
@@ -179,6 +181,7 @@ function applyStatements(
       buildCcStatementImportAccountLog(accountId, row.label, accountStatements, {
         statements_merged: statementsMerged,
         lines_inserted: row.lines_inserted,
+        lines_restated: row.lines_restated,
         lines_skipped_duplicate: row.lines_skipped_duplicate,
         lines_skipped_installment_overlap: row.lines_skipped_installment_overlap,
         purchase_upserts: row.purchase_upserts,

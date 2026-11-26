@@ -21,6 +21,7 @@ describe("ccStatementImportLog", () => {
     const acc = buildCcStatementImportAccountLog(35, "4141 santander", parsedStatements(records), {
       statements_merged: 0,
       lines_inserted: 0,
+      lines_restated: 0,
       lines_skipped_duplicate: 0,
       lines_skipped_installment_overlap: 0,
       purchase_upserts: 0,

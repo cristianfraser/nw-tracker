@@ -160,5 +160,10 @@ export type CardStatementApplyDetails = {
     report: string[];
   }[];
   /** Set when this send wrote the facturación. */
-  written: { currencies: string[]; lines_inserted: number } | null;
+  written: {
+    currencies: string[];
+    lines_inserted: number;
+    /** Rows on file the statement restated in place (its open-bucket lines, the close's earlier copy). */
+    lines_restated: number;
+  } | null;
 };

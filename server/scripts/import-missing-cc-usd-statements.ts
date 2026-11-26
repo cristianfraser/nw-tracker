@@ -19,8 +19,9 @@ import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { canonicalStatementsFromParsedRecords, type CardCanonicalStatement } from "nw-tracker-contracts";
 import { cardAccountForStatement } from "../src/cards/documentAccount.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
-import { importCcStatementsMerge } from "../src/ccStatementsImport.js";
-import { recomputeCcBillingMonthBalances } from "../src/ccBillingMonthBalancesRecompute.js";
+// Loads the card-line write funnel the import writes through.
+import "../src/cards/lineWrites.js";
+import { importStatementDocuments } from "../src/cards/statementLinePlanApply.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -142,22 +143,14 @@ function main(): void {
   }
 
   let totalInserted = 0;
-  const touchedAccounts = new Set<number>();
 
   for (const [accountId, records] of byAccount) {
-    const r = importCcStatementsMerge(accountId, records, {
-      replaceAll: false,
-      skipGlobalDedupeKeys: true,
-    });
+    // The statement import (gates, bucket settlement, plans, re-sync) with nothing replaced.
+    const r = importStatementDocuments(accountId, records).statements;
     totalInserted += r.linesInserted;
-    touchedAccounts.add(accountId);
     console.log(
       `Account ${accountId}: +${r.linesInserted} line(s), ${r.statementCount} statement batch(es), dup skip ${r.linesSkippedDuplicate}`
     );
-  }
-
-  for (const accountId of touchedAccounts) {
-    recomputeCcBillingMonthBalances(accountId);
   }
 
   const usdCount = (

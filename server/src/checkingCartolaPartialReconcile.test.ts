@@ -14,6 +14,8 @@ import {
 import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
 import { createRealEstatePlace } from "./flowsRealEstateExpenses.js";
+import { insertBankPesoMovement } from "./movementWrites.js";
+import { dailyListingFacts } from "./movementListingFacts.js";
 import {
   checkingMovementContentMatches,
   parsePartialMovementNote,
@@ -142,10 +144,15 @@ describe("checkingCartolaPartialReconcile", () => {
       `import:cartola|${periodMonth}|%`
     );
 
-    db.prepare(
-      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-       VALUES (?, ?, 'clp', ?, ?, NULL)`
-    ).run(accountId, amountClp, occurredOn, partialNote);
+    // The daily row as the daily listing's import writes it (its listing facts on its evidence).
+    const partialId = insertBankPesoMovement({
+      accountId,
+      amount: amountClp,
+      occurredOn,
+      note: partialNote,
+      flowKind: null,
+      listed: dailyListingFacts({ occurred_on: occurredOn, amount_clp: amountClp, description, document_no: "" }),
+    });
 
     const cartola: ParsedCheckingCartola = {
       source_file: "vitest-partial-reconcile.xlsx",
@@ -167,9 +174,9 @@ describe("checkingCartolaPartialReconcile", () => {
       notes: [],
     };
 
-    const { partialsRemoved, movementsInserted } = importCheckingCartola(accountId, cartola);
-    expect(movementsInserted).toBe(1);
-    expect(partialsRemoved).toBe(1);
+    // The daily row is restated as the cartola's row in place: no row written, none deleted.
+    const { partialsRestated, partialsRemoved, movementsInserted } = importCheckingCartola(accountId, cartola);
+    expect([movementsInserted, partialsRestated, partialsRemoved]).toEqual([0, 1, 0]);
 
     const partial = db
       .prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ?`)
@@ -177,9 +184,10 @@ describe("checkingCartolaPartialReconcile", () => {
     expect(partial).toBeUndefined();
 
     const official = db
-      .prepare(`SELECT note FROM movements WHERE account_id = ? AND note LIKE ?`)
-      .get(accountId, `import:cartola|${periodMonth}|%`) as { note: string };
+      .prepare(`SELECT id, note FROM movements WHERE account_id = ? AND note LIKE ?`)
+      .get(accountId, `import:cartola|${periodMonth}|%`) as { id: number; note: string };
     expect(official.note).toContain(description);
+    expect(official.id).toBe(partialId);
 
     db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(
       accountId,
@@ -215,11 +223,14 @@ describe("checkingCartolaPartialReconcile", () => {
     };
     cleanup();
 
-    const partialId = Number(
-      db
-        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`)
-        .run(accountId, amountClp, occurredOn, partialNote).lastInsertRowid
-    );
+    const partialId = insertBankPesoMovement({
+      accountId,
+      amount: amountClp,
+      occurredOn,
+      note: partialNote,
+      flowKind: null,
+      listed: dailyListingFacts({ occurred_on: occurredOn, amount_clp: amountClp, description, document_no: "" }),
+    });
     db.prepare(
       `INSERT INTO payroll_work_earnings (period_month, employer_name, liquido, source_pdf, movement_id, link_source)
        VALUES (?, 'Vitest Employer', ?, ?, ?, 'auto')`
@@ -229,7 +240,7 @@ describe("checkingCartolaPartialReconcile", () => {
     ).run(partialId);
 
     try {
-      const { partialsRemoved } = importCheckingCartola(accountId, {
+      const { partialsRestated } = importCheckingCartola(accountId, {
         source_file: "vitest-partial-payslip.xlsx",
         period_month: periodMonth,
         period_from: "1801-09-01",
@@ -240,10 +251,12 @@ describe("checkingCartolaPartialReconcile", () => {
         skipped: [],
         notes: [],
       });
-      expect(partialsRemoved).toBe(1);
+      expect(partialsRestated).toBe(1);
       const official = db
         .prepare(`SELECT id FROM movements WHERE account_id = ? AND note LIKE ?`)
         .get(accountId, `import:cartola|${periodMonth}|%`) as { id: number };
+      // The daily row became the cartola row: the payslip names the same row.
+      expect(official.id).toBe(partialId);
       expect(
         db.prepare(`SELECT movement_id FROM payroll_work_earnings WHERE source_pdf = ?`).get(sourcePdf)
       ).toEqual({ movement_id: official.id });

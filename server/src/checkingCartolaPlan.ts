@@ -72,6 +72,11 @@ export type CheckingCartolaPlanInput = {
   window_start: Record<string, string>;
   /** Retired flows of the account by the document key they were retired with. */
   retired_flows: Record<string, number[]>;
+  /**
+   * The month is imported again from a corrected or fuller cartola: its cartola rows on file that no
+   * movement keeps are removed, and the kept ones are restated by their movement.
+   */
+  replace_month?: boolean;
 };
 
 export type CheckingKeepReason = "document_key" | "already_present" | "daily_listing";
@@ -81,7 +86,8 @@ export type CheckingCartolaPlan = {
   confirm: { row_id: number; movement: number; why: "transfer_leg" | "mail_notice" }[];
   insert: { movement: number; retired_flow_id: number | null; today: "same" | "differs" }[];
   fold: { row_id: number; into_row_id: number | null; movement: number; why: "daily_listing"; today: "same" | "differs" }[];
-  remove: { row_id: number; movement: number; why: "cartola_row_not_found" | "listed_by_transfer_leg" | "listed_by_mail" }[];
+  /** `movement` -1: a cartola row of a replaced month no movement of the new cartola keeps. */
+  remove: { row_id: number; movement: number; why: "cartola_row_not_found" | "listed_by_transfer_leg" | "listed_by_mail" | "replaced_cartola_row" }[];
   ambiguous: { what: string; movement: number; flow_ids: number[] }[];
   /** Today's end state, for the comparison report. */
   today: CheckingTodayEndState;
@@ -312,5 +318,12 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
   }
   for (const r of removed) plan.today.daily_rows.push({ row_id: r.row_id, fate: "gone" });
   plan.remove.push(...plannedRemoved);
+  if (input.replace_month) {
+    const held = new Set([...plan.keep.map((k) => k.row_id), ...plan.fold.map((f) => f.row_id)]);
+    for (const r of input.rows) {
+      if (r.kind !== "cartola" || r.listed?.period_month !== input.period_month || held.has(r.id)) continue;
+      plan.remove.push({ row_id: r.id, movement: -1, why: "replaced_cartola_row" });
+    }
+  }
   return plan;
 }

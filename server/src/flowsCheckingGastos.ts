@@ -5,10 +5,9 @@ import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
-import { checkingAccountId } from "./checkingCartolaImport.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
 import { checkingMovementPurchaseKey } from "./expenseKeys.js";
-import { isMovementBalanceCashCategory, listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
+import { cartolaCashAccountId, isMovementBalanceCashCategory, listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { db } from "./db.js";
 import {
@@ -1279,7 +1278,7 @@ function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions
   processRow: (row: CheckingMovementRow) => void;
   lines: FlowCcExpenseLineRowDraft[];
 } {
-  const accountId = opts?.accountId ?? checkingAccountId();
+  const accountId = opts?.accountId ?? cartolaCashAccountId("cuenta_corriente");
   const deposits = opts?.depositCandidates ?? loadDepositMatchCandidates();
   const splittablePool = createSplittableInternalTransferPool(deposits);
   const checkingCredits = opts?.checkingCredits ?? loadMovementBalanceCashCredits();

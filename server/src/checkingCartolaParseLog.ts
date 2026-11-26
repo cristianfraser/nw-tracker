@@ -137,7 +137,8 @@ export function logCheckingCartolaImportRun(log: CheckingCartolaImportRunLog): v
     `${prefix}Summary: ${imported.length} file(s) processed, ${skippedMonths.length} month(s) already imported, ` +
       `${saldoUpdates.length} saldo ref update(s), ${errors.length} error(s), ${totalSkippedRows} parse skip(s) logged.`
   );
-  insertCheckingCartolaImportRunLog(log);
+  // A run that found every month on file as its cartola states wrote nothing: no message either.
+  if (log.files.some((f) => f.status !== "skipped_already_imported")) insertCheckingCartolaImportRunLog(log);
 }
 
 export function fileLogFromCartola(

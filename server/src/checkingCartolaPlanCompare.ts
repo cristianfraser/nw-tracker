@@ -1,6 +1,6 @@
 /**
  * The cartola plan against today's import (report only): plans the month, then runs today's
- * import (`importCheckingCartola`, with its daily-row reconcile) inside a transaction that is rolled
+ * import it replaced (`importCheckingCartolaInsertThenPrune`: insert, then the daily-row reconcile) inside a transaction that is rolled
  * back, and compares the end states. As for cards (`cards/statementLinePlanCompare.ts`), every bare
  * flow of the account is first held by a probe row (`probeFlows`) inside that
  * transaction, so a deleted row's flow is retired instead of deleted and «gone» is told apart from
@@ -8,7 +8,7 @@
  */
 import { db } from "./db.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
-import { importCheckingCartola } from "./checkingCartolaImport.js";
+import { importCheckingCartolaInsertThenPrune } from "./checkingCartolaLegacyImport.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
 import { planCheckingCartola, type CheckingCartolaPlan } from "./checkingCartolaPlan.js";
@@ -39,7 +39,7 @@ export function compareCheckingCartolaImport(accountId: number, cartola: ParsedC
       probeFlows(`SELECT flow_id FROM movements WHERE account_id = ? AND flow_id IS NOT NULL`, [accountId]);
       const before = readRows(accountId);
       const writes = trackWrites(["movements", "flows"]);
-      importCheckingCartola(accountId, cartola);
+      importCheckingCartolaInsertThenPrune(accountId, cartola);
       const written = writes.read();
       const newRows = written.get("movements")!.inserted;
       const newFlows = written.get("flows")!.inserted;

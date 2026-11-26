@@ -96,6 +96,8 @@ export type CcOpenWebPastePdfReconcileResult = {
    * statement does not print: kept, never deleted or annulled — they are no purchases (`ccPlanPrepayments.ts`).
    */
   kept_plan_prepayment_line_ids: number[];
+  /** Bucket lines a statement line restated in place (`statementLinePlanApply.ts`). */
+  restated_line_ids: number[];
   skipped: boolean;
   skip_reason: string | null;
 };
@@ -155,6 +157,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
       annulled_line_ids: [],
       annulments_settled: [],
       kept_plan_prepayment_line_ids: [],
+      restated_line_ids: [],
       skipped: true,
       skip_reason: "no_pdf_lines_for_billing_month",
     };
@@ -205,6 +208,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
     annulled_line_ids: toAnnul.map((a) => a.id),
     annulments_settled: annulmentsSettled,
     kept_plan_prepayment_line_ids: keptPrepaymentLines,
+    restated_line_ids: [],
     skipped: false,
     skip_reason: null,
   };

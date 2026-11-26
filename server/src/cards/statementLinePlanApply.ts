@@ -1,36 +1,56 @@
 /**
- * Applies a statement-line plan (`statementLinePlan.ts`) as one card-line write: the statement
- * import's steps that are not about which row a document line ends on run as today
- * (`mergeCardStatements`: the reconcile gate, the headers, the JSON closes a PDF takes over, the
- * feed-close and one-statement-per-facturación gates, the plan ledger and its manual-plan reconcile,
- * the one-shot lines a plan supersedes, the traspaso links, the grocery branches, the bucket passes),
- * and the rows follow the plan instead of «insert every line, then settle and adopt»:
+ * A statement import (PDF, statement JSON, the parsed corpus, an estimate) as a plan applied: the
+ * statement-line planner (`statementLinePlan.ts`) says, before anything is written, which row each
+ * document line ends on, and the rows follow the plan — a row on file the statement bills is
+ * restated in place, never deleted and written again. {@link importStatementDocuments} is the
+ * production entry (`replaceStatementLines`, the statement JSON write, the PDF upload); listings
+ * (paste, feed, planted lines) keep the listing merge (`mergeCardStatements`).
+ *
+ * The steps that are not about which row a document line ends on run as the merge runs them: the
+ * reconcile gate, the headers, the JSON closes a PDF takes over, the feed-close and
+ * one-statement-per-facturación gates, the plan ledger and its manual-plan reconcile, the one-shot
+ * lines a plan supersedes, the traspaso links, the grocery branches, the bucket passes. The rows:
  *
  *  - `keep`: the row on file is restated by its document line in place (`CardLinePlan.restate`); a
  *    row a dedupe or fuzzy hit keeps (the document repeats a line on file, maybe on another
- *    statement) stays as it is, the dedupe hit's origin-card patch included, as today;
+ *    statement) stays as it is, the dedupe hit's origin-card patch included;
  *  - `insert`: the document line is written (stamped unless it is a statement's cuota line);
  *  - `fold`: the row's flow folds into the kept row's, its records follow, the row goes;
  *  - `remove`, `annul` (an annulled purchase recorded first), `move_to_open`, `kept_plan_prepayment`:
- *    as the bucket settlement does them.
+ *    as the bucket settlement decides them;
+ *  - an annulled purchase the statement bills after all: the billed line is written and takes the
+ *    annulment's flow (or, when a line on file is the earlier arrival, the annulment's flow folds
+ *    into that line's), the annulment goes; one the statement refunds with a real credit keeps the
+ *    purchase and drops its synthetic refund (`bank_credit`, annulled on the credit's day).
  *
- * Refused (throws, nothing written): a plan with an `ambiguous` outcome, an annulment the statement
- * bills or refunds (`annulments_credited`, a kept or folded annulled purchase) — phase 3 decides
- * those —, and a plan whose superseded one-shot lines disagree with what the plan ledger leaves.
+ * Ambiguity (GUIDELINES: no guesses): a re-import identity group whose counts differ keeps today's
+ * defined outcome — the vanished lines are removed (their flows retired with what was on them,
+ * reported as `unpaired`) and the document lines written; anything else the plan cannot pair one to
+ * one fails the import of the document with a message naming the rows, before anything is written.
  *
- * Called by nobody in production yet (keep-rows phase 2); the equivalence tests run it beside
- * today's import.
+ * An import that changes nothing — every header on file as the import would write it, every kept
+ * row already stating its document line, nothing to insert, fold, remove or settle — writes nothing
+ * at all: no row, no change-log entry, no session finish.
  */
 import type { CardCanonicalLine, CardCanonicalStatement } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { ccStatementSourceKindOf, isListingSourceKind, isStatementSourceKind } from "../ccStatementSourceKind.js";
-import { statementsByLedgerKey, upsertCcStatementHeader } from "../ccStatementsImport.js";
+import {
+  ccImportFlowItemFromLine,
+  ccStatementLabel,
+  statementsByLedgerKey,
+  upsertCcStatementHeader,
+  type CcImportFlowItem,
+  type CcStatementsMergeResult,
+  type SkippedCcImportFlowItem,
+} from "../ccStatementsImport.js";
 import { canonicalLineDedupeKeys, storedStatementColumns, takeBatchDedupeKeys } from "./statementStorage.js";
 import { ccCardGroupOrDefault } from "../ccIssuers.js";
 import {
   jsonStatementsSupersededByPdf,
   mergeInstallmentLedgerFromStatements,
   runBucketPasses,
+  type CcAccountImportMergeResult,
 } from "../ccInstallmentLedgerMerge.js";
 import { assertCcImportReconcilesOrThrow } from "../ccStatementImportReconcile.js";
 import { deleteJsonStatementsByIds } from "../ccStatementJsonSource.js";
@@ -43,19 +63,45 @@ import { relinkCcTraspasoDeudaLinksForAccount } from "../ccTraspasoDeudaLinks.js
 import { learnGroceryBranchesFromCardLines } from "../groceryBranchLearning.js";
 import { patchCcLineOriginCardOnDedupeHit } from "../ccExpenseLineDedupe.js";
 import { applyAdditionalCardNoCuentaForLine } from "../ccAdditionalCardExpenseMatch.js";
-import { annulOpenBucketLines } from "../ccAnnulledPurchases.js";
-import { moveOpenBucketLinesToBillingMonth } from "../ccOpenWebPasteRepair.js";
+import {
+  annulOpenBucketLines,
+  deleteAnnulledPurchase,
+  listAnnulledPurchases,
+  markAnnulledPurchaseBankCredited,
+} from "../ccAnnulledPurchases.js";
+import type { CcAnnulmentSettled } from "../ccAnnulmentWriters.js";
+import { moveOpenBucketLinesToBillingMonth, parseOpenWebPasteBillingMonth } from "../ccOpenWebPasteRepair.js";
+import type { CcOpenWebPastePdfReconcileResult } from "../ccOpenWebPastePdfReconcile.js";
 import { carryPlanPrepaymentLines } from "../ccPlanPrepayments.js";
 import { confirmManualPaymentForPlanted, listPlantedPaymentLines } from "../ccPlantedPayments.js";
+import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
+import { adoptFlow, flowExists, rowFlowId } from "../flows/flowAdoption.js";
 import {
   adoptCardLineMoves,
   CC_LINE_REF_SELECT,
   ccLineRefFromRow,
   restoreLineCategories,
   snapshotLineCategories,
+  type ReimportedCardLinesResult,
 } from "../flows/cardLineAdoption.js";
-import { noteCardLineEvidence, noteCardLineFinancingLinks, noteCardLineWritten, withCardLineSession, type CardLineInsert, type CardLineRestate } from "./lineWriteSession.js";
-import type { CardStatementLinePlan, DocLineRef } from "./statementLinePlan.js";
+import {
+  noteCardLineEvidence,
+  noteCardLineFinancingLinks,
+  noteCardLineWritten,
+  withCardLineSession,
+  type CardLineInsert,
+  type CardLineRestate,
+} from "./lineWriteSession.js";
+import { cardLineStatesRow, storedDocumentLine } from "./lineRowWrites.js";
+import { loadCardStatementLinePlanInput } from "./statementLinePlanLoad.js";
+import {
+  planCardStatementLines,
+  type CardPlanFold,
+  type CardPlanKeep,
+  type CardStatementLinePlan,
+  type CardStatementLinePlanInput,
+  type DocLineRef,
+} from "./statementLinePlan.js";
 
 export type StatementLinePlanApplyResult = {
   restated: number[];
@@ -64,30 +110,95 @@ export type StatementLinePlanApplyResult = {
   removed: number[];
   annulled: number[];
   moved: number[];
+  /** Annulled purchases the statement billed after all (deleted, their flow on the billed line). */
+  annulments_billed: number[];
+  /** Annulled purchases the statement refunded with a real credit (kept as the purchase). */
+  annulments_credited: number[];
+  /** The one-shot lines the plan ledger superseded. */
+  overlap_removed: number;
+  ledger: ReturnType<typeof mergeInstallmentLedgerFromStatements>;
+  manual_installment_reconcile: ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport>;
+  grocery_branch_learning: ReturnType<typeof learnGroceryBranchesFromCardLines>;
+  bucket: ReturnType<typeof runBucketPasses>;
+  categories_restored: number;
 };
 
 const refOf = (d: DocLineRef): string => `${d.statement_key}#${d.index}`;
+
+type DocLine = {
+  statementId: number;
+  statement: CardCanonicalStatement;
+  line: CardCanonicalLine;
+  dedupeKey: string | null;
+  keys: string[];
+  listing: boolean;
+};
+
+/** Each document line as the import stores it (its statement row and dedupe key); `statementIdOf` names the header row. */
+function documentLines(statements: readonly CardCanonicalStatement[], statementIdOf: (key: string, statement: CardCanonicalStatement, lines: CardCanonicalLine[]) => number): Map<string, DocLine> {
+  const docs = new Map<string, DocLine>();
+  for (const [key, { statement, lines }] of statementsByLedgerKey(statements)) {
+    const statementId = statementIdOf(key, statement, lines);
+    const cardGroup = ccCardGroupOrDefault(statement.card_group);
+    const listing = isListingSourceKind(ccStatementSourceKindOf(storedStatementColumns(statement).source_pdf));
+    const seen = new Set<string>();
+    lines.forEach((line, index) => {
+      const taken = takeBatchDedupeKeys(seen, canonicalLineDedupeKeys(cardGroup, line));
+      const keys = taken === "repeat" ? [] : taken;
+      docs.set(`${key}#${index}`, { statementId, statement, line, dedupeKey: keys[keys.length - 1] ?? null, keys, listing });
+    });
+  }
+  return docs;
+}
+
+function docOfIn(docs: ReadonlyMap<string, DocLine>, d: DocLineRef): DocLine {
+  const x = docs.get(refOf(d));
+  if (!x) throw new Error(`keep-rows apply: the plan names document line ${refOf(d).replace(/\t/g, " | ")}, not in the import`);
+  return x;
+}
+
+const isDuplicateKeep = (k: CardPlanKeep): boolean => k.why === "dedupe_key" || k.why === "fuzzy_duplicate";
+
+/**
+ * Today's defined outcome for the plan's ambiguous entries, or a failure naming the rows (see the
+ * module doc): a re-import identity group whose counts differ is already removed and written in the
+ * plan (its rows reported `unpaired`); any other ambiguity throws.
+ */
+export function resolveStatementPlanAmbiguity(plan: CardStatementLinePlan, where: string): { plan: CardStatementLinePlan; unpaired: number[] } {
+  const unpaired: number[] = [];
+  const undecidable: string[] = [];
+  for (const a of plan.ambiguous) {
+    const removed = a.docs.length === 0 && a.rows.every((r) => r.kind === "line" && plan.remove.some((x) => x.row.id === r.id));
+    if (removed) {
+      unpaired.push(...a.rows.map((r) => r.id));
+      continue;
+    }
+    const rows = a.rows.map((r) => `${r.kind === "line" ? "line" : "annulled purchase"} ${r.id}`).join(", ") || "none";
+    const docs = a.docs.map((d) => `${d.statement_key.split("\t")[1] ?? d.statement_key} line #${d.index + 1}`).join(", ") || "none";
+    undecidable.push(`${a.what} — rows on file: ${rows}; document lines: ${docs}`);
+  }
+  if (undecidable.length > 0) {
+    throw new Error(`${where}: the statement import cannot pair these rows one to one, nothing was written: ${undecidable.join("; ")}`);
+  }
+  return { plan: { ...plan, ambiguous: [] }, unpaired };
+}
 
 /** Applies `plan` (planned for `statements` into `accountId`, see the module doc). */
 export function applyStatementLinePlan(
   accountId: number,
   statements: readonly CardCanonicalStatement[],
   plan: CardStatementLinePlan,
-  opts?: { replaceStatementKeys?: ReadonlySet<string> }
+  opts?: { replaceStatementKeys?: ReadonlySet<string>; replaceLedger?: boolean }
 ): StatementLinePlanApplyResult {
   if (plan.ambiguous.length > 0) throw new Error(`keep-rows apply: the plan has ${plan.ambiguous.length} ambiguous outcome(s)`);
-  if (plan.annulments_credited.length > 0) throw new Error("keep-rows apply: annulments the statement refunds are not applied yet");
-  for (const r of [...plan.keep.map((k) => k.row), ...plan.fold.flatMap((f) => [f.row, f.into])]) {
-    if (r.kind !== "line") throw new Error(`keep-rows apply: an annulled purchase (${r.id}) is not applied yet`);
-  }
-  return withCardLineSession(accountId, "statement keep-rows apply", () => applyInSession(accountId, statements, plan, opts));
+  return withCardLineSession(accountId, "this statement import", () => applyInSession(accountId, statements, plan, opts));
 }
 
 function applyInSession(
   accountId: number,
   statements: readonly CardCanonicalStatement[],
   plan: CardStatementLinePlan,
-  opts?: { replaceStatementKeys?: ReadonlySet<string> }
+  opts?: { replaceStatementKeys?: ReadonlySet<string>; replaceLedger?: boolean }
 ): StatementLinePlanApplyResult {
   const json = jsonStatementsSupersededByPdf(accountId, statements);
   const replaceKeys = new Set<string>([...(opts?.replaceStatementKeys ?? []), ...json.supersededReplaceKeys]);
@@ -95,103 +206,172 @@ function applyInSession(
   const categorySnap = snapshotLineCategories(accountId);
   const superseded = new Set(json.supersededJsonStatementIds);
 
-  // The headers, and each document line as it is stored (its statement row and its dedupe key).
-  const byStmt = statementsByLedgerKey(statements);
-  const docs = new Map<string, { statementId: number; statement: CardCanonicalStatement; line: CardCanonicalLine; dedupeKey: string | null; keys: string[]; listing: boolean }>();
+  // The headers (a header already as the import states it writes nothing), and each document line
+  // as it is stored.
   const dated: string[] = [];
   const note = (ymd: string | null | undefined) => {
     if (ymd) dated.push(ymd);
   };
-  for (const [key, { statement, lines }] of byStmt) {
-    const stored = storedStatementColumns(statement);
-    note(stored.monto_pagado_anterior_date);
+  const docs = documentLines(statements, (_key, statement, lines) => {
     const header = upsertCcStatementHeader(accountId, statement, lines, { notStatementIds: superseded });
-    const cardGroup = ccCardGroupOrDefault(statement.card_group);
-    const listing = isListingSourceKind(ccStatementSourceKindOf(stored.source_pdf));
-    const seen = new Set<string>();
-    lines.forEach((line, index) => {
-      const taken = takeBatchDedupeKeys(seen, canonicalLineDedupeKeys(cardGroup, line));
-      const keys = taken === "repeat" ? [] : taken;
-      docs.set(`${key}#${index}`, { statementId: header.statementId, statement, line, dedupeKey: keys[keys.length - 1] ?? null, keys, listing });
-    });
-  }
-  const docOf = (d: DocLineRef) => {
-    const x = docs.get(refOf(d));
-    if (!x) throw new Error(`keep-rows apply: the plan names document line ${refOf(d).replace(/\t/g, " | ")}, not in the import`);
-    return x;
-  };
+    if (header.changed) {
+      noteCardLineWritten(accountId);
+      note(storedStatementColumns(statement).monto_pagado_anterior_date);
+    }
+    return header.statementId;
+  });
+  const docOf = (d: DocLineRef) => docOfIn(docs, d);
+
+  const annulments = new Map(listAnnulledPurchases(accountId).map((a) => [a.id, a]));
+  const foldsByDoc = new Map<string, CardPlanFold[]>();
+  for (const f of plan.fold) if (f.doc) foldsByDoc.set(refOf(f.doc), [...(foldsByDoc.get(refOf(f.doc)) ?? []), f]);
 
   const restate: CardLineRestate[] = [];
+  const insert: (CardLineInsert & { doc: DocLineRef })[] = [];
+  /** Annulled purchases whose flow a written document line takes (the annulment kept as the earliest). */
+  const annulmentKeeps: { doc: DocLineRef; annulmentId: number; lineFolds: number[] }[] = [];
+  /** Annulled purchases whose flow folds into a kept line's. */
+  const annulmentFoldsIntoLine: { annulmentId: number; lineId: number }[] = [];
+  const lineFolds: { fromLineId: number; intoLineId: number }[] = [];
   for (const k of plan.keep) {
     const d = docOf(k.doc);
-    if (k.why === "dedupe_key" || k.why === "fuzzy_duplicate") {
-      // The document repeats a line on file: it stays as it is (today's skip), the dedupe hit's
-      // origin card patched.
+    if (isDuplicateKeep(k)) {
+      // The document repeats a line on file: it stays as it is (a skip), the dedupe hit's origin card patched.
       if (k.why === "dedupe_key") {
         const origin = d.line.origin_card_last4 ?? d.statement.card_last4;
         const patch = patchCcLineOriginCardOnDedupeHit(accountId, d.keys, origin, { excludeWebPasteSources: !d.listing });
+        if (patch.patched) noteCardLineWritten(accountId);
         if (patch.lineId != null) additionalCard(accountId, patch.lineId, origin, d.statement.card_last4);
       }
       continue;
     }
-    restate.push({ lineId: k.row.id, statementId: d.statementId, statement: d.statement, line: d.line, dedupeKey: d.dedupeKey });
-    note(d.line.transaction_date ?? d.line.posting_date);
+    const folds = foldsByDoc.get(refOf(k.doc)) ?? [];
+    if (k.row.kind === "line") {
+      restate.push({ lineId: k.row.id, statementId: d.statementId, statement: d.statement, line: d.line, dedupeKey: d.dedupeKey });
+      for (const f of folds) {
+        if (f.row.kind === "line") lineFolds.push({ fromLineId: f.row.id, intoLineId: k.row.id });
+        else annulmentFoldsIntoLine.push({ annulmentId: f.row.id, lineId: k.row.id });
+      }
+      continue;
+    }
+    // An annulled purchase the statement bills, the earliest of its rows: the billed line is written
+    // with no stamp of its own and takes the annulment's flow.
+    for (const f of folds) if (f.row.kind !== "line") throw new Error(`keep-rows apply: two annulled purchases (${k.row.id}, ${f.row.id}) on one billed line`);
+    insert.push({ doc: k.doc, statementId: d.statementId, statement: d.statement, line: d.line, dedupeKey: d.dedupeKey, stamp: false });
+    annulmentKeeps.push({ doc: k.doc, annulmentId: k.row.id, lineFolds: folds.map((f) => f.row.id) });
   }
-  const insert: CardLineInsert[] = plan.insert.map((i) => {
+  for (const f of plan.fold) {
+    if (f.doc == null && f.row.kind === "line" && f.into.kind === "line") lineFolds.push({ fromLineId: f.row.id, intoLineId: f.into.id });
+    else if (f.doc == null) throw new Error(`keep-rows apply: an annulled purchase (${f.row.kind === "annulled_purchase" ? f.row.id : f.into.id}) folds with no document line`);
+  }
+  for (const i of plan.insert) {
     const d = docOf(i.doc);
-    note(d.line.transaction_date ?? d.line.posting_date);
-    return { statementId: d.statementId, statement: d.statement, line: d.line, dedupeKey: d.dedupeKey, stamp: i.arrival === "stamp" };
-  });
+    insert.push({ doc: i.doc, statementId: d.statementId, statement: d.statement, line: d.line, dedupeKey: d.dedupeKey, stamp: i.arrival === "stamp" });
+  }
 
   // A planted payment the statement restates is the bank's line now: its manual payment confirmed.
   const planted = new Map(listPlantedPaymentLines(accountId).map((p) => [p.line_id, p]));
   for (const k of plan.keep) {
+    if (k.row.kind !== "line" || isDuplicateKeep(k)) continue;
     const p = planted.get(k.row.id);
-    if (!p || k.why === "dedupe_key" || k.why === "fuzzy_duplicate") continue;
+    if (!p) continue;
     confirmManualPaymentForPlanted(p, docOf(k.doc).line.merchant);
     db.prepare(`DELETE FROM cc_planted_payment_lines WHERE line_id = ?`).run(k.row.id);
+    noteCardLineWritten(accountId);
   }
-  db.prepare(`DELETE FROM cc_planted_charge_lines WHERE line_id IN (${restate.map(() => "?").join(",") || "NULL"})`).run(...restate.map((r) => r.lineId));
+  if (restate.length > 0) {
+    const gone = db
+      .prepare(`DELETE FROM cc_planted_charge_lines WHERE line_id IN (${restate.map(() => "?").join(",")})`)
+      .run(...restate.map((r) => r.lineId));
+    if (gone.changes > 0) noteCardLineWritten(accountId);
+  }
 
-  // Annulled purchases are recorded before their lines go (they snapshot them).
+  // Annulled purchases are recorded before their lines go (they snapshot them); the ones the
+  // statement refunds with a real credit keep the purchase and drop the synthetic refund.
   const statementsNow = listCcStatementsForAccount(accountId);
+  const freshAnnulment = new Map<number, number>();
   for (const a of plan.annul) {
     const evidence = statementsNow.find((st) => st.billing_month === a.billing_month && isStatementSourceKind(st.source_kind))?.source_pdf;
     if (!evidence) throw new Error(`keep-rows apply: no statement of ${a.billing_month} to annul line ${a.line_id} against`);
-    annulOpenBucketLines(accountId, [a.line_id], { annulledOn: a.annulled_on, basis: "statement_close", evidence });
+    const res = annulOpenBucketLines(accountId, [a.line_id], { annulledOn: a.annulled_on, basis: "statement_close", evidence });
+    freshAnnulment.set(a.line_id, res.annulled[0]!.id);
   }
+  const credited: number[] = [];
+  for (const c of plan.annulments_credited) {
+    const id = c.annulled_purchase_id ?? (c.bucket_line_id != null ? freshAnnulment.get(c.bucket_line_id) : undefined);
+    if (id == null) throw new Error(`keep-rows apply: a credited annulment of line ${c.bucket_line_id ?? "?"} was not recorded`);
+    markAnnulledPurchaseBankCredited(id, c.credit_iso);
+    credited.push(id);
+  }
+  if (plan.annul.length > 0 || credited.length > 0) noteCardLineWritten(accountId);
 
   // The rows, one plan: restated, inserted, folded (their prepayments first), removed.
-  const folds = plan.fold.map((f) => ({ fromLineId: f.row.id, toLineId: f.into.id }));
-  carryPlanPrepaymentLines(accountId, folds);
+  carryPlanPrepaymentLines(accountId, lineFolds.map((f) => ({ fromLineId: f.fromLineId, toLineId: f.intoLineId })));
   const supersededByPlan = new Set(plan.remove.filter((r) => r.why === "superseded_by_plan").map((r) => r.row.id));
   const removed = plan.remove.filter((r) => r.why !== "superseded_by_plan").map((r) => r.row.id);
+  const annulmentLineFolds = new Set(annulmentKeeps.flatMap((k) => k.lineFolds));
   const applied = applyCardLinePlanDetailed(accountId, {
     restate,
     insert,
-    fold: folds.map((f) => ({ fromLineId: f.fromLineId, intoLineId: f.toLineId })),
+    fold: lineFolds,
     carry: [],
-    deleteLineIds: [...removed, ...plan.annul.map((a) => a.line_id)],
+    deleteLineIds: [...removed, ...plan.annul.map((a) => a.line_id)].filter((id) => !annulmentLineFolds.has(id)),
   });
+  const insertedOf = new Map(insert.map((i, n) => [refOf(i.doc), applied.inserted[n]!]));
+
+  // The annulments the statement billed: the billed line takes the annulment's flow, or the
+  // annulment's flow folds into the kept line's; then the annulment goes.
+  const billed: number[] = [];
+  for (const k of annulmentKeeps) {
+    const lineId = insertedOf.get(refOf(k.doc))!;
+    const a = annulments.get(k.annulmentId);
+    if (!a) throw new Error(`keep-rows apply: annulled purchase ${k.annulmentId} is gone`);
+    const arriving = rowFlowId("cc_statement_lines", lineId);
+    if (flowExists(a.flow_id) && flowExists(arriving) && a.flow_id !== arriving) {
+      adoptFlow({ survivor: a.flow_id, arriving }, { prefer: "survivor", key: resolveCcExpensePurchaseKey(lineId), previousKey: a.purchase_key });
+    }
+    deleteAnnulledPurchase(a.id);
+    billed.push(a.id);
+    if (k.lineFolds.length > 0) {
+      const folds = k.lineFolds.map((from) => ({ fromLineId: from, intoLineId: lineId }));
+      carryPlanPrepaymentLines(accountId, folds.map((f) => ({ fromLineId: f.fromLineId, toLineId: f.intoLineId })));
+      applyCardLinePlan(accountId, { deleteLineIds: [], carry: [], fold: folds });
+    }
+  }
+  for (const f of annulmentFoldsIntoLine) {
+    const a = annulments.get(f.annulmentId);
+    if (!a) throw new Error(`keep-rows apply: annulled purchase ${f.annulmentId} is gone`);
+    const survivor = rowFlowId("cc_statement_lines", f.lineId);
+    if (flowExists(a.flow_id) && flowExists(survivor) && a.flow_id !== survivor) {
+      adoptFlow({ survivor, arriving: a.flow_id }, { prefer: "survivor" });
+    }
+    deleteAnnulledPurchase(a.id);
+    billed.push(a.id);
+  }
+  if (billed.length > 0) noteCardLineWritten(accountId);
+
   // The JSON closes a PDF took over: every line of theirs is restated or removed by now.
   for (const id of superseded) {
     const left = (db.prepare(`SELECT COUNT(*) AS n FROM cc_statement_lines WHERE statement_id = ?`).get(id) as { n: number }).n;
     if (left > 0) throw new Error(`keep-rows apply: JSON statement ${id} still holds ${left} line(s) the plan does not restate or remove`);
   }
-  deleteJsonStatementsByIds([...superseded]);
-  restoreLineCategories(accountId, categorySnap);
-  for (const [lineId, d] of applied.inserted.map((id, i) => [id, insert[i]!] as const)) {
-    additionalCard(accountId, lineId, d.line.origin_card_last4 ?? d.statement.card_last4, d.statement.card_last4);
+  if (superseded.size > 0) {
+    deleteJsonStatementsByIds([...superseded]);
+    noteCardLineWritten(accountId);
+  }
+  const categoriesRestored = restoreLineCategories(accountId, categorySnap);
+  for (const i of insert) {
+    additionalCard(accountId, insertedOf.get(refOf(i.doc))!, i.line.origin_card_last4 ?? i.statement.card_last4, i.statement.card_last4);
   }
   for (const r of restate) additionalCard(accountId, r.lineId, r.line.origin_card_last4 ?? r.statement.card_last4, r.statement.card_last4);
-  // A new line beside kept lines of its identity copies their category and big group (today's re-import copies).
-  const insertedByDoc = new Map(plan.insert.map((i, n) => [refOf(i.doc), applied.inserted[n]!]));
+  // A new line beside kept lines of its identity copies their category and big group.
   for (const i of plan.insert) {
     if (i.copies_classification_from == null) continue;
-    const refs = (db.prepare(`${CC_LINE_REF_SELECT} WHERE l.id IN (?, ?)`).all(i.copies_classification_from, insertedByDoc.get(refOf(i.doc))!) as Parameters<typeof ccLineRefFromRow>[0][]).map(ccLineRefFromRow);
-    const from = refs.find((r) => r.lineId === i.copies_classification_from)!;
-    const to = refs.find((r) => r.lineId === insertedByDoc.get(refOf(i.doc)))!;
-    adoptCardLineMoves([{ from, to, by: "fan_out", copy: true, classificationOnly: true }]);
+    const to = insertedOf.get(refOf(i.doc))!;
+    const refs = (db.prepare(`${CC_LINE_REF_SELECT} WHERE l.id IN (?, ?)`).all(i.copies_classification_from, to) as Parameters<typeof ccLineRefFromRow>[0][]).map(ccLineRefFromRow);
+    const fromRef = refs.find((r) => r.lineId === i.copies_classification_from)!;
+    const toRef = refs.find((r) => r.lineId === to)!;
+    adoptCardLineMoves([{ from: fromRef, to: toRef, by: "fan_out", copy: true, classificationOnly: true }]);
   }
 
   assertFeedClosesMatchStatements(accountId);
@@ -205,9 +385,10 @@ function applyInSession(
       )
     );
   const beforeLedger = lineIds();
-  const ledger = mergeInstallmentLedgerFromStatements(accountId, statements, { replaceLedger: false });
-  reconcileManualInstallmentPurchasesAfterStatementImport(accountId, statements);
-  applyCardLinePlan(accountId, planOneShotLinesSupersededByInstallmentPurchases(accountId));
+  const ledger = mergeInstallmentLedgerFromStatements(accountId, statements, { replaceLedger: opts?.replaceLedger ?? false });
+  const manual = reconcileManualInstallmentPurchasesAfterStatementImport(accountId, statements);
+  const overlap = planOneShotLinesSupersededByInstallmentPurchases(accountId);
+  applyCardLinePlan(accountId, overlap);
   const afterLedger = lineIds();
   const gone = [...beforeLedger].filter((id) => !afterLedger.has(id));
   if (gone.length !== supersededByPlan.size || gone.some((id) => !supersededByPlan.has(id))) {
@@ -225,21 +406,274 @@ function applyInSession(
   }
 
   relinkCcTraspasoDeudaLinksForAccount(accountId);
-  learnGroceryBranchesFromCardLines(accountId);
-  runBucketPasses(accountId, statements, null);
+  const grocery = learnGroceryBranchesFromCardLines(accountId);
+  const bucket = runBucketPasses(accountId, statements, null);
   note(ledger.earliestNewPurchaseDate);
-  noteCardLineEvidence(accountId, dated.length > 0 ? dated.reduce((a, b) => (b < a ? b : a)) : null);
+  if (dated.length > 0) noteCardLineEvidence(accountId, dated.reduce((a, b) => (b < a ? b : a)));
   noteCardLineFinancingLinks(accountId);
   return {
     restated: restate.map((r) => r.lineId),
     inserted: applied.inserted,
-    folded: folds.map((f) => f.fromLineId),
+    folded: [...lineFolds.map((f) => f.fromLineId), ...annulmentKeeps.flatMap((k) => k.lineFolds)],
     removed: [...removed, ...supersededByPlan],
     annulled: plan.annul.map((a) => a.line_id),
     moved: plan.move_to_open.map((m) => m.line_id),
+    annulments_billed: billed,
+    annulments_credited: credited,
+    overlap_removed: overlap.removed_line_ids.length,
+    ledger,
+    manual_installment_reconcile: manual,
+    grocery_branch_learning: grocery,
+    bucket,
+    categories_restored: categoriesRestored,
   };
 }
 
 function additionalCard(accountId: number, lineId: number, origin: string | null, primary: string | null): void {
   applyAdditionalCardNoCuentaForLine({ accountId, statementLineId: lineId, originCardLast4: origin, primaryCardLast4: primary });
+}
+
+/**
+ * Whether applying `plan` would write nothing: every header on file as the import states it (the
+ * loader read without a savepoint), no plan to add, no row to insert, fold, remove, annul, move or
+ * settle, and every kept row already stating its document line (a dedupe hit's origin card too).
+ */
+export function statementPlanWritesNothing(
+  accountId: number,
+  statements: readonly CardCanonicalStatement[],
+  input: CardStatementLinePlanInput,
+  plan: CardStatementLinePlan
+): boolean {
+  if (!input.headers_on_file || input.json_superseded_statement_ids.length > 0 || input.document_plans_new > 0) return false;
+  if (
+    plan.insert.length + plan.fold.length + plan.remove.length + plan.annul.length + plan.move_to_open.length +
+      plan.annulments_credited.length + plan.ambiguous.length >
+    0
+  ) {
+    return false;
+  }
+  const statementIdByKey = new Map(input.incoming.map((st) => [st.key, st.statement_id]));
+  const docs = documentLines(statements, (key) => statementIdByKey.get(key)!);
+  const planted = new Set(input.planted_payments.map((p) => p.line_id));
+  const plantedCharge = db.prepare(`SELECT 1 FROM cc_planted_charge_lines WHERE line_id = ?`);
+  const origin = db.prepare(`SELECT origin_card_last4 FROM cc_statement_lines WHERE id = ?`);
+  for (const k of plan.keep) {
+    if (k.row.kind !== "line") return false;
+    const d = docOfIn(docs, k.doc);
+    if (k.why === "fuzzy_duplicate") continue;
+    if (k.why === "dedupe_key") {
+      const want = d.line.origin_card_last4 ?? d.statement.card_last4;
+      const has = (origin.get(k.row.id) as { origin_card_last4: string | null } | undefined)?.origin_card_last4 ?? null;
+      if (want && want !== has) return false;
+      continue;
+    }
+    if (planted.has(k.row.id) || plantedCharge.get(k.row.id) != null) return false;
+    const row = storedDocumentLine(d.statementId, d.statement, d.line, d.dedupeKey, `CC statement import (${d.statement.document})`);
+    if (!cardLineStatesRow(k.row.id, row)) return false;
+  }
+  return true;
+}
+
+export type StatementDocumentsImportResult = CcAccountImportMergeResult & {
+  /** What the plan did with the rows on file (`statementLinePlan.ts`); `wrote` false: nothing changed. */
+  keep_rows: {
+    wrote: boolean;
+    restated: number[];
+    inserted: number[];
+    folded: number[];
+    removed: number[];
+    annulled: number[];
+    moved: number[];
+    annulments_billed: number[];
+    annulments_credited: number[];
+    /** Vanished lines of a re-import identity group whose counts differ: removed, their flows retired. */
+    unpaired: number[];
+  };
+};
+
+/**
+ * Statement documents (PDF, statement JSON, the parsed corpus, an estimate) into the card
+ * `accountId`, as a plan applied (see the module doc). `replaceStatementKeys`: the statements whose
+ * stored copies the documents restate (a re-import). Throws on a listing, on a gate, and on an
+ * ambiguity no defined outcome covers — nothing written.
+ */
+export function importStatementDocuments(
+  accountId: number,
+  statements: readonly CardCanonicalStatement[],
+  opts?: { replaceStatementKeys?: ReadonlySet<string>; replaceLedger?: boolean }
+): StatementDocumentsImportResult {
+  for (const st of statements) {
+    if (isListingSourceKind(ccStatementSourceKindOf(st.document))) {
+      throw new Error(`statement import: ${st.document} is a listing — listings import through insertLines`);
+    }
+  }
+  const where = `Account ${accountId}`;
+  const plannedOn = (input: CardStatementLinePlanInput) => resolveStatementPlanAmbiguity(planCardStatementLines(input), where);
+  // First read only: a re-sent document already on file as it states writes nothing.
+  const readOnly = loadCardStatementLinePlanInput(accountId, statements, opts);
+  if (readOnly.headers_on_file) {
+    const { plan, unpaired } = plannedOn(readOnly);
+    if (unpaired.length === 0 && statementPlanWritesNothing(accountId, statements, readOnly, plan)) {
+      return importResult(statements, readOnly, plan, null, [], []);
+    }
+  }
+  return withCardLineSession(accountId, "this statement import", () => {
+    const input = readOnly.headers_on_file ? readOnly : loadCardStatementLinePlanInput(accountId, statements, opts);
+    const { plan, unpaired } = plannedOn(input);
+    const bucketMonth = bucketMonthsOfLines(accountId);
+    const closes = jsonStatementsSupersededByPdf(accountId, statements).json_closes_superseded_by_pdf;
+    const applied = applyInSession(accountId, statements, plan, opts);
+    return importResult(statements, input, plan, { applied, bucketMonth }, unpaired, closes);
+  });
+}
+
+/** Each card line's open-bucket month (lines on a bucket statement only), read before the apply. */
+function bucketMonthsOfLines(accountId: number): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const r of db
+    .prepare(`SELECT l.id, s.source_pdf FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?`)
+    .all(accountId) as { id: number; source_pdf: string }[]) {
+    const bm = parseOpenWebPasteBillingMonth(r.source_pdf);
+    if (bm) out.set(r.id, bm);
+  }
+  return out;
+}
+
+function importResult(
+  statements: readonly CardCanonicalStatement[],
+  input: CardStatementLinePlanInput,
+  plan: CardStatementLinePlan,
+  done: { applied: StatementLinePlanApplyResult; bucketMonth: Map<number, string> } | null,
+  unpaired: number[],
+  jsonClosesSuperseded: string[]
+): StatementDocumentsImportResult {
+  const byStmt = statementsByLedgerKey(statements);
+  const lineOf = (d: DocLineRef): { line: CardCanonicalLine; label: string } => {
+    const st = byStmt.get(d.statement_key);
+    const line = st?.lines[d.index];
+    if (!st || !line) throw new Error(`statement import: no document line ${refOf(d).replace(/\t/g, " | ")}`);
+    return { line, label: ccStatementLabel(storedStatementColumns(st.statement).statement_date, st.statement.currency) };
+  };
+  const item = (d: DocLineRef): CcImportFlowItem => {
+    const { line, label } = lineOf(d);
+    return ccImportFlowItemFromLine(line, label);
+  };
+  const inserted_flows = plan.insert.map((i) => item(i.doc));
+  const skipped_flows: SkippedCcImportFlowItem[] = [];
+  let duplicate = 0;
+  let fuzzy = 0;
+  let overlap = 0;
+  let restated = 0;
+  for (const k of plan.keep) {
+    if (k.why === "dedupe_key") {
+      duplicate += 1;
+      skipped_flows.push({ ...item(k.doc), reason: "duplicate" });
+    } else if (k.why === "fuzzy_duplicate") {
+      fuzzy += 1;
+      skipped_flows.push({ ...item(k.doc), reason: "fuzzy_duplicate" });
+    } else {
+      restated += 1;
+      skipped_flows.push({ ...item(k.doc), reason: "restated" });
+    }
+  }
+  for (const s of plan.skip) {
+    if (s.why === "fuzzy_duplicate") {
+      fuzzy += 1;
+      skipped_flows.push({ ...item(s.doc), reason: "fuzzy_duplicate" });
+    } else if (s.why === "plan_on_file" || s.why === "superseded_by_plan") {
+      overlap += 1;
+      skipped_flows.push({ ...item(s.doc), reason: "installment_overlap" });
+    } else {
+      duplicate += 1;
+      skipped_flows.push({ ...item(s.doc), reason: "duplicate" });
+    }
+  }
+  const insertedDays = plan.insert.map((i) => {
+    const { line } = lineOf(i.doc);
+    return line.transaction_date ?? line.posting_date ?? null;
+  });
+  const earliestInserted = insertedDays.filter((d): d is string => d != null).sort()[0] ?? null;
+  const a = done?.applied ?? null;
+  const statementsResult: CcStatementsMergeResult = {
+    statementCount: byStmt.size,
+    lineCount: plan.insert.length,
+    linesInserted: plan.insert.length,
+    linesRestated: restated,
+    linesFolded: plan.fold.length,
+    linesSkippedDuplicate: duplicate,
+    linesSkippedFuzzyDuplicate: fuzzy,
+    linesSkippedInstallmentOverlap: overlap,
+    linesOriginCardPatched: 0,
+    additionalCardCategoriesApplied: 0,
+    categoriesRestored: a?.categories_restored ?? 0,
+    earliestInsertedTxDate: earliestInserted,
+    planted_same_purchase: [],
+    inserted_flows,
+    skipped_flows,
+  };
+  // The bucket's settlement per closed facturación, attributed by the bucket a line sat in.
+  const bm = done?.bucketMonth ?? new Map<number, string>();
+  const restatedIds = new Set(plan.keep.filter((k) => !isDuplicateKeep(k) && k.row.kind === "line").map((k) => k.row.id));
+  const web_paste_pdf_reconcile: CcOpenWebPastePdfReconcileResult[] = input.closed_months.map((m) => {
+    const inMonth = (id: number) => bm.get(id) === m.billing_month;
+    const deleted = [
+      ...plan.remove.filter((r) => r.why !== "superseded_by_plan" && r.why !== "replaced_statement_line_gone" && inMonth(r.row.id)).map((r) => r.row.id),
+      ...plan.fold.filter((f) => f.row.kind === "line" && inMonth(f.row.id)).map((f) => f.row.id),
+    ];
+    const settled: CcAnnulmentSettled[] = [];
+    return {
+      billing_month: m.billing_month,
+      currencies: m.fully_closed ? ["clp", "usd"] : [...m.statement_currencies].sort(), // convention-ok: the web-paste bucket holds Santander/BCI listing lines in pesos or dollars only
+      deleted_count: deleted.length,
+      deleted_line_ids: deleted,
+      earliest_deleted_iso: null,
+      moved_count: plan.move_to_open.filter((x) => inMonth(x.line_id)).length,
+      moved_line_ids: plan.move_to_open.filter((x) => inMonth(x.line_id)).map((x) => x.line_id),
+      annulled_line_ids: plan.annul.filter((x) => x.billing_month === m.billing_month).map((x) => x.line_id),
+      annulments_settled: settled,
+      kept_plan_prepayment_line_ids: plan.kept_plan_prepayment.filter(inMonth),
+      restated_line_ids: [...restatedIds].filter(inMonth),
+      skipped: false,
+      skip_reason: null,
+    };
+  });
+  const rekey: ReimportedCardLinesResult = {
+    adopted: 0,
+    copied: plan.insert.filter((i) => i.copies_classification_from != null).length,
+    pairings: [],
+    conflicts: [],
+    unpaired: unpaired.map((lineId) => ({ lineId, parserRowId: null, reason: "ambiguous" as const })),
+  };
+  return {
+    statements: statementsResult,
+    ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0 },
+    overlap_removed: a?.overlap_removed ?? 0,
+    manual_installment_reconcile: a?.manual_installment_reconcile ?? emptyManualReconcile(),
+    web_paste_repair: { lines_moved: 0, target_billing_month: input.open_billing_month ?? "" },
+    web_paste_pdf_reconcile,
+    json_closes_superseded_by_pdf: jsonClosesSuperseded,
+    grocery_branch_learning: a?.grocery_branch_learning ?? { learned: [], ambiguous: [] },
+    expense_line_rekey: rekey,
+    bucket: a?.bucket ?? {
+      truncated_merchant_dedupe: [],
+      planted_payments: { replaced: [], confirmed_in_place: [], ambiguous: [], removed_from_date: null },
+      recurring_pending: { replaced: [], ambiguous: [], removed_from_date: null },
+    },
+    keep_rows: {
+      wrote: done != null,
+      restated: a?.restated ?? [],
+      inserted: a?.inserted ?? [],
+      folded: a?.folded ?? [],
+      removed: a?.removed ?? [],
+      annulled: a?.annulled ?? [],
+      moved: a?.moved ?? [],
+      annulments_billed: a?.annulments_billed ?? [],
+      annulments_credited: a?.annulments_credited ?? [],
+      unpaired,
+    },
+  };
+}
+
+function emptyManualReconcile(): ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport> {
+  return { statements_considered: 0, matched: 0, deleted: 0, converted: 0, categories_transferred: 0, flows_adopted: 0, matches: [] };
 }

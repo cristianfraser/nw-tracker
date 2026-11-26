@@ -2,7 +2,7 @@ import type { ListingOrder } from "nw-tracker-contracts";
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { db } from "./db.js";
-import { ccStatementSourceKindOf } from "./ccStatementSourceKind.js";
+import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { applyCardLinePlan, planOneShotLinesSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import {
   isInstallmentContractSummaryMerchant,
@@ -613,8 +613,20 @@ export function mergeCardStatements(
     listingBatchKind?: string;
     /** A listing import: the order it prints its lines in (`listingOrder.ts`). */
     listingOrder?: ListingOrder;
+    /**
+     * Statement documents through the old insert-then-settle sequence: only the reference the
+     * keep-rows plan is compared with (`statementLinePlanCompare.ts`, the equivalence tests; keep-rows
+     * phase 4 removes it). Production imports statements as a plan applied (`importStatementDocuments`).
+     */
+    reference?: boolean;
   }
 ): CcAccountImportMergeResult {
+  if (!opts?.reference) {
+    const document = statements.find((st) => !isListingSourceKind(ccStatementSourceKindOf(st.document)));
+    if (document) {
+      throw new Error(`mergeCardStatements: ${document.document} is a statement — statements import through importStatementDocuments`);
+    }
+  }
   return withCardLineSession(accountId, "this statement import", () => mergeInSession(accountId, statements, opts));
 }
 

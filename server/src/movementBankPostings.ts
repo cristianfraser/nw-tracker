@@ -67,7 +67,8 @@ export function recordBankPosting(
     .prepare(
       `INSERT INTO movement_bank_postings (movement_id, account_id, posted_on, occurred_on_basis) VALUES (?, ?, ?, ?)
        ON CONFLICT (movement_id, account_id) DO UPDATE SET posted_on = excluded.posted_on,
-         occurred_on_basis = excluded.occurred_on_basis`
+         occurred_on_basis = excluded.occurred_on_basis
+       WHERE posted_on IS NOT excluded.posted_on OR occurred_on_basis IS NOT excluded.occurred_on_basis`
     )
     .run(movementId, accountId, postedOn, basis);
 }

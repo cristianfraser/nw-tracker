@@ -135,6 +135,10 @@ export type PlanClosedMonth = {
 
 export type CardStatementLinePlanInput = {
   account_id: number;
+  /** Every incoming header is on file as the import would write it (the loader read without a savepoint). */
+  headers_on_file: boolean;
+  /** Plans the document's loan chains add to the ledger (none on file has their fingerprint). */
+  document_plans_new: number;
   /** The account's statements once the headers are written (order matters: the reconcile's). */
   statements: PlanStatement[];
   /** JSON closes a PDF takes over: deleted, lines and all, before any line is written. */
@@ -244,7 +248,13 @@ export type CardStatementLinePlan = {
   move_to_open: { line_id: number; billing_month: string }[];
   kept_plan_prepayment: number[];
   /** Annulments a statement credit refunds: one on file, or the one this import writes for a bucket line. */
-  annulments_credited: { annulled_purchase_id: number | null; bucket_line_id: number | null; doc: DocLineRef | null }[];
+  annulments_credited: {
+    annulled_purchase_id: number | null;
+    bucket_line_id: number | null;
+    doc: DocLineRef | null;
+    /** The credit line's day (the annulment's new `annulled_on`). */
+    credit_iso: string;
+  }[];
   ambiguous: { what: string; rows: FileRowRef[]; docs: DocLineRef[] }[];
   /** Today's end state, for the comparison report (`statementLinePlanCompare.ts`). */
   today: CardTodayEndState;
@@ -592,6 +602,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
           annulled_purchase_id: fresh ? null : a.id,
           bucket_line_id: fresh ? fresh.line.id : null,
           doc: docOfVirtual.get(d.statement_line_id) ?? null,
+          credit_iso: d.credit_iso,
         });
       }
     }
@@ -647,6 +658,9 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   const signature = (r: CcLineRef): string | null => fileById.get(r.lineId)?.assignment_signature ?? null;
   const fan = fanOutUniformGroupsGiven(moves.ambiguousGroups, signature);
   const adoptions: CcLineMove[] = [...moves.moves, ...fan.moves].filter((m) => !m.copy && !m.from.installment && !m.to.installment);
+  // A statement's cuota line that comes back under its parser row is the same line (today's
+  // adoption leaves cuota lines alone: their flow is their plan's): the plan keeps it.
+  const cuotaKeeps = [...moves.moves, ...fan.moves].filter((m) => !m.copy && m.from.installment && m.to.installment && m.by === "parser_row_id");
   const adoptedBy = new Map<number, CcLineMove["by"]>();
   for (const m of adoptions) {
     if (m.by === "survivor") {
@@ -671,7 +685,11 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   const today = groups;
   const planned = groups.clone();
   // The plan keeps a replaced line its own re-written line restates (today misses it, see `hidden`).
-  for (const h of hidden) if (!live.get(h.to)?.installment_flag) planned.fold(docToken(h.to), lineToken(h.from));
+  for (const h of hidden) planned.fold(docToken(h.to), lineToken(h.from));
+  for (const m of cuotaKeeps) {
+    planned.fold(docToken(m.to.lineId), lineToken(m.from.lineId));
+    adoptedBy.set(m.from.lineId, "parser_row_id");
+  }
   for (const r of restated) planned.fold(tokenOf(r.to), lineToken(r.from));
 
   const fileRowOfToken = (t: Token): FileRowRef | null => {
@@ -775,11 +793,9 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   for (const k of skipKeeps) {
     if (vanished.has(k.row)) continue;
     const key = `line:${k.row}`;
+    // A row another document line already restates: this line repeats it and writes nothing (its skip).
+    if (claimed.has(key)) continue;
     settledDocs.add(refOf(k.doc));
-    if (claimed.has(key)) {
-      plan.ambiguous.push({ what: "a row on file another document line already restates is also a dedupe/fuzzy hit", rows: [{ kind: "line", id: k.row }], docs: [k.doc] });
-      continue;
-    }
     claimed.add(key);
     plan.keep.push({ row: { kind: "line", id: k.row }, doc: k.doc, why: k.why, today: "same" });
   }

@@ -7,6 +7,7 @@ import { applyCardStatement } from "./cardStatementApply.js";
 import { rolledBack } from "./ingestReceiver.js";
 import { db } from "./db.js";
 import { lineAmountClpSql, lineAmountUsdSql } from "./cards/lineAmountSql.js";
+import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
 
 const BANK_ACCOUNT = "800000007311";
 const LAST4 = "7311";
@@ -149,7 +150,7 @@ describe("applyCardStatement", () => {
 
     const written = applyCardStatement(payload());
     expect(written.statements.map((s) => s.outcome)).toEqual(["written", "written"]);
-    expect(written.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 3 });
+    expect(written.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 3, lines_restated: 0 });
     // The payment folds into the header; the cuota line carries its purchase's total.
     expect(linesOf("clp")).toEqual([
       { merchant: "VITEST MERCADO", amount_clp: 12_000, amount_usd: null },
@@ -206,5 +207,90 @@ describe("applyCardStatement", () => {
     const dirty = applyCardStatement(extra);
     expect(dirty.statements[0]!.outcome).toBe("dirty");
     expect(dirty.statements[0]!.report.join("\n")).toMatch(/only in JSON \(2, of which 1 expected payment rows\)/);
+  });
+
+  describe("a close over the open bucket", () => {
+    function bucketLine(bucket: number, day: string, merchant: string, amount: number, currency: "clp" | "usd", stamp: string | null): number {
+      const key = `vitest-card-statement-web|${day}|${merchant}|${amount}`;
+      const id = Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount, currency, installment_flag, dedupe_key, parser_row_id, raw_line)
+             VALUES (?, ?, ?, ?, ?, 0, ?, ?, 'vitest')`
+          )
+          .run(bucket, day, merchant, amount, currency, key, `web:${key}`).lastInsertRowid
+      );
+      if (stamp) {
+        db.prepare(
+          `INSERT INTO flow_first_seen (flow_id, first_seen_on, first_seen_at, first_seen_seq)
+           VALUES ((SELECT flow_id FROM cc_statement_lines WHERE id = ?), ?, ?, (SELECT COALESCE(MAX(first_seen_seq), 0) + 1 FROM flow_first_seen))`
+        ).run(id, stamp.slice(0, 10), stamp);
+      }
+      return id;
+    }
+    const rowOf = (id: number) =>
+      db
+        .prepare(
+          `SELECT l.id, l.flow_id, l.merchant, l.amount, s.source_kind AS source_pdf, f.first_seen_on, f.first_seen_at FROM cc_statement_lines l
+           JOIN cc_statements s ON s.id = l.statement_id LEFT JOIN flow_first_seen f ON f.flow_id = l.flow_id WHERE l.id = ?`
+        )
+        .get(id) as { id: number; flow_id: number; merchant: string; amount: number; source_pdf: string; first_seen_on: string | null; first_seen_at: string | null } | undefined;
+    const changesNow = () => ({
+      total: (db.prepare(`SELECT total_changes() AS n`).get() as { n: number }).n,
+      logged: (db.prepare(`SELECT COALESCE(MAX(id), 0) AS n FROM mark_input_changes`).get() as { n: number }).n,
+    });
+
+    it("restates the bucket lines it bills in place, writes only its own new lines, and a second send writes nothing", () => {
+      const bucket = Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, card_last4, layout, currency) VALUES (?, 'A', ?, '24/09/2026', ?, 'compact', 'clp')`
+          )
+          .run(accountId, openWebPasteSourcePdf("2026-09"), LAST4).lastInsertRowid
+      );
+      const mercado = bucketLine(bucket, "05/09/2026", "VITEST MERCADO", 12_000, "clp", "2026-09-05T15:00:00.000Z");
+      const cloud = bucketLine(bucket, "05/09/2026", "VITEST CLOUD", 12.5, "usd", null);
+      const before = [rowOf(mercado)!, rowOf(cloud)!];
+
+      const written = applyCardStatement(payload());
+      expect(written.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 1, lines_restated: 2 });
+      // Same rows, same flows, same arrival (the unstamped one stays unstamped); the statement's
+      // wording and statement now.
+      const after = [rowOf(mercado)!, rowOf(cloud)!];
+      expect(after.map((r) => [r.id, r.flow_id, r.first_seen_on, r.first_seen_at])).toEqual(
+        before.map((r) => [r.id, r.flow_id, r.first_seen_on, r.first_seen_at])
+      );
+      expect(after.map((r) => r.source_pdf)).toEqual(["statement_json", "statement_json"]);
+      expect(linesOf("clp").map((l) => l.merchant)).toEqual(["VITEST MERCADO", "VITEST MUEBLES"]);
+      // The listing's wording stays on the flow as history.
+      expect(
+        db.prepare(`SELECT source_kind FROM flow_evidence WHERE flow_id = ? AND source_table = 'restated:cc_statement_lines'`).all(after[0]!.flow_id)
+      ).toEqual([{ source_kind: "listing_open" }]);
+
+      // The feeder sends the close again: nothing at all is written, not even the change log.
+      const mark = changesNow();
+      const again = applyCardStatement(payload());
+      expect(again.written).toBeNull();
+      expect(changesNow()).toEqual(mark);
+    });
+
+    it("a corrected statement writes only what differs: the unchanged lines stay, the changed one is a new line", () => {
+      applyCardStatement(payload());
+      const idOf = (merchant: string) =>
+        (db
+          .prepare(`SELECT l.id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? AND s.statement_date = '24/09/2026' AND l.merchant = ?`)
+          .get(accountId, merchant) as { id: number }).id;
+      const kept = [idOf("VITEST MUEBLES"), idOf("VITEST CLOUD")];
+      const changedBefore = idOf("VITEST MERCADO");
+      const corrected = payload();
+      corrected.statements[0]!.lines[0]!.amount = 12_500;
+      corrected.statements[0]!.billed_total = 22_500;
+      const rewritten = applyCardStatement(corrected);
+      // The statement JSON names a line by its figures: the corrected purchase is another line.
+      expect(rewritten.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 1, lines_restated: 2 });
+      expect([idOf("VITEST MUEBLES"), idOf("VITEST CLOUD")]).toEqual(kept);
+      expect(idOf("VITEST MERCADO")).not.toBe(changedBefore);
+      expect(linesOf("clp")[0]).toEqual({ merchant: "VITEST MERCADO", amount_clp: 12_500, amount_usd: null });
+    });
   });
 });

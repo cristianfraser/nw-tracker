@@ -14,7 +14,7 @@
  * and close, while a row under the parse's group exists (2019-07-24 ·0113: the B copy carried a
  * fingerprint from a later import and the A row only the MONTO CANCELADO −1xx.xxx again). Inside one
  * IMMEDIATE transaction this deletes the stale rows and re-imports their twins in full from the
- * parse through `mergeCardStatements`, carrying categories, notes, big groups and splits
+ * parse through `importStatementDocuments`, carrying categories, notes, big groups and splits
  * from the deleted lines to the new ones (`flows/cardLineAdoption.ts`) and failing when a paired card
  * payment loses its evidence. Without --apply everything is rolled back, so the report IS the plan.
  *
@@ -26,7 +26,10 @@ import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { canonicalStatementsFromParsedRecords } from "nw-tracker-contracts";
 import { cardAccountForStatement } from "../src/cards/documentAccount.js";
-import { mergeCardStatements, statementKeysOf } from "../src/ccInstallmentLedgerMerge.js";
+import { statementKeysOf } from "../src/ccInstallmentLedgerMerge.js";
+// Loads the card-line write funnel the import writes through.
+import "../src/cards/lineWrites.js";
+import { importStatementDocuments } from "../src/cards/statementLinePlanApply.js";
 import { adoptReimportedCardLines, captureCardLines } from "../src/flows/cardLineAdoption.js";
 import {
   assertCcPaymentEvidenceKept,
@@ -101,7 +104,7 @@ const tx = db.transaction(() => {
     const capture = captureCardLines(accountId);
     const del = db.prepare(`DELETE FROM cc_statements WHERE id = ?`);
     for (const s of rows) del.run(s.id);
-    const merged = mergeCardStatements(accountId, accountRecords, {
+    const merged = importStatementDocuments(accountId, accountRecords, {
       replaceStatementKeys: statementKeysOf(accountRecords),
     });
     const rekey = adoptReimportedCardLines(capture);

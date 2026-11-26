@@ -71,7 +71,9 @@ export type CcImportSkipReason =
   /** Dropped before the merge: the table's «SALDO INICIAL» row (the previous bill's total). */
   | "saldo_inicial"
   /** The bank's later-day listing of a purchase the app already planted (`ccPlantedCharges.ts`). */
-  | "planted_same_purchase";
+  | "planted_same_purchase"
+  /** A statement line that restates the row on file for it (kept in place, `statementLinePlanApply.ts`). */
+  | "restated";
 
 export type SkippedCcImportFlowItem = CcImportFlowItem & { reason: CcImportSkipReason };
 
@@ -102,6 +104,10 @@ export type CcStatementsMergeResult = {
   statementCount: number;
   lineCount: number;
   linesInserted: number;
+  /** Rows on file the statement restated in place (the open bucket's, a re-imported statement's). */
+  linesRestated: number;
+  /** Rows on file folded into a restated row (several listings of one charge). */
+  linesFolded: number;
   linesSkippedDuplicate: number;
   /** One-shot line skipped — same date+amount+fuzzy merchant already exists (different truncation). */
   linesSkippedFuzzyDuplicate: number;
@@ -150,12 +156,17 @@ const findStmtId = db.prepare(
    WHERE account_id = ? AND card_group = ? AND source_pdf = ? AND statement_date = ?`
 );
 
-/** Same billing close re-imported from a different PDF filename (CLP vs USD stay separate). */
+/**
+ * Same billing close re-imported from a different PDF filename (CLP vs USD stay separate). Never a
+ * listing bucket: an open bucket filed under the close day is the bucket the statement settles, not
+ * the statement's own row.
+ */
 const findStmtByClose = db.prepare(
   `SELECT id FROM cc_statements
    WHERE account_id = ? AND card_group = ? AND statement_date = ?
      AND COALESCE(card_last4, '') = COALESCE(?, '')
      AND currency = ?
+     AND source_kind NOT IN ('listing_open', 'listing_other')
    ORDER BY id ASC`
 );
 
@@ -205,22 +216,29 @@ const updStmt = db.prepare(`
 `);
 
 
+/** The columns the header update writes (`updStmt`), compared to tell an unchanged header. */
+const HEADER_COLUMNS = [
+  "statement_date", "period_from", "period_to", "pay_by", "card_last4", "card_product", "layout", "currency",
+  "saldo_anterior", "abono", "compras_cargos", "deuda_total", "monto_facturado", "monto_pagado_anterior",
+  "monto_pagado_anterior_date", "next_period_from", "next_period_to", "import_fingerprint",
+] as const;
+
 /**
- * The statement's `cc_statements` row: the row on file for its document and close (else for its
- * close, card and currency: a re-downloaded statement filed under another name), updated, or a new
- * one. Writes no line. `lines`: every line the import hands for it (the fingerprint).
+ * The statement's `cc_statements` row as the header upsert resolves it, read only: the row on file
+ * for its document and close (else for its close, card and currency: a re-downloaded statement
+ * filed under another name), whether it states exactly what the import would write, and the values
+ * it would write. `lines`: every line the import hands for it (the fingerprint).
  */
-export function upsertCcStatementHeader(
+export function resolveCcStatementHeader(
   accountId: number,
   statement: CardCanonicalStatement,
   lines: readonly CardCanonicalLine[],
-  /** Statements the close fallback must not resolve to (JSON closes a PDF takes over, still on file). */
   opts?: { notStatementIds?: ReadonlySet<number> }
-): { statementId: number; existed: boolean } {
+): { statementId: number | null; unchanged: boolean; params: Record<string, unknown> } {
   assertStatementHeader(statement);
   const stored = storedStatementColumns(statement);
   const { card_group: cardGroup, source_pdf: sourcePdf, statement_date: statementDate, currency } = stored;
-  const stmtParams = {
+  const params: Record<string, unknown> = {
     account_id: accountId,
     ...stored,
     // Written here rather than by the caller because only this step knows which row the
@@ -237,11 +255,30 @@ export function upsertCcStatementHeader(
       (r) => !opts?.notStatementIds?.has(r.id)
     );
   }
-  if (existing) {
-    updStmt.run({ ...stmtParams, id: existing.id });
-    return { statementId: existing.id, existed: true };
+  if (!existing) return { statementId: null, unchanged: false, params };
+  const onFile = db.prepare(`SELECT ${HEADER_COLUMNS.join(", ")} FROM cc_statements WHERE id = ?`).get(existing.id) as Record<string, unknown>;
+  const unchanged = HEADER_COLUMNS.every((c) => (onFile[c] ?? null) === (params[c] ?? null));
+  return { statementId: existing.id, unchanged, params };
+}
+
+/**
+ * The statement's `cc_statements` row (`resolveCcStatementHeader`): updated when it states anything
+ * else, or a new one. Writes no line; a header that already states the import writes nothing
+ * (`changed` false).
+ */
+export function upsertCcStatementHeader(
+  accountId: number,
+  statement: CardCanonicalStatement,
+  lines: readonly CardCanonicalLine[],
+  /** Statements the close fallback must not resolve to (JSON closes a PDF takes over, still on file). */
+  opts?: { notStatementIds?: ReadonlySet<number> }
+): { statementId: number; existed: boolean; changed: boolean } {
+  const r = resolveCcStatementHeader(accountId, statement, lines, opts);
+  if (r.statementId != null) {
+    if (!r.unchanged) updStmt.run({ ...r.params, id: r.statementId });
+    return { statementId: r.statementId, existed: true, changed: !r.unchanged };
   }
-  return { statementId: Number(insStmt.run(stmtParams).lastInsertRowid), existed: false };
+  return { statementId: Number(insStmt.run(r.params).lastInsertRowid), existed: false, changed: true };
 }
 
 /**
@@ -445,6 +482,8 @@ export function importCcStatementsMerge(
     statementCount,
     lineCount,
     linesInserted,
+    linesRestated: 0,
+    linesFolded: 0,
     linesSkippedDuplicate,
     linesSkippedFuzzyDuplicate,
     linesSkippedInstallmentOverlap,

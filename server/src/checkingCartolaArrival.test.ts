@@ -3,7 +3,8 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
 import { partialMovementNote } from "./checkingPartialMovementsImport.js";
-import { insertMovement } from "./movementWrites.js";
+import { insertBankPesoMovement } from "./movementWrites.js";
+import { dailyListingFacts } from "./movementListingFacts.js";
 import { deleteTempCardMaster } from "./test/tempCardMaster.js";
 
 /** A cartola taking over the daily rows keeps each row's arrival (`olderArrival`, `flowFirstSeen.ts`). */
@@ -50,7 +51,9 @@ describe("a checking cartola over the daily rows", () => {
   beforeAll(() => {
     accountId = createCheckingAccount();
     // Two daily rows on file: one from before the stamps (none), one stamped when it was listed.
-    const daily = notes.map((note, i) => insertMovement({ accountId, amount: rows[i]!.amount_clp, currency: "clp", occurredOn: rows[i]!.occurred_on, note }));
+    const daily = notes.map((note, i) =>
+      insertBankPesoMovement({ accountId, amount: rows[i]!.amount_clp, occurredOn: rows[i]!.occurred_on, note, flowKind: null, listed: dailyListingFacts({ ...rows[i]!, document_no: "" }) })
+    );
     const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
     db.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(flowOf(daily[0]!));
     db.prepare(`UPDATE flow_first_seen SET first_seen_on = ?, first_seen_at = ?, first_seen_seq = ? WHERE flow_id = ?`).run(
@@ -60,7 +63,7 @@ describe("a checking cartola over the daily rows", () => {
       flowOf(daily[1]!)
     );
 
-    const { partialsRemoved, movementsInserted } = importCheckingCartola(accountId, {
+    const { partialsRestated, movementsInserted } = importCheckingCartola(accountId, {
       source_file: "vitest-arrival-cartola.xlsx",
       period_month: PERIOD,
       period_from: "1802-03-01",
@@ -71,8 +74,9 @@ describe("a checking cartola over the daily rows", () => {
       skipped: [],
       notes: [],
     });
-    expect(movementsInserted).toBe(3);
-    expect(partialsRemoved).toBe(2);
+    // The two daily rows are restated as their cartola rows; only the third movement is written.
+    expect(movementsInserted).toBe(1);
+    expect(partialsRestated).toBe(2);
   });
 
   afterAll(() => deleteTempCardMaster(accountId));

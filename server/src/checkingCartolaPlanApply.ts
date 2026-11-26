@@ -1,25 +1,27 @@
 /**
- * Applies a cartola plan (`checkingCartolaPlan.ts`) to the checking account: the import's gates and
- * month record run as `importCheckingCartola` runs them (the saldo identity, the saldo chain, «parsed
- * N but wrote none», the `checking_cartola_imports` row), and the rows follow the plan instead of
- * «insert every movement, then delete the daily rows and hand their flows over»:
+ * A cartola month imported as a plan applied (`checkingCartolaPlan.ts`): the import's gates and
+ * month record run as they always have (the saldo identity, the saldo chain, «parsed N but wrote
+ * none», the `checking_cartola_imports` row), and the rows follow the plan — a row the app already
+ * has is restated by the cartola, never deleted and written again:
  *
- *  - `keep`: a cartola row on file stays as it is; a daily-listing row is restated as the movement's
- *    cartola row in place (`restateMovementFromCartola`);
- *  - `confirm`: the transfer leg or mail-written row is claimed and confirmed, as today;
+ *  - `keep`: a cartola row on file stays as it is (restated by its movement when the month is
+ *    imported again, `replace_month`); a daily-listing row is restated as the movement's cartola row
+ *    in place (`restateMovementFromCartola`), keeping its id, flow, stamp and a receipt-corrected day;
+ *  - `confirm`: the transfer leg or mail-written row is claimed and confirmed;
  *  - `insert`: the cartola row is written (`insertBankPesoMovement`, which takes a retired flow of its
- *    document back);
+ *    document back; several retired flows for one document are left alone and reported);
  *  - `fold`: the row folds into the kept row (`foldMovementInto`);
- *  - `remove`: the daily row goes.
+ *  - `remove`: a daily row a transfer leg or a mail row already represents, or a cartola row of a
+ *    replaced month the new cartola no longer lists.
  *
- * A plan with an ambiguous daily row (more identical daily rows than movements) is refused.
- * Called by nobody in production yet (keep-rows phase 2); the equivalence tests run it beside
- * today's import.
+ * Ambiguity (GUIDELINES: no guesses): more identical daily rows than cartola movements fails the
+ * import of that cartola, naming the rows, before anything is written. A cartola already on file
+ * as it states (same rows, same month record) writes nothing.
  */
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { movementNote, type ParsedCheckingCartola } from "./checkingCartolaParse.js";
-import { assertCartolaMonthWrote, recordCartolaMonthImport } from "./checkingCartolaImport.js";
+import { assertCartolaMonthWrote, recordCartolaMonthImport } from "./checkingCartolaMonthRecord.js";
 import { assertCheckingCartolaSaldoIdentity, validateCartolaSaldoChain } from "./checkingCartolaSaldoValidation.js";
 import { checkingMovementFlowKind } from "./checkingBankCharges.js";
 import { claimTransferLegForBankRow } from "./checkingTransferLegReconcile.js";
@@ -29,23 +31,45 @@ import { confirmTransferNoticeMovement, confirmTransferNoticeMovementForTransfer
 import { deleteMovements, insertBankPesoMovement } from "./movementWrites.js";
 import { cartolaListingFacts } from "./movementListingFacts.js";
 import { foldMovementInto, restateMovementFromCartola } from "./checkingCartolaRestate.js";
+import type { RetiredMovementAdoption } from "./flows/flowAdoption.js";
 import type { CheckingCartolaPlan } from "./checkingCartolaPlan.js";
 
-export type CheckingCartolaPlanApplyResult = { restated: number[]; inserted: number[]; folded: number[]; removed: number[] };
+export type CheckingCartolaPlanApplyResult = {
+  /** Rows the cartola restated (a daily row becoming its cartola row, a replaced month's row). */
+  restated: number[];
+  inserted: number[];
+  folded: number[];
+  removed: number[];
+  /** Transfer legs and mail rows the cartola confirmed. */
+  confirmed: number[];
+  /** Written rows that took a retired flow back, or found several (left alone). */
+  flow_adoptions: NonNullable<RetiredMovementAdoption>[];
+};
+
+/** Throws, naming the daily rows, when the plan holds more identical daily rows than movements. */
+export function assertCartolaPlanPairs(cartola: ParsedCheckingCartola, plan: CheckingCartolaPlan): void {
+  const unpaired = plan.ambiguous.filter((a) => a.movement < 0);
+  if (unpaired.length > 0) {
+    throw new Error(
+      `Cartola ${cartola.period_month} (${cartola.source_file}): cannot pair the daily rows one to one, nothing was written: ` +
+        unpaired.map((a) => a.what).join("; ")
+    );
+  }
+}
 
 /** Applies `plan` (planned for `cartola` on `accountId`, see the module doc), in one transaction. */
 export function applyCheckingCartolaPlan(
   accountId: number,
   cartola: ParsedCheckingCartola,
   plan: CheckingCartolaPlan,
-  dbHandle: Database = db
+  dbHandle: Database = db,
+  opts?: { replaceMonth?: boolean }
 ): CheckingCartolaPlanApplyResult {
-  const unpaired = plan.ambiguous.filter((a) => a.movement < 0);
-  if (unpaired.length > 0) throw new Error(`keep-rows apply: ${unpaired.map((a) => a.what).join("; ")}`);
+  assertCartolaPlanPairs(cartola, plan);
   assertCheckingCartolaSaldoIdentity(cartola);
   const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
   if (chainErr) throw new Error(`Cartola ${cartola.period_month} (${cartola.source_file}): ${chainErr}`);
-  const out: CheckingCartolaPlanApplyResult = { restated: [], inserted: [], folded: [], removed: [] };
+  const out: CheckingCartolaPlanApplyResult = { restated: [], inserted: [], folded: [], removed: [], confirmed: [], flow_adoptions: [] };
   const kindOf = dbHandle.prepare(`SELECT source_kind FROM flow_evidence WHERE source_table = 'movements' AND source_row_id = ?`);
   dbHandle.transaction(() => {
     let wrote = 0;
@@ -68,7 +92,7 @@ export function applyCheckingCartolaPlan(
       if (keep) {
         const kind = (kindOf.get(keep.row_id) as { source_kind: string } | undefined)?.source_kind;
         if (kind == null) throw new Error(`keep-rows apply: movement ${index} keeps row ${keep.row_id}, which is gone`);
-        if (kind === "daily_listing") {
+        if (kind === "daily_listing" || (kind === "cartola" && opts?.replaceMonth)) {
           if (restateMovementFromCartola({ movementId: keep.row_id, accountId, note, amount: mv.amount_clp, flowKind, listed }, dbHandle)) {
             out.restated.push(keep.row_id);
           }
@@ -84,18 +108,23 @@ export function applyCheckingCartolaPlan(
         confirmSyntheticRetiroForTransferLeg(confirm.row_id, mv.occurred_on, "cartola", dbHandle);
         confirmSyntheticCcPaymentForTransferLeg(confirm.row_id, mv.occurred_on, "cartola", dbHandle);
         confirmTransferNoticeMovementForTransferLeg(confirm.row_id, mv.occurred_on, "cartola", mv.description, dbHandle);
+        out.confirmed.push(confirm.row_id);
         wrote += 1;
         return;
       }
       if (confirm?.why === "mail_notice") {
         confirmTransferNoticeMovement(confirm.row_id, accountId, mv.occurred_on, "cartola", mv.description, dbHandle);
+        out.confirmed.push(confirm.row_id);
         wrote += 1;
         return;
       }
       if (!plan.insert.some((i) => i.movement === index)) throw new Error(`keep-rows apply: movement ${index} is in no outcome`);
-      out.inserted.push(insertBankPesoMovement({ accountId, amount: mv.amount_clp, occurredOn: mv.occurred_on, note, flowKind, listed }, dbHandle));
+      out.inserted.push(
+        insertBankPesoMovement({ accountId, amount: mv.amount_clp, occurredOn: mv.occurred_on, note, flowKind, listed }, dbHandle, out.flow_adoptions)
+      );
       wrote += 1;
     });
+    // Removed last (a written row never takes a removed row's id).
     for (const r of plan.remove) {
       deleteMovements([r.row_id], dbHandle);
       out.removed.push(r.row_id);

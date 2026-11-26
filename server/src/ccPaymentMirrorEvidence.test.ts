@@ -1,7 +1,8 @@
 import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./cacheRegistry.js";
-import { mergeCardStatements, statementKeysOf } from "./ccInstallmentLedgerMerge.js";
+import { statementKeysOf } from "./ccInstallmentLedgerMerge.js";
+import { importStatementDocuments } from "./cards/statementLinePlanApply.js";
 import { ccPaymentPairingsWithoutEvidence, listCcPaymentPairings } from "./ccPaymentMirrorEvidence.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaymentMirrors.js";
 import { deleteCcWebPasteStatementLine } from "./ccStatementLineDelete.js";
@@ -104,13 +105,13 @@ describe("converted card payments across statement writes", () => {
   }
 
   const reimport = (records: ParsedRecord[]) =>
-    mergeCardStatements(cardId, parsedStatements(records), { replaceStatementKeys: statementKeysOf(parsedStatements(records)) });
+    importStatementDocuments(cardId, parsedStatements(records), { replaceStatementKeys: statementKeysOf(parsedStatements(records)) });
 
   const lineExists = (id: number | null) =>
     db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(id ?? -1) != null;
 
-  it("a forced re-import keeps every converted payment; one that moves a paid payment writes nothing", () => {
-    mergeCardStatements(cardId, parsedStatements(statementRecords({ pagoLineDate: "09/10/2037" })));
+  it("a forced re-import keeps every converted payment on its row; one that moves a paid payment writes nothing", () => {
+    importStatementDocuments(cardId, parsedStatements(statementRecords({ pagoLineDate: "09/10/2037" })));
     debit("2037-10-10", 271_000, "Traspaso Internet a T. Crédito");
     debit("2037-10-13", 95_000, "Egreso por Compra de Divisas");
     clearAggregationCache();
@@ -126,10 +127,10 @@ describe("converted card payments across statement writes", () => {
     const recorded = listCcPaymentPairings(cardId);
     expect(recorded).toHaveLength(2);
 
-    // Forced replacement: every line of both statements comes back on a new row.
+    // Forced replacement: the statements restate their rows in place, every line keeps its row.
     reimport(statementRecords({ pagoLineDate: "09/10/2037" }));
     clearAggregationCache();
-    for (const p of recorded) expect(lineExists(p.recorded_statement_line_id)).toBe(false);
+    for (const p of recorded) expect(lineExists(p.recorded_statement_line_id)).toBe(true);
     expect(ccPaymentPairingsWithoutEvidence(cardId)).toEqual([]);
     expect(myCandidates()).toEqual([]);
 
