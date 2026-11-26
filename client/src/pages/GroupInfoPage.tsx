@@ -373,7 +373,9 @@ export function GroupInfoPage() {
 
   // Every other group of these routes is a glance page; a settled nav node that is neither is a
   // tree the server did not mark, not something to draw another way.
-  if (navSettled && navMatchNode && !navMatchNode.investment_glance && !navMatchNode.cash_glance) {
+  // (A tree from a server older than `cash_glance` states neither: the page keeps its pending
+  // frame until the client reloads onto the deployed build.)
+  if (navSettled && navMatchNode && navMatchNode.investment_glance === false && navMatchNode.cash_glance === false) {
     throw new Error(`Group page ${navMatchNode.slug}: neither a basket, an investment group nor a cash group`);
   }
 
@@ -415,7 +417,9 @@ export function GroupInfoPage() {
             type="button"
             className={positionsPercent.percent ? "is-on" : undefined}
             aria-pressed={positionsPercent.percent}
-            title={t("groupPage.investmentGlance.percentToggleTitle")}
+            title={t(
+              cashPage ? "groupPage.cashGlance.percentToggleTitle" : "groupPage.investmentGlance.percentToggleTitle"
+            )}
             onClick={() => positionsPercent.setPercent(!positionsPercent.percent)}
           >
             {t("groupPage.investmentGlance.percentToggle")}

@@ -4053,6 +4053,14 @@
       "balanceByAccount": {
         "en": "Balance by account",
         "es": "Saldo por cuenta"
+      },
+      "percentToggleTitle": {
+        "en": "Show each account's share of the total",
+        "es": "Ver la participación de cada cuenta en el total"
+      },
+      "dayChange": {
+        "en": "Change in balance today",
+        "es": "Variación del saldo hoy"
       }
     },
     "basketGlance": {

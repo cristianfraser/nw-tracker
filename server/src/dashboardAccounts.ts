@@ -44,6 +44,7 @@ import {
   type TsUnit,
 } from "./valuationTimeseries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { currencySmallestCoin } from "./displayUnits.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { nodeNetsLinkedCards, nodeValue } from "./nodeValue.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
@@ -757,7 +758,8 @@ async function navContextValueMap(
         { netsLinkedCards: true }
       )
     : nav.card_metrics_by_slug[rootSlug]?.value.parent;
-  if (value == null || !(value > 0)) return undefined;
+  // Worth at least the coin the map settles to (a sub-coin value rounds to an empty map).
+  if (value == null || !(Math.round(value / currencySmallestCoin(unit)) > 0)) return undefined;
   const rows = await buildDashboardAccountRows(unit);
   const chainedPct = chainedGroupPctResolver(rows, unit, accountIsDebt);
   const map = buildNavValueMapForRoot(node, rows, unit, nav.nw_bucket_totals, chainedPct);

@@ -14,8 +14,9 @@ import { priorPeriodEndYmd } from "./periodAnchorDates.js";
  */
 const PREFIX = "vitest_cash_glance";
 const SLUG = `${PREFIX}_g`;
-const created = { accounts: [] as number[], movements: [] as number[], group: 0 };
-const ids = { pesos: 0, dollars: 0 };
+const OD_SLUG = `${PREFIX}_od`;
+const created = { accounts: [] as number[], movements: [] as number[], group: 0, groups: [] as number[] };
+const ids = { pesos: 0, dollars: 0, plus: 0, overdrawn: 0 };
 
 const today = chileCalendarTodayYmd();
 const monthAnchor = priorPeriodEndYmd("mtd", today);
@@ -44,10 +45,29 @@ function deposit(accountId: number, amount: number, currency: string, on: string
   created.movements.push(
     Number(
       db
-        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, flow_kind) VALUES (?, ?, ?, ?, 'deposit')`)
-        .run(accountId, amount, currency, on).lastInsertRowid
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, flow_kind) VALUES (?, ?, ?, ?, ?)`)
+        .run(accountId, amount, currency, on, amount < 0 ? "withdrawal" : "deposit").lastInsertRowid
     )
   );
+}
+
+function group(parentId: number, slug: string, route: string, accountIds: number[]): number {
+  const id = Number(
+    db
+      .prepare(
+        `INSERT INTO portfolio_groups (parent_id, slug, label, sort_order, group_kind, kind_slug, route_path, basket)
+         VALUES (?, ?, ?, 9999, 'bucket', ?, ?, 0)`
+      )
+      .run(parentId, slug, `Vitest ${slug}`, slug, route).lastInsertRowid
+  );
+  created.groups.push(id);
+  db.prepare(`INSERT INTO portfolio_group_items (group_id, item_kind, child_group_id, sort_order) VALUES (?, 'group', ?, 9999)`).run(
+    parentId,
+    id
+  );
+  const item = db.prepare(`INSERT INTO portfolio_group_items (group_id, item_kind, account_id, sort_order) VALUES (?, 'account', ?, ?)`);
+  accountIds.forEach((accountId, i) => item.run(id, accountId, i));
+  return id;
 }
 
 function findNode(node: NavTreeNodeDto | null, slug: string): NavTreeNodeDto | null {
@@ -84,11 +104,23 @@ beforeAll(() => {
   const item = db.prepare(`INSERT INTO portfolio_group_items (group_id, item_kind, account_id, sort_order) VALUES (?, 'account', ?, ?)`);
   item.run(created.group, ids.pesos, 0);
   item.run(created.group, ids.dollars, 1);
+
+  // A second group: 1.000.000 beside an account overdrawn by 400.000.
+  const pesoLeaf = leafGroupId("%broker_clp__clp");
+  ids.plus = account("plus", pesoLeaf);
+  ids.overdrawn = account("overdrawn", pesoLeaf);
+  deposit(ids.plus, 1_000_000, "clp", lastYear);
+  deposit(ids.overdrawn, -400_000, "clp", lastYear);
+  group(checking.id, OD_SLUG, `/cash_eqs/checking/${OD_SLUG}`, [ids.plus, ids.overdrawn]);
 });
 
 afterAll(() => {
   for (const id of created.movements) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ? OR child_group_id = ?`).run(created.group, created.group);
+  for (const id of created.groups) {
+    db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ? OR child_group_id = ?`).run(id, id);
+  }
+  for (const id of [...created.groups].reverse()) db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(id);
   db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(created.group);
   for (const id of created.accounts) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
 });
@@ -183,6 +215,23 @@ describe("a cash group's glance", () => {
     expect(dollars.value).toEqual({ value: 1_000, currency: "usd" });
     expect(g.rows.find((r) => r.account_id === ids.pesos)!.native).toEqual([{ value: 1_500_000, currency: "clp" }]);
     expect(g.cash!.by_currency.find((c) => c.currency === "usd")!.value).toEqual({ value: 1_000, currency: "usd" });
+  });
+});
+
+describe("a cash group with an overdrawn account", () => {
+  it("weighs each account against the positive balances, never over 100 %", async () => {
+    const g = (await buildDashboardNavContext("clp", OD_SLUG)).group_glance!;
+    const plus = g.rows.find((r) => r.account_id === ids.plus)!;
+    const overdrawn = g.rows.find((r) => r.account_id === ids.overdrawn)!;
+    expect(g.value.value).toBeCloseTo(600_000, 6);
+    expect(overdrawn.value.value).toBeCloseTo(-400_000, 6);
+    expect(plus.share).toBe(1);
+    expect(overdrawn.share).toBe(0);
+    expect(overdrawn.native).toEqual([{ value: -400_000, currency: "clp" }]);
+    expect(g.rows.reduce((s, r) => s + r.share, 0)).toBe(1);
+    expect(g.cash!.by_currency).toEqual([
+      { currency: "clp", native: { value: 600_000, currency: "clp" }, value: { value: 600_000, currency: "clp" }, share: 1 },
+    ]);
   });
 });
 

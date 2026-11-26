@@ -39,7 +39,7 @@ import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import { HOME_CURRENCY, currencySmallestCoin } from "./displayUnits.js";
 import { buildNavChartBucketPlan, navChartBucketNavNodes, shouldAggregateNavCharts } from "./groupChartBuckets.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
-import { nettedGroup } from "./navTreeModel.js";
+import { groupAccountIds, nettedGroup } from "./navTreeModel.js";
 import type { NavTreeNodeDto } from "./navTreeTypes.js";
 import {
   linkedCardsOwedInUnit,
@@ -246,7 +246,10 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     if (!r) throw new Error(`Group glance ${inp.slug}: account ${id} has no dashboard row`);
     return r;
   };
-  const counted = (id: number) => !requireRow(id).exclude_from_group_totals;
+  // A cash total is the node-value rule's: an account in a child group kept out of its parent's
+  // total (`exclude_from_parent_total`) is no part of this page's, as on the bucket's card.
+  const inTotals = cash ? new Set(groupAccountIds(inp.slug, { forTotals: true })) : null;
+  const counted = (id: number) => !requireRow(id).exclude_from_group_totals && (inTotals == null || inTotals.has(id));
   const requireCard = (slug: string): NavCardMetricsDto => {
     const c = inp.cardMetricsBySlug[slug];
     if (!c) throw new Error(`Group glance ${inp.slug}: child ${slug} has no card metrics`);
@@ -313,8 +316,9 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
   const groupValue = cash
     ? (nodeValueFromSum(accountsValue, netsCards ? cardsOwed : undefined) ?? 0)
     : presentValue(finiteOrNull(card.value.parent), card.value.fx_missing, "the group");
-  // A cash row's weight is its part of the accounts (the cards are no part of any).
-  const shareBase = cash ? accountsValue : groupValue;
+  // A cash row's weight is its part of what the accounts hold (the cards are no part of any, and
+  // an overdrawn account takes none away: the base is the positive balances).
+  const shareBase = cash ? pageMemberIds.reduce((s, id) => s + Math.max(accountValue(id), 0), 0) : groupValue;
   const shareOf = (v: number, held: boolean) => (held && shareBase > 0 && v > 0 ? v / shareBase : 0);
 
   const grid = sparkGrid(today);
@@ -448,7 +452,13 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
         if (n.account_id != null) {
           if (counted(n.account_id)) children.push(accountRow(n.account_id, line, n.color_rgb));
         } else {
-          children.push(groupRow(n, line, asPage));
+          const row = groupRow(n, line, asPage);
+          const rowIds = idsByRow.get(row) ?? [];
+          // A cash row stands for its counted accounts: one with none (a child kept out of this
+          // group's total) is no row, and none of its accounts gets a second row below.
+          if (cash && rowIds.length === 0) continue;
+          if (cash) for (const id of rowIds) covered.add(id);
+          children.push(row);
         }
       }
     }
@@ -467,6 +477,10 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     if (missing.length > 0) {
       rows.push(...missing.map((id) => accountRow(id, null, colorOfAccountIn(inp.chartNode, id))));
       rows.splice(0, rows.length, ...sortGroupGlanceRows(rows));
+    }
+    const rowIds = rows.flatMap((r) => idsByRow.get(r) ?? []);
+    if (new Set(rowIds).size !== rowIds.length) {
+      throw new Error(`Group glance ${inp.slug}: an account is in two of its rows`);
     }
     const rowsSum = rows.reduce((s, r) => s + r.value.value, 0);
     if (Math.abs(rowsSum - accountsValue) > eps) {

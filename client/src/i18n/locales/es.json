@@ -1302,7 +1302,9 @@
       "byCurrency": "saldo por moneda",
       "change": "variación del saldo",
       "balanceTitle": "Saldo",
-      "balanceByAccount": "Saldo por cuenta"
+      "balanceByAccount": "Saldo por cuenta",
+      "percentToggleTitle": "Ver la participación de cada cuenta en el total",
+      "dayChange": "Variación del saldo hoy"
     },
     "basketGlance": {
       "units": {

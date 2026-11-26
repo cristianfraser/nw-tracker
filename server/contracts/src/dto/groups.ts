@@ -151,7 +151,10 @@ export interface GroupGlanceRowDto {
   color_rgb: string | null;
   /** Today, display unit. */
   value: Money;
-  /** value ÷ the group's value (0..1); 1 on the total row; 0 when sold out. */
+  /**
+   * value ÷ the group's value (0..1); 1 on the total row; 0 when sold out. On a cash glance the
+   * base is the accounts' positive balances (0 for an account worth 0 or less and for the cards).
+   */
   share: number;
   /** The card's chained %s (a child: `row_pct`; the total row: `parent_pct`; an account: its row's `pct_*`). */
   day_pct: number | null;

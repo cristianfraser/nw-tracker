@@ -31,8 +31,9 @@ function SignedMoney({ money }: { money: Money | null }) {
 }
 
 /**
- * The investment group page's title line: the group's name, today's value and the day's P/L
- * (server `group_glance`). `glance` undefined = pending: the nav's name, blank figures.
+ * The group page's title line: the group's name, today's value and the day's P/L (server
+ * `group_glance`); on a cash group the day's change of the balance, the figure its strip shows
+ * (`cash.change.day`). `glance` undefined = pending: the nav's name, blank figures.
  */
 export function GroupGlanceTitle({
   glance,
@@ -43,12 +44,14 @@ export function GroupGlanceTitle({
   fallbackTitle: string;
   loading?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <GlanceTitleLine
       // The nav's label (translated like the sidebar's) once known; the server's before.
       title={fallbackTitle || glance?.title || ""}
       value={glance?.value ?? null}
-      day={glance?.day ?? null}
+      day={glance?.cash ? glance.cash.change.day : (glance?.day ?? null)}
+      dayLabel={glance?.cash ? t("groupPage.cashGlance.dayChange") : undefined}
       loading={loading}
     />
   );

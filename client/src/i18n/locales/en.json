@@ -1302,7 +1302,9 @@
       "byCurrency": "balance by currency",
       "change": "change in balance",
       "balanceTitle": "Balance",
-      "balanceByAccount": "Balance by account"
+      "balanceByAccount": "Balance by account",
+      "percentToggleTitle": "Show each account's share of the total",
+      "dayChange": "Change in balance today"
     },
     "basketGlance": {
       "units": {
