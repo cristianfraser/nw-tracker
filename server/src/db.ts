@@ -342,9 +342,9 @@ function splitMigrationStatements(sql: string): string[] {
  * has is an authoring error (the baseline is the schema as of migration 155, and no later file
  * re-adds one of its columns), not a step to skip.
  */
-function execMigrationSql(sql: string): void {
+function execMigrationSql(dbi: DatabaseType, sql: string): void {
   for (const stmt of splitMigrationStatements(sql)) {
-    dbInternal.exec(stmt);
+    dbi.exec(stmt);
   }
 }
 
@@ -478,8 +478,8 @@ type ForeignKeyViolation = { table: string; rowid: number | null; parent: string
  * silently and the orphans surface later as missing data. Throws inside the migration's
  * transaction, so nothing of the migration is kept.
  */
-function assertNoForeignKeyViolations(file: string): void {
-  const rows = dbInternal.pragma("foreign_key_check") as ForeignKeyViolation[];
+function assertNoForeignKeyViolations(dbi: DatabaseType, file: string): void {
+  const rows = dbi.pragma("foreign_key_check") as ForeignKeyViolation[];
   if (rows.length === 0) return;
   const first = rows
     .slice(0, 5)
@@ -489,14 +489,34 @@ function assertNoForeignKeyViolations(file: string): void {
 }
 
 export function runMigrations() {
-  if (!fs.existsSync(migrationsDir)) {
+  runMigrationsIn(dbInternal, {
+    dir: migrationsDir,
+    foreignKeysOff: FOREIGN_KEYS_OFF_MIGRATIONS,
+    hooks: POST_MIGRATION_HOOKS,
+  });
+}
+
+/**
+ * The runner itself, on any connection with a `schema_migrations` table (tests: a scratch
+ * database and a folder of their own migration files).
+ */
+export function runMigrationsIn(
+  dbi: DatabaseType,
+  opts: {
+    dir: string;
+    foreignKeysOff: ReadonlySet<string>;
+    hooks: Readonly<Record<string, (dbi: DatabaseType) => void>>;
+  }
+): void {
+  const { dir, foreignKeysOff, hooks } = opts;
+  if (!fs.existsSync(dir)) {
     return;
   }
   const files = fs
-    .readdirSync(migrationsDir)
+    .readdirSync(dir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  const appliedRows = dbInternal.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
+  const appliedRows = dbi.prepare("SELECT id FROM schema_migrations").all() as { id: string }[];
   const done = new Set(appliedRows.map((r) => r.id));
   let appliedCount = 0;
 
@@ -505,15 +525,15 @@ export function runMigrations() {
   // write lock is taken BEFORE re-checking, so a concurrent boot that lost the race skips
   // cleanly instead of re-running the SQL (data transforms must never double-run) and
   // crashing on the UNIQUE schema_migrations insert.
-  const applyOne = dbInternal.transaction((file: string, sql: string): boolean => {
-    const already = dbInternal
+  const applyOne = dbi.transaction((file: string, sql: string): boolean => {
+    const already = dbi
       .prepare("SELECT 1 FROM schema_migrations WHERE id = ?")
       .get(file);
     if (already) return false;
-    execMigrationSql(sql);
-    POST_MIGRATION_HOOKS[file]?.(dbInternal);
-    if (FOREIGN_KEYS_OFF_MIGRATIONS.has(file)) assertNoForeignKeyViolations(file);
-    dbInternal.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
+    execMigrationSql(dbi, sql);
+    hooks[file]?.(dbi);
+    if (foreignKeysOff.has(file)) assertNoForeignKeyViolations(dbi, file);
+    dbi.prepare("INSERT INTO schema_migrations (id) VALUES (?)").run(file);
     return true;
   });
 
@@ -521,15 +541,15 @@ export function runMigrations() {
     if (done.has(file)) {
       continue;
     }
-    const full = path.join(migrationsDir, file);
+    const full = path.join(dir, file);
     const sql = fs.readFileSync(full, "utf8");
-    const fkOff = FOREIGN_KEYS_OFF_MIGRATIONS.has(file);
-    if (fkOff) dbInternal.pragma("foreign_keys = OFF");
+    const fkOff = foreignKeysOff.has(file);
+    if (fkOff) dbi.pragma("foreign_keys = OFF");
     let applied: boolean;
     try {
       applied = applyOne.immediate(file, sql);
     } finally {
-      if (fkOff) dbInternal.pragma("foreign_keys = ON");
+      if (fkOff) dbi.pragma("foreign_keys = ON");
     }
     if (!applied) {
       continue; // another process applied it between our snapshot and the lock
