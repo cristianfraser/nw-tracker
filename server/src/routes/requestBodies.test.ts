@@ -7,6 +7,7 @@ import { writeHandler } from "../inputError.js";
 import { parseBody } from "./shared.js";
 import { registerFlowsRoutes } from "./flows.js";
 import { registerAccountsRoutes } from "./accounts.js";
+import { registerCreditCardRoutes } from "./creditCard.js";
 
 /**
  * Write routes read their bodies through `parseBody` (contracts `requests/` schemas): a malformed
@@ -29,6 +30,7 @@ beforeAll(async () => {
   );
   registerFlowsRoutes(app);
   registerAccountsRoutes(app);
+  registerCreditCardRoutes(app);
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: err instanceof Error ? err.message : String(err), terminal: true });
   });
@@ -86,6 +88,23 @@ describe("accounts routes", () => {
     expect(await call("PATCH", "/api/portfolio-groups/vitest-no-such-group/color", { color_rgb: 7 })).toEqual({
       status: 400,
       json: { error: "invalid color_rgb" },
+    });
+  });
+});
+
+describe("credit-card routes", () => {
+  it("a malformed body is a 400 with the route's own message", async () => {
+    expect(await call("POST", `/api/accounts/${UNKNOWN_ID}/cc-statement-lines/1/make-installment`, { cuotas_totales: "3" })).toEqual({
+      status: 400,
+      json: { error: "cuotas_totales must be a positive number" },
+    });
+    expect(await call("POST", `/api/accounts/${UNKNOWN_ID}/imports/cc-web-paste`, { text: "  " })).toEqual({
+      status: 400,
+      json: { error: "text is required" },
+    });
+    expect(await call("POST", `/api/accounts/${UNKNOWN_ID}/annulled-purchases`, { line_id: 0, annulled_on: "2031-01-02" })).toEqual({
+      status: 400,
+      json: { error: "line_id: invalid statement line id" },
     });
   });
 });

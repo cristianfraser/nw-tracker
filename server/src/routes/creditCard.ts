@@ -34,7 +34,13 @@ import { bankAccountMovementsKind } from "nw-tracker-contracts";
 import { applyBankAccountMovements } from "../bankAccountMovementsApply.js";
 import { requestFeederParse } from "../ingestFeeder.js";
 import { uploadFields, uploadSingle } from "../uploadMiddleware.js";
-import { accountIdFromReq } from "./shared.js";
+import { accountIdFromReq, parseBody } from "./shared.js";
+import {
+  annulledPurchaseCreateSchema,
+  ccPurchasePatchSchema,
+  makeInstallmentSchema,
+  webPasteSchema,
+} from "nw-tracker-contracts/requests/creditCard";
 import { writeHandler } from "../inputError.js";
 
 export function registerCreditCardRoutes(app: express.Express): void {
@@ -45,14 +51,13 @@ app.patch("/api/accounts/:id/cc-purchases/:purchaseId", writeHandler((req, res) 
     res.status(400).json({ error: "invalid purchase id" });
     return;
   }
-  const body = req.body as Record<string, unknown>;
+  const body = parseBody(ccPurchasePatchSchema, req);
   updateManualCcInstallmentPurchase(id, purchaseId, {
-    purchase_date: body.purchase_date != null ? String(body.purchase_date) : undefined,
-    total_amount_clp:
-      body.total_amount_clp != null ? Number(body.total_amount_clp) : undefined,
-    cuotas_totales: body.cuotas_totales != null ? Number(body.cuotas_totales) : undefined,
-    merchant: body.merchant != null ? String(body.merchant) : undefined,
-    description: body.description != null ? String(body.description) : undefined,
+    purchase_date: body.purchase_date ?? undefined,
+    total_amount_clp: body.total_amount_clp ?? undefined,
+    cuotas_totales: body.cuotas_totales ?? undefined,
+    merchant: body.merchant ?? undefined,
+    description: body.description ?? undefined,
   });
   res.json({ ok: true });
 }));
@@ -81,13 +86,8 @@ app.delete("/api/accounts/:id/cc-statement-lines/:lineId", writeHandler((req, re
 
 app.post("/api/accounts/:id/annulled-purchases", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
-  const body = req.body as Record<string, unknown>;
-  const lineId = Number(body.line_id);
-  if (!Number.isInteger(lineId) || lineId <= 0) {
-    res.status(400).json({ error: "invalid statement line id" });
-    return;
-  }
-  const annulled = markAnnulledPurchaseManually(id, lineId, String(body.annulled_on ?? ""));
+  const body = parseBody(annulledPurchaseCreateSchema, req);
+  const annulled = markAnnulledPurchaseManually(id, body.line_id, body.annulled_on);
   res.json({ ok: true, annulled_purchase_id: annulled.id });
 }));
 
@@ -117,11 +117,7 @@ app.post("/api/accounts/:id/cc-statement-lines/:lineId/make-installment", writeH
     res.status(400).json({ error: "invalid statement line id" });
     return;
   }
-  const cuotas = Number(req.body?.cuotas_totales);
-  if (!Number.isFinite(cuotas) || cuotas <= 0) {
-    res.status(400).json({ error: "cuotas_totales must be a positive number" });
-    return;
-  }
+  const { cuotas_totales: cuotas } = parseBody(makeInstallmentSchema, req);
   const result = convertStatementLineToInstallmentPurchase(id, lineId, cuotas);
   res.json({ ok: true, purchase_id: result.id });
 }));
@@ -150,22 +146,14 @@ app.post(
   "/api/accounts/:id/imports/cc-web-paste",
   writeHandler(async (req, res) => {
     const id = accountIdFromReq(req);
-    const text = typeof req.body?.text === "string" ? req.body.text : "";
-    if (!text.trim()) {
-      res.status(400).json({ error: "text is required" });
-      return;
-    }
+    const { text } = parseBody(webPasteSchema, req);
     res.json(await importCcWebPaste(id, text));
   })
 );
 
 app.post("/api/accounts/:id/imports/cuenta-vista-web-paste", writeHandler((req, res) => {
   const id = accountIdFromReq(req);
-  const text = typeof req.body?.text === "string" ? req.body.text : "";
-  if (!text.trim()) {
-    res.status(400).json({ error: "text is required" });
-    return;
-  }
+  const { text } = parseBody(webPasteSchema, req);
   // The pasted rows were read now: a row the bank dated after today is stored today.
   res.json(importCuentaVistaWebPaste(id, text, new Date()));
 }));
