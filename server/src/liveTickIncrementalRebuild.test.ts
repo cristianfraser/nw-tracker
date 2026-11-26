@@ -1,5 +1,12 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { aggregationCacheKeysForTest, clearAggregationCache, invalidateMarketDataAggregations } from "./cacheRegistry.js";
+import {
+  aggregationCacheKeysForTest,
+  clearAggregationCache,
+  ensureCacheFresh,
+  historyTierEntryCountForTest,
+  invalidateMarketDataAggregations,
+} from "./cacheRegistry.js";
+import { insertMovement } from "./movementWrites.js";
 import type { LiveQuoteMoves } from "./cacheDependencies.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
@@ -33,6 +40,7 @@ import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
  * rebuild serves must be byte-identical to a rebuild from an empty cache at the same instant.
  */
 const restoreTables = snapshotTables(["live_market_quotes", "equity_daily", "fx_daily", "mark_input_changes"]);
+const TRIM_NOTE = "vitest:history-trim";
 const COIN_IMPORT_KEY = "vitest:live-tick|btc";
 afterAll(() => {
   // Never snapshot `accounts`: restoring it deletes every account, which cascades through their rows.
@@ -42,6 +50,7 @@ afterAll(() => {
     removeAccountPlacement(coin.id);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(coin.id);
   }
+  db.prepare(`DELETE FROM movements WHERE note = ?`).run(TRIM_NOTE);
   restoreTables();
   vi.useRealTimers();
   clearAggregationCache();
@@ -263,5 +272,101 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
     expect(keptKeys).toContain("hist.daily_series_past");
     expect(keptKeys.some((k) => k.startsWith("cc.ledger|"))).toBe(true);
     expect(keptKeys).toContain("hist.valuation_chart_past_value");
+  }, 300_000);
+});
+
+/**
+ * A dated change (a close, a rate, a movement, the day turning) trims the history tier from its
+ * date instead of dropping it: what the rebuild serves on top of the kept history must be
+ * byte-identical to a rebuild from an empty cache.
+ */
+async function changeParity(
+  change: (today: string) => void,
+  opts: { advanceDays?: number } = {}
+): Promise<{ differing: string[]; keptHistoryEntries: number }> {
+  const t0 = tradingAfternoon();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(t0);
+  const day = chileCalendarTodayYmd();
+  db.prepare(`DELETE FROM equity_daily WHERE trade_date >= ?`).run(day);
+  db.prepare(`DELETE FROM fx_daily WHERE date >= ?`).run(day);
+  db.prepare(`DELETE FROM live_market_quotes`).run();
+  clearAggregationCache();
+  writeQuotes(t0, 1, 1);
+  await snapshotPayloads();
+
+  if (opts.advanceDays) vi.setSystemTime(new Date(t0.getTime() + opts.advanceDays * 86_400_000));
+  change(day);
+  // What survived the change (the freshness check applies the change log and the day change).
+  ensureCacheFresh();
+  const keptHistoryEntries = historyTierEntryCountForTest();
+  const incremental = await snapshotPayloads();
+
+  clearAggregationCache();
+  const full = await snapshotPayloads();
+  vi.useRealTimers();
+  return { differing: [...full.keys()].filter((k) => incremental.get(k) !== full.get(k)), keptHistoryEntries };
+}
+
+describe("a dated change: rebuild on the trimmed history == full rebuild", () => {
+  const heldTicker = () =>
+    (
+      db
+        .prepare(
+          `SELECT a.equity_ticker AS t FROM accounts a JOIN movements m ON m.to_account_id = a.id OR m.account_id = a.id
+           WHERE a.equity_ticker IS NOT NULL AND m.units_delta IS NOT NULL GROUP BY a.id ORDER BY COUNT(*) DESC LIMIT 1`
+        )
+        .get() as { t: string }
+    ).t;
+
+  it("a restated close of yesterday", async () => {
+    const { differing, keptHistoryEntries } = await changeParity((today) => {
+      const row = db
+        .prepare(`SELECT trade_date FROM equity_daily WHERE ticker = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1`)
+        .get(heldTicker(), today) as { trade_date: string };
+      db.prepare(`UPDATE equity_daily SET close = close * 1.02 WHERE ticker = ? AND trade_date = ?`).run(heldTicker(), row.trade_date);
+    });
+    expect(differing).toEqual([]);
+    // The days before the change stayed (the point of trimming: otherwise this is a full rebuild).
+    expect(keptHistoryEntries).toBeGreaterThan(1000);
+  }, 300_000);
+
+  it("a close restated 40 days back", async () => {
+    const { differing } = await changeParity((today) => {
+      const row = db
+        .prepare(`SELECT trade_date FROM equity_daily WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`)
+        .get(heldTicker(), chileCalendarAddDays(today, -40)) as { trade_date: string };
+      db.prepare(`UPDATE equity_daily SET close = close * 0.97 WHERE ticker = ? AND trade_date = ?`).run(heldTicker(), row.trade_date);
+    });
+    expect(differing).toEqual([]);
+  }, 300_000);
+
+  it("a restated dollar of yesterday", async () => {
+    const { differing } = await changeParity((today) => {
+      const row = db.prepare(`SELECT date FROM fx_daily WHERE date < ? ORDER BY date DESC LIMIT 1`).get(today) as { date: string };
+      db.prepare(`UPDATE fx_daily SET clp_per_usd = clp_per_usd * 1.01 WHERE date = ?`).run(row.date);
+    });
+    expect(differing).toEqual([]);
+  }, 300_000);
+
+  it("a movement found ten days late", async () => {
+    const { differing } = await changeParity((today) => {
+      const checking = (
+        db
+          .prepare(
+            `SELECT a.id FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id
+             WHERE g.slug LIKE '%cuenta_corriente%' ORDER BY a.id LIMIT 1`
+          )
+          .get() as { id: number }
+      ).id;
+      insertMovement({ accountId: checking, amount: -54_321, currency: "clp", occurredOn: chileCalendarAddDays(today, -10), note: TRIM_NOTE });
+    });
+    expect(differing).toEqual([]);
+  }, 300_000);
+
+  it("the day turning, with nothing written", async () => {
+    const { differing, keptHistoryEntries } = await changeParity(() => undefined, { advanceDays: 1 });
+    expect(differing).toEqual([]);
+    expect(keptHistoryEntries).toBeGreaterThan(1000);
   }, 300_000);
 });

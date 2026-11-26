@@ -13,7 +13,7 @@ import { foreignCashBalanceAt } from "./foreignCashAccounts.js";
 import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import { db } from "./db.js";
-import { historyTierMemo } from "./cacheRegistry.js";
+import { historyTierMemo, historyTrimByDay } from "./cacheRegistry.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
 import { holdingPriceAt, instrumentNativeValue, type InstrumentHolding } from "./holdingPrices.js";
 import { accountProfileOptional, type AccountProfile, type Holding } from "./accountProfile.js";
@@ -256,6 +256,17 @@ export function qtyMarkNativeValue(
 }
 
 /**
+ * A past day's quantity reads evidence on or before the day, with two reaches the rule covers: a
+ * card with no anchor yet values its foreign lines at a later pay-by rate (75 days, as a traspaso
+ * link reaches), and an empty Fintual goal carries the day it was read on as its `as_of_date`
+ * (dropped once that day is over).
+ */
+const QTY_MARK_BY_DAY = historyTrimByDay<string, QtyMark | null>((key, mark) => {
+  const day = key.slice(key.lastIndexOf("|") + 1);
+  return mark && mark.as_of_date > day ? mark.as_of_date : day;
+}, 75);
+
+/**
  * {@link historicalQtyMarkUncached} for a day other than Chile today. A past day reads no live
  * input, so it is kept in the history tier (`cacheRegistry.ts`). An id with no account row (a
  * synthetic chart line) holds nothing.
@@ -264,7 +275,7 @@ export function accountHistoricalQtyMark(accountId: number, asOfYmd: string): Qt
   const profile = accountProfileOptional(accountId);
   if (!profile) return null;
   if (asOfYmd >= chileCalendarTodayYmd()) return historicalQtyMarkUncached(profile, asOfYmd);
-  const memo = historyTierMemo<string, QtyMark | null>("account_qty_marks");
+  const memo = historyTierMemo<string, QtyMark | null>("account_qty_marks", QTY_MARK_BY_DAY);
   const key = `${accountId}|${asOfYmd}`;
   let mark = memo.get(key);
   if (mark === undefined) {

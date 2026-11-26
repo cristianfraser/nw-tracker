@@ -7,7 +7,7 @@ import {
 import { accountValueAt } from "./accountValue.js";
 import { accountHolding, isCardAccount } from "./holdings.js";
 import { cardValueInUnit } from "./cardValueInUnit.js";
-import { ensureCacheFresh } from "./cacheRegistry.js";
+import { ensureCacheFresh, historyTierMemo } from "./cacheRegistry.js";
 import {
   getMarkSeries,
   markSeriesKey,
@@ -250,12 +250,15 @@ function cachedSeriesCovering(
 ): CachedMarkSeries {
   const key = cacheKey(account);
   let cached = getMarkSeries<MarkSeriesCell>(key);
-  const intern = internFor(cached);
+  // The series' shared asset objects: collected only when a range is built (a covered read walks
+  // no cell).
+  let internTable: Map<string, QtyMark["asset"]> | null = null;
+  const intern = () => (internTable ??= internFor(cached));
   if (!cached) {
     cached = {
       start_ymd: startYmd,
       end_ymd: endYmd,
-      values: buildRange(account, startYmd, endYmd, intern),
+      values: buildRange(account, startYmd, endYmd, intern()),
       rate_independent: rateIndependent(account.account_id),
     };
     setMarkSeries(key, cached);
@@ -266,10 +269,10 @@ function cachedSeriesCovering(
   if (!needsPrefix && !needsSuffix) return cached;
 
   const prefix = needsPrefix
-    ? buildRange(account, startYmd, chileCalendarAddDays(cached.start_ymd, -1), intern)
+    ? buildRange(account, startYmd, chileCalendarAddDays(cached.start_ymd, -1), intern())
     : [];
   const suffix = needsSuffix
-    ? buildRange(account, chileCalendarAddDays(cached.end_ymd, 1), endYmd, intern)
+    ? buildRange(account, chileCalendarAddDays(cached.end_ymd, 1), endYmd, intern())
     : [];
   const extended: CachedMarkSeries = {
     start_ymd: needsPrefix ? startYmd : cached.start_ymd,
@@ -280,6 +283,59 @@ function cachedSeriesCovering(
   assertSeriesAligned(extended, account);
   setMarkSeries(key, extended);
   return extended;
+}
+
+/** An account's values in a unit on consecutive past days from `start` (`account_unit_series`). */
+type PastUnitSeries = { start: string; values: (number | null)[] };
+
+/**
+ * The rule of `account_unit_series`: a day's value reads the quantity, the price and the rate on
+ * or before that day, so a change from `from` on leaves the days before it — the series is cut
+ * there and grown again on the next read.
+ */
+const PAST_UNIT_SERIES_RULE = {
+  trim(map: Map<string, PastUnitSeries>, from: string): void {
+    for (const [key, series] of map) {
+      const keep = from <= series.start ? 0 : dayOffset(series.start, from);
+      if (keep <= 0) map.delete(key);
+      else if (keep < series.values.length) map.set(key, { start: series.start, values: series.values.slice(0, keep) });
+    }
+  },
+};
+
+/**
+ * The account's values in `unit` on the `count` past days from `first` (all before Chile today):
+ * the quantity series priced and converted (`cellsInUnit`), kept per account and unit in the
+ * history tier — every scope that holds the account reads the same days, and a change redoes only
+ * the days from its date.
+ */
+function pastValuesInUnit(
+  account: MarkSeriesAccountRef,
+  first: string,
+  count: number,
+  grid: readonly string[],
+  unit: CurrencyCode
+): readonly (number | null)[] {
+  const memo = historyTierMemo<string, PastUnitSeries>("account_unit_series", PAST_UNIT_SERIES_RULE);
+  const key = `${account.account_id}|${unit}`;
+  const end = grid[count - 1]!;
+  let series = memo.get(key);
+  // A series that starts after this read's first day is replaced by one that starts there.
+  if (!series || series.start > first) series = { start: first, values: [] };
+  const have = series.values.length;
+  const need = dayOffset(series.start, end) + 1;
+  if (have < need) {
+    // Grown at its end, always from its own last day: the series stays consecutive.
+    const days: string[] = [];
+    for (let i = have; i < need; i++) days.push(i === 0 ? series.start : chileCalendarAddDays(series.start, i));
+    const quantities = cachedSeriesCovering(account, days[0]!, end);
+    const base = dayOffset(quantities.start_ymd, days[0]!);
+    const built = cellsInUnit(account, quantities.values.slice(base, base + days.length), days, unit);
+    series = { start: series.start, values: series.values.concat(built) };
+    memo.set(key, series);
+  }
+  const offset = dayOffset(series.start, first);
+  return offset === 0 && series.values.length === count ? series.values : series.values.slice(offset, offset + count);
 }
 
 /**
@@ -310,15 +366,8 @@ export function accountValueSeriesOnGrid(
   const out = new Array<number | null>(grid.length);
   const cacheableEnd = last < today ? last : chileCalendarAddDays(today, -1);
   if (first <= cacheableEnd) {
-    const series = cachedSeriesCovering(account, first, cacheableEnd);
-    const base = dayOffset(series.start_ymd, first);
     const cachedCount = dayOffset(first, cacheableEnd) + 1;
-    const values = cellsInUnit(
-      account,
-      series.values.slice(base, base + cachedCount),
-      grid.slice(0, cachedCount),
-      unit
-    );
+    const values = pastValuesInUnit(account, first, cachedCount, grid, unit);
     for (let i = 0; i < cachedCount; i++) out[i] = values[i] ?? null;
   }
   for (let i = Math.max(0, dayOffset(first, cacheableEnd) + 1); i < grid.length; i++) {

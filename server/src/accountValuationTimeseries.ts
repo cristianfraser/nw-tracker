@@ -39,7 +39,7 @@ import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.j
 import { ccLedgerStatementClosingPointsClpForAccounts } from "./ccCreditCardValuations.js";
 import { latestCreditCardValuationRowAsOf } from "./valuationLatest.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
-import { historyTierMemo } from "./cacheRegistry.js";
+import { historyTierMemo, historyTrimByDay } from "./cacheRegistry.js";
 import { getAccountColorRgb } from "./chartColorRgb.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -50,6 +50,9 @@ import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 import { applyTrailingZeroTailClipToBlock } from "./timeseriesTailClip.js";
 import type { TsUnit } from "./rates.js";
+
+/** A chart's past value is one account's value on one day (`<account>|<unit>|<day>`): evidence on or before the day. */
+const CHART_VALUE_BY_DAY = historyTrimByDay<string, number | null>((key) => key.slice(key.lastIndexOf("|") + 1));
 
 /**
  * One account's valuation chart series (and the shared point builder the group charts read):
@@ -801,7 +804,7 @@ export function buildPointsForAccounts(top: AccountLine[], extraIds: number[], u
   // only, so it is kept in the history tier and the rebuild after a live tick recomputes the
   // trailing / today point alone. The card, mortgage and property lines keep their own per-build
   // sources below.
-  const pastValueMemo = historyTierMemo<string, number | null>("valuation_chart_past_value");
+  const pastValueMemo = historyTierMemo<string, number | null>("valuation_chart_past_value", CHART_VALUE_BY_DAY);
   const plainValueAt = (aid: number, d: string): number | null => {
     // A stock's line starts at its first shares (before them it holds nothing yet, not 0).
     if (accountProfileOptional(aid)?.quantity.kind === "stock" && !equityHeldByYmd(aid, d)) return null;

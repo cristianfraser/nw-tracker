@@ -4,7 +4,6 @@ import { markInputRuleForSource } from "./markInputTriggers.js";
 import {
   accountGroupsTrimmedTogether,
   clearMarkSeries,
-  markSeriesStoreSize,
   trimAccountMarkSeries,
   trimAllMarkSeries,
   trimRateDependentMarkSeries,
@@ -47,6 +46,11 @@ export type ChangeLogSummary = {
   markAccountIds: number[];
   /** Tables a write row named. */
   writtenTables: Set<string>;
+  /**
+   * The earliest day a mark row reaches (its table's reach rule applied; `0000-01-01` = the whole
+   * history), null when no mark row was applied: what the history tier trims from.
+   */
+  markFrom: string | null;
 };
 
 const FULL_HISTORY = "0000-01-01";
@@ -105,11 +109,11 @@ function applyChangeLogInner(today: string, inTransaction: boolean): ChangeLogSu
   if (maxId <= appliedThrough) return null;
 
   const minId = (minIdStmt.get() as { id: number | null }).id;
-  if (minId != null && minId > lastAppliedId + 1 && markSeriesStoreSize() > 0) {
+  if (minId != null && minId > lastAppliedId + 1) {
     // Rows this process never saw were pruned: it cannot tell what they changed.
     clearMarkSeries();
     lastAppliedId = maxId;
-    return { marksAll: true, markAccountIds: [], writtenTables: new Set() };
+    return { marksAll: true, markAccountIds: [], writtenTables: new Set(), markFrom: FULL_HISTORY };
   }
 
   const rows = pendingStmt.all(appliedThrough) as {
@@ -175,10 +179,15 @@ function applyChangeLogInner(today: string, inTransaction: boolean): ChangeLogSu
   }
   // A rate row reaches every account's VALUES even when it trims no quantity: the history tier
   // (its memoized rates) and what was built on it go, as for any change.
+  let markFrom: string | null = null;
+  for (const from of [allFrom, rateFrom, ...byAccount.values()]) {
+    if (from != null && (markFrom == null || from < markFrom)) markFrom = from;
+  }
   return {
     marksAll: allFrom != null || rateFrom != null,
     markAccountIds: [...byAccount.keys()],
     writtenTables,
+    markFrom,
   };
 }
 

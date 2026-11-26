@@ -2,7 +2,7 @@ import { assertValuationCurrency } from "./valuationValue.js";
 import { db } from "./db.js";
 import { groupAccountIds, nettedGroup } from "./navTreeModel.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { historyTierMemo } from "./cacheRegistry.js";
+import { historyTierMemo, historyTrimByDay } from "./cacheRegistry.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { planCount } from "./cards/purchases.js";
@@ -113,6 +113,13 @@ function latestValuationRowFromAscRows(
 }
 
 /**
+ * A past day's linked-card total reads the cards' owed on that day; a card with no anchor yet
+ * values its foreign lines at a later pay-by rate, hence the 75 days (`accountMarkClpAtYmd.ts`).
+ * The set of linked cards is a setting: its tables log undated writes, which drop the tier whole.
+ */
+const LINKED_CC_BY_DAY = historyTrimByDay<string, number>((ymd) => ymd, 75);
+
+/**
  * Sum linked CC balances for many chart dates (one view list + one valuation read per card).
  * A day before Chile today reads no quote, so its sum is kept in the history tier
  * (`cacheRegistry.ts`) across live-quote ticks.
@@ -122,7 +129,7 @@ export function linkedCreditCardClpForCashCardByDates(datesAsc: string[]): Map<s
   for (const d of datesAsc) out.set(d, 0);
   if (!datesAsc.length) return out;
   const today = chileCalendarTodayYmd();
-  const memo = historyTierMemo<string, number>("linked_cc_clp_by_day");
+  const memo = historyTierMemo<string, number>("linked_cc_clp_by_day", LINKED_CC_BY_DAY);
   const toBuild = datesAsc.filter((d) => d >= today || !memo.has(d));
   const built = linkedCreditCardClpForCashCardByDatesUncached(toBuild, today);
   for (const d of datesAsc) {

@@ -168,7 +168,7 @@ export function ensureCacheFresh(): void {
   }
   checkedAtWriteCount = -1;
   if (cacheDayYmd !== today) {
-    dropAllButMarkSeries();
+    dropForDayRollover(cacheDayYmd);
     cacheDayYmd = today;
   }
   const dataVersion = currentDbDataVersion();
@@ -188,9 +188,77 @@ function dropAllButMarkSeries(): void {
   epoch += 1;
 }
 
-function dropWhere(drop: (entry: Entry, family: CacheFamily) => boolean): void {
+/**
+ * The Chile day changed: everything that bakes in «today» goes. Nothing dated before the day that
+ * just ended changed with it, so a history memo with a trim rule keeps its entries, trimmed from
+ * that day (it was «today» while they were built: nothing of it may be in them, and a rule that
+ * bakes in the build day drops from it). The first rollover of a process has no ended day and
+ * nothing cached.
+ */
+function dropForDayRollover(endedDay: string | null): void {
+  if (endedDay == null) return dropAllButMarkSeries();
   for (const [key, entry] of cache) {
-    if (drop(entry, CACHE_FAMILIES[entry.family]!)) cache.delete(key);
+    const policy = entry.family === "history" ? historyTierPolicies.get(key) : undefined;
+    if (!policy) cache.delete(key);
+    else policy.trim(entry.value as Map<unknown, unknown>, endedDay, "rollover");
+  }
+  liveTier.maps.clear();
+  declaredInputs.clear();
+  epoch += 1;
+}
+
+/**
+ * How a history memo answers a change (`historyTierMemo`'s second argument). A memo with no
+ * policy is dropped whole by every change, which is always right.
+ *
+ * `trim(map, from, why)` removes every entry that evidence dated `from` or later can change and
+ * keeps the rest. `from` is an ISO day (`0000-01-01` = the whole history): for `"change"` the
+ * earliest day the applied change-log rows reach, their tables' reach rules applied
+ * (`markInputChanges.ts`); for `"rollover"` the Chile day that just ended. A rule must be right
+ * for both: an entry is kept only when nothing dated `from` or later is in it.
+ *
+ * `readsUndatedState`: the value also depends on something no dated row holds (sync state, a
+ * setting): it is dropped whole by a market-data notice, which covers what no table holds.
+ */
+export type HistoryTierPolicy<K, V> = {
+  trim: (map: Map<K, V>, from: string, why: "change" | "rollover") => void;
+  readsUndatedState?: boolean;
+};
+
+const historyTierPolicies = new Map<string, HistoryTierPolicy<unknown, unknown>>();
+
+/**
+ * The rule of a memo whose every entry is one day's figure, computed from evidence dated on or
+ * before that day: an entry goes when its day is `from` or later. `widenDays` drops that many
+ * earlier days too, for a figure that can read evidence dated after its own day (a card's dollar
+ * lines valued at a later pay-by rate).
+ */
+export function historyTrimByDay<K, V>(dayOf: (key: K, value: V) => string, widenDays = 0): HistoryTierPolicy<K, V> {
+  return {
+    trim(map, from) {
+      const cutoff = widenDays > 0 && from > "0001-01-01" ? isoDayMinus(from, widenDays) : from;
+      for (const [key, value] of map) if (dayOf(key, value) >= cutoff) map.delete(key);
+    },
+  };
+}
+
+function isoDayMinus(ymd: string, days: number): string {
+  return new Date(Date.parse(`${ymd}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Trim the history memos that have a rule from `from`; drop the others. */
+function trimHistoryTier(from: string): void {
+  for (const [key, entry] of cache) {
+    if (entry.family !== "history") continue;
+    const policy = historyTierPolicies.get(key);
+    if (!policy) cache.delete(key);
+    else policy.trim(entry.value as Map<unknown, unknown>, from, "change");
+  }
+}
+
+function dropWhere(drop: (entry: Entry, family: CacheFamily, key: string) => boolean): void {
+  for (const [key, entry] of cache) {
+    if (drop(entry, CACHE_FAMILIES[entry.family]!, key)) cache.delete(key);
   }
 }
 
@@ -202,8 +270,13 @@ function dropForChanges(s: ChangeLogSummary): void {
   let writesAny = s.writtenTables.size > 0;
   let writesValuation = false;
   for (const t of s.writtenTables) if (!EXPENSE_METADATA_TABLES.has(t)) writesValuation = true;
+  // Dated mark rows alone: the history tier is trimmed from the earliest day they reach. A write
+  // row of a valuation table names no date, so it still drops the tier whole.
+  const trimHistory = !writesValuation && s.markFrom != null;
+  if (trimHistory) trimHistoryTier(s.markFrom!);
   if (s.marksAll) writesAny = writesValuation = true;
   dropWhere((entry, family) => {
+    if (trimHistory && entry.family === "history") return false;
     if (family.reads === "any" ? writesAny : writesValuation) return true;
     if (accounts.size === 0) return false;
     return !family.accountScoped || accounts.has(entry.accountId!);
@@ -284,8 +357,10 @@ export function getAggregationCached<T>(key: string, build: () => T): T {
  * a live quote, the live fx row, or the wall clock beyond the Chile day. Inside a transaction it
  * is a throwaway map: a report-only import reads rows it then rolls back.
  */
-export function historyTierMemo<K, V>(name: string): Map<K, V> {
-  return getAggregationCached(`${HISTORY_TIER_PREFIX}${name}`, () => new Map<K, V>());
+export function historyTierMemo<K, V>(name: string, policy?: HistoryTierPolicy<K, V>): Map<K, V> {
+  const key = `${HISTORY_TIER_PREFIX}${name}`;
+  if (policy && !historyTierPolicies.has(key)) historyTierPolicies.set(key, policy as unknown as HistoryTierPolicy<unknown, unknown>);
+  return getAggregationCached(key, () => new Map<K, V>());
 }
 
 /**
@@ -394,7 +469,13 @@ export function invalidateMarketDataAggregations(
   if (scope === "historical") {
     // The rows the sync wrote are in the log too: apply them first (marks trimmed from their dates).
     ensureCacheFresh();
-    dropWhere((_entry, family) => family.historicalMarket);
+    // A history memo with a trim rule was already trimmed from the rows' dates; it goes whole only
+    // when it reads state no row holds.
+    dropWhere((entry, family, key) => {
+      if (entry.family !== "history") return family.historicalMarket;
+      const policy = historyTierPolicies.get(key);
+      return !policy || policy.readsUndatedState === true;
+    });
   } else {
     dropWhere((_entry, family) => family.liveTick === "affected");
   }
@@ -449,6 +530,13 @@ export function aggregationCacheHasForTest(key: string): boolean {
 }
 
 /** @internal Test hook: every cached key (after applying what the log reports). */
+/** Entries held across every history memo (tests: what a trim kept). */
+export function historyTierEntryCountForTest(): number {
+  let n = 0;
+  for (const entry of cache.values()) if (entry.family === "history") n += (entry.value as Map<unknown, unknown>).size;
+  return n;
+}
+
 export function aggregationCacheKeysForTest(): string[] {
   ensureCacheFresh();
   return [...cache.keys()];

@@ -145,9 +145,16 @@ const LSE_CLOSED_YMD = new Set([
   "2027-12-28",
 ]);
 
+const weekdayByYmd = new Map<string, number>();
+/** The weekday of a calendar day (0 = Sunday). Kept per day: every daily series asks it for every grid day. */
 function utcWeekday(ymd: string): number {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
+  let w = weekdayByYmd.get(ymd);
+  if (w === undefined) {
+    const [y, m, d] = ymd.split("-").map(Number);
+    w = new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
+    weekdayByYmd.set(ymd, w);
+  }
+  return w;
 }
 
 export function isWeekendYmd(ymd: string): boolean {

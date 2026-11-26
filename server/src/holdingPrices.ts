@@ -12,7 +12,7 @@
  *   live proxy while it applies. Every gate reports the live input it would read
  *   (`cacheDependencies.ts`).
  */
-import { historyTierMemo } from "./cacheRegistry.js";
+import { historyTierMemo, historyTrimByDay } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import {
@@ -165,6 +165,13 @@ function coinTodayPrice(priceTicker: string, now: Date): HoldingPrice | null {
 }
 
 /**
+ * A past day's price reads evidence on or before the day. What reaches back — a split (logged as
+ * its holders' whole history), a late fund cuota (10 days) or a new proxy basket (30 days) — is
+ * already in the change's `from` (`markInputTriggers.ts`).
+ */
+const PRICE_BY_DAY = historyTrimByDay<string, HoldingPrice | null>((ymd) => ymd);
+
+/**
  * One unit of `h` on `ymd`, in its quote currency. A day before Chile today reads the stored
  * observation on or before it; today reads today's price; a later day (the current month's
  * month-end point) the newest stored observation, as a historical day would. Null when none is
@@ -186,7 +193,7 @@ export function holdingPriceAt(
     return fundPriceAt(h.seriesKey, ymd, true, now);
   }
   if (ymd > today || opts?.now !== undefined) return pastPriceUncached(h, ymd);
-  const memo = historyTierMemo<string, HoldingPrice | null>(`holding_price|${instrumentPriceKey(h)}`);
+  const memo = historyTierMemo<string, HoldingPrice | null>(`holding_price|${instrumentPriceKey(h)}`, PRICE_BY_DAY);
   let p = memo.get(ymd);
   if (p === undefined) {
     p = pastPriceUncached(h, ymd);
@@ -201,7 +208,7 @@ export function holdingPriceAt(
  */
 export function pastHoldingPriceLookup(h: InstrumentHolding): (ymd: string) => HoldingPrice | null {
   const today = chileCalendarTodayYmd();
-  const memo = historyTierMemo<string, HoldingPrice | null>(`holding_price|${instrumentPriceKey(h)}`);
+  const memo = historyTierMemo<string, HoldingPrice | null>(`holding_price|${instrumentPriceKey(h)}`, PRICE_BY_DAY);
   return (ymd) => {
     if (ymd >= today) throw new Error(`pastHoldingPriceLookup: ${ymd} is not before Chile today`);
     let p = memo.get(ymd);
