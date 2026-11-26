@@ -367,3 +367,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* A row wrapper of the animated «Últimos movimientos» list; the tint runs from the row-arrival animation. */
+.arrivalRow {
+  --row-arrival-tint: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* The wrapper keeps the rows from being siblings: the divider follows the wrappers. */
+.arrivalRow + .arrivalRow > .row {
+  border-top: 1px solid var(--border);
+}

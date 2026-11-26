@@ -1,24 +1,21 @@
 /**
- * The order of one day's rows in the home «Últimos movimientos» (`latestMovements.ts`).
+ * The order of the home «Últimos movimientos» (`latestMovements.ts`): a feed of what reached the
+ * app, newest arrival on top. A row's own date stays its date everywhere (ledgers, expenses, this
+ * list's label); only the order here follows arrival, so a movement recorded today for a week ago
+ * shows on top.
  *
- * Rows carry no time of their own, so the order comes from what the sources say about the moment:
+ * - **Arrival batch.** A row arrives with its write stamp (`flow_first_seen.first_seen_at`). Writes
+ *   inside one ingest run (`ingest_runs` start → finish) are one batch, dated at the run's start;
+ *   any other write (a hand entry, an upload) is a batch of its own. The later batch is on top.
+ * - **Inside a batch, when it happened**, newest first: the first stated time (the flow's own
+ *   document, a paired processor or grocery receipt), else the earliest upper bound a source gives
+ *   (a transfer or broker mail's time), else the middle of the window the row could have happened
+ *   in — after the previous run started (that run did not bring it), before it was written. Then
+ *   the write order (`first_seen_seq`: a listing's printed order), then the id.
+ * - Rows written before the stamps existed (migration 367) follow every stamped row, by day.
  *
- * - a STATED time: the source document names the moment (a Racional row's creation instant, the
- *   dollar account feed's operation time — `flow_event_times` —, a processor receipt's payment
- *   time, a grocery receipt's printed time). The first in that order wins, and only when it falls
- *   on the row's own Chile day (a Saturday boleta whose bank line is dated Monday says nothing
- *   about Monday).
- * - UPPER BOUNDS: moments the money had moved by (the row's write stamp `flow_first_seen.first_seen_at`,
- *   a transfer mail's sent time, a broker mail's time in `movement_event_times`). The earliest
- *   counts, clamped into the row's day: a row first written on a later day sorts as the end of
- *   its own day, since it was not in that day's last read.
- *
- * Then the write order (`first_seen_seq`: a listing's printed order within one read), then the
- * id order. Display only: a time no source gives is null and sorts after the timed rows; nothing
- * here throws on a disagreement between sources.
+ * Display only: sources that disagree never throw.
  */
-import { addDaysIso } from "nw-tracker-contracts";
-import { chileWallTimeToInstant } from "./chileDate.js";
 import type { FlowCcExpenseLineRow } from "./expenseLineTypes.js";
 
 /** What a row is, for the sources of its moment. */
@@ -27,50 +24,64 @@ export type LatestRowRef =
   | { kind: "movement"; movementId: number; accountId: number }
   | { kind: "none" };
 
-/** What the sources say about when one row's money moved. */
+/** When the app first wrote a row (`flow_first_seen`). */
+export type LatestWriteStamp = { atMs: number; seq: number };
+
+/** What the sources say about when a row's money moved (write stamp aside). */
 export type LatestRowTimes = {
   /** Stated times (epoch ms), best source first. */
   stated: readonly number[];
-  /** Upper bounds (epoch ms). */
+  /** Upper bounds (epoch ms): mail times. */
   bounds: readonly number[];
-  /** Write order (`first_seen_seq`); null for a row written before it existed. */
-  seq: number | null;
 };
 
-/** The moments the sources give each row, in the order asked (`latestMovementTimes.ts`). */
-export type LatestRowTimesResolver = (refs: readonly LatestRowRef[]) => LatestRowTimes[];
+/** An ingest run's window (epoch ms). */
+export type ArrivalRun = { startedMs: number; endMs: number };
 
-export type LatestRowOrderKey = { atMs: number | null; seq: number | null };
+/** The rows' arrival and moments, from the database (`latestMovementTimes.ts`) or a test. */
+export type LatestRowSources = {
+  stamps: (refs: readonly LatestRowRef[]) => (LatestWriteStamp | null)[];
+  /** Ingest runs, oldest first. */
+  runs: readonly ArrivalRun[];
+  times: (refs: readonly LatestRowRef[]) => LatestRowTimes[];
+};
 
-const dayStartMs = new Map<string, number>();
-function chileDayStartMs(ymd: string): number {
-  let ms = dayStartMs.get(ymd);
-  if (ms === undefined) {
-    ms = chileWallTimeToInstant(`${ymd} 00:00`).getTime();
-    dayStartMs.set(ymd, ms);
+/** The batch a write belongs to: its run (dated at the run's start) or itself. */
+export type ArrivalBatch = { atMs: number; prevRunStartMs: number | null };
+
+/** The batch of a write at `atMs` (`runs` oldest first). */
+export function arrivalBatchOf(atMs: number, runs: readonly ArrivalRun[]): ArrivalBatch {
+  for (let i = runs.length - 1; i >= 0; i--) {
+    const run = runs[i]!;
+    if (run.startedMs > atMs) continue;
+    if (atMs <= run.endMs) return { atMs: run.startedMs, prevRunStartMs: i > 0 ? runs[i - 1]!.startedMs : null };
+    return { atMs, prevRunStartMs: null };
   }
-  return ms;
+  return { atMs, prevRunStartMs: null };
 }
 
-/** The row's moment for ordering inside its day `on` (see the header). */
-export function latestRowOrderKey(on: string, times: LatestRowTimes): LatestRowOrderKey {
-  const start = chileDayStartMs(on);
-  const end = chileDayStartMs(addDaysIso(on, 1)) - 1;
-  const stated = times.stated.find((ms) => ms >= start && ms <= end);
-  if (stated !== undefined) return { atMs: stated, seq: times.seq };
-  if (times.bounds.length === 0) return { atMs: null, seq: times.seq };
-  const bound = Math.min(...times.bounds);
-  return { atMs: Math.min(Math.max(bound, start), end), seq: times.seq };
+/** When a row in `batch` most likely happened (see the header). */
+export function happenedEstimateMs(times: LatestRowTimes, stamp: LatestWriteStamp, batch: ArrivalBatch): number {
+  const stated = times.stated[0];
+  if (stated !== undefined) return stated;
+  if (times.bounds.length > 0) return Math.min(...times.bounds);
+  if (batch.prevRunStartMs !== null && batch.prevRunStartMs < stamp.atMs) {
+    return Math.round((batch.prevRunStartMs + stamp.atMs) / 2);
+  }
+  return stamp.atMs;
 }
 
-/** Newest first: the later moment, then the later write, a missing one last. */
+/** A row's place: stamped rows by batch, then moment, then write order; the rest by day. */
+export type LatestRowOrderKey =
+  | { stamped: true; batchAtMs: number; happenedMs: number; seq: number }
+  | { stamped: false; on: string };
+
+/** Newest first (a row's id order breaks the last tie, outside). */
 export function compareLatestRowOrderKeys(a: LatestRowOrderKey, b: LatestRowOrderKey): number {
-  return descNullsLast(a.atMs, b.atMs) || descNullsLast(a.seq, b.seq);
-}
-
-function descNullsLast(a: number | null, b: number | null): number {
-  if (a === b) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  return b - a;
+  if (a.stamped && b.stamped) {
+    return b.batchAtMs - a.batchAtMs || b.happenedMs - a.happenedMs || b.seq - a.seq;
+  }
+  if (a.stamped) return -1;
+  if (b.stamped) return 1;
+  return b.on.localeCompare(a.on);
 }

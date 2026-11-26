@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { FlowsOverviewIncome } from "./flowsOverview.js";
-import type { LatestRowRef, LatestRowTimes } from "./latestMovementOrder.js";
+import type { LatestRowSources } from "./latestMovementOrder.js";
 import { latestMovementRows } from "./latestMovements.js";
 import { movementOn } from "./expenseLineDay.js";
 import { lineMoneyFromBuilderFields } from "./lineMoney.js";
@@ -152,39 +152,53 @@ describe("latestMovementRows", () => {
     expect(inUsd[0]).toMatchObject({ kind: "income", income: { converted: { value: 5_000, currency: "usd", rate_source: "native" } } });
   });
 
-  it("orders a day's rows by the moment the sources give, then write order, then id", () => {
+  it("puts the newest arrival on top, ordered inside a run by when it happened", () => {
     const income: FlowsOverviewIncome = {
       ...noIncome,
       lines: [
-        { movement_id: 40, account_id: 2, account_label: "Corriente", received_on: "2026-09-20", amount_clp: 100_000, amount_usd: null, description: "Transf", source: "checking" },
+        { movement_id: 40, account_id: 2, account_label: "Corriente", received_on: "2026-09-20", amount_clp: 24_500, amount_usd: null, description: "Transf", source: "checking" },
       ],
     };
     const lines = [
-      line({ statement_line_id: 1, flow_id: 101, purchase_on: "2026-09-20" }),
-      line({ statement_line_id: 2, flow_id: 102, purchase_on: "2026-09-20" }),
-      line({ statement_line_id: 3, flow_id: 103, purchase_on: "2026-09-20" }),
-      line({ statement_line_id: 4, flow_id: 104, purchase_on: "2026-09-19" }),
+      line({ statement_line_id: 1, flow_id: 101, purchase_on: "2026-09-20" }), // the bar, fed by the 20:30 run
+      line({ statement_line_id: 2, flow_id: 102, purchase_on: "2026-09-20" }), // fed by the 19:30 run
+      line({ statement_line_id: 3, flow_id: 103, purchase_on: "2026-09-20" }), // written before the stamps
+      line({ statement_line_id: 4, flow_id: 104, purchase_on: "2026-09-13" }), // a week late, in the 20:30 run
+      line({ statement_line_id: 5, flow_id: 105, purchase_on: "2026-09-20" }), // entered by hand at 21:00
     ];
     const at = (hhmm: string) => Date.parse(`2026-09-20T${hhmm}:00-03:00`);
-    const byFlow: Record<number, LatestRowTimes> = {
-      // Written by the 22:00 read, but the processor receipt says 09:15.
-      101: { stated: [at("09:15")], bounds: [at("22:00")], seq: 8 },
-      // Two rows of the 13:00 read: the listing put 102 below 103 (older).
-      102: { stated: [], bounds: [at("13:00")], seq: 5 },
-      103: { stated: [], bounds: [at("13:00")], seq: 6 },
-      104: { stated: [], bounds: [Date.parse("2026-09-21T10:00:00-03:00")], seq: 9 },
+    const stampByFlow: Record<number, { atMs: number; seq: number }> = {
+      101: { atMs: at("20:33"), seq: 10 },
+      102: { atMs: at("19:33"), seq: 3 },
+      104: { atMs: at("20:34"), seq: 12 },
+      105: { atMs: at("21:00"), seq: 13 },
     };
-    const rowTimes = (refs: readonly LatestRowRef[]): LatestRowTimes[] =>
-      refs.map((r) =>
-        r.kind === "line"
-          ? byFlow[r.line.flow_id!]!
-          : r.kind === "movement"
-            ? { stated: [], bounds: [at("11:00")], seq: 7 } // a transfer mail sent 11:00
-            : { stated: [], bounds: [], seq: null }
-      );
-    const rows = latestMovementRows(lines, income, known, 10, today, noDollars, [], "clp", undefined, rowTimes);
-    // The day still leads: line 4 was written last but is a day older.
-    expect(ids(rows)).toEqual(["cc:3@2026-09-20", "cc:2@2026-09-20", "checking:40@2026-09-20", "cc:1@2026-09-20", "cc:4@2026-09-19"]);
+    const sources: LatestRowSources = {
+      runs: [
+        { startedMs: at("19:30"), endMs: at("19:40") },
+        { startedMs: at("20:30"), endMs: at("20:41") },
+      ],
+      stamps: (refs) =>
+        refs.map((r) =>
+          r.kind === "line" ? (stampByFlow[r.line.flow_id!] ?? null) : r.kind === "movement" ? { atMs: at("20:36"), seq: 11 } : null
+        ),
+      // The transfer's mail was sent 20:15; the bar has no time of its own (≈ 20:01, mid-window).
+      times: (refs) => refs.map((r) => (r.kind === "movement" ? { stated: [], bounds: [at("20:15")] } : { stated: [], bounds: [] })),
+    };
+    const rows = latestMovementRows(lines, income, known, 10, today, noDollars, [], "clp", undefined, sources);
+    expect(ids(rows)).toEqual([
+      "cc:5@2026-09-20",
+      "checking:40@2026-09-20",
+      "cc:4@2026-09-13",
+      "cc:1@2026-09-20",
+      "cc:2@2026-09-20",
+      "cc:3@2026-09-20",
+    ]);
+    // A list that ends inside the newest run leaves the older rows out.
+    expect(ids(latestMovementRows(lines, income, known, 2, today, noDollars, [], "clp", undefined, sources))).toEqual([
+      "cc:5@2026-09-20",
+      "checking:40@2026-09-20",
+    ]);
   });
 
   it("throws on a category the catalog does not know", () => {

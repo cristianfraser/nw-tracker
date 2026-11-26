@@ -33,12 +33,16 @@ import { cardPaymentEvidence, latestCardPayment, loadCardPaymentTransfers, type 
 import { isPaymentLine } from "./expensePaymentNames.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
+  arrivalBatchOf,
   compareLatestRowOrderKeys,
-  latestRowOrderKey,
+  happenedEstimateMs,
+  type ArrivalBatch,
+  type LatestRowOrderKey,
   type LatestRowRef,
-  type LatestRowTimesResolver,
+  type LatestRowSources,
+  type LatestWriteStamp,
 } from "./latestMovementOrder.js";
-import { latestRowTimes } from "./latestMovementTimes.js";
+import { latestRowSources } from "./latestMovementTimes.js";
 import { transferCounterpartiesByMovementSide } from "./bankTransferNotices.js";
 import { checkingMovementShownName, loadDisplayNameContext } from "./expenseDisplayNames.js";
 import { textShownName } from "./expenseShownName.js";
@@ -173,8 +177,8 @@ export function latestMovementRows(
   unit: string = "clp",
   /** Each checking credit's payer and shown name; none = the bank's description alone. */
   incomeNames?: IncomeCreditNames,
-  /** The moments of the rows (`latestMovementOrder.ts`); none = a day's rows keep the id order. */
-  rowTimes?: LatestRowTimesResolver
+  /** The rows' arrival and moments (`latestMovementOrder.ts`); none = by day, then id. */
+  sources?: LatestRowSources
 ): LatestMovementRow[] {
   type Ranked = { row: LatestMovementRow; ref: LatestRowRef; tie: number };
   const ranked: Ranked[] = [];
@@ -211,13 +215,33 @@ export function latestMovementRows(
       tie: m.id * 1000,
     });
   }
-  // The days first; then only the days the list reaches are put in order by moment.
-  ranked.sort((a, b) => b.row.on.localeCompare(a.row.on) || b.tie - a.tie);
-  const lastDay = ranked[Math.min(limit, ranked.length) - 1]?.row.on;
-  const shown = lastDay === undefined ? [] : ranked.filter((r) => r.row.on >= lastDay);
-  const times = rowTimes?.(shown.map((r) => r.ref));
-  const keyed = shown.map((r, i) => ({ ...r, key: times ? latestRowOrderKey(r.row.on, times[i]!) : { atMs: null, seq: null } }));
-  keyed.sort((a, b) => b.row.on.localeCompare(a.row.on) || compareLatestRowOrderKeys(a.key, b.key) || b.tie - a.tie);
+  // Newest arrival first (`latestMovementOrder.ts`): the batches the list reaches are resolved and
+  // put in order by moment; rows with no write stamp follow, by day.
+  const stamps = sources ? sources.stamps(ranked.map((r) => r.ref)) : ranked.map(() => null);
+  const stamped: (Ranked & { stamp: LatestWriteStamp; batch: ArrivalBatch })[] = [];
+  const unstamped: (Ranked & { key: LatestRowOrderKey })[] = [];
+  ranked.forEach((r, i) => {
+    const stamp = stamps[i];
+    if (stamp && sources) stamped.push({ ...r, stamp, batch: arrivalBatchOf(stamp.atMs, sources.runs) });
+    else unstamped.push({ ...r, key: { stamped: false, on: r.row.on } });
+  });
+  stamped.sort((a, b) => b.batch.atMs - a.batch.atMs);
+  const lastBatchAt = stamped[Math.min(limit, stamped.length) - 1]?.batch.atMs;
+  const reached = lastBatchAt === undefined ? [] : stamped.filter((r) => r.batch.atMs >= lastBatchAt);
+  const times = sources && reached.length > 0 ? sources.times(reached.map((r) => r.ref)) : [];
+  const keyed = [
+    ...reached.map((r, i) => ({
+      ...r,
+      key: {
+        stamped: true,
+        batchAtMs: r.batch.atMs,
+        happenedMs: happenedEstimateMs(times[i]!, r.stamp, r.batch),
+        seq: r.stamp.seq,
+      } as LatestRowOrderKey,
+    })),
+    ...(reached.length < limit ? unstamped : []),
+  ];
+  keyed.sort((a, b) => compareLatestRowOrderKeys(a.key, b.key) || b.tie - a.tie);
   const rows = keyed.slice(0, limit).map((r) => r.row);
   for (const r of rows) {
     if (r.kind === "expense" && !knownCategories.has(r.line.category_slug)) {
@@ -256,7 +280,7 @@ export function buildLatestMovements(limit: number, unit: string = "clp"): Lates
       loadCardPaymentTransfers(),
       unit,
       checkingCreditNames(),
-      latestRowTimes
+      latestRowSources()
     ),
     categories,
     big_groups: listCcExpenseBigGroups(),

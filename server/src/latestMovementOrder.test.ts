@@ -1,49 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { compareLatestRowOrderKeys, latestRowOrderKey } from "./latestMovementOrder.js";
+import { arrivalBatchOf, compareLatestRowOrderKeys, happenedEstimateMs, type LatestRowOrderKey } from "./latestMovementOrder.js";
 
-const chile = (wall: string) => Date.parse(`${wall}-03:00`);
-const DAY = "2026-01-15"; // summer time: UTC−3
+const at = (hhmm: string) => Date.parse(`2026-01-15T${hhmm}:00-03:00`);
+const runs = [
+  { startedMs: at("19:30"), endMs: at("19:40") },
+  { startedMs: at("20:30"), endMs: at("20:41") },
+];
 
-describe("latestRowOrderKey", () => {
-  it("takes the first stated time that falls on the row's day", () => {
-    const key = latestRowOrderKey(DAY, {
-      stated: [chile("2026-01-17T09:00:00"), chile("2026-01-15T12:30:00")],
-      bounds: [chile("2026-01-15T22:00:00")],
-      seq: 3,
-    });
-    expect(key).toEqual({ atMs: chile("2026-01-15T12:30:00"), seq: 3 });
+describe("arrivalBatchOf", () => {
+  it("puts a write inside a run in that run's batch, dated at its start, with the previous run's start", () => {
+    expect(arrivalBatchOf(at("20:35"), runs)).toEqual({ atMs: at("20:30"), prevRunStartMs: at("19:30") });
+    expect(arrivalBatchOf(at("19:30"), runs)).toEqual({ atMs: at("19:30"), prevRunStartMs: null });
   });
 
-  it("else the earliest upper bound, clamped into the row's day", () => {
-    expect(latestRowOrderKey(DAY, { stated: [], bounds: [chile("2026-01-15T22:00:00"), chile("2026-01-15T10:05:00")], seq: 1 }).atMs).toBe(
-      chile("2026-01-15T10:05:00")
-    );
-    // First read the next day: the end of its own day.
-    expect(latestRowOrderKey(DAY, { stated: [], bounds: [chile("2026-01-16T13:00:00")], seq: 1 }).atMs).toBe(
-      chile("2026-01-16T00:00:00") - 1
-    );
-    expect(latestRowOrderKey(DAY, { stated: [], bounds: [], seq: null })).toEqual({ atMs: null, seq: null });
+  it("makes any other write a batch of its own", () => {
+    expect(arrivalBatchOf(at("21:00"), runs)).toEqual({ atMs: at("21:00"), prevRunStartMs: null });
+    expect(arrivalBatchOf(at("10:00"), runs)).toEqual({ atMs: at("10:00"), prevRunStartMs: null });
+  });
+});
+
+describe("happenedEstimateMs", () => {
+  const stamp = { atMs: at("20:35"), seq: 1 };
+  const batch = { atMs: at("20:30"), prevRunStartMs: at("19:30") };
+  it("takes a stated time first, else the earliest bound", () => {
+    expect(happenedEstimateMs({ stated: [at("09:15"), at("11:00")], bounds: [at("20:10")] }, stamp, batch)).toBe(at("09:15"));
+    expect(happenedEstimateMs({ stated: [], bounds: [at("20:20"), at("20:10")] }, stamp, batch)).toBe(at("20:10"));
   });
 
-  it("reads the Chile day in winter time too (UTC−4)", () => {
-    const july = Date.parse("2026-07-10T23:30:00-04:00");
-    expect(latestRowOrderKey("2026-07-10", { stated: [july], bounds: [], seq: null }).atMs).toBe(july);
+  it("else the middle of the window since the previous run started, else the write", () => {
+    expect(happenedEstimateMs({ stated: [], bounds: [] }, stamp, batch)).toBe(Math.round((at("19:30") + at("20:35")) / 2));
+    expect(happenedEstimateMs({ stated: [], bounds: [] }, stamp, { atMs: at("20:35"), prevRunStartMs: null })).toBe(at("20:35"));
   });
 });
 
 describe("compareLatestRowOrderKeys", () => {
-  it("puts the later moment first, then the later write, missing ones last", () => {
-    const keys = [
-      { atMs: null, seq: 9 },
-      { atMs: 100, seq: 1 },
-      { atMs: 200, seq: null },
-      { atMs: 100, seq: 2 },
+  it("orders stamped rows by batch, moment and write order, then the unstamped ones by day", () => {
+    const keys: LatestRowOrderKey[] = [
+      { stamped: false, on: "2026-01-14" },
+      { stamped: true, batchAtMs: 100, happenedMs: 5, seq: 1 },
+      { stamped: false, on: "2026-01-15" },
+      { stamped: true, batchAtMs: 200, happenedMs: 1, seq: 2 },
+      { stamped: true, batchAtMs: 100, happenedMs: 5, seq: 3 },
+      { stamped: true, batchAtMs: 100, happenedMs: 9, seq: 0 },
     ];
     expect([...keys].sort(compareLatestRowOrderKeys)).toEqual([
-      { atMs: 200, seq: null },
-      { atMs: 100, seq: 2 },
-      { atMs: 100, seq: 1 },
-      { atMs: null, seq: 9 },
+      { stamped: true, batchAtMs: 200, happenedMs: 1, seq: 2 },
+      { stamped: true, batchAtMs: 100, happenedMs: 9, seq: 0 },
+      { stamped: true, batchAtMs: 100, happenedMs: 5, seq: 3 },
+      { stamped: true, batchAtMs: 100, happenedMs: 5, seq: 1 },
+      { stamped: false, on: "2026-01-15" },
+      { stamped: false, on: "2026-01-14" },
     ]);
   });
 });

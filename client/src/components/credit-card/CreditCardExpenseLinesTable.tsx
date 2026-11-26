@@ -41,6 +41,8 @@ import {
   useUnlinkCardRefundMutation,
 } from "../../queries/hooks";
 import { queryLoadError, queryShowsLoading } from "../../queries/pageShapeReady";
+import { nextSeenKeys } from "../../rowArrivalAnimation";
+import { ROW_ARRIVED_ATTR, useRowArrivalAnimation } from "./useRowArrivalAnimation";
 import styles from "./CreditCardExpenseLinesTable.module.css";
 
 function lineCategorySlug(line: FlowCcExpenseLineRow): string {
@@ -941,6 +943,16 @@ export type ExpenseListItem =
  * sort buttons (date, category, amount) that sort and reverse the rows. Same rendering at every
  * width; narrow containers stack the pills under the merchant.
  */
+/**
+ * What makes a row "the same row" for the arrival animation: an expense line's flow (it survives a
+ * re-import that gives the line a new row and key, such as a statement settling a pasted line),
+ * else its row key.
+ */
+function arrivalKeyOf(item: ExpenseListItem): string {
+  if (item.kind === "custom") return item.key;
+  return item.line.flow_id != null ? `flow:${item.line.flow_id}` : expenseLineRowKey(item.line);
+}
+
 export function CreditCardExpenseLinesTable({
   lines = [],
   items,
@@ -960,6 +972,7 @@ export function CreditCardExpenseLinesTable({
   defaultSort = null,
   dateOf,
   loading,
+  animateArrivals = false,
 }: {
   lines?: readonly FlowCcExpenseLineRow[];
   /**
@@ -991,8 +1004,26 @@ export function CreditCardExpenseLinesTable({
   dateOf?: (line: FlowCcExpenseLineRow) => string;
   /** Lines still loading: the header renders with no rows (not the empty label), dimmed. */
   loading?: boolean;
+  /**
+   * A row whose key was not shown before fades in with a tint and the rows below slide down on
+   * desktop (`items` only; first data and value-only refetches animate nothing).
+   */
+  animateArrivals?: boolean;
 }) {
   const { t } = useTranslation();
+  const listRef = useRowArrivalAnimation(animateArrivals && items != null);
+  const [arrival, setArrival] = useState<{ keys: string; seen: ReadonlySet<string> | null; arrived: ReadonlySet<string> }>({
+    keys: "",
+    seen: null,
+    arrived: new Set(),
+  });
+  const keysSignature = (items ?? []).map(arrivalKeyOf).join("\n");
+  // Adjusting state while rendering: the arrivals are the keys this list has never shown, kept for the render that commits them.
+  if (keysSignature !== arrival.keys) {
+    const next = nextSeenKeys(arrival.seen, keysSignature === "" ? [] : keysSignature.split("\n"));
+    setArrival({ keys: keysSignature, seen: next.seen, arrived: next.arrived });
+  }
+  const arrivedKeys = arrival.arrived;
   const selection = useCreditCardExpenseLinesSelection();
   const [sort, setSort] = useState<SortState>(defaultSort);
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -1070,14 +1101,27 @@ export function CreditCardExpenseLinesTable({
           </span>
         </div>
         )}
-        <div role="list">
+        <div role="list" ref={listRef}>
           {(items ?? visible.map((line): ExpenseListItem => ({ kind: "expense", line }))).map((item) => {
-            if (item.kind === "custom") return <Fragment key={item.key}>{item.node}</Fragment>;
+            const rowKey = item.kind === "custom" ? item.key : expenseLineRowKey(item.line);
+            const wrap = (node: ReactNode) =>
+              animateArrivals && items != null ? (
+                <div
+                  key={rowKey}
+                  role="none"
+                  className={styles.arrivalRow}
+                  {...(arrivedKeys.has(arrivalKeyOf(item)) ? { [ROW_ARRIVED_ATTR]: "" } : {})}
+                >
+                  {node}
+                </div>
+              ) : (
+                <Fragment key={rowKey}>{node}</Fragment>
+              );
+            if (item.kind === "custom") return wrap(item.node);
             const ln = item.line;
-            const key = expenseLineRowKey(ln);
-            return (
+            const key = rowKey;
+            return wrap(
               <ExpenseLineRow
-                key={key}
                 line={ln}
                 date={item.on ?? dateOf?.(ln)}
                 categories={categories}

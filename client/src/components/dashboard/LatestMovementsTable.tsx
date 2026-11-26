@@ -213,6 +213,7 @@ export function LatestMovementsTable() {
             hideHeader
             emptyLabel={t("dashboard.latestMovements.empty")}
             loading={data == null}
+            animateArrivals
           />
           {/* Not wired yet: a longer list comes later. */}
           <Button variant="ghost" onClick={() => undefined}>
