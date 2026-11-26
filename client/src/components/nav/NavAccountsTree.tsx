@@ -205,7 +205,8 @@ function NavAccountsTreeNode({
 
 /**
  * Accounts that sit in no group of the tree, as the tree's own account rows under a title. The
- * tree renders it under itself (`looseAccounts`); a page with no tree renders it alone.
+ * tree renders it under itself (`looseAccounts`); a page with no tree renders it alone, and
+ * without a title it is the bare list (a page's accounts while its tree is still loading).
  */
 export function AccountsTreeLooseAccounts({
   title,
@@ -213,7 +214,7 @@ export function AccountsTreeLooseAccounts({
   rowExtras,
   standalone = false,
 }: {
-  title: string;
+  title?: string;
   accounts: Omit<AccountsTreeAccount, "rowKey">[];
   rowExtras?: NavAccountsTreeRowExtras;
   /** Outside a tree: brings the tree's own frame. */
@@ -221,18 +222,24 @@ export function AccountsTreeLooseAccounts({
 }) {
   const titleId = useId();
   if (accounts.length === 0) return null;
-  const list = (
-    <section className={styles.loose} aria-labelledby={titleId}>
-      <p id={titleId} className={styles.looseTitle}>
-        {title}
-      </p>
-      <ul className={styles.tree}>
-        {accounts.map((a) => (
-          <AccountLeaf key={a.id} account={{ ...a, rowKey: `loose-${a.id}` }} rowExtras={rowExtras} />
-        ))}
-      </ul>
-    </section>
+  const rows = (
+    <ul className={styles.tree}>
+      {accounts.map((a) => (
+        <AccountLeaf key={a.id} account={{ ...a, rowKey: `loose-${a.id}` }} rowExtras={rowExtras} />
+      ))}
+    </ul>
   );
+  const list =
+    title == null ? (
+      rows
+    ) : (
+      <section className={styles.loose} aria-labelledby={titleId}>
+        <p id={titleId} className={styles.looseTitle}>
+          {title}
+        </p>
+        {rows}
+      </section>
+    );
   return standalone ? <div className={styles.frame}>{list}</div> : list;
 }
 

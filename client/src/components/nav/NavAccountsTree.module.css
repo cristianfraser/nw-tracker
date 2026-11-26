@@ -117,7 +117,9 @@
   white-space: nowrap;
 }
 
+/* The grey text gives way well before the group's name does. */
 .slug {
+  flex-shrink: 8;
   margin-left: 0.25rem;
   min-width: 0;
   overflow: hidden;
