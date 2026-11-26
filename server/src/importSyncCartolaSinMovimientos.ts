@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
 import { db } from "./db.js";
 import type { ImportSyncDocumentKind } from "./importSyncDocumentTypes.js";
 import {
@@ -34,8 +33,10 @@ function cachedParsedJsonEntries(
 }
 
 /**
- * Whether the import-sync matrix should show ○ (sin movimientos) for a cartola cell.
- * Uses imported / parsed movement totals — not whole-PDF banner text alone.
+ * Whether the import-sync matrix should show ○ (sin movimientos) for a cartola cell: the file's
+ * import rows listed no movements (the import refuses none while the saldo moved,
+ * `assertCartolaMonthWrote`), or, with no import row, the parser read none and flagged the banner.
+ * Never reads the PDF.
  */
 export function importSyncCartolaSinMovimientosForMonth(opts: {
   accountId: number;
@@ -52,12 +53,12 @@ export function importSyncCartolaSinMovimientosForMonth(opts: {
 
   const dbRow = db
     .prepare(
-      `SELECT COALESCE(SUM(movement_count), 0) AS total
+      `SELECT COUNT(*) AS n, COALESCE(SUM(movement_count), 0) AS total
        FROM checking_cartola_imports
        WHERE account_id = ? AND source_file = ?`
     )
-    .get(accountId, basename) as { total: number };
-  if (Number(dbRow.total) > 0) return false;
+    .get(accountId, basename) as { n: number; total: number };
+  if (Number(dbRow.n) > 0) return Number(dbRow.total) === 0;
 
   for (const entry of cachedParsedJsonEntries(documentKind)) {
     if (entry.source_file !== basename || entry.parse_status !== "ok") continue;
@@ -65,6 +66,5 @@ export function importSyncCartolaSinMovimientosForMonth(opts: {
     if (mvCount > 0) return false;
     if (entry.cartola_sin_movimientos === true) return true;
   }
-
-  return cartolaPdfIndicatesSinMovimientos(filePath);
+  return false;
 }

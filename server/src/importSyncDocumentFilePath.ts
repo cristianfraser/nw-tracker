@@ -16,7 +16,6 @@ import {
   resolveCfraserCuentaVistaCartolaPdfsDir,
   resolveCcStatementSlotDir,
 } from "./cfraserPaths.js";
-import { cartolaPdfPreferenceScore } from "./cartolaSinMovimientos.js";
 import { normalizeCcImportCardLast4 } from "./ccConsolidatedCards.js";
 import { db } from "./db.js";
 import type { ImportSyncDocumentAccount } from "./importSyncDocumentTypes.js";
@@ -117,8 +116,6 @@ export function buildCartolaPathsFromParsedPdfEntries(
     for (const ym of months) {
       const movementCount = byMonth.get(ym) ?? 0;
       const candidateScore = cartolaParsedEntryPreferenceScore(
-        abs,
-        movementCount,
         totalMovements,
         entry.cartola_sin_movimientos === true
       );
@@ -135,15 +132,16 @@ export function buildCartolaPathsFromParsedPdfEntries(
   return new Map([...out.entries()].map(([ym, row]) => [ym, { path: row.path, movementCount: row.movementCount }]));
 }
 
+/**
+ * Which parsed cartola stands for a month: one listing movements first (the more the better),
+ * then one with none, then one the parser read the «SIN MOVIMIENTOS» banner on.
+ */
 function cartolaParsedEntryPreferenceScore(
-  abs: string,
-  movementCount: number,
   totalMovementsInCartola: number,
   parserSinMov: boolean
 ): number {
-  if (totalMovementsInCartola > 0) return 1_000_000 + totalMovementsInCartola;
-  if (parserSinMov) return 0;
-  return cartolaPdfPreferenceScore(abs, movementCount);
+  if (totalMovementsInCartola > 0) return 1 + totalMovementsInCartola;
+  return parserSinMov ? 0 : 1;
 }
 
 function cartolaPathMapPathsOnly(
@@ -161,16 +159,16 @@ export function buildCartolaPathsFromParsedPdfJson(
   );
 }
 
+/** The month's file: the one with more movements; on a tie, the earlier map's (the import rows'). */
 function mergeCartolaPathMaps(
   ...maps: Map<string, { path: string; movementCount: number }>[]
 ): Map<string, string> {
-  const out = new Map<string, { path: string; score: number }>();
+  const out = new Map<string, { path: string; movementCount: number }>();
   for (const map of maps) {
     for (const [ym, row] of map) {
-      const score = cartolaPdfPreferenceScore(row.path, row.movementCount);
       const prev = out.get(ym);
-      if (!prev || score > prev.score) {
-        out.set(ym, { path: row.path, score });
+      if (!prev || row.movementCount > prev.movementCount) {
+        out.set(ym, { path: row.path, movementCount: row.movementCount });
       }
     }
   }
