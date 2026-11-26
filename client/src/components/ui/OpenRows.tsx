@@ -34,7 +34,7 @@ export function RowFacts({ facts }: { facts: [label: string, value: ReactNode][]
 }
 
 /**
- * A list of one-line rows that open in place (the app messages, and every panel of the import
+ * A list of one-line rows that open in place (the app messages, the usage lists, and every panel of the import
  * sync page). One rendering at every width: wide, the list is the grid and each line a subgrid of
  * it, so the cells line up down the list; under 40rem of its own frame a line becomes two or three.
  */
