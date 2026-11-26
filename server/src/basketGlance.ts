@@ -18,7 +18,8 @@
  * - sparklines: the group's own daily returns chained (`groupDailyPctPoints` → `chainDailyReturns`,
  *   the level series the «Tus portafolios» benchmark reads), on the position sparkline's axes;
  * - held stretches: the union of the members' — a unit position's from its unit ledger
- *   (`positionHeldSpans`), a cash ledger's from its balance after each movement day.
+ *   (`positionHeldSpans`), a cash ledger's from its balance and an option's from its contracts
+ *   after each movement day.
  */
 import type {
   PositionGlanceDirection,
@@ -105,16 +106,19 @@ const stmtMovementDays = db.prepare(
 );
 
 /**
- * The stretches a cash member held a balance: its quantity (`accountHoldingQtyAt`) at the end of
- * each day a movement touched it; a stretch starts the day the balance turns non-zero (beyond
- * half the currency's smallest coin) and ends the day it returns to zero (null while held today).
+ * The stretches a cash or option member held something: its quantity (`accountHoldingQtyAt`) at
+ * the end of each day a movement touched it — a cash balance, or the contracts of an option
+ * (negative while written) —; a stretch starts the day the quantity turns non-zero (beyond half
+ * the currency's smallest coin, or half a contract) and ends the day it returns to zero (null
+ * while held today).
  */
-function cashHeldSpans(accountId: number, today: string): HeldSpan[] {
+function ledgerHeldSpans(accountId: number, today: string): HeldSpan[] {
   const profile = accountProfileOptional(accountId);
-  if (!profile || profile.holding.kind !== "currency") {
-    throw new Error(`Basket member ${accountId} is neither a unit position nor a cash ledger`);
+  const holding = profile?.holding;
+  if (!holding || (holding.kind !== "currency" && holding.kind !== "option")) {
+    throw new Error(`Basket member ${accountId} is neither a unit position, a cash ledger nor an option`);
   }
-  const eps = currencySmallestCoin(profile.holding.code) / 2;
+  const eps = holding.kind === "currency" ? currencySmallestCoin(holding.code) / 2 : 0.5;
   const days = (stmtMovementDays.all(accountId, accountId, accountId) as { day: string }[])
     .map((r) => r.day)
     .filter((d) => d <= today);
@@ -130,9 +134,9 @@ function cashHeldSpans(accountId: number, today: string): HeldSpan[] {
   return spans;
 }
 
-/** A member's held stretches: its unit ledger's, else its cash balance's. */
+/** A member's held stretches: its unit ledger's, else its cash balance's or option contracts'. */
 export function memberHeldSpans(accountId: number, today: string): HeldSpan[] {
-  return isUnitPositionAccount(accountId) ? positionHeldSpans(accountId) : cashHeldSpans(accountId, today);
+  return isUnitPositionAccount(accountId) ? positionHeldSpans(accountId) : ledgerHeldSpans(accountId, today);
 }
 
 /** The union of stretches (a stretch ending the day another starts joins it). */

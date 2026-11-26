@@ -21,6 +21,7 @@ import { occSymbol, occSymbolSlug, optionContractDisplayName, optionContractForA
 import { optionContractsThroughDate } from "./optionPosition.js";
 import { removeAccountPlacement } from "./accountPlacement.js";
 import { convertValue } from "./valueConvert.js";
+import { memberHeldSpans } from "./basketGlance.js";
 
 /**
  * Options as an instrument kind (docs/demo-app-features-plan.md §3, wave O1): the holding and
@@ -437,5 +438,12 @@ describe("the assignment service", () => {
     const stockRow = db.prepare(`SELECT from_account_id, to_account_id, units_delta, flow_kind FROM movements WHERE id = ?`).get(r.stock_movement_id);
     expect(stockRow).toEqual({ from_account_id: cash, to_account_id: stock, units_delta: 100, flow_kind: "stock_buy" });
     expect(optionContractsThroughDate(put, "2026-06-16")).toBe(0);
+  });
+});
+
+describe("an option as a group member", () => {
+  it("is held while its contracts are open, written ones included (the group glance's held stretches)", () => {
+    // Call A: 2 contracts written on 05-05, expired worthless on 06-05.
+    expect(memberHeldSpans(callA, "2026-06-30")).toEqual([{ from: "2026-05-05", to: "2026-06-05" }]);
   });
 });
