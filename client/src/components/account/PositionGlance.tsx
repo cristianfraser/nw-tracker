@@ -11,6 +11,7 @@ import type {
   PositionGlanceBasketDto,
   PositionGlanceDto,
   PositionGlancePeriodDto,
+  PositionGlancePricingDto,
   PositionGlanceSegmentDto,
   PositionGlanceSparkRange,
 } from "../../types";
@@ -45,16 +46,24 @@ const SPARK_W = 360;
 const SPARK_H = 50;
 
 /**
- * Which optional rows a unit position's glance has, remembered per account (`position_glance_shape`)
- * so the page picks the unit-position page while its bundle is pending and the pending glance has
- * the loaded one's rows: the sub-line's name, the fund's basket, the composition bar, the broker split.
+ * Which optional rows a position page's glance has, remembered per account (`position_glance_shape`)
+ * so the pending glance has the loaded one's rows: the price blocks (none on an account with no
+ * unit price), the sub-line, the fund's basket, the composition bar, the broker split.
  */
-type PositionGlanceShape = { has_name: boolean; has_composition: boolean; basket_rows: number; brokers: number };
+type PositionGlanceShape = {
+  has_pricing: boolean;
+  /** The title has a sub-line (with pricing: the instrument's name before the price). */
+  has_name: boolean;
+  has_composition: boolean;
+  basket_rows: number;
+  brokers: number;
+};
 
 function isPositionGlanceShape(v: unknown): v is PositionGlanceShape {
   if (v == null || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
   return (
+    typeof o.has_pricing === "boolean" &&
     typeof o.has_name === "boolean" &&
     typeof o.has_composition === "boolean" &&
     typeof o.basket_rows === "number" &&
@@ -64,13 +73,13 @@ function isPositionGlanceShape(v: unknown): v is PositionGlanceShape {
 
 const POSITION_GLANCE_SHAPE = persistedPayload<PositionGlanceShape>("position_glance_shape", isPositionGlanceShape);
 
-/** The guess for a position this browser has not shown: a name, a composition bar, one broker, no basket. */
-const GUESSED_SHAPE: PositionGlanceShape = { has_name: true, has_composition: true, basket_rows: 0, brokers: 1 };
+/** The guess for a position this browser has not shown: priced, a name, a composition bar, one broker, no basket. */
+const GUESSED_SHAPE: PositionGlanceShape = { has_pricing: true, has_name: true, has_composition: true, basket_rows: 0, brokers: 1 };
 
 /**
  * What the client knows of an account's glance before its bundle is in: a glance react-query still
- * holds for it (another unit's bundle, this session), else the browser's stored shape. Null: no
- * sign it is a unit-position page (the standard page's frame stays until the bundle says).
+ * holds for it (another unit's bundle, this session), else the browser's stored shape. Null:
+ * nothing known (the pending glance draws the guessed rows).
  */
 export function usePendingPositionGlanceShape(accountId: number): PositionGlanceShape | null {
   const queryClient = useQueryClient();
@@ -84,25 +93,48 @@ export function usePendingPositionGlanceShape(accountId: number): PositionGlance
 }
 
 function shapeOf(glance: PositionGlanceDto, brokers: number): PositionGlanceShape {
+  const i = glance.instrument;
   return {
-    // A fund's series is always worded; a market instrument's registry name may be missing.
-    has_name: glance.instrument.kind === "fund" || glance.instrument.name != null,
+    has_pricing: glance.pricing != null,
+    // A fund's series and an option's terms are always worded; a market instrument's registry name
+    // may be missing; an account valued by a stored balance words the balance's day.
+    has_name: i.kind === "market" ? i.name != null : i.kind === "book" ? i.valued_on != null : true,
     has_composition: glance.composition != null,
     basket_rows: glance.basket?.rows.length ?? 0,
     brokers,
   };
 }
 
-/** The sub-line's name: a market instrument's registry name (null when none), a fund's series worded. */
+/**
+ * The sub-line's text: a market instrument's registry name (null when none), a fund's series
+ * worded, an option's terms, the day of a stored balance (null with no value on file).
+ */
 function useInstrumentName(): (glance: PositionGlanceDto) => string | null {
   const { t } = useTranslation();
-  return (glance) =>
-    glance.instrument.kind === "market" ? glance.instrument.name : fundSeriesLabel(glance.instrument.series, t);
+  return (glance) => {
+    const i = glance.instrument;
+    switch (i.kind) {
+      case "market":
+        return i.name;
+      case "fund":
+        return fundSeriesLabel(i.series, t);
+      case "option":
+        return t("accountDetail.positionGlance.option.terms", {
+          right: t(i.right === "C" ? "options.terms.call" : "options.terms.put"),
+          underlying: i.underlying,
+          strike: formatMoney(i.strike),
+          expiry: i.expiry,
+          multiplier: formatInstrumentUnits(i.multiplier, "shares"),
+        });
+      case "book":
+        return i.valued_on != null ? t("accountDetail.positionGlance.bookAsOf", { date: i.valued_on }) : null;
+    }
+  };
 }
 
 /**
  * Remembers the account's glance shape once the bundle states it: a glance stores its rows, an
- * explicit null (not a unit position) drops the entry.
+ * explicit null (a page of its own) drops the entry.
  */
 export function useRememberPositionGlanceShape(
   accountId: number,
@@ -141,7 +173,7 @@ export function PricePill({
   className,
 }: {
   price: { value: number; currency: string };
-  priceVsCost: PositionGlanceDto["price_vs_cost"];
+  priceVsCost: PositionGlancePricingDto["price_vs_cost"];
   className?: string;
 }) {
   return (
@@ -159,6 +191,9 @@ function useSessionLabel(): (glance: PositionGlanceDto) => string {
   const { t } = useTranslation();
   return (glance) => {
     const quote = glance.instrument;
+    if (quote.kind !== "market" && quote.kind !== "fund") {
+      throw new Error(`position_glance: a ${quote.kind} instrument has no priced session`);
+    }
     if (quote.kind === "fund") {
       return quote.price_source === "proxy"
         ? t("accountDetail.positionGlance.fundEstimated")
@@ -172,10 +207,11 @@ function useSessionLabel(): (glance: PositionGlanceDto) => string {
 }
 
 /**
- * The unit-position page's title line: ticker (a fund: its account name), today's value and the
- * day's P/L; under it the instrument's name (a fund: its series) and today's price with its session
- * or publication day (two rows on a phone). `glance` undefined = pending: the
- * title (from the nav) with blank figures, at the loaded height.
+ * The position page's title line: ticker (else the account's name), today's value and the day's
+ * P/L; under it the instrument's name (a fund: its series) and today's price with its session or
+ * publication day (two rows on a phone) — with no pricing, an option's terms or the day of the
+ * stored balance, or no sub-line. `glance` undefined = pending: the title (from the nav) with
+ * blank figures, at the loaded height.
  */
 export function PositionGlanceTitle({
   glance,
@@ -192,32 +228,52 @@ export function PositionGlanceTitle({
 }) {
   const sessionLabel = useSessionLabel();
   const instrumentName = useInstrumentName();
+  const { t } = useTranslation();
+  const shape = pendingShape ?? GUESSED_SHAPE;
   const name = glance ? instrumentName(glance) : null;
-  const hasName = glance ? name != null : (pendingShape ?? GUESSED_SHAPE).has_name;
+  const hasName = glance ? name != null : shape.has_name;
+  const hasPricing = glance ? glance.pricing != null : shape.has_pricing;
+  const pricing = glance?.pricing ?? null;
   return (
     <GlanceTitleLine
       title={glance?.title ?? fallbackTitle}
       value={glance?.value ?? null}
+      valueMissing={glance != null && glance.value == null}
       day={glance?.periods.day ?? null}
       loading={loading}
     >
-      <div className={loadableClass(loading, styles.sub)}>
-        {hasName ? <span className={styles.subName}>{name ?? BLANK}</span> : null}
-        {hasName ? (
-          <span className={styles.subSep} aria-hidden="true">
-            ·
+      {hasPricing ? (
+        <div className={loadableClass(loading, styles.sub)}>
+          {hasName ? <span className={styles.subName}>{name ?? BLANK}</span> : null}
+          {hasName ? (
+            <span className={styles.subSep} aria-hidden="true">
+              ·
+            </span>
+          ) : null}
+          <span className={styles.subQuote}>
+            {glance && pricing ? (
+              <>
+                <PricePill price={pricing.quote.price} priceVsCost={pricing.price_vs_cost} /> {sessionLabel(glance)}
+              </>
+            ) : (
+              <PendingPricePill />
+            )}
           </span>
-        ) : null}
-        <span className={styles.subQuote}>
-          {glance ? (
+        </div>
+      ) : hasName ? (
+        // No unit price: what the value is (an option's terms and how it is valued, a stored balance's day).
+        <div className={loadableClass(loading, styles.sub)}>
+          <span className={styles.subName}>{name ?? BLANK}</span>
+          {glance?.instrument.kind === "option" ? (
             <>
-              <PricePill price={glance.quote.price} priceVsCost={glance.price_vs_cost} /> {sessionLabel(glance)}
+              <span className={styles.subSep} aria-hidden="true">
+                ·
+              </span>
+              <span className={styles.subQuote}>{t("accountDetail.positionGlance.option.intrinsic")}</span>
             </>
-          ) : (
-            <PendingPricePill />
-          )}
-        </span>
-      </div>
+          ) : null}
+        </div>
+      ) : null}
     </GlanceTitleLine>
   );
 }
@@ -230,6 +286,7 @@ export function PositionGlanceTitle({
 export function GlanceTitleLine({
   title,
   value,
+  valueMissing = false,
   secondary = null,
   secondaryLoading = false,
   day,
@@ -238,6 +295,8 @@ export function GlanceTitleLine({
 }: {
   title: string;
   value: { value: number; currency: string } | null;
+  /** The page is loaded and the account has no value on file: «—» in the value's place. */
+  valueMissing?: boolean;
   /** The same value in another currency, quiet beside it (a foreign cash balance in the display unit). */
   secondary?: { value: number; currency: string } | null;
   /** The secondary value is held from another display unit: it alone dims. */
@@ -253,7 +312,7 @@ export function GlanceTitleLine({
       <div className={styles.titleLine}>
         <h1 className={styles.ticker}>{title || BLANK}</h1>
         <span className={loadableClass(loading, styles.titleFigures)}>
-          <span className={cn("mono", styles.titleValue)}>{value ? formatMoney(value) : BLANK}</span>
+          <span className={cn("mono", styles.titleValue)}>{value ? formatMoney(value) : valueMissing ? "—" : BLANK}</span>
           {secondary ? (
             <span className={loadableClass(secondaryLoading, cn("mono", styles.titleSecondary))}>{formatMoney(secondary)}</span>
           ) : null}
@@ -374,23 +433,23 @@ export function GlanceSparklineGroup({
 }
 
 /** a. The instrument's price since first held; the dotted line is the average cost. */
-function QuoteGroup({ glance, accountId }: { glance: PositionGlanceDto; accountId: number }) {
+function QuoteGroup({ title, pricing, accountId }: { title: string; pricing: PositionGlancePricingDto; accountId: number }) {
   const { t } = useTranslation();
   return (
     <GlanceSparklineGroup
       surfaceId={`account.${accountId}.sparkline`}
-      lines={glance.sparklines}
-      tone={priceTone(glance.price_vs_cost)}
-      ariaLabel={t("accountDetail.positionGlance.sparkline", { ticker: glance.title })}
+      lines={pricing.sparklines}
+      tone={priceTone(pricing.price_vs_cost)}
+      ariaLabel={t("accountDetail.positionGlance.sparkline", { ticker: title })}
     />
   );
 }
 
 /** b. The average cost, today's price and the highest close on one track. */
-function TrackGroup({ glance }: { glance: PositionGlanceDto }) {
+function TrackGroup({ pricing }: { pricing: PositionGlancePricingDto }) {
   const { t } = useTranslation();
-  const { track } = glance;
-  const tone = toneClass(priceTone(glance.price_vs_cost));
+  const { track } = pricing;
+  const tone = toneClass(priceTone(pricing.price_vs_cost));
   // Today's price above the track and the cost below it, each centred on its own tick
   // (`centredLabelLeft`), placed in px from the measured widths.
   const trackRef = useRef<HTMLDivElement>(null);
@@ -477,8 +536,20 @@ const OVERLAY_KINDS: ReadonlySet<PositionGlanceSegmentDto["kind"]> = new Set(["l
  * c. Today's value as deposited + state bonus + price + dividends, to scale, with their amounts
  * under it (the capital pieces at the left, the results at the right).
  */
-export function CompositionGroup({ composition }: { composition: NonNullable<PositionGlanceDto["composition"]> }) {
+export function CompositionGroup({
+  composition,
+  priced = true,
+}: {
+  composition: NonNullable<PositionGlanceDto["composition"]>;
+  /** False on an account with no unit price: the part beyond the capital is its gain or loss, not a price result. */
+  priced?: boolean;
+}) {
   const { t } = useTranslation();
+  const resultLabel = priced
+    ? t("accountDetail.positionGlance.price")
+    : composition.price_direction === "down"
+      ? t("accountDetail.positionGlance.loss")
+      : t("accountDetail.positionGlance.gain");
   const flow = composition.segments.filter((s) => !OVERLAY_KINDS.has(s.kind));
   const overlays = composition.segments.filter((s) => OVERLAY_KINDS.has(s.kind));
   const has = (kind: PositionGlanceSegmentDto["kind"]) => composition.segments.some((s) => s.kind === kind);
@@ -522,7 +593,7 @@ export function CompositionGroup({ composition }: { composition: NonNullable<Pos
           <span className={styles.results}>
             {hasPrice ? (
               <span className={styles.labelRight}>
-                <em>{t("accountDetail.positionGlance.price")}</em>
+                <em>{resultLabel}</em>
                 <b className={cn("mono", directionClass(composition.price_direction))}>{formatSignedMoney(composition.price)}</b>
               </span>
             ) : null}
@@ -671,12 +742,16 @@ export function PendingCompositionGroup() {
 function PendingRail({ shape }: { shape: PositionGlanceShape }) {
   return (
     <>
-      <PendingSparklineGroup />
-      <Group>
-        <div className={styles.track}>
-          <div className={styles.trackBar} />
-        </div>
-      </Group>
+      {shape.has_pricing ? (
+        <>
+          <PendingSparklineGroup />
+          <Group>
+            <div className={styles.track}>
+              <div className={styles.trackBar} />
+            </div>
+          </Group>
+        </>
+      ) : null}
       {shape.basket_rows > 0 ? (
         <Group>
           <div className={styles.basketHead}>
@@ -710,10 +785,11 @@ function PendingRail({ shape }: { shape: PositionGlanceShape }) {
 }
 
 /**
- * The unit-position page's rail (server `position_glance`, `positionGlance.ts`): the unit price
- * since first held, the price track, a proxy-priced fund's basket, the composition of today's
- * value, the broker split when the ticker is held through two or more, and the día / mes / año bars. `glance` undefined while the page data
- * is pending (the frames with blank figures, dimmed by the page).
+ * The position page's rail (server `position_glance`, `positionGlance.ts`): the unit price since
+ * first held and the price track (both absent on an account with no unit price, `pricing` null),
+ * a proxy-priced fund's basket, the composition of today's value, the broker split when the
+ * ticker is held through two or more, and the día / mes / año bars. `glance` undefined while the
+ * page data is pending (the frames with blank figures, dimmed by the page).
  */
 export function PositionGlanceRail({
   accountId,
@@ -729,10 +805,14 @@ export function PositionGlanceRail({
   if (!glance) return <div className={styles.rail}><PendingRail shape={pendingShape ?? GUESSED_SHAPE} /></div>;
   return (
     <div className={styles.rail}>
-      <QuoteGroup glance={glance} accountId={accountId} />
-      <TrackGroup glance={glance} />
+      {glance.pricing ? (
+        <>
+          <QuoteGroup title={glance.title} pricing={glance.pricing} accountId={accountId} />
+          <TrackGroup pricing={glance.pricing} />
+        </>
+      ) : null}
       {glance.basket ? <BasketGroup basket={glance.basket} /> : null}
-      {glance.composition ? <CompositionGroup composition={glance.composition} /> : null}
+      {glance.composition ? <CompositionGroup composition={glance.composition} priced={glance.pricing != null} /> : null}
       {position && (position.brokers?.length ?? 0) >= 2 ? <BrokersGroup position={position} /> : null}
       <PeriodsGroup periods={glance.periods} />
     </div>

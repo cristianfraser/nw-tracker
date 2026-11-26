@@ -1,26 +1,16 @@
-import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import {
   filterPointsThroughAsOfDate,
   resolveMonthlyPerfClipEndDate,
 } from "../../components/charts/chartData";
-import {
-  useAccountDetailBundle,
-  useDashboardNavContext,
-  useDashboardNavSnapshot,
-  useHeldNavStrip,
-  useSidebarNav,
-} from "../../queries/hooks";
-import { dashPickForNavStrip } from "../../queries/fetchers";
+import { useAccountDetailBundle, useDashboardNavSnapshot, useSidebarNav } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import { findNavTreeNodeByAccountId } from "../../portfolioNavFromApi";
 import i18n from "../../i18n";
 import { buildPlaceholderAccountDetailBundle } from "../../placeholders/accountDetailPlaceholders";
-import { buildPlaceholderNavStripDash } from "../../placeholders/dashboardPagePlaceholders";
-import { cardMetricsByPeriodForAccountRow } from "../../dashboardCardBreakdown";
 import { useSurfacePrefs, type SurfacePrefsValue } from "../../surfaceDisplayPrefs";
 import { clipMonthsThenRollup } from "../../timeRange";
 import type {
@@ -28,7 +18,6 @@ import type {
   AccountMonthlyPerformanceResponse,
   CheckingCartolaMonthsResponse,
   CheckingGlanceDto,
-  DashboardAccountRow,
   DeptoGlanceDto,
   PositionGlanceDto,
   PeriodReturnsPayload,
@@ -54,26 +43,17 @@ export type AccountDetailPageData = {
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
   /**
    * The unit-position page's glance (server `position_glance`): undefined while the bundle is not in, null
-   * when the account has none (not a unit position — the standard page).
+   * when the account has none (a card, a cash ledger, a property or a loan).
    */
   positionGlance: PositionGlanceDto | null | undefined;
   /** The checking page's head (server `checking_glance`): undefined while the bundle is not in, null on any other account. */
   checkingGlance: CheckingGlanceDto | null | undefined;
   /** The property / mortgage page (server `depto_glance`): undefined while the bundle is not in, null on any other account or a loan with no ledger rows. */
   deptoGlance: DeptoGlanceDto | null | undefined;
-  dash: ReturnType<typeof dashPickForNavStrip> | null;
-  /** `dash` is the nav-tree zero frame (nav-context not in yet): its cards are in the placeholder phase. */
-  dashIsPlaceholder: boolean;
   monthlyPerf: AccountMonthlyPerformanceResponse | null;
   /** undefined while the bundle loads; null is the server stating the account has no period returns. */
   periodReturns: PeriodReturnsPayload | null | undefined;
   displayUnit: DisplayUnit;
-  /**
-   * The unit the card strip (hero, metrics, nav-child cards) renders in: `displayUnit`, except
-   * while the page holds the previous unit's bundle during a switch — then THAT unit, so the
-   * cards keep their values, dimmed, and flip once the new unit lands.
-   */
-  stripUnit: DisplayUnit;
   /** Per-surface controls: valuation chart (Diario+3y) and the two P/L combos (Mensual+3y). */
   valuationPrefs: SurfacePrefsValue;
   perfPrefs: SurfacePrefsValue;
@@ -81,20 +61,14 @@ export type AccountDetailPageData = {
   monthlyPerfRows: AccountMonthlyPerformanceResponse["monthly"];
   monthlyPerfYearlyRows: AccountMonthlyPerformanceResponse["yearly"];
   ytdChartPoints: Record<string, string | number | null>[];
-  accChartPoints: Record<string, string | number | null>[];
   valuationBlockForChart: NonNullable<DetailBundle["ts"]>["accounts"] | null;
   navSelf: ReturnType<typeof findNavTreeNodeByAccountId>;
   accountChartTheme: { bar: string; areaStroke: string; areaFill: string };
-  accountDashRow: DashboardAccountRow | null;
-  accountMetricsAgg: ReturnType<typeof cardMetricsByPeriodForAccountRow>;
-  accountNavChildren: NonNullable<ReturnType<typeof findNavTreeNodeByAccountId>>["children"];
-  /** The chart's live point in the strip's unit when it is not pesos (the hero's fallback). */
-  chartUnitVal: number | null;
 };
 
 export function useAccountDetailPageData(): AccountDetailPageData {
   const { id } = useParams();
-  const { displayUnit, previousDisplayUnit } = useDisplayPreferences();
+  const { displayUnit } = useDisplayPreferences();
 
   const accountIdNum = id != null && Number.isFinite(Number(id)) && Number(id) > 0 ? Number(id) : 0;
   const valuationPrefs = useSurfacePrefs(`account.${accountIdNum || "pending"}.valuation`, "day", "3y");
@@ -161,27 +135,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const checkingGlance = bundleReady ? detail?.checking_glance : undefined;
   const deptoGlance = bundleReady ? detail?.depto_glance : undefined;
 
-  const needsNavChildCards =
-    (navSelfEarly?.children?.filter((c) => c.route_path?.trim()).length ?? 0) > 0;
-
-  const { data: navCtx } = useDashboardNavContext(
-    displayUnit,
-    navSelfEarly?.slug ?? null,
-    needsNavChildCards
-  );
-  // The page holds the previous unit's detail while the new unit loads (same-entity keep-previous):
-  // the whole strip stays in that unit, so the hero (held detail row) and the nav-child cards (the
-  // previous unit's nav context or snapshot) never mix units.
-  const holdingPrevUnit = detailIsPlaceholder && bundleReady;
-  const heldStrip = useHeldNavStrip(previousDisplayUnit, holdingPrevUnit && needsNavChildCards, navSelfEarly?.slug ?? null);
-  const stripUnit = holdingPrevUnit ? previousDisplayUnit : displayUnit;
-  const realDash = holdingPrevUnit ? (heldStrip?.dash ?? null) : navCtx ? dashPickForNavStrip(navCtx) : null;
-  // Nav-context not in yet: the strip's zero frame from the nav tree (cards in their placeholder phase).
-  const dash =
-    realDash ??
-    (needsNavChildCards && sidebarNav ? buildPlaceholderNavStripDash(sidebarNav) : null);
-  const dashIsPlaceholder = realDash == null && dash != null;
-
   // Tail clip runs server-side; the block carries the clipped x-range when the account ended early.
   const valuationTailClipEndDate = ts?.accounts?.chart_end_ymd ?? null;
 
@@ -217,22 +170,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     );
   }, [monthlyPerfRows, perfIsYearly, perfRange]);
 
-  const accChartPoints = useMemo(() => {
-    if (!monthlyPerfRows.length) return [];
-    const monthly = [...monthlyPerfRows].reverse().map((r) => ({
-      as_of_date: r.as_of_date,
-      delta_month: r.nominal_pl ?? 0,
-      accumulated_earnings: r.cumulative_nominal_pl ?? 0,
-    }));
-    if (!perfIsYearly) return monthly;
-    return clipMonthsThenRollup(monthly, "year", perfRange, (months) =>
-      rollupPerfPointsYearly(months, {
-        sumKeys: ["delta_month"],
-        accumKey: "accumulated_earnings",
-      })
-    );
-  }, [monthlyPerfRows, perfIsYearly, perfRange]);
-
   const valuationBlockForChart = useMemo(() => {
     if (!ts?.accounts) return null;
     if (valuationPrefs.period !== "year") return ts.accounts;
@@ -255,27 +192,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     [accountColorRgb]
   );
 
-  const lastChartRow =
-    ts.accounts.points.length > 0 ? ts.accounts.points[ts.accounts.points.length - 1]! : null;
-  const accountDataKey = String(summary.account_id);
-  const chartUnitVal =
-    !isHomeCurrency(stripUnit) &&
-    lastChartRow &&
-    typeof lastChartRow[accountDataKey] === "number" &&
-    Number.isFinite(lastChartRow[accountDataKey] as number)
-      ? (lastChartRow[accountDataKey] as number)
-      : null;
-
-  const accountDashRow = useMemo(() => {
-    if (summary.account_id <= 0) return null;
-    if (detail?.dashboard_account_row) return detail.dashboard_account_row;
-    const fromNavCtx = dash?.accounts.find((a) => a.account_id === summary.account_id) ?? null;
-    if (fromNavCtx) return fromNavCtx;
-    return navSnapshot?.accounts.find((a) => a.account_id === summary.account_id) ?? null;
-  }, [detail?.dashboard_account_row, dash?.accounts, navSnapshot, summary.account_id]);
-  const accountMetricsAgg = cardMetricsByPeriodForAccountRow(accountDashRow ?? null, stripUnit);
-  const accountNavChildren = navSelf?.children?.filter((c) => c.route_path?.trim()) ?? [];
-
   return {
     id,
     contentLoading: err != null ? false : contentLoading,
@@ -289,25 +205,17 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     positionGlance,
     checkingGlance,
     deptoGlance,
-    dash,
-    dashIsPlaceholder,
     monthlyPerf,
     periodReturns,
     displayUnit,
-    stripUnit,
     valuationPrefs,
     perfPrefs,
     valuationTailClipEndDate,
     monthlyPerfRows,
     monthlyPerfYearlyRows,
     ytdChartPoints,
-    accChartPoints,
     valuationBlockForChart,
     navSelf,
     accountChartTheme,
-    accountDashRow,
-    accountMetricsAgg,
-    accountNavChildren,
-    chartUnitVal,
   };
 }

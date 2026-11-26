@@ -299,8 +299,8 @@ export function buildBasketGlance(inp: BasketGlanceInputs): BasketGlanceDto {
     const units = pos != null && pos.units != null ? { amount: pos.units, kind: pos.units_kind } : null;
     let quote: BasketGlanceMemberDto["quote"] = null;
     if (held && isUnitPositionAccount(id)) {
-      const g = buildPositionGlanceForAccount(id, { unit: inp.unit, position: pos, row: r }, now);
-      if (g == null) throw new Error(`Basket ${inp.slug}: member ${id} holds units but has no position glance`);
+      const g = buildPositionGlanceForAccount(id, { unit: inp.unit, position: pos, today: { value: v, as_of: null }, row: r }, now)?.pricing;
+      if (g == null) throw new Error(`Basket ${inp.slug}: member ${id} holds units but has no priced position glance`);
       quote = {
         price: g.quote.price,
         price_as_of: g.quote.price_as_of,

@@ -6,7 +6,7 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { accountUsesCryptoMtm } from "./cryptoValuation.js";
-import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
+import { accountProfileOptional } from "./accountProfile.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { accountUsesForeignCashFlowKinds } from "./accountForeignCashFlows.js";
 import { accountRowForId } from "./accountRowForMovement.js";
@@ -28,7 +28,8 @@ export function bookLedgerEditSchemaForAccount(accountId: number): BookLedgerEdi
   if (accountUsesForeignCashFlowKinds({ bucket_slug: account.bucket_slug })) return null;
   if (kind === "credit_card") return null;
   if (kind === "property" || kind === "mortgage") return null;
-  if (account.import_key && isFintualCertV2AccountNotes(account.import_key)) return null;
+  // A fund held in cuotas (the `fintual_goal` role): its value is cuotas × the valor cuota, not a stored balance.
+  if (accountProfileOptional(accountId)?.quantity.kind === "fintual_goal") return null;
   if (accountUsesEquityMtm(accountId)) return null;
   if (accountUsesCryptoMtm(accountId)) return null;
 

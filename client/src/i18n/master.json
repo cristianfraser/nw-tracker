@@ -597,22 +597,6 @@
       }
     },
     "terms": {
-      "title": {
-        "en": "Contract",
-        "es": "Contrato"
-      },
-      "occSymbol": {
-        "en": "OCC symbol",
-        "es": "Símbolo OCC"
-      },
-      "underlying": {
-        "en": "Underlying",
-        "es": "Subyacente"
-      },
-      "right": {
-        "en": "Right",
-        "es": "Derecho"
-      },
       "call": {
         "en": "Call",
         "es": "Call"
@@ -620,22 +604,6 @@
       "put": {
         "en": "Put",
         "es": "Put"
-      },
-      "strike": {
-        "en": "Strike",
-        "es": "Strike"
-      },
-      "expiry": {
-        "en": "Expiry",
-        "es": "Vencimiento"
-      },
-      "multiplier": {
-        "en": "Shares per contract",
-        "es": "Acciones por contrato"
-      },
-      "intrinsicNote": {
-        "en": "Marked at intrinsic value from the underlying's close; time value is not priced. A short position shows a negative value and a negative number of contracts.",
-        "es": "Valorado al valor intrínseco según el cierre del subyacente; el valor tiempo no se valora. Una posición corta muestra un valor negativo y un número negativo de contratos."
       }
     }
   },
@@ -2421,40 +2389,6 @@
       "en": "Date",
       "es": "Fecha"
     },
-    "position": {
-      "title": {
-        "en": "Position (ticker and units)",
-        "es": "Posición (ticker y cuotas)"
-      },
-      "colTicker": {
-        "en": "Ticker",
-        "es": "Ticker"
-      },
-      "colUnits": {
-        "en": "Units",
-        "es": "Cuotas / unidades"
-      },
-      "colDeposited": {
-        "en": "Deposited",
-        "es": "Depositado"
-      },
-      "colValueToday": {
-        "en": "Value today",
-        "es": "Valor hoy"
-      },
-      "colValueDate": {
-        "en": "Value date",
-        "es": "Fecha valor"
-      },
-      "colValuePerUnit": {
-        "en": "Value / unit",
-        "es": "Valor / unidad"
-      }
-    },
-    "monthlyPerfComputedTitle": {
-      "en": "Monthly performance (computed)",
-      "es": "Rendimiento mensual (calculado)"
-    },
     "plMonthlyVsYtdTitle": {
       "en": "Monthly P/L vs YTD",
       "es": "P/L mensual vs YTD"
@@ -2462,32 +2396,6 @@
     "deltaMonthNominal": {
       "en": "Month Δ (nominal P/L)",
       "es": "Δ mes (P/L nominal)"
-    },
-    "monthlyDelta": {
-      "en": "Monthly Δ",
-      "es": "Δ mensual"
-    },
-    "monthlyDeltaAndAccumTitle": {
-      "en": "Monthly Δ and accumulated earnings",
-      "es": "Δ mensual y ganancias acumuladas"
-    },
-    "equityPosition": {
-      "depositedPocket": {
-        "en": "Deposited (pocket)",
-        "es": "Depositado (bolsillo)"
-      },
-      "dividends": {
-        "en": "Dividends received",
-        "es": "Dividendos recibidos"
-      },
-      "totalReturn": {
-        "en": "Real gain",
-        "es": "Ganancia real"
-      },
-      "returnOnDeposited": {
-        "en": "Return / deposited",
-        "es": "Rent. / depositado"
-      }
     },
     "brokerageMovements": {
       "title": {
@@ -2539,24 +2447,6 @@
       "saved": {
         "en": "{{count}} movement(s) saved.",
         "es": "{{count}} movimiento(s) registrado(s)."
-      }
-    },
-    "usdCash": {
-      "positionTitle": {
-        "en": "USD balance",
-        "es": "Saldo USD"
-      },
-      "balanceUsd": {
-        "en": "USD balance",
-        "es": "Saldo USD"
-      },
-      "valueInUnit": {
-        "en": "Value in {{currency}}",
-        "es": "Valor en {{currency}}"
-      },
-      "asOf": {
-        "en": "As of",
-        "es": "Al"
       }
     },
     "movements": {
@@ -3116,61 +3006,9 @@
       }
     },
     "checking": {
-      "monthModalTitle": {
-        "en": "Movements {{month}}",
-        "es": "Movimientos {{month}}"
-      },
       "monthModalClose": {
         "en": "Close",
         "es": "Cerrar"
-      },
-      "cartolaMonthEmpty": {
-        "en": "No months in movements or valuations. Run npm run import:checking-cartolas -w nw-tracker-ingest.",
-        "es": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas -w nw-tracker-ingest."
-      },
-      "cartolaMonthImportedCount": {
-        "en": "{{imported}} of {{total}} month(s) with an imported statement",
-        "es": "{{imported}} de {{total}} mes(es) con cartola importada"
-      },
-      "cartolaNo": {
-        "en": "No statement",
-        "es": "Sin cartola"
-      },
-      "colDeposits": {
-        "en": "Deposits",
-        "es": "Abonos"
-      },
-      "colWithdrawals": {
-        "en": "Charges",
-        "es": "Cargos"
-      },
-      "colMovements": {
-        "en": "Movements",
-        "es": "Movimientos"
-      },
-      "cartolaRegisteredNoMovements": {
-        "en": "Statement registered with no imported movements",
-        "es": "Cartola registrada sin movimientos importados"
-      },
-      "colBalanceEnd": {
-        "en": "Month-end balance",
-        "es": "Saldo fin de mes"
-      },
-      "colCartolaSaldo": {
-        "en": "Statement balance (ref.)",
-        "es": "Saldo cartola (ref.)"
-      },
-      "colDiff": {
-        "en": "Difference",
-        "es": "Diferencia"
-      },
-      "colCartola": {
-        "en": "Statement",
-        "es": "Cartola"
-      },
-      "cartolaYes": {
-        "en": "Imported",
-        "es": "Importada"
       },
       "ledgerAnchorTitle": {
         "en": "Ledger anchor",
@@ -3736,6 +3574,16 @@
       "deposited": { "en": "deposited", "es": "depositado" },
       "withdrawn": { "en": "net withdrawn", "es": "retirado neto" },
       "price": { "en": "price", "es": "precio" },
+      "gain": { "en": "gain", "es": "ganancia" },
+      "loss": { "en": "loss", "es": "pérdida" },
+      "bookAsOf": { "en": "Stored balance as of {{date}}", "es": "Saldo informado al {{date}}" },
+      "option": {
+        "terms": {
+          "en": "{{right}} · {{underlying}} · strike {{strike}} · expires {{expiry}} · ×{{multiplier}}",
+          "es": "{{right}} · {{underlying}} · strike {{strike}} · vence {{expiry}} · ×{{multiplier}}"
+        },
+        "intrinsic": { "en": "at intrinsic value (time value is not priced)", "es": "a valor intrínseco (sin valor temporal)" }
+      },
       "dividends": { "en": "dividends", "es": "dividendos" },
       "day": { "en": "day", "es": "día" },
       "month": { "en": "month", "es": "mes" },
@@ -3776,22 +3624,6 @@
       "hint": {
         "en": "The same ticker held at several brokers: the shares split by the cash account that paid for them.",
         "es": "El mismo ticker en varios brókeres: las acciones según la cuenta de caja que las pagó."
-      },
-      "colAccount": {
-        "en": "Cash account",
-        "es": "Cuenta de caja"
-      },
-      "colUnits": {
-        "en": "Units",
-        "es": "Unidades"
-      },
-      "colShare": {
-        "en": "Share",
-        "es": "Proporción"
-      },
-      "colValue": {
-        "en": "Value today",
-        "es": "Valor hoy"
       },
       "noCashAccount": {
         "en": "No cash account",
@@ -4235,14 +4067,6 @@
     }
   },
   "table": {
-    "showMoreMonths": {
-      "en": "Show more ({{count}} earlier months)",
-      "es": "Mostrar más ({{count}} meses anteriores)"
-    },
-    "showLessMonths": {
-      "en": "Hide earlier months",
-      "es": "Ocultar meses anteriores"
-    },
     "showMoreRows": {
       "en": "Show more ({{count}})",
       "es": "Mostrar más ({{count}})"

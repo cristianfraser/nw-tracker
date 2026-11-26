@@ -29,9 +29,9 @@ function kindFromBucketSlug(slug: string | null | undefined): string | null {
 }
 
 /**
- * The account's `summary.category_slug` before the bundle is in, so every category-keyed section
- * of the page (cartola, position, depto, USD cash, …) renders its own frame from first paint
- * instead of a fake category's. The card row carries the leaf asset-group slug; an account leaf
+ * The account's `summary.category_slug` before the bundle is in, so the page its category opens
+ * (card, checking, depto, position) and its category-keyed sections render their own frame from
+ * first paint instead of a fake category's. The card row carries the leaf asset-group slug; an account leaf
  * of the sidebar tree carries no kind (only its group does), except the liability leaves, which
  * name theirs through `asset_group_slug` / `api_subgroup`.
  */

@@ -204,16 +204,8 @@
       "bucketNote": "Un contrato se archiva en Brokerage › Opciones."
     },
     "terms": {
-      "title": "Contrato",
-      "occSymbol": "Símbolo OCC",
-      "underlying": "Subyacente",
-      "right": "Derecho",
       "call": "Call",
-      "put": "Put",
-      "strike": "Strike",
-      "expiry": "Vencimiento",
-      "multiplier": "Acciones por contrato",
-      "intrinsicNote": "Valorado al valor intrínseco según el cierre del subyacente; el valor tiempo no se valora. Una posición corta muestra un valor negativo y un número negativo de contratos."
+      "put": "Put"
     }
   },
   "realEstate": {
@@ -756,26 +748,8 @@
     "yearlyDetailTitle": "Detalle por año",
     "dailyDetailTitle": "Detalle por día",
     "dayColumn": "Fecha",
-    "position": {
-      "title": "Posición (ticker y cuotas)",
-      "colTicker": "Ticker",
-      "colUnits": "Cuotas / unidades",
-      "colDeposited": "Depositado",
-      "colValueToday": "Valor hoy",
-      "colValueDate": "Fecha valor",
-      "colValuePerUnit": "Valor / unidad"
-    },
-    "monthlyPerfComputedTitle": "Rendimiento mensual (calculado)",
     "plMonthlyVsYtdTitle": "P/L mensual vs YTD",
     "deltaMonthNominal": "Δ mes (P/L nominal)",
-    "monthlyDelta": "Δ mensual",
-    "monthlyDeltaAndAccumTitle": "Δ mensual y ganancias acumuladas",
-    "equityPosition": {
-      "depositedPocket": "Depositado (bolsillo)",
-      "dividends": "Dividendos recibidos",
-      "totalReturn": "Ganancia real",
-      "returnOnDeposited": "Rent. / depositado"
-    },
     "brokerageMovements": {
       "title": "Añadir movimientos",
       "hint": "Una compra, una venta, un dividendo o una prima se liquida contra una cuenta de caja; su monto va en la moneda de esa cuenta.",
@@ -791,12 +765,6 @@
       "rowIncomplete": "Cada fila necesita fecha, y una fila que indica otra cuenta necesita su monto.",
       "saveBtn": "Registrar movimientos",
       "saved": "{{count}} movimiento(s) registrado(s)."
-    },
-    "usdCash": {
-      "positionTitle": "Saldo USD",
-      "balanceUsd": "Saldo USD",
-      "valueInUnit": "Valor en {{currency}}",
-      "asOf": "Al"
     },
     "movements": {
       "counterpartAccount": "Cuenta contraparte",
@@ -950,20 +918,7 @@
       "resultSkipReasonSaldoInicial": "saldo inicial (el total de la factura anterior), no es una compra"
     },
     "checking": {
-      "monthModalTitle": "Movimientos {{month}}",
       "monthModalClose": "Cerrar",
-      "cartolaMonthEmpty": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas -w nw-tracker-ingest.",
-      "cartolaMonthImportedCount": "{{imported}} de {{total}} mes(es) con cartola importada",
-      "cartolaNo": "Sin cartola",
-      "colDeposits": "Abonos",
-      "colWithdrawals": "Cargos",
-      "colMovements": "Movimientos",
-      "cartolaRegisteredNoMovements": "Cartola registrada sin movimientos importados",
-      "colBalanceEnd": "Saldo fin de mes",
-      "colCartolaSaldo": "Saldo cartola (ref.)",
-      "colDiff": "Diferencia",
-      "colCartola": "Cartola",
-      "cartolaYes": "Importada",
       "ledgerAnchorTitle": "Ancla del ledger",
       "ledgerAnchorHint": "Ajuste único al inicio del historial (mes anterior al primero) para alinear el ledger con el saldo final de la última cartola importada.",
       "ledgerAnchorAmount": "Monto (CLP)",
@@ -1162,6 +1117,13 @@
       "deposited": "depositado",
       "withdrawn": "retirado neto",
       "price": "precio",
+      "gain": "ganancia",
+      "loss": "pérdida",
+      "bookAsOf": "Saldo informado al {{date}}",
+      "option": {
+        "terms": "{{right}} · {{underlying}} · strike {{strike}} · vence {{expiry}} · ×{{multiplier}}",
+        "intrinsic": "a valor intrínseco (sin valor temporal)"
+      },
       "dividends": "dividendos",
       "day": "día",
       "month": "mes",
@@ -1197,10 +1159,6 @@
     "brokerHoldings": {
       "title": "Tenencia por cuenta de origen",
       "hint": "El mismo ticker en varios brókeres: las acciones según la cuenta de caja que las pagó.",
-      "colAccount": "Cuenta de caja",
-      "colUnits": "Unidades",
-      "colShare": "Proporción",
-      "colValue": "Valor hoy",
       "noCashAccount": "Sin cuenta de caja"
     }
   },
@@ -1355,8 +1313,6 @@
     }
   },
   "table": {
-    "showMoreMonths": "Mostrar más ({{count}} meses anteriores)",
-    "showLessMonths": "Ocultar meses anteriores",
     "showMoreRows": "Mostrar más ({{count}})",
     "showLess": "Mostrar menos…",
     "paginationPrev": "Página anterior",

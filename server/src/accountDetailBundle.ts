@@ -22,8 +22,6 @@ import { emptyMortgageLedgerDto, mortgageLedgerDto, type AccountMortgageLedgerRe
 import { bookLedgerEditSchemaForAccount } from "./accountBookLedgerEdit.js";
 import { mortgagePaymentCreateSchemaForAccount } from "./mortgagePaymentCreate.js";
 import { accountRowForId } from "./accountRowForMovement.js";
-import { equityTickerForAccount } from "./accountEquityTicker.js";
-import { equityQuoteCurrency } from "./equityQuote.js";
 import { equityBrokerHoldings } from "./equityBrokerHoldings.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
@@ -153,14 +151,12 @@ export async function buildAccountDetailBundle(
   const latest_valuation_date = latest?.as_of_date ?? null;
 
   const accountRow = accountRowForId(accountId);
-  const bundleEquityTicker = equityTickerForAccount(accountId);
   const summary = {
     account_id: accountId,
     category_slug,
     group_slug,
     group_label,
     group_peer_count: cat.group_peer_count,
-    equity_quote_currency: bundleEquityTicker ? equityQuoteCurrency(bundleEquityTicker) : null,
     unit,
     deposits,
     latest_valuation,
@@ -278,12 +274,13 @@ export async function buildAccountDetailBundle(
     return { ...rest, notes: notes ?? null };
   })();
 
-  // The unit-position page's «at a glance» block, from the position and row above
+  // The position page's «at a glance» block, from the position and row above
   // (`positionGlance.ts`): built with the bundle, so a live tick that drops the bundle rebuilds it
   // with the position.
   const position_glance = buildPositionGlanceForAccount(accountId, {
     unit,
     position: positionFull,
+    today: { value: latest_valuation, as_of: latest_valuation_date },
     row: dashboard_account_row,
   });
 

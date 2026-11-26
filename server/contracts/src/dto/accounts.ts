@@ -111,8 +111,6 @@ export interface AccountSummaryResponse {
   group_slug: string | null;
   group_label: string | null;
   group_peer_count: number | null;
-  /** Quote currency code of `accounts.equity_ticker` (the instrument registry's; clp for a Bolsa de Santiago line); null for non-equity accounts. */
-  equity_quote_currency?: string | null;
   /** The currency `deposits`, `latest_valuation` and the position's money are in: the request's display unit. */
   unit: DisplayUnitCode;
   /** Net personal capital deposited (the aportes timeline), each deposit at its own day's rate. */
@@ -157,11 +155,14 @@ export interface AccountDetailBundleResponse {
   /** Fresh dashboard card row (live MTM + perf deltas); do not use cached nav snapshot on detail. */
   dashboard_account_row: DashboardAccountRow | null;
   /**
-   * The unit-position page's «at a glance» block (server `positionGlance.ts`): a stock or a coin
-   * (units × a market price) or a fund (cuotas × a published unit value: AFP, AFC, Fintual goals,
-   * US fund accounts) that has ever held units — held today or sold out (measured on its last day
-   * held). Null on every other account. The server always sends the key; it is optional only so a
-   * client placeholder bundle may leave it out (read absent as «not loaded»).
+   * The position page's «at a glance» block (server `positionGlance.ts`), on every account whose
+   * page is the position page: a stock or a coin (units × a market price) or a fund (cuotas × a
+   * published unit value: AFP, AFC, fund goals, US fund accounts), held today or sold out
+   * (measured on its last day held), with its price blocks (`pricing`); and every other account
+   * that is not a card, a cash ledger, a property or a loan — one valued by a stored balance, an
+   * option contract, a position that never held a unit — without them (`pricing` null). Null on
+   * a card, a cash ledger, a property and a loan. The server always sends the key; it is optional
+   * only so a client placeholder bundle may leave it out (read absent as «not loaded»).
    */
   position_glance?: PositionGlanceDto | null;
   /** A checking page's head (server `checkingStatement.ts`: a cuenta corriente / cuenta vista, or any other cash ledger); null on every other account. Optional like `position_glance`. */
@@ -262,7 +263,7 @@ export type PositionGlanceFundSeriesDto =
   | { kind: "afc"; series_key: string }
   | { kind: "other"; series_key: string };
 
-/** The instrument a unit position holds, as its kind states it. */
+/** What a position page's account holds, as its kind states it. */
 export type PositionGlanceInstrumentDto =
   | {
       /** A registry instrument with a live quote: a stock or ETF (shares) or a coin (`crypto24`). */
@@ -287,6 +288,29 @@ export type PositionGlanceInstrumentDto =
       price_source: "official" | "proxy";
       /** The day of the latest published valor cuota on file (display frame, on or before today). */
       published_on: string;
+    }
+  | {
+      /**
+       * A listed option series (`option_contracts`): signed contracts valued at the intrinsic value
+       * from the underlying's price (time value is not priced).
+       */
+      kind: "option";
+      /** The underlying's registry symbol without an exchange suffix. */
+      underlying: string;
+      right: "C" | "P";
+      /** The strike per share, in the underlying's quote currency. */
+      strike: Money;
+      expiry: string;
+      multiplier: number;
+    }
+  | {
+      /**
+       * No instrument: an account valued by a stored balance (a term deposit, a housing savings
+       * account, a manually marked account), or a position that has not held a unit yet.
+       */
+      kind: "book";
+      /** The day the value shown belongs to (the latest stored balance's, carried); null with no value on file. */
+      valued_on: string | null;
     };
 
 /** One line of a proxy-priced fund's basket: an ETF the fund states, or its non-ETF rest. */
@@ -320,18 +344,10 @@ export interface PositionGlanceBasketDto {
 }
 
 /**
- * The unit-position page's «at a glance» block — every figure decided by the server, the client
- * formats and lays out. Money in the display unit is `{value, currency: unit}`; unit prices are
- * `{value, currency: quote currency}`. Percentages are fractions.
+ * A unit position's price blocks: today's unit price, its history, and the average cost · today ·
+ * highest price track.
  */
-export interface PositionGlanceDto {
-  /** The title line's name: a market instrument's ticker (= `instrument.ticker`), a fund's account name. */
-  title: string;
-  instrument: PositionGlanceInstrumentDto;
-  /** The display unit every non-quote money figure is in. */
-  unit: DisplayUnitCode;
-  /** Today's value (the position's `value`, = the header / dashboard card's). */
-  value: Money;
+export interface PositionGlancePricingDto {
   quote: {
     /**
      * Today's unit price (the one the position is valued at: a market instrument's live price in
@@ -367,17 +383,45 @@ export interface PositionGlanceDto {
   };
   /** Today's price vs the average cost, compared at the quote currency's minor digits (the colour of every rendering of the price). */
   price_vs_cost: "above" | "below" | "equal";
+}
+
+/**
+ * The position page's «at a glance» block — every figure decided by the server, the client
+ * formats and lays out. Money in the display unit is `{value, currency: unit}`; unit prices are
+ * `{value, currency: quote currency}`. Percentages are fractions.
+ */
+export interface PositionGlanceDto {
+  /** The title line's name: a market instrument's ticker (= `instrument.ticker`), a fund's account name. */
+  title: string;
+  instrument: PositionGlanceInstrumentDto;
+  /** The display unit every non-quote money figure is in. */
+  unit: DisplayUnitCode;
+  /**
+   * Today's value (the position's `value`, = the header / dashboard card's); null on an account
+   * with no value on file (never valued: the title shows «—»).
+   */
+  value: Money | null;
+  /**
+   * The price blocks of a unit position that has held units; null on an account with no unit price
+   * to show (`instrument.kind` `book` or `option`, or a position that never held a unit): the page
+   * then has no quote, price sparkline or price track.
+   */
+  pricing: PositionGlancePricingDto | null;
   /**
    * The value split as value = deposited + state bonus + price + dividends, in the display unit
    * (`compositionFromParts`). Bar: its length is the sum of the positive parts, drawn left to right;
    * every negative part overlays the tail (`loss`, then `withdrawn` before it), so `value_share` =
    * value ÷ length marks where the value still held ends (1 with no negative part). Zero parts are
-   * left out. Null only when `deposited` is null (a missing rate).
+   * left out. Null when `deposited` is null (a missing rate), and on an account with no pricing
+   * that has no positive value to split: one that never held a value, a debt, an option contract
+   * (a short position is worth less than zero and its premium is not a deposit). With no pricing
+   * the `price` part is the account's result (interest, revaluation).
    */
   composition: {
     /**
      * The day the split is measured on: the position's last day holding units — today while it
-     * holds any (`is_today`), else the day before the movement that emptied it.
+     * holds any (`is_today`), else the day before the movement that emptied it; with no pricing,
+     * today while the account is worth something, else the day of its last positive stored balance.
      */
     as_of: string;
     is_today: boolean;

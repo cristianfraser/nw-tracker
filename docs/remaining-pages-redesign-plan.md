@@ -31,8 +31,7 @@ proposed split into one-session work items.
 | `/account/:id` card | `CreditCardAccountDetailPage` | redesigned |
 | `/account/:id` cuenta corriente / vista, and every other cash ledger (a broker's peso or dollar cash, the exchange's peso wallet, a foreign-currency account; item B1, done) | `CheckingAccountDetailPage` | redesigned |
 | `/account/:id` property, mortgage | `DeptoAccountDetailPage` | redesigned |
-| `/account/:id` stock, coin, fund (AFP funds included) | `PositionAccountDetailPage` | redesigned |
-| `/account/:id` everything else: APV, AFC | `StandardAccountDetailPage` | **old** (item B2) |
+| `/account/:id` everything else: stock, coin, fund (AFP, AFC, APV), an account valued by stored balances, an option contract (item B2, done) | `PositionAccountDetailPage` | redesigned |
 | `/flows` | `FlowsOverviewPage` | **old**, mild (item J) |
 | `/flows/income`, `/flows/expenses`, `/flows/expenses/groceries`, `/flows/expenses/real_estate[/:slug]`, `/flows/deposits`, `/flows/pl` | income, expenses, groceries, flows tables | redesigned |
 | `/flows/deposits/reconciliation` | `DepositsReconciliationPage` | **old** (item E) |
@@ -95,6 +94,15 @@ Two different kinds of account land here, and the page fits neither.
   through a glance without the price blocks (no quote, sparkline of price, price track or
   average cost; the value composition and the day / month / year bars stay), so no account is
   left on `StandardAccountDetailPage` and it is deleted.
+  > **Done (2026-11-26):** `StandardAccountDetailPage` is deleted. (1) The demo's APV, mutual-fund
+  > and money-market accounts hold cuotas of their series through the `fintual_goal` role, and its
+  > AFC account is a cuota ledger on `afc_cic` (the generator writes that series); none stores
+  > valuations any more. (2) `position_glance` is served for every account that is not a card, a
+  > cash ledger, a property or a loan: a unit position with its price blocks (`pricing`), any other
+  > account without them — one valued by stored balances, a position that never held a unit, and
+  > an option contract (its terms in the title's sub-line; no composition bar). Beyond what the
+  > finding listed, the old page was also where the term deposit, the housing savings account and
+  > the option contracts opened.
 - Look from: `CheckingAccountDetailPage` for B1, `PositionAccountDetailPage` for B2.
 
 ### C. `/cash_eqs`, `/cash_eqs/savings`, `/cash_eqs/checking` — generic group page
@@ -211,7 +219,7 @@ item is a group, the group page with a single account shows that account page's 
 |---|---|---|---|
 | A | Real-estate group page | Yes: a `real-estate-glance` on the model of `mortgage-glance` (`mortgageGroupGlance.ts`), composed from each property's own cached `depto_glance` so the group's figures are the pages' figures: appraisal, debt, net equity, loan-to-value, equity over time, rent and running costs per property | new `RealEstateGroupPage`, new server module, one dispatch branch in `GroupInfoPage.tsx` |
 | B1 (done) | Cash accounts onto the checking page | Done: `isCheckingPageAccount` (`checkingStatement.ts`) and the checking payload cover every cash ledger: broker cash and foreign-currency checking, balance in the account's `cash_currency`. The exchange's peso wallet is a peso cash ledger by its kind (`buda_clp`) | `AccountDetailPage.tsx`, `CheckingAccountDetailPage.tsx`, checking payload builder |
-| B2 | Every remaining account onto the position page: the demo's APV / AFC accounts get units; valuation-on-date accounts get a glance without the price blocks | Yes: demo generator (`server/src/demoData/`, `scripts/generate-demo-data.ts`); `positionGlance.ts` builds a no-price glance for an account valued by stored valuations | `AccountDetailPage.tsx`, `PositionAccountDetailPage.tsx`, `components/account/PositionGlance`; then delete `StandardAccountDetailPage` |
+| B2 (done) | Every remaining account onto the position page: the demo's APV / AFC accounts get units; valuation-on-date accounts get a glance without the price blocks | Yes: demo generator (`server/src/demoData/`, `scripts/generate-demo-data.ts`); `positionGlance.ts` builds a no-price glance for an account valued by stored valuations | `AccountDetailPage.tsx`, `PositionAccountDetailPage.tsx`, `components/account/PositionGlance`; then delete `StandardAccountDetailPage` |
 | C | Cash group pages wired into the existing group page | Yes: the nav flag that sends a group to `InvestmentGroupPage` (`investment_glance`, `navTreeTypes.ts`) and its `group_glance` (`groupGlance.ts`) extended to cash groups: balance per account in its own currency and the display unit, no price or return columns | `groupGlance.ts`, `GroupInfoPage.tsx`, `InvestmentGroupPage.tsx`, `components/group/GroupGlance`; then delete `GroupInfoBase` |
 | D | Rates page | Yes: today's glance per pair and the recent-entries tail built server-side (drop `ratesDailyTailClip.ts`); coverage message as structured data | `RatesPage.tsx`, `components/rates/`, rates route |
 | E | Deposits reconciliation | Probably small: rows grouped by month server-side if they are not already | `DepositsReconciliationPage.tsx` |

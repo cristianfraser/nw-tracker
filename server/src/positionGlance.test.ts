@@ -61,7 +61,7 @@ describe("positionGlanceFromInputs — composition", () => {
     const c = g.composition!;
     expect(c.price.value).toBe(80_000);
     expect(c.state_bonus).toBeNull();
-    expect(c.deposited.value + c.price.value + c.dividends.value).toBe(g.value.value);
+    expect(c.deposited.value + c.price.value + c.dividends.value).toBe(g.value!.value);
     expect(c.segments.map((s) => s.kind)).toEqual(["deposited", "price", "dividends"]);
     expect(sum(c.segments.map((s) => s.share))).toBeCloseTo(1, 12);
     expect(sum(c.segments.map((s) => s.amount))).toBe(1_000_000);
@@ -150,17 +150,17 @@ describe("positionGlanceFromInputs — quote, sparkline and track", () => {
     );
     expect(g.title).toBe("VGL");
     expect(g.instrument).toEqual(inputs().instrument);
-    expect(g.quote).toEqual({ price: { value: 72, currency: "usd" }, price_as_of: "2026-11-13" });
-    expect(g.track.high.price.value).toBe(90);
-    expect(g.track.high.date).toBe("2026-09-01");
-    expect(g.track.high.pct_from_high).toBeCloseTo(72 / 90 - 1, 12);
+    expect(g.pricing!.quote).toEqual({ price: { value: 72, currency: "usd" }, price_as_of: "2026-11-13" });
+    expect(g.pricing!.track.high.price.value).toBe(90);
+    expect(g.pricing!.track.high.date).toBe("2026-09-01");
+    expect(g.pricing!.track.high.pct_from_high).toBeCloseTo(72 / 90 - 1, 12);
     expect(g.basket).toBeNull();
   });
 
   it("serves one sparkline per range, every axis the whole range, points placed by day", () => {
     const g = positionGlanceFromInputs(inputs());
-    expect(g.sparklines.map((l) => l.range)).toEqual(["30d", "60d", "90d", "1y", "3y", "5y", "10y", "total"]);
-    for (const l of g.sparklines) {
+    expect(g.pricing!.sparklines.map((l) => l.range)).toEqual(["30d", "60d", "90d", "1y", "3y", "5y", "10y", "total"]);
+    for (const l of g.pricing!.sparklines) {
       expect(l.to).toBe("2026-11-13");
       expect(l.points[l.points.length - 1]).toMatchObject({ date: "2026-11-13", price: 72, x: 1 });
       for (const p of l.points) {
@@ -171,13 +171,13 @@ describe("positionGlanceFromInputs — quote, sparkline and track", () => {
       expect(l.cost_y).toBeCloseTo((69 - l.low) / (l.high - l.low), 12);
     }
     // A year: 366 days ending today, the history (from 2026-03-02) starting part way along.
-    const year = g.sparklines.find((l) => l.range === "1y")!;
+    const year = g.pricing!.sparklines.find((l) => l.range === "1y")!;
     expect(year.from).toBe("2025-11-13");
     expect(year.points[0]).toMatchObject({ date: "2026-03-02", price: 60 });
     expect(year.points[0]!.x).toBeCloseTo(109 / 365, 12);
     expect([year.low, year.high]).toEqual([60, 90]);
     // Thirty days: only the closes inside it; the cost still on the vertical range.
-    const month = g.sparklines.find((l) => l.range === "30d")!;
+    const month = g.pricing!.sparklines.find((l) => l.range === "30d")!;
     expect(month.from).toBe("2026-10-15");
     expect(month.points.map((p) => p.price)).toEqual([70, 72]);
     expect([month.low, month.high]).toEqual([69, 72]);
@@ -187,7 +187,7 @@ describe("positionGlanceFromInputs — quote, sparkline and track", () => {
     expect(year.held[0]!.end).toBe(1);
     expect(month.held).toEqual([{ start: 0, end: 1 }]);
     // Total: from the first stored close.
-    const total = g.sparklines.find((l) => l.range === "total")!;
+    const total = g.pricing!.sparklines.find((l) => l.range === "total")!;
     expect(total.from).toBe("2026-03-02");
     expect(total.points[0]!.x).toBe(0);
   });
@@ -201,12 +201,12 @@ describe("positionGlanceFromInputs — quote, sparkline and track", () => {
         ],
       })
     );
-    const year = g.sparklines.find((l) => l.range === "1y")!;
+    const year = g.pricing!.sparklines.find((l) => l.range === "1y")!;
     expect(year.held).toHaveLength(2);
     expect(year.held[0]!.end).toBeCloseTo(169 / 365, 12);
     expect(year.held[1]!.start).toBeCloseTo(292 / 365, 12);
     // Thirty days, all inside the open stretch.
-    expect(g.sparklines.find((l) => l.range === "30d")!.held).toEqual([{ start: 0, end: 1 }]);
+    expect(g.pricing!.sparklines.find((l) => l.range === "30d")!.held).toEqual([{ start: 0, end: 1 }]);
   });
 
   it("samples a long history down to the point budget, first and last kept", () => {
@@ -218,7 +218,7 @@ describe("positionGlanceFromInputs — quote, sparkline and track", () => {
     const last = closes[closes.length - 1]!.date;
     const asOf = new Date(Date.parse(`${last}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
     const g = positionGlanceFromInputs(inputs({ closes, priceAsOf: asOf, today: asOf, firstHeld: closes[0]!.date }));
-    const total = g.sparklines.find((l) => l.range === "total")!;
+    const total = g.pricing!.sparklines.find((l) => l.range === "total")!;
     expect(total.points.length).toBeLessThanOrEqual(POSITION_GLANCE_SPARK_MAX_POINTS);
     expect(total.points[0]!.date).toBe(closes[0]!.date);
     expect(total.points[total.points.length - 1]!.date).toBe(asOf);
@@ -226,28 +226,28 @@ describe("positionGlanceFromInputs — quote, sparkline and track", () => {
 
   it("places cost, price and high on a rounded track with the fill between cost and price", () => {
     const g = positionGlanceFromInputs(inputs({ averageCost: 41.27, price: 43.86, closes: [{ date: "2026-10-06", price: 47.9 }] }));
-    expect(g.track.min.value).toBe(40);
-    expect(g.track.max.value).toBe(50);
-    expect(g.track.cost.share).toBeCloseTo(0.127, 12);
-    expect(g.track.price.share).toBeCloseTo(0.386, 12);
-    expect(g.track.high.share).toBeCloseTo(0.79, 12);
-    expect(g.track.fill).toEqual({ start: g.track.cost.share, end: g.track.price.share, side: "gain" });
-    expect(g.price_vs_cost).toBe("above");
+    expect(g.pricing!.track.min.value).toBe(40);
+    expect(g.pricing!.track.max.value).toBe(50);
+    expect(g.pricing!.track.cost.share).toBeCloseTo(0.127, 12);
+    expect(g.pricing!.track.price.share).toBeCloseTo(0.386, 12);
+    expect(g.pricing!.track.high.share).toBeCloseTo(0.79, 12);
+    expect(g.pricing!.track.fill).toEqual({ start: g.pricing!.track.cost.share, end: g.pricing!.track.price.share, side: "gain" });
+    expect(g.pricing!.price_vs_cost).toBe("above");
   });
 
   it("decides price vs cost at the quote currency's cents", () => {
-    expect(positionGlanceFromInputs(inputs({ price: 60, averageCost: 69 })).price_vs_cost).toBe("below");
+    expect(positionGlanceFromInputs(inputs({ price: 60, averageCost: 69 })).pricing!.price_vs_cost).toBe("below");
     const below = positionGlanceFromInputs(inputs({ price: 60, averageCost: 69 }));
-    expect(below.track.fill.side).toBe("loss");
-    expect(below.track.fill.start).toBeCloseTo(below.track.price.share, 12);
-    expect(below.track.fill.end).toBeCloseTo(below.track.cost.share, 12);
+    expect(below.pricing!.track.fill.side).toBe("loss");
+    expect(below.pricing!.track.fill.start).toBeCloseTo(below.pricing!.track.price.share, 12);
+    expect(below.pricing!.track.fill.end).toBeCloseTo(below.pricing!.track.cost.share, 12);
     const equal = positionGlanceFromInputs(inputs({ price: 69.004, averageCost: 68.996 }));
-    expect(equal.price_vs_cost).toBe("equal");
-    expect(equal.track.fill.side).toBe("none");
-    expect(equal.track.fill.start).toBe(equal.track.fill.end);
-    expect(positionGlanceFromInputs(inputs({ price: 69.006, averageCost: 68.996 })).price_vs_cost).toBe("above");
+    expect(equal.pricing!.price_vs_cost).toBe("equal");
+    expect(equal.pricing!.track.fill.side).toBe("none");
+    expect(equal.pricing!.track.fill.start).toBe(equal.pricing!.track.fill.end);
+    expect(positionGlanceFromInputs(inputs({ price: 69.006, averageCost: 68.996 })).pricing!.price_vs_cost).toBe("above");
     // A peso-quoted fund compares at whole pesos.
-    expect(positionGlanceFromInputs(inputs({ quoteCurrency: "clp", price: 1000.4, averageCost: 999.6 })).price_vs_cost).toBe("equal");
+    expect(positionGlanceFromInputs(inputs({ quoteCurrency: "clp", price: 1000.4, averageCost: 999.6 })).pricing!.price_vs_cost).toBe("equal");
   });
 
   it("rounds the track outwards to a 1/2/5 step and never collapses it", () => {
@@ -500,9 +500,28 @@ function equityCloses(ticker: string, rows: readonly [string, number][]): void {
 const FIGURES: PositionGlanceBundleFigures = {
   unit: "clp",
   position: { units_kind: "shares", units: 11, value: 750_000, deposited: 700_000, dividends: 0 },
+  today: { value: 750_000, as_of: "2026-11-13" },
   row: { delta_day: 1_000, delta_month: -2_000, delta_year: 4_000, pct_day: 0.001, pct_month: -0.002, pct_year: 0.004 },
 };
-const figures = (value: number): PositionGlanceBundleFigures => ({ ...FIGURES, position: { ...FIGURES.position!, value } });
+const figures = (value: number): PositionGlanceBundleFigures => ({
+  ...FIGURES,
+  position: { ...FIGURES.position!, value },
+  today: { value, as_of: "2026-11-13" },
+});
+
+/** A single-leg peso row with no units (a stored-balance account's deposit or payout). */
+function deposit(accountId: number, on: string, amount: number): void {
+  created.movements.push(
+    Number(
+      db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`).run(accountId, amount, on, NOTE)
+        .lastInsertRowid
+    )
+  );
+}
+
+function valuation(accountId: number, on: string, value: number): void {
+  db.prepare(`INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`).run(accountId, on, value);
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -542,15 +561,15 @@ describe("buildPositionGlanceForAccount — stocks", () => {
     expect(g).not.toBeNull();
     expect(g.title).toBe(TICKER);
     expect(g.instrument).toEqual({ kind: "market", ticker: TICKER, name: "Vitest Glance Fund", market_kind: "nyse", session: "closed" });
-    expect(g.quote).toEqual({ price: { value: 72, currency: "usd" }, price_as_of: "2026-11-13" });
+    expect(g.pricing!.quote).toEqual({ price: { value: 72, currency: "usd" }, price_as_of: "2026-11-13" });
     // 6 shares at 60 + 5 at 80 over 11 shares.
-    expect(g.track.cost.price.value).toBeCloseTo(760 / 11, 9);
-    expect(g.price_vs_cost).toBe("above");
+    expect(g.pricing!.track.cost.price.value).toBeCloseTo(760 / 11, 9);
+    expect(g.pricing!.price_vs_cost).toBe("above");
     // Every stored close of the instrument (the day before the first buy too), through today's price.
-    const total = g.sparklines.find((l) => l.range === "total")!;
+    const total = g.pricing!.sparklines.find((l) => l.range === "total")!;
     expect(total.from).toBe("2026-02-27");
     expect(total.points.map((p) => p.price)).toEqual([55, 60, 80, 90, 70, 72]);
-    expect(g.track.high).toMatchObject({ date: "2026-09-01" });
+    expect(g.pricing!.track.high).toMatchObject({ date: "2026-09-01" });
     expect(g.periods.month.pl).toEqual({ value: -2_000, currency: "clp" });
     expect(g.basket).toBeNull();
     // Held today: the split is today's position, value = deposited + price + dividends.
@@ -559,10 +578,15 @@ describe("buildPositionGlanceForAccount — stocks", () => {
     expectCompositionIdentity(c);
   });
 
-  it("is null for an account that is not a unit position or never held a unit", () => {
-    const plain = account("plain");
-    expect(isUnitPositionAccount(plain)).toBe(false);
-    expect(buildPositionGlanceForAccount(plain, FIGURES, NOW)).toBeNull();
+  it("has no price blocks for a share account before its first purchase", () => {
+    declareTestInstrument(TICKER);
+    const stock = account("not bought yet", { ticker: TICKER });
+    equityCloses(TICKER, [["2026-11-13", 72]]);
+    const g = buildPositionGlanceForAccount(stock, { ...FIGURES, position: null, today: { value: null, as_of: null } }, NOW)!;
+    expect(g.pricing).toBeNull();
+    expect(g.instrument).toEqual({ kind: "book", valued_on: null });
+    expect(g.value).toBeNull();
+    expect(g.composition).toBeNull();
   });
 
   it("measures a sold-out position on its last day held, through the same rules", () => {
@@ -581,13 +605,13 @@ describe("buildPositionGlanceForAccount — stocks", () => {
     const g = buildPositionGlanceForAccount(stock, figures(0), NOW)!;
     expect(g).not.toBeNull();
     // The cost of the 10 shares held the day before the sale; today's price against it.
-    expect(g.track.cost.price.value).toBeCloseTo(60, 9);
-    expect(g.price_vs_cost).toBe("above");
+    expect(g.pricing!.track.cost.price.value).toBeCloseTo(60, 9);
+    expect(g.pricing!.price_vs_cost).toBe("above");
     const c = g.composition!;
     expect(c).toMatchObject({ as_of: "2026-06-30", is_today: false });
     expectCompositionIdentity(c);
     // The year's sparkline dims everything after the sale.
-    const year = g.sparklines.find((l) => l.range === "1y")!;
+    const year = g.pricing!.sparklines.find((l) => l.range === "1y")!;
     expect(year.held).toHaveLength(1);
     expect(year.held[0]!.end).toBeLessThan(1);
   });
@@ -619,13 +643,13 @@ describe("buildPositionGlanceForAccount — coins", () => {
     const g = buildPositionGlanceForAccount(coin, figures(900_000), NOW)!;
     expect(g.title).toBe("BTC-USD");
     expect(g.instrument).toMatchObject({ kind: "market", ticker: "BTC-USD", market_kind: "crypto24" });
-    expect(g.quote.price).toEqual({ value: 90_000, currency: "usd" });
+    expect(g.pricing!.quote.price).toEqual({ value: 90_000, currency: "usd" });
     // FIFO at the ledger pesos (commissions included, no exchange record needed): 0,006 of the
     // first buy (600.000 × 0,6) + the second buy, each in dollars on its day.
     const usd = (clp: number, ymd: string) => convertCurrency(clp, "clp", "usd", ymd, { side: "mid", storedOnly: true })!;
     const expected = (usd(600_000 * 0.6, "2026-03-02") + usd(400_000, "2026-06-01")) / 0.011;
-    expect(g.track.cost.price.value).toBeCloseTo(expected, 6);
-    expect(g.track.high).toMatchObject({ date: "2026-09-01" });
+    expect(g.pricing!.track.cost.price.value).toBeCloseTo(expected, 6);
+    expect(g.pricing!.track.high).toMatchObject({ date: "2026-09-01" });
     const c = g.composition!;
     expect(c).toMatchObject({ as_of: TODAY, is_today: true, state_bonus: null });
     expect(c.deposited.value).toBe(700_000);
@@ -659,9 +683,9 @@ describe("buildPositionGlanceForAccount — funds", () => {
       price_source: "official",
       published_on: "2026-11-13",
     });
-    expect(g.quote).toEqual({ price: { value: 1_700, currency: "clp" }, price_as_of: "2026-11-13" });
-    expect(g.track.cost.price.value).toBeCloseTo((6_000 + 7_500) / 11, 9);
-    expect(g.price_vs_cost).toBe("above");
+    expect(g.pricing!.quote).toEqual({ price: { value: 1_700, currency: "clp" }, price_as_of: "2026-11-13" });
+    expect(g.pricing!.track.cost.price.value).toBeCloseTo((6_000 + 7_500) / 11, 9);
+    expect(g.pricing!.price_vs_cost).toBe("above");
     expect(g.basket).toBeNull();
     const c = g.composition!;
     // 11 cuotas × 1.700; deposited 10.000 + 7.500 − 6.400.
@@ -699,18 +723,18 @@ describe("buildPositionGlanceForAccount — funds", () => {
       price_source: "official",
       published_on: "2026-06-30",
     });
-    expect(sold.track.cost.price.value).toBeCloseTo(610_000 / 15, 9);
+    expect(sold.pricing!.track.cost.price.value).toBeCloseTo(610_000 / 15, 9);
     const sc = sold.composition!;
     expect(sc).toMatchObject({ as_of: "2026-06-30", is_today: false });
     expect(sc.value.value).toBe(660_000);
     expect(sc.deposited.value).toBe(610_000);
     expect(sc.price.value).toBe(50_000);
     expectCompositionIdentity(sc);
-    expect(sold.sparklines.find((l) => l.range === "1y")!.held[0]!.end).toBeLessThan(1);
+    expect(sold.pricing!.sparklines.find((l) => l.range === "1y")!.held[0]!.end).toBeLessThan(1);
 
     const recv = buildPositionGlanceForAccount(to, figures(792_000), NOW)!;
     expect(positionHeldSpans(to)).toEqual([{ from: "2026-07-01", to: null }]);
-    expect(recv.track.cost.price.value).toBeCloseTo(730_000 / 22, 9);
+    expect(recv.pricing!.track.cost.price.value).toBeCloseTo(730_000 / 22, 9);
     const rc = recv.composition!;
     expect(rc).toMatchObject({ as_of: TODAY, is_today: true });
     expect(rc.value.value).toBe(22 * 36_000);
@@ -733,7 +757,7 @@ describe("buildPositionGlanceForAccount — funds", () => {
     const g = buildPositionGlanceForAccount(afc, figures(149 * 4_400), NOW)!;
     expect(g.instrument).toMatchObject({ kind: "fund", series: { kind: "afc", series_key: "vitest_glance_afc" } });
     // 98 of the first 100 cuotas (392.000) + 50 (210.000) + 1 at no cost, over 149.
-    expect(g.track.cost.price.value).toBeCloseTo(602_000 / 149, 9);
+    expect(g.pricing!.track.cost.price.value).toBeCloseTo(602_000 / 149, 9);
     const c = g.composition!;
     expect(c.value.value).toBe(149 * 4_400);
     // The commission and the catch-up cuotas are P/L, never capital.
@@ -757,8 +781,8 @@ describe("buildPositionGlanceForAccount — funds", () => {
     const g = buildPositionGlanceForAccount(apv, figures(12_650), NOW)!;
     expect(g.instrument).toMatchObject({ kind: "fund", series: { kind: "other", series_key: "vitest_glance_apv" } });
     // Only the personal pesos are cost: 10.000 over 11,5 cuotas.
-    expect(g.track.cost.price.value).toBeCloseTo(10_000 / 11.5, 9);
-    expect(g.price_vs_cost).toBe("above");
+    expect(g.pricing!.track.cost.price.value).toBeCloseTo(10_000 / 11.5, 9);
+    expect(g.pricing!.price_vs_cost).toBe("above");
     const c = g.composition!;
     expect(c.value.value).toBe(12_650);
     expect(c.deposited.value).toBe(10_000);
@@ -799,9 +823,9 @@ describe("buildPositionGlanceForAccount — funds", () => {
       price_source: "proxy",
       published_on: "2026-11-13",
     });
-    expect(g.quote).toEqual({ price: { value: 1_100, currency: "clp" }, price_as_of: TODAY });
-    expect(g.track.cost.price.value).toBeCloseTo(1_000, 9);
-    expect(g.price_vs_cost).toBe("above");
+    expect(g.pricing!.quote).toEqual({ price: { value: 1_100, currency: "clp" }, price_as_of: TODAY });
+    expect(g.pricing!.track.cost.price.value).toBeCloseTo(1_000, 9);
+    expect(g.pricing!.price_vs_cost).toBe("above");
     expect(g.basket).toEqual({
       positions_date: "2026-10-31",
       rows: [
@@ -814,7 +838,8 @@ describe("buildPositionGlanceForAccount — funds", () => {
 });
 
 describe("position_glance on the account detail bundle", () => {
-  it("is served for every unit-position account of the test person that ever held units, and null elsewhere", async () => {
+  it("is served for every account of the test person but a card and a cash ledger, priced for the unit positions that ever held units", async () => {
+    const OWN_PAGE_KINDS = new Set(["card", "checking_ledger", "foreign_ledger", "clp_ledger", "depto_property", "depto_loan"]);
     const { buildAccountDetailBundle } = await import("./accountDetailBundle.js");
     const ids = (db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[]).map((r) => r.id);
     let built = 0;
@@ -836,16 +861,24 @@ describe("position_glance on the account detail bundle", () => {
       if (bundle == null) continue;
       const g = bundle.position_glance;
       const pos = bundle.summary.position;
-      if (!isUnitPositionAccount(id) || positionHeldSpans(id).length === 0) {
+      const quantity = accountProfile(id).quantity.kind;
+      if (OWN_PAGE_KINDS.has(quantity)) {
         expect(g, `account ${id}`).toBeNull();
         continue;
       }
       expect(g, `account ${id}`).not.toBeNull();
+      expect(g!.periods.day.pl?.value ?? null).toBe(bundle.dashboard_account_row?.delta_day ?? null);
+      if (!isUnitPositionAccount(id) || positionHeldSpans(id).length === 0) {
+        // No unit price to show: the header's value, no price blocks.
+        expect(g!.pricing, `account ${id}`).toBeNull();
+        expect(g!.value?.value ?? null).toBe(bundle.summary.latest_valuation);
+        if (g!.composition) expectCompositionIdentity(g!.composition);
+        continue;
+      }
       built += 1;
       kinds.add(g!.instrument.kind);
-      expect(g!.value.value).toBe(pos!.value);
-      expect(g!.periods.day.pl?.value ?? null).toBe(bundle.dashboard_account_row?.delta_day ?? null);
-      for (const l of g!.sparklines) expect(l.points[l.points.length - 1]!.price).toBe(g!.quote.price.value);
+      expect(g!.value!.value).toBe(pos!.value);
+      for (const l of g!.pricing!.sparklines) expect(l.points[l.points.length - 1]!.price).toBe(g!.pricing!.quote.price.value);
       if (g!.composition) expectCompositionIdentity(g!.composition);
     }
     expect(built).toBeGreaterThan(0);
@@ -867,16 +900,74 @@ describe("position_glance on the account detail bundle", () => {
     const g = bundle.position_glance!;
     expect(g).not.toBeNull();
     expect(g.instrument).toMatchObject({ kind: "fund", price_source: "official", published_on: "2026-11-13" });
-    expect(g.value.value).toBe(bundle.summary.position!.value);
-    expect(g.value.value).toBe(98 * 4_400);
-    expect(g.track.cost.price.value).toBeCloseTo(4_000, 9);
+    expect(g.value!.value).toBe(bundle.summary.position!.value);
+    expect(g.value!.value).toBe(98 * 4_400);
+    expect(g.pricing!.track.cost.price.value).toBeCloseTo(4_000, 9);
     expectCompositionIdentity(g.composition!);
   });
 
-  it("is null on an account that is not a unit position", async () => {
+  it("has no price blocks on an account valued by its stored balances: the header's value split into deposits and result", async () => {
+    const { buildAccountDetailBundle } = await import("./accountDetailBundle.js");
+    const today = chileCalendarTodayYmd();
+    const dayBefore = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+    const book = account("book bundle", { groupId: leafAssetGroupIdForKindSlug("dap") });
+    deposit(book, dayBefore(40), 1_000_000);
+    valuation(book, dayBefore(40), 1_000_000);
+    valuation(book, dayBefore(2), 1_012_000);
+    const bundle = (await buildAccountDetailBundle(book, "clp", "monthly"))!;
+    const g = bundle.position_glance!;
+    expect(g.pricing).toBeNull();
+    expect(g.basket).toBeNull();
+    expect(g.instrument).toEqual({ kind: "book", valued_on: bundle.summary.latest_valuation_date });
+    expect(g.value!.value).toBe(1_012_000);
+    expect(g.value!.value).toBe(bundle.summary.latest_valuation);
+    const c = g.composition!;
+    expect(c).toMatchObject({ as_of: today, is_today: true, state_bonus: null });
+    expect(c.deposited.value).toBe(1_000_000);
+    expect(c.price.value).toBe(12_000);
+    expect(c.dividends.value).toBe(0);
+    expectCompositionIdentity(c);
+    expect(g.periods.day.pl?.value ?? null).toBe(bundle.dashboard_account_row?.delta_day ?? null);
+  });
+
+  it("measures an emptied stored-balance account on the day of its last positive balance", async () => {
+    const { buildAccountDetailBundle } = await import("./accountDetailBundle.js");
+    const today = chileCalendarTodayYmd();
+    const dayBefore = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+    const book = account("book paid out", { groupId: leafAssetGroupIdForKindSlug("dap") });
+    deposit(book, dayBefore(60), 500_000);
+    valuation(book, dayBefore(60), 500_000);
+    valuation(book, dayBefore(11), 506_000);
+    deposit(book, dayBefore(10), -506_000);
+    valuation(book, dayBefore(10), 0);
+    const g = (await buildAccountDetailBundle(book, "clp", "monthly"))!.position_glance!;
+    expect(g.pricing).toBeNull();
+    expect(g.value!.value).toBe(0);
+    const c = g.composition!;
+    expect(c).toMatchObject({ as_of: dayBefore(11), is_today: false });
+    expect(c.value.value).toBe(506_000);
+    expect(c.deposited.value).toBe(500_000);
+    expect(c.price.value).toBe(6_000);
+  });
+
+  it("has no composition on an account with no value on file", async () => {
     const { buildAccountDetailBundle } = await import("./accountDetailBundle.js");
     const plain = account("plain bundle");
-    const bundle = (await buildAccountDetailBundle(plain, "clp", "monthly"))!;
-    expect(bundle.position_glance).toBeNull();
+    const g = (await buildAccountDetailBundle(plain, "clp", "monthly"))!.position_glance!;
+    expect(g.pricing).toBeNull();
+    expect(g.instrument).toEqual({ kind: "book", valued_on: null });
+    expect(g.value).toBeNull();
+    expect(g.composition).toBeNull();
+  });
+
+  it("is null on a card and on a cash ledger: they have pages of their own", async () => {
+    const { buildAccountDetailBundle } = await import("./accountDetailBundle.js");
+    for (const kind of ["credit_card", "cuenta_corriente"]) {
+      const id = (db
+        .prepare(`SELECT a.id FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE g.slug LIKE ? ESCAPE '\\' ORDER BY a.id LIMIT 1`)
+        .get(`%\\_\\_${kind}`) as { id: number }).id;
+      expect(accountProfile(id).kind).toBe(kind);
+      expect((await buildAccountDetailBundle(id, "clp", "monthly"))!.position_glance, kind).toBeNull();
+    }
   });
 });

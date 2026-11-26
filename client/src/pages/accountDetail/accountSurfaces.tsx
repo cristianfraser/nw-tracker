@@ -24,9 +24,9 @@ import type { AccountDetailPageData } from "./useAccountDetailPageData";
 import type { TimeseriesBlock } from "../../types";
 
 /**
- * The account page's chart and detalle surfaces, shared by the standard page and the stock page:
- * the «Valorización y aportes» chart, the two P/L combos and the detalle list, each with its own
- * Período/Rango control and its lazily fetched daily series.
+ * The position page's chart and detalle surfaces: the «Valorización y aportes» chart, the P/L
+ * combo and the detalle list, each with its own Período/Rango control and its lazily fetched
+ * daily series; and the add-movement form an account page's movements list carries.
  */
 
 /** A Diario valuation chart whose daily series has not arrived: no lines, the pending frame. */
@@ -64,8 +64,8 @@ export function useAccountChartSurfaces(data: AccountDetailPageData) {
     return buildDailyValuationBlock(dailySeries.data, valuationBlockForChart ?? ts.accounts);
   }, [valuationIsDaily, valuationDailyPending, dailySeries.data, valuationBlockForChart, ts.accounts]);
 
-  // Day view P/L bars: one bar account (this account), so a single pick serves both combos —
-  // `nominal_pl`/`delta_month` are the same daily P/L and the server's two levels ride along.
+  // Day view P/L bars: one bar account (this account), its daily P/L as `nominal_pl` with the
+  // server's YTD level riding along.
   const dailyPerfPoints = useMemo(() => {
     if (!perfIsDaily || perfDailyPending) return null;
     if (!perfDailySeries.data?.points.length || !monthlyPerfRows.length) return null;
@@ -76,7 +76,6 @@ export function useAccountChartSurfaces(data: AccountDetailPageData) {
       lines: [line],
       barAccounts: [{ account_id: summary.account_id, bar_data_key: "nominal_pl" }],
       ytdKey: "ytd_nominal_pl",
-      totalKey: "delta_month",
     });
   }, [perfIsDaily, perfDailyPending, perfDailySeries.data, monthlyPerfRows, summary.account_id]);
 
@@ -183,42 +182,6 @@ export function AccountPlYtdCombo({
   );
 }
 
-/** «Δ mensual y ganancia acumulada»: the period's change with the all-time earnings. */
-export function AccountDeltaAccumCombo({
-  data,
-  surfaces,
-}: {
-  data: AccountDetailPageData;
-  surfaces: AccountChartSurfaces;
-}) {
-  const { t } = useTranslation();
-  const { perf } = surfaces;
-  return (
-    <MonthlyPerformanceComboChart
-      title={t("accountDetail.monthlyDeltaAndAccumTitle")}
-      titleAs="h3"
-      points={perf.isDaily ? (perf.dailyPoints ?? []) : data.accChartPoints}
-      displayUnit={data.displayUnit}
-      xAxisGranularity={perf.granularity}
-      timeRange={data.perfPrefs.range}
-      controls={perf.controls}
-      barSeries={[
-        {
-          dataKey: "delta_month",
-          name: t("accountDetail.monthlyDelta"),
-          color: data.accountChartTheme.bar,
-        },
-      ]}
-      areaKey="accumulated_earnings"
-      areaName={t("dashboard.sections.accumulatedEarnings")}
-      areaFill={data.accountChartTheme.areaFill}
-      areaStroke={data.accountChartTheme.areaStroke}
-      alternateYearAreaStripes={false}
-      loading={perf.loading}
-    />
-  );
-}
-
 /**
  * «Detalle por mes / año / día»: the heading with its own Período control, then the rows (the
  * daily rows fetched lazily, with the server's YTD levels, while Diario is on).
@@ -290,17 +253,13 @@ export function AccountDetalleSurface({
  * in its declared currency, a brokerage account's, a units ledger's; hidden until the bundle
  * states one — a wrong form is worse than a late one.
  */
-export function useAccountMovementForm(data: AccountDetailPageData): {
-  form: ReactNode;
-  /** The account is a foreign-currency cash ledger (its frame shows from the placeholder's category). */
-  isForeignCashAccount: boolean;
-} {
+export function useAccountMovementForm(data: AccountDetailPageData): { form: ReactNode } {
   const { t } = useTranslation();
   const { summary, displayUnit } = data;
   const loading = data.contentLoading;
   const cashFormCurrency = cashMovementsCurrency(summary.movement_create);
   const foreignCashCapability = cashFormCurrency != null && !isHomeCurrency(cashFormCurrency);
-  // The foreign-cash frame needs no capability: the placeholder's category (`usd`) is enough to draw it.
+  // A foreign-cash account never takes the brokerage form, also while loading (the placeholder's category, `usd`).
   const isForeignCashAccount = foreignCashCapability || (loading && summary.category_slug === "usd");
   const showBrokerageMovementsForm =
     supportsBrokerageMovements(summary.movement_create) && !isForeignCashAccount && cashFormCurrency == null;
@@ -320,5 +279,5 @@ export function useAccountMovementForm(data: AccountDetailPageData): {
     ) : showUnitsFlowForm && unitsFlowUnitLabel ? (
       <AccountUnitsFlowForm accountId={summary.account_id} unitLabel={unitsFlowUnitLabel} displayUnit={displayUnit} />
     ) : null;
-  return { form, isForeignCashAccount };
+  return { form };
 }

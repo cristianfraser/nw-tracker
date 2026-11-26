@@ -3,6 +3,7 @@ import type {
   AccountMonthlyPerformanceRow,
   PositionGlanceDto,
   PositionGlancePeriodDto,
+  PositionGlancePricingDto,
   PositionGlanceSparkRange,
 } from "./accounts.js";
 import type { PeriodReturnsPayload } from "./performance.js";
@@ -231,7 +232,7 @@ export interface BasketGlanceMemberDto {
     /** Average cost per unit, in the quote currency. */
     average_cost: Money;
     /** The colour of the member's price pill. */
-    price_vs_cost: PositionGlanceDto["price_vs_cost"];
+    price_vs_cost: PositionGlancePricingDto["price_vs_cost"];
   } | null;
 }
 

@@ -28,15 +28,17 @@ import type { AccountDetailPageData } from "./useAccountDetailPageData";
 import styles from "./PositionAccountDetailPage.module.css";
 
 /**
- * The page of a unit position (server `position_glance`: a stock or a coin held in units, a fund
- * held in cuotas — AFP, AFC, Fintual and APV goals — held today or sold out): a title line (ticker
- * or account name, value, day P/L; the instrument's name or the fund's series and today's price
- * under it), then the valuation chart beside the glance's rail, «P/L mensual» beside
- * «Rentabilidad», then the movements and the detalle across the page (side by side their rows
- * could not stay on one line), an APV account's state-bonus list, and the export. One column below
- * 880, in that reading order (the chart before the rail). Its surfaces and its add-movement form
- * are the standard page's (`accountSurfaces.tsx`, picked by capability); the hero strip and the
- * position table are left out — the title line and the rail carry their figures.
+ * The page of every account that is not a card, a cash ledger, a property or a loan (server
+ * `position_glance`): a unit position (a stock or a coin held in units, a fund held in cuotas —
+ * AFP, AFC, fund and APV goals — held today or sold out) and, without the price blocks, an account
+ * valued by a stored balance, an option contract and a position that never held a unit. A title
+ * line (ticker or account name, value, day P/L; under it the instrument's name or the fund's
+ * series and today's price, or an option's terms, or the stored balance's day), then the
+ * valuation chart beside the glance's rail, «P/L mensual» beside «Rentabilidad», then the
+ * movements and the detalle across the page (side by side their rows could not stay on one line),
+ * an APV account's state-bonus list, a stored-balance account's balance editor, and the export.
+ * One column below 880, in that reading order (the chart before the rail). Its surfaces and its
+ * add-movement form are picked by capability (`accountSurfaces.tsx`).
  */
 export function PositionAccountDetailPage({
   data,
@@ -56,8 +58,12 @@ export function PositionAccountDetailPage({
   // undefined = still loading (the table frames itself); null = the server states none.
   const showPeriodReturns = periodReturns !== null;
   const noPerfRows = monthlyPerfRows.length === 0 && !loading;
+  // A housing savings account's months are its ledger's: no performance surfaces on its page.
+  const showPerformance = summary.category_slug !== "cuenta_ahorro_vivienda";
+  // The movements list carries a units column unless the account holds none (a stored balance).
+  const holdsUnits = glance != null ? glance.instrument.kind !== "book" : (pendingShape?.has_pricing ?? true);
   // A fund's units are cuotas (the detalle's inflow reads «Cuotas (aportes)»); before the glance
-  // is in, the AFP / AFC category says so, as on the standard page.
+  // is in, the AFP / AFC category says so.
   const isFund =
     glance != null ? glance.instrument.kind === "fund" : summary.category_slug === "afp" || summary.category_slug === "afc";
   // The units column is named by the units-flow form's unit (cuotas, BTC, ETH), else «Cuotas» on a fund.
@@ -104,35 +110,39 @@ export function PositionAccountDetailPage({
         </div>
       </PageGridTile>
 
-      <PageGridTile id="perf-combo" className={cn("chart-grid chart-grid--full-line", styles.wide, styles.plTile)}>
-        {noPerfRows ? (
-          <>
-            <h2>{t("accountDetail.positionGlance.plMonthlyTitle")}</h2>
-            <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>
-          </>
-        ) : (
-          <AccountPlYtdCombo
-            data={data}
-            surfaces={surfaces}
-            title={t("accountDetail.positionGlance.plMonthlyTitle")}
-            titleAs="h2"
-          />
-        )}
-      </PageGridTile>
+      {showPerformance ? (
+        <>
+        <PageGridTile id="perf-combo" className={cn("chart-grid chart-grid--full-line", styles.wide, styles.plTile)}>
+          {noPerfRows ? (
+            <>
+              <h2>{t("accountDetail.positionGlance.plMonthlyTitle")}</h2>
+              <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>
+            </>
+          ) : (
+            <AccountPlYtdCombo
+              data={data}
+              surfaces={surfaces}
+              title={t("accountDetail.positionGlance.plMonthlyTitle")}
+              titleAs="h2"
+            />
+          )}
+        </PageGridTile>
 
-      <PageGridTile id="returns" className={cn(styles.narrow, styles.second)}>
-        {showPeriodReturns ? (
-          <PeriodReturnsWithBenchmark
-            title={t("periodReturns.title")}
-            data={periodReturns ?? null}
-            displayUnit={displayUnit}
-            scope={{ accountId: summary.account_id }}
-            surfaceId={`account.${summary.account_id}.returns`}
-            loading={loading}
-            compact
-          />
-        ) : null}
-      </PageGridTile>
+        <PageGridTile id="returns" className={cn(styles.narrow, styles.second)}>
+          {showPeriodReturns ? (
+            <PeriodReturnsWithBenchmark
+              title={t("periodReturns.title")}
+              data={periodReturns ?? null}
+              displayUnit={displayUnit}
+              scope={{ accountId: summary.account_id }}
+              surfaceId={`account.${summary.account_id}.returns`}
+              loading={loading}
+              compact
+            />
+          ) : null}
+        </PageGridTile>
+        </>
+      ) : null}
 
       <AccountFlowsSection
         title={t("accountDetail.positionGlance.movementsTitle")}
@@ -140,13 +150,15 @@ export function PositionAccountDetailPage({
         addMovementsForm={addMovementsForm}
         accountId={summary.account_id}
         unitsKind={summary.units_kind}
-        unitsAsColumn
+        unitsAsColumn={holdsUnits}
         unitsLabel={unitsLabel}
       />
 
-      <PageGridTile id="detail" className={styles.fullRow}>
-        {noPerfRows ? null : <AccountDetalleSurface data={data} headingAs="h2" isCuotaLedgerAccount={isFund} />}
-      </PageGridTile>
+      {showPerformance ? (
+        <PageGridTile id="detail" className={styles.fullRow}>
+          {noPerfRows ? null : <AccountDetalleSurface data={data} headingAs="h2" isCuotaLedgerAccount={isFund} />}
+        </PageGridTile>
+      ) : null}
 
       {showStateContribution ? (
         <PageGridTile

@@ -45,6 +45,3 @@ export const formatPesosPerDollar = (n: number): string => formatClp(n); // conv
 
 /** An import preview's dollar leg, as the document states it. */
 export const formatImportDollars = (n: number): string => formatUsdFine(n); // convention-ok: the imported document's dollars
-
-/** A listed option's strike: options are listed in dollars. */
-export const formatOptionStrikeDollars = (n: number): string => formatUsdFine(n); // convention-ok: options are listed in dollars

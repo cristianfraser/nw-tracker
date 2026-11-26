@@ -1,5 +1,5 @@
 /**
- * The unit-position page's «at a glance» block (`position_glance` on the account detail bundle):
+ * The position page's «at a glance» block (`position_glance` on the account detail bundle):
  * the quote with its sparkline, the price track (average cost · today · highest price), the
  * composition of the value and the día / mes / año bars, for every account valued as units × a
  * unit price — stocks and ETFs (shares), coins (Bitcoin, Ether) and funds (AFP and AFC cuota
@@ -10,6 +10,12 @@
  * the price series, the sparklines, the track, the price's side of the cost, the composition as
  * of the last day held and the periods. What differs per kind is only {@link KindParts}: where
  * the units come from, the price series, the lot walk and the instrument's facts.
+ *
+ * An account with no unit price to show opens the same page through {@link buildBookGlance}: the
+ * title, the composition of its value and the periods, with `pricing` null — an account valued by
+ * a stored balance (a term deposit, a housing savings account, a manual account), an option
+ * contract (its terms as the instrument) and a unit position that has not held a unit yet. A
+ * card, a cash ledger, a property and a loan have pages of their own and no glance here.
  *
  * Sources, one definition each:
  * - value today: the bundle's position (`positionSnapshotInUnit`); the value, deposited capital,
@@ -43,6 +49,7 @@ import type {
   PositionGlanceFundSeriesDto,
   PositionGlanceInstrumentDto,
   PositionGlancePeriodDto,
+  PositionGlancePricingDto,
   PositionGlanceSegmentDto,
   PositionGlanceSparkPointDto,
   PositionGlanceSparkRange,
@@ -146,7 +153,7 @@ export type PositionGlanceInputs = {
     dividends: number;
   };
   /** The dashboard row's period P/L and chained %. */
-  periods: Record<"day" | "month" | "year", { pl: number | null; pct: number | null }>;
+  periods: PeriodFigures;
   basket: PositionGlanceBasketDto | null;
 };
 
@@ -224,7 +231,7 @@ function sparklineFor(
 }
 
 /** Today's price vs the average cost, at the quote currency's minor digits. */
-function priceSideOfCost(price: number, cost: number, quote: string): PositionGlanceDto["price_vs_cost"] {
+function priceSideOfCost(price: number, cost: number, quote: string): PositionGlancePricingDto["price_vs_cost"] {
   const priceR = roundToCurrency(price, quote);
   const costR = roundToCurrency(cost, quote);
   return priceR > costR ? "above" : priceR < costR ? "below" : "equal";
@@ -236,9 +243,9 @@ function trackFor(
   firstHeld: string,
   cost: number,
   price: number,
-  side: PositionGlanceDto["price_vs_cost"],
+  side: PositionGlancePricingDto["price_vs_cost"],
   q: string
-): PositionGlanceDto["track"] {
+): PositionGlancePricingDto["track"] {
   // Highest price since first held (today's price counts); ties keep the earliest day.
   const held = series.filter((c) => c.date >= firstHeld);
   let high = held[0]!;
@@ -332,6 +339,39 @@ export function compositionFromParts(p: {
   };
 }
 
+type PeriodFigures = Record<"day" | "month" | "year", { pl: number | null; pct: number | null }>;
+
+/** Día / mes / año: each P/L with its bar's share of the largest of the three. */
+function periodsFromRow(periods: PeriodFigures, unit: string): PositionGlanceDto["periods"] {
+  const keys = ["day", "month", "year"] as const;
+  const largest = Math.max(
+    ...keys.map((k) => {
+      const pl = periods[k].pl;
+      return pl != null && Number.isFinite(pl) ? Math.abs(pl) : 0;
+    })
+  );
+  const period = (k: (typeof keys)[number]): PositionGlancePeriodDto => {
+    const { pl, pct } = periods[k];
+    const known = pl != null && Number.isFinite(pl);
+    return {
+      pl: known ? { value: pl, currency: unit } : null,
+      pct: pct != null && Number.isFinite(pct) ? pct : null,
+      share: known && largest > 0 ? Math.abs(pl) / largest : 0,
+      direction: direction(known ? pl : null),
+    };
+  };
+  return { day: period("day"), month: period("month"), year: period("year") };
+}
+
+/** The dashboard row's period P/L and chained %; all unknown without a row. */
+function periodFiguresOfRow(r: PositionGlanceBundleFigures["row"]): PeriodFigures {
+  return {
+    day: { pl: r?.delta_day ?? null, pct: r?.pct_day ?? null },
+    month: { pl: r?.delta_month ?? null, pct: r?.pct_month ?? null },
+    year: { pl: r?.delta_year ?? null, pct: r?.pct_year ?? null },
+  };
+}
+
 /** The block from its inputs (pure). */
 export function positionGlanceFromInputs(inp: PositionGlanceInputs): PositionGlanceDto {
   const q = inp.quoteCurrency;
@@ -371,35 +411,19 @@ export function positionGlanceFromInputs(inp: PositionGlanceInputs): PositionGla
     dividends: pos.dividends,
   });
 
-  // Periods.
-  const largest = Math.max(
-    ...(["day", "month", "year"] as const).map((k) => {
-      const pl = inp.periods[k].pl;
-      return pl != null && Number.isFinite(pl) ? Math.abs(pl) : 0;
-    })
-  );
-  const period = (k: "day" | "month" | "year"): PositionGlancePeriodDto => {
-    const { pl, pct } = inp.periods[k];
-    const known = pl != null && Number.isFinite(pl);
-    return {
-      pl: known ? money(pl, u) : null,
-      pct: pct != null && Number.isFinite(pct) ? pct : null,
-      share: known && largest > 0 ? Math.abs(pl) / largest : 0,
-      direction: direction(known ? pl : null),
-    };
-  };
-
   return {
     title: inp.title,
     instrument: inp.instrument,
     unit: u,
     value: money(inp.value, u),
-    quote: { price: money(inp.price, q), price_as_of: inp.priceAsOf },
-    sparklines,
-    track,
-    price_vs_cost: priceVsCost,
+    pricing: {
+      quote: { price: money(inp.price, q), price_as_of: inp.priceAsOf },
+      sparklines,
+      track,
+      price_vs_cost: priceVsCost,
+    },
     composition,
-    periods: { day: period("day"), month: period("month"), year: period("year") },
+    periods: periodsFromRow(inp.periods, u),
     basket: inp.basket,
   };
 }
@@ -628,6 +652,8 @@ export type PositionGlanceBundleFigures = {
     deposited: number | null;
     dividends?: number;
   } | null;
+  /** The account's value today in `unit` and the day it belongs to (the summary's `latest_valuation`). */
+  today: { value: number | null; as_of: string | null };
   row: {
     delta_day?: number | null;
     delta_month?: number | null;
@@ -639,8 +665,110 @@ export type PositionGlanceBundleFigures = {
 };
 
 /**
- * The block for an account as of now; null unless it is a unit position (a stock, a coin or a
- * fund) that has held units at some point.
+ * The personal capital deposited and the state bonus received through `asOf`, in `unit` (the
+ * bonus null on an account that never received one).
+ */
+function capitalThrough(accountId: number, asOf: string, unit: CurrencyCode): { deposited: number; stateBonus: number | null } {
+  let deposited = 0;
+  for (const e of getMergedDisplayDepositInflowEventsForAccount(accountId)) {
+    if (e.occurred_on <= asOf) deposited += flowEventInUnit(e, unit);
+  }
+  const bonusEvents = getStateContributionInflowEventsForAccount(accountId);
+  let stateBonus: number | null = null;
+  if (bonusEvents.length > 0) {
+    stateBonus = 0;
+    for (const e of bonusEvents) if (e.occurred_on <= asOf) stateBonus += flowEventInUnit(e, unit);
+  }
+  return { deposited, stateBonus };
+}
+
+const stmtLastPositiveValuationDay = db.prepare(
+  `SELECT MAX(as_of_date) AS d FROM valuations WHERE account_id = ? AND value > 0 AND as_of_date <= ?`
+);
+
+/** What an account with no unit price to show holds: an option's terms, else nothing but its value's day. */
+function bookInstrument(profile: AccountProfile, valuedOn: string | null): PositionGlanceInstrumentDto {
+  const h = profile.holding;
+  if (h.kind === "option") {
+    return {
+      kind: "option",
+      underlying: requireMarketSymbol(h.underlying).display_symbol,
+      right: h.right,
+      strike: { value: h.strike, currency: h.quote },
+      expiry: h.expiry,
+      multiplier: h.multiplier,
+    };
+  }
+  return { kind: "book", valued_on: valuedOn };
+}
+
+/**
+ * The glance of an account with no unit price to show (`pricing` null): today's value, the periods
+ * and — for an asset with a positive value to split — the composition, measured today while the
+ * account is worth something, else on the day of its last positive stored balance.
+ */
+function buildBookGlance(profile: AccountProfile, figures: PositionGlanceBundleFigures, now: Date): PositionGlanceDto {
+  const accountId = profile.id;
+  const unit = figures.unit as CurrencyCode;
+  const today = chileWallClockAt(now).ymd;
+  // No value on file (an account never valued): stated as null, never a 0.
+  const value = figures.today.value;
+  if (value != null && !Number.isFinite(value)) throw new Error(`Account ${accountId}: its value today is not a number`);
+
+  const composition = ((): PositionGlanceDto["composition"] => {
+    if (profile.side === "debt" || profile.holding.kind === "option") return null;
+    let asOf: string;
+    let valueThen: number;
+    if (value != null && roundToCurrency(value, unit) > 0) {
+      asOf = today;
+      valueThen = value;
+    } else {
+      const last = (stmtLastPositiveValuationDay.get(accountId, today) as { d: string | null }).d;
+      if (last == null) return null;
+      const then = accountValueAt(accountId, last, unit, { now });
+      if (then == null || !(roundToCurrency(then.value, unit) > 0)) return null;
+      asOf = last;
+      valueThen = then.value;
+    }
+    const { deposited, stateBonus } = capitalThrough(accountId, asOf, unit);
+    return compositionFromParts({
+      accountLabel: `Account ${accountId}`,
+      asOf,
+      isToday: asOf === today,
+      unit,
+      value: valueThen,
+      deposited,
+      stateBonus,
+      dividends: 0,
+    });
+  })();
+
+  return {
+    title: profile.name,
+    instrument: bookInstrument(profile, value == null ? null : figures.today.as_of),
+    unit: figures.unit,
+    value: value == null ? null : { value, currency: figures.unit },
+    pricing: null,
+    composition,
+    periods: periodsFromRow(periodFiguresOfRow(figures.row), figures.unit),
+    basket: null,
+  };
+}
+
+/** The quantity kinds whose accounts have a page of their own (the card, checking and depto pages). */
+const OWN_PAGE_QUANTITY_KINDS: ReadonlySet<AccountProfile["quantity"]["kind"]> = new Set([
+  "card",
+  "checking_ledger",
+  "foreign_ledger",
+  "clp_ledger",
+  "depto_property",
+  "depto_loan",
+]);
+
+/**
+ * The block for an account as of now: a unit position's (a stock, a coin or a fund that has held
+ * units at some point) with its price blocks, every other position-page account's without them
+ * ({@link buildBookGlance}); null for an account with a page of its own.
  */
 export function buildPositionGlanceForAccount(
   accountId: number,
@@ -648,16 +776,17 @@ export function buildPositionGlanceForAccount(
   now: Date = new Date()
 ): PositionGlanceDto | null {
   const profile = accountProfileOptional(accountId);
-  const parts = profile ? kindParts(profile) : null;
-  if (!profile || !parts) return null;
+  if (!profile || OWN_PAGE_QUANTITY_KINDS.has(profile.quantity.kind)) return null;
+  const parts = kindParts(profile);
+  if (!parts) return buildBookGlance(profile, figures, now);
 
   // One rule for a position held or sold out: measured on its last day holding units — today
   // while it holds any, else the day before the movement that emptied it.
   const deltas = parts.unitDeltas();
   const heldSpans = heldSpansFromDeltas(deltas, parts.unitsEps);
   const lastSpan = heldSpans[heldSpans.length - 1];
-  // Never held a unit (an account opened before its first purchase): no position to show.
-  if (lastSpan == null) return null;
+  // Never held a unit (an account opened before its first purchase): no price blocks to show.
+  if (lastSpan == null) return buildBookGlance(profile, figures, now);
   const pos = figures.position;
   if (pos == null || pos.value == null) throw new Error(`Account ${accountId}: no value today`);
   if (figures.row == null) throw new Error(`Account ${accountId}: unit position without a dashboard row`);
@@ -685,20 +814,10 @@ export function buildPositionGlanceForAccount(
   const unit = figures.unit as CurrencyCode;
   const valueThen = accountValueAt(accountId, asOf, unit, { now });
   if (valueThen == null) throw new Error(`Account ${accountId}: no value on ${asOf}`);
-  let depositedThen = 0;
-  for (const e of getMergedDisplayDepositInflowEventsForAccount(accountId)) {
-    if (e.occurred_on <= asOf) depositedThen += flowEventInUnit(e, unit);
-  }
-  const bonusEvents = getStateContributionInflowEventsForAccount(accountId);
-  let bonusThen: number | null = null;
-  if (bonusEvents.length > 0) {
-    bonusThen = 0;
-    for (const e of bonusEvents) if (e.occurred_on <= asOf) bonusThen += flowEventInUnit(e, unit);
-  }
+  const { deposited: depositedThen, stateBonus: bonusThen } = capitalThrough(accountId, asOf, unit);
 
   const { title, instrument } = parts.facts(px, today, now);
   const isToday = asOf === today;
-  const r = figures.row;
   return positionGlanceFromInputs({
     accountId,
     title,
@@ -721,11 +840,7 @@ export function buildPositionGlanceForAccount(
       stateBonus: bonusThen,
       dividends: totalDividendsInUnitForAccount(accountId, unit, asOf),
     },
-    periods: {
-      day: { pl: r.delta_day ?? null, pct: r.pct_day ?? null },
-      month: { pl: r.delta_month ?? null, pct: r.pct_month ?? null },
-      year: { pl: r.delta_year ?? null, pct: r.pct_year ?? null },
-    },
+    periods: periodFiguresOfRow(figures.row),
     // The basket is today's: shown while the fund holds cuotas.
     basket: holding.kind === "fund" && isToday ? basketFor(holding.seriesKey, pos.value, figures.unit, now) : null,
   });

@@ -73,6 +73,7 @@ import { upsertCheckingIncomeMovementOverride } from "../flowsCheckingIncomeOver
 import { syncMortgageExpenseDepositLinksFromSheet } from "../expenseDepositLinks.js";
 import { expenseLinesForDepositLinkSync } from "../flowsExpenses.js";
 import { lineAmount } from "../lineMoney.js";
+import { AFC_CIC_SERIES_KEY } from "../afcCicSeries.js";
 import { isChileBusinessDay, isNyseTradingDay } from "../marketHolidays.js";
 import { recordEquitySplit } from "../equitySplits.js";
 import { ccMasterImportKeyPrefix } from "../ccIssuers.js";
@@ -175,16 +176,23 @@ function createAccounts(person: Person): Map<Acct, number> {
     ids.set("ibkrUsd", ibkr);
   }
   if (person.dap) ids.set("dap", createAccount(g("cash_eqs__dap"), "Depósito a plazo", { key: TERM_DEPOSIT_ACCOUNT_IMPORT_KEY }));
+  // A fund account holds cuotas of its series, as a certificate importer leaves it: the cuotas on
+  // its movements, the valor cuota in `fund_unit_daily`, and the role that says so (written as
+  // data: no import key seeds it).
+  const cuotaFund = (key: Acct, id: number): void => {
+    db.prepare(`INSERT INTO account_roles (account_id, role, param) VALUES (?, 'fintual_goal', ?)`).run(id, `demo:${key}`);
+    ids.set(key, id);
+  };
   if (person.fund) {
-    ids.set("fund", createAccount(g("brokerage_mutual_funds__fintual_risky_norris"), person.fund.name, { key: "import:panel|kind=fund|key=demo_fondo", series: MUTUAL_FUND_SERIES_KEY }));
+    cuotaFund("fund", createAccount(g("brokerage_mutual_funds__fintual_risky_norris"), person.fund.name, { key: "import:panel|kind=fund|key=demo_fondo", series: MUTUAL_FUND_SERIES_KEY }));
   }
   if (person.savings.clp) {
     // The money-market fund the Chilean cushion sits in: a book account under Cash savings (cuotas × its series).
     const leaf = ensureAssetGroup("cash_eqs__cash_savings__fm_money_market__fund", person.savings.clp.fundName, "cash_eqs__cash_savings");
-    ids.set("savingsClp", createAccount(leaf, person.savings.clp.fundName, { key: "import:panel|kind=fund|key=demo_fm_money_market", series: MONEY_MARKET_SERIES_KEY }));
+    cuotaFund("savingsClp", createAccount(leaf, person.savings.clp.fundName, { key: "import:panel|kind=fund|key=demo_fm_money_market", series: MONEY_MARKET_SERIES_KEY }));
   }
-  ids.set("apvA", createAccount(g("retirement_apv_a__apv"), "APV A", { series: APV_FUND_SERIES_KEY }));
-  ids.set("apvB", createAccount(g("retirement_apv_b__apv"), "APV B", { series: APV_FUND_SERIES_KEY }));
+  cuotaFund("apvA", createAccount(g("retirement_apv_a__apv"), "APV A", { series: APV_FUND_SERIES_KEY }));
+  cuotaFund("apvB", createAccount(g("retirement_apv_b__apv"), "APV B", { series: APV_FUND_SERIES_KEY }));
   const afp = (slug: string, name: string) => {
     const key = afpAccountImportKey(slug, "A");
     return createAccount(g("retirement_afp_afc__afp"), name, { key, series: afpDisplaySeriesKey(slug, "A") });
@@ -192,7 +200,7 @@ function createAccounts(person: Person): Map<Acct, number> {
   // Modelo only for a life that starts before the switch into UNO.
   if (person.firstMonth < AFP_SWITCH_MONTH) ids.set("afpModelo", afp("modelo", "Modelo-A"));
   ids.set("afpUno", afp("uno", "UNO-A"));
-  ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC"));
+  ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC", { series: AFC_CIC_SERIES_KEY }));
   for (const h of person.houses) {
     // The keys give the property its `property` role and the loan `loan_of` it (migration 299);
     // the lender, as the card prints it, is a role written as data.
@@ -614,34 +622,6 @@ function writeMortgageCardLinks(ledger: Ledger): void {
 }
 
 /**
- * APV, mutual fund and money-market accounts are book accounts: units × the fund's value, marked
- * every business day (a transfer out of the fund — a redemption — sells its units).
- */
-function writeFundValuations(ids: Map<Acct, number>, market: MarketReader, today: Ymd): void {
-  const insVal = db.prepare(`INSERT OR REPLACE INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`);
-  for (const [key, series] of [["apvA", APV_FUND_SERIES_KEY], ["apvB", APV_FUND_SERIES_KEY], ["fund", MUTUAL_FUND_SERIES_KEY], ["savingsClp", MONEY_MARKET_SERIES_KEY]] as const) {
-    const id = ids.get(key);
-    if (id == null) continue;
-    const rows = db
-      .prepare(
-        `SELECT occurred_on, CASE WHEN from_account_id = ? THEN -units_delta ELSE units_delta END AS units_delta
-           FROM movements WHERE (account_id = ? OR to_account_id = ? OR from_account_id = ?) AND units_delta IS NOT NULL ORDER BY occurred_on`
-      )
-      .all(id, id, id, id) as { occurred_on: string; units_delta: number }[];
-    if (rows.length === 0) continue;
-    let units = 0;
-    let i = 0;
-    db.transaction(() => {
-      for (let d = rows[0]!.occurred_on; d <= today; d = addDays(d, 1)) {
-        while (i < rows.length && rows[i]!.occurred_on <= d) units += rows[i++]!.units_delta;
-        if (!isChileBusinessDay(d) && d !== today) continue;
-        insVal.run(id, d, Math.round(units * market.fundUnit(series, d)));
-      }
-    })();
-  }
-}
-
-/**
  * The term-deposit account is a book account: each deposit's principal plus the interest accrued
  * (simple, as the bank pays it), marked on every Chile business day from its opening; on a renewal
  * day the new principal, after the last payout 0.
@@ -675,35 +655,24 @@ function writeSplits(person: Person, today: Ymd): void {
   }
 }
 
-/** The AFC book account: contributions grow at ~3,5 %/yr, marked on every Chile business day. */
-function writeAfc(ledger: Ledger, afcId: number, today: Ymd): void {
+/**
+ * The AFC account's contributions, each buying cuotas of the fund's series at the day's valor
+ * cuota (4 decimals, as the certificate prints them).
+ */
+function writeAfc(ledger: Ledger, afcId: number, market: MarketReader): void {
   if (ledger.afcContributions.length === 0) return;
-  const insVal = db.prepare(`INSERT OR REPLACE INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`);
   const insPeriod = db.prepare(`INSERT INTO pension_contribution_periods (movement_id, period_month) VALUES (?, ?)`);
-  const byDay = new Map(ledger.afcContributions.map((c) => [c.date, c]));
-  const drift = Math.log(1.035) / 250;
-  let value = 0;
-  let noise = 0.37;
   db.transaction(() => {
-    for (let d = ledger.afcContributions[0]!.date; d <= today; d = addDays(d, 1)) {
-      const business = isChileBusinessDay(d);
-      if (business && value > 0) {
-        noise = (noise * 9301 + 49297) % 233280;
-        value *= Math.exp(drift + (noise / 233280 - 0.5) * 0.002);
-      }
-      const c = byDay.get(d);
-      if (c) {
-        const movementId = insertMovement({
-          accountId: afcId,
-          amount: c.clp,
-          currency: HOME_CURRENCY,
-          occurredOn: d,
-          note: `Cotización AFC ${c.month}`,
-        });
-        insPeriod.run(movementId, c.month);
-        value += c.clp;
-      }
-      if (business && value > 0) insVal.run(afcId, d, Math.round(value));
+    for (const c of ledger.afcContributions) {
+      const movementId = insertMovement({
+        accountId: afcId,
+        amount: c.clp,
+        currency: HOME_CURRENCY,
+        unitsDelta: Math.round((c.clp / market.fundUnit(AFC_CIC_SERIES_KEY, c.date)) * 1e4) / 1e4,
+        occurredOn: c.date,
+        note: `Cotización AFC ${c.month}`,
+      });
+      insPeriod.run(movementId, c.month);
     }
   })();
 }
@@ -839,6 +808,8 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
     if (`${person.savings.clp.from}-01` < fundFrom) throw new Error(`demo: the money-market fund starts ${person.savings.clp.from}, before its series (${fundFrom})`);
     writeFundSeries(MONEY_MARKET_SERIES_KEY, { annualRatePct: (d) => moneyMarketAnnualRatePct(d) - MONEY_MARKET_FEE_PCT }, prices, fundFrom, today);
   }
+  // The unemployment fund grows ~3,5 % a year (the story's figure; no official series is carried).
+  writeFundSeries(AFC_CIC_SERIES_KEY, { annualRatePct: () => 3.5 }, prices, `${person.firstMonth}-01`, today);
   if (person.usJobs.length > 0) {
     const first = person.usJobs.map((j) => j.firstPayDate).sort()[0]!;
     writeUsRetirementFundSeries(prices, addDays(first, -60), today);
@@ -941,8 +912,7 @@ function writeLife(
   writeMortgageCardLinks(ledger);
   writeRentOverrides(ledger, ids);
   writePlaceBills(ledger);
-  writeFundValuations(ids, market, today);
-  writeAfc(ledger, ids.get("afc")!, today);
+  writeAfc(ledger, ids.get("afc")!, market);
   if (ids.has("dap")) writeTermDepositValuations(ledger, ids.get("dap")!, today);
   writeDemoTaxDocuments(ledger, today);
   return { ledger, payslipResult };

@@ -204,16 +204,8 @@
       "bucketNote": "A contract is filed under Brokerage › Options."
     },
     "terms": {
-      "title": "Contract",
-      "occSymbol": "OCC symbol",
-      "underlying": "Underlying",
-      "right": "Right",
       "call": "Call",
-      "put": "Put",
-      "strike": "Strike",
-      "expiry": "Expiry",
-      "multiplier": "Shares per contract",
-      "intrinsicNote": "Marked at intrinsic value from the underlying's close; time value is not priced. A short position shows a negative value and a negative number of contracts."
+      "put": "Put"
     }
   },
   "realEstate": {
@@ -756,26 +748,8 @@
     "yearlyDetailTitle": "Yearly detail",
     "dailyDetailTitle": "Daily detail",
     "dayColumn": "Date",
-    "position": {
-      "title": "Position (ticker and units)",
-      "colTicker": "Ticker",
-      "colUnits": "Units",
-      "colDeposited": "Deposited",
-      "colValueToday": "Value today",
-      "colValueDate": "Value date",
-      "colValuePerUnit": "Value / unit"
-    },
-    "monthlyPerfComputedTitle": "Monthly performance (computed)",
     "plMonthlyVsYtdTitle": "Monthly P/L vs YTD",
     "deltaMonthNominal": "Month Δ (nominal P/L)",
-    "monthlyDelta": "Monthly Δ",
-    "monthlyDeltaAndAccumTitle": "Monthly Δ and accumulated earnings",
-    "equityPosition": {
-      "depositedPocket": "Deposited (pocket)",
-      "dividends": "Dividends received",
-      "totalReturn": "Real gain",
-      "returnOnDeposited": "Return / deposited"
-    },
     "brokerageMovements": {
       "title": "Add movements",
       "hint": "A trade, a dividend or a premium settles against a cash account; its amount is in that account's currency.",
@@ -791,12 +765,6 @@
       "rowIncomplete": "Every row needs a date, and a row that names another account needs its amount.",
       "saveBtn": "Save movements",
       "saved": "{{count}} movement(s) saved."
-    },
-    "usdCash": {
-      "positionTitle": "USD balance",
-      "balanceUsd": "USD balance",
-      "valueInUnit": "Value in {{currency}}",
-      "asOf": "As of"
     },
     "movements": {
       "counterpartAccount": "Counterpart account",
@@ -950,20 +918,7 @@
       "resultSkipReasonSaldoInicial": "opening balance (the previous bill's total), not a purchase"
     },
     "checking": {
-      "monthModalTitle": "Movements {{month}}",
       "monthModalClose": "Close",
-      "cartolaMonthEmpty": "No months in movements or valuations. Run npm run import:checking-cartolas -w nw-tracker-ingest.",
-      "cartolaMonthImportedCount": "{{imported}} of {{total}} month(s) with an imported statement",
-      "cartolaNo": "No statement",
-      "colDeposits": "Deposits",
-      "colWithdrawals": "Charges",
-      "colMovements": "Movements",
-      "cartolaRegisteredNoMovements": "Statement registered with no imported movements",
-      "colBalanceEnd": "Month-end balance",
-      "colCartolaSaldo": "Statement balance (ref.)",
-      "colDiff": "Difference",
-      "colCartola": "Statement",
-      "cartolaYes": "Imported",
       "ledgerAnchorTitle": "Ledger anchor",
       "ledgerAnchorHint": "One-time adjustment at the start of the history (the month before the first) to align the ledger with the final balance of the last imported statement.",
       "ledgerAnchorAmount": "Amount (CLP)",
@@ -1162,6 +1117,13 @@
       "deposited": "deposited",
       "withdrawn": "net withdrawn",
       "price": "price",
+      "gain": "gain",
+      "loss": "loss",
+      "bookAsOf": "Stored balance as of {{date}}",
+      "option": {
+        "terms": "{{right}} · {{underlying}} · strike {{strike}} · expires {{expiry}} · ×{{multiplier}}",
+        "intrinsic": "at intrinsic value (time value is not priced)"
+      },
       "dividends": "dividends",
       "day": "day",
       "month": "month",
@@ -1197,10 +1159,6 @@
     "brokerHoldings": {
       "title": "Holdings by cash account",
       "hint": "The same ticker held at several brokers: the shares split by the cash account that paid for them.",
-      "colAccount": "Cash account",
-      "colUnits": "Units",
-      "colShare": "Share",
-      "colValue": "Value today",
       "noCashAccount": "No cash account"
     }
   },
@@ -1355,8 +1313,6 @@
     }
   },
   "table": {
-    "showMoreMonths": "Show more ({{count}} earlier months)",
-    "showLessMonths": "Hide earlier months",
     "showMoreRows": "Show more ({{count}})",
     "showLess": "Show less…",
     "paginationPrev": "Previous page",

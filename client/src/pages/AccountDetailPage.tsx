@@ -4,7 +4,6 @@ import { CreditCardAccountDetailPage } from "./accountDetail/CreditCardAccountDe
 import { DeptoAccountDetailPage } from "./accountDetail/DeptoAccountDetailPage";
 import { isDeptoMortgageCategory, isDeptoPropertyCategory } from "./accountDetail/shared";
 import { PositionAccountDetailPage } from "./accountDetail/PositionAccountDetailPage";
-import { StandardAccountDetailPage } from "./accountDetail/StandardAccountDetailPage";
 import { useAccountDetailPageData } from "./accountDetail/useAccountDetailPageData";
 import {
   usePendingPositionGlanceShape,
@@ -22,9 +21,9 @@ const CHECKING_PAGE_CATEGORY_SLUGS: ReadonlySet<string> = new Set(CHECKING_PAGE_
 export function AccountDetailPage() {
   const data = useAccountDetailPageData();
   const accountId = data.summary.account_id;
-  // A unit position's page (a stock, coin or fund) is the unit-position page once the bundle
-  // states its glance; before that, when this session or browser has seen the account's glance
-  // (`usePendingPositionGlanceShape`), else the standard frame until the bundle says.
+  // Every account that is not a card, a cash ledger, a property or a loan opens the position page
+  // (server `position_glance`); while its bundle is pending the glance draws the rows this session
+  // or browser last saw for it (`usePendingPositionGlanceShape`).
   const pendingShape = usePendingPositionGlanceShape(data.positionGlance === undefined ? accountId : 0);
   useRememberPositionGlanceShape(accountId, data.positionGlance, data.summary.position?.brokers?.length ?? 0);
 
@@ -52,10 +51,9 @@ export function AccountDetailPage() {
   if (isDeptoPropertyCategory(data.summary.category_slug) || isDeptoMortgageCategory(data.summary.category_slug)) {
     return <DeptoAccountDetailPage data={data} />;
   }
-  const isPosition = data.positionGlance != null || (data.positionGlance === undefined && pendingShape != null);
-  if (isPosition) {
-    return <PositionAccountDetailPage data={data} pendingShape={pendingShape} />;
+  // The bundle is in and states no glance: the server sends one for every account that reaches here.
+  if (data.positionGlance === null) {
+    throw new Error(`Account ${accountId}: its bundle carries no position glance`);
   }
-
-  return <StandardAccountDetailPage data={data} />;
+  return <PositionAccountDetailPage data={data} pendingShape={pendingShape} />;
 }

@@ -1,7 +1,7 @@
 import { formatMoney, formatPct } from "../../format";
 import type {
   PositionGlanceDirection,
-  PositionGlanceDto,
+  PositionGlancePricingDto,
   PositionGlanceFundSeriesDto,
   PositionGlancePeriodDto,
 } from "../../types";
@@ -63,7 +63,7 @@ export function centredLabelLeft(share: number, trackWidth: number, labelWidth: 
 }
 
 /** The colour role of every rendering of today's price: above the average cost, below, or equal. */
-export function priceTone(priceVsCost: PositionGlanceDto["price_vs_cost"]): "positive" | "negative" | "neutral" {
+export function priceTone(priceVsCost: PositionGlancePricingDto["price_vs_cost"]): "positive" | "negative" | "neutral" {
   return priceVsCost === "above" ? "positive" : priceVsCost === "below" ? "negative" : "neutral";
 }
 

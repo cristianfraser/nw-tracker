@@ -47,7 +47,6 @@ import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountV
 import { clpToUnitAt, type ValueSide } from "./valueConvert.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
-import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 import { applyTrailingZeroTailClipToBlock } from "./timeseriesTailClip.js";
 import type { TsUnit } from "./rates.js";
 
@@ -203,25 +202,6 @@ function bucketSlugByAccountId(accountIds: number[]): Map<number, string> {
 
 function bucketKindFromSlugMap(slugById: Map<number, string>, accountId: number): string {
   return accountBucketKindSlug(slugById.get(accountId) ?? "");
-}
-
-function accountChartMetaById(
-  accountIds: number[]
-): Map<number, { slug: string; import_key: string | null; name: string }> {
-  const uniq = [...new Set(accountIds.filter((id) => id > 0))];
-  const m = new Map<number, { slug: string; import_key: string | null; name: string }>();
-  if (uniq.length === 0) return m;
-  const ph = uniq.map(() => "?").join(",");
-  const rows = db
-    .prepare(
-      `SELECT a.id AS id, g.slug AS slug, a.import_key AS import_key, a.name AS name
-       FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE a.id IN (${ph})`
-    )
-    .all(...uniq) as { id: number; slug: string; import_key: string | null; name: string }[];
-  for (const r of rows) m.set(r.id, { slug: r.slug, import_key: r.import_key, name: r.name });
-  return m;
 }
 
 function attachDepositSeriesKeys(
@@ -388,14 +368,13 @@ function firstFintualCuotaEventYmd(accountId: number): string | null {
  */
 function augmentChartDatesForFintualCertAccounts(
   dateStrs: string[],
-  allIds: number[],
-  chartMetaById: Map<number, { import_key?: string | null; name?: string | null }>
+  allIds: number[]
 ): string[] {
   const aug = new Set(dateStrs);
   const today = chileCalendarTodayYmd();
   for (const id of allIds) {
-    const meta = chartMetaById.get(id);
-    if (!(meta?.import_key && isFintualCertV2AccountNotes(meta.import_key))) continue;
+    // The profile's quantity is the state (the `fintual_goal` role), not the identity string.
+    if (accountProfileOptional(id)?.quantity.kind !== "fintual_goal") continue;
     const first = firstFintualCuotaEventYmd(id);
     if (!first) continue;
     for (const d of monthEndsBetweenInclusive(first, today)) aug.add(d);
@@ -865,7 +844,6 @@ function chartDateGridUncached(allIds: number[], slugById: Map<number, string>):
   );
   dateStrs = expandSnapshotDatesForCryptoMtm(dateStrs, allIds);
   dateStrs = augmentChartDatesForDeptoAccounts(dateStrs, allIds, slugById);
-  const chartMetaById = accountChartMetaById(allIds);
   const depMovs = loadMergedDepositInflowEvents(allIds);
   const displayDepMovs = loadMergedDisplayDepositInflowEvents(allIds);
   if (dateStrs.length > 0) {
@@ -891,7 +869,7 @@ function chartDateGridUncached(allIds: number[], slugById: Map<number, string>):
   dateStrs = augmentChartDatesForCreditCardAccounts(dateStrs, allIds, slugById);
   dateStrs = augmentChartDatesForCheckingAccounts(dateStrs, allIds, slugById);
   dateStrs = augmentChartDatesForDeptoSheetAccounts(dateStrs, allIds, slugById);
-  dateStrs = augmentChartDatesForFintualCertAccounts(dateStrs, allIds, chartMetaById);
+  dateStrs = augmentChartDatesForFintualCertAccounts(dateStrs, allIds);
   dateStrs = augmentChartDatesForCuotaLedgerAccounts(dateStrs, allIds, slugById);
   dateStrs = sanitizeValuationChartDateStrs(dateStrs);
   return { dateStrs, displayDepMovs };
