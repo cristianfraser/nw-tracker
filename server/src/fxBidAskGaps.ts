@@ -145,3 +145,39 @@ export function upsertManualFxBidAskRow(
   upsertFxBidAskRow(row);
   return row;
 }
+
+/** A year of the review list: its days, newest first. */
+export type FxBidAskGapYear = {
+  year: number;
+  count: number;
+  first_date: string;
+  last_date: string;
+  rows: FxBidAskGapRow[];
+};
+
+/**
+ * The review list as the rates page draws it: the days grouped by year, newest year first;
+ * `count` is every day in the list.
+ */
+export function fxBidAskGapsByYear(gaps: readonly FxBidAskGapRow[]): { count: number; years: FxBidAskGapYear[] } {
+  const byYear = new Map<number, FxBidAskGapRow[]>();
+  for (const gap of gaps) {
+    const year = Number(gap.date.slice(0, 4));
+    const rows = byYear.get(year);
+    if (rows) rows.push(gap);
+    else byYear.set(year, [gap]);
+  }
+  const years = [...byYear.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([year, rows]) => {
+      const sorted = [...rows].sort((a, b) => b.date.localeCompare(a.date));
+      return {
+        year,
+        count: sorted.length,
+        first_date: sorted[sorted.length - 1]!.date,
+        last_date: sorted[0]!.date,
+        rows: sorted,
+      };
+    });
+  return { count: gaps.length, years };
+}

@@ -8,7 +8,12 @@ import type { AccountPositionSnapshot as S_AccountPositionSnapshot } from "../ac
 import type { EquityBrokerHolding as S_EquityBrokerHolding } from "../equityBrokerHoldings.js";
 import type { FxCoverage as S_FxCoverage } from "../fxCoverage.js";
 import type { FxConversionWarningCode as S_FxConversionWarningCode, FxConversionWarning as S_FxConversionWarning } from "../fxConversionWarnings.js";
-import type { FxBidAskGapRow as S_FxBidAskGapRow } from "../fxBidAskGaps.js";
+import type { FxBidAskGapRow as S_FxBidAskGapRow, FxBidAskGapYear as S_FxBidAskGapYear } from "../fxBidAskGaps.js";
+import type {
+  RatesCoverageNotice as S_RatesCoverageNotice,
+  RatesGlanceRow as S_RatesGlanceRow,
+  RatesRecentEntry as S_RatesRecentEntry,
+} from "../ratesPage.js";
 import type { CcCloseSource as S_CcCloseSource } from "../cards/facturacion.js";
 import type { UpcomingPaymentKind as S_UpcomingPaymentKind, UpcomingPaymentsBlock as S_UpcomingPaymentsBlock } from "../upcomingPayments.js";
 import type { CcCuotaPurchaseKind as S_CcCuotaPurchaseKind } from "../ccCuotaPurchaseKinds.js";
@@ -121,6 +126,10 @@ export type ServerDtosFitContracts = [
   Fits<S_FxConversionWarningCode, Dto.FxConversionWarningCode>,
   Fits<S_FxConversionWarning, Dto.FxConversionWarning>,
   Fits<S_FxBidAskGapRow, Dto.FxBidAskGapRow>,
+  Fits<S_FxBidAskGapYear, Dto.FxBidAskGapYear>,
+  Fits<S_RatesRecentEntry, Dto.RatesRecentEntry>,
+  Fits<S_RatesCoverageNotice, Dto.RatesCoverageNotice>,
+  Fits<S_RatesGlanceRow, Dto.RatesGlanceRow>,
   Fits<S_CcCloseSource, Dto.CcCloseSource>,
   Fits<S_UpcomingPaymentKind, Dto.UpcomingPaymentKind>,
   Fits<S_UpcomingPaymentsBlock, Dto.UpcomingPaymentsDto>,

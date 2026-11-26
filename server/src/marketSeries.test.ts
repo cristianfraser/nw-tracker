@@ -165,4 +165,30 @@ describe("getMarketSeriesPayload", () => {
     expect(p.fx_coverage.unit).toBe("clp");
     expect(p.fx_coverage.pairs.find((x) => x.base === "usd" && x.quote === "clp")?.row_count).toBe(2);
   });
+
+  it("lists each series' latest entries, newest first, with the change against the entry before", () => {
+    const p = getMarketSeriesPayload("usd");
+    // USD/CLP carries the observado and the buy / sell rate stored on the entry's own date.
+    expect(p.recent.usd_clp).toEqual([
+      { date: "2024-01-04", value: 910, change_pct: ((910 - 900) / 900) * 100, observado: null, buy: null, sell: null },
+      { date: "2024-01-02", value: 900, change_pct: null, observado: 902, buy: 915, sell: 895 },
+    ]);
+    expect(p.recent.uf_clp).toEqual([{ date: "2024-01-03", value: 36_000, change_pct: null }]);
+    expect(p.recent.ipc).toEqual([{ date: "2024-01-02", value: 130.5, change_pct: null }]);
+    expect(p.recent.eur_usd!.map((e) => e.date)).toEqual(["2024-01-04", "2024-01-02"]);
+    // Instrument entries are the chart's own values, in the payload's unit.
+    expect(p.recent[`equity:${USD_TICKER}`]).toEqual([
+      { date: "2024-01-04", value: 480, change_pct: ((480 - 470) / 470) * 100 },
+      { date: "2024-01-02", value: 470, change_pct: null },
+    ]);
+    expect(p.recent[`fund_unit:${FUND_KEY}`]).toEqual([{ date: "2024-01-04", value: 1234.5 / 910, change_pct: null }]);
+  });
+
+  it("keeps five entries of a longer series", () => {
+    const ins = db.prepare(`INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`);
+    for (let d = 10; d <= 17; d++) ins.run(`2024-01-${d}`, 36_000 + d);
+    const recent = getMarketSeriesPayload().recent.uf_clp!;
+    expect(recent.map((e) => e.date)).toEqual(["2024-01-17", "2024-01-16", "2024-01-15", "2024-01-14", "2024-01-13"]);
+    expect(recent[4]!.change_pct).toBeCloseTo((1 / 36_012) * 100, 9);
+  });
 });

@@ -1,17 +1,12 @@
-import { Fragment, useEffect, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { queryShowsLoading } from "../queries/pageShapeReady";
 import { Link } from "react-router-dom";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { loadableClass } from "../components/ui/Loadable";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import {
-  currencyFormatInfo,
-  formatCurrencyFine,
-  formatGroupedDecimal,
-  formatPct,
-  formatPctCompactParts,
-} from "../format";
+import { formatPct } from "../format";
+import { formatMarketValue, HeatCells, HeatHeadCells } from "../components/watchlist/heatGrid";
 import { useTranslation } from "../i18n";
 import {
   useAddWatchlistTicker,
@@ -31,20 +26,6 @@ function symbolLabel(row: WatchlistRow, t: (key: string) => string): string {
   }
   if (row.kind === "equity" && row.series_key) return row.series_key;
   return row.label;
-}
-
-function formatPriceRow(
-  row: Pick<WatchlistRow, "value" | "value_currency"> & { kind?: WatchlistRow["kind"] }
-): string {
-  if (row.value == null || !Number.isFinite(row.value)) return "—";
-  // A cross rate near 1 (EUR/USD) reads with four decimals, as quoted.
-  if (row.kind === "fx_pair" && currencyFormatInfo(row.value_currency).minorDigits > 0) {
-    return formatGroupedDecimal(row.value, 4);
-  }
-  // An index level is points, not money: no currency sign.
-  if (row.value_currency === "none") return formatGroupedDecimal(row.value, 2);
-  // In the currency's minor digits: pesos whole, dollars and euros with cents.
-  return formatCurrencyFine(row.value, row.value_currency);
 }
 
 /** Why an equity row has no (or a stale) price: its last Yahoo fetch failed. */
@@ -133,33 +114,6 @@ function AddSymbolCombobox() {
   );
 }
 
-/**
- * How strong a return's tint is, 0–1: log-scaled so a 10-year +10.000 % does not wash out a
- * day's +2 % (full at ±100 %).
- */
-function heatLevel(pct: number): number {
-  return Math.min(1, Math.log10(1 + Math.abs(pct)) / 2);
-}
-
-/** One window of the heat grid: the return, compact, on a tint by its sign and size. */
-function HeatCell({ value }: { value: number | null }) {
-  if (value == null || !Number.isFinite(value)) {
-    return <td className="watchlist-heat__cell watchlist-heat__cell--none">—</td>;
-  }
-  // Tinted by the figure shown: a change that rounds to 0,0 % is flat, whichever its sign.
-  const { text, sign } = formatPctCompactParts(value);
-  const direction = sign > 0 ? "up" : sign < 0 ? "down" : "flat";
-  return (
-    <td
-      className={`watchlist-heat__cell watchlist-heat__cell--${direction}`}
-      style={{ "--heat": heatLevel(value).toFixed(3) } as CSSProperties}
-      title={formatPct(value, 2)}
-    >
-      {text}
-    </td>
-  );
-}
-
 function watchlistTr({
   row,
   symbol,
@@ -200,16 +154,8 @@ function watchlistTr({
           {row.fetch_error ? <FetchErrorNote error={row.fetch_error} /> : null}
         </span>
       </td>
-      <td className="watchlist-table__price mono">{formatPriceRow(row)}</td>
-      <HeatCell value={changes?.day_pct ?? null} />
-      <HeatCell value={changes?.week_pct ?? null} />
-      <HeatCell value={changes?.mtd_pct ?? null} />
-      <HeatCell value={changes?.mom_pct ?? null} />
-      <HeatCell value={changes?.ytd_pct ?? null} />
-      <HeatCell value={changes?.yoy_pct ?? null} />
-      <HeatCell value={changes?.y3_pct ?? null} />
-      <HeatCell value={changes?.y5_pct ?? null} />
-      <HeatCell value={changes?.y10_pct ?? null} />
+      <td className="watchlist-table__price mono">{formatMarketValue(row)}</td>
+      <HeatCells changes={changes} />
       {showActionsColumn ? <td className="watchlist-table__actions">{actions ?? null}</td> : null}
     </tr>
   );
@@ -253,33 +199,7 @@ function WatchlistTable({
             <th className="watchlist-table__price" data-sort-key="price" data-sort-type="number">
               {t("watchlist.colPrice")}
             </th>
-            <th className="watchlist-heat__head" data-sort-key="day" data-sort-type="number">
-              {t("watchlist.colDay")}
-            </th>
-            <th className="watchlist-heat__head" data-sort-key="week" data-sort-type="number">
-              {t("watchlist.colWeek")}
-            </th>
-            <th className="watchlist-heat__head" data-sort-key="mtd" data-sort-type="number">
-              {t("watchlist.colMtd")}
-            </th>
-            <th className="watchlist-heat__head" data-sort-key="mom" data-sort-type="number">
-              {t("watchlist.colMom")}
-            </th>
-            <th className="watchlist-heat__head" data-sort-key="ytd" data-sort-type="number">
-              {t("watchlist.colYtd")}
-            </th>
-            <th className="watchlist-heat__head" data-sort-key="yoy" data-sort-type="number">
-              {t("watchlist.colYoy")}
-            </th>
-            <th className="watchlist-heat__head" data-sort-key="y3" data-sort-type="number">
-              {t("watchlist.col3y")}
-            </th>
-            <th className="watchlist-heat__head" data-sort-key="y5" data-sort-type="number">
-              {t("watchlist.col5y")}
-            </th>
-            <th className="watchlist-heat__head" data-sort-key="y10" data-sort-type="number">
-              {t("watchlist.col10y")}
-            </th>
+            <HeatHeadCells sortable />
             {showActions ? (
               <th className="watchlist-table__actions">
                 <span className="visually-hidden">{t("watchlist.colActions")}</span>

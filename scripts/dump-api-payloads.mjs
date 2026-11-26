@@ -201,7 +201,6 @@ async function main() {
   // ---- meta, market, sync ------------------------------------------------------------------
   for (const p of [
     "/api/meta/panel-net-worth-tree",
-    "/api/meta/rates-instruments",
     "/api/fx",
     "/api/fx/latest",
     "/api/fx/bid-ask/gaps",

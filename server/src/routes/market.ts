@@ -1,6 +1,7 @@
 /** FX (mid + bid/ask), market series/ticker, watchlist. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
-import { listFxBidAskGaps, upsertManualFxBidAskRow } from "../fxBidAskGaps.js";
+import { fxBidAskGapsByYear, listFxBidAskGaps, upsertManualFxBidAskRow } from "../fxBidAskGaps.js";
+import { getRatesGlancePayload } from "../ratesPage.js";
 import { db } from "../db.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { getMarketSeriesPayload } from "../marketSeries.js";
@@ -43,7 +44,7 @@ app.get("/api/fx/latest", (_req, res) => {
 });
 
 app.get("/api/fx/bid-ask/gaps", (_req, res) => {
-  res.json({ gaps: listFxBidAskGaps() });
+  res.json(fxBidAskGapsByYear(listFxBidAskGaps()));
 });
 
 /** Upsert directional FX: body { date, buy_clp_per_usd, sell_clp_per_usd } */
@@ -105,6 +106,11 @@ app.post("/api/fx", (req, res) => {
 /** Upsert UF (CLF): body { date: 'YYYY-MM-DD', clp_per_uf: number } CLP per 1 UF */
 app.get("/api/market-series", (req, res) => {
   res.json(getMarketSeriesPayload(requestDisplayUnit(req.query, { surface: "/api/market-series" })));
+});
+
+// The rates page's glances (today's value and change per pair and per instrument); reads live rates.
+app.get("/api/rates/glance", (req, res) => {
+  res.json(getRatesGlancePayload(new Date(), requestDisplayUnit(req.query, { surface: "/api/rates/glance" })));
 });
 
 // When the live prices last moved (published once the dashboard caches carry them); the client

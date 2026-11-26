@@ -9,21 +9,25 @@ export type RatesLineSeries = {
   strokeWidth?: number;
   strokeDasharray?: string;
   dot?: boolean | { r: number };
+  /**
+   * A series observed on few days (the buy / sell rates): its points are not joined across the
+   * days without one. Default: joined, since rows are calendar days and a daily series has no
+   * weekend or holiday observation.
+   */
+  sparse?: boolean;
 };
 
 const RATES_TICK_STYLE = { fill: "var(--muted)", fontSize: 10 } as const;
 
-/** Daily-rate line chart used by the Rates page cards (FX dual chart and single-series minis). */
+/** Daily-rate line chart of the rates page's tiles (one line, or the four of USD/CLP). */
 export function RatesLineChart({
   data,
-  tailClippedKeys,
   series,
   yAxisWidth,
   yBand,
   formatValue,
 }: {
   data: Record<string, string | number | null>[];
-  tailClippedKeys?: ReadonlySet<string> | readonly string[] | null;
   series: readonly RatesLineSeries[];
   yAxisWidth: number;
   yBand: { domain: [number, number]; ticks: number[] } | null;
@@ -33,7 +37,6 @@ export function RatesLineChart({
   return (
     <AppLineChart
       data={data}
-      tailClippedKeys={tailClippedKeys}
       tooltip={{ formatValue: (v) => formatValue(v) }}
     >
       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -55,6 +58,7 @@ export function RatesLineChart({
           dot={s.dot ?? false}
           strokeWidth={s.strokeWidth ?? 2}
           strokeDasharray={s.strokeDasharray}
+          connectNulls={!s.sparse}
         />
       ))}
     </AppLineChart>

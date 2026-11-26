@@ -30,32 +30,6 @@ h2.flow-section-title {
   margin-top: 0;
 }
 
-.rates-chart-card__title {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0 0 0.25rem;
-  letter-spacing: -0.02em;
-}
-
-.rates-chart-card__note {
-  font-size: var(--font-size-prose-sm);
-  margin: 0 0 0.5rem;
-}
-
-.rates-chart-card__empty {
-  margin: 0.5rem 0 0.35rem;
-  font-size: var(--font-size-prose);
-}
-
-.rates-chart-card__plot {
-  height: clamp(200px, 28vh, 320px);
-  width: 100%;
-}
-
-.rates-chart-card__table {
-  margin-top: 0.65rem;
-}
-
 .watchlist-add-form {
   display: flex;
   gap: 0.5rem;
@@ -247,6 +221,10 @@ h2.flow-section-title {
     scroll-padding-inline-start: calc(var(--watchlist-marquee-w) + var(--watchlist-symbol-w) + 10px);
   }
 
+  .watchlist-table-wrap--no-marquee {
+    --watchlist-marquee-w: 0rem;
+  }
+
   .watchlist-table {
     width: max-content;
   }
@@ -269,6 +247,11 @@ h2.flow-section-title {
     /* Past the checkbox cell and the 2px between cells. */
     left: calc(var(--watchlist-marquee-w) + 2px);
     width: auto;
+  }
+
+  /* A grid with no checkbox column (the rates page's glance): the name is the first pinned cell. */
+  .watchlist-table-wrap--no-marquee .watchlist-table .watchlist-table__symbol {
+    left: 0;
   }
 
   /* The pinned symbol never takes more than its share of the box: the label wraps inside it. */

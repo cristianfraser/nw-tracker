@@ -5,8 +5,16 @@ import { equityQuoteCurrency } from "./equityQuote.js";
 import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
 import { clearFxConversionWarnings } from "./fxConversionWarnings.js";
 import { runFxConversionWarningScan } from "./fxConversionWarningScan.js";
-import { chileCalendarAddDays } from "./chileDate.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { convertCurrency, type DisplayUnitCode } from "./rates.js";
+import {
+  buildRatesCoverageNotices,
+  RATES_SERIES,
+  ratesInstrumentSeriesId,
+  ratesRecentEntries,
+  type RatesCoverageNotice,
+  type RatesRecentEntry,
+} from "./ratesPage.js";
 
 const MAX_POINTS = 25_000;
 
@@ -113,6 +121,14 @@ export function getMarketSeriesPayload(unit: DisplayUnitCode = "clp"): {
   /** EUR/USD (`fx_rates`, Yahoo EURUSD=X): dollars per euro, a rate in its own quote. */
   eur_usd: { date: string; value: number }[];
   fx_coverage: FxCoverage;
+  /**
+   * The latest stored entries on or before today of every series, newest first, keyed by series id (`usd_clp`,
+   * `uf_clp`, `eur_clp`, `eur_usd`, `ipc`, `equity:<ticker>`, `fund_unit:<key>`): what the page
+   * lists under each chart. Instrument entries are in `unit`.
+   */
+  recent: Record<string, RatesRecentEntry[]>;
+  /** The coverage problems as the page lists them. */
+  coverage_notices: RatesCoverageNotice[];
 } {
   clearFxConversionWarnings();
   type FxR = { date: string; clp_per_usd: number };
@@ -302,20 +318,56 @@ export function getMarketSeriesPayload(unit: DisplayUnitCode = "clp"): {
     });
   }
 
+  const fx_usd_clp = fxRows.map((r) => ({ date: r.date, value: r.clp_per_usd }));
+  const eur_clp = eurRows.map((r) => ({ date: r.date, value: r.clp_per_eur }));
+  const eur_usd = eurUsdRows.map((r) => ({ date: r.date, value: r.mid }));
+
+  // The entries listed are the stored ones on or before today, so the first one is the value the
+  // glance shows (the UF is published about a month ahead; the charts keep those days).
+  const today = chileCalendarTodayYmd();
+  const stored = (rows: readonly { date: string; value: number }[]) =>
+    ratesRecentEntries(rows.filter((r) => r.date <= today));
+  const observadoByDate = new Map(fxBcentralRows.map((r) => [r.date, r.clp_per_usd]));
+  const bidAskByDate = new Map(fxBidAskRows.map((r) => [r.date, r]));
+  const recent: Record<string, RatesRecentEntry[]> = {
+    [RATES_SERIES.usdClp]: stored(fx_usd_clp).map((e) => ({
+      ...e,
+      observado: observadoByDate.get(e.date) ?? null,
+      buy: bidAskByDate.get(e.date)?.buy_clp_per_usd ?? null,
+      sell: bidAskByDate.get(e.date)?.sell_clp_per_usd ?? null,
+    })),
+    [RATES_SERIES.ufClp]: stored(ufRows.map((r) => ({ date: r.date, value: r.clp_per_uf }))),
+    [RATES_SERIES.eurClp]: stored(eur_clp),
+    [RATES_SERIES.eurUsd]: stored(eur_usd),
+    [RATES_SERIES.ipc]: stored(ipcRows.map((r) => ({ date: r.date, value: r.ipc_index }))),
+  };
+  const observedInUnit = (pick: (p: MarketSeriesPointOut) => number | null | undefined) => {
+    const rows: { date: string; value: number }[] = [];
+    for (const p of points) {
+      const v = pick(p);
+      if (v != null) rows.push({ date: p.as_of_date, value: v });
+    }
+    return stored(rows);
+  };
+  for (const t of equityTickers) recent[ratesInstrumentSeriesId("equity", t)] = observedInUnit((p) => p.equity[t]);
+  for (const k of fundKeys) recent[ratesInstrumentSeriesId("fund_unit", k)] = observedInUnit((p) => p.fund_unit[k]);
+
+  runFxConversionWarningScan();
+  const fx_coverage = buildFxCoverageWithConversionWarnings(unit);
+
   return {
     unit,
     points,
     equity_tickers: equityTickers,
     fund_series_keys: fundKeys,
-    fx_usd_clp: fxRows.map((r) => ({ date: r.date, value: r.clp_per_usd })),
+    fx_usd_clp,
     fx_usd_clp_bcentral: fxBcentralRows.map((r) => ({ date: r.date, value: r.clp_per_usd })),
     fx_usd_clp_buy: fxBidAskRows.map((r) => ({ date: r.date, value: r.buy_clp_per_usd })),
     fx_usd_clp_sell: fxBidAskRows.map((r) => ({ date: r.date, value: r.sell_clp_per_usd })),
-    eur_clp: eurRows.map((r) => ({ date: r.date, value: r.clp_per_eur })),
-    eur_usd: eurUsdRows.map((r) => ({ date: r.date, value: r.mid })),
-    fx_coverage: (() => {
-      runFxConversionWarningScan();
-      return buildFxCoverageWithConversionWarnings(unit);
-    })(),
+    eur_clp,
+    eur_usd,
+    fx_coverage,
+    recent,
+    coverage_notices: buildRatesCoverageNotices(fx_coverage),
   };
 }
