@@ -220,11 +220,13 @@
   column-gap: 0.7em;
   font-size: var(--font-size-card-meta-sm);
   color: var(--muted);
-  white-space: nowrap;
+  /* Its column gives way first when a row is tight: the words wrap, never overlap the amount. */
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .noteEstimate {
-  color: #f59e0b;
+  color: var(--estimate);
 }
 
 .num {
@@ -283,7 +285,8 @@
 
 .thresholds {
   display: grid;
-  grid-template-columns: max-content max-content max-content max-content minmax(6rem, 1fr) max-content;
+  /* The name gives way (it cuts with «…») before the table outgrows its box. */
+  grid-template-columns: minmax(0, max-content) max-content max-content max-content minmax(6rem, 1fr) max-content;
   column-gap: 1.4rem;
   max-width: 62rem;
   font-size: var(--font-size-card-meta);
@@ -311,6 +314,9 @@
 }
 
 .thresholdName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -393,7 +399,7 @@
 }
 
 .noteKey dt.noteEstimate {
-  color: #f59e0b;
+  color: var(--estimate);
 }
 
 .noteKey dd {
@@ -478,7 +484,7 @@
 /* An opened year, narrow (its own container: its width does not depend on the countries in the
    list's columns): each distribution is its name and standing, the scale, the three thresholds
    shortened. */
-@container wealth-thresholds (max-width: 52rem) {
+@container wealth-thresholds (max-width: 56rem) {
   .thresholds {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     column-gap: 0.6rem;

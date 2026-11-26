@@ -2097,7 +2097,7 @@
       },
       "interpolated": {
         "tag": "interpolada",
-        "text": "distribución interpolada entre los databooks de 2022 y 2025, de metodologías distintas."
+        "text": "distribución interpolada entre el databook anterior y el siguiente, de metodologías distintas."
       },
       "reconstructed": {
         "tag": "estimación propia",

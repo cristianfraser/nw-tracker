@@ -6736,8 +6736,8 @@
           "es": "interpolada"
         },
         "text": {
-          "en": "distribution interpolated between the 2022 and 2025 databooks, whose methods differ.",
-          "es": "distribución interpolada entre los databooks de 2022 y 2025, de metodologías distintas."
+          "en": "distribution interpolated between the databooks before and after it, whose methods differ.",
+          "es": "distribución interpolada entre el databook anterior y el siguiente, de metodologías distintas."
         }
       },
       "reconstructed": {

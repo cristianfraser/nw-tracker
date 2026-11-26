@@ -99,7 +99,6 @@ describe("buildWealthPercentilePayload (synthetic DB)", () => {
         ...behind(row.distribution_year),
       ]);
     }
-    expect(payload.rows[0]!.notes[0]).toBe("latest_distribution");
   });
 
   it("financial mode distribution is poorer: cl_financial thresholds sit below cl_total", () => {

@@ -48,6 +48,25 @@ const BLANK = "\u00a0";
 type ScaleMode = "linear" | "log";
 const SCALE_MODES: readonly ScaleMode[] = ["log", "linear"];
 
+const SCALE_STORAGE_KEY = "nw-tracker.wealth-percentile.scale";
+
+function loadScaleMode(): ScaleMode {
+  try {
+    return localStorage.getItem(SCALE_STORAGE_KEY) === "linear" ? "linear" : "log";
+  } catch {
+    return "log";
+  }
+}
+
+/** A viewer's choice kept for the next visit; where storage is blocked it lasts the visit. */
+function remember(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable: the choice stays in this page's state.
+  }
+}
+
 /**
  * /wealth-percentile: the position page's title line (today's percentile in Chile as the figure)
  * and band — the chart of every line by year beside the rail, which is the chart's legend
@@ -58,7 +77,7 @@ const SCALE_MODES: readonly ScaleMode[] = ["log", "linear"];
  */
 export function WealthPercentilePage() {
   const { t } = useTranslation();
-  const [scaleMode, setScaleMode] = useState<ScaleMode>("log");
+  const [scaleMode, setScaleMode] = useState<ScaleMode>(loadScaleMode);
   const [enabledBenchmarks, setEnabledBenchmarks] = useState<WealthBenchmarkCountry[]>(
     loadEnabledBenchmarks
   );
@@ -73,14 +92,16 @@ export function WealthPercentilePage() {
   const amountsUnit = data?.unit ?? displayUnit;
 
   const toggleBenchmark = (country: WealthBenchmarkCountry) => {
-    setEnabledBenchmarks((prev) => {
-      const set = new Set(prev);
-      if (set.has(country)) set.delete(country);
-      else set.add(country);
-      const next = BENCHMARK_COUNTRIES.filter((c) => set.has(c));
-      localStorage.setItem(ENABLED_BENCHMARKS_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+    const set = new Set(enabledBenchmarks);
+    if (set.has(country)) set.delete(country);
+    else set.add(country);
+    const next = BENCHMARK_COUNTRIES.filter((c) => set.has(c));
+    setEnabledBenchmarks(next);
+    remember(ENABLED_BENCHMARKS_STORAGE_KEY, JSON.stringify(next));
+  };
+  const chooseScale = (mode: ScaleMode) => {
+    setScaleMode(mode);
+    remember(SCALE_STORAGE_KEY, mode);
   };
 
   // The countries switched on, in the server's order (today's percentile, highest first).
@@ -202,7 +223,7 @@ export function WealthPercentilePage() {
                         aria-pressed={m === scaleMode}
                         title={name}
                         aria-label={name}
-                        onClick={() => setScaleMode(m)}
+                        onClick={() => chooseScale(m)}
                       >
                         {t(m === "log" ? "wealthPercentile.chart.scaleLog" : "wealthPercentile.chart.scaleLinear")}
                       </button>

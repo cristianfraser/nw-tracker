@@ -2097,7 +2097,7 @@
       },
       "interpolated": {
         "tag": "interpolated",
-        "text": "distribution interpolated between the 2022 and 2025 databooks, whose methods differ."
+        "text": "distribution interpolated between the databooks before and after it, whose methods differ."
       },
       "reconstructed": {
         "tag": "own estimate",
