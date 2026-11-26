@@ -26,6 +26,21 @@ built inside it are dropped when it ends, and its mark trims replayed (a rollbac
 out again). A read path that rewrites derived rows runs in `withoutChurn` (`rederivation.ts`): a
 savepoint rolled back when the rows come out the same, so it logs nothing.
 
+## Builds that span a gap
+
+A synchronous build is atomic: no write or invalidation can run inside it. Only work that gives the
+event loop back (the cache warmer, `dashboardCacheWarmer.ts`) can see one land between its pieces:
+
+- An async build cached as a promise (the page bundle) is in the store from its start, so a drop in a
+  gap takes it whole; the pieces it caches on the way are their own entries, each built atomically.
+  No ALS memo (tree index, valuation memo) is held across a gap, or an entry built after it would
+  read what the gap changed.
+- `warmAggregationInPieces(key, build, refresh)` builds a plain value whose build awaits between
+  pieces: nothing is cached meanwhile (a lookup in a gap builds and stores its own, which wins), and
+  the value is stored only when no drop happened since it started — every drop path (applied change,
+  market notice, live tick, declared input, transaction end, day rollover, full clear) bumps one
+  counter. Never inside a transaction.
+
 ## Families
 
 Every family drops on any mark row (an account-scoped one only for the named accounts, and the

@@ -10,6 +10,7 @@ import {
   dashboardBucketsTodayInUnit,
 } from "./portfolioGroupValueAtDate.js";
 import type { TsUnit } from "./valuationTimeseries.js";
+import { linkedCreditCardClpForCashCardByDates } from "./linkedCreditCards.js";
 
 /**
  * All-time high of the net-worth line, as the dashboard's Patrimonio neto chart marks it —
@@ -123,6 +124,22 @@ export function getNetWorthAllTimeHigh(unit: TsUnit): NetWorthAthDto | null {
     const grid = chileCalendarDaysListEndingAt(endYmd, totalRangeDays(endYmd));
     return pickAllTimeHigh(netWorthInUnitByDay(grid, unit));
   });
+}
+
+/**
+ * Warm {@link getNetWorthAllTimeHigh} (the cache warmer): the linked cards' owed per day of its
+ * grid first, a year of days per call with `between()` awaited after each (a history-tier memo by
+ * day, `linkedCreditCards.ts`: each day's figure is its own entry, so a change in a gap trims or
+ * drops what it reaches), then the high itself over the filled memo.
+ */
+export async function warmNetWorthAllTimeHigh(unit: TsUnit, between: () => Promise<void>): Promise<void> {
+  const endYmd = chileCalendarTodayYmd();
+  const grid = chileCalendarDaysListEndingAt(endYmd, totalRangeDays(endYmd));
+  for (let i = 0; i < grid.length; i += 366) {
+    linkedCreditCardClpForCashCardByDates(grid.slice(i, i + 366));
+    await between();
+  }
+  getNetWorthAllTimeHigh(unit);
 }
 
 /**

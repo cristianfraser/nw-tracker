@@ -4,6 +4,17 @@ import { accountDailyPctPoints, groupDailyPctPoints } from "./dailyPctSeries.js"
 import { accountIsDebt } from "./accountProfile.js";
 import { warmedDisplayUnits } from "./displayUnits.js";
 
+/** The portfolio groups whose daily returns are warmed: every bucket, inversiones and net worth. */
+export function rentabilidadGroupSlugs(): string[] {
+  const groups = (
+    db
+      .prepare(`SELECT slug FROM portfolio_groups WHERE group_kind IN ('bucket', 'nav_bucket') ORDER BY id`)
+      .all() as { slug: string }[]
+  ).map((r) => r.slug);
+  for (const slug of ["inversiones", "net_worth"]) if (!groups.includes(slug)) groups.push(slug);
+  return groups;
+}
+
 /**
  * The full-history daily RETURNS every Rentabilidad table chains (`periodReturnsDaily.ts`), the
  * own-portfolio benchmarks read and every period % compounds (`periodPctDailyChain.ts`: the
@@ -15,13 +26,7 @@ import { warmedDisplayUnits } from "./displayUnits.js";
  * costs nothing; after a live-quote tick only today's marks recompute.
  */
 export async function warmRentabilidadDailySeries(): Promise<number> {
-  const groups = (
-    db
-      .prepare(`SELECT slug FROM portfolio_groups WHERE group_kind IN ('bucket', 'nav_bucket') ORDER BY id`)
-      .all() as { slug: string }[]
-  )
-    .map((r) => r.slug);
-  for (const slug of ["inversiones", "net_worth"]) if (!groups.includes(slug)) groups.push(slug);
+  const groups = rentabilidadGroupSlugs();
   const accounts = (
     db
       .prepare(
