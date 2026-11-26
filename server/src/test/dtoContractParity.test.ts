@@ -76,7 +76,7 @@ import type { WatchlistCompositeHoldingRow as S_WatchlistCompositeHoldingRow } f
 import type { WatchlistRow as S_WatchlistRow, WatchlistSymbolSearchResult as S_WatchlistSymbolSearchResult } from "../watchlist.js";
 import type { ProjectionParams as S_ProjectionParams } from "../projections.js";
 import type { WealthCountry as S_WealthCountry } from "../wealthDistributions.js";
-import type { WealthBenchmarkCountry as S_WealthBenchmarkCountry, WealthPercentileCell as S_WealthPercentileCell, WealthPercentileYearRow as S_WealthPercentileYearRow } from "../wealthPercentile.js";
+import type { WealthBenchmarkCountry as S_WealthBenchmarkCountry, WealthPercentileCell as S_WealthPercentileCell, WealthPercentileYearRow as S_WealthPercentileYearRow, WealthPercentilePayload as S_WealthPercentilePayload } from "../wealthPercentile.js";
 import type { MirrorLegDto as S_MirrorLegDto, MirrorPairAlternative as S_MirrorPairAlternative, MirrorPairCandidate as S_MirrorPairCandidate, RejectedMirrorPair as S_RejectedMirrorPair } from "../movementMirrorPairs.js";
 import type { MirrorPairRef as S_MirrorPairRef } from "../movementMirrorConvert.js";
 import type { SyncSourceDisplayStatus as S_SyncSourceDisplayStatus, SyncSourceStatusRow as S_SyncSourceStatusRow } from "../globalSyncStale.js";
@@ -261,6 +261,7 @@ export type ServerDtosFitContracts = [
   Fits<S_WealthBenchmarkCountry, Dto.WealthBenchmarkCountry>,
   Fits<S_WealthPercentileCell, Dto.WealthPercentileCell>,
   Fits<S_WealthPercentileYearRow, Dto.WealthPercentileYearRow>,
+  Fits<S_WealthPercentilePayload, Dto.WealthPercentileResponse>,
   Fits<S_MirrorLegDto, Dto.MirrorLegDto>,
   Fits<S_MirrorPairAlternative, Dto.MirrorPairAlternative>,
   Fits<S_MirrorPairCandidate, Dto.MirrorPairCandidate>,

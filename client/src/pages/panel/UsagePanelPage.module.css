@@ -1,0 +1,63 @@
+/* /panel/usage: what its rows add to `ui/OpenRows`. */
+
+/* The figure a list is ordered by (views, p95): right-aligned down its column. */
+.figure {
+  display: block;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The line under a list's heading. */
+.hint {
+  margin: 0 0 0.35rem;
+}
+
+.paths {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* An open endpoint's days. Six short columns that fit a phone (about 345px at their widest
+   figures), so the table has one rendering; wide, it stops at 34rem. */
+.trend {
+  max-width: 34rem;
+  margin-top: 0.75rem;
+  border-collapse: collapse;
+  font-size: var(--font-size-card-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.trendPending {
+  margin-top: 0.75rem;
+  font-size: var(--font-size-prose-sm);
+  color: var(--muted);
+}
+
+.trend caption {
+  padding-bottom: 0.2rem;
+  font-size: var(--font-size-prose-sm);
+  color: var(--muted);
+  text-align: left;
+}
+
+.trend :is(th, td) {
+  padding: 0.15rem 0 0.15rem 0.5rem;
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.trend :is(th, td):first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.trend thead th {
+  color: var(--muted);
+}
+
+.trend tbody :is(th, td) {
+  font-family: var(--font-mono);
+}
