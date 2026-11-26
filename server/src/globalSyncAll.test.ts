@@ -17,8 +17,8 @@ import { runGlobalSyncAll } from "./globalSyncAll.js";
 import { setAggregationInvalidationListener } from "./cacheRegistry.js";
 import { FINTUAL_GOALS } from "./fintualGoals.js";
 
-/** 2026-12-02 (a Wednesday) 20:00 Chile: the fx day has closed in New York, London's has not. */
-const WED_EVENING = new Date("2026-12-02T23:00:00Z");
+/** 2030-01-16 (a Wednesday, far after any generated history) 20:00 Chile: the fx day has closed in New York, London's has not. */
+const WED_EVENING = new Date("2030-01-16T23:00:00Z");
 
 type Call = { url: string; method: string };
 let calls: Call[] = [];
@@ -56,7 +56,7 @@ function yahooChart(symbol: string, timestamps: number[], closes: number[]): Res
 }
 
 const sec = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
-const FX_DAYS = ["2026-11-26", "2026-11-27", "2026-11-30", "2026-12-01", "2026-12-02"];
+const FX_DAYS = ["2030-01-10", "2030-01-11", "2030-01-14", "2030-01-15", "2030-01-16"];
 
 /** CLP=X prints at 17:00 New York on the day it labels; EURUSD=X bars open at 00:00 London. */
 function yahooRoute(url: string): Response | null {
@@ -149,12 +149,12 @@ describe("runGlobalSyncAll: one failing source", () => {
 
     expect(code).toBe(1);
     // The steps after the failing one wrote their rows.
-    expect(db.prepare(`SELECT clp_per_usd FROM fx_daily WHERE date = '2026-12-02'`).get()).toEqual({ clp_per_usd: 954 });
+    expect(db.prepare(`SELECT clp_per_usd FROM fx_daily WHERE date = '2030-01-16'`).get()).toEqual({ clp_per_usd: 954 });
     expect(
-      db.prepare(`SELECT mid FROM fx_rates WHERE base = 'eur' AND quote = 'usd' AND date = '2026-12-01'`).get()
+      db.prepare(`SELECT mid FROM fx_rates WHERE base = 'eur' AND quote = 'usd' AND date = '2030-01-15'`).get()
     ).toEqual({ mid: 1.103 });
-    // London's Dec 2 is still trading: its bar is not a close yet.
-    expect(db.prepare(`SELECT 1 FROM fx_rates WHERE base = 'eur' AND quote = 'usd' AND date = '2026-12-02'`).get()).toBeUndefined();
+    // London's Jan 16 is still trading: its bar is not a close yet.
+    expect(db.prepare(`SELECT 1 FROM fx_rates WHERE base = 'eur' AND quote = 'usd' AND date = '2030-01-16'`).get()).toBeUndefined();
     // The failure is in the run's log, under its step.
     const [body, ...more] = syncLogBodiesSince(logBefore);
     expect(more).toEqual([]);
@@ -222,7 +222,7 @@ describe("runGlobalSyncAll: Banco Central's monthly series wait for day 9", () =
   });
 
   it("asks nothing on the 8th", async () => {
-    vi.setSystemTime(new Date("2026-12-09T02:59:00Z")); // 23:59 Chile on the 8th (already the 9th in UTC)
+    vi.setSystemTime(new Date("2030-01-09T02:59:00Z")); // 23:59 Chile on the 8th (already the 9th in UTC)
 
     const code = await runGlobalSyncAll({ sources: ["sbif_uf", "sbif_utm", "sbif_ipc"] });
 
@@ -232,7 +232,7 @@ describe("runGlobalSyncAll: Banco Central's monthly series wait for day 9", () =
   });
 
   it("runs the UF step from the 9th, Chile time", async () => {
-    vi.setSystemTime(new Date("2026-12-09T03:00:00Z")); // 00:00 Chile, the 9th
+    vi.setSystemTime(new Date("2030-01-09T03:00:00Z")); // 00:00 Chile, the 9th
 
     const logBefore = maxId("app_messages");
 
@@ -292,13 +292,13 @@ describe("runGlobalSyncAll: the Fintual poll", () => {
           ? json({
               data: {
                 balance: {
-                  closureDate: "2026-12-02",
+                  closureDate: "2030-01-16",
                   accruedValuationAmount: 150_000,
                   invested: {
-                    closureDate: "2026-12-02",
+                    closureDate: "2030-01-16",
                     sharesValuationAmount: 150_000,
                     p0: {
-                      closureDate: "2026-12-02",
+                      closureDate: "2030-01-16",
                       portfolioSharesBalance: {
                         sharesValuationAmount: 150_000,
                         sharesBreakdown: [{ sharesQuantity: 100, ticker: "VITESTSERIE" }],
@@ -341,11 +341,11 @@ describe("runGlobalSyncAll: the Fintual poll", () => {
         .prepare(`SELECT goal_id, account_id, nav_amount, currency, polled_ymd FROM fintual_goal_navs WHERE goal_id IN (?, ?)`)
         .all(reserva.goalId, UNTRACKED_GOAL)
     ).toEqual([
-      { goal_id: reserva.goalId, account_id: accountId, nav_amount: 150_000, currency: "clp", polled_ymd: "2026-12-02" },
+      { goal_id: reserva.goalId, account_id: accountId, nav_amount: 150_000, currency: "clp", polled_ymd: "2030-01-16" },
     ]);
     // Priced from Fintual's own share count.
     expect(
-      db.prepare(`SELECT unit_value FROM fund_unit_daily WHERE series_key = ? AND day = '2026-12-02'`).get(reserva.seriesKey)
+      db.prepare(`SELECT unit_value FROM fund_unit_daily WHERE series_key = ? AND day = '2030-01-16'`).get(reserva.seriesKey)
     ).toEqual({ unit_value: 1500 });
     const [body] = syncLogBodiesSince(logBefore);
     expect(body).toContain(`goal ${UNTRACKED_GOAL}`);
@@ -353,6 +353,6 @@ describe("runGlobalSyncAll: the Fintual poll", () => {
     expect(body).not.toContain("Errors");
     // The untracked goal was never priced.
     expect(calls.filter((c) => c.url === "https://fintual.cl/gql/")).toHaveLength(1);
-    expect(readState().fintualLastCheckYmd).toBe("2026-12-02");
+    expect(readState().fintualLastCheckYmd).toBe("2030-01-16");
   });
 });
