@@ -24,8 +24,6 @@ import { db } from "../db.js";
 import { dbStateMemo } from "../dbStateMemo.js";
 
 import { planCount } from "./purchases.js";
-import { ccIssuerSlugForMasterAccount } from "../ccIssuerForAccount.js";
-import { ccIssuerBySlug } from "../ccIssuers.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 import { billingMonthContainingPurchase } from "./facturacion.js";
 
@@ -69,8 +67,8 @@ function lastImportedStatementBillingMonth(accountId: number): string | null {
 
 /**
  * The card stopped billing: detalle por mes shows no synthetic open months after it. Uses the
- * valuation tail when present; otherwise a card with no outstanding plan whose last imported
- * statement is before the current billing month and nothing owed live.
+ * valuation tail when present; otherwise a card with no outstanding plan whose last month on file
+ * (statement or open bucket) is more than one facturación before today's, and nothing owed live.
  */
 export function cardStoppedBilling(accountId: number): boolean {
   return dbStateMemo("card_lifecycle_stopped_billing", accountId, () => {
@@ -86,11 +84,13 @@ export function cardStoppedBilling(accountId: number): boolean {
 
     // The facturación today belongs to (the bank's cycle), not the calendar month.
     const todayMonth = billingMonthContainingPurchase(accountId, chileCalendarTodayYmd());
-    // An issuer with a feed or a paste (`unbilled_listing`) shows the current cycle as an open
-    // bucket, so a statement dated before today's cycle means the card stopped. An issuer without
-    // one shows nothing of the current cycle: its statement simply has not closed yet, so the card
-    // gets that one cycle of grace.
-    const lastExpected = !ccIssuerBySlug(ccIssuerSlugForMasterAccount(accountId))!.unbilled_listing ? addCalendarMonths(lastStatementMonth, 1) : lastStatementMonth;
+    // One cycle of grace after the last month on file, for every issuer. A listing (feed or paste)
+    // shows the current cycle as an open bucket only once something is charged in it: right after a
+    // close an idle card has no bucket for the new cycle, and its just-closed facturación — the one
+    // being paid now, its statement often still on the way — would otherwise read as a card that
+    // stopped (no «Próximos pagos» row, owed framed on the previous close). An issuer without a
+    // listing shows nothing of the current cycle at all: its statement simply has not closed yet.
+    const lastExpected = addCalendarMonths(lastStatementMonth, 1);
     if (!todayMonth || todayMonth.localeCompare(lastExpected) <= 0) return false;
 
     const live = liveCreditCardOutstandingClp(accountId);
