@@ -17,6 +17,7 @@ import { bootstrapDemoModeIfEnabled } from "./demoMode.js";
 import { describeServerConfig, initServerConfig } from "./config.js";
 import { requestContext } from "./requestContext.js";
 import { demoOwnerCookieMiddleware, demoVisitLogMiddleware } from "./demoAnalytics.js";
+import { startDemoArrivals } from "./demoArrivals.js";
 import { demoWriteQuotaMiddleware, startDemoResetScheduler } from "./demoWritable.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
@@ -158,6 +159,7 @@ app.listen(PORT, HOST, () => {
   console.log(`nw-tracker API http://${HOST}:${PORT}`);
   startGlobalSyncScheduler();
   startDemoResetScheduler();
+  startDemoArrivals();
   startLiveMarketQuotesScheduler();
   startDbBackupScheduler();
   startDemoMarketPublishJob();
