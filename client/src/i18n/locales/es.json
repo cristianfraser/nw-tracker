@@ -1365,6 +1365,8 @@
     "paginationPageOf": "Pág. {{page}} de {{total}}"
   },
   "common": {
+    "apiUnreachable": "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.",
+    "apiBadResponse": "El servidor envió una respuesta inesperada. Inténtalo de nuevo en un momento.",
     "weekdayShort": {
       "0": "dom",
       "1": "lun",

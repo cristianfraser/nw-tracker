@@ -1365,6 +1365,8 @@
     "paginationPageOf": "Page {{page}} of {{total}}"
   },
   "common": {
+    "apiUnreachable": "Can't reach the server. Check your connection and try again.",
+    "apiBadResponse": "The server sent an unexpected response. Try again in a moment.",
     "weekdayShort": {
       "0": "Sun",
       "1": "Mon",

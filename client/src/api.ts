@@ -5,8 +5,17 @@ import { attachLiveInputs, LIVE_INPUTS_HEADER, parseLiveInputs, type LiveQuoteMo
 
 const base = () => import.meta.env.VITE_API_URL ?? "";
 
-const API_HINT =
-  "Start the API in another terminal: cd server && npm run dev (port 3001).";
+/**
+ * What a user sees when the API answers with a page instead of JSON or does not answer at all.
+ * The developer instruction (start the API) is appended in dev builds only. Translated at call
+ * time — never cache the result.
+ */
+function apiTroubleMessage(key: "common.apiUnreachable" | "common.apiBadResponse", detail: string): string {
+  const message = i18n.t(key);
+  return import.meta.env.DEV
+    ? `${message} Start the API in another terminal: cd server && npm run dev (port 3001). (${detail})`
+    : message;
+}
 
 /**
  * The hosted demo serves reads plus a few counted edits (server: `demoReadOnlyMiddleware`,
@@ -46,7 +55,7 @@ function isProbablyHtml(body: string) {
 
 /**
  * The one request path: fetch, then one error rule for every route — the demo's read-only answer
- * as a sentence, an HTML page as the "start the API" hint, a JSON `{ error }` as its message.
+ * as a sentence, an HTML page as a "server unreachable" sentence, a JSON `{ error }` as its message.
  */
 async function request(path: string, init: RequestInit): Promise<{ res: Response; text: string }> {
   const url = `${base()}${path}`;
@@ -55,14 +64,14 @@ async function request(path: string, init: RequestInit): Promise<{ res: Response
     res = await fetch(url, { credentials: "same-origin", ...init });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`${API_HINT} (${msg})`, { cause: e });
+    throw new Error(apiTroubleMessage("common.apiUnreachable", msg), { cause: e });
   }
   const text = await res.text();
   if (!res.ok) {
     const trimmed = text.trim();
     const readOnly = demoReadOnlyMessage(res.status, trimmed);
     if (readOnly) throw new Error(readOnly);
-    if (isProbablyHtml(text)) throw new Error(`${API_HINT} (HTTP ${res.status})`);
+    if (isProbablyHtml(text)) throw new Error(apiTroubleMessage("common.apiBadResponse", `HTTP ${res.status}`));
     throw new Error(trimmed ? apiErrorMessage(trimmed) : res.statusText);
   }
   return { res, text };
@@ -90,7 +99,7 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 
   const ct = res.headers.get("content-type") ?? "";
   if (isProbablyHtml(text) || (ct.includes("text/html") && !ct.includes("json"))) {
-    throw new Error(API_HINT);
+    throw new Error(apiTroubleMessage("common.apiBadResponse", `content-type ${ct || "none"}`));
   }
 
   let parsed: T;
@@ -98,7 +107,10 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
     parsed = JSON.parse(text) as T;
   } catch {
     throw new Error(
-      `${API_HINT} Response was not JSON (starts with: ${trimmed.slice(0, 60).replace(/\s+/g, " ")}…)`
+      apiTroubleMessage(
+        "common.apiBadResponse",
+        `not JSON, starts with: ${trimmed.slice(0, 60).replace(/\s+/g, " ")}…`
+      )
     );
   }
   return attachLiveInputs(parsed, parseLiveInputs(res.headers.get(LIVE_INPUTS_HEADER)));

@@ -4203,6 +4203,14 @@
     }
   },
   "common": {
+    "apiUnreachable": {
+      "en": "Can't reach the server. Check your connection and try again.",
+      "es": "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo."
+    },
+    "apiBadResponse": {
+      "en": "The server sent an unexpected response. Try again in a moment.",
+      "es": "El servidor envió una respuesta inesperada. Inténtalo de nuevo en un momento."
+    },
     "weekdayShort": {
       "0": {
         "en": "Sun",
