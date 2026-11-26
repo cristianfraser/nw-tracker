@@ -181,13 +181,20 @@ export function reconcileOpenWebPasteAfterPdfClose(
   // few days later: it matches by currency, amount and window (ccPlantedPayments.ts).
   const planted = new Map(listPlantedPaymentLines(accountId).map((p) => [p.line_id, p]));
   const plantedConfirmations: { lineId: number; merchant: string }[] = [];
+  const prepaymentRoles = new Map<number, PlanPrepaymentLineRole>();
+  for (const r of planPrepaymentRows(accountId)) {
+    if (r.line_id != null) prepaymentRoles.set(r.line_id, "prepayment");
+    if (r.credit_line_id != null) prepaymentRoles.set(r.credit_line_id, "credit");
+  }
   const takeMatch = (line: CcStatementLineRow): boolean => {
     const plantedRow = planted.get(line.id);
+    const prepaymentRole = prepaymentRoles.get(line.id);
     const hit = statementLines.find(
       (s) =>
         !used.has(s.line.id) &&
         (webPasteLineMatchesStatementLine(line, s) ||
-          (plantedRow != null && plantedPaymentMatchesStatementLine(plantedRow, s.line)))
+          (plantedRow != null && plantedPaymentMatchesStatementLine(plantedRow, s.line)) ||
+          (prepaymentRole != null && planPrepaymentLineMatchesStatementLine(line, prepaymentRole, s)))
     );
     if (!hit) return false;
     used.add(hit.line.id);
@@ -196,11 +203,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
     return true;
   };
 
-  const prepaymentLineIds = new Set<number>();
-  for (const r of planPrepaymentRows(accountId)) {
-    if (r.line_id != null) prepaymentLineIds.add(r.line_id);
-    if (r.credit_line_id != null) prepaymentLineIds.add(r.credit_line_id);
-  }
+  const prepaymentLineIds = new Set(prepaymentRoles.keys());
   const keptPrepaymentLines: number[] = [];
   const toDelete: number[] = [];
   const toMove: number[] = [];
@@ -369,6 +372,35 @@ export function webPasteLineMatchesStatementLine(
   web: CcStatementLineRow,
   stmt: StatementLineForMatching
 ): boolean {
+  return sameBucketLineFigures(web, stmt) && merchantsMatchForCrossDedupe(web.merchant, stmt.line.merchant);
+}
+
+/** Which side of a bank-prepaid plan a bucket line is (`cc_plan_prepayments`). */
+export type PlanPrepaymentLineRole = "prepayment" | "credit";
+
+/** The statement's own wording for each side of a prepaid plan. */
+const PLAN_PREPAYMENT_STATEMENT_MERCHANT: Record<PlanPrepaymentLineRole, RegExp> = {
+  prepayment: /^PREPAGO EN CUOTAS$/,
+  credit: /^NOTA DE CREDITO$/,
+};
+
+/**
+ * A bucket line of a plan the bank prepaid, against the statement line that bills it. The feed
+ * lists the prepayment and its credit under the purchase's merchant («MP *MERCADOPAGO NT»), the
+ * statement prints them as «PREPAGO EN CUOTAS» and «NOTA DE CREDITO» (·7817, 24/11/2026), so the
+ * merchant test is the statement's wording for the line's side; currency, amount and day window
+ * are any bucket line's.
+ */
+export function planPrepaymentLineMatchesStatementLine(
+  web: CcStatementLineRow,
+  role: PlanPrepaymentLineRole,
+  stmt: StatementLineForMatching
+): boolean {
+  const printed = String(stmt.line.merchant ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+  return sameBucketLineFigures(web, stmt) && PLAN_PREPAYMENT_STATEMENT_MERCHANT[role].test(printed);
+}
+
+function sameBucketLineFigures(web: CcStatementLineRow, stmt: StatementLineForMatching): boolean {
   if (web.installment_flag || stmt.line.installment_flag) return false;
   const currency = bucketLineCurrency(web);
   if (currency !== stmt.currency) return false;
@@ -380,8 +412,7 @@ export function webPasteLineMatchesStatementLine(
   const wd = linePurchaseIso(web);
   const sd = linePurchaseIso(stmt.line);
   if (!wd || !sd) return false;
-  if (!dayWithinWindow(sd, wd, MATCH_WINDOWS.statement_bucket_line)) return false;
-  return merchantsMatchForCrossDedupe(web.merchant, stmt.line.merchant);
+  return dayWithinWindow(sd, wd, MATCH_WINDOWS.statement_bucket_line);
 }
 
 export function pdfClosedBillingMonthsFromImport(statements: readonly CardCanonicalStatement[]): string[] {

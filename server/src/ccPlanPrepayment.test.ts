@@ -288,5 +288,21 @@ describe("a plan the bank prepaid", () => {
       const [after] = planPrepaymentRows(accountId);
       expect(after).toMatchObject({ line_id: printedPrepago, credit_line_id: printedNota, purchase_id: row!.purchase_id });
     });
+
+    it("hands both lines over under the statement's own wording, and gastos shows the refund once", () => {
+      addPlan();
+      feed([notaRow(), prepagoRow()]);
+      const [row] = planPrepaymentRows(accountId);
+      const st = statement();
+      const printedPrepago = insertLine(st, PAID, "PREPAGO EN CUOTAS", PRINCIPAL);
+      const printedNota = insertLine(st, PURCHASE, "NOTA DE CREDITO", -PRINCIPAL);
+      const result = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-11");
+      expect(result.deleted_line_ids.sort()).toEqual([row!.line_id!, row!.credit_line_id!].sort());
+      expect(result.kept_plan_prepayment_line_ids).toEqual([]);
+      expect(planPrepaymentRows(accountId)[0]).toMatchObject({ line_id: printedPrepago, credit_line_id: printedNota });
+      const lines = buildFlowsExpenseLines([accountId]).filter((l) => l.account_id === accountId);
+      expect(lines.filter((l) => l.amount!.value < 0).map((l) => l.statement_line_id)).toEqual([printedNota]);
+      expect(lines.filter((l) => l.amount!.value > 0).map((l) => l.line_role)).toEqual(["installment_purchase_total"]);
+    });
   });
 });
