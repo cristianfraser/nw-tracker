@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useFlowsDepositsReconciliation } from "../queries/hooks";
 import { PageGridTile } from "../components/layout/PageGridTile";
@@ -9,6 +9,7 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { cn } from "../cn";
 import { useTranslation, depositFlowCategoryLabel } from "../i18n";
 import { formatFlowMoney } from "../flowsDisplay";
+import { formatGroupedDecimal } from "../format";
 import type {
   DepositManualAssertionRow,
   DepositReconciliationRow,
@@ -40,8 +41,10 @@ const REDEMPTION_SECTION_TITLE: Record<DepositRedemptionStatus, string> = {
 const emptySection = <S extends string>(status: S) => ({ status, count: 0, total: 0, months: [] });
 
 /**
- * The frame drawn until the payload arrives: every heading with a zero total and no rows (a guess
- * at the shape, as `coldPageShape.ts` is; the statuses the server lists with rows stay).
+ * The frame drawn until the first payload arrives: every heading with a zero total and no rows (a
+ * guess at the shape, as `coldPageShape.ts` is). The sections follow the key order of the two title
+ * maps above, which must stay the server's (`DEPOSIT_SECTION_ORDER` / `REDEMPTION_SECTION_ORDER`
+ * in `flowsDepositsReconciliation.ts`), or the tiles swap places when the payload lands.
  */
 const PLACEHOLDER: DepositsReconciliationPayload = {
   unit: "",
@@ -60,6 +63,21 @@ const PLACEHOLDER: DepositsReconciliationPayload = {
   fx_conversion_error: false,
   fx_conversion_warnings: [],
 };
+
+/**
+ * The frame drawn while another unit's payload loads: the last payload's own tiles (the statuses
+ * that had rows, the manual marks and «By month» when it had them), with zero figures and no rows,
+ * so only the figures blank and no tile comes or goes.
+ */
+function blankFrame(last: DepositsReconciliationPayload): DepositsReconciliationPayload {
+  const blank = <S extends string>(sections: { status: S; count: number }[]) =>
+    sections.filter((s) => s.count > 0).map((s) => emptySection(s.status));
+  return {
+    ...PLACEHOLDER,
+    deposits: { ...PLACEHOLDER.deposits, sections: blank(last.deposits.sections) },
+    redemptions: { ...PLACEHOLDER.redemptions, sections: blank(last.redemptions.sections) },
+  };
+}
 
 /** An amount in the payload's unit; one with no rate on file reads «—». */
 function money(v: number | null, unit: DisplayUnit): string {
@@ -86,9 +104,11 @@ function ListHeading({
       <span>{title}</span>
       {count != null ? (
         <span className={loadableClass(loading, styles.count)}>
-          <span aria-hidden="true">{count}</span>
+          <span aria-hidden="true">{formatGroupedDecimal(count, 0)}</span>
           <span className="visually-hidden">
-            {count === 1 ? t("depositsReconciliation.rowCountOne") : t("depositsReconciliation.rowCount", { count })}
+            {count === 1
+              ? t("depositsReconciliation.rowCountOne")
+              : t("depositsReconciliation.rowCount", { count: formatGroupedDecimal(count, 0) })}
           </span>
         </span>
       ) : null}
@@ -257,6 +277,10 @@ export function DepositsReconciliationPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const { data, error: queryError } = useFlowsDepositsReconciliation(displayUnit);
+  // The last payload drawn, kept across a unit switch (state set during render, React's pattern
+  // for a value derived from a previous render).
+  const [last, setLast] = useState<DepositsReconciliationPayload | null>(null);
+  if (data && data !== last) setLast(data);
   const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -264,10 +288,15 @@ export function DepositsReconciliationPage() {
     return <p className="error">{err}</p>;
   }
 
-  // The frame renders with its headings, zero totals and no rows until the payload arrives.
+  // The frame renders with its headings, zero totals and no rows until the payload arrives: the
+  // last payload's tiles when there was one (a unit switch), else the placeholder's.
   const loading = !data;
-  const page = data ?? PLACEHOLDER;
+  const page = data ?? (last ? blankFrame(last) : PLACEHOLDER);
   const { manual_assertions: manual } = page;
+  // What the server states once loaded; while loading, what the last payload stated (else shown).
+  const shape = data ?? last;
+  const showManual = shape ? shape.manual_assertions.count > 0 || shape.manual_assertions.linked_count > 0 : true;
+  const showByMonth = shape ? shape.deposits.by_month.length > 0 : true;
 
   return (
     <>
@@ -289,12 +318,8 @@ export function DepositsReconciliationPage() {
           rowKey={(r) => r.movement_id}
           loading={loading}
         />
-        {loading || manual.count > 0 || manual.linked_count > 0 ? (
-          <ManualAssertions block={manual} loading={loading} />
-        ) : null}
-        {loading || page.deposits.by_month.length > 0 ? (
-          <ByMonth months={page.deposits.by_month} loading={loading} />
-        ) : null}
+        {showManual ? <ManualAssertions block={manual} loading={loading} /> : null}
+        {showByMonth ? <ByMonth months={page.deposits.by_month} loading={loading} /> : null}
       </div>
 
       <div className={cn(styles.side, styles.sideEnd)}>

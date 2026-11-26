@@ -6,7 +6,7 @@ import { useTranslation } from "../../i18n";
 import { loadableClass } from "../ui/Loadable";
 import styles from "./FlowMonthRows.module.css";
 
-/** A calendar month of a list as the server sends it: newest first, with its total. */
+/** A calendar month of a list as the server sends it, newest first; its total is the caller's (`monthTotal`). */
 export type FlowMonth<R> = { month: string; rows: R[] };
 
 /** Rows shown before «show more»: whole months, until at least this many rows. */
