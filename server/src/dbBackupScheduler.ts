@@ -5,7 +5,7 @@ import { planSnapshotRetention } from "./dbSnapshotRetention.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { serverConfig } from "./config.js";
 import { ScheduledJob, atStartThen } from "./schedulerKernel.js";
-import { insertAppMessage } from "./appMessages.js";
+import { insertAppMessage, pruneAppMessages } from "./appMessages.js";
 
 /**
  * Daily automatic DB snapshot while the server runs. The SQLite file is the only
@@ -90,6 +90,7 @@ function errorText(e: unknown): string {
 /** Tests: forget the day's backup and the failures already notified. */
 export function resetDbBackupStateForTest(): void {
   lastBackupChileYmd = null;
+  lastMessagePruneChileYmd = null;
   failureNotifiedOn.clear();
 }
 
@@ -135,6 +136,23 @@ export async function backupTick(opts?: { destDir?: string }): Promise<void> {
   }
 }
 
+let lastMessagePruneChileYmd: string | null = null;
+
+/**
+ * Old app messages are pruned once per Chile day, right after that day's snapshot exists, so every
+ * deleted row is still in the snapshots (`pruneAppMessages` holds the retention). A day whose
+ * snapshot failed prunes nothing; the hourly check tries both again.
+ */
+export function pruneAppMessagesAfterDailySnapshot(now: Date = new Date()): void {
+  const today = chileCalendarTodayYmd();
+  if (lastBackupChileYmd !== today || lastMessagePruneChileYmd === today) return;
+  const pruned = pruneAppMessages(now);
+  lastMessagePruneChileYmd = today;
+  if (pruned.logs + pruned.notifications > 0) {
+    console.log(`db-backup: pruned ${pruned.logs} log message(s) and ${pruned.notifications} read notification(s)`);
+  }
+}
+
 /** Checked at start and every hour after the last check (the kernel's in-flight guard keeps one at a time). */
 let lastCheckAtMs = 0;
 const backupJob = new ScheduledJob({
@@ -144,6 +162,7 @@ const backupJob = new ScheduledJob({
   run: async () => {
     lastCheckAtMs = Date.now();
     await backupTick();
+    pruneAppMessagesAfterDailySnapshot();
     return "ok";
   },
 });
