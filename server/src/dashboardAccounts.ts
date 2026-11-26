@@ -45,7 +45,7 @@ import {
 } from "./valuationTimeseries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
-import { nodeNetsLinkedCards } from "./nodeValue.js";
+import { nodeNetsLinkedCards, nodeValue } from "./nodeValue.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import { buildNavValueMapForRoot, buildNavValueMapPayload, isValueMapRootNode, type NavValueMapNodeDto } from "./navValueMap.js";
@@ -687,10 +687,11 @@ async function buildDashboardNavContextInner(unit: TsUnit, rootSlug: string) {
           dailyPct: groupDailyPctPoints(rootSlug, unit),
         })
       : null;
-  // An investment group's page draws its glance from the same card metrics and rows (`groupGlance.ts`).
+  // An investment or cash group's page draws its glance from the same card metrics and rows (`groupGlance.ts`).
   const group_glance =
-    node?.investment_glance === true && node.account_id == null
+    node != null && (node.investment_glance || node.cash_glance) && node.account_id == null
       ? buildGroupGlance({
+          kind: node.cash_glance ? "cash" : "investment",
           slug: rootSlug,
           title: node.label,
           unit,
@@ -744,7 +745,18 @@ async function navContextValueMap(
   if (sub) return sub;
   const node = findBySlug([navRoot], rootSlug);
   if (!node || !isValueMapRootNode(node)) return undefined;
-  const value = nav.card_metrics_by_slug[rootSlug]?.value.parent;
+  // A node that nets the linked cards is worth what the map's own rule says (its accounts less the
+  // cards: the tile that carries the netting), which its page card does not always show.
+  const value = nodeNetsLinkedCards(rootSlug)
+    ? nodeValue(
+        nav.accounts
+          .filter((a) => (node.member_account_ids ?? []).includes(a.account_id))
+          .map((a) => ({ account_id: a.account_id, exclude_from_group_totals: a.exclude_from_group_totals ?? undefined })),
+        chileCalendarTodayYmd(),
+        unit,
+        { netsLinkedCards: true }
+      )
+    : nav.card_metrics_by_slug[rootSlug]?.value.parent;
   if (value == null || !(value > 0)) return undefined;
   const rows = await buildDashboardAccountRows(unit);
   const chainedPct = chainedGroupPctResolver(rows, unit, accountIsDebt);

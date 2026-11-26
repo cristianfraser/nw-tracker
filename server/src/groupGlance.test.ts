@@ -330,12 +330,13 @@ describe("group_glance on the nav-context payload", () => {
     }
   });
 
-  it("is built for the Inversiones hub and its parents, and null for a basket and outside Inversiones", async () => {
+  it("is built for the Inversiones hub and its parents, and null for a basket and for a group that is neither investment nor cash", async () => {
     const acciones = (await buildDashboardNavContext("clp", "brokerage_acciones")).group_glance!;
     expect(acciones.rows.some((r) => r.slug === SLUG)).toBe(true);
     expect((await buildDashboardNavContext("clp", "inversiones")).group_glance).not.toBeNull();
     expect((await buildDashboardNavContext("usd", SLUG)).group_glance!.unit).toBe("usd");
     expect((await buildDashboardNavContext("clp", `${PREFIX}_s1`)).group_glance).toBeNull();
-    expect((await buildDashboardNavContext("clp", "cash_eqs")).group_glance).toBeNull();
+    expect((await buildDashboardNavContext("clp", "real_estate")).group_glance).toBeNull();
+    expect((await buildDashboardNavContext("clp", SLUG)).group_glance).toMatchObject({ kind: "investment", cash: null });
   });
 });

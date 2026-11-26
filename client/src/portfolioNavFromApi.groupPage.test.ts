@@ -31,6 +31,7 @@ function navNode(partial: Partial<NavTreeNodeDto> & Pick<NavTreeNodeDto, "slug">
     kind_slug: partial.kind_slug ?? null,
     dashboard_bucket_slug: partial.dashboard_bucket_slug ?? null,
     investment_glance: false,
+    cash_glance: false,
     group_kind: partial.group_kind ?? "bucket",
     ...(partial.linked_card_slugs ? { linked_card_slugs: partial.linked_card_slugs } : {}),
     children: partial.children ?? [],

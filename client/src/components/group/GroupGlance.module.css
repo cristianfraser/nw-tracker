@@ -1,6 +1,6 @@
-/* The investment group page's glance pieces (GroupGlance.tsx): the strip's two halves and the
-   children table — a row list, one line per row while it fits, name / value / mes / total when
-   its frame is narrow (container query). */
+/* The group page's glance pieces (GroupGlance.tsx): the strip's two halves and the children
+   table — a row list, one line per row while it fits, name / value / mes / total when its frame
+   is narrow (container query); a cash group's table keeps name / balance / value. */
 
 .positive {
   color: var(--positive);
@@ -13,6 +13,107 @@
 .stripComposition,
 .stripPeriods {
   min-width: 0;
+}
+
+/* A caption over a strip half of a cash group (the composition bar names itself in its bracket). */
+.stripCaption {
+  padding-top: 10px;
+  font-size: var(--font-size-card-meta-sm);
+  line-height: 1;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ---- A cash group's balances by currency ---- */
+
+.currencies {
+  padding-bottom: 10px;
+}
+
+.currencyBar {
+  display: flex;
+  height: 18px;
+  margin-top: 4px;
+  background: var(--surface2);
+}
+
+.currencyBar > span {
+  height: 100%;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.currencyBar > span + span {
+  margin-left: 1px;
+}
+
+/* One tone per currency, largest first: steps of the accent, then the neutral. */
+.currency0 {
+  background: color-mix(in srgb, var(--accent) 75%, var(--surface2));
+}
+
+.currency1 {
+  background: color-mix(in srgb, var(--accent) 38%, var(--surface2));
+}
+
+.currency2 {
+  background: color-mix(in srgb, var(--muted) 60%, var(--surface2));
+}
+
+.currency3 {
+  background: color-mix(in srgb, var(--muted) 30%, var(--surface2));
+}
+
+.currencyLabels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 18px;
+  margin-top: 3px;
+  font-size: var(--font-size-card-meta-sm);
+  line-height: 1.25;
+}
+
+.currencyLabels > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.currencyLabels em {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-style: normal;
+  color: var(--muted);
+}
+
+.currencyLabels em i {
+  width: 6px;
+  height: 6px;
+}
+
+.currencyLabels em a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.currencyLabels em a:hover {
+  text-decoration: underline;
+}
+
+.currencyLabels b {
+  font-weight: 400;
+  font-size: 0.7rem;
+}
+
+.currencyLabels small {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.currencyLabels > .currencyCards {
+  margin-left: auto;
+  align-items: flex-end;
+  text-align: right;
 }
 
 /* ---- Children table ---- */
@@ -29,6 +130,13 @@
     max-content max-content max-content max-content max-content;
   column-gap: 1.25rem;
   font-size: var(--font-size-ui);
+}
+
+/* A cash group: name | balance line | own-currency balance | value | weight | month | year. */
+.tableCash {
+  grid-template-columns:
+    minmax(7rem, 1.1fr) minmax(4rem, 1fr) max-content max-content minmax(6rem, 0.9fr)
+    max-content max-content;
 }
 
 .rowGroup {
@@ -207,6 +315,20 @@ a.name:hover {
   font-weight: 400;
 }
 
+/* The balance in the currency the accounts hold: one line per currency. */
+.native {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--muted);
+  font-size: var(--font-size-card-meta);
+  line-height: 1.3;
+}
+
+.headRow .native {
+  font-size: inherit;
+}
+
 .shareCell {
   display: flex;
   align-items: center;
@@ -254,6 +376,12 @@ a.name:hover {
       max-content max-content;
   }
 
+  .tableCash {
+    grid-template-columns:
+      minmax(7rem, 1.1fr) minmax(4rem, 1fr) max-content max-content minmax(6rem, 0.9fr)
+      max-content;
+  }
+
   .day,
   .year,
   .deposits {
@@ -277,6 +405,15 @@ a.name:hover {
   .day,
   .year,
   .deposits {
+    display: none;
+  }
+
+  /* A cash group keeps name, own-currency balance and value. */
+  .tableCash {
+    grid-template-columns: minmax(4.5rem, 1fr) max-content max-content;
+  }
+
+  .tableCash .month {
     display: none;
   }
 }

@@ -1,15 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
-import { NavAccountsTree } from "../components/nav/NavAccountsTree";
-import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { ExportToolbarButton } from "../components/export/ExportModal";
-import { GroupChartViewToggles } from "../components/group/GroupChartViewToggles";
-import {
-  EMPTY_VALUATION_BLOCK,
-  GroupPlCombo,
-  GroupValuationChart,
-  PortfolioGroupChartsSection,
-} from "../components/charts/PortfolioGroupChartsSection";
+import { EMPTY_VALUATION_BLOCK, GroupPlCombo, GroupValuationChart } from "../components/charts/GroupCharts";
 import { groupPerfAbsent } from "../components/charts/groupPerfAbsent";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
@@ -25,7 +17,6 @@ import {
   resolveLinkedCardNavChildren,
 } from "../portfolioNavFromApi";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
-import { GROUP_COLD_STRIP } from "../coldPageShape";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
 import { dailyPayloadPending, queryShowsLoading } from "../queries/pageShapeReady";
@@ -33,7 +24,7 @@ import { useDailySeries, useSidebarNav } from "../queries/hooks";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { servedDailyPerfComboPoints } from "../servedDailyPerfCombo";
 import { timeRangeToDays } from "../timeRange";
-import { useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useMarkUsagePageNotFound } from "../usagePageTiming";
@@ -46,7 +37,12 @@ import { GROUP_TAB_VAL_TOTAL } from "../groupTabAggregation";
 import { rollupTimeseriesBlockYearEnd } from "../dashboardTimeseriesYearly";
 import { useSurfacePercentMode } from "../surfaceDisplayPrefs";
 import type { GroupGlanceRowDto, TimeseriesAccountLine, TimeseriesBlock } from "../types";
-/** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
+/**
+ * A net-worth group's page (`/inversiones/*`, `/cash_eqs/*`): the basket page for a group declared
+ * a basket, else the glance page ({@link InvestmentGroupPage}) — for a group at or under
+ * «Inversiones» and, in its cash form, for a group of the cash bucket. The server marks the node
+ * (`basket`, `investment_glance`, `cash_glance`); this page builds the charts they share.
+ */
 export function GroupInfoPage() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
@@ -70,15 +66,13 @@ export function GroupInfoPage() {
   const surfaceId = (key: string) => (portfolioGroup ? `group.${portfolioGroup}.${key}` : null);
   const valuationPrefs = useSurfacePrefs(surfaceId("valuation"), "day", "3y");
   const perfPrefs = useSurfacePrefs(surfaceId("combos"), "month", "3y");
-  const proportionalPrefs = useSurfacePrefs(surfaceId("proportional"), "month", "total");
-  const compositionView = useSurfaceCompositionView(surfaceId("proportional"));
   const positionsPercent = useSurfacePercentMode(surfaceId("positions"));
-  // An investment group page (decided on the server, known from the nav tree before any payload):
-  // its own layout (InvestmentGroupPage), always the value map, no Agrupado toggle.
-  const investmentPage = Boolean(navMatchNode?.investment_glance && !navMatchNode.basket);
+  // The glance page in its cash form (decided on the server, known from the nav tree before any
+  // payload): a group of the cash bucket. Every other non-basket group here is an investment group.
+  const cashPage = Boolean(navMatchNode?.cash_glance && !navMatchNode.basket);
+  const glancePage = !navMatchNode?.basket;
   const valuationIsDaily = valuationPrefs.period === "day";
   const perfIsDaily = perfPrefs.period === "day";
-  const proportionalIsDaily = proportionalPrefs.period === "day";
 
   const linkedCardNavChildren = useMemo(
     () => resolveLinkedCardNavChildren(navMatchNode, sidebarNav?.main),
@@ -100,18 +94,10 @@ export function GroupInfoPage() {
     contentLoading,
     stripUnit,
     accounts,
-    accountsTreeRoot,
     stripIsPlaceholder,
     dashForStrip,
     resolved,
   } = page;
-
-  const [chartsGrouped, setChartsGrouped] = useState(true);
-  const [showValuationDeposits, setShowValuationDeposits] = useState(true);
-
-  useEffect(() => {
-    setChartsGrouped(true);
-  }, [pathname]);
 
   // The value map replaces the composition chart when this page's node has something to tile
   // (sub-groups or its own accounts); only the real nav-context payload carries it (a cached
@@ -120,17 +106,13 @@ export function GroupInfoPage() {
     () => valueMapRootForPage(navCtx?.value_map, portfolioGroup),
     [navCtx?.value_map, portfolioGroup]
   );
-  // A page whose nav node has sub-groups or accounts offers the map (a leaf group's tiles are
-  // its accounts); the selected view is shown whatever is loading, holding the last data it
-  // drew (old unit).
-  const valueMapEligible = Boolean(navMatchNode?.children?.some((c) => c.expense_account_id == null));
+  // The map is shown whatever is loading, holding the last data it drew (old unit).
   const heldValueMap = useHeldValueMap(
     portfolioGroup,
     valueMapRoot,
     navCtx?.value_map_color_bounds,
     displayUnit
   );
-  const valueMapShown = valueMapEligible && compositionView.view === "map";
   // The map comes from nav-context, not the bundle: dim while that payload is not this unit's yet.
   const valueMapLoading = queryShowsLoading(page.navCtxQuery);
 
@@ -158,7 +140,8 @@ export function GroupInfoPage() {
     [navMatchNode, ts]
   );
 
-  const groupedToggleOn = chartCtx?.showGroupedToggle ? chartsGrouped : false;
+  // The page's children are the grouped buckets wherever the payload carries them.
+  const groupedToggleOn = Boolean(chartCtx?.showGroupedToggle);
 
   const displayValuationBlock = useMemo(() => {
     if (!ts?.accounts_in_group || !chartCtx) return null;
@@ -184,24 +167,8 @@ export function GroupInfoPage() {
     perfIsDaily && dailyGroup !== "",
     { perfLevels: true }
   );
-  const proportionalDailySeries = useDailySeries(
-    { portfolioGroup: dailyGroup || undefined },
-    displayUnit,
-    timeRangeToDays(proportionalPrefs.range),
-    proportionalIsDaily && !valueMapShown && !investmentPage && dailyGroup !== ""
-  );
   const valuationDailyPending = dailyPayloadPending(valuationIsDaily && !groupHasNoAccounts, dailySeries);
   const perfDailyPending = dailyPayloadPending(perfIsDaily && !groupHasNoAccounts, perfDailySeries);
-  const proportionalDailyPending = dailyPayloadPending(proportionalIsDaily && !groupHasNoAccounts, proportionalDailySeries);
-  const dailyProportionalBlock = useMemo(() => {
-    if (!proportionalIsDaily || proportionalDailyPending) return null;
-    const daily = proportionalDailySeries.data;
-    if (!daily) return null;
-    // Composition is always the page's direct children (the grouped buckets), whatever the
-    // Agrupado toggle says; leaf pages carry no bucket block and fall back to their accounts.
-    if (daily.grouped_proportional?.series.length) return daily.grouped_proportional;
-    return daily.proportional ?? null;
-  }, [proportionalIsDaily, proportionalDailyPending, proportionalDailySeries.data]);
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily || valuationDailyPending) return null;
     const daily = dailySeries.data;
@@ -250,11 +217,11 @@ export function GroupInfoPage() {
     });
   }, [perfIsDaily, perfDailyPending, perfDailySeries.data, displayGroupPerf, groupedToggleOn]);
 
-  // «Valor por posición» (investment pages): the grouped block's child lines stacked, at the
-  // pair's period (the P/L combo's surface). Day: the perf daily payload's bucket lines mapped onto
-  // the monthly grouped block's metadata, as the valuation chart does.
+  // «Valor por posición» (a cash page's «Saldo por cuenta»): the grouped block's child lines
+  // stacked, at the pair's period (the P/L combo's surface). Day: the perf daily payload's bucket
+  // lines mapped onto the monthly grouped block's metadata, as the valuation chart does.
   const positionsBlock = useMemo((): TimeseriesBlock | null => {
-    if (!investmentPage) return null;
+    if (!glancePage) return null;
     if (perfIsDaily) {
       if (perfDailyPending) return null;
       const daily = perfDailySeries.data;
@@ -268,7 +235,7 @@ export function GroupInfoPage() {
     if (!displayValuationBlock) return null;
     return perfPrefs.period === "year" ? rollupTimeseriesBlockYearEnd(displayValuationBlock) : displayValuationBlock;
   }, [
-    investmentPage,
+    glancePage,
     perfIsDaily,
     perfDailyPending,
     perfDailySeries.data,
@@ -278,16 +245,15 @@ export function GroupInfoPage() {
     perfPrefs.period,
   ]);
   const positionsProportional = useMemo(() => {
-    if (!investmentPage) return null;
+    if (!glancePage) return null;
     if (!perfIsDaily) return displayProportional;
     if (perfDailyPending) return null;
     const daily = perfDailySeries.data;
     if (!daily) return null;
     if (daily.grouped_proportional?.series.length) return daily.grouped_proportional;
     return daily.proportional ?? null;
-  }, [investmentPage, perfIsDaily, perfDailyPending, perfDailySeries.data, displayProportional]);
+  }, [glancePage, perfIsDaily, perfDailyPending, perfDailySeries.data, displayProportional]);
 
-  const chartSeriesCount = accounts.length;
   const chartColorSlug = (chartCtx?.chartColorSlug ?? portfolioGroup) as AssetGroupSlug | "crypto";
   const pieAllocationSlug = (chartCtx?.pieAllocationSlug ?? portfolioGroup) as AssetGroupSlug;
 
@@ -405,9 +371,16 @@ export function GroupInfoPage() {
     );
   }
 
-  // An investment group (at or under «Inversiones», not a basket): the glance layout, with the
+  // Every other group of these routes is a glance page; a settled nav node that is neither is a
+  // tree the server did not mark, not something to draw another way.
+  if (navSettled && navMatchNode && !navMatchNode.investment_glance && !navMatchNode.cash_glance) {
+    throw new Error(`Group page ${navMatchNode.slug}: neither a basket, an investment group nor a cash group`);
+  }
+
+  // An investment group (at or under «Inversiones») or a cash group: the glance layout, with the
   // same charts and tables. The title, strip and table read the nav context's `group_glance`.
-  if (investmentPage && navMatchNode) {
+  // Before the nav tree is in (a first-ever visit) the page is its pending frame.
+  {
     const perfGranularity = perfIsDaily ? "day" : perfPrefs.period === "year" ? "year" : "month";
     const perfPoints = perfIsDaily ? (dailyGroupPerfPoints ?? []) : (charts.groupPerfForChart?.points ?? []);
     const plAbsent = groupPerfAbsent({
@@ -432,7 +405,7 @@ export function GroupInfoPage() {
     const rowColor = (row: GroupGlanceRowDto) =>
       (row.chart_line_account_id != null ? maps.byAccountId.get(row.chart_line_account_id) : undefined) ??
       chartStrokeFromRgbTriplet(row.color_rgb);
-    const pendingLabels = (navMatchNode.children ?? [])
+    const pendingLabels = (navMatchNode?.children ?? [])
       .filter((c) => c.expense_account_id == null)
       .map((c) => resolveNavTreeLabel(c));
     const percentToggle = (
@@ -450,10 +423,13 @@ export function GroupInfoPage() {
         </span>
       </span>
     );
-    const positionsTitle = t("groupPage.investmentGlance.positionsChartTitle");
+    const positionsTitle = t(
+      cashPage ? "groupPage.cashGlance.balanceByAccount" : "groupPage.investmentGlance.positionsChartTitle"
+    );
     const positionsLoading = contentLoading || perfDailyPending;
     return (
       <InvestmentGroupPage
+        cash={cashPage}
         title={title}
         glance={glance}
         glanceLoading={glanceLoading}
@@ -466,6 +442,7 @@ export function GroupInfoPage() {
         totalColor={charts.groupTotalStroke}
         valuationChart={
           <GroupValuationChart
+            title={cashPage ? t("groupPage.cashGlance.balanceTitle") : undefined}
             block={bandTotalBlock}
             displayUnit={displayUnit}
             xAxisGranularity={valuationIsDaily ? "day" : valuationPrefs.period === "year" ? "year" : "month"}
@@ -478,11 +455,11 @@ export function GroupInfoPage() {
                 onRangeChange={valuationPrefs.setRange}
               />
             }
-            includeAccumulatedLines
+            includeAccumulatedLines={!cashPage}
             chartColorSlug={charts.chartColorSlug}
             colorPlanGroupSlug={charts.colorPlanGroupSlug}
             chartCtx={chartCtx}
-            groupColorRgb={navMatchNode.color_rgb}
+            groupColorRgb={navMatchNode?.color_rgb}
             hideLegend
             loading={contentLoading || valuationDailyPending}
           />
@@ -534,11 +511,12 @@ export function GroupInfoPage() {
               controls={percentToggle}
               loading={positionsLoading}
               colorFor={lineColor}
+              hideDeposits={cashPage}
             />
           )
         }
         plChart={
-          plAbsent ? null : (
+          cashPage || plAbsent ? null : (
             <GroupPlCombo
               title={t("accountDetail.positionGlance.plMonthlyTitle")}
               titleAs="h2"
@@ -556,113 +534,6 @@ export function GroupInfoPage() {
       />
     );
   }
-
-  return (
-    <GroupInfoBase
-      title={title}
-      loading={contentLoading}
-      portfolio={portfolio}
-      coldStripShape={GROUP_COLD_STRIP}
-      charts={
-        <PortfolioGroupChartsSection
-          loading={contentLoading}
-          valuationLoading={contentLoading || valuationDailyPending}
-          proportionalLoading={contentLoading || proportionalDailyPending}
-          perfLoading={contentLoading || perfDailyPending}
-          accountsEmpty={accounts.length === 0}
-          accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
-          chartSeriesCount={chartSeriesCount}
-          valuationBlockForChart={
-            valuationIsDaily ? dailyValuationBlock : charts.valuationBlockForChart
-          }
-          proportionalBlock={proportionalIsDaily ? dailyProportionalBlock : displayProportional}
-          proportionalXAxisGranularity={
-            proportionalIsDaily ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
-          }
-          proportionalTimeRange={proportionalPrefs.range}
-          proportionalReplacement={
-            valueMapShown ? (
-              <ValueMapPanel
-                title={t("charts.currentValueByAccount")}
-                surfaceId={`group.${portfolioGroup}.map`}
-                view={compositionView.view}
-                onViewChange={compositionView.setView}
-                root={heldValueMap.root}
-                bounds={heldValueMap.bounds}
-                unit={heldValueMap.unit}
-                loading={valueMapLoading}
-              />
-            ) : undefined
-          }
-          proportionalControls={
-            <SurfaceControls
-              view={valueMapEligible ? compositionView.view : undefined}
-              onViewChange={valueMapEligible ? compositionView.setView : undefined}
-              period={proportionalPrefs.period}
-              onPeriodChange={proportionalPrefs.setPeriod}
-              range={proportionalPrefs.range}
-              onRangeChange={proportionalPrefs.setRange}
-            />
-          }
-          displayUnit={displayUnit}
-          xAxisGranularity={valuationPrefs.period === "year" ? "year" : "month"}
-          valuationXAxisGranularity={
-            valuationIsDaily ? "day" : valuationPrefs.period === "year" ? "year" : "month"
-          }
-          valuationTimeRange={valuationPrefs.range}
-          perfTimeRange={perfPrefs.range}
-          valuationControls={
-            <SurfaceControls
-              period={valuationPrefs.period}
-              onPeriodChange={valuationPrefs.setPeriod}
-              range={valuationPrefs.range}
-              onRangeChange={valuationPrefs.setRange}
-            />
-          }
-          perfControls={
-            <SurfaceControls
-              period={perfPrefs.period}
-              onPeriodChange={perfPrefs.setPeriod}
-              range={perfPrefs.range}
-              onRangeChange={perfPrefs.setRange}
-            />
-          }
-          chartColorSlug={charts.chartColorSlug}
-          pieAllocationSlug={charts.pieAllocationSlug}
-          colorPlanGroupSlug={charts.colorPlanGroupSlug}
-          groupColorMaps={charts.groupColorMaps}
-          groupPerfForChart={
-            perfIsDaily ? { points: dailyGroupPerfPoints ?? [] } : charts.groupPerfForChart
-          }
-          groupPerfBarSeries={charts.groupPerfBarSeries}
-          perfXAxisGranularity={
-            perfIsDaily ? "day" : perfPrefs.period === "year" ? "year" : "month"
-          }
-          groupTotalStroke={charts.groupTotalStroke}
-          groupColorRgb={navMatchNode?.color_rgb}
-          chartCtx={chartCtx}
-          showValuationDeposits={showValuationDeposits}
-          chartControls={
-            chartCtx?.showGroupedToggle ? (
-              <GroupChartViewToggles
-                grouped={groupedToggleOn}
-                onGroupedChange={setChartsGrouped}
-                accumulatedDeposits={showValuationDeposits}
-                onAccumulatedDepositsChange={setShowValuationDeposits}
-              />
-            ) : undefined
-          }
-        />
-      }
-      tableAccounts={tableAccountsForPerf}
-      accountsTree={
-        accountsTreeRoot ? (
-          <NavAccountsTree root={accountsTreeRoot} titleI18nKey="groupPage.accountsTreeTitle" />
-        ) : null
-      }
-      exportSlot={exportSlot}
-    />
-  );
 }
 
 /** An unknown group slug: says so, and counts the view under `/404` in the usage log. */

@@ -283,9 +283,6 @@
     "groupAccumulatedDeposits": "Total aportes acum.",
     "accumulatedDeposits": "aportes acum.",
     "valuationAndDeposits": "Valorización y aportes",
-    "currentValueByAccount": "Valor actual por cuenta",
-    "monthlyDeltaConsolidated": "Δ mensual (consolidado)",
-    "monthlyDeltaConsolidatedAccumTitle": "Δ mensual (consolidado) y ganancias acumuladas",
     "noMonthlyPl": "Sin datos de P/L mensual para este período.",
     "noExpensesInPeriod": "Sin gastos en este período.",
     "noValuationSeries": "Sin series de valorización para este período.",
@@ -1296,6 +1293,17 @@
       "percentToggle": "%",
       "percentToggleTitle": "Ver la participación de cada posición en el total"
     },
+    "cashGlance": {
+      "tableLabel": "Cuentas de {{name}}",
+      "col": {
+        "spark": "saldo, 1 año",
+        "native": "saldo"
+      },
+      "byCurrency": "saldo por moneda",
+      "change": "variación del saldo",
+      "balanceTitle": "Saldo",
+      "balanceByAccount": "Saldo por cuenta"
+    },
     "basketGlance": {
       "units": {
         "shares": "{{units}} acciones",
@@ -1312,11 +1320,7 @@
     "flowsTitle": "Flujos",
     "dailyDetailEmpty": "Sin datos diarios para las cuentas de este grupo.",
     "monthlyDetailEmpty": "Sin datos de rendimiento mensual para las cuentas de este grupo.",
-    "accountsTreeTitle": "Cuentas en esta vista",
     "accountsTreeTitleLiabilities": "Grupos y cuentas en esta vista",
-    "chartToggleGrouped": "Agrupado",
-    "chartToggleAccumulatedDeposits": "Aportes acumulados",
-    "chartToggleAccumulatedDepositsTitle": "Líneas punteadas de aportes acumulados por cuenta o grupo.",
     "accountsTreeEmpty": "Aún no hay cuentas en esta vista.",
     "creditCardLanes": {
       "colCard": "Tarjeta",

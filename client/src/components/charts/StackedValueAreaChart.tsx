@@ -63,6 +63,7 @@ export function StackedValueAreaChart({
   xAxisGranularity,
   timeRange,
   colorFor,
+  hideDeposits = false,
   loading,
 }: {
   title: string;
@@ -75,6 +76,8 @@ export function StackedValueAreaChart({
   timeRange?: TimeRange;
   /** A child line's colour (the page's group colour maps, so band, bar and dot match). */
   colorFor: (line: TimeseriesAccountLine) => string;
+  /** No aportes line (a cash group: its contributions are its balance). */
+  hideDeposits?: boolean;
   loading?: boolean;
 }) {
   const compactAxis = useIsNarrowViewport();
@@ -84,8 +87,11 @@ export function StackedValueAreaChart({
     [block]
   );
   const depositsKey = useMemo(
-    () => (block?.accounts ?? []).find((a) => a.dataKey === GROUP_TAB_VAL_TOTAL)?.depositDataKey ?? null,
-    [block]
+    () =>
+      hideDeposits
+        ? null
+        : ((block?.accounts ?? []).find((a) => a.dataKey === GROUP_TAB_VAL_TOTAL)?.depositDataKey ?? null),
+    [block, hideDeposits]
   );
 
   const rows = useMemo((): Row[] => {

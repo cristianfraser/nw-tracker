@@ -15,15 +15,21 @@ import styles from "./InvestmentGroupPage.module.css";
 
 /**
  * The page of a group at or under «Inversiones» (`NavTreeNodeDto.investment_glance`;
- * docs/investment-group-pages-plan.md): a title line (value, day P/L, positions · aportes ·
- * total), the band [valuation chart | value map, the sold children under it], the strip
+ * docs/investment-group-pages-plan.md) and, in its cash form (`cash`: `NavTreeNodeDto.cash_glance`;
+ * docs/remaining-pages-redesign-plan.md item C), of a group of the cash bucket: a title line
+ * (value, day P/L, positions · aportes · total), the band [valuation chart | value map, the sold children under it], the strip
  * [composition of today's value | día / mes / año], the children table (server `group_glance` on
  * the nav context), the pair [«Valor por posición» | «P/L mensual»] under one control row, then
  * Rentabilidad | Detalle, the movements and the export. No card strip, no accounts tree. The
  * charts are the group page's (built by `GroupInfoPage`), the tables `GroupInfoBase`'s. One
  * column below 880, in DOM order.
+ *
+ * A cash group keeps the frame and leaves out what reads a return: the strip is [balance by
+ * currency | change of the balance], the table has no % or P/L columns, «Saldo por cuenta» takes
+ * the pair's row alone (no «P/L mensual»), there is no Rentabilidad list and Detalle spans the page.
  */
 export function InvestmentGroupPage({
+  cash = false,
   title,
   glance,
   glanceLoading,
@@ -40,6 +46,8 @@ export function InvestmentGroupPage({
   colorForRow,
   totalColor,
 }: {
+  /** The page's cash form (the nav node's `cash_glance`). */
+  cash?: boolean;
   /** The nav node's label (the title while the glance is pending). */
   title: string;
   /** The nav context's `group_glance`; undefined while pending. */
@@ -61,7 +69,7 @@ export function InvestmentGroupPage({
   pairControls: ReactNode;
   /** «Valor por posición» (stacked value, or the share view). */
   positionsChart: ReactNode;
-  /** «P/L mensual»; null when the loaded bundle says the group has no P/L. */
+  /** «P/L mensual»; null when the loaded bundle says the group has no P/L. Not drawn on a cash page. */
   plChart: ReactNode | null;
   /** A child row's dot colour (the charts' colour maps). */
   colorForRow: (row: GroupGlanceRowDto) => string;
@@ -94,7 +102,7 @@ export function InvestmentGroupPage({
               className={loadableClass(glanceLoading, cn("page-grid", styles.strip))}
               aria-busy={glanceLoading || undefined}
             >
-              <GroupGlanceStrip glance={glance} />
+              <GroupGlanceStrip glance={glance} cash={cash} />
             </PageGridTile>
 
             <PageGridTile id="investment-table" className={styles.tableTile}>
@@ -105,30 +113,38 @@ export function InvestmentGroupPage({
                 colorFor={colorForRow}
                 totalColor={totalColor}
                 loading={glanceLoading}
+                cash={cash}
               />
             </PageGridTile>
 
             <PageGridTile id="investment-pair" className={cn("page-grid", styles.pair)}>
               <div className={styles.pairControls}>{pairControls}</div>
-              <div className={cn("chart-grid chart-grid--full-line", styles.pairFirst)}>{positionsChart}</div>
-              <div className={cn("chart-grid chart-grid--full-line", styles.pairSecond)}>
-                {plChart ?? (
-                  <>
-                    <h2>{t("accountDetail.positionGlance.plMonthlyTitle")}</h2>
-                    <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>
-                  </>
-                )}
+              <div className={cn("chart-grid chart-grid--full-line", styles.pairFirst, cash && styles.pairAlone)}>
+                {positionsChart}
               </div>
+              {cash ? null : (
+                <div className={cn("chart-grid chart-grid--full-line", styles.pairSecond)}>
+                  {plChart ?? (
+                    <>
+                      <h2>{t("accountDetail.positionGlance.plMonthlyTitle")}</h2>
+                      <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>
+                    </>
+                  )}
+                </div>
+              )}
             </PageGridTile>
 
-            {returns ? (
+            {returns && !cash ? (
               <PageGridTile id="returns" className={styles.narrow}>
                 {returns}
               </PageGridTile>
             ) : null}
 
             {detail ? (
-              <PageGridTile id="detail" className={cn(styles.wide, returns != null && styles.second)}>
+              <PageGridTile
+                id="detail"
+                className={cash ? styles.fullRow : cn(styles.wide, returns != null && styles.second)}
+              >
                 {detail}
               </PageGridTile>
             ) : null}

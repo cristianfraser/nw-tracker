@@ -25,7 +25,7 @@ proposed split into one-session work items.
 |---|---|---|
 | `/` | `DashboardPage` (`DemoHomePage` wraps it on the demo) | redesigned |
 | `/inversiones/*` | `GroupInfoPage` → `InvestmentGroupPage` / `BasketGroupPage` | redesigned |
-| `/cash_eqs`, `/cash_eqs/savings`, `/cash_eqs/checking` | `GroupInfoPage` → generic `GroupInfoBase` | **old** (item C) |
+| `/cash_eqs`, `/cash_eqs/savings`, `/cash_eqs/checking` | `GroupInfoPage` → `InvestmentGroupPage` (cash form) | redesigned |
 | `/real_estate` | `GroupInfoPage` → generic `GroupInfoBase` | **old** (item A) |
 | `/liabilities`, `/liabilities/mortgage`, `/liabilities/:subgroup` | `LiabilitiesPage`, `MortgageGroupPage`, `LiabilitiesGroupPage` | redesigned |
 | `/account/:id` card | `CreditCardAccountDetailPage` | redesigned |
@@ -98,6 +98,14 @@ Two different kinds of account land here, and the page fits neither.
 - Look from: `CheckingAccountDetailPage` for B1, `PositionAccountDetailPage` for B2.
 
 ### C. `/cash_eqs`, `/cash_eqs/savings`, `/cash_eqs/checking` — generic group page
+
+> **Done (2026-11-26):** cash groups open `InvestmentGroupPage` in its cash form (nav flag
+> `cash_glance`, `group_glance.kind` "cash", `groupGlance.ts`): balance by currency and the change
+> of the balance in the strip, a table of balances in each account's own currency beside the
+> value in the unit, the linked cards as a negative row where the group nets them, no return
+> figures. The generic branch of `GroupInfoPage` and the chart section only it used are deleted.
+> `GroupInfoBase` stays: it is the shell of the dashboard, the Pasivos group page, the basket
+> page and the glance page itself. The value map keeps its day / month / year colour.
 
 - Same `GroupInfoBase` stack as A, 5,500–6,100px on a phone. Cash groups get P/L-style «Δ by
   account» and «Monthly Δ and accumulated earnings» charts, and no view of what a cash group is
@@ -177,8 +185,8 @@ Two different kinds of account land here, and the page fits neither.
 - `/panel/usage`: two `ColumnTable`s, phone rendering exists; not seen with data.
 - `/panel/settings`: language / separator / chart-style controls above the redesigned residency
   form.
-- After A and C, `GroupInfoBase` and the generic branch of `GroupInfoPage` have no route left:
-  delete them.
+- After A and C the generic branch of `GroupInfoPage` had no route left and was deleted with C
+  (`GroupInfoBase` itself stays, the shell of the dashboard, Pasivos, basket and glance pages).
 
 ## Work items
 

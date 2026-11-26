@@ -23,6 +23,7 @@ export function navNodeFixture(
     kind_slug: null,
     dashboard_bucket_slug: null,
     investment_glance: false,
+    cash_glance: false,
     api_group: null,
     api_subgroup: null,
     color_rgb: null,

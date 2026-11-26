@@ -1,8 +1,16 @@
 /**
- * The investment group page's «at a glance» block (`group_glance` on the nav-context payload of a
- * node with `investment_glance`: a group at or under «Inversiones» that is not a basket;
- * `docs/investment-group-pages-plan.md`). Every figure, share and order is decided here; the
- * client only picks and formats.
+ * The group page's «at a glance» block (`group_glance` on the nav-context payload of a node with
+ * `investment_glance` — a group at or under «Inversiones» that is not a basket;
+ * `docs/investment-group-pages-plan.md` — or with `cash_glance`, a group of the cash bucket).
+ * Every figure, share and order is decided here; the client only picks and formats.
+ *
+ * A cash group (`kind: "cash"`) keeps the rows, their order and their sparklines, and reads no
+ * return: its value is the node-value rule's (`nodeValue.ts`: its counted accounts less the linked
+ * cards where the group nets them), a row's value its accounts' dashboard values, and the linked
+ * cards are a row of their own (negative), so the rows add up to the total. Each row carries its
+ * balance in the currency its accounts hold (`accountTodayValue`'s native value, the figure the
+ * dashboard row converts once) and its change over the month and the year; `cash` carries the
+ * balances by currency and the group's change over the day, the month and the year.
  *
  * Sources, one definition each:
  * - the group's value, día / mes / año, aportes and total: its own page card
@@ -21,13 +29,27 @@
  */
 import type { PositionGlanceDirection, PositionGlancePeriodDto } from "nw-tracker-contracts/dto/accounts";
 import type { NavCardMetricsDto } from "nw-tracker-contracts/dto/dashboard";
-import type { GroupGlanceDto, GroupGlanceRowDto } from "nw-tracker-contracts/dto/groups";
+import type { GroupGlanceCashDto, GroupGlanceDto, GroupGlanceRowDto } from "nw-tracker-contracts/dto/groups";
+import type { Money } from "nw-tracker-contracts/dto/flows";
+import { accountHistoricalQtyMark } from "./accountMarkClpAtYmd.js";
+import { accountTodayValue } from "./accountTodayValue.js";
+import { accountValueAt } from "./accountValue.js";
 import { compositionOnLastHeldDay, memberHeldSpans, unionHeldSpans } from "./basketGlance.js";
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
-import { currencySmallestCoin } from "./displayUnits.js";
+import { HOME_CURRENCY, currencySmallestCoin } from "./displayUnits.js";
 import { buildNavChartBucketPlan, navChartBucketNavNodes, shouldAggregateNavCharts } from "./groupChartBuckets.js";
+import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
+import { nettedGroup } from "./navTreeModel.js";
 import type { NavTreeNodeDto } from "./navTreeTypes.js";
-import { nodeNetsLinkedCards, nodeValueSeriesOnGrid, type NodeValueMember } from "./nodeValue.js";
+import {
+  linkedCardsOwedInUnit,
+  nodeNetsLinkedCards,
+  nodeValue,
+  nodeValueFromSum,
+  nodeValueSeriesOnGrid,
+  type NodeValueMember,
+} from "./nodeValue.js";
+import { priorPeriodEndYmd } from "./periodAnchorDates.js";
 import type { DailyPctPoint } from "./dailyPctSeries.js";
 import { sampleIndices } from "./positionGlance.js";
 import type { CurrencyCode } from "./rates.js";
@@ -57,6 +79,8 @@ export type GroupGlanceAccountRow = {
 };
 
 export type GroupGlanceInputs = {
+  /** "cash" for a node with `cash_glance`, "investment" for one with `investment_glance`. */
+  kind: GroupGlanceDto["kind"];
   slug: string;
   title: string;
   unit: string;
@@ -71,7 +95,7 @@ export type GroupGlanceInputs = {
   cardMetricsBySlug: Readonly<Record<string, NavCardMetricsDto>>;
   /**
    * A row's full-history daily returns (the series its % cells compound: `pg:<slug>` for a group,
-   * `account:<id>` for an account); null for a scope with none.
+   * `account:<id>` for an account); null for a scope with none. Never asked on a cash glance.
    */
   dailyPctFor: (scope: { kind: "group"; slug: string } | { kind: "account"; accountId: number }) => readonly DailyPctPoint[] | null;
   now?: Date;
@@ -194,11 +218,22 @@ export function sortGroupGlanceRows(rows: GroupGlanceRowDto[]): GroupGlanceRowDt
   });
 }
 
-/** The block for an investment group as of now. */
+/** A cash row's balances by currency (the ones holding something), largest value in the unit first (then the code). */
+type NativeAcc = Map<string, { native: number; value: number }>;
+
+function nativeMoney(acc: NativeAcc): Money[] {
+  return [...acc.entries()]
+    .filter(([, v]) => v.native !== 0)
+    .sort((a, b) => b[1].value - a[1].value || a[0].localeCompare(b[0]))
+    .map(([currency, v]) => ({ value: v.native, currency }));
+}
+
+/** The block for an investment or a cash group as of now. */
 export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
   const now = inp.now ?? new Date();
   const today = chileWallClockAt(now).ymd;
   const unit = inp.unit as CurrencyCode;
+  const cash = inp.kind === "cash";
   const eps = currencySmallestCoin(inp.unit) / 2;
   const money = (value: number) => ({ value, currency: inp.unit });
   const moneyOrNull = (x: number | null | undefined) => {
@@ -228,8 +263,59 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     return 0;
   };
   const card = requireCard(inp.slug);
-  const groupValue = presentValue(finiteOrNull(card.value.parent), card.value.fx_missing, "the group");
-  const shareOf = (v: number, held: boolean) => (held && groupValue > 0 && v > 0 ? v / groupValue : 0);
+  const accountValue = (id: number): number => {
+    const r = requireRow(id);
+    return presentValue(finiteOrNull(r.current_value), r.fx_missing === true, `account ${id}`);
+  };
+
+  // A cash group: the node-value rule over the page's counted accounts, today and at the anchors.
+  const pageMemberIds = [...new Set(inp.chartNode.member_account_ids ?? leafAccountIds(inp.chartNode))].filter(counted);
+  const netsCards = cash && nodeNetsLinkedCards(inp.slug);
+  const cardsOwed = netsCards ? linkedCardsOwedInUnit(today, unit) : 0;
+  const accountsValue = cash ? pageMemberIds.reduce((s, id) => s + accountValue(id), 0) : 0;
+  const anchors = {
+    day: chileCalendarAddDays(today, -1),
+    month: priorPeriodEndYmd("mtd", today),
+    year: priorPeriodEndYmd("ytd", today),
+  };
+  /**
+   * A set of accounts' value on a past day, net of the cards when asked. An account that held
+   * nothing then counts 0; one that held something with no rate into the unit that day throws.
+   */
+  const valueOn = (ids: readonly number[], ymd: string, nets: boolean): number => {
+    for (const id of ids) {
+      if (accountHistoricalQtyMark(id, ymd) != null && accountValueAt(id, ymd, unit) == null) {
+        throw new Error(`Group glance ${inp.slug}: account ${id} has no ${inp.unit} value on ${ymd} for what it held`);
+      }
+    }
+    return nodeValue(ids.map((account_id) => ({ account_id })), ymd, unit, { netsLinkedCards: nets }) ?? 0;
+  };
+  const changeOf = (ids: readonly number[], valueToday: number, nets = false) => ({
+    month: money(valueToday - valueOn(ids, anchors.month, nets)),
+    year: money(valueToday - valueOn(ids, anchors.year, nets)),
+  });
+  /** The accounts' balances in the currency each holds, with their value in the unit, by currency. */
+  const nativeOf = (ids: readonly number[]): NativeAcc => {
+    const acc: NativeAcc = new Map();
+    for (const id of ids) {
+      const tv = accountTodayValue(id, inp.now ? { now: inp.now } : undefined);
+      if (!tv) continue;
+      const cur = acc.get(tv.native_currency) ?? { native: 0, value: 0 };
+      cur.native += tv.native_value;
+      cur.value += accountValue(id);
+      acc.set(tv.native_currency, cur);
+    }
+    return acc;
+  };
+  const cashFields = (ids: readonly number[], valueToday: number) =>
+    cash ? { native: nativeMoney(nativeOf(ids)), change: changeOf(ids, valueToday) } : { native: [], change: null };
+
+  const groupValue = cash
+    ? (nodeValueFromSum(accountsValue, netsCards ? cardsOwed : undefined) ?? 0)
+    : presentValue(finiteOrNull(card.value.parent), card.value.fx_missing, "the group");
+  // A cash row's weight is its part of the accounts (the cards are no part of any).
+  const shareBase = cash ? accountsValue : groupValue;
+  const shareOf = (v: number, held: boolean) => (held && shareBase > 0 && v > 0 ? v / shareBase : 0);
 
   const grid = sparkGrid(today);
   // Each row's chained return on the grid, scaled together once every row is built.
@@ -241,19 +327,29 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       exclude_from_group_totals: requireRow(id).exclude_from_group_totals ?? undefined,
     }));
     const values = nodeValueSeriesOnGrid(members, grid, unit, { netsLinkedCards });
-    return { spark: groupGlanceSpark(values), perf: groupGlancePerfOnGrid(grid, values, inp.dailyPctFor(scope), eps) };
+    return {
+      spark: groupGlanceSpark(values),
+      // A cash glance draws balances only: no return is read.
+      perf: cash ? grid.map(() => null) : groupGlancePerfOnGrid(grid, values, inp.dailyPctFor(scope), eps),
+    };
   };
   const withPerf = (row: GroupGlanceRowDto, perf: (number | null)[]): GroupGlanceRowDto => {
     perfByRow.set(row, perf);
     return row;
   };
+  /** The counted accounts a page row stands for (a cash glance checks they cover the page's). */
+  const idsByRow = new Map<GroupGlanceRowDto, readonly number[]>();
+  const covering = (row: GroupGlanceRowDto, ids: readonly number[]): GroupGlanceRowDto => {
+    idsByRow.set(row, ids);
+    return row;
+  };
 
   const accountRow = (id: number, chartLineAccountId: number | null, color: string | null): GroupGlanceRowDto => {
     const r = requireRow(id);
-    const value = presentValue(finiteOrNull(r.current_value), r.fx_missing === true, `account ${id}`);
+    const value = accountValue(id);
     const held = Math.abs(value) > eps;
     const { spark, perf } = sparksFor([id], false, { kind: "account", accountId: id });
-    return withPerf({
+    return covering(withPerf({
       kind: "account",
       slug: null,
       account_id: id,
@@ -264,18 +360,19 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       color_rgb: color,
       value: money(value),
       share: shareOf(value, held),
-      day_pct: finiteOrNull(r.pct_day),
-      month_pct: finiteOrNull(r.pct_month),
-      year_pct: finiteOrNull(r.pct_year),
-      total_pl: moneyOrNull(r.delta_total),
-      total_pct: finiteOrNull(r.pct_total),
-      deposits: moneyOrNull(r.deposits),
+      day_pct: cash ? null : finiteOrNull(r.pct_day),
+      month_pct: cash ? null : finiteOrNull(r.pct_month),
+      year_pct: cash ? null : finiteOrNull(r.pct_year),
+      total_pl: cash ? null : moneyOrNull(r.delta_total),
+      total_pct: cash ? null : finiteOrNull(r.pct_total),
+      deposits: cash ? null : moneyOrNull(r.deposits),
+      ...cashFields([id], value),
       held,
       spark,
       perf_spark: [],
       members_perf_zero_y: null,
       members: [],
-    }, perf);
+    }, perf), [id]);
   };
 
   /**
@@ -284,8 +381,13 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
    * of their own).
    */
   const groupRow = (node: NavTreeNodeDto, chartLineAccountId: number | null, withMembers: boolean): GroupGlanceRowDto => {
-    const c = requireCard(node.slug);
-    const value = presentValue(finiteOrNull(c.value.child), c.value.fx_missing, `child ${node.slug}`);
+    // A cash child is its counted accounts (never netted: the cards are a row of the page's own);
+    // an investment child reads its card.
+    const c = cash ? null : requireCard(node.slug);
+    const ownIds = [...new Set(node.member_account_ids ?? leafAccountIds(node))].filter(counted);
+    const value = c
+      ? presentValue(finiteOrNull(c.value.child), c.value.fx_missing, `child ${node.slug}`)
+      : ownIds.reduce((s, id) => s + accountValue(id), 0);
     const held = Math.abs(value) > eps;
     const members = !withMembers
       ? []
@@ -296,11 +398,12 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
               .map((id) => accountRow(id, null, colorOfAccountIn(node, id)))
           )
         : rowsUnder(node, false);
-    const { spark, perf } = sparksFor(leafAccountIds(node), nodeNetsLinkedCards(node.slug), {
-      kind: "group",
-      slug: node.slug,
-    });
-    return withPerf({
+    const { spark, perf } = sparksFor(
+      cash ? ownIds : leafAccountIds(node),
+      cash ? false : nodeNetsLinkedCards(node.slug),
+      { kind: "group", slug: node.slug }
+    );
+    return covering(withPerf({
       kind: "group",
       slug: node.slug,
       account_id: null,
@@ -311,18 +414,19 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       color_rgb: node.color_rgb,
       value: money(value),
       share: shareOf(value, held),
-      day_pct: finiteOrNull(c.row_pct.day.value),
-      month_pct: finiteOrNull(c.row_pct.month.value),
-      year_pct: finiteOrNull(c.row_pct.year.value),
-      total_pl: moneyOrNull(c.child.month.delta_total),
-      total_pct: finiteOrNull(c.row_pct.total.value),
-      deposits: moneyOrNull(c.child.month.deposits),
+      day_pct: c ? finiteOrNull(c.row_pct.day.value) : null,
+      month_pct: c ? finiteOrNull(c.row_pct.month.value) : null,
+      year_pct: c ? finiteOrNull(c.row_pct.year.value) : null,
+      total_pl: c ? moneyOrNull(c.child.month.delta_total) : null,
+      total_pct: c ? finiteOrNull(c.row_pct.total.value) : null,
+      deposits: c ? moneyOrNull(c.child.month.deposits) : null,
+      ...cashFields(ownIds, value),
       held,
       spark,
       perf_spark: [],
       members_perf_zero_y: null,
       members,
-    }, perf);
+    }, perf), ownIds);
   };
 
   /**
@@ -355,19 +459,107 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     return sortGroupGlanceRows(children);
   }
   const rows = rowsUnder(inp.chartNode, true);
+  if (cash) {
+    // The rows add up to the total: a counted member the chart node's rows leave out (one whose
+    // sub-group the nav tree pruned) gets a row of its own, and the sum is checked.
+    const covered = new Set(rows.flatMap((r) => idsByRow.get(r) ?? []));
+    const missing = pageMemberIds.filter((id) => !covered.has(id));
+    if (missing.length > 0) {
+      rows.push(...missing.map((id) => accountRow(id, null, colorOfAccountIn(inp.chartNode, id))));
+      rows.splice(0, rows.length, ...sortGroupGlanceRows(rows));
+    }
+    const rowsSum = rows.reduce((s, r) => s + r.value.value, 0);
+    if (Math.abs(rowsSum - accountsValue) > eps) {
+      throw new Error(`Group glance ${inp.slug}: its rows add up to ${rowsSum}, its accounts to ${accountsValue}`);
+    }
+  }
 
-  // Composition: the counted members' summed position on the last day any held something (the basket's rule).
-  const memberIds = [...new Set(inp.chartNode.member_account_ids ?? leafAccountIds(inp.chartNode))].filter(counted);
-  const spansById = new Map(memberIds.map((id) => [id, memberHeldSpans(id, today)]));
-  const composition = compositionOnLastHeldDay(
-    `Group ${inp.slug}`,
-    memberIds,
-    spansById,
-    unionHeldSpans([...spansById.values()].flat()),
-    inp.unit,
-    today,
-    now
-  );
+  // The linked cards' row of a cash group that nets them: what they owe, negative, last (it holds
+  // no part of the accounts). Its own balance is the cards' peso total; its line 0 less the owed.
+  let linkedCards: GroupGlanceCashDto["linked_cards"] = null;
+  if (netsCards && cardsOwed !== 0) {
+    const linked = nettedGroup();
+    const routePath = linked.routePath?.trim();
+    if (!routePath) throw new Error(`Group glance ${inp.slug}: the linked cards' group ${linked.slug} has no route_path`);
+    const value = -cardsOwed;
+    linkedCards = { label: linked.label, label_i18n_key: "liabilities.creditCard", route_path: routePath, value: money(value) };
+    const cardsRow: GroupGlanceRowDto = {
+      kind: "linked_cards",
+      slug: linked.slug,
+      account_id: null,
+      label: linkedCards.label,
+      label_i18n_key: linkedCards.label_i18n_key,
+      route_path: routePath,
+      chart_line_account_id: null,
+      color_rgb: null,
+      value: money(value),
+      share: 0,
+      day_pct: null,
+      month_pct: null,
+      year_pct: null,
+      total_pl: null,
+      total_pct: null,
+      deposits: null,
+      native: [{ value: -linkedCreditCardClpForCashCardAsOf(today), currency: HOME_CURRENCY }],
+      change: changeOf([], value, true),
+      held: true,
+      spark: groupGlanceSpark(nodeValueSeriesOnGrid([], grid, unit, { netsLinkedCards: true })),
+      perf_spark: [],
+      members_perf_zero_y: null,
+      members: [],
+    };
+    perfByRow.set(cardsRow, grid.map(() => null));
+    rows.push(cardsRow);
+  }
+
+  // Composition: the counted members' summed position on the last day any held something (the
+  // basket's rule). A cash group has none (its money is its balance).
+  const memberIds = pageMemberIds;
+  const spansById = cash ? null : new Map(memberIds.map((id) => [id, memberHeldSpans(id, today)]));
+  const composition = spansById
+    ? compositionOnLastHeldDay(
+        `Group ${inp.slug}`,
+        memberIds,
+        spansById,
+        unionHeldSpans([...spansById.values()].flat()),
+        inp.unit,
+        today,
+        now
+      )
+    : null;
+
+  // A cash group's own figures: balances by currency and the change of its value.
+  let cashBlock: GroupGlanceCashDto | null = null;
+  if (cash) {
+    const byCurrency = nativeOf(memberIds);
+    const positive = [...byCurrency.values()].reduce((s, v) => s + Math.max(v.value, 0), 0);
+    const changes = {
+      day: groupValue - valueOn(memberIds, anchors.day, netsCards),
+      month: groupValue - valueOn(memberIds, anchors.month, netsCards),
+      year: groupValue - valueOn(memberIds, anchors.year, netsCards),
+    };
+    const largestChange = Math.max(...Object.values(changes).map(Math.abs));
+    const changePeriod = (x: number): PositionGlancePeriodDto => ({
+      pl: money(x),
+      pct: null,
+      share: largestChange > 0 ? Math.abs(x) / largestChange : 0,
+      // A change under the unit's coin is no change.
+      direction: direction(Math.abs(x) > eps ? x : 0),
+    });
+    cashBlock = {
+      by_currency: [...byCurrency.entries()]
+        .filter(([, v]) => v.native !== 0)
+        .sort((a, b) => b[1].value - a[1].value || a[0].localeCompare(b[0]))
+        .map(([currency, v]) => ({
+          currency,
+          native: { value: v.native, currency },
+          value: money(v.value),
+          share: positive > 0 && v.value > 0 ? v.value / positive : 0,
+        })),
+      linked_cards: linkedCards,
+      change: { day: changePeriod(changes.day), month: changePeriod(changes.month), year: changePeriod(changes.year) },
+    };
+  }
 
   // Periods: the group's own card.
   const pl = (k: "day" | "month" | "year") => finiteOrNull(card.parent[k].delta_period);
@@ -384,10 +576,11 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
   const periods = { day: period("day"), month: period("month"), year: period("year") };
 
   const groupHeld = Math.abs(groupValue) > eps;
-  const totalSparks = sparksFor(leafAccountIds(inp.chartNode), nodeNetsLinkedCards(inp.slug), {
-    kind: "group",
-    slug: inp.slug,
-  });
+  const totalSparks = sparksFor(
+    cash ? memberIds : leafAccountIds(inp.chartNode),
+    cash ? netsCards : nodeNetsLinkedCards(inp.slug),
+    { kind: "group", slug: inp.slug }
+  );
   const total: GroupGlanceRowDto = withPerf({
     kind: "group",
     slug: inp.slug,
@@ -399,12 +592,16 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     color_rgb: inp.chartNode.color_rgb,
     value: money(groupValue),
     share: 1,
-    day_pct: finiteOrNull(card.parent_pct.day.value),
-    month_pct: finiteOrNull(card.parent_pct.month.value),
-    year_pct: finiteOrNull(card.parent_pct.year.value),
-    total_pl: moneyOrNull(card.parent.month.delta_total),
-    total_pct: finiteOrNull(card.parent_pct.total.value),
-    deposits: moneyOrNull(card.parent.month.deposits),
+    day_pct: cash ? null : finiteOrNull(card.parent_pct.day.value),
+    month_pct: cash ? null : finiteOrNull(card.parent_pct.month.value),
+    year_pct: cash ? null : finiteOrNull(card.parent_pct.year.value),
+    total_pl: cash ? null : moneyOrNull(card.parent.month.delta_total),
+    total_pct: cash ? null : finiteOrNull(card.parent_pct.total.value),
+    deposits: cash ? null : moneyOrNull(card.parent.month.deposits),
+    native: cash ? nativeMoney(nativeOf(memberIds)) : [],
+    change: cashBlock
+      ? { month: cashBlock.change.month.pl!, year: cashBlock.change.year.pl! }
+      : null,
     held: groupHeld,
     spark: totalSparks.spark,
     perf_spark: [],
@@ -428,6 +625,8 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     slug: inp.slug,
     title: inp.title,
     unit: inp.unit,
+    kind: inp.kind,
+    cash: cashBlock,
     value: money(groupValue),
     day: periods.day,
     composition,

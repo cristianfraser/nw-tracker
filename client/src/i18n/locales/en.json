@@ -283,9 +283,6 @@
     "groupAccumulatedDeposits": "Total accum. contributions",
     "accumulatedDeposits": "accum. contributions",
     "valuationAndDeposits": "Valuation and contributions",
-    "currentValueByAccount": "Current value by account",
-    "monthlyDeltaConsolidated": "Monthly Δ (consolidated)",
-    "monthlyDeltaConsolidatedAccumTitle": "Monthly Δ (consolidated) and accumulated earnings",
     "noMonthlyPl": "No monthly P/L data for this period.",
     "noExpensesInPeriod": "No expenses in this period.",
     "noValuationSeries": "No valuation series for this period.",
@@ -1296,6 +1293,17 @@
       "percentToggle": "%",
       "percentToggleTitle": "Show each position's share of the total"
     },
+    "cashGlance": {
+      "tableLabel": "Accounts of {{name}}",
+      "col": {
+        "spark": "balance, 1 year",
+        "native": "balance"
+      },
+      "byCurrency": "balance by currency",
+      "change": "change in balance",
+      "balanceTitle": "Balance",
+      "balanceByAccount": "Balance by account"
+    },
     "basketGlance": {
       "units": {
         "shares": "{{units}} shares",
@@ -1312,11 +1320,7 @@
     "flowsTitle": "Flows",
     "dailyDetailEmpty": "No daily data for this group's accounts.",
     "monthlyDetailEmpty": "No monthly performance data for this group's accounts.",
-    "accountsTreeTitle": "Accounts in this view",
     "accountsTreeTitleLiabilities": "Groups and accounts in this view",
-    "chartToggleGrouped": "Grouped",
-    "chartToggleAccumulatedDeposits": "Accumulated contributions",
-    "chartToggleAccumulatedDepositsTitle": "Dashed lines with accumulated contributions per account or group.",
     "accountsTreeEmpty": "No accounts in this view yet.",
     "creditCardLanes": {
       "colCard": "Card",
