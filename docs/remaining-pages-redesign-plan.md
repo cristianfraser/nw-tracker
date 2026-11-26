@@ -80,6 +80,15 @@ Two different kinds of account land here, and the page fits neither.
   «Position (ticker and units)» whose Ticker, Units and Value / unit all read «—», because
   these accounts have none. Seven stacked chart tiles follow, 4,900px on a phone, where the
   position page shows one rail and three charts for the same questions.
+  This was seen on the synthetic demo data only, whose APV and AFC accounts are generated as
+  stored valuations. An APV, AFP or AFC account that holds cuotas already opens the position
+  page (`position_glance`, `server/src/positionGlance.ts`, is built from units × a unit price).
+  Decided 2026-11-26, in two parts: **(1)** the demo's APV and AFC accounts become cuota ledgers
+  on their existing fund series (a demo-generator change, no client work); **(2)** an account
+  valued by a stored valuation on a date, with no units or price, opens the same position page
+  through a glance without the price blocks (no quote, sparkline of price, price track or
+  average cost; the value composition and the day / month / year bars stay), so no account is
+  left on `StandardAccountDetailPage` and it is deleted.
 - Look from: `CheckingAccountDetailPage` for B1, `PositionAccountDetailPage` for B2.
 
 ### C. `/cash_eqs`, `/cash_eqs/savings`, `/cash_eqs/checking` — generic group page
@@ -196,7 +205,7 @@ item is a group, the group page with a single account shows that account page's 
 |---|---|---|---|
 | A | Real-estate group page | Yes: a `real-estate-glance` on the model of `mortgage-glance` (`mortgageGroupGlance.ts`), composed from each property's own cached `depto_glance` so the group's figures are the pages' figures: appraisal, debt, net equity, loan-to-value, equity over time, rent and running costs per property | new `RealEstateGroupPage`, new server module, one dispatch branch in `GroupInfoPage.tsx` |
 | B1 | Cash accounts onto the checking page | Yes: extend `CHECKING_PAGE_KIND_SLUGS` and the checking payload to broker / exchange cash and foreign-currency checking (balance in the account's `cash_currency`) | `AccountDetailPage.tsx`, `CheckingAccountDetailPage.tsx`, checking payload builder |
-| B2 | Book-valued invested accounts onto the position page | Yes: a position glance for an account with no ticker or units (value, deposited, P/L, returns) | `AccountDetailPage.tsx`, `PositionAccountDetailPage.tsx`, `components/account/PositionGlance`; then delete `StandardAccountDetailPage` if nothing is left on it |
+| B2 | Every remaining account onto the position page: the demo's APV / AFC accounts get units; valuation-on-date accounts get a glance without the price blocks | Yes: demo generator (`server/src/demoData/`, `scripts/generate-demo-data.ts`); `positionGlance.ts` builds a no-price glance for an account valued by stored valuations | `AccountDetailPage.tsx`, `PositionAccountDetailPage.tsx`, `components/account/PositionGlance`; then delete `StandardAccountDetailPage` |
 | C | Cash group pages | Yes: a cash group glance (balance per account and currency, month in / out) | new `CashGroupPage`, dispatch branch in `GroupInfoPage.tsx`; then delete `GroupInfoBase` |
 | D | Rates page | Yes: today's glance per pair and the recent-entries tail built server-side (drop `ratesDailyTailClip.ts`); coverage message as structured data | `RatesPage.tsx`, `components/rates/`, rates route |
 | E | Deposits reconciliation | Probably small: rows grouped by month server-side if they are not already | `DepositsReconciliationPage.tsx` |
