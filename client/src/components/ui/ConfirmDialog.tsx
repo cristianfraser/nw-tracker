@@ -9,6 +9,8 @@ export type ConfirmDialogProps = {
   confirmLabel: string;
   cancelLabel: string;
   confirmDisabled?: boolean;
+  /** A failed confirm's message, shown in the dialog above the buttons. */
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -20,12 +22,14 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   confirmDisabled = false,
+  error = null,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   return (
     <Modal open={open} onClose={onCancel} title={title} closeAriaLabel={cancelLabel}>
       <p className={styles.message}>{message}</p>
+      {error ? <p className="error" role="alert">{error}</p> : null}
       <div className={styles.actions}>
         <Button variant="secondary" onClick={onCancel}>
           {cancelLabel}

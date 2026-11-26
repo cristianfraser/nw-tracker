@@ -283,6 +283,14 @@ function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
   );
 }
 
+/** A failed row action's message, kept beside the control that ran it (cleared by the next try). */
+function useActionError() {
+  const [error, setError] = useState<string | null>(null);
+  const onError = useCallback((err: unknown) => setError(err instanceof Error ? err.message : String(err)), []);
+  const clear = useCallback(() => setError(null), []);
+  return { error, onError, clear };
+}
+
 type RowActions = {
   onEditPieces: (line: FlowCcExpenseLineRow) => void;
   onEditManual?: (line: FlowCcExpenseLineRow) => void;
@@ -295,6 +303,7 @@ function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
   const { displayUnit } = useDisplayPreferences();
   const del = useDeleteCcStatementLineMutation({ accountId: line.account_id, displayUnit });
   const [confirming, setConfirming] = useState(false);
+  const failure = useActionError();
   return (
     <>
       <Button
@@ -302,7 +311,10 @@ function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
         size="sm"
         disabled={del.isPending}
         aria-label={t("accountDetail.creditCard.facturacionDeleteLineAria")}
-        onClick={() => setConfirming(true)}
+        onClick={() => {
+          failure.clear();
+          setConfirming(true);
+        }}
       >
         {t("accountDetail.creditCard.facturacionDeleteLine")}
       </Button>
@@ -316,10 +328,11 @@ function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
         confirmLabel={t("accountDetail.creditCard.facturacionDeleteConfirmAction")}
         cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
         confirmDisabled={del.isPending}
+        error={failure.error}
         onConfirm={() =>
           del.mutate(line.statement_line_id, {
             onSuccess: () => setConfirming(false),
-            onError: (err) => window.alert(err instanceof Error ? err.message : String(err)),
+            onError: failure.onError,
           })
         }
         onCancel={() => setConfirming(false)}
@@ -334,13 +347,12 @@ function AnnulPurchaseControl({ line }: { line: FlowCcExpenseLineRow }) {
   const { displayUnit } = useDisplayPreferences();
   const annul = useAnnulCcPurchaseMutation({ accountId: line.account_id, displayUnit });
   const [day, setDay] = useState(() => chileTodayYmd());
+  const failure = useActionError();
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(day);
   const submit = () => {
     if (!valid) return;
-    annul.mutate(
-      { lineId: line.statement_line_id, annulledOn: day },
-      { onError: (err) => window.alert(err instanceof Error ? err.message : String(err)) }
-    );
+    failure.clear();
+    annul.mutate({ lineId: line.statement_line_id, annulledOn: day }, { onError: failure.onError });
   };
   return (
     <div className={styles.panelBigGroup}>
@@ -363,6 +375,7 @@ function AnnulPurchaseControl({ line }: { line: FlowCcExpenseLineRow }) {
         {t("expenses.creditCard.lineRow.annulled.confirm")}
       </Button>
       {!valid ? <span className="error">{t("expenses.creditCard.lineRow.annulled.dateInvalid")}</span> : null}
+      {failure.error ? <span className="error" role="alert">{failure.error}</span> : null}
     </div>
   );
 }
@@ -373,9 +386,18 @@ function UndoAnnulmentButton({ line, annulId }: { line: FlowCcExpenseLineRow; an
   const { displayUnit } = useDisplayPreferences();
   const undo = useUndoCcAnnulledPurchaseMutation({ accountId: line.account_id, displayUnit });
   const [confirming, setConfirming] = useState(false);
+  const failure = useActionError();
   return (
     <>
-      <Button variant="ghost" size="sm" disabled={undo.isPending} onClick={() => setConfirming(true)}>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={undo.isPending}
+        onClick={() => {
+          failure.clear();
+          setConfirming(true);
+        }}
+      >
         {t("expenses.creditCard.lineRow.annulled.undo")}
       </Button>
       <ConfirmDialog
@@ -385,10 +407,11 @@ function UndoAnnulmentButton({ line, annulId }: { line: FlowCcExpenseLineRow; an
         confirmLabel={t("expenses.creditCard.lineRow.annulled.undo")}
         cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
         confirmDisabled={undo.isPending}
+        error={failure.error}
         onConfirm={() =>
           undo.mutate(annulId, {
             onSuccess: () => setConfirming(false),
-            onError: (err) => window.alert(err instanceof Error ? err.message : String(err)),
+            onError: failure.onError,
           })
         }
         onCancel={() => setConfirming(false)}
@@ -403,15 +426,14 @@ function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
   const { displayUnit } = useDisplayPreferences();
   const make = useMakeStatementLineInstallmentMutation({ accountId: line.account_id, displayUnit });
   const [value, setValue] = useState("");
+  const failure = useActionError();
   const parsed = parseNumberInput(value);
   const count = parsed.ok ? parsed.value : null;
   const valid = count != null && Number.isInteger(count) && count >= 2;
   const submit = () => {
     if (!valid || count == null) return;
-    make.mutate(
-      { lineId: line.statement_line_id, cuotas_totales: count },
-      { onError: (err) => window.alert(err instanceof Error ? err.message : String(err)) }
-    );
+    failure.clear();
+    make.mutate({ lineId: line.statement_line_id, cuotas_totales: count }, { onError: failure.onError });
   };
   return (
     <div className={styles.panelBigGroup}>
@@ -433,6 +455,7 @@ function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
         {t("accountDetail.creditCard.makeInstallmentDialogConfirm")}
       </Button>
       {!parsed.ok ? <span className="error">{parsed.message}</span> : null}
+      {failure.error ? <span className="error" role="alert">{failure.error}</span> : null}
     </div>
   );
 }
@@ -453,9 +476,10 @@ function PlanCuotasControls({ line }: { line: FlowCcExpenseLineRow }) {
   const count = parsed.ok ? parsed.value : null;
   const valid = count != null && Number.isInteger(count) && count >= 2 && count !== line.nro_cuota_total;
   const busy = update.isPending || remove.isPending;
-  const onError = (err: unknown) => window.alert(err instanceof Error ? err.message : String(err));
+  const { error: failureText, onError, clear } = useActionError();
   const submit = () => {
     if (!valid || count == null) return;
+    clear();
     update.mutate({ purchaseId, cuotas_totales: count }, { onError });
   };
   return (
@@ -480,6 +504,7 @@ function PlanCuotasControls({ line }: { line: FlowCcExpenseLineRow }) {
         {t("expenses.creditCard.lineRow.planRemove")}
       </Button>
       {!parsed.ok ? <span className="error">{parsed.message}</span> : null}
+      {failureText && !confirming ? <span className="error" role="alert">{failureText}</span> : null}
       <ConfirmDialog
         open={confirming}
         title={t("expenses.creditCard.lineRow.planRemoveConfirmTitle")}
@@ -487,6 +512,7 @@ function PlanCuotasControls({ line }: { line: FlowCcExpenseLineRow }) {
         confirmLabel={t("expenses.creditCard.lineRow.planRemove")}
         cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
         confirmDisabled={busy}
+        error={failureText}
         onConfirm={() => remove.mutate(purchaseId, { onSuccess: () => setConfirming(false), onError })}
         onCancel={() => setConfirming(false)}
       />
@@ -508,12 +534,19 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
   const unlink = useUnlinkCardRefundMutation();
   const candidates = useCardRefundCandidates(displayUnit, line.account_id, line.statement_line_id, open);
   const busy = link.isPending || unlink.isPending;
-  const onError = (err: unknown) => window.alert(err instanceof Error ? err.message : String(err));
-  const linkTo = (purchaseLineId: number) =>
+  const { error: failureText, onError, clear } = useActionError();
+  const failureNode = failureText ? (
+    <p className="error" role="alert">
+      {failureText}
+    </p>
+  ) : null;
+  const linkTo = (purchaseLineId: number) => {
+    clear();
     link.mutate(
       { account_id: line.account_id, line_id: line.statement_line_id, purchase_line_id: purchaseLineId },
       { onSuccess: () => setOpen(false), onError }
     );
+  };
 
   if (line.refund_link_broken) {
     return (
@@ -527,6 +560,7 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
         >
           {t("expenses.creditCard.lineRow.refund.unlink")}
         </Button>
+        {failureNode}
       </div>
     );
   }
@@ -544,6 +578,7 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
         >
           {t("expenses.creditCard.lineRow.refund.unlink")}
         </Button>
+        {failureNode}
       </div>
     );
   }
@@ -602,6 +637,7 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
           </Button>
         </div>
       )}
+      {failureNode}
     </div>
   );
 }
@@ -1008,7 +1044,7 @@ export function CreditCardExpenseLinesTable({
    */
   animateArrivals?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const listRef = useRowArrivalAnimation(animateArrivals && items != null);
   const [arrival, setArrival] = useState<{ keys: string; seen: ReadonlySet<string> | null; arrived: ReadonlySet<string> }>({
     keys: "",
@@ -1031,7 +1067,8 @@ export function CreditCardExpenseLinesTable({
 
   const categoryLabelBySlug = useMemo(
     () => new Map(categories.map((c) => [c.slug, ccExpenseCategoryPathLabel(c)])),
-    [categories]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n.language: the labels translate at render (no cached t()).
+    [categories, i18n.language]
   );
   const { displayUnit } = useDisplayPreferences();
   const sorted = useMemo(
