@@ -45,9 +45,9 @@ vi.mock("../flowsDepositsReconciliation.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../flowsDepositsReconciliation.js")>();
   return {
     ...actual,
-    buildDepositsReconciliationPayload: (...args: Parameters<typeof actual.buildDepositsReconciliationPayload>) => {
+    buildDepositsReconciliationPagePayload: (...args: Parameters<typeof actual.buildDepositsReconciliationPagePayload>) => {
       if (failing.depositsReconciliation) throw new Error("vitest: the reconciliation could not be built");
-      return actual.buildDepositsReconciliationPayload(...args);
+      return actual.buildDepositsReconciliationPagePayload(...args);
     },
   };
 });

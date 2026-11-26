@@ -1,295 +1,254 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useFlowsDepositsReconciliation } from "../queries/hooks";
 import { PageGridTile } from "../components/layout/PageGridTile";
-import { Table } from "../components/ui/Table";
+import { FlowMonthList, MonthRowDay } from "../components/flows/FlowMonthList";
+import listStyles from "../components/flows/FlowMonthRows.module.css";
 import { loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
+import { cn } from "../cn";
 import { useTranslation, depositFlowCategoryLabel } from "../i18n";
 import { formatFlowMoney } from "../flowsDisplay";
 import type {
   DepositManualAssertionRow,
   DepositReconciliationRow,
+  DepositReconciliationSection,
   DepositReconciliationStatus,
   DepositRedemptionRow,
   DepositRedemptionStatus,
+  DepositsReconciliationPayload,
 } from "../types";
+import type { DisplayUnit } from "../queries/keys";
 import { queryLoadError } from "../queries/pageShapeReady";
+import styles from "./DepositsReconciliationPage.module.css";
 
-const STATUS_ORDER: DepositReconciliationStatus[] = [
-  "unlinked_checking_present",
-  "unlinked_no_checking_source",
-  "resolved_internal_transfer",
-  "resolved_tax_refund",
-  "linked",
-];
+const DEPOSIT_SECTION_TITLE: Record<DepositReconciliationStatus, string> = {
+  unlinked_checking_present: "depositsReconciliation.sectionNeedsAttention",
+  unlinked_no_checking_source: "depositsReconciliation.sectionNoCheckingSource",
+  resolved_internal_transfer: "depositsReconciliation.sectionResolvedInternalTransfer",
+  resolved_tax_refund: "depositsReconciliation.sectionResolvedTaxRefund",
+  linked: "depositsReconciliation.sectionLinked",
+};
 
-function statusSectionKey(status: DepositReconciliationStatus): string {
-  switch (status) {
-    case "linked":
-      return "depositsReconciliation.sectionLinked";
-    case "resolved_tax_refund":
-      return "depositsReconciliation.sectionResolvedTaxRefund";
-    case "resolved_internal_transfer":
-      return "depositsReconciliation.sectionResolvedInternalTransfer";
-    case "unlinked_no_checking_source":
-      return "depositsReconciliation.sectionNoCheckingSource";
-    case "unlinked_checking_present":
-      return "depositsReconciliation.sectionNeedsAttention";
-  }
-}
+const REDEMPTION_SECTION_TITLE: Record<DepositRedemptionStatus, string> = {
+  unlinked_checking_present: "depositsReconciliation.redemptionSectionNeedsAttention",
+  unlinked_no_checking_source: "depositsReconciliation.redemptionSectionNoCheckingSource",
+  resolved_internal_transfer: "depositsReconciliation.sectionResolvedInternalTransfer",
+  linked: "depositsReconciliation.redemptionSectionLinked",
+};
 
-function statusEmptyKey(status: DepositReconciliationStatus): string {
-  switch (status) {
-    case "linked":
-      return "depositsReconciliation.emptyLinked";
-    case "resolved_tax_refund":
-      return "depositsReconciliation.emptyResolvedTaxRefund";
-    case "resolved_internal_transfer":
-      return "depositsReconciliation.emptyResolvedInternalTransfer";
-    case "unlinked_no_checking_source":
-      return "depositsReconciliation.emptyNoCheckingSource";
-    case "unlinked_checking_present":
-      return "depositsReconciliation.emptyNeedsAttention";
-  }
-}
+const emptySection = <S extends string>(status: S) => ({ status, count: 0, total: 0, months: [] });
+
+/**
+ * The frame drawn until the payload arrives: every heading with a zero total and no rows (a guess
+ * at the shape, as `coldPageShape.ts` is; the statuses the server lists with rows stay).
+ */
+const PLACEHOLDER: DepositsReconciliationPayload = {
+  unit: "",
+  deposits: {
+    count: 0,
+    total: 0,
+    sections: (Object.keys(DEPOSIT_SECTION_TITLE) as DepositReconciliationStatus[]).map(emptySection),
+    by_month: [],
+  },
+  redemptions: {
+    count: 0,
+    total: 0,
+    sections: (Object.keys(REDEMPTION_SECTION_TITLE) as DepositRedemptionStatus[]).map(emptySection),
+  },
+  manual_assertions: { count: 0, total: 0, linked_count: 0, months: [] },
+  fx_conversion_error: false,
+  fx_conversion_warnings: [],
+};
 
 /** An amount in the payload's unit; one with no rate on file reads «—». */
-function money(v: number | null, unit: string): string {
+function money(v: number | null, unit: DisplayUnit): string {
   return v == null ? "—" : formatFlowMoney(v, unit);
 }
 
-function ReconciliationSection({
-  status,
-  rows,
+/** A list's heading: its title, how many rows it holds and their total. */
+function ListHeading({
+  as: Heading,
+  title,
+  count,
   total,
   loading,
 }: {
-  status: DepositReconciliationStatus;
-  rows: DepositReconciliationRow[];
-  /** In the payload's unit (null when a row has no value in it). */
-  total: number | null;
-  loading?: boolean;
+  as: "h3" | "h4";
+  title: string;
+  count?: number;
+  total?: string;
+  loading: boolean;
 }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-
   return (
-    <PageGridTile id={`reconciliation-${status}`}>
-      <h3>
-        {t(statusSectionKey(status))}
-        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-          {money(total, displayUnit)}
+    <Heading className={styles.heading}>
+      <span>{title}</span>
+      {count != null ? (
+        <span className={loadableClass(loading, styles.count)}>
+          <span aria-hidden="true">{count}</span>
+          <span className="visually-hidden">
+            {count === 1 ? t("depositsReconciliation.rowCountOne") : t("depositsReconciliation.rowCount", { count })}
+          </span>
         </span>
-      </h3>
-      <Table
-        tableStyle={{ fontSize: "var(--font-size-prose)" }}
-        collapsedVisibleRows={20}
-        showMoreLabel={t("notifications.showMore")}
-        showLessLabel={t("table.showLess")}
-        wrapClassName={loadableClass(loading)}
-        header={
-          <thead>
-            <tr>
-              <th>{t("depositsReconciliation.colDate")}</th>
-              <th>{t("depositsReconciliation.colCategory")}</th>
-              <th>{t("depositsReconciliation.colAccount")}</th>
-              <th>{t("depositsReconciliation.colAmount")}</th>
-            </tr>
-          </thead>
-        }
-      >
-        {rows.length === 0 && !loading ? (
-          <tr>
-            <td colSpan={4} className="muted">
-              {t(statusEmptyKey(status))}
-            </td>
-          </tr>
-        ) : (
-          rows.map((r) => {
-            return (
-              <tr key={r.movement_id}>
-                <td className="mono">{r.occurred_on}</td>
-                <td>{depositFlowCategoryLabel(r.category)}</td>
-                <td>
-                  <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
-                </td>
-                <td className="mono">{money(r.amount, displayUnit)}</td>
-              </tr>
-            );
-          })
-        )}
-      </Table>
-    </PageGridTile>
+      ) : null}
+      {total != null ? <span className={loadableClass(loading, cn("mono", styles.total))}>{total}</span> : null}
+    </Heading>
   );
 }
 
-function ManualAssertionsSection({
-  rows,
+/** A deposit or a redemption: day, account with its category as a tag, amount. */
+function movementRow(r: DepositReconciliationRow | DepositRedemptionRow, unit: DisplayUnit): ReactNode {
+  return (
+    <>
+      <MonthRowDay ymd={r.occurred_on} />
+      <span className={listStyles.account}>
+        <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
+        <span className={listStyles.chip}>{depositFlowCategoryLabel(r.category)}</span>
+      </span>
+      <span className={cn("mono", listStyles.num)}>{money(r.amount, unit)}</span>
+    </>
+  );
+}
+
+/**
+ * One side's status sections, in the server's order: each with rows is a tile (title, count,
+ * total, its months); the ones with none are named together on one line once loaded.
+ */
+function StatusSections<S extends DepositReconciliationStatus, R extends DepositReconciliationRow | DepositRedemptionRow>({
+  idPrefix,
+  sections,
+  titleKeys,
+  rowKey,
   loading,
 }: {
-  rows: DepositManualAssertionRow[];
-  loading?: boolean;
+  idPrefix: string;
+  sections: DepositReconciliationSection<S, R>[];
+  titleKeys: Record<S, string>;
+  rowKey: (row: R, index: number) => string | number;
+  loading: boolean;
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const unmatched = rows.filter((r) => r.status === "asserted_unmatched");
-  const linkedCount = rows.length - unmatched.length;
-  const total = unmatched.reduce<number | null>(
-    (s, r) => (s == null || r.amount == null ? null : s + r.amount),
-    0
+  // While loading every status keeps its tile (the placeholder's): loading is not absence.
+  const empty = loading ? [] : sections.filter((s) => s.count === 0);
+  return (
+    <>
+      {sections
+        .filter((s) => loading || s.count > 0)
+        .map((s) => (
+          <PageGridTile key={s.status} id={`${idPrefix}-${s.status}`}>
+            <ListHeading
+              as="h4"
+              title={t(titleKeys[s.status])}
+              count={s.count}
+              total={money(s.total, displayUnit)}
+              loading={loading}
+            />
+            <FlowMonthList
+              months={s.months}
+              loading={loading}
+              monthHeading="h5"
+              monthTotal={(m) => money(m.total, displayUnit)}
+              rowKey={rowKey}
+              renderRow={(r) => movementRow(r, displayUnit)}
+            />
+          </PageGridTile>
+        ))}
+      {empty.length > 0 ? (
+        <p className={cn("muted", styles.emptyLine)}>
+          {t("depositsReconciliation.emptySections", {
+            list: empty.map((s) => t(`depositsReconciliation.statusShort.${s.status}`)).join(" · "),
+          })}
+        </p>
+      ) : null}
+    </>
   );
+}
 
+function manualAssertionNote(r: DepositManualAssertionRow, t: (k: string, o?: Record<string, unknown>) => string): string {
+  const candidates =
+    r.candidate_count === 0
+      ? t("depositsReconciliation.assertedNoCandidate")
+      : r.candidate_count === 1
+        ? t("depositsReconciliation.assertedCandidatesOne")
+        : t("depositsReconciliation.assertedCandidates", { count: r.candidate_count });
+  return r.merchant ? `${r.merchant} · ${candidates}` : candidates;
+}
+
+/** The checking outflows marked as deposits that found no deposit, as the same list by month. */
+function ManualAssertions({
+  block,
+  loading,
+}: {
+  block: DepositsReconciliationPayload["manual_assertions"];
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  const { displayUnit } = useDisplayPreferences();
   return (
     <PageGridTile id="asserted">
-      <h3>
-        {t("depositsReconciliation.assertedTitle")}
-        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-          {money(total, displayUnit)}
-        </span>
-      </h3>
-      <Table
-        tableStyle={{ fontSize: "var(--font-size-prose)" }}
-        collapsedVisibleRows={20}
-        showMoreLabel={t("notifications.showMore")}
-        showLessLabel={t("table.showLess")}
-        wrapClassName={loadableClass(loading)}
-        header={
-          <thead>
-            <tr>
-              <th>{t("depositsReconciliation.colDate")}</th>
-              <th>{t("depositsReconciliation.colAccount")}</th>
-              <th>{t("depositsReconciliation.colDescription")}</th>
-              <th>{t("depositsReconciliation.colAmount")}</th>
-              <th>{t("depositsReconciliation.colCandidates")}</th>
-            </tr>
-          </thead>
-        }
-      >
-        {unmatched.length === 0 && !loading ? (
-          <tr>
-            <td colSpan={5} className="muted">
-              {t("depositsReconciliation.assertedEmpty")}
-            </td>
-          </tr>
-        ) : (
-          unmatched.map((r) => {
-            return (
-              <tr key={r.purchase_key}>
-                <td className="mono">{r.occurred_on}</td>
-                <td>
-                  <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
-                </td>
-                <td>{r.merchant ?? ""}</td>
-                <td className="mono">{money(r.amount, displayUnit)}</td>
-                <td className="mono">{r.candidate_count}</td>
-              </tr>
-            );
-          })
+      <ListHeading
+        as="h4"
+        title={t("depositsReconciliation.assertedTitle")}
+        count={block.count}
+        total={money(block.total, displayUnit)}
+        loading={loading}
+      />
+      <FlowMonthList
+        months={block.months}
+        loading={loading}
+        monthHeading="h5"
+        monthTotal={(m) => money(m.total, displayUnit)}
+        rowKey={(r) => r.purchase_key}
+        renderRow={(r) => (
+          <>
+            <MonthRowDay ymd={r.occurred_on} />
+            <span className={listStyles.account}>
+              <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
+              <span className={listStyles.sub}>{manualAssertionNote(r, t)}</span>
+            </span>
+            <span className={cn("mono", listStyles.num)}>{money(r.amount, displayUnit)}</span>
+          </>
         )}
-      </Table>
-      {linkedCount > 0 ? (
-        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
-          {t("depositsReconciliation.assertedLinkedSummary", { count: linkedCount })}
+      />
+      {block.linked_count > 0 ? (
+        <p className={cn("muted", styles.note)}>
+          {block.linked_count === 1
+            ? t("depositsReconciliation.assertedLinkedSummaryOne")
+            : t("depositsReconciliation.assertedLinkedSummary", { count: block.linked_count })}
         </p>
       ) : null}
     </PageGridTile>
   );
 }
 
-const REDEMPTION_STATUS_ORDER: DepositRedemptionStatus[] = [
-  "unlinked_checking_present",
-  "unlinked_no_checking_source",
-  "resolved_internal_transfer",
-  "linked",
-];
-
-function redemptionSectionKey(status: DepositRedemptionStatus): string {
-  switch (status) {
-    case "linked":
-      return "depositsReconciliation.redemptionSectionLinked";
-    case "resolved_internal_transfer":
-      return "depositsReconciliation.sectionResolvedInternalTransfer";
-    case "unlinked_no_checking_source":
-      return "depositsReconciliation.redemptionSectionNoCheckingSource";
-    case "unlinked_checking_present":
-      return "depositsReconciliation.redemptionSectionNeedsAttention";
-  }
-}
-
-function redemptionEmptyKey(status: DepositRedemptionStatus): string {
-  switch (status) {
-    case "linked":
-      return "depositsReconciliation.redemptionEmptyLinked";
-    case "resolved_internal_transfer":
-      return "depositsReconciliation.emptyResolvedInternalTransfer";
-    case "unlinked_no_checking_source":
-      return "depositsReconciliation.redemptionEmptyNoCheckingSource";
-    case "unlinked_checking_present":
-      return "depositsReconciliation.redemptionEmptyNeedsAttention";
-  }
-}
-
-function RedemptionSection({
-  status,
-  rows,
-  total,
+/** «By month»: the same list, a month's rows being the statuses with deposits in it. */
+function ByMonth({
+  months,
   loading,
 }: {
-  status: DepositRedemptionStatus;
-  rows: DepositRedemptionRow[];
-  /** In the payload's unit (null when a row has no value in it). */
-  total: number | null;
-  loading?: boolean;
+  months: DepositsReconciliationPayload["deposits"]["by_month"];
+  loading: boolean;
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-
   return (
-    <PageGridTile id={`redemption-${status}`}>
-      <h3>
-        {t(redemptionSectionKey(status))}
-        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-          {money(total, displayUnit)}
-        </span>
-      </h3>
-      <Table
-        tableStyle={{ fontSize: "var(--font-size-prose)" }}
-        collapsedVisibleRows={20}
-        showMoreLabel={t("notifications.showMore")}
-        showLessLabel={t("table.showLess")}
-        wrapClassName={loadableClass(loading)}
-        header={
-          <thead>
-            <tr>
-              <th>{t("depositsReconciliation.colDate")}</th>
-              <th>{t("depositsReconciliation.colCategory")}</th>
-              <th>{t("depositsReconciliation.colAccount")}</th>
-              <th>{t("depositsReconciliation.colAmount")}</th>
-            </tr>
-          </thead>
-        }
-      >
-        {rows.length === 0 && !loading ? (
-          <tr>
-            <td colSpan={4} className="muted">
-              {t(redemptionEmptyKey(status))}
-            </td>
-          </tr>
-        ) : (
-          rows.map((r, idx) => {
-            return (
-              <tr key={`${r.account_id}-${r.occurred_on}-${idx}`}>
-                <td className="mono">{r.occurred_on}</td>
-                <td>{depositFlowCategoryLabel(r.category)}</td>
-                <td>
-                  <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
-                </td>
-                <td className="mono">{money(r.amount, displayUnit)}</td>
-              </tr>
-            );
-          })
+    <PageGridTile id="by-month">
+      <ListHeading as="h4" title={t("depositsReconciliation.byMonth")} loading={loading} />
+      <FlowMonthList
+        months={months.map((m) => ({ month: m.month, total: m.total, rows: m.statuses }))}
+        loading={loading}
+        monthHeading="h5"
+        monthTotal={(m) => money(m.total, displayUnit)}
+        rowKey={(r) => r.status}
+        renderRow={(r) => (
+          <>
+            <span className={listStyles.span2}>{t(`depositsReconciliation.statusShort.${r.status}`)}</span>
+            <span className={cn("mono", listStyles.num)}>{money(r.total, displayUnit)}</span>
+          </>
         )}
-      </Table>
+      />
     </PageGridTile>
   );
 }
@@ -305,97 +264,56 @@ export function DepositsReconciliationPage() {
     return <p className="error">{err}</p>;
   }
 
-  // The frame renders with every section header, zero totals and no rows until the payload arrives.
+  // The frame renders with its headings, zero totals and no rows until the payload arrives.
   const loading = !data;
-
-  const rowsByStatus = new Map<DepositReconciliationStatus, DepositReconciliationRow[]>();
-  for (const r of data?.rows ?? []) {
-    const arr = rowsByStatus.get(r.status) ?? [];
-    arr.push(r);
-    rowsByStatus.set(r.status, arr);
-  }
-
-  const redemptionsByStatus = new Map<DepositRedemptionStatus, DepositRedemptionRow[]>();
-  for (const r of data?.redemptions ?? []) {
-    const arr = redemptionsByStatus.get(r.status) ?? [];
-    arr.push(r);
-    redemptionsByStatus.set(r.status, arr);
-  }
+  const page = data ?? PLACEHOLDER;
+  const { manual_assertions: manual } = page;
 
   return (
     <>
       <h2 className="flow-section-title">{t("depositsReconciliation.title")}</h2>
 
-      {STATUS_ORDER.map((status) => {
-        const rows = rowsByStatus.get(status) ?? [];
-        return (
-          <ReconciliationSection
-            key={status}
-            status={status}
-            rows={rows}
-            total={data ? data.by_status[status].total : 0}
+      <div className={styles.side}>
+        <PageGridTile id="deposits-head">
+          <ListHeading
+            as="h3"
+            title={t("depositsReconciliation.depositsTitle")}
+            total={money(page.deposits.total, displayUnit)}
             loading={loading}
           />
-        );
-      })}
+        </PageGridTile>
+        <StatusSections
+          idPrefix="reconciliation"
+          sections={page.deposits.sections}
+          titleKeys={DEPOSIT_SECTION_TITLE}
+          rowKey={(r) => r.movement_id}
+          loading={loading}
+        />
+        {loading || manual.count > 0 || manual.linked_count > 0 ? (
+          <ManualAssertions block={manual} loading={loading} />
+        ) : null}
+        {loading || page.deposits.by_month.length > 0 ? (
+          <ByMonth months={page.deposits.by_month} loading={loading} />
+        ) : null}
+      </div>
 
-      <ManualAssertionsSection rows={data?.manual_assertions ?? []} loading={loading} />
-
-      <PageGridTile id="by-month">
-        <h3>
-          {t("depositsReconciliation.byMonth")}
-        </h3>
-        <Table
-          tableStyle={{ fontSize: "var(--font-size-prose)" }}
-          collapsedVisibleRows={24}
-          showMoreLabel={t("notifications.showMore")}
-          showLessLabel={t("table.showLess")}
-          wrapClassName={loadableClass(loading)}
-          header={
-            <thead>
-              <tr>
-                <th>{t("depositsReconciliation.colMonth")}</th>
-                <th>{t("depositsReconciliation.colLinked")}</th>
-                <th>{t("depositsReconciliation.colResolvedTaxRefund")}</th>
-                <th>{t("depositsReconciliation.colResolvedInternalTransfer")}</th>
-                <th>{t("depositsReconciliation.colNoChecking")}</th>
-                <th>{t("depositsReconciliation.colUnlinked")}</th>
-                <th>{t("depositsReconciliation.colTotal")}</th>
-              </tr>
-            </thead>
-          }
-        >
-          {(data?.by_month ?? []).map((pt) => (
-            <tr key={pt.month}>
-              <td className="mono">{pt.month}</td>
-              <td className="mono">{money(pt.linked, displayUnit)}</td>
-              <td className="mono">{money(pt.resolved_tax_refund, displayUnit)}</td>
-              <td className="mono">{money(pt.resolved_internal_transfer, displayUnit)}</td>
-              <td className="mono">{money(pt.unlinked_no_checking_source, displayUnit)}</td>
-              <td className="mono">{money(pt.unlinked_checking_present, displayUnit)}</td>
-              <td className="mono">{money(pt.total, displayUnit)}</td>
-            </tr>
-          ))}
-        </Table>
-      </PageGridTile>
-
-      <PageGridTile id="redemptions" className="page-grid">
-        <h2 className="flow-section-title">
-          {t("depositsReconciliation.redemptionsTitle")}
-        </h2>
-        {REDEMPTION_STATUS_ORDER.map((status) => {
-          const rows = redemptionsByStatus.get(status) ?? [];
-          return (
-            <RedemptionSection
-              key={status}
-              status={status}
-              rows={rows}
-              total={data ? data.redemptions_by_status[status].total : 0}
-              loading={loading}
-            />
-          );
-        })}
-      </PageGridTile>
+      <div className={cn(styles.side, styles.sideEnd)}>
+        <PageGridTile id="redemptions-head">
+          <ListHeading
+            as="h3"
+            title={t("depositsReconciliation.redemptionsTitle")}
+            total={money(page.redemptions.total, displayUnit)}
+            loading={loading}
+          />
+        </PageGridTile>
+        <StatusSections
+          idPrefix="redemption"
+          sections={page.redemptions.sections}
+          titleKeys={REDEMPTION_SECTION_TITLE}
+          rowKey={(r, idx) => `${r.account_id}-${r.occurred_on}-${idx}`}
+          loading={loading}
+        />
+      </div>
     </>
   );
 }

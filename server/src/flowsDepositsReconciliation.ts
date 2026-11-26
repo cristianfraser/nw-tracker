@@ -661,3 +661,134 @@ export function depositsReconciliationInUnit(p: DepositReconciliationLedger, uni
     fx_conversion_warnings: p.fx_conversion_warnings,
   };
 }
+
+// --- the page (`GET /api/flows/deposits/reconciliation?unit=`) ----------------------------------
+//
+// The display shape: every list by calendar month, newest first, with its counts and totals, in
+// the order the page draws them. The client only picks.
+
+/** The order the page lists the deposit groups in: what needs a look first. */
+const DEPOSIT_SECTION_ORDER: readonly DepositReconciliationStatus[] = [
+  "unlinked_checking_present",
+  "unlinked_no_checking_source",
+  "resolved_internal_transfer",
+  "resolved_tax_refund",
+  "linked",
+];
+
+const REDEMPTION_SECTION_ORDER: readonly DepositRedemptionStatus[] = [
+  "unlinked_checking_present",
+  "unlinked_no_checking_source",
+  "resolved_internal_transfer",
+  "linked",
+];
+
+/** A calendar month of a list: its rows, newest first, and their total (null when a row has no value in the unit). */
+export type DepositReconciliationMonth<R> = { month: string; total: number | null; rows: R[] };
+
+/** One status' rows as the page lists them. A status with no rows is a section with no months. */
+export type DepositReconciliationSection<S extends string, R> = {
+  status: S;
+  count: number;
+  total: number | null;
+  months: DepositReconciliationMonth<R>[];
+};
+
+/** A month of «By month»: its total and each status that has rows in it, in section order. */
+export type DepositReconciliationMonthStatuses = {
+  month: string;
+  total: number | null;
+  statuses: { status: DepositReconciliationStatus; total: number | null }[];
+};
+
+export type DepositReconciliationPagePayload = {
+  unit: string;
+  deposits: {
+    count: number;
+    total: number | null;
+    sections: DepositReconciliationSection<DepositReconciliationStatus, Unitless<DepositReconciliationRow>>[];
+    by_month: DepositReconciliationMonthStatuses[];
+  };
+  redemptions: {
+    count: number;
+    total: number | null;
+    sections: DepositReconciliationSection<DepositRedemptionStatus, Unitless<DepositRedemptionRow>>[];
+  };
+  /** The checking outflows marked as deposits that found no deposit, and how many found theirs. */
+  manual_assertions: {
+    count: number;
+    total: number | null;
+    linked_count: number;
+    months: DepositReconciliationMonth<Unitless<DepositManualAssertionRow>>[];
+  };
+  fx_conversion_error: boolean;
+  fx_conversion_warnings: FxConversionWarning[];
+};
+
+function sumOrNull(rows: readonly { amount: number | null }[]): number | null {
+  return rows.reduce<number | null>((s, r) => addOrNull(s, r.amount), 0);
+}
+
+/** Rows (already newest first) grouped by their `YYYY-MM`, newest month first. */
+function reconciliationMonths<R extends { occurred_on: string; amount: number | null }>(
+  rows: readonly R[]
+): DepositReconciliationMonth<R>[] {
+  const byMonth = new Map<string, R[]>();
+  for (const r of rows) {
+    const month = r.occurred_on.slice(0, 7);
+    const list = byMonth.get(month);
+    if (list) list.push(r);
+    else byMonth.set(month, [r]);
+  }
+  return [...byMonth.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([month, rs]) => ({ month, total: sumOrNull(rs), rows: rs }));
+}
+
+function reconciliationSections<S extends string, R extends { status: S; occurred_on: string; amount: number | null }>(
+  order: readonly S[],
+  rows: readonly R[]
+): DepositReconciliationSection<S, R>[] {
+  return order.map((status) => {
+    const own = rows.filter((r) => r.status === status);
+    return { status, count: own.length, total: sumOrNull(own), months: reconciliationMonths(own) };
+  });
+}
+
+export function buildDepositsReconciliationPagePayload(unit: string): DepositReconciliationPagePayload {
+  return depositsReconciliationPage(buildDepositsReconciliationPayload(unit));
+}
+
+/** {@link DepositReconciliationUnitPayload} in the shape the page draws. */
+export function depositsReconciliationPage(p: DepositReconciliationUnitPayload): DepositReconciliationPagePayload {
+  const unmatched = p.manual_assertions.filter((r) => r.status === "asserted_unmatched");
+  return {
+    unit: p.unit,
+    deposits: {
+      count: p.rows.length,
+      total: sumOrNull(p.rows),
+      sections: reconciliationSections(DEPOSIT_SECTION_ORDER, p.rows),
+      by_month: reconciliationMonths(p.rows).map((m) => ({
+        month: m.month,
+        total: m.total,
+        statuses: DEPOSIT_SECTION_ORDER.flatMap((status) => {
+          const own = m.rows.filter((r) => r.status === status);
+          return own.length > 0 ? [{ status, total: sumOrNull(own) }] : [];
+        }),
+      })),
+    },
+    redemptions: {
+      count: p.redemptions.length,
+      total: sumOrNull(p.redemptions),
+      sections: reconciliationSections(REDEMPTION_SECTION_ORDER, p.redemptions),
+    },
+    manual_assertions: {
+      count: unmatched.length,
+      total: sumOrNull(unmatched),
+      linked_count: p.manual_assertions.length - unmatched.length,
+      months: reconciliationMonths(unmatched),
+    },
+    fx_conversion_error: p.fx_conversion_error,
+    fx_conversion_warnings: p.fx_conversion_warnings,
+  };
+}

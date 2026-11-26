@@ -17,7 +17,7 @@ import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
 import { saveVendorBranchChoice } from "../vendorCatalog.js";
 import type { CategoryRuleLinkKind } from "../expenseCategoryRules.js";
-import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
+import { buildDepositsReconciliationPagePayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsResponse } from "../flowsDeposits.js";
 import { cachedMortgageCarryingEvents } from "../flowsMortgageCarrying.js";
 import {
@@ -149,7 +149,7 @@ app.get("/api/flows/overview", (req, res) => {
 
 app.get("/api/flows/deposits/reconciliation", (req, res) => {
   const unit = requestDisplayUnit(req.query, { surface: "/api/flows/deposits/reconciliation" });
-  res.json(buildDepositsReconciliationPayload(unit));
+  res.json(buildDepositsReconciliationPagePayload(unit));
 });
 
 app.get("/api/income", (req, res) => {
