@@ -69,12 +69,21 @@ export const LISTED_SOURCE_KINDS = ["cartola", "daily_listing"] as const;
  * Writes a bank row's listing facts onto its evidence. Throws when the row has no cartola or
  * daily-listing evidence (its note does not name a bank document) or the day is not ISO.
  */
-export function recordBankListingFacts(movementId: number, facts: BankListingFacts, dbHandle: Database): void {
+export function recordBankListingFacts(
+  movementId: number,
+  facts: BankListingFacts,
+  dbHandle: Database,
+  /** Restating facts kept from before (a mirror undo): a cartola leg kept with no position is restored as it was kept. */
+  opts?: { restoring?: boolean }
+): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(facts.bank_day)) throw new Error(`movement ${movementId}: listed day «${facts.bank_day}» is not ISO`);
   if (facts.period_month != null && !/^\d{4}-\d{2}$/.test(facts.period_month)) {
     throw new Error(`movement ${movementId}: cartola month «${facts.period_month}» is not YYYY-MM`);
   }
-  if ((facts.period_month != null) !== (facts.position != null && facts.branch != null)) {
+  const cartolaPlaceOk = opts?.restoring
+    ? facts.period_month != null || (facts.position == null && facts.branch == null)
+    : (facts.period_month != null) === (facts.position != null && facts.branch != null);
+  if (!cartolaPlaceOk) {
     throw new Error(`movement ${movementId}: a cartola row states its month, branch and position; a daily-listing row none of them`);
   }
   const changes = dbHandle
@@ -200,7 +209,8 @@ export function restoreMirrorLegListing(movementId: number, kept: MirrorLegListi
       branch: kept.listed_branch,
       position: kept.listed_position,
     },
-    dbHandle
+    dbHandle,
+    { restoring: true }
   );
 }
 

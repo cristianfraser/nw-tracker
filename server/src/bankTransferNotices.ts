@@ -259,7 +259,7 @@ const MAILER_NOTE_PREFIX: Record<string, string> = {
 
 /**
  * The note of a movement written from a mail, in the mail-rebuilt family
- * (`import:<issuer>-mail|<mail time>|<description>`, see `isMailRebuiltCheckingNote`): «Transf a
+ * (`import:<issuer>-mail|<mail time>|<description>`, evidence kind `mail_notice`): «Transf a
  * <payee>» / «Transf. de <sender>». The payee's bank and account live in the notice the movement is
  * paired with (`movement_transfer_notices`), so the description does not repeat them (until
  * 2026-10-31 it read «Transf a <payee> (<bank>)»).

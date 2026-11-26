@@ -42,10 +42,10 @@ export function stateListingFactsOfFixtures(): void {
     const content = cartolaNoteFacts370(r.note);
     if (!content) continue;
     const day = r.note.match(/\|on:([^|]+)/)?.[1]?.trim() ?? r.occurred_on;
-    const place = cartolaPlaceFacts372(r.note) ?? { branch: r.note.split("|")[2] ?? "", position: 0 };
+    const place = cartolaPlaceFacts372(r.note);
     recordBankListingFacts(
       r.id,
-      { bank_day: day, description: content.description, document_no: content.document_no, period_month: content.period_month, branch: place.branch, position: place.position },
+      { bank_day: day, description: content.description, document_no: content.document_no, period_month: content.period_month, branch: place.branch, position: place.identity?.position ?? 0 },
       db
     );
   }

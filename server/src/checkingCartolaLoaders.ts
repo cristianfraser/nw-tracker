@@ -138,7 +138,7 @@ function uniqueDepositCandidatesByClaimKey(candidates: readonly DepositMatchCand
  * Every movement the bank listed on a checking account, inflows («in») or outflows («out»),
  * oldest first: the cartola's rows, the daily feed's rows its cartola has not replaced yet, and
  * the rows rebuilt from the bank's own mails for months whose cartola is lost
- * (`import:santander-mail|…`, `import:mach-mail|…`; `isMailRebuiltCheckingNote`), and incoming
+ * (`import:santander-mail|…`, `import:mach-mail|…`: evidence kind `mail_rebuilt`), and incoming
  * transfers' credits written from their mails before the feed lists them (`transfer_notice_movements`).
  * The cartola import restates the daily rows it lists as its own rows (`checkingCartolaPlanApply.ts`);
  * a daily row a cartola row on file already covers (its listing facts against the cartola's, the

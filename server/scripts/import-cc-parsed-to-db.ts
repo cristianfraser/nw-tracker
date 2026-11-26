@@ -91,6 +91,10 @@ function main() {
   /** Re-import and re-reconcile every statement, ignoring fingerprints (periodic sanity check). */
   const fullReimport = process.argv.includes("--full");
   const replaceLedgerOnly = process.argv.includes("--replace-ledger");
+  if (process.argv.includes("--wipe")) {
+    console.error("--wipe no longer exists: a statement import restates the rows on file. Pass --full to re-plan every statement.");
+    process.exit(1);
+  }
   if (process.argv.includes("--merge")) {
     console.warn("# --merge is the default since 2026-05; flag is optional.");
   }

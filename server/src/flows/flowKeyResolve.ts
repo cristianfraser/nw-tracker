@@ -2,6 +2,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import { normalizeMerchantText, parseDdMmYyToIso } from "nw-tracker-contracts";
 import { buildExpenseKey, parseExpenseKey, type CheckingPortion, type ExpenseKey } from "../expenseKeys.js";
 import { lineCuotaClpSql } from "../cards/lineAmountSql.js";
+import { CARTOLA_KEY_COLUMNS_SQL, cartolaKeyParts, minorDigitsReader, type CartolaKeyRow } from "./cartolaRowKey.js";
 
 /**
  * Which rows an expense key names (docs/untangle-flow-identity.md, F9 step 3): the inverse of the
@@ -49,15 +50,15 @@ function isoFromDdMm(raw: string | null | undefined): string | null {
   return raw ? parseDdMmYyToIso(raw) : null;
 }
 
-function cartolaNoteFields(note: string | null): { period: string; on: string; amt: string; idx: string } | null {
-  const n = String(note ?? "").trim();
-  if (!n.startsWith("import:cartola|")) return null;
-  const period = n.split("|")[1]?.trim();
-  const on = n.match(/\|on:([^|]+)/)?.[1]?.trim();
-  const amt = n.match(/\|amt:([^|]+)/)?.[1]?.trim();
-  const idx = n.match(/\|idx:(\d+)/)?.[1]?.trim();
-  if (!period || !on || amt == null || idx == null) return null;
-  return { period, on, amt, idx };
+/** A movement's cartola identity from its evidence (`cartolaRowKey.ts`); null for a row keyed by its id. */
+function movementCartolaKeyRows(dbi: DatabaseType, where: string, ...args: unknown[]) {
+  return dbi
+    .prepare(
+      `SELECT m.id, ${CARTOLA_KEY_COLUMNS_SQL} FROM movements m
+       JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id AND e.source_kind = 'cartola'
+       WHERE ${where}`
+    )
+    .all(...args) as (CartolaKeyRow & { id: number })[];
 }
 
 function linesWhere(dbi: DatabaseType, where: string, ...args: unknown[]) {
@@ -122,22 +123,24 @@ function rowsForBaseKey(dbi: DatabaseType, key: ExpenseKey): FlowSourceRow[] {
     case "installment_h":
       return rowsForInstallmentH(dbi, key);
     case "checking_cartola": {
-      const rows = dbi
-        .prepare(`SELECT id, note FROM movements WHERE account_id = ? AND note LIKE ?`)
-        .all(key.accountId, `import:cartola|${key.periodMonth}|%`) as { id: number; note: string | null }[];
-      return rows
-        .filter((m) => {
-          const f = cartolaNoteFields(m.note);
-          return f != null && f.on === key.occurredOn && f.amt === key.amountClp && Number(f.idx) === key.cartolaIndex;
-        })
+      const digits = minorDigitsReader(dbi);
+      return movementCartolaKeyRows(
+        dbi,
+        `m.account_id = ? AND e.stated_period = ? AND e.stated_on = ? AND e.stated_position = ?`,
+        key.accountId,
+        key.periodMonth,
+        key.occurredOn,
+        key.cartolaIndex
+      )
+        .filter((m) => String(cartolaKeyParts(m, digits)?.amountMinor) === key.amountClp)
         .map((m) => ({ table: "movements", id: m.id }));
     }
     case "checking_mv": {
-      const m = dbi.prepare(`SELECT id, account_id, note FROM movements WHERE id = ?`).get(key.movementId) as
-        | { id: number; account_id: number | null; note: string | null }
-        | undefined;
+      const m = dbi.prepare(`SELECT id FROM movements WHERE id = ?`).get(key.movementId) as { id: number } | undefined;
+      if (!m) return [];
       // A cartola row is keyed by its cartola identity; its movement-id key is read by nothing.
-      if (!m || (m.account_id != null && cartolaNoteFields(m.note) != null)) return [];
+      const cartola = movementCartolaKeyRows(dbi, `m.id = ?`, m.id)[0];
+      if (cartola && cartolaKeyParts(cartola, minorDigitsReader(dbi)) != null) return [];
       return [{ table: "movements", id: m.id }];
     }
     case "gap_mirror":

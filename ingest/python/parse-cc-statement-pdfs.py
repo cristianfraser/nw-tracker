@@ -14,7 +14,7 @@ Unreadable encrypted PDFs are rewritten/decrypted via qpdf before parse (see `cc
 From repo root:
   npm run parse:cc-pdfs
   npm run import:cc-parsed -w nw-tracker-server
-  # add --wipe only to replace all statements/ledger for that account
+  # add --full to re-plan every statement over the rows on file (there is no wipe)
 
 PDFs are read from `cfraser/credit-card-statements/<card>/clp|usd/` (override with CFRASER_PDFS_DIR).
 

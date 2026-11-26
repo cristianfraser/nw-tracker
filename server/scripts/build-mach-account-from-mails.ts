@@ -21,7 +21,7 @@
  * - a closing debit after the last event, so the account ends at exactly 0, in the plan's category.
  *
  * Every MACH row's note is `import:mach-mail|<mail time | standin | closing | bank>|<description>`
- * (`isMailRebuiltCheckingNote`), which the gastos and income pages read. The plan names the inputs
+ * (evidence kind `mail_rebuilt`, its description stated on the evidence), which the gastos and income pages read. The plan names the inputs
  * (mail archive, card and corriente rows) and the categories; the script checks every one of them.
  */
 import { deleteFlowCategory, FLOW_CATEGORIES_SQL } from "../src/flows/flowCategories.js";

@@ -10,6 +10,10 @@
  *
  *   npx tsx scripts/report-document-import.ts --db=<snapshot copy> --account=<id> --statements=<file.json> [--migrate]
  *   npx tsx scripts/report-document-import.ts --db=<snapshot copy> --account=<id> --cartola=<file.json> [--product=checking|demand_deposit] [--force] [--migrate]
+ *   npx tsx scripts/report-document-import.ts --db=<snapshot copy> --preflight
+ *
+ * `--preflight`: read only, without migrating, lists what migrations 370–372 would trip on
+ * (`bankRowFactsPreflight372`); every list empty = safe to deploy (exit 0, else 1).
  *
  * `--statements`: canonical card statements (an array of `CardCanonicalStatement`, or a
  * `card.statement` payload in its canonical format — `{ "format": "canonical", "statements": [...] }`,
@@ -31,12 +35,6 @@ const serverDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const flag = (name: string) => process.argv.includes(`--${name}`);
 
-const accountId = Number(arg("account"));
-if (!Number.isInteger(accountId) || accountId <= 0) throw new Error("--account=<account id> is required");
-const statementsFile = arg("statements");
-const cartolaFile = arg("cartola");
-if ((statementsFile == null) === (cartolaFile == null)) throw new Error("pass exactly one of --statements=<file> or --cartola=<file>");
-
 const dbArg = arg("db");
 if (!dbArg) throw new Error("--db=<a copy of a snapshot> is required (never the running primary)");
 const file = path.resolve(dbArg);
@@ -45,6 +43,26 @@ const live = path.join(serverDir, "data", "nw-tracker.db");
 if (fs.existsSync(live) && fs.realpathSync(file) === fs.realpathSync(live) && !flag("allow-live")) {
   throw new Error(`${file} is the live database: run on a snapshot copy, or pass --allow-live with the server stopped`);
 }
+if (flag("preflight")) {
+  // Read only, before any migration: what migrations 370–372 would trip on.
+  const { bankRowFactsPreflight372 } = await import("../src/migrationHooks/bankRowFactsPreflight372.js");
+  const dbi = new Database(file, { readonly: true, fileMustExist: true });
+  const report = bankRowFactsPreflight372(dbi);
+  dbi.close();
+  console.log(`database: ${file}`);
+  let total = 0;
+  for (const [what, ids] of Object.entries(report)) {
+    total += ids.length;
+    console.log(`${what}: ${ids.length}${ids.length > 0 ? ` — ${ids.join(", ")}` : ""}`);
+  }
+  console.log(total === 0 ? "preflight: clean, safe to deploy" : "preflight: rows listed above");
+  process.exit(total === 0 ? 0 : 1);
+}
+const accountId = Number(arg("account"));
+if (!Number.isInteger(accountId) || accountId <= 0) throw new Error("--account=<account id> is required");
+const statementsFile = arg("statements");
+const cartolaFile = arg("cartola");
+if ((statementsFile == null) === (cartolaFile == null)) throw new Error("pass exactly one of --statements=<file> or --cartola=<file>");
 process.env.NW_TRACKER_TEST_DB = file;
 {
   const dbi = new Database(file, { readonly: true, fileMustExist: true });
