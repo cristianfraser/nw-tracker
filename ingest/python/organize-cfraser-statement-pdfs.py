@@ -4,6 +4,14 @@ Rename/move statement PDFs under cfraser/ to:
 
   credit-card-statements/<card-last4>/clp|usd/YYYY-MM-DD estado de cuenta tarjeta[ usd][ suffix].pdf
   cartolas-cuenta-corriente/YYYY-MM-DD cartola cuenta corriente [tag].pdf
+  cartolas-cuenta-vista/YYYY-MM-DD cartola cuenta vista.pdf
+  cartolas-linea-credito/YYYY-MM-DD cartola linea credito [n].pdf
+  cartolas-otras-cuentas/YYYY-MM-DD cartola <product> <account tail> [n].pdf   (never imported)
+
+Santander's mailed attachment names carry neither account nor date since October 2026
+(`TC_NAC-<n>_<m>.pdf`, `LCA_CTA_CTE_CRONO-<n>_<m>.pdf`, …): encrypted inbox PDFs are decrypted
+in place first, then each is classified from its text — a cartola by its product heading and the
+account printed in its header, everything else as a card statement.
 
 Uses `cc-statements-parsed-all.csv` when present for credit-card statement dates;
 otherwise peeks PDF text (pdftotext) after qpdf decrypt when needed
@@ -46,7 +54,15 @@ from cc_statement_pdf_paths import (
 )
 
 from cartola_pdf_kind import (
+    CARTOLA_PRODUCT_CHECKING,
+    CARTOLA_PRODUCT_CHECKING_FOREIGN,
+    CARTOLA_PRODUCT_CUENTA_VISTA,
+    CARTOLA_PRODUCT_LINEA_CREDITO,
+    account_digits,
+    cartola_product,
     incoming_vista_cartola_replaces_dest,
+    peek_cartola_account,
+    peek_cartola_header,
     peek_cartola_pdf_account,
     is_checking_cartola_text,
     is_cuenta_vista_cartola_text,
@@ -65,6 +81,8 @@ from cc_pdf_qpdf import (  # noqa: E402
     peek_pdf_text,
     pdf_is_encrypted,
     qpdf_available,
+    statement_pdf_passwords_to_try,
+    try_qpdf_decrypt_with_password,
 )
 
 CFRASER = REPO_ROOT / "cfraser"
@@ -129,8 +147,11 @@ RE_SANTANDER_157_DATE = re.compile(r"^157_\d+_\d+_(\d{8})\.pdf$", re.I)
 #     "santander_80_account_to_card_last4": {"<80_* account id>": "<card last4>", ...},
 #     "santander_checking_cartola_account": "<cuenta corriente account id>",
 #     "santander_linea_credito_account": "<línea de crédito account id>",
-#     "santander_ignored_cartola_accounts": ["0-000-00-00000-0", ...]   // optional
+#     "santander_ignored_cartola_accounts": ["0-000-00-00000-0", ...],  // optional
+#     "santander_cuenta_vista_account": "<cuenta vista account id>"       // optional
 #   }
+# Account ids are compared by their digits, so `0-000-00-00001-1` (as a cartola prints it) and
+# `000000000011` name the same account.
 # Tests point NW_TRACKER_ORGANIZE_IDENTIFIERS at a synthetic copy.
 ORGANIZE_IDENTIFIERS_PATH = Path(
     os.environ.get("NW_TRACKER_ORGANIZE_IDENTIFIERS", str(CFRASER / "organize-identifiers.json"))
@@ -182,6 +203,27 @@ IGNORED_CARTOLA_ACCOUNTS: set[str] = {
     for a in _ORGANIZE_IDENTIFIERS.get("santander_ignored_cartola_accounts", [])
     if str(a).strip()
 }
+def is_ignored_cartola_account(account: str | None) -> bool:
+    """Ignored accounts compare by digits, like every other configured account id."""
+    digits = account_digits(account)
+    return bool(digits) and digits in {account_digits(a) for a in IGNORED_CARTOLA_ACCOUNTS}
+
+
+def masked_account(account: str | None) -> str:
+    """`·1234`: the last four digits, enough to recognise an account in a run log."""
+    digits = account_digits(account)
+    return f"·{digits[-4:]}" if digits else "(no account printed)"
+
+
+# Errors of passes that report through the module (the vista pass returns a count); main() reads them.
+_RUN_ERRORS: list[str] = []
+
+
+# Optional: the tracked cuenta vista. Absent = every cuenta vista cartola not ignored above is the
+# tracked one. Set = an inbox vista cartola of any other non-ignored account fails the run.
+SANTANDER_CUENTA_VISTA_ACCOUNT: str = account_digits(
+    _ORGANIZE_IDENTIFIERS.get("santander_cuenta_vista_account", "")
+)
 RE_INBOX_LINEA_CREDITO = re.compile(
     rf"^1_(\d+)_{SANTANDER_LINEA_CREDITO_ACCOUNT}_(\d{{8}})_LC\.pdf$",
     re.I,
@@ -220,6 +262,20 @@ def iso_from_cartola_attachment_date(raw: str) -> str | None:
     if 1 <= d <= 31 and 1 <= mo <= 12 and 1990 <= y <= 2039:
         return f"{y:04d}-{mo:02d}-{d:02d}"
     return None
+
+
+# Inbox PDFs an earlier pass of this run has classified (filed, parked, or refused with an error).
+# Later passes skip them: on a dry run nothing moves, and a cartola's text also passes the loose
+# credit-card readability check, so the card pass would otherwise claim it a second time.
+_CLAIMED_THIS_RUN: set[Path] = set()
+
+
+def claim(path: Path) -> None:
+    _CLAIMED_THIS_RUN.add(path.resolve())
+
+
+def is_claimed(path: Path) -> bool:
+    return path.resolve() in _CLAIMED_THIS_RUN
 
 
 def is_checking_cartola_inbox_name(name: str) -> bool:
@@ -436,6 +492,8 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tu
         sources.append(p)
     moved = 0
     for p in sources:
+        if is_claimed(p):
+            continue
         if RE_ORGANIZED.match(p.name) and p.parent.resolve() == CC_DIR.resolve():
             continue
         if is_cuenta_vista_pdf(p):
@@ -538,10 +596,18 @@ def peek_cuenta_vista_meta(path: Path) -> tuple[str | None, str | None]:
     if not is_cuenta_vista_cartola_text(text):
         return None, None
     hasta, cartola_no = peek_cartola_hasta_and_no(text)
-    if not hasta:
-        m = RE_INBOX_VISTA_CM.match(path.name)
-        if m:
-            hasta = iso_from_cartola_attachment_date(m.group(3))
+    header = peek_cartola_header(text)
+    if header:
+        # The printed HASTA. The cartola number keeps coming from the older peek, which leaves
+        # it out of the name the way the filed corpus is named.
+        return header[2], cartola_no
+    m = RE_INBOX_VISTA_CM.match(path.name)
+    if not m and path.parent.resolve() == resolve_inbox_dir().resolve():
+        # A bank-named attachment without a readable header is not named by guesswork
+        # (the card pass then refuses it loudly).
+        return None, None
+    if not hasta and m:
+        hasta = iso_from_cartola_attachment_date(m.group(3))
     return hasta, cartola_no
 
 
@@ -578,7 +644,13 @@ def file_ignored_account_cartola(
 ) -> int:
     """Park a cartola belonging to an untracked bank account outside every importer's scan."""
     tail = account.rsplit("-", 2)[1] if "-" in account else account
-    dest = unique_dest(OTHER_ACCOUNTS_DIR, f"{hasta} cartola cuenta {tail}")
+    stem = f"{hasta} cartola cuenta {tail}"
+    canonical = OTHER_ACCOUNTS_DIR / f"{stem}.pdf"
+    if canonical.exists() and p.parent.resolve() == resolve_inbox_dir().resolve():
+        # The same account and period mailed again (one account, one cartola per period).
+        move_inbox_duplicate(p, dry_run=dry_run, reason=f"{canonical.relative_to(CFRASER)} already exists")
+        return 1
+    dest = unique_dest(OTHER_ACCOUNTS_DIR, stem)
     if p.resolve() == dest.resolve():
         return 0
     print(f"{p.name} -> {dest.relative_to(CFRASER)} (untracked account {account})")
@@ -601,7 +673,7 @@ def relocate_ignored_account_cartolas(dry_run: bool) -> int:
     moved = 0
     for p in sorted(VISTA_DIR.glob("*.pdf")):
         account = peek_cartola_pdf_account(p)
-        if not account or account not in IGNORED_CARTOLA_ACCOUNTS:
+        if not account or not is_ignored_cartola_account(account):
             continue
         hasta, _no = peek_cuenta_vista_meta(p)
         moved += file_ignored_account_cartola(p, hasta or p.stem[:10], account, dry_run=dry_run)
@@ -629,10 +701,23 @@ def organize_cuenta_vista(dry_run: bool) -> int:
         hasta, cartola_no = peek_cuenta_vista_meta(p)
         if not hasta:
             continue
-        if IGNORED_CARTOLA_ACCOUNTS:
+        claim(p)
+        if IGNORED_CARTOLA_ACCOUNTS or SANTANDER_CUENTA_VISTA_ACCOUNT:
             pdf_account = peek_cartola_pdf_account(p)
-            if pdf_account and pdf_account in IGNORED_CARTOLA_ACCOUNTS:
+            if pdf_account and is_ignored_cartola_account(pdf_account):
                 moved += file_ignored_account_cartola(p, hasta, pdf_account, dry_run=dry_run)
+                continue
+            if (
+                SANTANDER_CUENTA_VISTA_ACCOUNT
+                and p.parent.resolve() == inbox.resolve()
+                and account_digits(pdf_account) != SANTANDER_CUENTA_VISTA_ACCOUNT
+            ):
+                # Left in the inbox: an unknown account is a configuration question, not a guess.
+                _RUN_ERRORS.append(
+                    f"{p.name}: cuenta vista cartola of account {masked_account(pdf_account)}, which is neither "
+                    "santander_cuenta_vista_account nor in santander_ignored_cartola_accounts — fix "
+                    "organize-identifiers.json or add the account to santander_ignored_cartola_accounts"
+                )
                 continue
         stem = f"{hasta} cartola cuenta vista{cartola_no_suffix(cartola_no)}"
         canonical = VISTA_DIR / f"{stem}.pdf"
@@ -819,6 +904,171 @@ def organize_checking_cartolas_inbox(dry_run: bool) -> int:
     return moved
 
 
+def park_untracked_account_cartola(
+    p: Path,
+    hasta: str,
+    product_label: str,
+    account: str | None,
+    cartola_no: str | None,
+    *,
+    dry_run: bool,
+) -> int:
+    """
+    File a cartola of an account no importer models in `cartolas-otras-cuentas/`, named by its
+    product, account tail, period end and cartola number, and say so: the bank mails these next
+    to the tracked documents, and importing one as the tracked account would be wrong, while
+    failing the run over a document nobody imports would block every other import.
+    """
+    tail = account.rsplit("-", 2)[1] if account and "-" in account else (account or "sin-cuenta")
+    stem = f"{hasta} cartola {product_label} {tail}{cartola_no_suffix(cartola_no)}"
+    dest = OTHER_ACCOUNTS_DIR / f"{stem}.pdf"
+    if dest.exists() and p.resolve() != dest.resolve():
+        move_inbox_duplicate(p, dry_run=dry_run, reason=f"{dest.relative_to(CFRASER)} already exists")
+        return 1
+    if p.resolve() == dest.resolve():
+        return 0
+    print(f"{p.name} -> {dest.relative_to(CFRASER)} (untracked account {account}: not imported)")
+    _UNTRACKED_PARKED.append(f"{p.name} -> {dest.relative_to(CFRASER)}")
+    if not dry_run:
+        OTHER_ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(p), str(dest))
+    return 1
+
+
+# Untracked-account cartolas parked this run (reported in the run summary).
+_UNTRACKED_PARKED: list[str] = []
+
+
+def pdftotext_layout(path: Path) -> str | None:
+    """`pdftotext -layout` text, or None when the PDF cannot be read (encrypted, damaged)."""
+    proc = subprocess.run(
+        ["pdftotext", "-layout", str(path), "-"], capture_output=True, text=True
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def decrypt_inbox_pdfs(dry_run: bool) -> int:
+    """
+    Decrypt, in place, every inbox PDF `pdftotext` cannot open, with the configured statement
+    passwords (Santander encrypts cartolas as well as card statements since October 2026).
+
+    Classification and every downstream parser read the decrypted text. A PDF no password opens
+    is left as it is: the card pass then fails on it with the password hint, as before. A dry run
+    decrypts nothing (and so cannot classify an encrypted attachment).
+    """
+    inbox = resolve_inbox_dir()
+    if dry_run or not inbox.is_dir() or not qpdf_available():
+        return 0
+    load_repo_dotenv()
+    n = 0
+    for p in sorted(inbox.glob("*.pdf")):
+        if pdftotext_layout(p) is not None or not pdf_is_encrypted(p):
+            continue
+        for pw in statement_pdf_passwords_to_try(p):
+            ok, _msg = try_qpdf_decrypt_with_password(p, pw)
+            if ok:
+                print(f"decrypted: {p.name}")
+                n += 1
+                break
+    return n
+
+
+RE_LINEA_CARTOLA_NO = re.compile(r"^\d{4}-\d{2}-\d{2} cartola linea credito (\d+)\.pdf$", re.I)
+
+
+def organize_santander_cartolas_by_text(dry_run: bool) -> tuple[int, list[str]]:
+    """
+    File inbox cartolas whose attachment name says nothing (`LCA_CTA_CTE_CRONO-<n>_<m>.pdf`,
+    `C_MATICA_ONDEM-…`), by what the PDF prints: the product heading and the account in the header
+    decide where it goes, the printed CARTOLA / DESDE / HASTA name it.
+
+    - the configured cuenta corriente, in pesos → `cartolas-cuenta-corriente/`
+    - the configured línea de crédito → `cartolas-linea-credito/` (an existing file with the same
+      cartola number is the same document → `inbox/duplicates/`)
+    - an ignored account → `cartolas-otras-cuentas/` (as `file_ignored_account_cartola`)
+    - a foreign-currency cuenta corriente («ME») → `cartolas-otras-cuentas/`, reported
+    - any other peso cuenta corriente or línea de crédito → error, left in the inbox
+    Cuenta vista cartolas are left to `organize_cuenta_vista` (run before this). A cartola without
+    a readable header or account is an error, never a guess.
+    """
+    inbox = resolve_inbox_dir()
+    errors: list[str] = []
+    if not inbox.is_dir():
+        return 0, errors
+    moved = 0
+    for p in sorted(inbox.glob("*.pdf")):
+        if is_claimed(p):
+            continue
+        if (
+            is_checking_cartola_inbox_name(p.name)
+            or is_cuenta_vista_inbox_name(p.name)
+            or is_linea_credito_cartola_inbox_name(p.name)
+        ):
+            continue
+        text = pdftotext_layout(p)
+        if text is None:
+            continue
+        product = cartola_product(text)
+        if product is None or product == CARTOLA_PRODUCT_CUENTA_VISTA:
+            continue
+        claim(p)
+        header = peek_cartola_header(text)
+        account = peek_cartola_account(text)
+        if not header or not account:
+            missing = "CARTOLA/DESDE/HASTA header" if not header else "account number"
+            errors.append(f"{p.name}: {product} cartola without a printed {missing}")
+            continue
+        cartola_no, _desde, hasta = header
+        digits = account_digits(account)
+        if is_ignored_cartola_account(account):
+            moved += file_ignored_account_cartola(p, hasta, account, dry_run=dry_run)
+            continue
+        if product == CARTOLA_PRODUCT_CHECKING_FOREIGN:
+            # A foreign-currency cuenta corriente has no cartola importer: parked, reported, never imported.
+            moved += park_untracked_account_cartola(p, hasta, "cuenta corriente me", account, cartola_no, dry_run=dry_run)
+            continue
+        if product == CARTOLA_PRODUCT_CHECKING and digits == account_digits(SANTANDER_CHECKING_CARTOLA_ACCOUNT):
+            folder, stem, manifest = CART_DIR, f"{hasta} cartola cuenta corriente{cartola_no_suffix(cartola_no)}", "checking_pdfs"
+        elif product == CARTOLA_PRODUCT_LINEA_CREDITO and digits == account_digits(SANTANDER_LINEA_CREDITO_ACCOUNT):
+            folder, stem, manifest = LINEA_DIR, f"{hasta} cartola linea credito{cartola_no_suffix(cartola_no)}", None
+        else:
+            key = (
+                "santander_checking_cartola_account"
+                if product == CARTOLA_PRODUCT_CHECKING
+                else "santander_linea_credito_account"
+            )
+            errors.append(
+                f"{p.name}: {product} cartola of account {masked_account(account)}, which is neither {key} "
+                "nor in santander_ignored_cartola_accounts — fix organize-identifiers.json or add the "
+                "account to santander_ignored_cartola_accounts (left in the inbox)"
+            )
+            continue
+        dest = folder / f"{stem}.pdf"
+        same = dest if dest.exists() else None
+        if same is None and folder == LINEA_DIR and cartola_no_suffix(cartola_no):
+            # Older línea de crédito files are named by the attachment date, not HASTA: the cartola
+            # number names the document.
+            same = next(
+                (q for q in sorted(LINEA_DIR.glob("*.pdf")) if RE_LINEA_CARTOLA_NO.match(q.name)
+                 and RE_LINEA_CARTOLA_NO.match(q.name).group(1) == cartola_no),
+                None,
+            )
+        if same is not None:
+            move_inbox_duplicate(p, dry_run=dry_run, reason=f"{same.relative_to(CFRASER)} already exists")
+            moved += 1
+            continue
+        print(f"{p.name} -> {dest.relative_to(CFRASER)}")
+        if not dry_run:
+            folder.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(p), str(dest))
+        if manifest:
+            record_inbox_filed(manifest, dest, p)
+        moved += 1
+    return moved, errors
+
+
 def organize_cartolas(dry_run: bool) -> int:
     CART_DIR.mkdir(parents=True, exist_ok=True)
     moved = 0
@@ -853,22 +1103,30 @@ def main() -> int:
     )
     args = ap.parse_args()
     reset_inbox_manifest()
+    _RUN_ERRORS.clear()
     manifest_path = Path(args.manifest) if args.manifest else None
     by_pdf = load_csv_by_pdf()
+    n_decrypted = decrypt_inbox_pdfs(args.dry_run)
     # Vista PDFs in cfraser/inbox/ must be filed before credit-card organize reads the same inbox.
     n_vista = organize_cuenta_vista(args.dry_run)
     n_reloc_vista = relocate_misfiled_checking_from_vista(args.dry_run)
     n_linea_inbox = organize_linea_credito_cartolas_inbox(args.dry_run)
     n_check_inbox = organize_checking_cartolas_inbox(args.dry_run)
+    n_text_cartolas, cartola_errors = organize_santander_cartolas_by_text(args.dry_run)
     n_cc, cc_errors = organize_credit_card(args.dry_run, by_pdf)
+    cc_errors = [*_RUN_ERRORS, *cartola_errors, *cc_errors]
     n_clean, n_reloc = finalize_credit_card_layout(args.dry_run)
     n_cart = organize_cartolas(args.dry_run)
     print(
+        f"decrypted: {n_decrypted} file(s); "
         f"cuenta-vista: {n_vista} file(s); vista→checking relocate: {n_reloc_vista} file(s); "
         f"linea-credito-inbox: {n_linea_inbox} file(s); checking-inbox: {n_check_inbox} file(s); "
+        f"cartolas by text: {n_text_cartolas} file(s); "
         f"credit-card: {n_cc} file(s); "
         f"cc-clean (n): {n_clean}; cc-relocate: {n_reloc}; cartolas: {n_cart} file(s)"
     )
+    for line in _UNTRACKED_PARKED:
+        print(f"untracked-account cartola parked (not imported): {line}")
     write_inbox_manifest(manifest_path)
     if cc_errors:
         for err in cc_errors:

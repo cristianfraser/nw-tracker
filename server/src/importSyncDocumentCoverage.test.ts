@@ -8,7 +8,11 @@ import {
   matrixMonthForCartolaPeriodMonth,
   matrixMonthForCcStatement,
 } from "./importSyncDocumentMonth.js";
-import { buildImportSyncDocumentCoveragePayload, buildImportSyncDocumentYears } from "./importSyncDocumentCoverage.js";
+import {
+  buildImportSyncDocumentCoveragePayload,
+  buildImportSyncDocumentYears,
+  importSyncColumnsEndingAtLastDocument,
+} from "./importSyncDocumentCoverage.js";
 import {
   CcStatementPdfPathError,
   ccCreditCardAccountHasUsdStatements,
@@ -206,7 +210,7 @@ describe("buildImportSyncDocumentYears", () => {
   it("leaves the months before a column's first document out and adds each year up", () => {
     // Newest first. Column 0 starts in 2030-11; column 1 has a hole in 2031-01 and a file never imported.
     const months = ["2031-02", "2031-01", "2030-12", "2030-11", "2030-10"];
-    const { cells, years } = buildImportSyncDocumentYears(months, 2, [
+    const { cells, years } = buildImportSyncDocumentYears(months, [false, false], [
       [cell(false), cell(false, "b-2031-02.pdf")],
       [cell(true, "a-2031-01.pdf"), cell(false)],
       [cell(true), cell(true, "b-2030-12.pdf", true)],
@@ -230,7 +234,7 @@ describe("buildImportSyncDocumentYears", () => {
     // Column 0 has nothing for the current month yet; column 1's statement already arrived.
     const { cells, years } = buildImportSyncDocumentYears(
       ["2031-02", "2031-01"],
-      2,
+      [false, false],
       [
         [cell(false), cell(true, "b-2031-02.pdf")],
         [cell(true, "a-2031-01.pdf"), cell(true, "b-2031-01.pdf")],
@@ -247,7 +251,7 @@ describe("buildImportSyncDocumentYears", () => {
     // January: neither column has its document yet; both have documents in earlier years.
     const { cells, years } = buildImportSyncDocumentYears(
       ["2031-01", "2030-12"],
-      2,
+      [false, false],
       [
         [cell(false), cell(false)],
         [cell(true, "a-2030-12.pdf"), cell(true, "b-2030-12.pdf")],
@@ -268,7 +272,7 @@ describe("buildImportSyncDocumentYears", () => {
   it("reads a cartola with no movements that was never imported as not imported", () => {
     const { cells } = buildImportSyncDocumentYears(
       ["2031-01"],
-      1,
+      [false],
       [[cell(false, "a-2031-01.pdf", true)]],
       "2031-02"
     );
@@ -276,8 +280,102 @@ describe("buildImportSyncDocumentYears", () => {
   });
 
   it("gives a column with no document at all no counted month", () => {
-    const { cells, years } = buildImportSyncDocumentYears(["2031-01"], 1, [[cell(false)]], "2031-01");
+    const { cells, years } = buildImportSyncDocumentYears(["2031-01"], [false], [[cell(false)]], "2031-01");
     expect(cells[0]![0]!.state).toBe("before_first");
     expect(years).toEqual([{ year: 2031, month_indexes: [0], columns: [null], columns_counted: 0, columns_complete: 0, incomplete_columns: [] }]);
+  });
+
+  it("ends a column that ends at its last document there: later months are empty and counted nowhere", () => {
+    // Column 0 (a retired card) has its last document in 2030-11, a hole in 2030-10 and its first in
+    // 2030-09; column 1 runs on. Newest first.
+    const months = ["2031-02", "2031-01", "2030-12", "2030-11", "2030-10", "2030-09", "2030-08"];
+    const { cells, years } = buildImportSyncDocumentYears(months, [true, false], [
+      [cell(false), cell(false)],
+      [cell(false), cell(true, "b-2031-01.pdf")],
+      [cell(false), cell(false)],
+      [cell(false, "a-2030-11.pdf"), cell(true, "b-2030-11.pdf")],
+      [cell(false), cell(true, "b-2030-10.pdf")],
+      [cell(true, "a-2030-09.pdf"), cell(true, "b-2030-09.pdf")],
+      [cell(false), cell(true, "b-2030-08.pdf")],
+    ], "2031-02");
+    expect(cells.map((row) => row.map((c) => c.state))).toEqual([
+      ["after_last", "not_due"],
+      ["after_last", "imported"],
+      ["after_last", "missing"],
+      ["file_not_imported", "imported"],
+      ["missing", "imported"],
+      ["imported", "imported"],
+      ["before_first", "imported"],
+    ]);
+    expect(years).toEqual([
+      // 2031 is wholly after column 0's last document: null, like a year before its first.
+      { year: 2031, month_indexes: [0, 1], columns: [null, { counted: 1, imported: 1 }], columns_counted: 1, columns_complete: 1, incomplete_columns: [] },
+      { year: 2030, month_indexes: [2, 3, 4, 5, 6], columns: [{ counted: 3, imported: 1 }, { counted: 5, imported: 4 }], columns_counted: 2, columns_complete: 0, incomplete_columns: [0, 1] },
+    ]);
+  });
+
+  it("ends each column of a retired card at its own last document, and not at all when it is the month in progress", () => {
+    // One card's CLP column (last document 2031-01) and USD column (last 2030-12); then a column
+    // whose last document is the month in progress; then one with no document at all.
+    const { cells, years } = buildImportSyncDocumentYears(
+      ["2031-02", "2031-01", "2030-12"],
+      [true, true, true, true],
+      [
+        [cell(false), cell(false), cell(true, "c-2031-02.pdf"), cell(false)],
+        [cell(true, "clp-2031-01.pdf"), cell(false), cell(false), cell(false)],
+        [cell(true, "clp-2030-12.pdf"), cell(true, "usd-2030-12.pdf"), cell(true, "c-2030-12.pdf"), cell(false)],
+      ],
+      "2031-02"
+    );
+    expect(cells.map((row) => row.map((c) => c.state))).toEqual([
+      ["after_last", "after_last", "imported", "before_first"],
+      ["imported", "after_last", "missing", "before_first"],
+      ["imported", "imported", "imported", "before_first"],
+    ]);
+    expect(years[0]).toEqual({
+      year: 2031,
+      month_indexes: [0, 1],
+      columns: [{ counted: 1, imported: 1 }, null, { counted: 2, imported: 1 }, null],
+      columns_counted: 2,
+      columns_complete: 1,
+      incomplete_columns: [2],
+    });
+  });
+});
+
+describe("importSyncColumnsEndingAtLastDocument", () => {
+  const IMPORT_KEY = "credit_card_master|santander|vitest-coverage-retired";
+  let accountId = 0;
+
+  beforeAll(() => {
+    const bucket = db
+      .prepare(`SELECT id FROM asset_groups WHERE slug IN ('credit_card', 'credit_cards__credit_card') LIMIT 1`)
+      .get() as { id: number };
+    accountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'Vitest · coverage · retired card', ?, ?)`)
+        .run(bucket.id, IMPORT_KEY, IMPORT_KEY).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer, nav_retired)
+       VALUES (?, 21, 20, '0001', 'santander', 1)`
+    ).run(accountId);
+  });
+
+  afterAll(() => {
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+  });
+
+  it("ends both columns of a card whose config retires it, and no cartola column", () => {
+    const card = { account_id: accountId, label: "", document_kind: "cc_statement" as const };
+    expect(
+      importSyncColumnsEndingAtLastDocument([
+        { account_id: accountId, label: "", document_kind: "checking_cartola" },
+        { ...card, cc_statement_currency: "clp" },
+        { ...card, cc_statement_currency: "usd" },
+      ])
+    ).toEqual([false, true, true]);
+    db.prepare(`UPDATE credit_card_account_config SET nav_retired = 0 WHERE account_id = ?`).run(accountId);
+    expect(importSyncColumnsEndingAtLastDocument([card])).toEqual([false]);
   });
 });

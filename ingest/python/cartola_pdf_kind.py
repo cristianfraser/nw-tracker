@@ -28,8 +28,6 @@ def is_cuenta_vista_cartola_text(text: str) -> bool:
         return True
     if "MOVIMIENTO DE SU CUENTA" in upper:
         return True
-    if "0-000-00-00002" in upper:
-        return True
     return False
 
 
@@ -44,9 +42,8 @@ def is_linea_credito_cartola_text(text: str) -> bool:
     # for, it silently disqualified them from the header peek and they were filed under the
     # constant date in the attachment filename (a July-2026 cartola landed as 2021-12-24).
     # A genuine línea de crédito cartola always carries "CTA CTE CREDITO" (verified across the
-    # corpus), so the strong markers alone are sufficient.
-    if "0-010-12-57000-3" in upper:
-        return True
+    # corpus), so the strong markers alone are sufficient. No account number is a marker here:
+    # which account a cartola belongs to is the organizer's question, answered from its config.
     return False
 
 
@@ -56,8 +53,6 @@ def is_checking_cartola_text(text: str) -> bool:
         return False
     upper = text.upper()
     if "DETALLE DE MOVIMIENTOS" in upper:
-        return True
-    if "0-000-71-20626" in upper and "CARTOLA" in upper:
         return True
     return False
 
@@ -147,3 +142,70 @@ def peek_cartola_pdf_account(path) -> Optional[str]:
     except (FileNotFoundError, subprocess.CalledProcessError, OSError):
         return None
     return peek_cartola_account(raw)
+
+
+# The product heading Santander prints above the account number. «ML» / «ME» = moneda local /
+# moneda extranjera: the same cuenta corriente layout serves the peso and the dollar account.
+RE_CHECKING_FOREIGN_HEADING = re.compile(r"CUENTA\s+CORRIENTE\s+ME\b", re.I)
+RE_CHECKING_LOCAL_HEADING = re.compile(r"CUENTA\s+CORRIENTE\s+ML\b", re.I)
+
+CARTOLA_PRODUCT_CHECKING = "checking"
+CARTOLA_PRODUCT_CHECKING_FOREIGN = "checking_foreign"
+CARTOLA_PRODUCT_CUENTA_VISTA = "cuenta_vista"
+CARTOLA_PRODUCT_LINEA_CREDITO = "linea_credito"
+
+
+def cartola_product(text: str) -> Optional[str]:
+    """
+    Which Santander product a cartola's text belongs to, or None when it is not a cartola.
+
+    Since the October 2026 mail change the attachment names carry neither account nor kind
+    (`LCA_CTA_CTE_CRONO-<n>_<m>.pdf`), so this is the only classification there is. A foreign
+    currency cuenta corriente prints the peso account's layout (DETALLE DE MOVIMIENTOS) under
+    «CUENTA CORRIENTE ME»; it is told apart here so it can never be filed as the peso account.
+    """
+    if is_linea_credito_cartola_text(text):
+        return CARTOLA_PRODUCT_LINEA_CREDITO
+    if is_cuenta_vista_cartola_text(text):
+        return CARTOLA_PRODUCT_CUENTA_VISTA
+    if RE_CHECKING_FOREIGN_HEADING.search(text):
+        return CARTOLA_PRODUCT_CHECKING_FOREIGN
+    if RE_CHECKING_LOCAL_HEADING.search(text) or is_checking_cartola_text(text):
+        return CARTOLA_PRODUCT_CHECKING
+    return None
+
+
+# «CARTOLA DESDE HASTA PAGINA» header, then (in reading order) an optional account number or
+# form code, the cartola number and the two period dates.
+RE_CARTOLA_HEADER_LABELS = re.compile(r"CARTOLA\s+DESDE\s+HASTA", re.I)
+RE_CARTOLA_HEADER_VALUES = re.compile(
+    r"(?:\d-\d{3}-\d{2}-\d{5}-\d\s+)?(?:\d{4}-M-C-\d{2}\s+)?(\d+)\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})",
+    re.I,
+)
+_CARTOLA_HEADER_WINDOW = 400
+
+
+def peek_cartola_header(text: str) -> Optional[Tuple[str, str, str]]:
+    """
+    (cartola number, DESDE ISO, HASTA ISO) as printed in the header of a `pdftotext -layout`
+    cartola, or None when the header is not there. No fallback to other dates in the document
+    or to the file name: a cartola is named by its printed period or not at all.
+    """
+    flat = re.sub(r"\s+", " ", str(text or ""))
+    labels = RE_CARTOLA_HEADER_LABELS.search(flat)
+    if not labels:
+        return None
+    window = flat[labels.end() : labels.end() + _CARTOLA_HEADER_WINDOW]
+    m = RE_CARTOLA_HEADER_VALUES.search(window)
+    if not m:
+        return None
+    desde = parse_dd_mm_yy_to_iso(m.group(2))
+    hasta = parse_dd_mm_yy_to_iso(m.group(3))
+    if not desde or not hasta or desde > hasta:
+        return None
+    return m.group(1), desde, hasta
+
+
+def account_digits(account: Optional[str]) -> str:
+    """`0-000-00-00001-1` → `000000000011` (how the identifiers file stores account ids)."""
+    return re.sub(r"\D", "", str(account or ""))

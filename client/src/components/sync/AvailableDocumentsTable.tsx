@@ -24,7 +24,8 @@ import styles from "./AvailableDocumentsTable.module.css";
 type T = (key: string, opts?: Record<string, string | number>) => string;
 /** Opens the viewer on a cell's document. */
 type OpenDocument = (target: DocumentViewerTarget) => void;
-type ShownState = Exclude<ImportSyncDocumentCellState, "before_first">;
+/** Every state with a mark: before the column's first document and after a retired card's last there is none. */
+type ShownState = Exclude<ImportSyncDocumentCellState, "before_first" | "after_last">;
 
 const MARK_CLASS: Record<ShownState, string> = {
   imported: styles.markImported,
@@ -97,8 +98,9 @@ function CoverageCell({
   onOpen: OpenDocument;
   t: T;
 }) {
-  // Before the column's first document there is nothing to have or to miss: an empty cell.
-  if (cell.state === "before_first") return <td className={cn(styles.cell, className)} />;
+  // Before the column's first document, or after the last one of a column that ends there, there
+  // is nothing to have or to miss: an empty cell.
+  if (cell.state === "before_first" || cell.state === "after_last") return <td className={cn(styles.cell, className)} />;
   const name = columnName(acc, t);
   const label = cellLabel(cell.state, cell.imported, name, month, t);
   const doc = cell.document;
@@ -229,8 +231,8 @@ function YearMatrix({
  * Which monthly documents (cartolas, card statements) are imported and on disk: one line per year
  * — how many columns have every month, and the incomplete ones by name — that opens into that
  * year's months. The server builds the years and decides each cell's state; a month before a
- * column's first document is empty, the month in progress with no document yet reads «not due»,
- * and neither is counted.
+ * column's first document, or after the last one of a column that ends there (a retired card's),
+ * is empty, the month in progress with no document yet reads «not due», and none is counted.
  */
 export function AvailableDocumentsTable({
   data,
@@ -285,7 +287,7 @@ export function AvailableDocumentsTable({
                 <YearMatrix
                   year={year}
                   data={data}
-                  // A column with no document by this year has nothing to show in it.
+                  // A column with no document by this year (or none from it on, ending at its last) has nothing to show in it.
                   columns={columns.filter((col) =>
                     col.type === "single"
                       ? year.columns[col.accountIndex] != null

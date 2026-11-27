@@ -56,6 +56,23 @@ describe("AvailableDocumentsTable", () => {
     expect(html.match(/aria-expanded="false"/g)).toHaveLength(1);
   });
 
+  it("draws a month after a retired card's last statement as an empty cell", () => {
+    const html = render({
+      ...coverage,
+      cells: [
+        [cell("imported", "a-2031-02.pdf"), cell("after_last")],
+        [cell("imported_no_file"), cell("imported", "b-2031-01.pdf")],
+        [cell("imported", "a-2030-12.pdf"), cell("before_first")],
+      ],
+      years: [
+        { year: 2031, month_indexes: [0, 1], columns: [{ counted: 2, imported: 2 }, { counted: 1, imported: 1 }], columns_counted: 2, columns_complete: 2, incomplete_columns: [] },
+        coverage.years[1]!,
+      ],
+    });
+    expect(html).toMatch(/aria-label="Synthetic card: [^"]*2031-01[^"]*"/);
+    expect(html).not.toMatch(/aria-label="Synthetic card: [^"]*2031-02[^"]*"/);
+  });
+
   it("says so when no account has monthly documents", () => {
     const html = render({ months: [], accounts: [], cells: [], years: [] });
     expect(html).not.toContain("aria-expanded");
