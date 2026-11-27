@@ -20,6 +20,13 @@
  * - `undo`: both legs come back as their original single-leg movements (original ids), the
  *   transfer is deleted (its merge row cascades), and the pairing is recorded as a panel rejection
  *   (`movement_mirror_pair_rejections`) — the restored legs would otherwise be offered again.
+ *
+ * Both go through the app's own code (`undoMirrorConversion`, `swapMirrorConversionLeg` in
+ * `movementMirrorConvert.ts`, `flows/mirrorLegFlows.ts`), so a restored leg takes back its bank
+ * day and listing facts, and the flows follow: an undo hands the transfer's arrival and assignments
+ * back to the legs; a swap hands the replaced leg's arrival and account-level assignments back to it
+ * and folds the absorbed sibling's flow into the transfer's. What differs from the app: the legs
+ * come back under their ORIGINAL ids, and the balances and anchors are verified in-transaction.
  * - `reject`: a current candidate pairing of the same kind that was never converted is recorded as
  *   a rejection, so the panel never offers it.
  *
@@ -39,6 +46,7 @@ import fs from "node:fs";
 import { accountKindSlugForAccountId } from "../src/accountBucket.js";
 import { getCheckingLedgerAnchor, nonAnchorClpFlowTotals } from "../src/checkingCartolaBalances.js";
 import { db } from "../src/db.js";
+import { swapMirrorConversionLeg, undoMirrorConversion } from "../src/movementMirrorConvert.js";
 import { MIRROR_PAIR_MAX_DAY_GAP, mirrorLegIsMonthPrecision } from "../src/movementMirrorPairs.js";
 import { listMovementBalanceCashAccountIds } from "../src/movementBalanceCashAccounts.js";
 
@@ -129,12 +137,6 @@ const getLeg = db.prepare(
   `SELECT id, account_id, amount, currency, counter_amount, occurred_on, units_delta, note, flow_kind
    FROM movements WHERE id = ?`
 );
-const insLegWithId = db.prepare(
-  `INSERT INTO movements (id, account_id, amount, currency, occurred_on, units_delta, note)
-   VALUES (?, ?, ?, 'clp', ?, ?, ?)`
-);
-const delMovement = db.prepare(`DELETE FROM movements WHERE id = ?`);
-const delIncomeOverride = db.prepare(`DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`);
 const insRejection = db.prepare(
   `INSERT OR IGNORE INTO movement_mirror_pair_rejections (out_movement_id, in_movement_id) VALUES (?, ?)`
 );
@@ -173,15 +175,6 @@ function mergeLeg(m: MergeRow, side: "out" | "in"): Leg {
   };
 }
 
-/**
- * Restores a merge's recorded leg under its original id, so rows keyed on the id (category splits,
- * legacy `checking-mv:<id>` keys) resolve again.
- */
-function restoreLeg(accountId: number, leg: Leg): void {
-  if (getLeg.get(leg.id)) throw new Error(`cannot restore leg ${leg.id}: the id is taken`);
-  insLegWithId.run(leg.id, accountId, leg.amount_clp, leg.occurred_on, leg.units_delta, leg.note);
-}
-
 function daysBetween(a: string, b: string): number {
   return Math.abs((Date.parse(a) - Date.parse(b)) / 86_400_000);
 }
@@ -203,9 +196,8 @@ function runUndo(item: Extract<PlanItem, { action: "undo" }>): Outcome {
   const out = mergeLeg(merge, "out");
   const inn = mergeLeg(merge, "in");
   assertUnreferenced(item.transfer, new Set(["movement_mirror_merges"]), "transfer");
-  restoreLeg(transfer.from_account_id, out);
-  restoreLeg(transfer.to_account_id, inn);
-  delMovement.run(item.transfer);
+  for (const id of [out.id, inn.id]) if (getLeg.get(id)) throw new Error(`cannot restore leg ${id}: the id is taken`);
+  undoMirrorConversion(item.transfer, { originalIds: true });
   // The restored legs would come straight back as a candidate; the rejection is the record that
   // this pairing was reviewed and is not a transfer.
   insRejection.run(out.id, inn.id);
@@ -261,21 +253,16 @@ function runSwap(item: Extract<PlanItem, { action: "swap" }>): Outcome {
   const transferUnits = units != null && Number.isFinite(units) && units !== 0 ? Math.abs(units) : null;
   const transferDate = outMonthPrecision && !inMonthPrecision ? inYmd : outYmd;
 
-  restoreLeg(sideAccount, wrong);
-  delIncomeOverride.run(item.with);
-  delMovement.run(item.with);
+  if (getLeg.get(wrong.id)) throw new Error(`cannot restore leg ${wrong.id}: the id is taken`);
   const p = item.side;
-  db.prepare(
-    `UPDATE movement_mirror_merges
-     SET ${p}_movement_id = ?, ${p}_occurred_on = ?, ${p}_amount = ?, ${p}_units_delta = ?, ${p}_note = ?
-     WHERE transfer_movement_id = ?`
-  ).run(sibling.id, sibling.occurred_on, sibling.amount, sibling.units_delta, sibling.note, item.transfer);
+  // The transfer's own day, note and cuotas first; the leg and flow steps are the app's.
   db.prepare(`UPDATE movements SET occurred_on = ?, note = ?, units_delta = ? WHERE id = ?`).run(
     transferDate,
     humanNote(outYmd, inYmd),
     transferUnits,
     item.transfer
   );
+  swapMirrorConversionLeg(item.transfer, item.side, item.with);
   return {
     label: `transfer ${item.transfer}`,
     status: "applied",

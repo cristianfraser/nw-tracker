@@ -46,6 +46,7 @@ Two facts about the plumbing make the last row costly:
 | 13 | Mirror conversion by hand (`convertMirrorPairs`) | The transfer was stamped now; neither leg's arrival, note or category was carried. | Fixed: both legs' flows fold into the transfer's (older arrival, earliest event time, assignments); a pair whose legs' assignments conflict is blocked in the list and skipped by a batch. Tests added |
 | 14 | Mirror undo (`undoMirrorConversion`) | Restored legs were stamped now; their retired flows were not taken back. | Fixed: restored legs take back a retired flow of their document, then the transfer's arrival, event time and assignments (inflow-account categories and notes to the inflow leg, the rest to the outflow leg). Test added |
 | 16 | Automatic card-payment conversion (`convertCcPaymentMirrors`) | Arrival was copied; the debit's note, big group or refund mark was not. | Fixed: the debit's flow folds into the transfer's; its undo hands it back. Test extended |
+| 11 | Ledger rebuild (`import:cc-parsed --replace-ledger`) | Deleted every statement plan and wrote it again: new ids and flows. What broke: the plan's arrival and flow assignments, a bank prepayment (`cc_plan_prepayments`) and the feed's provenance row (`cc_feed_installment_plans`), both FK-cascaded away, and the card-to-card part's `part_ref`. | Fixed: a plan the statements still state stays the row it is; a stale plan is deleted after folding into a same-identity kept plan, and the rebuild refuses (nothing written) when a stale plan is named by a prepayment, feed provenance or card-to-card part. Test added |
 
 ### Open — card side
 
@@ -57,7 +58,6 @@ Two facts about the plumbing make the last row costly:
 | 8 | Re-listed annulment (`removeRelistedAnnulments`) | A listing shows an annulled purchase again a day later or under another rendering | The annulment is deleted and the line imports with a new key | Reported (risk) |
 | 9 | Annulment of a line with nothing filed on it | Bank voids a purchase, then bills it after all | The flow is deleted, so the billed line has no arrival to take | Reported (risk) |
 | 10b | A twin listed after its plan is on file (`plan_on_file` in `statementLinePlan.ts`, `shouldSkipOneShotStatementImport` in the listing merge, `findPlanAmong` / `findPlanForOneShotLine`) | A genuine twin purchase listed or printed once the plan exists | The twin is skipped as the plan's purchase. The slot rule cannot apply here: the plan's own row re-listed the next night (its line deleted, so its dedupe key is gone) reads exactly like a twin, and taking it would double-count every feed cuota purchase. Needs a stored identity of the row a plan took (its listing key) | Open |
-| 11 | Ledger rebuild (`import:cc-parsed --replace-ledger`) | Manual run | Plans get new ids and flows; anything keyed by plan id detaches | Reported (risk) |
 
 ### Open — checking and transfers
 
@@ -68,13 +68,19 @@ Two facts about the plumbing make the last row costly:
 
 ### Scripts (manual runs)
 
-`backfill-cc-duplicate-expense-lines.ts` deletes duplicates without folding into the kept twin;
-`list-missing-cc-statement-pdfs.ts --prune` deletes lines outside the write funnel;
-`repair-cc-installment-duplicate-purchases.ts` deletes sibling plans without folding their flows;
-`remove-cc-duplicate-download-statements.ts` guards only the per-line override, not flow-level
-assignments. All reported, none re-checked.
-`repair-mirror-merge-legs.ts` restores and absorbs legs with raw SQL, bypassing `flows/mirrorLegFlows.ts`:
-an undo by script leaves the legs on fresh flows and retires the transfer's flow with what was on it.
+Fixed, each with a test of the function the script calls: `backfill-cc-duplicate-expense-lines.ts`
+folds each duplicate into its kept twin; `list-missing-cc-statement-pdfs.ts --prune` deletes through
+the card-line write funnel, reports lines carrying filed work per statement and refuses them without
+`--allow-assignment-loss`; `repair-cc-installment-duplicate-purchases.ts` folds each removed sibling
+plan's flow into the kept plan's; `remove-cc-duplicate-download-statements.ts` hands each copy line's
+flow to the real statement's line (and refuses flows that conflict); `repair-mirror-merge-legs.ts`
+undoes and swaps through the app's code (`undoMirrorConversion` with the original ids,
+`swapMirrorConversionLeg`), so flows follow the legs.
+
+Still open: a swap hands the replaced leg back only its arrival, event time and the category and
+note rows filed under its account; a big group, pieces or link filed on the absorbed leg stay on
+the transfer (they carry no account to tell the legs apart). None of the scripts was run against a
+real database; the tests use synthetic fixtures.
 
 ## Paths that keep identity
 

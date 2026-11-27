@@ -43,7 +43,7 @@ import type { RefusedMirrorPair } from "nw-tracker-contracts/dto/mirrors";
 import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { cartolaRowPurchaseKey } from "./bankRowFacts.js";
 import { movementFlowId } from "./flows/flowIdentity.js";
-import { foldMirrorLegFlowsIntoTransfer, mirrorLegFlowsConflict, restoreMirrorLegFlows } from "./flows/mirrorLegFlows.js";
+import { foldMirrorLegFlowsIntoTransfer, mirrorLegFlowsConflict, restoreMirrorLegFlows, swapMirrorLegFlows } from "./flows/mirrorLegFlows.js";
 
 function mirrorMergeHumanNote(outYmd: string, inYmd: string): string {
   return `Traspaso espejo (retiro ${outYmd} → depósito ${inYmd})`;
@@ -284,9 +284,13 @@ function restoredLegKey(movementId: number, accountId: number): () => string {
  * ids already cascaded at conversion time and do not come back. The restored legs take the
  * transfer's flow identity back (`restoreMirrorLegFlows`): its arrival and event time on both, its
  * assignments on the outflow leg except the category and note rows filed under the inflow leg's
- * account, which go to the inflow leg.
+ * account, which go to the inflow leg. `originalIds`: the legs come back under the ids the merge
+ * row recorded (a repair script's undo: rows keyed on those ids resolve again); the ids must be free.
  */
-export function undoMirrorConversion(transferMovementId: number): {
+export function undoMirrorConversion(
+  transferMovementId: number,
+  opts: { originalIds?: boolean } = {}
+): {
   restored_out_id: number;
   restored_in_id: number;
 } {
@@ -340,6 +344,7 @@ export function undoMirrorConversion(transferMovementId: number): {
   if (merge.in_movement_id == null) {
     const restored = db.transaction(() => {
       const outId = insertMovement({
+        ...(opts.originalIds ? { id: merge.out_movement_id } : {}),
         accountId: row.from_account_id!,
         ...restoredLegAmount(merge.out_amount, merge.out_currency, "out"),
         occurredOn: merge.out_occurred_on,
@@ -365,6 +370,7 @@ export function undoMirrorConversion(transferMovementId: number): {
 
   const run = db.transaction(() => {
     const outId = insertMovement({
+      ...(opts.originalIds ? { id: merge.out_movement_id } : {}),
       accountId: fromId,
       ...restoredLegAmount(merge.out_amount, merge.out_currency, "out"),
       occurredOn: merge.out_occurred_on,
@@ -372,6 +378,7 @@ export function undoMirrorConversion(transferMovementId: number): {
       note: merge.out_note,
     });
     const inId = insertMovement({
+      ...(opts.originalIds ? { id: merge.in_movement_id! } : {}),
       accountId: toId,
       ...restoredLegAmount(merge.in_amount, merge.in_currency, "in"),
       occurredOn: merge.in_occurred_on,
@@ -394,6 +401,78 @@ export function undoMirrorConversion(transferMovementId: number): {
     return { restored_out_id: outId, restored_in_id: inId };
   });
   return run();
+}
+
+/**
+ * A conversion that absorbed the wrong row on one side (`scripts/repair-mirror-merge-legs.ts`): the
+ * wrong row comes back under its original id as the single-leg movement the merge row recorded
+ * (bank day, listing facts), the sibling is absorbed in its place — its content, listing and bank day
+ * move into the merge row, its flow folds into the transfer's — and the sibling row is deleted. The
+ * restored row takes back its arrival, event time and account-level assignments from the transfer's
+ * flow (`swapMirrorLegFlows`). The caller has checked the sibling is a plain peso leg inside the
+ * pairing window and has updated the transfer's own date, note and units.
+ */
+export function swapMirrorConversionLeg(transferMovementId: number, side: "out" | "in", siblingMovementId: number): { restored_id: number } {
+  return db.transaction(() => {
+    const transfer = db
+      .prepare(`SELECT from_account_id, to_account_id FROM movements WHERE id = ?`)
+      .get(transferMovementId) as { from_account_id: number | null; to_account_id: number | null } | undefined;
+    const merge = db.prepare(`SELECT * FROM movement_mirror_merges WHERE transfer_movement_id = ?`).get(transferMovementId) as
+      | Record<string, unknown>
+      | undefined;
+    if (!transfer || !merge || transfer.from_account_id == null || transfer.to_account_id == null) {
+      throw new Error(`movement ${transferMovementId} is not a mirror-merge conversion`);
+    }
+    const accountId = side === "out" ? transfer.from_account_id : transfer.to_account_id;
+    const wrongId = merge[`${side}_movement_id`] as number | null;
+    if (wrongId == null) throw new Error(`merge ${transferMovementId}: the ${side} leg is not a movement`);
+    const sibling = db
+      .prepare(`SELECT occurred_on, amount, units_delta, note FROM movements WHERE id = ? AND account_id = ?`)
+      .get(siblingMovementId, accountId) as { occurred_on: string; amount: number; units_delta: number | null; note: string | null } | undefined;
+    if (!sibling) throw new Error(`sibling ${siblingMovementId} is not a single-leg row on account ${accountId}`);
+    const siblingListing = mirrorLegListingOf(listedFactsOfMovement(siblingMovementId, db));
+    const siblingPostedOn = bankPostedOn(siblingMovementId, accountId);
+
+    const restoredId = insertMovement({
+      id: wrongId,
+      accountId,
+      ...restoredLegAmount(merge[`${side}_amount`] as number, merge[`${side}_currency`] as string, side),
+      occurredOn: merge[`${side}_occurred_on`] as string,
+      unitsDelta: merge[`${side}_units_delta`] as number | null,
+      note: merge[`${side}_note`] as string | null,
+    });
+    carryStoredBankPosting(transferMovementId, restoredId, accountId);
+    restoreMirrorLegListing(restoredId, keptListing(merge, side), db);
+    const flows = swapMirrorLegFlows(
+      transferMovementId,
+      checkingMovementPurchaseKey(transferMovementId),
+      { movementId: restoredId, accountId, key: restoredLegKey(restoredId, accountId) },
+      siblingMovementId
+    );
+    db.prepare(`DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`).run(siblingMovementId);
+    deleteMovements([siblingMovementId]);
+    const listing = Object.entries(siblingListing).map(([col, v]) => [`${side}_${col}`, v] as const);
+    const sets = [
+      `${side}_movement_id = ?`,
+      `${side}_occurred_on = ?`,
+      `${side}_amount = ?`,
+      `${side}_units_delta = ?`,
+      `${side}_note = ?`,
+      ...listing.map(([col]) => `${col} = ?`),
+    ];
+    db.prepare(`UPDATE movement_mirror_merges SET ${sets.join(", ")} WHERE transfer_movement_id = ?`).run(
+      siblingMovementId,
+      sibling.occurred_on,
+      sibling.amount,
+      sibling.units_delta,
+      sibling.note,
+      ...listing.map(([, v]) => v),
+      transferMovementId
+    );
+    recordBankPosting(transferMovementId, accountId, siblingPostedOn);
+    flows.finish();
+    return { restored_id: restoredId };
+  })();
 }
 
 /** Persists rejections; both ids must be existing single-leg rows (fail fast on anything else). */

@@ -38,6 +38,11 @@ export function movementWrite<T>(body: () => T): T {
 }
 
 type MovementCommon = {
+  /**
+   * The id the row takes: only a repair that restores a row under the id its keys were written
+   * against (a mirror conversion undone by script) names one; every other row gets the next id.
+   */
+  id?: number;
   /** Single-leg pesos are signed; a transfer and a single-leg foreign row are positive (direction in `flowKind`). */
   amount: number;
   currency: string;
@@ -74,7 +79,18 @@ const INSERT_MOVEMENT_SQL = `INSERT INTO movements (
    account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
    occurred_on, note, units_delta, counter_units_delta, flow_kind
  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+const INSERT_MOVEMENT_WITH_ID_SQL = INSERT_MOVEMENT_SQL.replace("INSERT INTO movements (", "INSERT INTO movements (\n   id,").replace("VALUES (?,", "VALUES (?, ?,");
 const insertStatements = new WeakMap<Database, Statement>();
+const insertWithIdStatements = new WeakMap<Database, Statement>();
+
+function insertWithIdStatement(dbHandle: Database): Statement {
+  let stmt = insertWithIdStatements.get(dbHandle);
+  if (!stmt) {
+    stmt = dbHandle.prepare(INSERT_MOVEMENT_WITH_ID_SQL);
+    insertWithIdStatements.set(dbHandle, stmt);
+  }
+  return stmt;
+}
 
 function insertStatement(dbHandle: Database): Statement {
   let stmt = insertStatements.get(dbHandle);
@@ -128,7 +144,11 @@ export function insertMovement(row: MovementInsert, dbHandle: Database = db): nu
       row.occurredOn, row.note ?? null, row.unitsDelta ?? null, null, row.flowKind ?? null,
     ];
   }
-  const id = Number(insertStatement(dbHandle).run(...params).lastInsertRowid);
+  if (row.id != null && (!Number.isInteger(row.id) || row.id <= 0)) throw new Error(`movement: bad id ${row.id}`);
+  const id =
+    row.id != null
+      ? Number(insertWithIdStatement(dbHandle).run(row.id, ...params).lastInsertRowid)
+      : Number(insertStatement(dbHandle).run(...params).lastInsertRowid);
   recordMovementFlowFirstSeen(id, dbHandle);
   return id;
 }

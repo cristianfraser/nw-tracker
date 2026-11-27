@@ -16,13 +16,18 @@
  *   - the parse has a statement P, stored on the same account, card group and currency, whose close
  *     is the copy's period start and whose pay-by is the copy's close (the misread signature);
  *   - every line of the copy is on P (transaction date, merchant, amounts), counted as a multiset;
- *   - none of its lines carries an expense category (deleting it would drop the category).
+ *   - the flows of its lines can be handed to P's lines (nothing a line's flow holds — category,
+ *     note, big group, pieces, links, refund mark — conflicts with what P's line holds).
  * A stored statement the parse lacks for any other reason (a zero-row statement, one parked in
  * pending-review) is listed and left alone.
  *
- * Report by default. `--apply` repairs each account in one transaction: the copies are deleted
- * (their lines cascade) and each P is re-imported through `importStatementDocuments` restating
- * its lines — the same import the importer runs, so every import gate (reconcile, feed closes,
+ * Each copy line hands its flow to the line of P that stands for it, one to one (`ccDuplicateDownloadCopies.ts`):
+ * a line P's document still needs a row for moves onto P as it is, a line P already has folds into
+ * it, so the arrival and everything filed on the line survive.
+ *
+ * Report by default. `--apply` repairs each account in one transaction: the copies' lines hand
+ * their flows over, the copies are deleted and each P is re-imported through
+ * `importStatementDocuments` restating its lines — the same import the importer runs, so every import gate (reconcile, feed closes,
  * valuations) applies — and the converted card payments that had evidence before must still find
  * it afterwards (`assertCcPaymentEvidenceKept`), else the whole account rolls back.
  *
@@ -34,23 +39,20 @@ import path from "node:path";
 import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
-import {
-  canonicalStatementsFromParsedRecords,
-  cardStatementKey,
-  storedCardLineDate,
-  type CardCanonicalStatement,
-} from "nw-tracker-contracts";
-import { ccImportFlowItemFromLine } from "../src/ccStatementsImport.js";
+import { canonicalStatementsFromParsedRecords, cardStatementKey, type CardCanonicalStatement } from "nw-tracker-contracts";
 // Loads the card-line write funnel the import writes through.
 import "../src/cards/lineWrites.js";
-import { importStatementDocuments } from "../src/cards/statementLinePlanApply.js";
-import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { padCcStatementDate } from "../src/ccStatementJsonSource.js";
 import {
-  assertCcPaymentEvidenceKept,
-  ccPaymentPairingIdsWithEvidence,
-} from "../src/ccPaymentMirrorEvidence.js";
-import { lineAmountClpSql, lineAmountUsdSql } from "../src/cards/lineAmountSql.js";
+  copyHandoverConflict,
+  copyLineIdentity,
+  copyLinesWithAssignments,
+  documentIdentityCounts,
+  removeDuplicateDownloadCopies,
+  storedStatementLines,
+  type DuplicateDownloadCopy,
+  type StoredCopyLine,
+} from "../src/ccDuplicateDownloadCopies.js";
 
 const apply = process.argv.includes("--apply");
 const csvArg = process.argv.find((a) => a.startsWith("--csv="))?.slice("--csv=".length);
@@ -66,15 +68,6 @@ type StoredStatement = {
   currency: string;
 };
 
-type StoredLine = {
-  id: number;
-  transaction_date: string | null;
-  merchant: string | null;
-  amount_clp: number | null;
-  amount_usd: number | null;
-  categorized: number;
-};
-
 type ParsedStatement = {
   key: string;
   card_group: string;
@@ -84,19 +77,6 @@ type ParsedStatement = {
   currency: string;
   statement: CardCanonicalStatement;
 };
-
-/** Date, merchant and the amount in the statement's own currency (a stored USD line keeps CLP 0). */
-function lineIdentity(
-  currency: string,
-  d: string | null,
-  merchant: string | null,
-  clp: number | null,
-  usd: number | null
-): string {
-  const iso = parseDdMmYyToIso(String(d ?? "").trim()) ?? String(d ?? "").trim();
-  const amount = currency === "usd" ? (usd == null ? "" : usd.toFixed(2)) : String(clp ?? "");
-  return `${iso}|${String(merchant ?? "").trim().toUpperCase()}|${amount}`;
-}
 
 const records = readCommaCsvRecords(csvPath);
 if (records.length === 0) throw new Error(`No rows read from ${csvPath}`);
@@ -136,15 +116,7 @@ for (const p of parsed.values()) {
   if (s) parsedOnAccount.push({ p, s });
 }
 
-const selLines = db.prepare(
-  `SELECT l.id, l.transaction_date, l.merchant, ${lineAmountClpSql("l")} AS amount_clp, ${lineAmountUsdSql("l")} AS amount_usd,
-          (c.statement_line_id IS NOT NULL) AS categorized
-   FROM cc_statement_lines l
-   LEFT JOIN cc_expense_line_categories c ON c.statement_line_id = l.id
-   WHERE l.statement_id = ?`
-);
-
-type Plan = { copy: StoredStatement; target: ParsedStatement; targetStatementId: number; lines: StoredLine[] };
+type Plan = { copy: StoredStatement; target: ParsedStatement; targetStatementId: number; lines: StoredCopyLine[]; handover: DuplicateDownloadCopy };
 const plans: Plan[] = [];
 const leftAlone: string[] = [];
 const refused: string[] = [];
@@ -176,27 +148,18 @@ for (const s of stored) {
     continue;
   }
   const { p, s: ps } = targets[0]!;
-  const lines = selLines.all(s.id) as StoredLine[];
-  const categorized = lines.filter((l) => l.categorized);
-  if (categorized.length > 0) {
-    refused.push(`${label}: ${categorized.length} line(s) carry an expense category (ids ${categorized.map((l) => l.id).join(", ")})`);
-    continue;
-  }
-  const onTarget = new Map<string, number>();
-  for (const line of p.statement.lines) {
-    const it = ccImportFlowItemFromLine(line, "");
-    const k = lineIdentity(
-      p.currency,
-      storedCardLineDate(line.printed_transaction_date, line.transaction_date),
-      it.description,
-      it.amount_clp,
-      it.amount_usd
-    );
-    onTarget.set(k, (onTarget.get(k) ?? 0) + 1);
-  }
-  const missing: StoredLine[] = [];
+  const lines = storedStatementLines(s.id);
+  const copy: DuplicateDownloadCopy = {
+    copyStatementId: s.id,
+    targetStatementId: ps.id,
+    currency: s.currency,
+    targetStatement: p.statement,
+    targetKey: p.key,
+  };
+  const onTarget = documentIdentityCounts(p.statement);
+  const missing: StoredCopyLine[] = [];
   for (const l of lines) {
-    const k = lineIdentity(s.currency, l.transaction_date, l.merchant, l.amount_clp, l.amount_usd);
+    const k = copyLineIdentity(s.currency, l.transaction_date, l.merchant, l.amount_clp, l.amount_usd);
     const n = onTarget.get(k) ?? 0;
     if (n === 0) missing.push(l);
     else onTarget.set(k, n - 1);
@@ -208,7 +171,14 @@ for (const s of stored) {
     );
     continue;
   }
-  plans.push({ copy: s, target: p, targetStatementId: ps.id, lines });
+  const conflict = copyHandoverConflict(copy);
+  if (conflict) {
+    refused.push(`${label}: its flows cannot be handed to ${p.source_pdf}'s lines — ${conflict}`);
+    continue;
+  }
+  const filed = copyLinesWithAssignments(lines);
+  if (filed.length > 0) console.log(`# ${label}: ${filed.length} line(s) carry filed assignments, handed to ${p.source_pdf}'s lines`);
+  plans.push({ copy: s, target: p, targetStatementId: ps.id, lines, handover: copy });
 }
 
 console.log(`# parsed CSV: ${csvPath} (${parsed.size} statements)`);
@@ -231,7 +201,6 @@ if (!apply) {
   process.exit(0);
 }
 
-const delStatement = db.prepare(`DELETE FROM cc_statements WHERE id = ?`);
 const byAccount = new Map<number, Plan[]>();
 for (const pl of plans) {
   const list = byAccount.get(pl.copy.account_id) ?? [];
@@ -239,16 +208,7 @@ for (const pl of plans) {
   byAccount.set(pl.copy.account_id, list);
 }
 for (const [accountId, list] of byAccount) {
-  const result = db.transaction(() => {
-    const before = ccPaymentPairingIdsWithEvidence(accountId);
-    for (const pl of list) delStatement.run(pl.copy.id);
-    const merged = importStatementDocuments(accountId, list.map((pl) => pl.target.statement), {
-      replaceLedger: false,
-      replaceStatementKeys: new Set(list.map((pl) => pl.target.key)),
-    });
-    assertCcPaymentEvidenceKept(accountId, before, "removing the duplicate-download statements");
-    return merged;
-  })();
+  const result = removeDuplicateDownloadCopies(accountId, list.map((pl) => pl.handover));
   console.log(
     `account ${accountId}: deleted ${list.map((pl) => pl.copy.id).join(", ")}; re-imported ` +
       `${result.statements.statementCount} statement(s), ${result.statements.linesInserted} line(s) inserted, ` +

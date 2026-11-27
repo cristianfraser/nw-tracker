@@ -6,6 +6,7 @@ import { ccStatementSourceKindOf } from "./ccStatementSourceKind.js";
 import {
   applyCardLinePlan,
   applyCardLinePlanDetailed,
+  foldSiblingPlanFlow,
   planOneShotLinesSupersededByInstallmentPurchases,
   type CardLinePiecesDropped,
 } from "./ccCrossImportDedupe.js";
@@ -239,9 +240,78 @@ export type CcInstallmentLedgerMergeResult = {
 };
 
 export type CcInstallmentLedgerMergeOpts = {
-  /** Replace the account's plan ledger from the statements (`import:cc-parsed --replace-ledger`). */
+  /**
+   * Rebuild the account's plan ledger from the statements (`import:cc-parsed --replace-ledger`):
+   * the payments are re-read, a plan the statements still state stays the row it is (its id, flow,
+   * arrival, prepayment and provenance rows), a statement plan with no row is written, and a
+   * statement plan no statement states any more goes — refused when something names it by id
+   * (`assertStalePlansUnreferenced`), its flow folded into a same-identity plan's when it is a
+   * duplicate of one.
+   */
   replaceLedger?: boolean;
 };
+
+type StalePlan = {
+  id: number;
+  purchase_date: string;
+  total_amount_clp: number;
+  cuotas_totales: number;
+  merchant: string | null;
+  twin_index: number;
+};
+
+/**
+ * What names a plan by its id, where deleting the plan would lose it (the FK rows cascade, the
+ * card-to-card part is a bare number): its prepayment, the feed's provenance row, a card-to-card
+ * payment part. A row of the hand-entered plans never gets here.
+ */
+function planIdReferences(planId: number): string[] {
+  const refs: string[] = [];
+  const has = (sql: string) => db.prepare(sql).get(planId) != null;
+  if (has(`SELECT 1 FROM cc_plan_prepayments WHERE purchase_id = ?`)) refs.push("a bank prepayment (cc_plan_prepayments)");
+  if (has(`SELECT 1 FROM cc_feed_installment_plans WHERE purchase_id = ?`)) refs.push("the feed's provenance (cc_feed_installment_plans)");
+  if (has(`SELECT 1 FROM card_to_card_payments WHERE part_kind = 'plan' AND part_ref = ?`)) refs.push("a card-to-card payment part (card_to_card_payments)");
+  return refs;
+}
+
+/**
+ * The tail of a ledger rebuild: the statement plans the statements no longer state go. Each is
+ * checked first — one something names by id (a prepayment, the feed's provenance, a card-to-card
+ * part) has no row to be re-pointed to, so the rebuild refuses, listing them, and writes nothing.
+ * A stale plan that repeats a plan the rebuild kept (the same identity) hands it its flow
+ * (`foldSiblingPlanFlow`: the older arrival, what was filed on either) before it goes.
+ */
+function removeStaleStatementPlans(accountId: number, touched: ReadonlySet<number>): void {
+  const stale = (
+    db
+      .prepare(
+        `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
+         FROM cc_installment_purchases WHERE account_id = ? AND source != 'manual' ORDER BY id`
+      )
+      .all(accountId) as StalePlan[]
+  ).filter((p) => !touched.has(p.id));
+  if (stale.length === 0) return;
+  const referenced = stale.map((p) => ({ p, refs: planIdReferences(p.id) })).filter((x) => x.refs.length > 0);
+  if (referenced.length > 0) {
+    throw new Error(
+      `ledger rebuild refused: ${referenced.length} plan(s) the statements no longer state are named by id — ` +
+        referenced.map((x) => `plan ${x.p.id} («${x.p.merchant ?? "?"}», ${x.p.purchase_date}, ${x.p.total_amount_clp}): ${x.refs.join(", ")}`).join("; ") +
+        `. Nothing was written; remove or re-point those records first.`
+    );
+  }
+  const keptByIdentity = new Map<string, number>();
+  for (const id of touched) {
+    const row = db
+      .prepare(`SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index FROM cc_installment_purchases WHERE id = ?`)
+      .get(id) as StalePlan | undefined;
+    if (row) keptByIdentity.set(installmentPurchaseLedgerDedupeKey(row), row.id);
+  }
+  for (const p of stale) {
+    const kept = keptByIdentity.get(installmentPurchaseLedgerDedupeKey(p));
+    if (kept != null) foldSiblingPlanFlow(accountId, kept, p.id);
+    db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(p.id);
+  }
+}
 
 export function mergeInstallmentLedgerFromStatements(
   accountId: number,
@@ -319,9 +389,6 @@ function mergeInstallmentLedgerInSession(
       db.prepare(
         `DELETE FROM cc_installment_payments WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`
       ).run(accountId);
-      db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ? AND source != 'manual'`).run(
-        accountId
-      );
     }
 
     const purchaseIdByFingerprint = new Map<string, number>();
@@ -392,9 +459,8 @@ function mergeInstallmentLedgerInSession(
         }
         pid = (selId.get(accountId, agg.card_group, agg.canonical_row_id) as { id: number }).id;
         purchaseIdByFingerprint.set(fingerprint, pid);
-        // A plan written new is the purchase's arrival (its cuota lines are not: `FlowArrival`); a
-        // ledger wipe re-creates what was on file, so it stamps nothing.
-        if (!onFile && !replaceLedger) recordPlanFlowFirstSeen(pid);
+        // A plan written new is the purchase's arrival (its cuota lines are not: `FlowArrival`).
+        if (!onFile) recordPlanFlowFirstSeen(pid);
       } else {
         db.prepare(
           `UPDATE cc_installment_purchases SET
@@ -480,6 +546,7 @@ function mergeInstallmentLedgerInSession(
       }
     }
     assertTwinPlansStartTogether(accountId, planIdsByLoan);
+    if (replaceLedger) removeStaleStatementPlans(accountId, touchedPlanIds);
   });
 
   run();

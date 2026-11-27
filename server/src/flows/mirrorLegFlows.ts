@@ -120,7 +120,7 @@ export function cardPaymentDebitConflict(debitFlowId: number, dbHandle: Database
 }
 
 /** Whether anything hangs off a flow (the assignments the flow-retirement triggers keep a flow for). */
-function flowHoldsAssignments(flowId: number, dbHandle: Database): boolean {
+export function flowHoldsAssignments(flowId: number, dbHandle: Database): boolean {
   const tables = [...FLOW_HOLDING_TABLES, "flow_links"];
   if (tables.some((t) => dbHandle.prepare(`SELECT 1 FROM ${t} WHERE flow_id = ?`).get(flowId) != null)) return true;
   return dbHandle.prepare(`SELECT 1 FROM card_refund_links WHERE flow_id = ? OR purchase_flow_id = ?`).get(flowId, flowId) != null;
@@ -172,6 +172,19 @@ export function foldMirrorLegFlowsIntoTransfer(
   answerToKeyWhenHolding(transferFlow, transferKey, dbHandle);
 }
 
+/** The category and note rows filed under `accountId` on the transfer's flow go to the leg's flow (the leg's own win). */
+function moveAccountRowsToLeg(transferFlow: number, legFlow: number, accountId: number, dbHandle: Database): void {
+  for (const table of ["flow_categories", "flow_notes"]) {
+    dbHandle
+      .prepare(
+        `DELETE FROM ${table} WHERE flow_id = ? AND EXISTS (SELECT 1 FROM ${table} x
+           WHERE x.flow_id = ? AND x.account_id = ? AND x.portion = ${table}.portion AND x.piece_seq = ${table}.piece_seq)`
+      )
+      .run(legFlow, transferFlow, accountId);
+    dbHandle.prepare(`UPDATE ${table} SET flow_id = ? WHERE flow_id = ? AND account_id = ?`).run(legFlow, transferFlow, accountId);
+  }
+}
+
 export type RestoredMirrorLeg = { movementId: number; accountId: number; key: () => string };
 
 /**
@@ -192,17 +205,7 @@ export function restoreMirrorLegFlows(
     const inFlow = movementFlowId(inn.movementId, dbHandle);
     copyFlowFirstSeen(transferFlow, inFlow, dbHandle);
     copyFlowEventTime(transferFlow, inFlow, dbHandle);
-    if (inn.accountId !== out.accountId) {
-      for (const table of ["flow_categories", "flow_notes"]) {
-        dbHandle
-          .prepare(
-            `DELETE FROM ${table} WHERE flow_id = ? AND EXISTS (SELECT 1 FROM ${table} x
-               WHERE x.flow_id = ? AND x.account_id = ? AND x.portion = ${table}.portion AND x.piece_seq = ${table}.piece_seq)`
-          )
-          .run(inFlow, transferFlow, inn.accountId);
-        dbHandle.prepare(`UPDATE ${table} SET flow_id = ? WHERE flow_id = ? AND account_id = ?`).run(inFlow, transferFlow, inn.accountId);
-      }
-    }
+    if (inn.accountId !== out.accountId) moveAccountRowsToLeg(transferFlow, inFlow, inn.accountId, dbHandle);
   }
   const outFlow = movementFlowId(out.movementId, dbHandle);
   mergeFlowInto(transferFlow, outFlow, "from", dbHandle);
@@ -212,4 +215,36 @@ export function restoreMirrorLegFlows(
       for (const leg of inn ? [out, inn] : [out]) answerToKeyWhenHolding(movementFlowId(leg.movementId, dbHandle), leg.key(), dbHandle);
     },
   };
+}
+
+/**
+ * A swap (`scripts/repair-mirror-merge-legs.ts`): the conversion absorbed the wrong row on one
+ * side. The wrong row comes back (`restored`, already inserted) and takes back what is its own on
+ * the transfer's flow — its arrival and event time (copied: the transfer keeps the older arrival
+ * of its legs), the category and note rows filed under its account — and a flow retired with its
+ * own document; the absorbed sibling's flow then folds into the transfer's, like a conversion's
+ * leg (the transfer's assignments win a conflict, the older arrival stays). The caller deletes the
+ * sibling after. Throws when the transfer's flow and the sibling's cannot share one
+ * ({@link mirrorLegFlowsConflict}). Returns the step that gives the restored leg's flow its key,
+ * to run once the sibling is gone.
+ */
+export function swapMirrorLegFlows(
+  transferMovementId: number,
+  transferKey: string,
+  restored: RestoredMirrorLeg,
+  siblingMovementId: number,
+  dbHandle: Database = db
+): { finish: () => void } {
+  const transferFlow = movementFlowId(transferMovementId, dbHandle);
+  const siblingFlow = movementFlowId(siblingMovementId, dbHandle);
+  const conflict = mirrorLegFlowsConflict([transferFlow, siblingFlow], dbHandle);
+  if (conflict) throw new Error(`sibling ${siblingMovementId} cannot share the transfer's flow: ${conflict.detail}`);
+  adoptRetiredMovementFlow(restored.movementId, dbHandle);
+  const legFlow = movementFlowId(restored.movementId, dbHandle);
+  copyFlowFirstSeen(transferFlow, legFlow, dbHandle);
+  copyFlowEventTime(transferFlow, legFlow, dbHandle);
+  moveAccountRowsToLeg(transferFlow, legFlow, restored.accountId, dbHandle);
+  if (siblingFlow !== transferFlow) mergeFlowInto(siblingFlow, transferFlow, "to", dbHandle);
+  answerToKeyWhenHolding(transferFlow, transferKey, dbHandle);
+  return { finish: () => answerToKeyWhenHolding(movementFlowId(restored.movementId, dbHandle), restored.key(), dbHandle) };
 }

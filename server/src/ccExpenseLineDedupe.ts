@@ -144,12 +144,29 @@ function sameStatementOccurrences<T extends CcExpenseLineForDedupe>(
 export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
   lines: readonly T[]
 ): T[] {
+  return dedupeFlowCcExpenseLinesWithTwins(lines).kept;
+}
+
+/**
+ * {@link dedupeFlowCcExpenseLines}, also saying which kept line each dropped line collapsed into
+ * (`twins`: dropped line id → the id of the kept line standing for it, at the end of the scan).
+ */
+export function dedupeFlowCcExpenseLinesWithTwins<T extends CcExpenseLineForDedupe>(
+  lines: readonly T[]
+): { kept: T[]; twins: Map<number, number> } {
   const nonPurchases: T[] = [];
   const purchases: T[] = [];
   for (const line of lines) {
     if (lineRole(line) === "purchase") purchases.push(line);
     else nonPurchases.push(line);
   }
+  const loserToWinner = new Map<number, number>();
+  const prefer = (prev: T, next: T): T => {
+    const winner = pickPreferredExpenseLine(prev, next);
+    const loser = winner === prev ? next : prev;
+    loserToWinner.set(loser.statement_line_id, winner.statement_line_id);
+    return winner;
+  };
 
   const occurrence = sameStatementOccurrences(nonPurchases);
   const best = new Map<string, T>();
@@ -158,7 +175,7 @@ export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
     const fingerprint = flowCcExpenseLineFingerprint(line);
     const key = n === 0 ? fingerprint : `${fingerprint}\t#${n}`;
     const prev = best.get(key);
-    best.set(key, prev ? pickPreferredExpenseLine(prev, line) : line);
+    best.set(key, prev ? prefer(prev, line) : line);
   }
 
   // Lines can only match within the same account, facturación, pesos and purchase day: each such
@@ -175,11 +192,18 @@ export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
       positions.push(purchaseBest.length);
       purchaseBest.push(line);
     } else {
-      purchaseBest[idx] = pickPreferredExpenseLine(purchaseBest[idx]!, line);
+      purchaseBest[idx] = prefer(purchaseBest[idx]!, line);
     }
   }
 
-  return [...best.values(), ...purchaseBest];
+  // A winner can lose later: follow each chain to the line that stayed.
+  const twins = new Map<number, number>();
+  for (const loser of loserToWinner.keys()) {
+    let end = loserToWinner.get(loser)!;
+    while (loserToWinner.has(end)) end = loserToWinner.get(end)!;
+    twins.set(loser, end);
+  }
+  return { kept: [...best.values(), ...purchaseBest], twins };
 }
 
 export type CcLineDedupeScanOpts = {

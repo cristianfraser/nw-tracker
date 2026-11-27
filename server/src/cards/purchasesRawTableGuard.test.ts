@@ -33,6 +33,9 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "migrationHooks/statementLineAmount319.ts": "raw: migration 319 hook (rebuilds the line table with amount + currency; was under cards/)",
   "ccAnnulledPurchases.ts": "raw: snapshots a bucket line by id into an annulled purchase before its line is deleted",
   "ccAnnulmentWriters.ts": "raw: a bucket line's cuota tag, and the statement line an annulment's flow folds into",
+  "ccStatementPrune.ts": "raw: the orphan-statement prune names a statement's lines by id and reads their flows",
+  "ccDuplicateDownloadCopies.ts": "raw: a duplicate-download copy's lines by statement, moved or folded one to one",
+  "ccInstallmentDuplicateRepair.ts": "raw: plan repair (duplicate sibling plans of one fingerprint)",
   "ccAnnulledPurchaseManual.ts": "raw: the line a manual annulment names, and the line an undo re-listed",
   // Identity between arriving evidence and stored lines (F9 step 4 / F17).
   "ccExpenseLineDedupe.ts": "raw: import dedupe (exact and fuzzy twins)",

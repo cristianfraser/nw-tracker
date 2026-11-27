@@ -6,6 +6,7 @@ import {
   MirrorConvertStaleError,
   MirrorPairConflictError,
   rejectMirrorPairs,
+  swapMirrorConversionLeg,
   undoMirrorConversion,
   unrejectMirrorPairs,
 } from "./movementMirrorConvert.js";
@@ -464,5 +465,52 @@ describe("a bank leg's listing facts through a conversion and its undo", () => {
     } finally {
       db.prepare(`DELETE FROM movements WHERE account_id = ? AND note LIKE 'import:cartola-partial|%VITEST MIRRORCONV%'`).run(checkingId);
     }
+  });
+});
+
+describe("the repair script's undo and swap keep flow identity (repair-mirror-merge-legs.ts)", () => {
+  const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+  const stamp = (on: string, seq: number) => ({ kind: "stamped" as const, stamp: { on, at: `${on}T12:00:00.000Z`, seq } });
+
+  it("an undo under the original ids hands the transfer's arrival and assignments back to the legs", () => {
+    const outId = insLeg(genericId, -7_070_701, "2026-06-04");
+    const inId = insLeg(generic2Id, 7_070_701, "2026-06-05");
+    setFlowArrival(flowOf(outId), stamp("2026-06-04", 3));
+    setFlowArrival(flowOf(inId), stamp("2026-06-05", 4));
+    setCcExpensePurchaseBigGroup({ purchaseKey: checkingMovementPurchaseKey(outId), groupSlug: BIG_GROUP });
+    setFlowNote(generic2Id, checkingMovementPurchaseKey(inId), "vitest in-leg note 2");
+    const { converted } = convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
+    const tid = converted[0]!.transfer_movement_id;
+
+    expect(undoMirrorConversion(tid, { originalIds: true })).toEqual({ restored_out_id: outId, restored_in_id: inId });
+    expect(movement(tid)).toBeUndefined();
+    expect(flowArrival(flowOf(outId))).toEqual(stamp("2026-06-04", 3));
+    expect(flowArrival(flowOf(inId))).toEqual(stamp("2026-06-04", 3));
+    expect(loadCcExpensePurchaseBigGroups().get(checkingMovementPurchaseKey(outId))).toBe(BIG_GROUP);
+    expect(getFlowNote(generic2Id, checkingMovementPurchaseKey(inId))).toBe("vitest in-leg note 2");
+  });
+
+  it("a swap hands the replaced leg its arrival and account notes and takes the sibling's assignments onto the transfer", () => {
+    const outId = insLeg(genericId, -7_070_703, "2026-06-10");
+    const wrongInId = insLeg(generic2Id, 7_070_703, "2026-06-11");
+    setFlowArrival(flowOf(outId), stamp("2026-06-10", 5));
+    setFlowArrival(flowOf(wrongInId), stamp("2026-06-11", 6));
+    setFlowNote(generic2Id, checkingMovementPurchaseKey(wrongInId), "vitest wrong-leg note");
+    const { converted } = convertMirrorPairs([{ out_movement_id: outId, in_movement_id: wrongInId }]);
+    const tid = converted[0]!.transfer_movement_id;
+    const sibling = insLeg(generic2Id, 7_070_703, "2026-06-12");
+    setCcExpensePurchaseBigGroup({ purchaseKey: checkingMovementPurchaseKey(sibling), groupSlug: BIG_GROUP });
+
+    expect(swapMirrorConversionLeg(tid, "in", sibling)).toEqual({ restored_id: wrongInId });
+    expect(movement(sibling)).toBeUndefined();
+    expect(movement(wrongInId)).toMatchObject({ account_id: generic2Id, amount: 7_070_703, occurred_on: "2026-06-11" });
+    // The replaced leg is itself again: its arrival and the note filed under its account.
+    expect(flowArrival(flowOf(wrongInId))).toEqual(stamp("2026-06-10", 5));
+    expect(getFlowNote(generic2Id, checkingMovementPurchaseKey(wrongInId))).toBe("vitest wrong-leg note");
+    expect(getFlowNote(generic2Id, checkingMovementPurchaseKey(tid))).toBeUndefined();
+    // The absorbed sibling's flow went to the transfer, its big group with it.
+    expect(loadCcExpensePurchaseBigGroups().get(checkingMovementPurchaseKey(tid))).toBe(BIG_GROUP);
+    const merge = db.prepare(`SELECT in_movement_id, in_occurred_on FROM movement_mirror_merges WHERE transfer_movement_id = ?`).get(tid);
+    expect(merge).toEqual({ in_movement_id: sibling, in_occurred_on: "2026-06-12" });
   });
 });

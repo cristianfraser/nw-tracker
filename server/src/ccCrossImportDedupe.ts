@@ -340,6 +340,34 @@ export function foldLineFlowOntoPlan(accountId: number, lineId: number, planId: 
   return dropped;
 }
 
+const selPlan = selPlanForKey;
+type PlanRow = { id: number; flow_id: number; purchase_date: string; total_amount_clp: number; cuotas_totales: number; merchant: string | null };
+
+/**
+ * Folds a sibling plan's flow into the kept plan's, before the sibling is deleted: the flow that
+ * answers to the plan's `installment-h:` key (found or made by `ensureFlowForKey`); a plan with no
+ * key folds into the kept plan's own flow. The earlier arrival's assignments win.
+ */
+export function foldSiblingPlanFlow(accountId: number, keptId: number, siblingId: number): void {
+  const kept = selPlan.get(keptId, accountId) as PlanRow | undefined;
+  const sib = selPlan.get(siblingId, accountId) as PlanRow | undefined;
+  if (!kept || !sib) throw new Error(`plans ${keptId} / ${siblingId} are not on account ${accountId}`);
+  const key = planExpenseKey(accountId, kept);
+  const target = key != null ? (flowIdForKey(key) ?? ensureFlowForKey(key)) : kept.flow_id;
+  // The kept plan's own flow (a twin written after its key had a flow) joins the key's.
+  const keptFlow = (selPlan.get(keptId, accountId) as PlanRow).flow_id;
+  if (keptFlow !== target && (db.prepare(`SELECT legacy_key FROM flows WHERE id = ?`).get(keptFlow) as { legacy_key: string | null }).legacy_key == null) {
+    mergeFlowInto(keptFlow, target, "to");
+  }
+  const sibFlow = (selPlan.get(siblingId, accountId) as PlanRow).flow_id;
+  if (sibFlow !== target) {
+    const prefer = compareArrival(flowArrival(sibFlow), flowArrival(target)) < 0 ? "from" : "to";
+    mergeFlowInto(sibFlow, target, prefer);
+  }
+  keepEvidenceAsHistory(db, "cc_installment_purchases", siblingId);
+}
+
+
 /**
  * A plan converted from a line overlays it (`source_line_id`): the line stays on file with its own
  * flow, so deleting the plan leaves it as it was, and the plan's expense starts from what was filed
