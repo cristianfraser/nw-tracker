@@ -69,7 +69,9 @@ export interface ImportSyncDocumentAccount {
 
 /**
  * What a month's cell shows (server-decided); `before_first` = before the column's first document,
- * `not_due` = the month in progress with no document yet. Neither counts in a year's figures.
+ * `after_last` = after the last document of a column that ends there (a retired card's CLP or USD
+ * column, each at its own), `not_due` = the month in progress with no document yet. None counts in
+ * a year's figures; `before_first` and `after_last` are drawn empty.
  */
 export type ImportSyncDocumentCellState =
   | "imported"
@@ -78,7 +80,8 @@ export type ImportSyncDocumentCellState =
   | "file_not_imported"
   | "missing"
   | "not_due"
-  | "before_first";
+  | "before_first"
+  | "after_last";
 
 /** How the page shows a document: the browser's PDF viewer, or a table of the workbook's rows. */
 export type ImportSyncDocumentPreviewKind = "pdf" | "sheet";
@@ -124,8 +127,9 @@ export interface ImportSyncDocumentYear {
   /** Indexes into `months` / `cells` of this year's months, newest first. */
   month_indexes: number[];
   /**
-   * Per column of `accounts`; null = the column has no document by this year. `counted` 0 = its
-   * only month this year is the one in progress.
+   * Per column of `accounts`; null = the column has no document by this year, or (a column that
+   * ends at its last document) none from this year on. `counted` 0 = its only month this year is
+   * the one in progress.
    */
   columns: ({ counted: number; imported: number } | null)[];
   /** Columns with a counted month this year, and those with every counted month imported. */
