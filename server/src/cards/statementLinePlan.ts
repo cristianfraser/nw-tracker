@@ -645,14 +645,32 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   const survivorRefs = [...live.values()].filter((l) => !l.doc).map(ref);
   const moves = planCcLineMoves(vanishedRefs, appearedRefs, survivorRefs);
   const signature = (r: CcLineRef): string | null => fileById.get(r.lineId)?.assignment_signature ?? null;
-  const fan = fanOutUniformGroupsGiven(moves.ambiguousGroups, signature);
+  // Several stored copies of one purchase and ONE document line of its identity: every copy is that
+  // line (the earliest seen kept and restated, the others folding into it). Only a group with several
+  // document lines on a count of its own is left to the fan-out or unpaired: pairing it would guess.
+  const singleDocGroups = moves.ambiguousGroups.filter((g) => g.news.length === 1 && g.olds.length > 1 && !g.news[0]!.installment);
+  const fan = fanOutUniformGroupsGiven(
+    moves.ambiguousGroups.filter((g) => !singleDocGroups.includes(g)),
+    signature
+  );
+  for (const g of singleDocGroups) {
+    for (const from of g.olds) {
+      fan.moves.push({ from, to: g.news[0]!, by: "identity" });
+      fan.fannedOut.add(from.lineId);
+    }
+  }
   const adoptions: CcLineMove[] = [...moves.moves, ...fan.moves].filter((m) => !m.copy && !m.from.installment && !m.to.installment);
   // A statement's cuota line that comes back under its parser row is the same line (its flow is its
   // plan's, so only the parser row pairs it).
   const cuotaKeeps = [...moves.moves, ...fan.moves].filter((m) => !m.copy && m.from.installment && m.to.installment && m.by === "parser_row_id");
   const adoptedBy = new Map<number, CcLineMove["by"]>();
   for (const m of adoptions) {
-    if (m.by === "survivor") {
+    if (m.by === "survivor" && live.get(m.to.lineId)?.doc) {
+      // A removed copy of a document line that came back under its parser row: it joins that line's
+      // group, so it folds into the row the line ends on (the row restated for it), never into the
+      // line's planning id.
+      groups.fold(lineToken(m.from.lineId), docToken(m.to.lineId));
+    } else if (m.by === "survivor") {
       // A removed duplicate copy: its flow folds into the copy that stayed.
       groups.fold(lineToken(m.from.lineId), lineToken(m.to.lineId));
     } else {
@@ -834,8 +852,9 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     for (const r of members) claimed.add(`${r.kind}:${r.id}`);
     for (const r of members.slice(1)) plan.fold.push({ row: r, into: keptRow, doc, why: whyOf(r, vid) });
   }
-  // A vanished line whose flow folds into a line that stayed (a removed duplicate copy).
-  for (const m of adoptions.filter((m) => m.by === "survivor")) {
+  // A vanished line whose flow folds into a row on file that stayed (a removed duplicate copy); a
+  // copy of a document line went with that line's group above (kept, folded, or ambiguous).
+  for (const m of adoptions.filter((m) => m.by === "survivor" && !live.get(m.to.lineId)?.doc)) {
     if (claimed.has(`line:${m.from.lineId}`)) continue;
     claimed.add(`line:${m.from.lineId}`);
     plan.fold.push({
@@ -923,7 +942,55 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   }
 
   assertExclusiveOutcomes(plan, input, { touched: new Set([...vanished, ...movedLines.keys(), ...keptPrepayment]) });
+  assertPlanNamesRowsOnFile(plan, input);
   return plan;
+}
+
+/** What a plan's row ids are checked against: the rows on file and the documents, for the message. */
+export type PlanRowsOnFile = {
+  file_lines: readonly { id: number }[];
+  annulments: readonly { id: number }[];
+  incoming: readonly { key: string; lines: readonly { merchant: string | null }[] }[];
+};
+
+/**
+ * Every row a plan names as on file — kept, folded, a fold's target, removed, annulled, moved, a kept
+ * prepayment line, a credited annulment — is a row on file (a card line or an annulled purchase),
+ * never a planning id of a document line not written yet. Throws naming the row and the document
+ * line, so the document is refused before anything is written (the planner calls it on its plan,
+ * the apply on the plan it is handed).
+ */
+export function assertPlanNamesRowsOnFile(plan: CardStatementLinePlan, onFile: PlanRowsOnFile): void {
+  const lines = new Set(onFile.file_lines.map((l) => l.id));
+  const annulments = new Set(onFile.annulments.map((a) => a.id));
+  const statements = new Map(onFile.incoming.map((st) => [st.key, st]));
+  const docLabel = (d: DocLineRef | null): string => {
+    if (!d) return "a removed copy";
+    const merchant = statements.get(d.statement_key)?.lines[d.index]?.merchant;
+    return `document ${d.statement_key.split("\t")[1] ?? d.statement_key} line #${d.index + 1}${merchant ? ` «${merchant}»` : ""}`;
+  };
+  const rowLabel = (r: FileRowRef): string => `${r.kind === "line" ? "line" : "annulled purchase"} ${r.id}`;
+  const problems: string[] = [];
+  const check = (r: FileRowRef, role: () => string) => {
+    if ((r.kind === "line" ? lines : annulments).has(r.id)) return;
+    problems.push(`the plan names ${rowLabel(r)} as a row on file, and no such row is on file: ${role()}`);
+  };
+  const line = (id: number): FileRowRef => ({ kind: "line", id });
+  for (const k of plan.keep) check(k.row, () => `the row kept for ${docLabel(k.doc)}`);
+  for (const f of plan.fold) {
+    check(f.row, () => `the fold of ${rowLabel(f.row)} into ${rowLabel(f.into)} (${docLabel(f.doc)})`);
+    check(f.into, () => `the fold target of ${rowLabel(f.row)} (${docLabel(f.doc)})`);
+  }
+  for (const r of plan.remove) check(r.row, () => `a row removed (${r.why})`);
+  for (const a of plan.annul) check(line(a.line_id), () => `a bucket line annulled`);
+  for (const m of plan.move_to_open) check(line(m.line_id), () => `a line moved to the open facturación`);
+  for (const id of plan.kept_plan_prepayment) check(line(id), () => `a plan-prepayment line kept`);
+  for (const c of plan.annulments_credited) {
+    if (c.annulled_purchase_id != null) check({ kind: "annulled_purchase", id: c.annulled_purchase_id }, () => `an annulment credited by ${docLabel(c.doc)}`);
+    if (c.bucket_line_id != null) check(line(c.bucket_line_id), () => `a bucket line annulled and credited by ${docLabel(c.doc)}`);
+  }
+  for (const a of plan.ambiguous) for (const r of a.rows) check(r, () => `an ambiguous outcome (${a.what}) with ${a.docs.map(docLabel).join(", ") || "no document line"}`);
+  if (problems.length > 0) throw new Error(`statement-line plan: ${problems.join("; ")}`);
 }
 
 /**

@@ -7,7 +7,7 @@ import { openWebPasteSourcePdf } from "../ccOpenWebPasteRepair.js";
 import { clearAggregationCache } from "../cacheRegistry.js";
 import { statementKeysOf } from "../ccInstallmentLedgerMerge.js";
 import { loadCardStatementLinePlanInput } from "./statementLinePlanLoad.js";
-import { planCardStatementLines, type CardStatementLinePlan } from "./statementLinePlan.js";
+import { assertPlanNamesRowsOnFile, planCardStatementLines, type CardStatementLinePlan } from "./statementLinePlan.js";
 import { applyStatementLinePlan, resolveStatementPlanAmbiguity } from "./statementLinePlanApply.js";
 import { applyLinePlan, replaceStatementLines } from "./lineWrites.js";
 import { annulOpenBucketLines } from "../ccAnnulledPurchases.js";
@@ -706,5 +706,97 @@ describe("statement-line plan applied", () => {
       ]);
       expect(notifications()).toEqual([]);
     });
+
+    describe("a purchase stored twice under two parser rows, re-imported from a document that has it once", () => {
+      const copies = (n: number) =>
+        statement(Array.from({ length: n }, (_, i) => line("2026-06-02", "CINE", 6_000, { id: `kra-dup-${i + 1}` })));
+      const accountLines = () =>
+        (db.prepare(`SELECT l.id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? ORDER BY l.id`).all(accountId) as { id: number }[]).map((x) => x.id);
+      /** Stamps the line's flow as seen before every other stamp of this test. */
+      const stampEarly = (lineId: number) =>
+        db
+          .prepare(`UPDATE flow_first_seen SET first_seen_on = '2026-06-01', first_seen_at = '2026-06-01T09:00:00.000Z', first_seen_seq = 0 WHERE flow_id = ?`)
+          .run(flowOf(lineId));
+
+      for (const [name, prid] of [
+        ["under one of the two parser rows", "kra-dup-1"],
+        ["under a new parser row", "kra-dup-new"],
+      ] as const) {
+        it(`${name}: one row stays, restated, with the earlier arrival and both rows' assignments`, () => {
+          reimport([copies(2)]);
+          const [one, two] = [lineIdOfParser("kra-dup-1"), lineIdOfParser("kra-dup-2")];
+          noteOn(one, "with the kids");
+          stampEarly(two);
+          const earlier = flowArrival(flowOf(two));
+          const r = reimport([statement([line("2026-06-02", "CINE", 6_000, { id: prid })])]);
+          // The earlier arrival is the kept row; the other folds into it.
+          expect(accountLines()).toEqual([two]);
+          expect(r.keep_rows.inserted).toEqual([]);
+          expect(r.keep_rows.restated).toEqual([two]);
+          expect(r.keep_rows.folded).toEqual([one]);
+          expect(r.keep_rows.removed_without_pair).toEqual([]);
+          expect(flowArrival(flowOf(two))).toEqual(earlier);
+          expect(notesOf(flowOf(two))).toEqual(["with the kids"]);
+          expect(db.prepare(`SELECT parser_row_id AS p, merchant, amount FROM cc_statement_lines WHERE id = ?`).get(two)).toEqual({ p: prid, merchant: "CINE", amount: 6_000 });
+          // Settled: the same document again writes nothing.
+          expect(reimport([statement([line("2026-06-02", "CINE", 6_000, { id: prid })])]).keep_rows.wrote).toBe(false);
+        });
+      }
+
+      it("three stored copies, the document has one: the copies fold into one row, nothing removed unreported", () => {
+        reimport([copies(3)]);
+        const ids = [1, 2, 3].map((i) => lineIdOfParser(`kra-dup-${i}`));
+        noteOn(ids[2]!, "popcorn");
+        const r = reimport([statement([line("2026-06-02", "CINE", 6_000, { id: "kra-dup-2" })])]);
+        expect(accountLines()).toEqual([ids[0]]);
+        expect(r.keep_rows.restated).toEqual([ids[0]]);
+        expect([...r.keep_rows.folded].sort((a, b) => a - b)).toEqual([ids[1], ids[2]]);
+        expect(r.keep_rows.removed_without_pair).toEqual([]);
+        expect(notesOf(flowOf(ids[0]!))).toEqual(["popcorn"]);
+      });
+
+      it("genuine twins: two stored rows, the document has two, both stay and nothing folds", () => {
+        reimport([copies(2)]);
+        const [one, two] = [lineIdOfParser("kra-dup-1"), lineIdOfParser("kra-dup-2")];
+        noteOn(one, "with the kids");
+        const r = reimport([copies(2)]);
+        expect(accountLines()).toEqual([one, two]);
+        expect(r.keep_rows.folded).toEqual([]);
+        expect(notesOf(flowOf(one))).toEqual(["with the kids"]);
+        const twins = statement([line("2026-06-02", "CINE", 6_000, { id: "kra-dup-x" }), line("2026-06-02", "CINE", 6_000, { id: "kra-dup-y" })]);
+        const again = reimport([twins]);
+        expect(accountLines()).toEqual([one, two]);
+        expect(again.keep_rows.folded).toEqual([]);
+        expect(notesOf(flowOf(one))).toEqual(["with the kids"]);
+      });
+    });
+  });
+
+  it("a plan naming a row that is not on file is refused, naming the document line", () => {
+    const listed = bucketLine("2026-06-25", "OTRO", 1_000);
+    const st = statement([line("2026-06-02", "ACME STORE", 12_000)]);
+    const input = loadCardStatementLinePlanInput(accountId, [st]);
+    const base = planCardStatementLines(input);
+    const missing = listed + 1_000;
+    const doc = base.insert[0]!.doc;
+    const foldOntoNothing: CardStatementLinePlan = {
+      ...base,
+      insert: [],
+      keep: [{ row: { kind: "line", id: listed }, doc, why: "same_purchase" }],
+      move_to_open: [],
+      fold: [{ row: { kind: "line", id: missing }, into: { kind: "line", id: listed }, doc, why: "reimport_identity" }],
+    };
+    const message = new RegExp(`names line ${missing} as a row on file, and no such row is on file: the fold of .*line #1 «ACME STORE»`);
+    expect(() => assertPlanNamesRowsOnFile(foldOntoNothing, input)).toThrow(message);
+    expect(() => applyStatementLinePlan(accountId, [st], foldOntoNothing)).toThrow(message);
+    const intoNothing: CardStatementLinePlan = {
+      ...foldOntoNothing,
+      fold: [{ row: { kind: "line", id: listed }, into: { kind: "line", id: missing }, doc: null, why: "survivor_copy" }],
+      keep: [],
+      insert: base.insert,
+    };
+    expect(() => applyStatementLinePlan(accountId, [st], intoNothing)).toThrow(new RegExp(`names line ${missing} as a row on file.*the fold target of line ${listed} \\(a removed copy\\)`));
+    // Nothing was written.
+    expect(lineFacts().map((l) => l.id)).toEqual([listed]);
   });
 });

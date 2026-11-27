@@ -97,6 +97,7 @@ import {
 import { cardLineStatesRow, storedDocumentLine } from "./lineRowWrites.js";
 import { loadCardStatementLinePlanInput } from "./statementLinePlanLoad.js";
 import {
+  assertPlanNamesRowsOnFile,
   planCardStatementLines,
   type CardPlanFold,
   type CardPlanKeep,
@@ -208,6 +209,12 @@ function applyInSession(
   plan: CardStatementLinePlan,
   opts?: { replaceStatementKeys?: ReadonlySet<string>; replaceLedger?: boolean }
 ): StatementLinePlanApplyResult {
+  // Every row the plan names as on file is one, before anything is written.
+  assertPlanNamesRowsOnFile(plan, {
+    file_lines: db.prepare(`SELECT l.id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?`).all(accountId) as { id: number }[],
+    annulments: listAnnulledPurchases(accountId),
+    incoming: [...statementsByLedgerKey(statements)].map(([key, { lines }]) => ({ key, lines })),
+  });
   const json = jsonStatementsSupersededByPdf(accountId, statements);
   const replaceKeys = new Set<string>([...(opts?.replaceStatementKeys ?? []), ...json.supersededReplaceKeys]);
   assertCcImportReconcilesOrThrow(accountId, statements, { replaceStatementKeys: replaceKeys });
