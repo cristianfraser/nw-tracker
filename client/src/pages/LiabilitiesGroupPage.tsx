@@ -50,7 +50,7 @@ export function LiabilitiesGroupPage() {
     placeholderFirstMonth: () => undefined,
     shellKeepsFirstChartDate: false,
   });
-  const { data, error: queryError } = page.bundle;
+
   const { contentLoading, accounts, accountsTreeRoot } = page;
 
   // A section mounts while its ledger loads (empty ledger, dimmed). The route names the group, so
@@ -69,7 +69,7 @@ export function LiabilitiesGroupPage() {
   );
 
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
-  const error = queryLoadError({ data, error: queryError });
+  const error = page.bundleError;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   if (categoryFilter !== "credit_card") {

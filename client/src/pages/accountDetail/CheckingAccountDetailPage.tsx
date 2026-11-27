@@ -37,7 +37,7 @@ export function CheckingAccountDetailPage({ data }: Props) {
           title={data.ts.name}
           value={glance ? { value: glance.balance, currency: glance.currency } : null}
           secondary={glance?.display_value ?? null}
-          // A unit switch holds the previous unit's bundle: its converted value dims until the new one lands.
+          // A unit switch holds the previous unit's bundle: its value in that unit dims until the new one lands.
           secondaryLoading={loading}
           day={null}
           loading={glance === undefined}

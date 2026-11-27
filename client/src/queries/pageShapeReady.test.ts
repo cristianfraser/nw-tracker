@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { bundleContent, dailyPayloadPending } from "./pageShapeReady";
-import type { HeldUnitPayload } from "./heldUnitPayload";
+import type { HeldUnitView } from "./heldUnitPayload";
 
 type Bundle = { unit: string; ready: boolean };
 const ready = (b: Bundle) => b.ready;
-const shown = (p: Partial<HeldUnitPayload<Bundle>>): HeldUnitPayload<Bundle> => ({
+const shown = (p: Partial<HeldUnitView<Bundle>>): HeldUnitView<Bundle> => ({
   data: undefined,
   held: false,
   loading: false,
   live: undefined,
+  error: null,
   ...p,
 });
 

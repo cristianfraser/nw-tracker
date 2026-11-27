@@ -10,18 +10,22 @@ import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
 import { queryKeys, type DisplayUnit } from "../queries/keys";
 import { bundleContent } from "../queries/pageShapeReady";
-import { useHeldUnitQuery, useHeldUnitValue, type UnitCandidate } from "../queries/heldUnitPayload";
+import { useHeldUnitValue } from "../queries/heldUnitPayload";
 import {
   useAccountsByPortfolioGroup,
   useDashboardNavContext,
   useDashboardNavSnapshot,
   useGroupPageShell,
-  usePortfolioGroupBundle,
+  useHeldPortfolioGroupBundle,
 } from "../queries/hooks";
 import type { NavTreeNodeDto, SidebarNavResponse } from "../types";
 
-/** A strip's figures and the unit they are in. */
-type StripCards = { dash: ReturnType<typeof dashPickForNavStrip>; unit: DisplayUnit };
+/** A strip's figures, the unit they are in, and the live nav context they come from (if any). */
+type StripCards = {
+  dash: ReturnType<typeof dashPickForNavStrip>;
+  unit: DisplayUnit;
+  navCtx: ReturnType<typeof useDashboardNavContext>["data"] | null;
+};
 
 /**
  * A portfolio page's data, the one block the group and Pasivos pages shared (docs/untangle-plan.md
@@ -52,12 +56,7 @@ export function usePortfolioPageData(opts: {
   const { data: shapeAccounts } = useAccountsByPortfolioGroup(portfolioGroup, displayUnit, enabled);
   const { data: shell } = useGroupPageShell({ portfolioGroup, unit: displayUnit, navNode, enabled });
 
-  const bundle = usePortfolioGroupBundle({ portfolio_group: portfolioGroup, unit: displayUnit, enabled });
-  const heldBundle = useHeldUnitQuery(bundle, {
-    queryKey: queryKeys.portfolioGroup(portfolioGroup, displayUnit),
-    unit: displayUnit,
-    enabled,
-  });
+  const heldBundle = useHeldPortfolioGroupBundle({ portfolio_group: portfolioGroup, unit: displayUnit, enabled });
 
   useEffect(() => {
     if (!enabled) return;
@@ -84,21 +83,6 @@ export function usePortfolioPageData(opts: {
     [navNode, accounts]
   );
 
-  const keepFirstChartDate = opts.shellKeepsFirstChartDate;
-  // Only this unit's live payloads are written under its key (never a held bundle).
-  useEffect(() => {
-    if (!live || !navNode || !navCtx || !portfolioGroup) return;
-    const firstChartDate = keepFirstChartDate ? live.ts.accounts_in_group?.points[0]?.as_of_date : undefined;
-    const nextShell = extractGroupPageShellFromReal(
-      live.accounts,
-      navCtx.accounts,
-      navNode,
-      typeof firstChartDate === "string" ? firstChartDate : undefined
-    );
-    writeGroupPageShellCache(portfolioGroup, displayUnit, nextShell);
-    queryClient.setQueryData(queryKeys.groupPageShell(portfolioGroup, displayUnit), nextShell);
-  }, [live, navCtx, navNode, portfolioGroup, displayUnit, queryClient, keepFirstChartDate]);
-
   // No snapshot yet: nav-context alone, else a zero strip from the sidebar nav (cold cache).
   const placeholderStripDash = useMemo(
     () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav) : null),
@@ -108,40 +92,42 @@ export function usePortfolioPageData(opts: {
   // fields), else the stored snapshot — updated at 0 when read from storage, so it paints only a
   // strip that shows nothing yet. Across a unit switch the cards on screen stay, dimmed and in
   // THEIR unit, until a copy of this unit at least as new is in (an older nav context is refetched).
-  const stripCandidate = useMemo((): UnitCandidate<StripCards> | undefined => {
+  // Memoized on the payloads only: the cards' identity dates their content (`heldUnitPayload.ts`).
+  const stripCandidateCards = useMemo((): StripCards | undefined => {
     if (navCtx) {
       return {
-        data: {
-          dash: navSnapshot
-            ? dashPickForNavStrip({
-                accounts: navCtx.accounts,
-                liabilities_breakdown: navCtx.liabilities_breakdown ?? navSnapshot.liabilities_breakdown,
-                dashboard_layout: navCtx.dashboard_layout ?? navSnapshot.dashboard_layout,
-                card_metrics_by_slug: navCtx.card_metrics_by_slug ?? navSnapshot.card_metrics_by_slug,
-              })
-            : dashPickForNavStrip(navCtx),
-          unit: displayUnit,
-        },
-        updatedAt: navCtxQuery.dataUpdatedAt,
+        dash: navSnapshot
+          ? dashPickForNavStrip({
+              accounts: navCtx.accounts,
+              liabilities_breakdown: navCtx.liabilities_breakdown ?? navSnapshot.liabilities_breakdown,
+              dashboard_layout: navCtx.dashboard_layout ?? navSnapshot.dashboard_layout,
+              card_metrics_by_slug: navCtx.card_metrics_by_slug ?? navSnapshot.card_metrics_by_slug,
+            })
+          : dashPickForNavStrip(navCtx),
+        unit: displayUnit,
+        navCtx,
       };
     }
     if (!navSnapshot) return undefined;
     return {
-      data: {
-        dash: dashPickForNavStrip({
-          accounts: navSnapshot.accounts,
-          liabilities_breakdown: navSnapshot.liabilities_breakdown,
-          dashboard_layout: navSnapshot.dashboard_layout,
-          card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
-        }),
-        unit: navSnapshot.unit,
-      },
-      updatedAt: navSnapshotQuery.dataUpdatedAt,
+      dash: dashPickForNavStrip({
+        accounts: navSnapshot.accounts,
+        liabilities_breakdown: navSnapshot.liabilities_breakdown,
+        dashboard_layout: navSnapshot.dashboard_layout,
+        card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
+      }),
+      unit: navSnapshot.unit,
+      navCtx: null,
     };
-  }, [navCtx, navCtxQuery.dataUpdatedAt, navSnapshot, navSnapshotQuery.dataUpdatedAt, displayUnit]);
+  }, [navCtx, navSnapshot, displayUnit]);
   const strip = useHeldUnitValue({
-    candidate: stripCandidate,
-    pending: stripCandidate === undefined,
+    candidate: stripCandidateCards
+      ? {
+          data: stripCandidateCards,
+          updatedAt: stripCandidateCards.navCtx ? navCtxQuery.dataUpdatedAt : navSnapshotQuery.dataUpdatedAt,
+        }
+      : undefined,
+    pending: stripCandidateCards === undefined,
     unit: displayUnit,
     entity: navNode?.slug ?? "",
     key: displayUnit,
@@ -151,11 +137,29 @@ export function usePortfolioPageData(opts: {
   /** The unit the strip's cards are in: the held cards' own while a switch loads. */
   const stripUnit: DisplayUnit = stripCards?.unit ?? displayUnit;
   /** Dim the strip: zero cards, held cards, or a stored snapshot (not this unit's live context). */
-  const stripIsPlaceholder = navNode != null && (stripCards == null || strip.held || navCtx == null);
+  const stripIsPlaceholder = navNode != null && (stripCards == null || strip.held || stripCards.navCtx == null);
   const dashForStrip = navNode ? (stripCards?.dash ?? placeholderStripDash) : null;
 
+  // Only this unit's live payloads are written under its key: the live bundle and the live nav
+  // context the strip shows (never a held bundle, nor an older context the strip is hiding).
+  const keepFirstChartDate = opts.shellKeepsFirstChartDate;
+  const liveNavCtx = strip.live?.navCtx ?? null;
+  useEffect(() => {
+    if (!live || !navNode || !liveNavCtx || !portfolioGroup) return;
+    const firstChartDate = keepFirstChartDate ? live.ts.accounts_in_group?.points[0]?.as_of_date : undefined;
+    const nextShell = extractGroupPageShellFromReal(
+      live.accounts,
+      liveNavCtx.accounts,
+      navNode,
+      typeof firstChartDate === "string" ? firstChartDate : undefined
+    );
+    writeGroupPageShellCache(portfolioGroup, displayUnit, nextShell);
+    queryClient.setQueryData(queryKeys.groupPageShell(portfolioGroup, displayUnit), nextShell);
+  }, [live, liveNavCtx, navNode, portfolioGroup, displayUnit, queryClient, keepFirstChartDate]);
+
   return {
-    bundle,
+    /** The page bundle's load error (only when it has nothing to show, `heldUnitPayload.ts`). */
+    bundleError: heldBundle.error,
     navSnapshot,
     shell,
     navCtxQuery,

@@ -4,9 +4,7 @@ import {
   filterPointsThroughAsOfDate,
   resolveMonthlyPerfClipEndDate,
 } from "../../components/charts/chartData";
-import { useAccountDetailBundle, useDashboardNavSnapshot, useSidebarNav } from "../../queries/hooks";
-import { useHeldUnitQuery } from "../../queries/heldUnitPayload";
-import { queryKeys } from "../../queries/keys";
+import { useDashboardNavSnapshot, useHeldAccountDetailBundle, useSidebarNav } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
@@ -17,6 +15,7 @@ import { useSurfacePrefs, type SurfacePrefsValue } from "../../surfaceDisplayPre
 import { clipMonthsThenRollup } from "../../timeRange";
 import type {
   AccountCcInstallmentsResponse,
+  AccountDetailBundleResponse,
   AccountMonthlyPerformanceResponse,
   CheckingCartolaMonthsResponse,
   CheckingGlanceDto,
@@ -26,7 +25,7 @@ import type {
 } from "../../types";
 import type { DisplayUnit } from "../../queries/keys";
 
-type DetailBundle = NonNullable<ReturnType<typeof useAccountDetailBundle>["data"]>;
+type DetailBundle = AccountDetailBundleResponse;
 
 export type AccountDetailPageData = {
   id: string | undefined;
@@ -81,15 +80,9 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const perfIsYearly = perfPrefs.period === "year";
   const perfRange = perfPrefs.range;
 
-  const detailQuery = useAccountDetailBundle(id, displayUnit, "monthly");
-  const detailError = detailQuery.error;
   // The bundle on screen: this unit's, or this account's held across a unit switch (in ITS unit).
-  const shownDetail = useHeldUnitQuery(detailQuery, {
-    queryKey: queryKeys.accountDetail(id ?? "", displayUnit, "monthly"),
-    unit: displayUnit,
-    enabled: Boolean(id),
-  });
-  const detail = shownDetail.data;
+  const shownDetail = useHeldAccountDetailBundle(id, displayUnit, "monthly");
+  const { data: detail, error: detailError } = shownDetail;
   const { data: sidebarNav } = useSidebarNav();
   const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);
 

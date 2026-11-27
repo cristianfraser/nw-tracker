@@ -1,14 +1,14 @@
-import type { HeldUnitPayload } from "./heldUnitPayload";
+import type { HeldUnitView } from "./heldUnitPayload";
 
 /**
  * A page bundle to draw: the payload on screen (the requested unit's or the one held,
- * {@link HeldUnitPayload}) once it carries what the page reads; `undefined` while there is none —
+ * {@link HeldUnitView}) once it carries what the page reads; `undefined` while there is none —
  * the page draws its zero placeholder, which is only for a page with nothing to show yet.
  * `loading` dims while the content is held or missing; `live` is the requested unit's own ready
  * payload, the only one side effects (stored snapshots and shells) may write.
  */
 export function bundleContent<T>(
-  payload: HeldUnitPayload<T>,
+  payload: HeldUnitView<T>,
   ready: (data: T) => boolean
 ): { content: T | undefined; loading: boolean; live: T | undefined } {
   const content = payload.data !== undefined && ready(payload.data) ? payload.data : undefined;

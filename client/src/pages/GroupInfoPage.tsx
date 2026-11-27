@@ -88,7 +88,7 @@ export function GroupInfoPage() {
     placeholderFirstMonth: (shellFirstMonth, snapshotFirstMonth) => shellFirstMonth ?? snapshotFirstMonth,
     shellKeepsFirstChartDate: true,
   });
-  const { error } = page.bundle;
+  const error = page.bundleError;
   const { data: navCtx } = page.navCtxQuery;
   const {
     contentLoading,
@@ -300,7 +300,7 @@ export function GroupInfoPage() {
         dash: dashForStrip,
         unit: stripUnit,
         // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.
-        placeholderPhase: stripIsPlaceholder || navCtx == null,
+        placeholderPhase: stripIsPlaceholder,
         linkedCardNavChildren,
       }
       : null;

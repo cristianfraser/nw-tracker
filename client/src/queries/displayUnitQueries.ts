@@ -19,9 +19,11 @@ const LIVE_DASHBOARD_REFETCH_MS = LIVE_QUOTES_DEFAULT_INTERVAL_MS;
 /**
  * keepPreviousData scoped to one entity. The held payload is offered only while the first
  * `entityKeyLength` elements of the query key are unchanged: a unit, period, range, page or
- * filter change keeps the previous data on screen (the page converts or dims it), while a
+ * filter change keeps the previous data on screen (dimmed, in its own unit), while a
  * different group, account or scope starts from its placeholder. Bare `keepPreviousData` is
  * key-agnostic — account A → account B rendered A's bundle under B's title while B loaded.
+ * Pages draw the held hooks instead (`useHeldX`, `heldUnitPayload.ts`), which hold only what the
+ * surface drew; this placeholder serves the raw hooks.
  */
 export function keepPreviousDataSameEntity(queryKey: readonly unknown[], entityKeyLength: number) {
   // Generic in the data type so react-query instantiates it per call site (the hook's TData).

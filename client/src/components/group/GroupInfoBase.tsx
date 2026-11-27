@@ -5,9 +5,11 @@ import {
   MonthlyPerfDetailTable,
 } from "../account/MonthlyPerfDetailTable";
 import { DailyPerfDetailTable } from "../account/DailyPerfDetailTable";
-import { useHeldDailySeries } from "../../queries/hooks";
-import { useHeldUnitQuery } from "../../queries/heldUnitPayload";
-import { queryKeys } from "../../queries/keys";
+import {
+  useHeldDailySeries,
+  useHeldGroupConsolidatedMonthlyPage,
+  useHeldGroupPeriodReturns,
+} from "../../queries/hooks";
 import { useSurfacePrefs, type SurfacePeriod } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { Loadable } from "../ui/Loadable";
@@ -22,7 +24,6 @@ import type { ColdStripShape } from "../../coldPageShape";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useCcInstallmentGastosMode } from "../../useCcInstallmentGastosMode";
 import { useTranslation } from "../../i18n";
-import { useGroupConsolidatedMonthlyPage, useGroupPeriodReturns } from "../../queries/hooks";
 import {
   useGroupInfoConsolidatedTables,
   type GroupInfoTableAccount,
@@ -33,7 +34,6 @@ import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/grou
 import type { DashboardResponse, NavTreeNodeDto, PeriodReturnsPayload } from "../../types";
 import type { DisplayUnit } from "../../queries/keys";
 import pageShellStyles from "../../pages/AccountDetailPage.module.css";
-import { queryLoadError } from "../../queries/pageShapeReady";
 
 export type GroupInfoPortfolioStrip = {
   navNode: NavTreeNodeDto;
@@ -208,23 +208,18 @@ export function GroupInfoBase({
   // A server-paginated page does not load the consolidated-tables payload: its Rentabilidad
   // table comes alone (`/api/groups/:slug/period-returns`).
   const leanPeriodReturnsEnabled = tablesFetchEnabled && serverPaginatedMonthlyDetail;
-  const leanPeriodReturnsQuery = useGroupPeriodReturns(
+  // Held across a unit switch like every table: shown in its own unit, dimmed.
+  const leanPeriodReturnsShown = useHeldGroupPeriodReturns(
     portfolio?.groupSlug ?? "",
     displayUnit,
     leanPeriodReturnsEnabled
   );
-  // Held across a unit switch like every table: shown in its own unit, dimmed.
-  const leanPeriodReturnsShown = useHeldUnitQuery(leanPeriodReturnsQuery, {
-    queryKey: queryKeys.groupPeriodReturns(portfolio?.groupSlug ?? "", displayUnit),
-    unit: displayUnit,
-    enabled: leanPeriodReturnsEnabled,
-  });
-  // undefined = not here yet; null = the server sends none.
+  // undefined = not here yet; null = the server sends none (or the load failed).
   const leanPeriodReturns = useMemo((): PeriodReturnsPayload | null | undefined => {
     const data = leanPeriodReturnsShown.data;
-    if (!data) return leanPeriodReturnsQuery.isError ? null : undefined;
+    if (!data) return leanPeriodReturnsShown.error != null ? null : undefined;
     return data.period_returns ?? null;
-  }, [leanPeriodReturnsShown.data, leanPeriodReturnsQuery.isError]);
+  }, [leanPeriodReturnsShown.data, leanPeriodReturnsShown.error]);
   const shownPeriodReturns = serverPaginatedMonthlyDetail ? leanPeriodReturns : periodReturns;
   const periodReturnsHeld = serverPaginatedMonthlyDetail ? leanPeriodReturnsShown.held : tablesHeld;
 
@@ -234,7 +229,8 @@ export function GroupInfoBase({
   const monthlyPage = monthlyPageState.period === tablePeriod ? monthlyPageState.page : 1;
   const setMonthlyPage = (page: number) => setMonthlyPageState({ period: tablePeriod, page });
   const serverMonthlyEnabled = tablesFetchEnabled && serverPaginatedMonthlyDetail && tablePeriod !== "day";
-  const serverMonthlyQuery = useGroupConsolidatedMonthlyPage(
+  // The page on screen: this unit's, or the one held across a unit / page / period change.
+  const serverMonthly = useHeldGroupConsolidatedMonthlyPage(
     portfolio?.groupSlug ?? "",
     displayUnit,
     // Detalle tables are month/year surfaces — the day toggle renders the monthly view.
@@ -244,19 +240,6 @@ export function GroupInfoBase({
     serverMonthlyEnabled,
     installmentMode
   );
-  // The page on screen: this unit's, or the one held across a unit / page / period change.
-  const serverMonthly = useHeldUnitQuery(serverMonthlyQuery, {
-    queryKey: queryKeys.groupConsolidatedMonthlyPage(
-      portfolio?.groupSlug ?? "",
-      displayUnit,
-      monthYearSurfacePeriod(tablePeriod),
-      monthlyPage,
-      MONTHLY_PERF_DETAIL_PAGE_SIZE,
-      installmentMode
-    ),
-    unit: displayUnit,
-    enabled: serverMonthlyEnabled,
-  });
 
   // Day view: per-day rows over FULL history (tables include all; the first build of a
   // full-history daily series is a known one-time server cost, cached after).
@@ -295,9 +278,9 @@ export function GroupInfoBase({
   const monthlyUnit = serverPaginatedMonthlyDetail ? (serverMonthly.data?.unit ?? displayUnit) : tablesUnit;
 
   const monthlyError = serverPaginatedMonthlyDetail
-    ? queryLoadError({ data: serverMonthly.data, error: serverMonthlyQuery.error })
-      ? serverMonthlyQuery.error instanceof Error
-        ? serverMonthlyQuery.error.message
+    ? serverMonthly.error != null
+      ? serverMonthly.error instanceof Error
+        ? serverMonthly.error.message
         : t("common.loadFailedTables")
       : null
     : tablesError;
@@ -374,7 +357,7 @@ export function GroupInfoBase({
         />
       </div>
       {isDaily ? (
-        queryLoadError(dailySeries) ? (
+        dailySeries.error != null ? (
           <p className="error">
             {dailySeries.error instanceof Error
               ? dailySeries.error.message

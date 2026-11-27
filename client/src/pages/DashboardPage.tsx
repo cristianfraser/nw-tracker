@@ -17,17 +17,16 @@ import {
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { bundleContent, dailyPayloadPending } from "../queries/pageShapeReady";
-import { useHeldUnitQuery, useHeldUnitValue, type UnitCandidate } from "../queries/heldUnitPayload";
-import { queryKeys } from "../queries/keys";
+import { useHeldUnitValue } from "../queries/heldUnitPayload";
 import {
   nwBucketTotalsFromDashTotals,
   writeDashboardNavSnapshotCache,
 } from "../queries/dashboardNavSnapshotCache";
 import {
   useAccountsByPortfolioGroup,
-  useDashboardBundle,
   useDashboardNavSnapshot,
-  useDashboardOverviewDaily,
+  useHeldDashboardBundle,
+  useHeldDashboardOverviewDaily,
   useSidebarNav,
 } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -142,10 +141,9 @@ export function DashboardPage() {
     displayUnit,
     Boolean(netWorthNav)
   );
-  const bundleQuery = useDashboardBundle(displayUnit);
-  const { error } = bundleQuery;
   // The bundle on screen: this unit's, or the one held while it loads (in ITS unit, dimmed).
-  const bundle = useHeldUnitQuery(bundleQuery, { queryKey: queryKeys.dashboard(displayUnit), unit: displayUnit });
+  const bundle = useHeldDashboardBundle(displayUnit);
+  const { error } = bundle;
 
   useEffect(() => {
     void prefetchDashboardNavSnapshot(queryClient, displayUnit);
@@ -195,31 +193,32 @@ export function DashboardPage() {
   // from storage, so it paints only a strip that shows nothing yet). Across a unit switch the cards
   // on screen stay, dimmed and in THEIR unit, until a copy of the new unit at least as new lands;
   // the bundle's own copy is either live or held (and refetched) by `bundle` above.
-  const stripCandidate = useMemo((): UnitCandidate<StripCards> | undefined => {
-    if (live) return { data: { dash: live.dash, unit: live.dash.unit }, updatedAt: bundleQuery.dataUpdatedAt };
+  // Memoized on the payloads only: the cards' identity dates their content (`heldUnitPayload.ts`).
+  const stripCandidateCards = useMemo((): StripCards | undefined => {
+    if (live) return { dash: live.dash, unit: live.dash.unit };
     if (!navSnapshot) return undefined;
     return {
-      data: {
-        dash: dashPickForNavStrip({
-          accounts: navSnapshot.accounts,
-          liabilities_breakdown: navSnapshot.liabilities_breakdown,
-          dashboard_layout: navSnapshot.dashboard_layout,
-          nw_bucket_totals: navSnapshot.nw_bucket_totals,
-          card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
-        }),
-        unit: navSnapshot.unit,
-      },
-      updatedAt: navSnapshotQuery.dataUpdatedAt,
+      dash: dashPickForNavStrip({
+        accounts: navSnapshot.accounts,
+        liabilities_breakdown: navSnapshot.liabilities_breakdown,
+        dashboard_layout: navSnapshot.dashboard_layout,
+        nw_bucket_totals: navSnapshot.nw_bucket_totals,
+        card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
+      }),
+      unit: navSnapshot.unit,
     };
-  }, [live, bundleQuery.dataUpdatedAt, navSnapshot, navSnapshotQuery.dataUpdatedAt]);
+  }, [live, navSnapshot]);
   const strip = useHeldUnitValue({
-    candidate: stripCandidate,
-    pending: stripCandidate === undefined,
+    candidate: stripCandidateCards
+      ? { data: stripCandidateCards, updatedAt: live ? bundle.updatedAt : navSnapshotQuery.dataUpdatedAt }
+      : undefined,
+    pending: stripCandidateCards === undefined,
     unit: displayUnit,
     entity: NET_WORTH_PORTFOLIO_GROUP,
     key: displayUnit,
-    // An older snapshot waits for the bundle request in flight (joined, never restarted).
-    refetch: () => bundleQuery.refetch({ cancelRefetch: false }),
+    // An older snapshot waits for the bundle request in flight (joined, never restarted); when it
+    // settles the bundle's copy (new, or the older one after a failure) is shown, undimmed.
+    refetch: bundle.refetch,
   });
   const stripCards = netWorthNav ? (strip.data ?? null) : null;
   // Nothing to show yet (cold cache): a zero strip from the sidebar nav, in its placeholder phase.
@@ -246,10 +245,7 @@ export function DashboardPage() {
   // Day view: the net-worth chart swaps to the daily series (overview-daily fetch), held like
   // the bundle across a unit or range change (a held daily series is drawn, dimmed, in its unit).
   const overviewDays = timeRangeToDays(overviewRange);
-  const overviewDaily = useHeldUnitQuery(
-    useDashboardOverviewDaily(displayUnit, overviewDays, overviewIsDaily),
-    { queryKey: queryKeys.dashboardOverviewDaily(displayUnit, overviewDays), unit: displayUnit, enabled: overviewIsDaily }
-  );
+  const overviewDaily = useHeldDashboardOverviewDaily(displayUnit, overviewDays, overviewIsDaily);
   const overviewDailyData = overviewDaily.data;
   // The value map replaces the composition chart; only a real bundle (live or held) carries it.
   const valueMapRoot = useMemo(
@@ -268,10 +264,7 @@ export function DashboardPage() {
   const allocationIsDaily = allocationPrefs.period === "day";
   const allocationDays = timeRangeToDays(allocationPrefs.range);
   const allocationDailyEnabled = allocationIsDaily && !valueMapShown && belowFoldShown;
-  const allocationDaily = useHeldUnitQuery(
-    useDashboardOverviewDaily(displayUnit, allocationDays, allocationDailyEnabled),
-    { queryKey: queryKeys.dashboardOverviewDaily(displayUnit, allocationDays), unit: displayUnit, enabled: allocationDailyEnabled }
-  );
+  const allocationDaily = useHeldDashboardOverviewDaily(displayUnit, allocationDays, allocationDailyEnabled);
   const allocationDailyData = allocationDaily.data;
   // The bundle's own loading dims every chart.
   const overviewDailyPending = dailyPayloadPending(overviewIsDaily, overviewDaily);

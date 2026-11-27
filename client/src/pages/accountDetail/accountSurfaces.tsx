@@ -233,7 +233,7 @@ export function AccountDetalleSurface({
         <DailyPerfDetailTable series={detalleDailySeries.data} dimClosedDays loading={detalleDailySeries.loading} />
       ) : (
         <MonthlyPerfDetailTable
-          key={`${data.id}-${data.unit}-mp-detail`}
+          key={`${data.id}-mp-detail`}
           rows={data.monthlyPerfRows}
           yearlyRows={data.monthlyPerfYearlyRows}
           displayUnit={data.unit}

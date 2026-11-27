@@ -18,12 +18,13 @@ import {
 import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor, keepPreviousDataSameEntity } from "./displayUnitQueries";
 import { queryKeys, type AccountFlowsScope, type DisplayUnit } from "./keys";
 import { invalidateResources, resources } from "./resources";
-import { useHeldUnitQuery, type HeldUnitPayload } from "./heldUnitPayload";
+import { useHeldUnitQuery, type HeldUnitQuery } from "./heldUnitPayload";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
 import type { DailySeriesResponse, ExpensesSpentParams, NavTreeNodeDto } from "../types";
 import { setCurrencyRegistry } from "../format";
+import type { DashboardBundle, PortfolioGroupBundle } from "./fetchers";
 
 /** Snapshots read from localStorage (placeholders), as opposed to live server payloads. */
 const navSnapshotsFromLocalCache = new WeakSet<object>();
@@ -38,23 +39,47 @@ function readNavSnapshotCacheForUnit(unit: DisplayUnit) {
 
 export { hasDashboardNavSnapshotCache } from "./dashboardNavSnapshotCache";
 
-export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.dashboard(unit),
+/*
+ * Display-unit queries come in pairs built from one options function: `useX` (the raw query) and
+ * `useHeldX` (the query as a surface shows it across a unit switch, `heldUnitPayload.ts`). Pages
+ * draw the held one; key, fetcher and `enabled` are stated once, in the options.
+ */
+
+function dashboardBundleOptions(unit: DisplayUnit, enabled: boolean) {
+  const queryKey = queryKeys.dashboard(unit);
+  return {
+    queryKey,
     queryFn: () => fetchDashboardBundle(unit),
     enabled,
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboard(unit)),
-  });
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
+}
+
+export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
+  return useQuery(dashboardBundleOptions(unit, enabled));
+}
+
+export function useHeldDashboardBundle(unit: DisplayUnit): HeldUnitQuery<DashboardBundle> {
+  return useHeldUnitQuery(dashboardBundleOptions(unit, true), unit);
+}
+
+function dashboardOverviewDailyOptions(unit: DisplayUnit, days: number, enabled: boolean) {
+  const queryKey = queryKeys.dashboardOverviewDaily(unit, days);
+  return {
+    queryKey,
+    queryFn: () => api.dashboardOverviewDaily(unit, days),
+    enabled,
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
 }
 
 /** Daily net-worth series for the day period view (fetched only while the D toggle is active). */
 export function useDashboardOverviewDaily(unit: DisplayUnit, days: number, enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.dashboardOverviewDaily(unit, days),
-    queryFn: () => api.dashboardOverviewDaily(unit, days),
-    enabled,
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboardOverviewDaily(unit, days)),
-  });
+  return useQuery(dashboardOverviewDailyOptions(unit, days, enabled));
+}
+
+export function useHeldDashboardOverviewDaily(unit: DisplayUnit, days: number, enabled: boolean) {
+  return useHeldUnitQuery(dashboardOverviewDailyOptions(unit, days, enabled), unit);
 }
 
 type DailySeriesScope = { portfolioGroup?: string; accountId?: number };
@@ -67,8 +92,22 @@ function dailySeriesScopeKey(scope: DailySeriesScope): string {
       : "";
 }
 
-function dailySeriesQueryKey(scope: DailySeriesScope, unit: DisplayUnit, days: number, opts?: { perfLevels?: boolean }) {
-  return queryKeys.dailySeries(dailySeriesScopeKey(scope), opts?.perfLevels === true ? "perf" : "base", unit, days);
+function dailySeriesOptions(
+  scope: DailySeriesScope,
+  unit: DisplayUnit,
+  days: number,
+  enabled: boolean,
+  opts?: { perfLevels?: boolean }
+) {
+  const scopeKey = dailySeriesScopeKey(scope);
+  const perfLevels = opts?.perfLevels === true;
+  const queryKey = queryKeys.dailySeries(scopeKey, perfLevels ? "perf" : "base", unit, days);
+  return {
+    queryKey,
+    queryFn: () => api.dailySeries(unit, scope, days, { perfLevels }),
+    enabled: enabled && scopeKey !== "",
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
 }
 
 /** Daily series for one group page or account (day period view: chart + detalle por día). */
@@ -80,36 +119,18 @@ export function useDailySeries(
   /** Ask for the day-mode P/L levels (`perf_levels`) the P/L combos pick. */
   opts?: { perfLevels?: boolean }
 ) {
-  const scopeKey = dailySeriesScopeKey(scope);
-  const perfLevels = opts?.perfLevels === true;
-  const key = dailySeriesQueryKey(scope, unit, days, opts);
-  return useQuery({
-    queryKey: key,
-    queryFn: () => api.dailySeries(unit, scope, days, { perfLevels }),
-    enabled: enabled && scopeKey !== "",
-    ...displayUnitQueryBehaviorFor(key),
-  });
+  return useQuery(dailySeriesOptions(scope, unit, days, enabled, opts));
 }
 
-/**
- * {@link useDailySeries} as a surface shows it (`heldUnitPayload.ts`): across a unit or range
- * change the series on screen is held, dimmed, in its own unit, until this request's copy (at
- * least as new) is in. `error` is the request's own, for {@link queryLoadError}-style gates.
- */
+/** {@link useDailySeries} as a surface shows it: held across a unit or range change, in its own unit. */
 export function useHeldDailySeries(
   scope: DailySeriesScope,
   unit: DisplayUnit,
   days: number,
   enabled = true,
   opts?: { perfLevels?: boolean }
-): HeldUnitPayload<DailySeriesResponse> & { error: unknown } {
-  const query = useDailySeries(scope, unit, days, enabled, opts);
-  const shown = useHeldUnitQuery(query, {
-    queryKey: dailySeriesQueryKey(scope, unit, days, opts),
-    unit,
-    enabled: enabled && dailySeriesScopeKey(scope) !== "",
-  });
-  return { ...shown, error: query.error };
+): HeldUnitQuery<DailySeriesResponse> {
+  return useHeldUnitQuery(dailySeriesOptions(scope, unit, days, enabled, opts), unit);
 }
 
 /**
@@ -175,27 +196,41 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
   return staleCachedSnapshot ? { ...query, data: undefined } : query;
 }
 
-export function useGroupConsolidatedTables(
-  portfolioGroup: string,
-  unit: DisplayUnit,
-  enabled: boolean
-) {
-  return useQuery({
-    queryKey: queryKeys.groupConsolidatedTables(portfolioGroup, unit),
+function groupConsolidatedTablesOptions(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  const queryKey = queryKeys.groupConsolidatedTables(portfolioGroup, unit);
+  return {
+    queryKey,
     queryFn: () => api.groupConsolidatedTables(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupConsolidatedTables(portfolioGroup, unit)),
-  });
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
+}
+
+export function useGroupConsolidatedTables(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  return useQuery(groupConsolidatedTablesOptions(portfolioGroup, unit, enabled));
+}
+
+export function useHeldGroupConsolidatedTables(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  return useHeldUnitQuery(groupConsolidatedTablesOptions(portfolioGroup, unit, enabled), unit);
+}
+
+function groupPeriodReturnsOptions(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  const queryKey = queryKeys.groupPeriodReturns(portfolioGroup, unit);
+  return {
+    queryKey,
+    queryFn: () => api.groupPeriodReturns(portfolioGroup, unit),
+    enabled: enabled && Boolean(portfolioGroup),
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
 }
 
 /** The Rentabilidad table alone (dashboard net_worth, whose detalle table is server-paginated). */
 export function useGroupPeriodReturns(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.groupPeriodReturns(portfolioGroup, unit),
-    queryFn: () => api.groupPeriodReturns(portfolioGroup, unit),
-    enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupPeriodReturns(portfolioGroup, unit)),
-  });
+  return useQuery(groupPeriodReturnsOptions(portfolioGroup, unit, enabled));
+}
+
+export function useHeldGroupPeriodReturns(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  return useHeldUnitQuery(groupPeriodReturnsOptions(portfolioGroup, unit, enabled), unit);
 }
 
 /** Home «Últimos movimientos»: the newest expense lines and income credits, interleaved. */
@@ -206,24 +241,30 @@ export function useLatestMovements(limit: number, unit: DisplayUnit) {
   });
 }
 
-/** One server page of the consolidated detalle table (dashboard net_worth). */
-export function useGroupConsolidatedMonthlyPage(
+/**
+ * One server page of the consolidated detalle table (dashboard net_worth), as the table shows it:
+ * held across a unit, page or period change. `installmentMode`: the expense mode net worth's
+ * income and expenses are counted in.
+ */
+export function useHeldGroupConsolidatedMonthlyPage(
   portfolioGroup: string,
   unit: DisplayUnit,
   period: "month" | "year",
   page: number,
   pageSize: number,
   enabled: boolean,
-  /** Net worth: the expense mode its rows' income and expenses are counted in. */
   installmentMode: "split" | "total"
 ) {
-  const key = queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page, pageSize, installmentMode);
-  return useQuery({
-    queryKey: key,
-    queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period, installmentMode }),
-    enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(key),
-  });
+  const queryKey = queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page, pageSize, installmentMode);
+  return useHeldUnitQuery(
+    {
+      queryKey,
+      queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period, installmentMode }),
+      enabled: enabled && Boolean(portfolioGroup),
+      ...displayUnitQueryBehaviorFor(queryKey),
+    },
+    unit
+  );
 }
 
 /** `GET /api/accounts?portfolio_group=…` — group/dashboard page shape (account list). */
@@ -247,14 +288,30 @@ export function usePortfolioGroupBundle(opts: {
   unit: DisplayUnit;
   enabled?: boolean;
 }) {
+  return useQuery(portfolioGroupBundleOptions(useQueryClient(), opts));
+}
+
+/** {@link usePortfolioGroupBundle} as a page shows it: held across a unit switch, in its own unit. */
+export function useHeldPortfolioGroupBundle(opts: {
+  portfolio_group: string;
+  unit: DisplayUnit;
+  enabled?: boolean;
+}): HeldUnitQuery<PortfolioGroupBundle> {
+  return useHeldUnitQuery(portfolioGroupBundleOptions(useQueryClient(), opts), opts.unit);
+}
+
+function portfolioGroupBundleOptions(
+  queryClient: ReturnType<typeof useQueryClient>,
+  opts: { portfolio_group: string; unit: DisplayUnit; enabled?: boolean }
+) {
   const { portfolio_group, unit, enabled = true } = opts;
-  const queryClient = useQueryClient();
-  return useQuery({
-    queryKey: queryKeys.portfolioGroup(portfolio_group, unit),
+  const queryKey = queryKeys.portfolioGroup(portfolio_group, unit);
+  return {
+    queryKey,
     queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }, queryClient),
     enabled: enabled && Boolean(portfolio_group),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroup(portfolio_group, unit)),
-  });
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
 }
 
 const GROUP_PAGE_SHELL_STALE_MS = 10 * 60_000;
@@ -877,17 +934,27 @@ export function useLiabilitiesGlance(slug: string | undefined, unit: DisplayUnit
   });
 }
 
+function accountDetailBundleOptions(id: string | undefined, unit: DisplayUnit, chartGranularity: "monthly" | "daily") {
+  const queryKey = queryKeys.accountDetail(id ?? "", unit, chartGranularity);
+  return {
+    queryKey,
+    queryFn: () => api.accountDetailBundle(id!, unit, { granularity: chartGranularity }),
+    enabled: Boolean(id),
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
+}
+
 export function useAccountDetailBundle(
   id: string | undefined,
   unit: DisplayUnit,
   chartGranularity: "monthly" | "daily"
 ) {
-  return useQuery({
-    queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity),
-    queryFn: () => api.accountDetailBundle(id!, unit, { granularity: chartGranularity }),
-    enabled: Boolean(id),
-    ...displayUnitQueryBehaviorFor(queryKeys.accountDetail(id ?? "", unit, chartGranularity)),
-  });
+  return useQuery(accountDetailBundleOptions(id, unit, chartGranularity));
+}
+
+/** {@link useAccountDetailBundle} as the account page shows it: held across a unit switch, in its own unit. */
+export function useHeldAccountDetailBundle(id: string | undefined, unit: DisplayUnit, chartGranularity: "monthly" | "daily") {
+  return useHeldUnitQuery(accountDetailBundleOptions(id, unit, chartGranularity), unit);
 }
 
 export type FlowsQueryFilters = {

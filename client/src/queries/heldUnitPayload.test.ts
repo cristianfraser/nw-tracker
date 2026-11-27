@@ -1,51 +1,78 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hashKey, QueryClient, QueryObserver } from "@tanstack/react-query";
-import { keepPreviousDataSameEntity } from "./displayUnitQueries";
+import { shareKeepingLiveInputs } from "../liveInputs";
 import { entityKeyLength, queryKeys } from "./keys";
-import { resolveHeldUnitPayload, type HeldUnitStep, type ShownUnitPayload } from "./heldUnitPayload";
+import {
+  contentChangedAt,
+  initialHeldUnitState,
+  settleHeldUnit,
+  stepHeldUnit,
+  type HeldUnitInput,
+  type HeldUnitState,
+  type HeldUnitView,
+} from "./heldUnitPayload";
+
+/*
+ * The hook (`useHeldUnitValue`) is a thin shell over `stepHeldUnit` / `settleHeldUnit`: it keeps
+ * the state, applies a changed state during render, and runs the requested refetch once per
+ * (key, against), settling it per key. The client has no DOM test setup, so these tests drive
+ * those two functions the same way over a real QueryClient (the app's structural sharing) and
+ * real fetches, with the clock set before each action.
+ */
 
 type List = { unit: string; rows: string[] };
 
-/**
- * One surface over a real QueryObserver, stepped the way `useHeldUnitQuery` steps a render: the
- * last shown record is kept, and a requested forced refetch is run (and awaited) by `settle`.
- */
-function surface(qc: QueryClient, fetchRows: (unit: string) => Promise<List>, group = "brokerage") {
-  const keyOf = (g: string, unit: string) => queryKeys.portfolioGroup(g, unit);
-  const optionsFor = (g: string, unit: string) => {
-    const queryKey = keyOf(g, unit);
-    return {
-      queryKey,
-      queryFn: () => fetchRows(unit),
-      staleTime: Infinity,
-      placeholderData: keepPreviousDataSameEntity(queryKey, entityKeyLength(queryKey)),
-    };
-  };
+function client() {
+  return new QueryClient({
+    defaultOptions: { queries: { structuralSharing: shareKeepingLiveInputs, retry: false } },
+  });
+}
+
+/** One surface (a group page's bundle) over a QueryObserver, driven like the hook. */
+function surface(qc: QueryClient, fetchList: (unit: string) => Promise<List>, group = "brokerage") {
+  let fetches = 0;
+  const optionsFor = (g: string, unit: string) => ({
+    queryKey: queryKeys.portfolioGroup(g, unit),
+    queryFn: () => {
+      fetches += 1;
+      return fetchList(unit);
+    },
+    // React-query calls every copy fresh: only the hold's own rule refetches.
+    staleTime: Infinity,
+  });
   let current = { group, unit: "usd" };
   const observer = new QueryObserver<List, Error, List, List, readonly unknown[]>(qc, optionsFor(group, "usd"));
   const unsubscribe = observer.subscribe(() => {});
-  let shown: ShownUnitPayload<List> | null = null;
-  let settled: { key: string; against: number } | null = null;
-  let pendingRefetch: { key: string; against: number } | null = null;
+  let state: HeldUnitState<List> = initialHeldUnitState();
+  const started = new Set<string>();
+  const inFlight: Promise<unknown>[] = [];
 
-  const step = (): HeldUnitStep<List> => {
+  const step = (): HeldUnitView<List> => {
     const r = observer.getCurrentResult();
-    const queryKey = keyOf(current.group, current.unit);
-    const key = hashKey([...queryKey]);
-    const own = !r.isPlaceholderData && r.data !== undefined ? r.data : undefined;
-    const out = resolveHeldUnitPayload({
+    const queryKey = queryKeys.portfolioGroup(current.group, current.unit);
+    const key = hashKey(queryKey);
+    const own = r.data !== undefined && !r.isPlaceholderData ? r.data : undefined;
+    const out = stepHeldUnit(state, {
       candidate: own !== undefined ? { data: own, updatedAt: r.dataUpdatedAt } : undefined,
-      fallback: r.isPlaceholderData ? r.data : undefined,
       pending: r.isPending,
+      error: r.error,
       unit: current.unit,
       entity: hashKey(queryKey.slice(0, entityKeyLength(queryKey))),
+      key,
       enabled: true,
-      shown,
-      refetchSettledAgainst: settled?.key === key ? settled.against : null,
+      canRefetch: true,
     });
-    if (out.record) shown = out.record;
-    pendingRefetch = out.refetchAgainst != null ? { key, against: out.refetchAgainst } : null;
-    return out;
+    state = out.state;
+    const against = out.refetchAgainst;
+    if (against != null && !started.has(`${key}|${against}`)) {
+      started.add(`${key}|${against}`);
+      inFlight.push(
+        observer.refetch({ cancelRefetch: false }).finally(() => {
+          state = settleHeldUnit(state, key, against);
+        })
+      );
+    }
+    return out.view;
   };
 
   return {
@@ -55,157 +82,275 @@ function surface(qc: QueryClient, fetchRows: (unit: string) => Promise<List>, gr
       return step();
     },
     step,
-    /** Runs the forced refetch the last step asked for, as the hook's effect does. */
+    /** Lets every fetch in flight land, then renders again. */
     async settle() {
-      const req = pendingRefetch;
-      if (!req) throw new Error("no refetch requested");
-      await observer.refetch({ cancelRefetch: false });
-      settled = req;
+      for (let i = 0; i < 20; i++) {
+        await Promise.all(inFlight.splice(0));
+        await new Promise((r) => setTimeout(r, 0));
+        if (observer.getCurrentResult().fetchStatus === "idle" && inFlight.length === 0) break;
+      }
       return step();
+    },
+    refetchShown: () => observer.refetch(),
+    get fetches() {
+      return fetches;
     },
     dispose: unsubscribe,
   };
 }
 
-const list = (unit: string, ...rows: string[]): List => ({ unit, rows });
+function server(initial: Record<string, string[]>) {
+  const rows: Record<string, string[]> = { ...initial };
+  const failing = new Set<string>();
+  return {
+    rows,
+    failing,
+    fetch: async (unit: string): Promise<List> => {
+      if (failing.has(unit)) throw new Error(`${unit} down`);
+      if (!rows[unit]) return new Promise<List>(() => {});
+      return { unit, rows: [...rows[unit]] };
+    },
+  };
+}
 
-describe("resolveHeldUnitPayload over react-query", () => {
+const at = (t: number) => vi.setSystemTime(t);
+
+describe("stepHeldUnit over react-query, real fetch order", () => {
   let qc: QueryClient;
-  afterEach(() => qc.clear());
-
-  it("never steps back to an older copy of the target unit: [a b c]usd → [d a b c]clp → usd", async () => {
-    qc = new QueryClient();
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "usd"), list("usd", "a", "b", "c"), { updatedAt: 1_000 });
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "clp"), list("clp", "d", "a", "b", "c"), { updatedAt: 2_000 });
-    const s = surface(qc, async (unit) => list(unit, "d", "a", "b", "c"));
-
-    const first = s.step();
-    expect(first.data).toEqual(list("usd", "a", "b", "c"));
-    expect(first.loading).toBe(false);
-
-    const clp = s.show("clp");
-    expect(clp.data).toEqual(list("clp", "d", "a", "b", "c"));
-    expect(clp.live).toBe(clp.data);
-
-    // The cached usd copy is older than the clp list on screen: the clp list stays, dimmed, and
-    // the usd copy is refetched (react-query still calls it fresh).
-    const back = s.show("usd");
-    expect(back.data).toEqual(list("clp", "d", "a", "b", "c"));
-    expect(back).toMatchObject({ held: true, loading: true, live: undefined });
-    expect(back.refetchAgainst).toBe(2_000);
-
-    const fresh = await s.settle();
-    expect(fresh.data).toEqual(list("usd", "d", "a", "b", "c"));
-    expect(fresh).toMatchObject({ held: false, loading: false });
-    s.dispose();
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    qc = client();
+  });
+  afterEach(() => {
+    qc.clear();
+    vi.useRealTimers();
   });
 
-  it("switches at once to a copy at least as new (the fast path)", () => {
-    qc = new QueryClient();
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "usd"), list("usd", "x"), { updatedAt: 1_000 });
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "clp"), list("clp", "x"), { updatedAt: 3_000 });
-    const s = surface(qc, async () => {
-      throw new Error("nothing is fetched");
-    });
+  it("toggling between unchanged payloads is instant after the first round trip each way", async () => {
+    const srv = server({ usd: ["a"], clp: ["a"] });
+    const s = surface(qc, srv.fetch);
+    at(1_000);
     s.step();
-    const clp = s.show("clp");
-    expect(clp).toMatchObject({ data: list("clp", "x"), held: false, loading: false, refetchAgainst: null });
+    expect(await s.settle()).toMatchObject({ data: { unit: "usd" }, held: false });
+
+    at(2_000);
+    expect(s.show("clp")).toMatchObject({ data: { unit: "usd" }, held: true, loading: true });
+    expect(await s.settle()).toMatchObject({ data: { unit: "clp" }, held: false });
+
+    // The clp content is newer than the usd copy: one refetch of usd, which comes back equal.
+    at(3_000);
+    expect(s.show("usd")).toMatchObject({ data: { unit: "clp" }, held: true });
+    expect(await s.settle()).toMatchObject({ data: { unit: "usd" }, held: false });
+    expect(s.fetches).toBe(3);
+
+    // From here on nothing changed: every toggle shows the cached copy at once, no fetch.
+    for (const [t, unit] of [[4_000, "clp"], [5_000, "usd"], [6_000, "clp"], [7_000, "usd"]] as const) {
+      at(t);
+      expect(s.show(unit)).toMatchObject({ data: { unit }, held: false, loading: false });
+    }
+    await s.settle();
+    expect(s.fetches).toBe(3);
+
+    // A background refetch of the shown key with equal content keeps the fast path.
+    at(8_000);
+    await s.refetchShown();
+    s.step();
+    at(9_000);
+    expect(s.show("clp")).toMatchObject({ data: { unit: "clp" }, held: false });
+    expect(s.fetches).toBe(4);
     s.dispose();
   });
 
-  it("clp → usd (pending) → eur holds the clp payload, labelled clp, not usd", () => {
-    qc = new QueryClient();
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "clp"), list("clp", "c"), { updatedAt: 2_000 });
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "eur"), list("eur", "old"), { updatedAt: 1_500 });
-    const s = surface(qc, () => new Promise<List>(() => {}));
+  it("a refetch that changes the shown content makes the other unit's copy older", async () => {
+    const srv = server({ usd: ["a"], clp: ["a"] });
+    const s = surface(qc, srv.fetch);
+    at(1_000);
+    s.step();
+    await s.settle();
+    at(2_000);
     s.show("clp");
+    await s.settle();
+    at(3_000);
+    s.show("usd");
+    await s.settle();
 
-    const usd = s.show("usd");
-    expect(usd).toMatchObject({ data: list("clp", "c"), held: true, loading: true });
+    at(4_000);
+    srv.rows.usd = ["b", "a"];
+    srv.rows.clp = ["b", "a"];
+    await s.refetchShown();
+    expect(s.step().data?.rows).toEqual(["b", "a"]);
 
+    at(5_000);
+    const clp = s.show("clp");
+    expect(clp).toMatchObject({ data: { unit: "usd", rows: ["b", "a"] }, held: true, loading: true });
+    expect(await s.settle()).toMatchObject({ data: { unit: "clp", rows: ["b", "a"] }, held: false });
+    s.dispose();
+  });
+
+  it("[a b c]usd → [d a b c]clp → usd never shows [a b c] again", async () => {
+    const srv = server({ usd: ["a", "b", "c"], clp: ["a", "b", "c"] });
+    const s = surface(qc, srv.fetch);
+    at(1_000);
+    s.step();
+    expect((await s.settle()).data?.rows).toEqual(["a", "b", "c"]);
+
+    srv.rows.usd = ["d", "a", "b", "c"];
+    srv.rows.clp = ["d", "a", "b", "c"];
+    at(2_000);
+    s.show("clp");
+    expect((await s.settle()).data).toEqual({ unit: "clp", rows: ["d", "a", "b", "c"] });
+
+    at(3_000);
+    const back = s.show("usd");
+    expect(back.data).toEqual({ unit: "clp", rows: ["d", "a", "b", "c"] });
+    expect(back.live).toBeUndefined();
+    expect((await s.settle()).data).toEqual({ unit: "usd", rows: ["d", "a", "b", "c"] });
+    s.dispose();
+  });
+
+  it("clp → usd (pending) → eur (older copy) holds the clp payload, in clp", async () => {
+    const srv = server({ eur: ["e"], clp: ["c"] });
+    const s = surface(qc, srv.fetch);
+    at(1_000);
+    s.show("eur");
+    await s.settle();
+    at(2_000);
+    s.show("clp");
+    await s.settle();
+
+    at(3_000);
+    expect(s.show("usd")).toMatchObject({ data: { unit: "clp" }, held: true, loading: true });
+    at(3_100);
     const eur = s.show("eur");
     expect(eur.data?.unit).toBe("clp");
-    expect(eur).toMatchObject({ held: true, loading: true, refetchAgainst: 2_000 });
+    expect(eur).toMatchObject({ held: true, loading: true });
+    expect(await s.settle()).toMatchObject({ data: { unit: "eur" }, held: false });
     s.dispose();
   });
 
-  it("a newer target copy after a pending unit is shown at once", () => {
-    qc = new QueryClient();
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "clp"), list("clp", "c"), { updatedAt: 2_000 });
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "eur"), list("eur", "e"), { updatedAt: 2_500 });
-    const s = surface(qc, () => new Promise<List>(() => {}));
+  it("a failed first fetch in the new unit ends the hold and reports its error", async () => {
+    const srv = server({ clp: ["c"], usd: ["u"] });
+    srv.failing.add("usd");
+    const s = surface(qc, srv.fetch);
+    at(1_000);
     s.show("clp");
-    s.show("usd");
-    expect(s.show("eur")).toMatchObject({ data: list("eur", "e"), held: false, loading: false });
+    await s.settle();
+    at(2_000);
+    expect(s.show("usd")).toMatchObject({ data: { unit: "clp" }, held: true });
+    const failed = await s.settle();
+    expect(failed).toMatchObject({ data: undefined, held: false, loading: false });
+    expect(failed.error).toBeInstanceOf(Error);
     s.dispose();
   });
 
-  it("another entity holds nothing", () => {
-    qc = new QueryClient();
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "usd"), list("usd", "b"), { updatedAt: 2_000 });
-    const s = surface(qc, () => new Promise<List>(() => {}));
-    s.step();
-    const other = s.show("usd", "retirement");
-    expect(other).toMatchObject({ data: undefined, held: false, loading: true });
-    s.dispose();
-  });
+  it("a failed forced refetch shows the older copy of the target unit, undimmed, with no error", async () => {
+    const srv = server({ eur: ["e"], clp: ["c"] });
+    const s = surface(qc, srv.fetch);
+    at(1_000);
+    s.show("eur");
+    await s.settle();
+    at(2_000);
+    s.show("clp");
+    await s.settle();
 
-  it("a background refetch of the shown key is shown, never held as «older»", async () => {
-    qc = new QueryClient();
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "usd"), list("usd", "a"), { updatedAt: 2_000 });
-    const s = surface(qc, async (unit) => list(unit, "b", "a"));
-    s.step();
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "usd"), list("usd", "b", "a"), { updatedAt: 3_000 });
-    expect(s.step()).toMatchObject({ data: list("usd", "b", "a"), held: false, loading: false });
-    s.dispose();
-  });
-
-  it("shows the older copy once its forced refetch has failed (never dims forever)", async () => {
-    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "usd"), list("usd", "a"), { updatedAt: 1_000 });
-    qc.setQueryData(queryKeys.portfolioGroup("brokerage", "clp"), list("clp", "b"), { updatedAt: 2_000 });
-    const s = surface(qc, async () => {
-      throw new Error("server down");
+    srv.failing.add("eur");
+    at(3_000);
+    expect(s.show("eur").held).toBe(true);
+    expect(await s.settle()).toMatchObject({
+      data: { unit: "eur", rows: ["e"] },
+      held: false,
+      loading: false,
+      error: null,
     });
+    s.dispose();
+  });
+
+  it("another entity holds nothing", async () => {
+    const srv = server({ usd: ["b"] });
+    const s = surface(qc, srv.fetch);
+    at(1_000);
     s.step();
-    s.show("clp");
-    expect(s.show("usd").held).toBe(true);
-    const after = await s.settle();
-    expect(after).toMatchObject({ data: list("usd", "a"), held: false, loading: false });
+    await s.settle();
+    expect(s.show("usd", "retirement")).toMatchObject({ data: undefined, held: false, loading: true });
     s.dispose();
   });
 });
 
-describe("resolveHeldUnitPayload", () => {
-  const base = {
-    fallback: undefined,
+describe("stepHeldUnit", () => {
+  const input = (over: Partial<HeldUnitInput<List>>): HeldUnitInput<List> => ({
+    candidate: undefined,
     pending: false,
+    error: null,
     unit: "usd",
     entity: "e",
+    key: "k-usd",
     enabled: true,
-    refetchSettledAgainst: null,
-  };
+    canRefetch: true,
+    ...over,
+  });
+  /** A state that shows `data`, its content first seen at `t`, requested in its unit. */
+  const showing = (data: List, t: number): HeldUnitState<List> =>
+    stepHeldUnit(initialHeldUnitState<List>(), input({ candidate: { data, updatedAt: t }, unit: data.unit })).state;
 
-  it("a stored copy (updated at 0) paints an empty surface but never replaces one on screen", () => {
-    const stored = { data: list("usd", "s"), updatedAt: 0 };
-    expect(resolveHeldUnitPayload({ ...base, candidate: stored, shown: null }).data).toBe(stored.data);
-    const onScreen: ShownUnitPayload<List> = { data: list("clp", "live"), updatedAt: 5, unit: "clp", entity: "e" };
-    expect(resolveHeldUnitPayload({ ...base, candidate: stored, shown: onScreen })).toMatchObject({
-      data: onScreen.data,
-      held: true,
-      loading: true,
+  it("a surface not drawn (request disabled) keeps nothing to hold later", () => {
+    const shown = showing({ unit: "clp", rows: ["d"] }, 10);
+    const off = stepHeldUnit(shown, input({ enabled: false, pending: true, unit: "clp", key: "k-clp" }));
+    expect(off.state.shown).toBeNull();
+    const back = stepHeldUnit(off.state, input({ pending: true }));
+    expect(back.view).toMatchObject({ data: undefined, held: false, loading: true });
+  });
+
+  it("a request that cannot be refetched shows its older copy", () => {
+    const shown = showing({ unit: "clp", rows: ["x"] }, 10);
+    const older = { data: { unit: "usd", rows: ["y"] }, updatedAt: 5 };
+    expect(stepHeldUnit(shown, input({ candidate: older, canRefetch: false })).view).toMatchObject({
+      data: older.data,
+      held: false,
+      loading: false,
     });
+    expect(stepHeldUnit(shown, input({ candidate: older })).refetchAgainst).toBe(10);
+  });
+
+  it("a late settle of an earlier key never undoes a later key's", () => {
+    const shown = showing({ unit: "clp", rows: ["x"] }, 10);
+    const older = { data: { unit: "usd", rows: ["y"] }, updatedAt: 5 };
+    // usd held (against 10) and settled, then the eur refetch from before settles late.
+    const settled = settleHeldUnit(settleHeldUnit(shown, "k-usd", 10), "k-eur", 10);
+    expect(stepHeldUnit(settled, input({ candidate: older })).view).toMatchObject({ data: older.data, held: false });
+  });
+
+  it("a stored copy (updated at 0) paints an empty surface, never replaces one on screen, never is live", () => {
+    const stored = { data: { unit: "usd", rows: ["s"] }, updatedAt: 0 };
+    expect(stepHeldUnit(initialHeldUnitState<List>(), input({ candidate: stored })).view).toMatchObject({
+      data: stored.data,
+      held: false,
+      live: undefined,
+    });
+    const shown = showing({ unit: "clp", rows: ["live"] }, 10);
+    expect(stepHeldUnit(shown, input({ candidate: stored })).view).toMatchObject({ held: true, loading: true });
   });
 
   it("a period or range change of the same unit shows its cached copy as it is", () => {
-    const onScreen: ShownUnitPayload<List> = { data: list("usd", "90d"), updatedAt: 5, unit: "usd", entity: "e" };
-    const cached = { data: list("usd", "1y"), updatedAt: 1 };
-    expect(resolveHeldUnitPayload({ ...base, candidate: cached, shown: onScreen }).data).toBe(cached.data);
+    const shown = showing({ unit: "usd", rows: ["90d"] }, 10);
+    const cached = { data: { unit: "usd", rows: ["1y"] }, updatedAt: 1 };
+    expect(stepHeldUnit(shown, input({ candidate: cached, key: "k-usd-1y" })).view.data).toBe(cached.data);
   });
 
-  it("a disabled request never holds over its copy", () => {
-    const onScreen: ShownUnitPayload<List> = { data: list("clp", "x"), updatedAt: 5, unit: "clp", entity: "e" };
-    const cached = { data: list("usd", "y"), updatedAt: 1 };
-    expect(resolveHeldUnitPayload({ ...base, enabled: false, candidate: cached, shown: onScreen }).data).toBe(cached.data);
+  it("keeps the same state object while nothing changed (no render loop)", () => {
+    const data = { unit: "usd", rows: ["x"] };
+    const shown = showing(data, 10);
+    expect(stepHeldUnit(shown, input({ candidate: { data, updatedAt: 20 } })).state).toBe(shown);
+  });
+});
+
+describe("contentChangedAt", () => {
+  it("dates content by its first fetch, a stored copy by the first fetch that confirms it", () => {
+    const fetched = { v: 1 };
+    expect(contentChangedAt(fetched, 5)).toBe(5);
+    expect(contentChangedAt(fetched, 9)).toBe(5);
+    const stored = { v: 2 };
+    expect(contentChangedAt(stored, 0)).toBe(0);
+    expect(contentChangedAt(stored, 7)).toBe(7);
+    expect(contentChangedAt(stored, 8)).toBe(7);
   });
 });
