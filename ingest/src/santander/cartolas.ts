@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import type { BankAccountStatement, ParsedCartolaPdfEntry } from "nw-tracker-contracts";
+import { bankAccountStatementSchema, type BankAccountStatement, type ParsedCartolaPdfEntry } from "nw-tracker-contracts";
 import { resolveCfraserDir, resolveRepoRoot } from "../paths.js";
 import {
   listCheckingCartolaXlsxFiles,
@@ -194,5 +194,27 @@ export function readCuentaVistaCartolas(opts: {
     }
   }
   collectPdfEntries(readPdfJson(json), opts.onlyPdf, out);
+  return out;
+}
+
+/**
+ * The statements the contract takes, the others unreadable with the field and cell that fail
+ * (a cell not in the shared reading, `cartolaText`: an older parser's JSON under
+ * `--skip-pdf-parse`, a reader that skipped it): one bad document is named and stays pending,
+ * the others are sent.
+ */
+export function statementsTheContractTakes(read: StatementsRead): StatementsRead {
+  const out: StatementsRead = { statements: [], unreadable: [...read.unreadable] };
+  for (const s of read.statements) {
+    const parsed = bankAccountStatementSchema.safeParse(s);
+    if (parsed.success) {
+      out.statements.push(parsed.data);
+      continue;
+    }
+    const issue = parsed.error.issues[0]!;
+    const at = issue.path.join(".");
+    const cell = issue.path.reduce<unknown>((v, k) => (v as Record<string | number, unknown> | undefined)?.[k as string | number], s);
+    out.unreadable.push({ document: s.document, error: `${at}${typeof cell === "string" ? ` «${cell}»` : ""}: ${issue.message}` });
+  }
   return out;
 }

@@ -5,8 +5,10 @@
  * month whose record names another one, and both cover the whole month
  * (`cartolaCoversWholeMonth`), the document must state what is on file: the same count of
  * movements, and at each position the same bank day, signed pesos, document number, description
- * and branch (text compared through `normalizeCartolaText`), and the same printed opening and
- * closing balances. Equal → the month record notes the confirming document; any difference
+ * and branch — the text exactly as stored: both readers store a cell in the one shared reading
+ * (`cartolaText`, `nw-tracker-contracts`; the statements contract refuses any other), so a
+ * difference is a difference of the documents (or a month stored before that reading, which is
+ * imported again to take it) — and the same printed opening and closing balances. Equal → the month record notes the confirming document; any difference
  * refuses the document, every difference listed. A day's rows are compared as a set: the same rows
  * in another order are an `order` note, not a difference.
  *
@@ -18,21 +20,12 @@
  * whether the document's movement there is still confirmed by such a row.
  */
 import type { Database } from "better-sqlite3";
-import { foldUpper } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import { cartolaListingFacts } from "./movementListingFacts.js";
 import { planCheckingCartola } from "./checkingCartolaPlan.js";
 import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
 import { isHomeCurrency } from "./displayUnits.js";
-
-/**
- * The one comparison of printed text between two renderings of a cartola: accents folded, case
- * folded, runs of whitespace collapsed. Tighten it here once both readers print the same text.
- */
-export function normalizeCartolaText(text: string): string {
-  return foldUpper(text);
-}
 
 export type CartolaListedRow = {
   bank_day: string;
@@ -149,8 +142,7 @@ export function compareCartolaWithMonthOnFile(accountId: number, cartola: Parsed
     docLeft.delete(i);
     fileLeft.delete(p);
   };
-  const sameText = (i: number, r: CartolaListedRow) =>
-    normalizeCartolaText(r.description) === normalizeCartolaText(cartolaListingFacts(cartola.period_month, cartola.movements[i]!, i).description);
+  const sameText = (i: number, r: CartolaListedRow) => r.description === cartolaListingFacts(cartola.period_month, cartola.movements[i]!, i).description;
   for (const i of [...docLeft]) {
     const r = fileLeft.get(i);
     const mv = cartola.movements[i]!;
@@ -181,7 +173,7 @@ export function compareCartolaWithMonthOnFile(accountId: number, cartola: Parsed
       ["description", row.description, doc.description],
       ["branch", row.branch, doc.branch ?? ""],
     ] as const) {
-      if (normalizeCartolaText(a) !== normalizeCartolaText(b2)) diffs.push({ position, field, on_file: a, document: b2 });
+      if (a !== b2) diffs.push({ position, field, on_file: a, document: b2 });
     }
   }
   for (const i of [...docLeft].sort((x, y) => x - y)) diffs.push({ position: i, field: "movement", on_file: "—", document: docText(i) });

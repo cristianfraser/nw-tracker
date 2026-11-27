@@ -47,15 +47,13 @@ from cartola_layout import (
     AmountColumnBounds,
     CartolaRowDateError,
     PdfCartolaRowDates,
-    RE_SMALL_INLINE,
-    RE_SMALL_TRAILING,
     amounts_by_column,
     detect_checking_column_bounds,
     parse_checking_summary_totals,
     reconcile_cartola_movements,
     single_digit_amount_position,
-    strip_amounts_from_line,
 )
+from cartola_text import cartola_text
 from ocr_tessdata import use_expected_tessdata
 from statement_values import parse_clp_amount, parse_dd_mm_yy_to_iso
 
@@ -77,7 +75,6 @@ RE_SALDO_ROW_OCR = re.compile(
     r"((?:\d{1,3}(?:\.\d{3})+\s+){6}\d{1,3}(?:\.\d{3})+)",
     re.I,
 )
-RE_DOC_IN_DESC = re.compile(r"^(\d{4,10})\s+(.+)$")
 
 
 def movement_dedupe_key(
@@ -217,13 +214,19 @@ ROW_Y_TOLERANCE = 2.0
 class TableRow:
     """One DETALLE DE MOVIMIENTOS row as the PDF places it: its date, the words of its SUCURSAL
     column and the words after it, cut by position (`checking_table_rows`). `description_x` is
-    where the first word after the branch starts (None when the row holds only its date)."""
+    where the first word after the branch starts (None when the row holds only its date).
+    `before_amounts` are the words after the branch left of the amount columns, in x order;
+    `document_no` is the one of them in the N° DCTO column (digits) and `description` the others,
+    one space apart: the cells the xlsx prints for the row."""
 
     page: int
     dd_mm: str
     branch: str
     after_branch: str
     description_x: Optional[float] = None
+    before_amounts: Tuple[str, ...] = ()
+    description: str = ""
+    document_no: str = ""
 
     def text(self) -> str:
         return " ".join(p for p in (self.dd_mm, self.branch, self.after_branch) if p)
@@ -260,6 +263,37 @@ def _table_header(words: List[PdfWord]) -> Optional[Tuple[PdfWord, PdfWord]]:
             if desc[4] == "DESCRIPCION" and abs(_word_mid_y(desc) - _word_mid_y(suc)) <= ROW_Y_TOLERANCE:
                 return suc, desc
     return None
+
+
+# The header's two-line labels («CHEQUES Y OTROS / CARGOS») sit a little off the DESCRIPCION line.
+HEADER_LABEL_Y_TOLERANCE = 4.0
+# The N° DCTO cells start this close left of the label (the number is right-aligned under it).
+DOCUMENT_X_TOLERANCE = 6.0
+RE_DOCUMENT_WORD = re.compile(r"\d{4,10}")
+
+
+def _header_columns(words: List[PdfWord], desc: PdfWord, source_file: str, page_no: int) -> Tuple[float, float]:
+    """Where the N° DCTO column and the amount columns (CHEQUES Y OTROS CARGOS) start."""
+    y = _word_mid_y(desc)
+    near = [w for w in words if abs(_word_mid_y(w) - y) <= HEADER_LABEL_Y_TOLERANCE and w[0] > desc[2]]
+    doc = next((w for w in sorted(near, key=lambda w: w[0]) if w[4] in ("N°", "Nº")), None)
+    if doc is None:
+        raise CartolaColumnError(f"{source_file}: page {page_no}: the table header prints no N° DCTO label")
+    cheques = next((w for w in sorted(near, key=lambda w: w[0]) if w[4] == "CHEQUES" and w[0] > doc[2]), None)
+    if cheques is None:
+        raise CartolaColumnError(f"{source_file}: page {page_no}: the table header prints no CHEQUES Y OTROS CARGOS label")
+    return doc[0] - DOCUMENT_X_TOLERANCE, cheques[0]
+
+
+def _row_cells(rest: List[PdfWord], doc_x: float, amounts_x: float, where: str) -> Tuple[Tuple[str, ...], str, str]:
+    """A row's words left of the amount columns, its document number (the digits word in the
+    N° DCTO column) and its description (the other words, one space apart)."""
+    before = [o for o in rest if o[0] < amounts_x]
+    docs = [o for o in before if o[0] >= doc_x and RE_DOCUMENT_WORD.fullmatch(o[4])]
+    if len(docs) > 1:
+        raise CartolaColumnError(f"{where}: several numbers in the N° DCTO column ({', '.join(o[4] for o in docs)})")
+    description = " ".join(o[4] for o in before if not docs or o is not docs[0])
+    return tuple(o[4] for o in before), description, docs[0][4] if docs else ""
 
 
 def _is_table_end(words: List[PdfWord], i: int) -> bool:
@@ -316,7 +350,8 @@ def checking_table_rows(pages: List[List[PdfWord]], source_file: str) -> List[Ta
                     "SUCURSAL / DESCRIPCION header"
                 )
             continue
-        suc, _desc = header
+        suc, desc = header
+        doc_x, amounts_x = _header_columns(ordered, desc, source_file, page_no)
         header_y = _word_mid_y(suc)
         end_y = None
         for i, w in enumerate(ordered):
@@ -335,6 +370,9 @@ def checking_table_rows(pages: List[List[PdfWord]], source_file: str) -> List[Ta
             )
             branch = [o[4] for o in cells if o[0] < suc[2]]
             rest = [o for o in cells if o[0] >= suc[2]]
+            before, description, document_no = _row_cells(
+                rest, doc_x, amounts_x, f"{source_file}: row «{w[4]} {' '.join(branch)}» (page {page_no})"
+            )
             rows.append(
                 TableRow(
                     page_no,
@@ -342,6 +380,9 @@ def checking_table_rows(pages: List[List[PdfWord]], source_file: str) -> List[Ta
                     " ".join(branch),
                     " ".join(o[4] for o in rest),
                     rest[0][0] if rest else None,
+                    before,
+                    description,
+                    document_no,
                 )
             )
         if end_y is not None:
@@ -368,20 +409,10 @@ def read_pdf_words(pdf_path: Path) -> List[List[PdfWord]]:
 
 def split_branch_description(middle: str, row: TableRow, source_file: str) -> Tuple[str, str, str]:
     """Branch, description and document number of a movement line's text between date and amounts.
-    The branch is the row's SUCURSAL cell as the PDF places it (`TableRow`) and the line's text must
-    open with it; the description is the PDF's words after it, one space apart, which must be the
-    line's own description word for word. Raises otherwise."""
+    The cells are the PDF's, placed by position (`TableRow`: SUCURSAL, DESCRIPCION, N° DCTO); the
+    line's text must open with the branch and then hold the row's words left of the amounts, word
+    for word. Raises otherwise."""
     middle = middle.rstrip()
-    doc = ""
-    dm = RE_DOC_IN_DESC.match(middle.strip())
-    if dm:
-        doc = dm.group(1)
-        middle = dm.group(2).strip()
-    trailing_doc = re.search(r"\s(\d{6,10})\s*$", middle)
-    if trailing_doc:
-        doc = doc or trailing_doc.group(1)
-        middle = middle[: trailing_doc.start()].rstrip()
-
     where = f"{source_file}: row «{row.text()}»"
     if not row.branch:
         raise CartolaColumnError(f"{where}: nothing in the SUCURSAL column")
@@ -394,15 +425,14 @@ def split_branch_description(middle: str, row: TableRow, source_file: str) -> Tu
             f"SUCURSAL cell «{row.branch}»"
         )
     layout_words = middle[opening.end() :].split()
-    if not layout_words:
+    if not row.description:
         raise CartolaColumnError(f"{where}: nothing in the DESCRIPCION column")
-    pdf_words = row.after_branch.split()[: len(layout_words)]
-    if pdf_words != layout_words:
+    if tuple(layout_words) != row.before_amounts:
         raise CartolaColumnError(
             f"{where}: the line's description «{' '.join(layout_words)}» is not the PDF row's "
-            f"«{row.after_branch}»"
+            f"«{' '.join(row.before_amounts)}»"
         )
-    return row.branch, " ".join(pdf_words), doc
+    return row.branch, row.description, row.document_no
 
 
 def check_row_words(line: str, row: TableRow, source_file: str) -> None:
@@ -427,6 +457,8 @@ def movement_from_amounts(
     abono: Optional[int],
     balance: Optional[int],
 ) -> List[Movement]:
+    # Every reader stores a cell in the one shared reading (`cartola_text.py`).
+    branch, description, document_no = cartola_text(branch), cartola_text(description), cartola_text(document_no)
     out: List[Movement] = []
     if cargo and cargo > 0:
         out.append(
@@ -487,46 +519,6 @@ def parse_movement_line_layout(
     return movement_from_amounts(
         occurred_on, branch, description, document_no, cargo, abono, None
     )
-
-
-def first_amount_position(line: str, bounds: AmountColumnBounds) -> int:
-    positions = [
-        m.start()
-        for m in RE_AMOUNT.finditer(line)
-        if m.start() < bounds.saldo_min
-    ]
-    for pat in (RE_SMALL_INLINE, RE_SMALL_TRAILING):
-        sm = pat.search(line)
-        if sm is not None:
-            pos = sm.start(2 if pat is RE_SMALL_INLINE else 1)
-            if pos < bounds.saldo_min:
-                positions.append(pos)
-    return min(positions) if positions else len(line)
-
-
-def is_checking_branch_line(line: str, bounds: AmountColumnBounds) -> bool:
-    stripped = line.strip()
-    if not stripped or len(stripped) > 22:
-        return False
-    if RE_DATE_ONLY.match(line):
-        return False
-    cargo, abono = amounts_by_column(line, bounds)
-    if cargo is not None or abono is not None:
-        return False
-    return bool(re.match(r"^[A-Z0-9][\w.]*(?:\s[\w.]+){0,2}$", stripped, re.I))
-
-
-def split_document_from_description(text: str) -> Tuple[str, str]:
-    cleaned = re.sub(r"\s+", " ", text.strip())
-    if not cleaned:
-        return "", ""
-    dm = RE_DOC_IN_DESC.match(cleaned)
-    if dm:
-        return dm.group(1), dm.group(2).strip()
-    trailing = re.search(r"\s(\d{6,10})\s*$", cleaned)
-    if trailing:
-        return trailing.group(1), cleaned[: trailing.start()].strip()
-    return "", cleaned
 
 
 def _table_lines(text: str) -> List[str]:
@@ -598,47 +590,17 @@ def parse_multiline_checking_movements(
     text: str,
     row_dates: PdfCartolaRowDates,
     bounds: AmountColumnBounds,
+    table_rows: List[TableRow],
+    source_file: str,
 ) -> List[Movement]:
-    """Parse stacked FECHA / SUCURSAL / DESCRIPCION rows (legacy single-page layout)."""
+    """Parse stacked FECHA / SUCURSAL / DESCRIPCION rows (legacy single-page layout). The layout
+    gives each row's date and amounts; its cells are the PDF's, placed by position (the k-th date
+    line is the k-th `TableRow`, `check_stacked_rows`): pdftotext reorders a wrapped description
+    and glues a document number to it."""
     movements: List[Movement] = []
     in_table = False
     pending_date: Optional[str] = None
-    pending_branch = ""
-    desc_parts: List[str] = []
-
-    def emit_from_amount_line(line: str) -> None:
-        nonlocal pending_date, pending_branch, desc_parts
-        if pending_date is None:
-            return
-        cargo, abono = amounts_by_column(line, bounds)
-        if cargo is None and abono is None:
-            return
-
-        prefix = strip_amounts_from_line(line[: first_amount_position(line, bounds)]).strip()
-        parts = [p for p in desc_parts if p.strip()]
-        document_no = ""
-        if prefix:
-            if re.fullmatch(r"\d{6,10}", prefix):
-                document_no = prefix
-            else:
-                parts.append(prefix)
-
-        document_no, description = split_document_from_description(" ".join(parts))
-        if not description and document_no:
-            description = f"Doc {document_no}"
-            document_no = ""
-
-        for mv in movement_from_amounts(
-            pending_date,
-            pending_branch,
-            description,
-            document_no,
-            cargo,
-            abono,
-            None,
-        ):
-            movements.append(mv)
-        desc_parts = []
+    row_index = -1
 
     for raw_line in text.splitlines():
         line = raw_line.rstrip()
@@ -650,34 +612,26 @@ def parse_multiline_checking_movements(
             continue
         if "RESUMEN DE COMISIONES" in upper or upper.strip().startswith("MENSAJES"):
             break
-        if not line.strip():
-            continue
-        if upper.startswith("FECHA") or "CHEQUES Y OTROS" in upper:
+        if not line.strip() or upper.startswith("FECHA") or "CHEQUES Y OTROS" in upper:
             continue
 
         dm = RE_DATE_ONLY.match(line)
         if dm:
             pending_date = row_dates.resolve(dm.group(1), line)
-            pending_branch = ""
-            desc_parts = []
+            row_index += 1
             continue
-
         if pending_date is None:
             continue
 
         cargo, abono = amounts_by_column(line, bounds)
-        if cargo is not None or abono is not None:
-            emit_from_amount_line(line)
+        if cargo is None and abono is None:
             continue
-
-        if not pending_branch and is_checking_branch_line(line, bounds):
-            pending_branch = line.strip()
-            desc_parts = []
-            continue
-
-        stripped = line.strip()
-        if stripped:
-            desc_parts.append(stripped)
+        row = table_rows[row_index]
+        if not row.description:
+            raise CartolaColumnError(f"{source_file}: row «{row.text()}»: nothing in the DESCRIPCION column")
+        movements.extend(
+            movement_from_amounts(pending_date, row.branch, row.description, row.document_no, cargo, abono, None)
+        )
 
     return movements
 
@@ -988,7 +942,9 @@ def parse_cartola_text(
         row_dates = PdfCartolaRowDates(source_file, period_from, period_to)
         if layout_is_stacked(text, source_file):
             check_stacked_rows(text, table_rows, source_file)
-            movements = parse_multiline_checking_movements(text, row_dates, column_bounds)
+            movements = parse_multiline_checking_movements(
+                text, row_dates, column_bounds, table_rows, source_file
+            )
         else:
             movements = parse_single_line_checking_movements(
                 text, row_dates, column_bounds, table_rows, source_file

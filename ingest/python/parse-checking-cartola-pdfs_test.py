@@ -1,122 +1,34 @@
 #!/usr/bin/env python3
 """Tests for the cuenta corriente cartola PDF parser.
 
-Each synthetic cartola comes in the two renderings the parser reads: the `pdftotext -layout` text
-and the PDF's word positions (`checking_table_rows`), written here as a fixed-pitch grid, one
-character per `PITCH` points. Branches, descriptions and amounts are invented.
+Each synthetic cartola comes in the two renderings the parser reads (`cartola_pdf_fixture.py`):
+the `pdftotext -layout` text and the PDF's word positions. Branches, descriptions and amounts are
+invented.
 
   python3 ingest/python/parse-checking-cartola-pdfs_test.py
 """
 from __future__ import annotations
 
-import importlib.util
-import re
 import sys
 import unittest
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parent / "parse-checking-cartola-pdfs.py"
-spec = importlib.util.spec_from_file_location("parse_cc_cartola", SCRIPT)
-mod = importlib.util.module_from_spec(spec)
-sys.modules["parse_cc_cartola"] = mod
-spec.loader.exec_module(mod)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-PITCH = 4.8
-LINE_HEIGHT = 10.0
+from cartola_pdf_fixture import (  # noqa: E402
+    GRID_HEADER,
+    LAYOUT_HEADER,
+    cells as _cells,
+    grid_page,
+    grid_row,
+    layout_row,
+    layout_text as cartola_text,
+    load_parser,
+    parse,
+    words_from_grid,
+)
 
-
-def _cells(*cells: tuple) -> str:
-    """One line: each text at its column."""
-    line = ""
-    for col, text in cells:
-        line = line.ljust(col) + text
-    return line
-
-
-def _right(end_col: int, text: str) -> tuple:
-    """A right-aligned cell ending at `end_col`."""
-    return (end_col - len(text), text)
-
-
-def words_from_grid(lines: list) -> list:
-    """The words of a fixed-pitch page as PyMuPDF reports them: (x0, y0, x1, y1, text)."""
-    words = []
-    for i, line in enumerate(lines):
-        for m in re.finditer(r"\S+", line):
-            y0 = i * LINE_HEIGHT
-            words.append((m.start() * PITCH, y0, m.end() * PITCH, y0 + 8.0, m.group()))
-    return words
-
-
-# The PDF's grid: the header labels are centred over their columns, so the SUCURSAL label sits
-# inside the branch cell's span and the description cell starts right of the label.
-GRID_HEADER = _cells((0, "FECHA"), (8, "SUCURSAL"), (40, "DESCRIPCION"), (70, "N° DCTO"))
-
-
-def grid_row(dd_mm: str, branch: str, description: str, doc: str = "", amount: str = "") -> str:
-    """One row as the PDF places it; `amount` holds the row's amount and, when printed, its saldo."""
-    cells = [(0, dd_mm), (6, branch), (17, description)]
-    if doc:
-        cells.append((62, doc))
-    if amount:
-        cells.append((90, amount))
-    return _cells(*cells)
-
-
-# The layout text: column titles where pdftotext puts them, amounts in their columns (CARGOS
-# ending at 124, ABONOS at 150, SALDO at 180), and ONE space between branch and description.
-LAYOUT_HEADER = [
-    _cells((1, "FECHA"), (13, "SUCURSAL"), (57, "DESCRIPCION"), (97, "N° DCTO"), (173, "SALDO")),
-    _cells((116, "CARGOS"), (141, "ABONOS")),
-]
-
-
-def layout_row(text: str, *, cargo: str = "", abono: str = "", saldo: str = "") -> str:
-    cells = [(0, text)]
-    if cargo:
-        cells.append(_right(124, cargo))
-    if abono:
-        cells.append(_right(150, abono))
-    if saldo:
-        cells.append(_right(180, saldo))
-    return _cells(*cells)
-
-
-def cartola_text(rows: list, *, opening: str, abonos: str, cargos: str, closing: str) -> str:
-    return "\n".join(
-        [
-            _cells((80, "CARTOLA"), (95, "DESDE"), (110, "HASTA")),
-            _cells((82, "117"), (92, "30/09/2026"), (108, "30/10/2026")),
-            _cells((20, "DETALLE DE MOVIMIENTOS")),
-            *LAYOUT_HEADER,
-            *rows,
-            "",
-            _cells((20, "Resumen de Comisiones")),
-            rows[0],
-            "",
-            "INFORMACION DE CUENTA CORRIENTE",
-            "SALDO INICIAL  DEPOSITOS  OTROS ABONOS  CHEQUES  OTROS CARGOS  IMPUESTOS  SALDO FINAL",
-            f"{opening}  0  {abonos}  0  {cargos}  0  {closing}",
-            "MENSAJES       SR.CLIENTE: MENSAJE DE EJEMPLO",
-        ]
-    )
-
-
-def grid_page(rows: list) -> list:
-    return [
-        _cells((10, "DETALLE DE MOVIMIENTOS")),
-        GRID_HEADER,
-        *rows,
-        "",
-        _cells((17, "Resumen de Comisiones")),
-        rows[0],
-        "INFORMACION DE CUENTA CORRIENTE",
-    ]
-
-
-def parse(layout: str, grid: list) -> object:
-    rows = mod.checking_table_rows([words_from_grid(grid)], "synthetic.pdf")
-    return mod.parse_cartola_text(layout, "synthetic.pdf", "pdftotext", rows)
+mod = load_parser()
 
 
 def movement_cells(parsed) -> list:
@@ -188,6 +100,23 @@ class SingleSpaceLayoutTest(unittest.TestCase):
             movement_cells(self.parsed)[3],
             ("2026-10-07", "Centro", "0222222222 Transf. EMPRESA EJEMPLO SEG", "3334445", 1),
         )
+
+
+class SharedTextReadingTest(unittest.TestCase):
+    """Every movement's cells go through the shared reading (`cartola_text.py`)."""
+
+    def test_accent_damage_is_repaired_and_spaces_collapse(self) -> None:
+        grid = grid_page([grid_row("02/10", "Centro", "Transf a JosA© MuA±oz", amount="25.000 75.000")])
+        layout = cartola_text(
+            [layout_row("02/10 Centro Transf a JosA© MuA±oz", cargo="25.000", saldo="75.000")],
+            opening="100.000",
+            abonos="0",
+            cargos="25.000",
+            closing="75.000",
+        )
+        parsed = parse(layout, grid)
+        self.assertEqual(parsed.parse_status, "ok", parsed.parse_error)
+        self.assertEqual(movement_cells(parsed), [("2026-10-02", "Centro", "Transf a José Muñoz", "", -25000)])
 
 
 class WideGapLayoutTest(unittest.TestCase):
@@ -405,6 +334,46 @@ class StackedLayoutTest(unittest.TestCase):
             [
                 ("2026-10-02", "Centro", "Traspaso a Cuenta de Otro Banco", "", -25000),
                 ("2026-10-05", "Centro", "COM.MANTENCION PLAN", "", -5000),
+            ],
+        )
+
+    def test_stacked_cells_come_from_the_pdf_positions(self) -> None:
+        # pdftotext glues a document number to the description; a leading number stays in the
+        # description (the xlsx prints it there); a word printed past the document number is the
+        # description's.
+        grid = grid_page(
+            [
+                _cells((0, "02/10Centro"), (17, "Traspaso a Cuentaejemplo"), (62, "1234567"), (90, "25.000")),
+                _cells((0, "03/10Norte"), (17, "0111111111 Transf EJEMPLO"), (90, "5.000")),
+                _cells((0, "04/10Centro"), (17, "PAGO EN LINEA EJEMPLO"), (62, "7654321"), (71, "S.A."), (90, "3.000 67.000")),
+            ]
+        )
+        layout = cartola_text(
+            [
+                "02/10",
+                "    Centro",
+                layout_row(_cells((12, "Traspaso a Cuentaejemplo1234567")), cargo="25.000"),
+                "03/10",
+                "    Norte",
+                layout_row(_cells((12, "0111111111 Transf EJEMPLO")), cargo="5.000"),
+                "04/10",
+                "    Centro",
+                layout_row(_cells((12, "PAGO EN LINEA EJEMPLO 7654321 S.A.")), cargo="3.000", saldo="67.000"),
+            ],
+            opening="100.000",
+            abonos="0",
+            cargos="33.000",
+            closing="67.000",
+        )
+        rows = mod.checking_table_rows([words_from_grid(grid)], "synthetic.pdf")
+        parsed = mod.parse_cartola_text(layout, "synthetic.pdf", "pdftotext", rows)
+        self.assertEqual(parsed.parse_status, "ok", parsed.parse_error)
+        self.assertEqual(
+            movement_cells(parsed),
+            [
+                ("2026-10-02", "Centro", "Traspaso a Cuentaejemplo", "1234567", -25000),
+                ("2026-10-03", "Norte", "0111111111 Transf EJEMPLO", "", -5000),
+                ("2026-10-04", "Centro", "PAGO EN LINEA EJEMPLO S.A.", "7654321", -3000),
             ],
         )
 

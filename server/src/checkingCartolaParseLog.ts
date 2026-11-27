@@ -1,3 +1,4 @@
+import type { RestatementCarry } from "./checkingRestatementHook.js";
 import { insertAppMessage } from "./appMessages.js";
 import type {
   CartolaParseNote,
@@ -26,6 +27,8 @@ export type CheckingCartolaFileImportLog = {
   order_notes?: string[];
   /** The cartola derived the account's anchor (the run writes it at its end). */
   anchor_derived?: boolean;
+  /** A month imported again in place whose rows read in other text: what the carry kept (`checkingRestatementCarry.ts`). */
+  restatement_carry?: RestatementCarry;
 };
 
 export type CheckingCartolaImportRunLog = {

@@ -1,0 +1,15 @@
+{
+  "$comment": "One synthetic cuenta corriente month in both renderings: `xlsx` is the description cell the workbook prints (fixed-width runs of spaces, accent damage as UTF-8 bytes read as Latin-1), `pdf` the words the PDF prints before the N° DCTO column (its font's damage form), `pdf_after_doc` a description word the PDF prints past the document number. Both readers must read the same statement (checkingCartolaBothFormats.test.ts). Names and amounts are invented.",
+  "file_xlsx": "2026-10-31 Cartola de cuenta Corriente - Octubre 2026.xlsx",
+  "desde": "30/09/2026",
+  "hasta": "30/10/2026",
+  "opening": 100000,
+  "rows": [
+    { "date": "01/10", "branch": "Centro", "xlsx": "Traspaso Internet a T. Crédito", "pdf": "Traspaso Internet a T. Crédito", "cargo": 20000 },
+    { "date": "01/10", "branch": "Centro", "xlsx": "0111111111 Transf  EJEMPLO   UNO", "pdf": "0111111111 Transf EJEMPLO UNO", "doc": "1234567", "abono": 50000 },
+    { "date": "05/10", "branch": "Norte", "xlsx": "0222222222 Transf a JosÃ© MuÃ±oz", "pdf": "0222222222 Transf a JosA© MuA±oz", "cargo": 15000 },
+    { "date": "06/10", "branch": "Centro", "xlsx": "PAGO EN LINEA PROM. EJEMPLO S.A.", "pdf": "PAGO EN LINEA PROM. EJEMPLO", "pdf_after_doc": "S.A.", "doc": "7654321", "cargo": 3011 },
+    { "date": "08/10", "branch": "G.Ejemplo", "xlsx": "0333333333 REMUNERACION    EMPRESA EJ", "pdf": "0333333333 REMUNERACION EMPRESA EJ", "abono": 500000 },
+    { "date": "09/10", "branch": "Centro", "xlsx": "COM.MANTENCION PLAN", "pdf": "COM.MANTENCION PLAN", "cargo": 5000 }
+  ]
+}

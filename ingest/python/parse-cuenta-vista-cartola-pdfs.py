@@ -26,6 +26,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+from cartola_text import cartola_text
 from cartola_pdf_kind import (
     is_checking_cartola_text,
     is_cuenta_vista_cartola_text,
@@ -146,15 +147,14 @@ def parse_compact_vista_movements(
         amt = parse_clp_amount(amt_raw)
         if amt is None:
             continue
-        description = re.sub(r"\s+", " ", description).strip()
         amount_clp = -amt if section == "cargo" else amt
         movements.append(
             ParsedMovement(
                 occurred_on=occurred_on,
                 amount_clp=amount_clp,
-                branch=branch or "—",
-                description=description,
-                document_no=document_no,
+                branch=cartola_text(branch or "—"),
+                description=cartola_text(description),
+                document_no=cartola_text(document_no),
             )
         )
     return movements, skipped
@@ -201,8 +201,8 @@ def parse_description_line(
     if cargo is None and abono is None:
         return occurred_on, None, None
 
-    description = strip_amounts_from_line(work)
-    description = re.sub(r"\s+", " ", description).strip()
+    # The shared reading of a cartola cell (`cartola_text.py`).
+    description = cartola_text(strip_amounts_from_line(work))
     if not description:
         return occurred_on, None, None
     if re.search(r"GRATIS\s+desde\s+red\s+fija|INFORMESE\s+SOBRE", description, re.I):
@@ -225,9 +225,9 @@ def parse_description_line(
     return occurred_on, ParsedMovement(
         occurred_on=occurred_on,
         amount_clp=amount_clp,
-        branch=branch or "—",
+        branch=cartola_text(branch or "—"),
         description=description,
-        document_no=document_no,
+        document_no=cartola_text(document_no),
     ), None
 
 

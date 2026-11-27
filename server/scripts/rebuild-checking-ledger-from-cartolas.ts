@@ -21,6 +21,8 @@
 import fs from "node:fs";
 // The movement writes re-sync the expense deposit links when they end: loaded here.
 import "../src/expenseAssignmentWrites.js";
+// A month read in other text carries its categories and names (registers the hook).
+import "../src/checkingRestatementCarry.js";
 import { bankAccountStatementsKind } from "nw-tracker-contracts";
 import { parsedCartolaFromStatement } from "../src/bankAccountStatementsApply.js";
 import { checkingAccountId, CheckingLedgerRebuildRefused, rebuildCheckingLedgerFromCartolas } from "../src/checkingCartolaImport.js";
