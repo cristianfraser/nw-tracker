@@ -3,7 +3,8 @@
 """
 Parse Santander Chile checking-account cartola PDFs into JSON and CSV.
 
-Uses `pdftotext -layout` when text is readable; otherwise Tesseract OCR via PyMuPDF
+Uses `pdftotext -layout` when text is readable, with each table row's SUCURSAL cell placed by
+the PDF's word positions (PyMuPDF, `checking_table_rows`); otherwise Tesseract OCR via PyMuPDF
 (CID-encoded PDFs saved from macOS often need OCR).
 
 From repo root:
@@ -52,6 +53,7 @@ from cartola_layout import (
     detect_checking_column_bounds,
     parse_checking_summary_totals,
     reconcile_cartola_movements,
+    single_digit_amount_position,
     strip_amounts_from_line,
 )
 from ocr_tessdata import use_expected_tessdata
@@ -197,7 +199,178 @@ class ParsedCartola:
     extractor: str = ""
 
 
-def split_branch_description(middle: str) -> Tuple[str, str, str]:
+class CartolaColumnError(ValueError):
+    """A DETALLE DE MOVIMIENTOS row whose cells cannot be placed in the header's columns."""
+
+
+# One word as the PDF places it: (x0, y0, x1, y1, text), in points (PyMuPDF's `get_text("words")`).
+PdfWord = Tuple[float, float, float, float, str]
+
+RE_ROW_DATE_WORD = re.compile(r"\d{2}/\d{2}")
+# The 2018–2021 PDFs print a row's date and branch as one word («02/01» glued to the branch name).
+RE_GLUED_DATE_WORD = re.compile(r"(\d{2}/\d{2})(\S+)")
+# Words of a line within this many points of the date word's vertical centre are on its row.
+ROW_Y_TOLERANCE = 2.0
+
+
+@dataclass(frozen=True)
+class TableRow:
+    """One DETALLE DE MOVIMIENTOS row as the PDF places it: its date, the words of its SUCURSAL
+    column and the words after it, cut by position (`checking_table_rows`). `description_x` is
+    where the first word after the branch starts (None when the row holds only its date)."""
+
+    page: int
+    dd_mm: str
+    branch: str
+    after_branch: str
+    description_x: Optional[float] = None
+
+    def text(self) -> str:
+        return " ".join(p for p in (self.dd_mm, self.branch, self.after_branch) if p)
+
+    def is_date_only(self) -> bool:
+        return not self.branch and not self.after_branch
+
+
+class PdfDependencyError(RuntimeError):
+    """PyMuPDF, which reads the PDF's word positions (and runs the OCR), is not installed."""
+
+
+def import_fitz():
+    try:
+        import fitz  # type: ignore
+    except ImportError as e:
+        raise PdfDependencyError(
+            f"PyMuPDF is required to read cartola PDFs: {e} (pip3 install pymupdf -t ingest/python/.pdf_deps)"
+        ) from None
+    return fitz
+
+
+def _word_mid_y(w: PdfWord) -> float:
+    return (w[1] + w[3]) / 2
+
+
+def _table_header(words: List[PdfWord]) -> Optional[Tuple[PdfWord, PdfWord]]:
+    """The SUCURSAL and DESCRIPCION labels of the table header (one line; the page head also prints
+    «SUCURSAL:» above the account, on a line of its own)."""
+    for suc in words:
+        if suc[4] != "SUCURSAL":
+            continue
+        for desc in words:
+            if desc[4] == "DESCRIPCION" and abs(_word_mid_y(desc) - _word_mid_y(suc)) <= ROW_Y_TOLERANCE:
+                return suc, desc
+    return None
+
+
+def _is_table_end(words: List[PdfWord], i: int) -> bool:
+    text = words[i][4].upper()
+    nxt = words[i + 1][4].upper() if i + 1 < len(words) else ""
+    if text == "RESUMEN" and nxt == "DE":
+        return True
+    if text == "INFORMACION" and nxt == "DE":
+        return True
+    return text == "MENSAJES"
+
+
+def _split_glued_dates(words: List[PdfWord]) -> List[PdfWord]:
+    """A word that is a date glued to the branch becomes the two words, the branch placed where its
+    first character falls (the cartola's font is fixed-pitch)."""
+    out: List[PdfWord] = []
+    for w in words:
+        m = RE_GLUED_DATE_WORD.fullmatch(w[4])
+        if m is None:
+            out.append(w)
+            continue
+        pitch = (w[2] - w[0]) / len(w[4])
+        split_x = w[0] + pitch * len(m.group(1))
+        out.append((w[0], w[1], split_x, w[3], m.group(1)))
+        out.append((split_x, w[1], w[2], w[3], m.group(2)))
+    return out
+
+
+# The description cells of one cartola start at one x; a row whose first word after the branch
+# starts elsewhere has a branch word the SUCURSAL label's edge did not take (or a stray word).
+DESCRIPTION_X_TOLERANCE = 1.0
+
+
+def checking_table_rows(pages: List[List[PdfWord]], source_file: str) -> List[TableRow]:
+    """
+    Every DETALLE DE MOVIMIENTOS row of a cuenta corriente cartola, in reading order, with its
+    SUCURSAL cell cut by position: the header labels are centred over their columns and the
+    branch cell starts under or before the SUCURSAL label, so a word starting left of that label's
+    right edge is the branch and the description starts at the first word right of it. Spacing
+    plays no part (`pdftotext -layout` renders the October 2026 layout with one space between the
+    two cells). Rows end where the table does (Resumen de Comisiones, INFORMACION DE…, MENSAJES),
+    as in the layout reader; a table continued on the next page under its repeated header goes on
+    there. Raises when a page prints the table title without its header, or when the description
+    cells do not all start at one x.
+    """
+    rows: List[TableRow] = []
+    for page_no, words in enumerate(pages, start=1):
+        ordered = sorted(_split_glued_dates(words), key=lambda w: (round(_word_mid_y(w)), w[0]))
+        header = _table_header(ordered)
+        if header is None:
+            if any(w[4].upper() == "DETALLE" for w in ordered):
+                raise CartolaColumnError(
+                    f"{source_file}: page {page_no} prints DETALLE DE MOVIMIENTOS without its "
+                    "SUCURSAL / DESCRIPCION header"
+                )
+            continue
+        suc, _desc = header
+        header_y = _word_mid_y(suc)
+        end_y = None
+        for i, w in enumerate(ordered):
+            if _word_mid_y(w) > header_y + ROW_Y_TOLERANCE and _is_table_end(ordered, i):
+                end_y = _word_mid_y(w)
+                break
+        for w in ordered:
+            y = _word_mid_y(w)
+            if y <= header_y + ROW_Y_TOLERANCE or (end_y is not None and y >= end_y - ROW_Y_TOLERANCE):
+                continue
+            if not RE_ROW_DATE_WORD.fullmatch(w[4]) or w[2] > suc[0]:
+                continue
+            cells = sorted(
+                (o for o in ordered if o is not w and abs(_word_mid_y(o) - y) <= ROW_Y_TOLERANCE and o[0] >= w[2]),
+                key=lambda o: o[0],
+            )
+            branch = [o[4] for o in cells if o[0] < suc[2]]
+            rest = [o for o in cells if o[0] >= suc[2]]
+            rows.append(
+                TableRow(
+                    page_no,
+                    w[4],
+                    " ".join(branch),
+                    " ".join(o[4] for o in rest),
+                    rest[0][0] if rest else None,
+                )
+            )
+        if end_y is not None:
+            break
+    starts = [r.description_x for r in rows if r.description_x is not None]
+    if starts:
+        # The x most description cells start at.
+        column_x = max(starts, key=lambda x: sum(1 for o in starts if abs(o - x) <= DESCRIPTION_X_TOLERANCE))
+        for r in rows:
+            if r.description_x is not None and abs(r.description_x - column_x) > DESCRIPTION_X_TOLERANCE:
+                raise CartolaColumnError(
+                    f"{source_file}: row «{r.text()}» (page {r.page}): its text after the branch "
+                    f"«{r.branch}» starts at x={r.description_x:.1f}, the DESCRIPCION column at x={column_x:.1f}"
+                )
+    return rows
+
+
+def read_pdf_words(pdf_path: Path) -> List[List[PdfWord]]:
+    """Each page's words with their positions (PyMuPDF)."""
+    fitz = import_fitz()
+    with fitz.open(str(pdf_path)) as doc:
+        return [[(w[0], w[1], w[2], w[3], w[4]) for w in page.get_text("words")] for page in doc]
+
+
+def split_branch_description(middle: str, row: TableRow, source_file: str) -> Tuple[str, str, str]:
+    """Branch, description and document number of a movement line's text between date and amounts.
+    The branch is the row's SUCURSAL cell as the PDF places it (`TableRow`) and the line's text must
+    open with it; the description is the PDF's words after it, one space apart, which must be the
+    line's own description word for word. Raises otherwise."""
     middle = middle.rstrip()
     doc = ""
     dm = RE_DOC_IN_DESC.match(middle.strip())
@@ -209,15 +382,40 @@ def split_branch_description(middle: str) -> Tuple[str, str, str]:
         doc = doc or trailing_doc.group(1)
         middle = middle[: trailing_doc.start()].rstrip()
 
-    parts = re.split(r"\s{2,}", middle.strip(), maxsplit=1)
-    if len(parts) == 1:
-        tokens = parts[0].split()
-        branch = tokens[0] if tokens else ""
-        desc = parts[0]
-    else:
-        branch = parts[0].strip()
-        desc = parts[1].strip()
-    return branch, desc, doc
+    where = f"{source_file}: row «{row.text()}»"
+    if not row.branch:
+        raise CartolaColumnError(f"{where}: nothing in the SUCURSAL column")
+    opening = re.match(
+        r"\s*" + r"\s+".join(re.escape(t) for t in row.branch.split()) + r"(?:\s+|$)", middle
+    )
+    if opening is None:
+        raise CartolaColumnError(
+            f"{where}: the line «{' '.join(middle.split())}» does not open with the "
+            f"SUCURSAL cell «{row.branch}»"
+        )
+    layout_words = middle[opening.end() :].split()
+    if not layout_words:
+        raise CartolaColumnError(f"{where}: nothing in the DESCRIPCION column")
+    pdf_words = row.after_branch.split()[: len(layout_words)]
+    if pdf_words != layout_words:
+        raise CartolaColumnError(
+            f"{where}: the line's description «{' '.join(layout_words)}» is not the PDF row's "
+            f"«{row.after_branch}»"
+        )
+    return row.branch, " ".join(pdf_words), doc
+
+
+def check_row_words(line: str, row: TableRow, source_file: str) -> None:
+    """The layout line and the PDF row are one row: after the date, the same words in the same
+    order (branch, description, document number, amounts, the day's saldo)."""
+    m = RE_MOVEMENT_LINE.match(line.rstrip())
+    layout_words = m.group(2).split() if m else []
+    pdf_words = row.branch.split() + row.after_branch.split()
+    if layout_words != pdf_words:
+        raise CartolaColumnError(
+            f"{source_file}: row {row.dd_mm} (page {row.page}): the layout line «{' '.join(layout_words)}» "
+            f"and the PDF row «{' '.join(pdf_words)}» are not the same words"
+        )
 
 
 def movement_from_amounts(
@@ -263,6 +461,8 @@ def parse_movement_line_layout(
     line: str,
     row_dates: PdfCartolaRowDates,
     bounds: AmountColumnBounds,
+    row: TableRow,
+    source_file: str,
 ) -> List[Movement]:
     m = RE_MOVEMENT_LINE.match(line.rstrip())
     if not m:
@@ -278,8 +478,11 @@ def parse_movement_line_layout(
         (am.start() for am in RE_AMOUNT.finditer(line) if am.start() < bounds.saldo_min),
         len(line),
     )
+    single_digit_pos = single_digit_amount_position(line, bounds)
+    if single_digit_pos is not None:
+        first_amount_pos = min(first_amount_pos, single_digit_pos)
     middle = line[m.end(1) : first_amount_pos].rstrip()
-    branch, description, document_no = split_branch_description(middle)
+    branch, description, document_no = split_branch_description(middle, row, source_file)
 
     return movement_from_amounts(
         occurred_on, branch, description, document_no, cargo, abono, None
@@ -324,6 +527,71 @@ def split_document_from_description(text: str) -> Tuple[str, str]:
     if trailing:
         return trailing.group(1), cleaned[: trailing.start()].strip()
     return "", cleaned
+
+
+def _table_lines(text: str) -> List[str]:
+    """The layout lines of the DETALLE DE MOVIMIENTOS table, as both layout readers walk it."""
+    out: List[str] = []
+    in_table = False
+    for raw_line in text.splitlines():
+        upper = raw_line.upper()
+        if "DETALLE DE MOVIMIENTOS" in upper:
+            in_table = True
+            continue
+        if not in_table:
+            continue
+        if "RESUMEN DE COMISIONES" in upper or upper.strip().startswith("MENSAJES"):
+            break
+        out.append(raw_line.rstrip())
+    return out
+
+
+def layout_is_stacked(text: str, source_file: str) -> bool:
+    """
+    Whether `pdftotext -layout` stacked the table: each row's date on a line of its own, branch and
+    description on the lines below (the 2018-06 → 2021-02 cartolas, whose PDF prints date and
+    branch as one word). Stacked when every dated line of the table is only its date, single-line
+    when none is (or the table has no rows); a mix raises.
+    """
+    dated = [line for line in _table_lines(text) if re.match(r"^\d{2}/\d{2}\b", line)]
+    date_only = [line for line in dated if RE_DATE_ONLY.match(line)]
+    if not date_only:
+        return False
+    if len(date_only) == len(dated):
+        return True
+    other = next(line for line in dated if not RE_DATE_ONLY.match(line))
+    raise CartolaColumnError(
+        f"{source_file}: rows «{date_only[0].strip()}» and «{' '.join(other.split())}»: the layout "
+        "mixes date-only lines with single-line rows"
+    )
+
+
+def check_stacked_rows(text: str, table_rows: List[TableRow], source_file: str) -> None:
+    """In a stacked cartola the layout's date lines are the PDF's rows, one to one and in order,
+    and the lines under each date hold that row's characters (pdftotext reorders a wrapped
+    description and can glue a document number to it, so the characters are compared as a
+    multiset)."""
+    groups: List[Tuple[str, List[str]]] = []
+    for line in _table_lines(text):
+        dm = RE_DATE_ONLY.match(line)
+        if dm:
+            groups.append((dm.group(1), []))
+        elif groups:
+            groups[-1][1].extend(line.split())
+    dates = [d for d, _ in groups]
+    pdf_dates = [r.dd_mm for r in table_rows]
+    if dates != pdf_dates:
+        raise CartolaColumnError(
+            f"{source_file}: the layout's date lines ({', '.join(dates) or 'none'}) are not the PDF's "
+            f"rows ({', '.join(pdf_dates) or 'none'})"
+        )
+    for (dd_mm, words), row in zip(groups, table_rows):
+        pdf_words = row.branch.split() + row.after_branch.split()
+        if sorted("".join(words)) != sorted("".join(pdf_words)):
+            raise CartolaColumnError(
+                f"{source_file}: row {dd_mm} (page {row.page}): the layout lines «{' '.join(words)}» "
+                f"and the PDF row «{' '.join(pdf_words)}» are not the same words"
+            )
 
 
 def parse_multiline_checking_movements(
@@ -418,9 +686,15 @@ def parse_single_line_checking_movements(
     text: str,
     row_dates: PdfCartolaRowDates,
     bounds: AmountColumnBounds,
+    table_rows: List[TableRow],
+    source_file: str,
 ) -> List[Movement]:
+    """One movement per dated layout line. The k-th dated line is the PDF's k-th table row
+    (`checking_table_rows`), which places its SUCURSAL cell: date and words must agree
+    (`check_row_words`), and every row must be a line."""
     movements: List[Movement] = []
     in_table = False
+    consumed = 0
     for raw_line in text.splitlines():
         line = raw_line.rstrip()
         upper = line.upper()
@@ -431,10 +705,26 @@ def parse_single_line_checking_movements(
             continue
         if "RESUMEN DE COMISIONES" in upper or upper.strip().startswith("MENSAJES"):
             break
-        if not RE_MOVEMENT_LINE.match(line):
+        m = RE_MOVEMENT_LINE.match(line)
+        if not m:
             continue
-        for mv in parse_movement_line_layout(line, row_dates, bounds):
+        where = f"{source_file}: row «{' '.join(line.split())}»"
+        if consumed >= len(table_rows):
+            raise CartolaColumnError(f"{where}: the PDF places no table row for it")
+        row = table_rows[consumed]
+        consumed += 1
+        if row.dd_mm != m.group(1):
+            raise CartolaColumnError(
+                f"{where}: the PDF's table row {consumed} is «{row.text()}» (page {row.page})"
+            )
+        check_row_words(line, row, source_file)
+        for mv in parse_movement_line_layout(line, row_dates, bounds, row, source_file):
             movements.append(mv)
+    if consumed < len(table_rows):
+        extra = table_rows[consumed]
+        raise CartolaColumnError(
+            f"{source_file}: row «{extra.text()}» (page {extra.page}) has no layout line"
+        )
     return movements
 
 
@@ -518,8 +808,7 @@ def parse_ocr_word_rows(
 
 
 def extract_pdf_text_ocr(pdf_path: Path) -> Tuple[str, List[Tuple[float, float, str]]]:
-    import fitz  # type: ignore
-
+    fitz = import_fitz()
     use_expected_tessdata()
     if not shutil.which("tesseract"):
         raise RuntimeError(
@@ -642,7 +931,38 @@ def row_date_error_cartola(
     )
 
 
-def parse_cartola_text(text: str, source_file: str, extractor: str) -> ParsedCartola:
+def column_error_cartola(
+    source_file: str,
+    period_month: str,
+    period_from: str,
+    period_to: str,
+    cartola_no: Optional[str],
+    error: CartolaColumnError,
+    extractor: str,
+) -> ParsedCartola:
+    return ParsedCartola(
+        source_file=source_file,
+        period_month=period_month,
+        period_from=period_from,
+        period_to=period_to,
+        saldo_inicial_clp=None,
+        saldo_final_clp=None,
+        cartola_no=cartola_no,
+        movements=[],
+        parse_status="error",
+        parse_error=str(error),
+        extractor=extractor,
+    )
+
+
+def parse_cartola_text(
+    text: str,
+    source_file: str,
+    extractor: str,
+    table_rows: List[TableRow],
+) -> ParsedCartola:
+    """Parse one cartola's `pdftotext -layout` text. `table_rows` are the PDF's table rows placed by
+    position (`checking_table_rows`); they decide the layout (`is_stacked_layout`)."""
     flat = re.sub(r"\s+", " ", text)
     period_month, period_from, period_to, saldo_inicial, saldo_final, cartola_no = (
         parse_period_and_saldos(flat)
@@ -665,15 +985,20 @@ def parse_cartola_text(text: str, source_file: str, extractor: str) -> ParsedCar
     movements: List[Movement] = []
     column_bounds = detect_checking_column_bounds(text)
     try:
-        movements = parse_single_line_checking_movements(
-            text, PdfCartolaRowDates(source_file, period_from, period_to), column_bounds
-        )
-        if not movements:
-            movements = parse_multiline_checking_movements(
-                text, PdfCartolaRowDates(source_file, period_from, period_to), column_bounds
+        row_dates = PdfCartolaRowDates(source_file, period_from, period_to)
+        if layout_is_stacked(text, source_file):
+            check_stacked_rows(text, table_rows, source_file)
+            movements = parse_multiline_checking_movements(text, row_dates, column_bounds)
+        else:
+            movements = parse_single_line_checking_movements(
+                text, row_dates, column_bounds, table_rows, source_file
             )
     except CartolaRowDateError as e:
         return row_date_error_cartola(
+            source_file, period_month, period_from, period_to, cartola_no, e, extractor
+        )
+    except CartolaColumnError as e:
+        return column_error_cartola(
             source_file, period_month, period_from, period_to, cartola_no, e, extractor
         )
 
@@ -736,9 +1061,26 @@ def parse_cartola_ocr(pdf_path: Path) -> ParsedCartola:
 def parse_pdf_file(pdf_path: Path) -> ParsedCartola:
     text = extract_pdf_text_pdftotext(pdf_path)
     if text and is_readable_cartola_text(text):
-        return parse_cartola_text(text, pdf_path.name, "pdftotext")
+        try:
+            table_rows = checking_table_rows(read_pdf_words(pdf_path), pdf_path.name)
+        except CartolaColumnError as e:
+            return ParsedCartola(
+                source_file=pdf_path.name,
+                period_month="",
+                period_from=None,
+                period_to=None,
+                saldo_inicial_clp=None,
+                saldo_final_clp=None,
+                movements=[],
+                parse_status="error",
+                parse_error=str(e),
+                extractor="pdftotext",
+            )
+        return parse_cartola_text(text, pdf_path.name, "pdftotext", table_rows)
     try:
         return parse_cartola_ocr(pdf_path)
+    except PdfDependencyError:
+        raise
     except Exception as e:
         return ParsedCartola(
             source_file=pdf_path.name,
@@ -857,7 +1199,11 @@ def main() -> int:
     cartolas_json: List[dict] = []
     errors = 0
     for pdf in pdfs:
-        parsed = parse_pdf_file(pdf)
+        try:
+            parsed = parse_pdf_file(pdf)
+        except PdfDependencyError as e:
+            print(str(e), file=sys.stderr)
+            return 2
         parsed_list.append(parsed)
         cartolas_json.append(cartola_to_dict(parsed))
         if parsed.parse_status != "ok":
@@ -885,7 +1231,11 @@ def main() -> int:
     else:
         print(f"Wrote {json_path} ({len(cartolas_json)} parsed, {len(merged_cartolas)} total cartola(s))")
     print(f"Wrote {json_path}")
-    return 1 if errors else 0
+    if errors:
+        print(f"  {errors} cartola(s) not read; each is in the JSON with its reason", file=sys.stderr)
+    # A cartola that does not parse fails only itself: its status is in the JSON, which the import
+    # reports as unreadable. A non-zero exit means the run itself did not finish.
+    return 0
 
 
 if __name__ == "__main__":

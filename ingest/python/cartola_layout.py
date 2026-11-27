@@ -112,6 +112,21 @@ def assign_small_amount(
     return cargo, abono
 
 
+def single_digit_amount_position(line: str, bounds: AmountColumnBounds) -> Optional[int]:
+    """Where a one-digit amount sits on a movement line, when it is one: inside the amount columns,
+    with the day's SALDO after it ending the line (`RE_SINGLE_DIGIT_BEFORE_SALDO`)."""
+    if RE_NON_MOVEMENT_LINE.search(line):
+        return None
+    sd = RE_SINGLE_DIGIT_BEFORE_SALDO.search(line)
+    if sd is None:
+        return None
+    pos = sd.start(1)
+    inline_min = max(80, bounds.cargo_abono_split - 25)
+    if inline_min <= pos < bounds.saldo_min <= sd.start(2):
+        return pos
+    return None
+
+
 def amounts_by_column(
     line: str,
     bounds: AmountColumnBounds,
@@ -143,13 +158,10 @@ def amounts_by_column(
             side = classify_small_amount_side(line, pos, bounds)
             cargo, abono = assign_small_amount(side, val, cargo, abono)
 
-        sd = RE_SINGLE_DIGIT_BEFORE_SALDO.search(line)
-        if sd is not None:
-            pos = sd.start(1)
-            inline_min = max(80, bounds.cargo_abono_split - 25)
-            if inline_min <= pos < bounds.saldo_min <= sd.start(2):
-                side = classify_small_amount_side(line, pos, bounds)
-                cargo, abono = assign_small_amount(side, int(sd.group(1)), cargo, abono)
+        pos = single_digit_amount_position(line, bounds)
+        if pos is not None:
+            side = classify_small_amount_side(line, pos, bounds)
+            cargo, abono = assign_small_amount(side, int(line[pos]), cargo, abono)
 
         sm = RE_SMALL_TRAILING.search(line)
         if sm is not None:

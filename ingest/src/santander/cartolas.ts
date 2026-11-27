@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BankAccountStatement, ParsedCartolaPdfEntry } from "nw-tracker-contracts";
 import { resolveCfraserDir, resolveRepoRoot } from "../paths.js";
+import { reportStepResult } from "../stepResult.js";
 import {
   listCheckingCartolaXlsxFiles,
   parseCheckingCartolaFile,
@@ -15,8 +16,10 @@ import {
  * (`cfraser/excels/cuenta corriente/`) and PDFs (`cfraser/cartolas-cuenta-corriente/`), the cuenta
  * vista's from its PDFs (`cfraser/cartolas-cuenta-vista/`). The PDFs are read by the Python parsers
  * (`ingest/python/parse-checking-cartola-pdfs.py`, `parse-cuenta-vista-cartola-pdfs.py`), which
- * write their result as JSON in `cfraser/`; a statement that does not parse is sent as unreadable,
- * so the server's import log names it.
+ * write their result as JSON in `cfraser/`. A cartola that does not parse fails only itself: the
+ * parser writes its reason beside the others and exits 0, the readable ones are sent, and the
+ * unreadable one is sent as unreadable (the server's import log names it) and reported as a step
+ * problem. A parser that exits non-zero did not finish: nothing of that account's PDFs is sent.
  */
 
 export type StatementsRead = {
@@ -77,17 +80,27 @@ export function checkingCartolaXlsxDir(): string {
   return envDir("CFRASER_CHECKING_CARTOLAS_DIR", path.join(resolveCfraserDir(), "excels", "cuenta corriente"));
 }
 
-/** Run one of the Python cartola parsers; true when it exited clean. */
-function runPythonParser(script: string, only: readonly string[] | undefined): boolean {
+/** A parser run: finished (its JSON holds every cartola's status), or the reason it did not. */
+export type ParserRun = { ok: true } | { ok: false; error: string };
+
+export type ParserRunner = (script: string, only: readonly string[] | undefined) => ParserRun;
+
+/** Run one of the Python cartola parsers; its stderr is echoed, and its last line names a failure. */
+function runPythonParser(script: string, only: readonly string[] | undefined): ParserRun {
   const pythonDir = path.join(resolveRepoRoot(), "ingest", "python");
   const args = [path.join(pythonDir, script)];
   if (only?.length) args.push(`--only=${only.join(",")}`);
   const r = spawnSync("python3", args, {
     cwd: resolveRepoRoot(),
     env: { ...process.env, PYTHONPATH: path.join(pythonDir, ".pdf_deps") },
-    stdio: "inherit",
+    stdio: ["ignore", "inherit", "pipe"],
+    encoding: "utf8",
   });
-  return r.status === 0;
+  if (r.stderr) process.stderr.write(r.stderr);
+  if (r.status === 0) return { ok: true };
+  const last = (r.stderr ?? "").trim().split("\n").pop()?.trim();
+  const how = r.error ? r.error.message : r.status === null ? `killed by ${r.signal}` : `exited ${r.status}`;
+  return { ok: false, error: `${script} ${how}${last ? `: ${last}` : ""}` };
 }
 
 function readPdfJson(file: string): CartolaPdfEntry[] {
@@ -121,6 +134,7 @@ export function readCheckingCartolas(opts: {
   skipPdfParse: boolean;
   onlyXlsx?: readonly string[];
   onlyPdf?: readonly string[];
+  runParser?: ParserRunner;
 }): StatementsRead {
   const out: StatementsRead = { statements: [], unreadable: [] };
   const xlsxFilter = opts.onlyXlsx?.length ? new Set(opts.onlyXlsx) : null;
@@ -134,26 +148,42 @@ export function readCheckingCartolas(opts: {
     }
   }
   if (!opts.pdf) return out;
-  if (!opts.skipPdfParse && !runPythonParser("parse-checking-cartola-pdfs.py", opts.onlyPdf)) {
-    out.unreadable.push({ document: "pdf", error: "parse-checking-cartola-pdfs.py failed" });
-    return out;
+  if (!opts.skipPdfParse) {
+    const run = (opts.runParser ?? runPythonParser)("parse-checking-cartola-pdfs.py", opts.onlyPdf);
+    if (!run.ok) {
+      out.unreadable.push({ document: "pdf", error: run.error });
+      return out;
+    }
   }
   collectPdfEntries(readPdfJson(path.join(resolveCfraserDir(), "checking-cartolas-from-pdf.json")), opts.onlyPdf, out);
   return out;
 }
 
 /** The cuenta vista's cartolas (PDFs only). */
-export function readCuentaVistaCartolas(opts: { skipPdfParse: boolean; onlyPdf?: readonly string[] }): StatementsRead {
+export function readCuentaVistaCartolas(opts: {
+  skipPdfParse: boolean;
+  onlyPdf?: readonly string[];
+  runParser?: ParserRunner;
+}): StatementsRead {
   const out: StatementsRead = { statements: [], unreadable: [] };
   const json = path.join(resolveCfraserDir(), "cuenta-vista-cartolas-from-pdf.json");
-  if (!opts.skipPdfParse && !runPythonParser("parse-cuenta-vista-cartola-pdfs.py", opts.onlyPdf)) {
-    // The parser writes what it read before failing; the import takes that, as it always has.
-    if (!fs.existsSync(json)) {
-      out.unreadable.push({ document: "cuenta-vista-pdf", error: "parse-cuenta-vista-cartola-pdfs.py failed" });
+  if (!opts.skipPdfParse) {
+    const run = (opts.runParser ?? runPythonParser)("parse-cuenta-vista-cartola-pdfs.py", opts.onlyPdf);
+    if (!run.ok) {
+      out.unreadable.push({ document: "cuenta-vista-pdf", error: run.error });
       return out;
     }
-    console.warn("Cuenta vista PDF parser exited non-zero; continuing with partial JSON output.");
   }
   collectPdfEntries(readPdfJson(json), opts.onlyPdf, out);
   return out;
+}
+
+/**
+ * Each unreadable cartola as a step problem («<file>: <reason>»), so the run message names it;
+ * returns them. Nothing is reported when all were read.
+ */
+export function reportUnreadableCartolas(read: StatementsRead, env: NodeJS.ProcessEnv = process.env): string[] {
+  const problems = read.unreadable.map((u) => `${u.document}: ${u.error}`);
+  if (problems.length > 0) reportStepResult({ problems }, env);
+  return problems;
 }
