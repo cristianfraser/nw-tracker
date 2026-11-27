@@ -68,10 +68,11 @@ function sqliteUtc(d: Date): string {
  *
  * The newest row of every title stays too: some state is read back from the latest message of a
  * title (`lastDailyRunAt` / `staleDailyRunDays` and the nightly repeat skip, the hourly poll's
- * once-a-day failure badge and recovery walk in `dailyRunLog.ts`, `lastSyncRunCreatedAt`), and a
+ * failure badge and recovery walk in `dailyRunLog.ts`, `lastSyncRunCreatedAt`), and a
  * job silent for longer than the retention must still read as «last ran on …», not «never».
- * Nothing references a message by id (no foreign key into `app_messages`; a run's `message_id` is
- * only returned to the caller that recorded it).
+ * The only reference to a message by id is `app_message_failed_steps` (the steps a failed run
+ * message names), deleted with it by its foreign key; a run's `message_id` is otherwise only
+ * returned to the caller that recorded it.
  */
 export function pruneAppMessages(now: Date = new Date()): { logs: number; notifications: number } {
   const day = 24 * 60 * 60_000;

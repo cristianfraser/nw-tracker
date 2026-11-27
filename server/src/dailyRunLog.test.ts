@@ -226,24 +226,55 @@ describe("recordHourlyEmailRun", () => {
     expect(recovered.recovered_from).not.toBeNull();
   });
 
-  it("logs the recovery of a second outage of the day, which was never badged", () => {
+  it("badges a second outage of the day, and its recovery", () => {
     recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
     recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], { activity: false });
-    // The same Chile day fails again: logs only, so its recovery must not read as a second «all ok»
-    // under the one badged failure.
+    // The first outage recovered: a new failure the same Chile day is a new outage.
     const again = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
-    expect(again.kind).toBe("log");
+    expect(again.kind).toBe("notification");
     const recovered = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], {
       activity: false,
     });
-    expect(recovered.recorded).toBe(true);
-    expect(recovered.kind).toBe("log");
-    expect(recovered.recovered_from).not.toBeNull();
+    expect(recovered.kind).toBe("notification");
     expect(recovered.body).toMatch(/Recovered: the previous run/);
-    const quiet = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], {
-      activity: false,
-    });
-    expect(quiet.recorded).toBe(false);
+  });
+
+  it("badges a step that starts failing during an outage, not one that keeps failing or recovers", () => {
+    const first = recordHourlyEmailRun(
+      [
+        { label: "fetch Lider BCI (hourly)", ok: false },
+        { label: "Santander balance poll", ok: true },
+      ],
+      { activity: false }
+    );
+    expect(first.kind).toBe("notification");
+    const newStep = recordHourlyEmailRun(
+      [
+        { label: "fetch Lider BCI (hourly)", ok: false },
+        { label: "Santander balance poll", ok: false },
+      ],
+      { activity: false }
+    );
+    expect(newStep.kind).toBe("notification");
+    const fewer = recordHourlyEmailRun(
+      [
+        { label: "fetch Lider BCI (hourly)", ok: true },
+        { label: "Santander balance poll", ok: false },
+      ],
+      { activity: false }
+    );
+    expect(fewer.kind).toBe("log");
+  });
+
+  it("deletes a failure's steps with its message", () => {
+    const failed = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
+    const count = () =>
+      (db.prepare(`SELECT COUNT(*) AS c FROM app_message_failed_steps WHERE message_id = ?`).get(failed.message_id) as {
+        c: number;
+      }).c;
+    expect(count()).toBe(1);
+    db.prepare(`DELETE FROM app_messages WHERE id = ?`).run(failed.message_id);
+    expect(count()).toBe(0);
   });
 
   it("stays invisible to the daily run's staleness reads", () => {
