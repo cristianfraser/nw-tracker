@@ -267,6 +267,13 @@ export type CcInstallmentLedgerMergeOpts = {
    * stamps an arrival.
    */
   replaceLedger?: boolean;
+  /**
+   * The rebuild's statements the parser withheld (their parse did not reconcile, so their rows are
+   * not in what the rebuild reads: `parse:cc-pdfs`'s reconciliation file), by `source_pdf`: their
+   * cuotas on file are not re-read but kept, and a plan one of them states (a cuota on file, or its
+   * sample document) is never stale — absent from the input, not gone from the card.
+   */
+  withheldDocuments?: ReadonlySet<string>;
 };
 
 type StalePlan = {
@@ -305,15 +312,20 @@ function planIdReferences(planId: number): string[] {
 function removeStaleStatementPlans(
   accountId: number,
   touched: ReadonlySet<number>,
-  created: ReadonlySet<number>
+  created: ReadonlySet<number>,
+  withheld: ReadonlySet<string>
 ): { retired_with_assignments: RetiredStalePlan[]; earliest_removed_on: string | null } {
+  const withheldJson = JSON.stringify([...withheld]);
   const stale = (
     db
       .prepare(
         `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index, dedupe_key, flow_id
-         FROM cc_installment_purchases WHERE account_id = ? AND source != 'manual' ORDER BY id`
+         FROM cc_installment_purchases p WHERE account_id = ? AND source != 'manual'
+           AND NOT (p.source_pdf_sample IN (SELECT value FROM json_each(?))
+             OR EXISTS (SELECT 1 FROM cc_installment_payments y WHERE y.purchase_id = p.id AND y.source_pdf IN (SELECT value FROM json_each(?))))
+         ORDER BY id`
       )
-      .all(accountId) as (StalePlan & { dedupe_key: string | null; flow_id: number | null })[]
+      .all(accountId, withheldJson, withheldJson) as (StalePlan & { dedupe_key: string | null; flow_id: number | null })[]
   ).filter((p) => !touched.has(p.id));
   if (stale.length === 0) return { retired_with_assignments: [], earliest_removed_on: null };
 
@@ -389,6 +401,7 @@ function mergeInstallmentLedgerInSession(
   opts?: CcInstallmentLedgerMergeOpts
 ): CcInstallmentLedgerMergeResult {
   const replaceLedger = opts?.replaceLedger === true;
+  const withheld = opts?.withheldDocuments ?? new Set<string>();
 
   const byLoan = groupInstallmentLoanChains(statements);
 
@@ -465,9 +478,11 @@ function mergeInstallmentLedgerInSession(
 
   const run = db.transaction(() => {
     if (replaceLedger) {
+      // A withheld statement's cuotas stay: its rows are not in the input to re-read them from.
       db.prepare(
-        `DELETE FROM cc_installment_payments WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)`
-      ).run(accountId);
+        `DELETE FROM cc_installment_payments WHERE purchase_id IN (SELECT id FROM cc_installment_purchases WHERE account_id = ?)
+           AND (source_pdf IS NULL OR source_pdf NOT IN (SELECT value FROM json_each(?)))`
+      ).run(accountId, JSON.stringify([...withheld]));
     }
 
     const purchaseIdByFingerprint = new Map<string, number>();
@@ -631,7 +646,7 @@ function mergeInstallmentLedgerInSession(
     }
     assertTwinPlansStartTogether(accountId, planIdsByLoan);
     if (replaceLedger) {
-      const removed = removeStaleStatementPlans(accountId, touchedPlanIds, createdPlanIds);
+      const removed = removeStaleStatementPlans(accountId, touchedPlanIds, createdPlanIds, withheld);
       retiredStale = removed.retired_with_assignments;
       noteChangedDay(removed.earliest_removed_on);
     }
