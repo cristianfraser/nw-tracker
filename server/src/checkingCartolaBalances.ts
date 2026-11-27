@@ -13,7 +13,6 @@ import {
   movementClpLegOrZero,
   type MovementAmountFields,
 } from "./movementAmounts.js";
-import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import {
   displayLedgerCutoffYmd,
   signedClpDeltaForAccountMovement,
@@ -538,18 +537,4 @@ export function ensureCheckingLedgerAnchor(
     occurred_on: occurredOn,
     anchor_period_month: periodMonth,
   };
-}
-
-/**
- * After a hand movement on a cash cartola account: the anchor stays pinned, so a movement that
- * would put the ledger off a cartola on file throws (`CheckingLedgerAnchorPinnedError`); the
- * caller writes the movement and this check in one transaction.
- */
-export function maybeSyncCheckingLedgerAnchor(
-  accountId: number,
-  bucketKindSlug: string,
-  dbHandle: Database = db
-): void {
-  if (!isMovementBalanceCashCategory(bucketKindSlug)) return;
-  ensureCheckingLedgerAnchor(accountId, dbHandle);
 }

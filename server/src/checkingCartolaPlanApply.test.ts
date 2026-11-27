@@ -276,7 +276,7 @@ describe("cartola plan applied", () => {
     });
   });
 
-  it("a daily row a tax settlement names is left as it is, not removed, and reported; the import is refused while it doubles the month", () => {
+  it("a daily row a tax settlement names goes like any other: the settlement moves to the transfer leg that records its money", () => {
     const row = daily("1803-05-19", -150_000, "PAGO IMPUESTO VITEST");
     const leg = insertMovement({ fromAccountId: checking, toAccountId: other, amount: 150_000, currency: "clp", occurredOn: "1803-05-19" });
     const c = cartola([mv("1803-05-19", -150_000, "Pago Impuesto Vitest")]);
@@ -284,13 +284,11 @@ describe("cartola plan applied", () => {
       db.prepare(
         `INSERT INTO f22_settlements (tax_year, kind, account_id, movement_id, occurred_on, amount, description) VALUES (1803, 'payment', ?, ?, '1803-05-19', 150000, 'vitest')`
       ).run(checking, row);
-      const plan = planCheckingCartola(loadCheckingCartolaPlanInput(checking, c));
-      expect(plan.left_alone).toEqual([{ row_id: row, movement: 0, why: "listed_by_transfer_leg", tables: ["f22_settlements"] }]);
-      // The leg and the row the settlement holds both count the 150.000 the bank lists once.
-      expect(() => importCheckingCartola(checking, c)).toThrow(/1803-05 .*refused: .*ledger − cartola = 150000/);
-      expect(db.prepare(`SELECT 1 AS ok FROM movements WHERE id = ?`).get(row)).toEqual({ ok: 1 });
-      expect(db.prepare(`SELECT 1 AS ok FROM movements WHERE id = ?`).get(leg)).toEqual({ ok: 1 });
-      expect(db.prepare(`SELECT 1 AS ok FROM checking_cartola_imports WHERE account_id = ?`).get(checking)).toBeUndefined();
+      const result = importCheckingCartola(checking, c);
+      expect(result.left_alone).toEqual([]);
+      expect(result.partialsRemoved).toBe(1);
+      expect(db.prepare(`SELECT 1 AS ok FROM movements WHERE id = ?`).get(row)).toBeUndefined();
+      expect(db.prepare(`SELECT movement_id FROM f22_settlements WHERE tax_year = 1803`).get()).toEqual({ movement_id: leg });
     });
   });
 

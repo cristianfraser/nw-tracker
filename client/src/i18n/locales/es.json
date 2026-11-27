@@ -982,6 +982,7 @@
       "ledgerAnchorSaved": "Ancla guardada.",
       "ledgerAnchorCleared": "Ancla eliminada.",
       "ledgerAnchorNoCartola": "Sin cartola con saldo final — no hay ancla automática.",
+      "ledgerContradicted": "No se guardó: este movimiento cambia el saldo de {{month}}, y la cartola de ese mes lista todos sus movimientos. Si falta el movimiento, vuelve a importar la cartola de ese mes; si es de otro mes, ingrésalo en su propia fecha.",
       "glance": {
         "range": {
           "90d": "90d",

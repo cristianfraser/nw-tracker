@@ -95,7 +95,7 @@ function readPdfJson(file: string): CartolaPdfEntry[] {
 }
 
 function collectPdfEntries(entries: readonly CartolaPdfEntry[], only: readonly string[] | undefined, out: StatementsRead): void {
-  const filter = only?.length ? new Set(only) : null;
+  const filter = only != null ? new Set(only) : null;
   for (const e of entries) {
     if (filter && !filter.has(e.source_file)) continue;
     if (e.parse_status === "skipped") {
@@ -114,7 +114,11 @@ function collectPdfEntries(entries: readonly CartolaPdfEntry[], only: readonly s
   }
 }
 
-/** The cuenta corriente's cartolas: the xlsx first, then the PDFs, as the import always took them. */
+/**
+ * The cuenta corriente's cartolas: the xlsx, then the PDFs (the server imports each account's
+ * cartolas oldest month first, whatever the order). `onlyXlsx` / `onlyPdf`: the documents to read
+ * of that format — an empty list reads none; absent reads every one.
+ */
 export function readCheckingCartolas(opts: {
   dir?: string;
   pdf: boolean;
@@ -123,7 +127,8 @@ export function readCheckingCartolas(opts: {
   onlyPdf?: readonly string[];
 }): StatementsRead {
   const out: StatementsRead = { statements: [], unreadable: [] };
-  const xlsxFilter = opts.onlyXlsx?.length ? new Set(opts.onlyXlsx) : null;
+  // A list given (even empty) names the documents to read; none given reads every one.
+  const xlsxFilter = opts.onlyXlsx != null ? new Set(opts.onlyXlsx) : null;
   for (const file of listCheckingCartolaXlsxFiles(opts.dir ?? checkingCartolaXlsxDir())) {
     const base = path.basename(file);
     if (xlsxFilter && !xlsxFilter.has(base)) continue;
@@ -133,7 +138,7 @@ export function readCheckingCartolas(opts: {
       out.unreadable.push({ document: base, error: err instanceof Error ? err.message : String(err) });
     }
   }
-  if (!opts.pdf) return out;
+  if (!opts.pdf || (opts.onlyPdf != null && opts.onlyPdf.length === 0)) return out;
   if (!opts.skipPdfParse && !runPythonParser("parse-checking-cartola-pdfs.py", opts.onlyPdf)) {
     out.unreadable.push({ document: "pdf", error: "parse-checking-cartola-pdfs.py failed" });
     return out;
@@ -145,6 +150,7 @@ export function readCheckingCartolas(opts: {
 /** The cuenta vista's cartolas (PDFs only). */
 export function readCuentaVistaCartolas(opts: { skipPdfParse: boolean; onlyPdf?: readonly string[] }): StatementsRead {
   const out: StatementsRead = { statements: [], unreadable: [] };
+  if (opts.onlyPdf != null && opts.onlyPdf.length === 0) return out;
   const json = path.join(resolveCfraserDir(), "cuenta-vista-cartolas-from-pdf.json");
   if (!opts.skipPdfParse && !runPythonParser("parse-cuenta-vista-cartola-pdfs.py", opts.onlyPdf)) {
     // The parser writes what it read before failing; the import takes that, as it always has.

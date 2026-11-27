@@ -22,6 +22,8 @@ export type CheckingCartolaFileImportLog = {
   error?: string;
   /** A refusal's reasons, one per line. */
   problems?: string[];
+  /** A confirmed month whose two documents print a day's rows in another order (`confirmed`). */
+  order_notes?: string[];
   /** The cartola derived the account's anchor (the run writes it at its end). */
   anchor_derived?: boolean;
 };
@@ -72,6 +74,7 @@ export function formatCheckingCartolaImportLogBody(log: CheckingCartolaImportRun
     }
     if (f.status === "confirmed") {
       lines.push(`\n${f.file} (${f.period_month}): confirms the month on file.`);
+      for (const o of f.order_notes ?? []) lines.push(`  - order: ${o}`);
       continue;
     }
     if (f.status !== "imported" && f.status !== "dry_run") continue;

@@ -33,7 +33,13 @@ import {
 } from "./checkingCartolaBalances.js";
 import { cartolaClosingDay, cartolaOpeningDay } from "./checkingCartolaMonthBounds.js";
 
-export type CartolaRefusalReason = "ledger_opening" | "ledger_closing" | "anchor_would_move" | "second_document_differs";
+export type CartolaRefusalReason =
+  | "ledger_opening"
+  | "ledger_closing"
+  | "anchor_would_move"
+  | "ledger_drift"
+  | "second_document_differs"
+  | "tax_settlement";
 
 /** A cartola the import refuses: nothing of it is written; `problems` says why, line by line. */
 export class CartolaImportRefusal extends Error {
@@ -49,7 +55,11 @@ export class CartolaImportRefusal extends Error {
 
 export type CheckingLedgerAnchorAt = { amount_clp: number; occurred_on: string };
 
-export type CartolaLedgerFrame = { kind: "established"; anchor: CheckingLedgerAnchorAt } | { kind: "derives_anchor" };
+/**
+ * `rebuild`: the deliberate repair run (`rebuildCheckingLedgerFromCartolas`): no cartola is checked
+ * on its own; the run re-derives the anchor and then every month on file must hold.
+ */
+export type CartolaLedgerFrame = { kind: "established"; anchor: CheckingLedgerAnchorAt } | { kind: "derives_anchor" } | { kind: "rebuild" };
 
 /**
  * Which anchor the cartola of `periodMonth` is checked against (see the module doc). `runAnchor`:
@@ -77,6 +87,24 @@ export function cartolaLedgerBalanceAt(accountId: number, ymd: string, anchorClp
 
 function balanceProblem(what: "opening" | "closing", day: string, printed: number, found: number): string {
   return `the ledger at ${day} reads ${found} CLP but the cartola's ${what} balance is ${printed} CLP (ledger − cartola = ${found - printed})`;
+}
+
+/**
+ * The ledger already disagrees with the cartolas on file (established frame, the anchor on file):
+ * the anchor they derive is not the one on file. Not this cartola's doing — refused as its own
+ * condition, before anything is written, so no cartola is blamed for an earlier drift.
+ */
+export function assertNoLedgerDrift(accountId: number, cartola: ParsedCheckingCartola, frame: CartolaLedgerFrame, fromRun: boolean, dbHandle: Database = db): void {
+  if (frame.kind !== "established" || fromRun) return;
+  const derived = getCartolaDerivedAnchor(accountId, dbHandle);
+  if (derived == null) return;
+  if (derived.amount_clp === frame.anchor.amount_clp && derived.occurred_on === frame.anchor.occurred_on) return;
+  throw new CartolaImportRefusal(cartola.period_month, cartola.source_file, "ledger_drift", [
+    `the ledger already disagrees with the cartolas on file before this one: the newest (${derived.period_month}) derives an anchor of ` +
+      `${derived.amount_clp} CLP on ${derived.occurred_on}, the one on file is ${frame.anchor.amount_clp} CLP on ${frame.anchor.occurred_on} ` +
+      `(difference ${derived.amount_clp - frame.anchor.amount_clp}); find the month off its cartola (the month table) and repair it, or rebuild ` +
+      `the ledger from the cartolas (server/scripts/rebuild-checking-ledger-from-cartolas.ts); nothing of this cartola was written`,
+  ]);
 }
 
 /** The printed opening balance against the ledger before anything is written (established frame only). */
@@ -120,6 +148,7 @@ export function assertCartolaLedgerAfterApply(
   frame: CartolaLedgerFrame,
   dbHandle: Database = db
 ): CheckingLedgerAnchorAt | null {
+  if (frame.kind === "rebuild") return null;
   const derived = getCartolaDerivedAnchor(accountId, dbHandle);
   // No printed closing balance on file yet: nothing derives an anchor and nothing is checked.
   if (frame.kind === "derives_anchor" && derived == null) return null;
@@ -157,3 +186,31 @@ export function assertCartolaLedgerAfterApply(
   if (problems.length > 0) throw new CartolaImportRefusal(cartola.period_month, cartola.source_file, reason, problems);
   return frame.kind === "derives_anchor" ? { amount_clp: derived!.amount_clp, occurred_on: derived!.occurred_on } : null;
 }
+
+/**
+ * Every cartola month on file against the ledger with the anchor on file: one line per printed
+ * opening or closing balance the ledger does not reach (empty: the whole history holds).
+ */
+export function checkingLedgerMonthsOffTheirCartolas(accountId: number, dbHandle: Database = db): string[] {
+  const anchor = storedCheckingLedgerAnchor(accountId, dbHandle);
+  const out: string[] = [];
+  const months = dbHandle
+    .prepare(
+      `SELECT period_month, period_from, period_to, saldo_inicial_clp, saldo_final_clp FROM checking_cartola_imports
+       WHERE account_id = ? ORDER BY period_month`
+    )
+    .all(accountId) as (CartolaMonthPeriodRow & { saldo_inicial_clp: number | null; saldo_final_clp: number | null })[];
+  for (const m of months) {
+    for (const [what, printed, day] of [
+      ["opening", m.saldo_inicial_clp, cartolaOpeningDay(m)],
+      ["closing", m.saldo_final_clp, cartolaClosingDay(m)],
+    ] as const) {
+      if (printed == null) continue;
+      const found = cartolaLedgerBalanceAt(accountId, day, anchor?.amount_clp ?? 0, dbHandle);
+      if (found !== printed) out.push(`${m.period_month} ${balanceProblem(what, day, printed, found)}`);
+    }
+  }
+  return out;
+}
+
+type CartolaMonthPeriodRow = { period_month: string; period_from: string | null; period_to: string | null };

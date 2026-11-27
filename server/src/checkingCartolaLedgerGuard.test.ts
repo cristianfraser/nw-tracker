@@ -1,20 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { BankAccountStatementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import { finishCartolaImportRun, importCartolaList, checkingAccountId } from "./checkingCartolaImport.js";
+import { CheckingLedgerRebuildRefused, checkingAccountId, finishCartolaImportRun, importCartolaList, importCheckingCartola, rebuildCheckingLedgerFromCartolas } from "./checkingCartolaImport.js";
 import type { ParsedCheckingCartola, ParsedCheckingMovement } from "./checkingCartolaParse.js";
 import type { CheckingCartolaFileImportLog } from "./checkingCartolaParseLog.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
-import { storedCheckingLedgerAnchor } from "./checkingCartolaBalances.js";
+import { ensureCheckingLedgerAnchor, storedCheckingLedgerAnchor } from "./checkingCartolaBalances.js";
+import { checkingLedgerMonthsOffTheirCartolas } from "./checkingCartolaLedgerGuard.js";
 import { cartolaMonthListingOnFile } from "./checkingCartolaCrossCheck.js";
 import { cartolaCoversWholeMonth } from "./checkingCartolaMonthBounds.js";
 import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
 import { convertMirrorPairs } from "./movementMirrorConvert.js";
-import { deleteMovements, insertMovement } from "./movementWrites.js";
+import { insertMovement } from "./movementWrites.js";
 import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { agreeingCartolaBalances } from "./test/cartolaFixtureBalances.js";
 import { rolledBack } from "./ingestReceiver.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
+import { CHECKING_LEDGER_CONTRADICTED, CheckingLedgerContradictedError, guardCheckingLedgerWrite } from "./checkingLedgerWriteGuard.js";
+import { supersedeImportedCheckingRowsForTransfer } from "./checkingTransferLegReconcile.js";
 
 /**
  * The cartola import's ledger guard (`checkingCartolaLedgerGuard.ts`) and the second-document
@@ -156,13 +159,15 @@ describe("the cartola ledger guard", () => {
     expect(rows(account)).toEqual(before);
   }));
 
-  it("an opening the ledger does not reach (an earlier movement missing) is refused with expected and found", inRollback(() => {
+  it("an opening the ledger does not reach (a movement missing before the month, a month with no cartola) is refused with expected and found", inRollback(() => {
     const account = createAccount("opening");
     run(account, [JAN()]);
-    febDailyRows(account);
-    run(account, [FEB()]);
-    const compraC = rows(account).find((r) => r.amount === -5_000)!;
-    deleteMovements([compraC.id]);
+    // February has no cartola on file, and its daily listing lacks «Compra C».
+    importCheckingPartialMovements(
+      account,
+      FEB_MOVES().filter((m) => m.amount_clp !== -5_000).map((m) => ({ occurred_on: m.occurred_on, amount_clp: m.amount_clp, description: m.description, document_no: "" })),
+      READ_AFTER_ROWS
+    );
     const before = rows(account);
     const [log] = run(account, [MAR()]);
     expect(log!.status).toBe("refused");
@@ -273,6 +278,21 @@ describe("a month on file and a second document", () => {
     expect(run(account, [FEB("1807-02 cartola.pdf", pdfMoves())]).map((f) => f.status)).toEqual(["confirmed"]);
   }));
 
+  it("the same rows of one day in another order confirm the month, the order reported apart", inRollback(() => {
+    const account = createAccount("order-day");
+    run(account, [JAN()]);
+    const x = mv("1807-02-10", -10_000, "Compra X");
+    const y = mv("1807-02-10", -5_000, "Compra Y");
+    const d = mv("1807-02-12", 7_000, "Abono D");
+    run(account, [FEB("1807-02 cartola.xlsx", [x, y, d])]);
+    const [log] = run(account, [FEB("1807-02 cartola.pdf", [y, x, d])]);
+    expect([log!.status, log!.problems]).toEqual(["confirmed", undefined]);
+    expect(log!.order_notes).toEqual([
+      "1807-02 movement 1 of the document is movement 2 on file (same day)",
+      "1807-02 movement 2 of the document is movement 1 on file (same day)",
+    ]);
+  }));
+
   it("a document covering part of a month keeps the fuller-replaces rule; a forced re-import replaces", inRollback(() => {
     const account = createAccount("partial");
     run(account, [JAN()]);
@@ -291,4 +311,167 @@ describe("a month on file and a second document", () => {
     expect(forced.map((f) => f.status)).toEqual(["imported"]);
     expect(record(account, "1807-02")).toEqual({ source_file: "1807-02 cartola.pdf", movement_count: 3, confirmed_by_file: null });
   }));
+});
+
+describe("the guard's frame: drift, order, the anchor at the run's end", () => {
+  it("a ledger that already disagrees with its cartolas refuses the next cartola as drift, not as the cartola's fault", inRollback(() => {
+    const account = createAccount("drift");
+    run(account, [JAN()]);
+    febDailyRows(account);
+    run(account, [FEB()]);
+    // A row in January written past every guard: the cartolas on file no longer derive the anchor.
+    insertMovement({ accountId: account, amount: -3_000, currency: "clp", occurredOn: "1807-01-25", note: `${TAG} stray` });
+    const [log] = run(account, [MAR()]);
+    expect(log!.status).toBe("refused");
+    expect(log!.problems!.join("\n")).toMatch(/the ledger already disagrees with the cartolas on file before this one: .*difference 3000\)/);
+  }));
+
+  it("an anchor that no longer matches at the run's end is reported as its own entry; the run's cartolas stay", inRollback(() => {
+    const account = createAccount("finish");
+    run(account, [JAN()]);
+    insertMovement({ accountId: account, amount: -3_000, currency: "clp", occurredOn: "1807-01-25", note: `${TAG} stray` });
+    const logs: CheckingCartolaFileImportLog[] = [{ file: "x.xlsx", period_month: "1807-01", status: "imported", movements_parsed: 0, movements_imported: 0, skipped_rows: [], saldo_final_clp: null, saldo_inicial_clp: null }];
+    expect(() => finishCartolaImportRun(account, {}, logs)).not.toThrow();
+    expect(logs.map((f) => [f.file, f.status])).toEqual([
+      ["x.xlsx", "imported"],
+      ["(ledger anchor)", "refused"],
+    ]);
+  }));
+
+  it("an account's cartolas are imported oldest month first, whatever the payload's order", inRollback(() => {
+    const account = createAccount("order");
+    run(account, [JAN()]);
+    febDailyRows(account);
+    importCheckingPartialMovements(account, [{ occurred_on: "1807-03-03", amount_clp: -2_000, description: `${TAG} Compra E`, document_no: "" }], READ_AFTER_ROWS);
+    expect(run(account, [MAR(), FEB()]).map((f) => [f.period_month, f.status])).toEqual([
+      ["1807-02", "imported"],
+      ["1807-03", "imported"],
+    ]);
+  }));
+});
+
+describe("a tax settlement on a row the import replaces", () => {
+  it("moves to the row that records its money once a daily row folds into it", inRollback(() => {
+    const account = createAccount("settle-fold");
+    run(account, [JAN()]);
+    febDailyRows(account);
+    // A second listing of «Compra C» (the pending row re-listed): the cartola folds it into the first.
+    importCheckingPartialMovements(account, [{ occurred_on: "1807-02-10", amount_clp: -5_000, description: `${TAG} Compra C Comercio`, document_no: "" }], READ_AFTER_ROWS);
+    const twins = rows(account).filter((r) => r.amount === -5_000);
+    db.prepare(`INSERT INTO f22_settlements (tax_year, kind, account_id, movement_id, occurred_on, amount, description) VALUES (1807, 'payment', ?, ?, '1807-02-10', 5000, 'vitest')`).run(account, twins[twins.length - 1]!.id);
+    expect(run(account, [FEB("1807-02 cartola.xlsx", [FEB_MOVES()[0]!, mv("1807-02-10", -5_000, "Compra C Comercio"), FEB_MOVES()[2]!])]).map((f) => f.status)).toEqual(["imported"]);
+    const kept = rows(account).filter((r) => r.amount === -5_000);
+    expect(kept).toHaveLength(1);
+    expect(db.prepare(`SELECT movement_id FROM f22_settlements WHERE tax_year = 1807`).get()).toEqual({ movement_id: kept[0]!.id });
+  }));
+
+  it("a replaced month's row the new cartola no longer lists is refused naming the row, the table and the tax year", inRollback(() => {
+    const account = createAccount("settle-left");
+    run(account, [JAN()]);
+    febDailyRows(account);
+    run(account, [FEB()]);
+    const compraC = rows(account).find((r) => r.amount === -5_000)!;
+    db.prepare(`INSERT INTO f22_settlements (tax_year, kind, account_id, movement_id, occurred_on, amount, description) VALUES (1807, 'payment', ?, ?, '1807-02-10', 5000, 'vitest')`).run(account, compraC.id);
+    // Corrected February: the 5.000 on another day under other text — no row takes the settled one's money.
+    const corrected = FEB("1807-02 cartola.xlsx", [FEB_MOVES()[0]!, mv("1807-02-11", -5_000, "Compra Z"), FEB_MOVES()[2]!]);
+    const [log] = run(account, [corrected], { forceReimport: true });
+    expect(log!.status).toBe("refused");
+    expect(log!.problems).toEqual([
+      `movement ${compraC.id} (1807-02-10, -5000 CLP) is named by f22_settlements of tax year 1807, and the cartola lists no movement for it: link the settlement to the row that records its money, then import again`,
+    ]);
+    expect(db.prepare(`SELECT movement_id FROM f22_settlements WHERE tax_year = 1807`).get()).toEqual({ movement_id: compraC.id });
+  }));
+});
+
+describe("a hand movement on a cartola account (checkingLedgerWriteGuard)", () => {
+  function threeMonths(name: string): number {
+    const account = createAccount(name);
+    run(account, [JAN()]);
+    febDailyRows(account);
+    run(account, [FEB(), MAR()]);
+    return account;
+  }
+  const hand = (account: number, day: string, amount: number) => () => insertMovement({ accountId: account, amount, currency: "clp", occurredOn: day, note: `${TAG} hand` });
+
+  it("one dated in a month a cartola states is refused, coded with the month, and rolled back", inRollback(() => {
+    const account = threeMonths("hand-closed");
+    const before = rows(account);
+    let err: unknown;
+    try {
+      guardCheckingLedgerWrite([account], "1807-02-15", hand(account, "1807-02-15", -4_000));
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CheckingLedgerContradictedError);
+    expect((err as CheckingLedgerContradictedError).status).toBe(409);
+    expect((err as CheckingLedgerContradictedError).fields).toEqual({ code: CHECKING_LEDGER_CONTRADICTED, account_id: account, month: "1807-02", difference: -4_000 });
+    expect(rows(account)).toEqual(before);
+  }));
+
+  it("one after the newest cartola is written; an earlier drift is reported, never blamed on it", inRollback(() => {
+    const account = threeMonths("hand-after");
+    expect(guardCheckingLedgerWrite([account], "1807-04-05", hand(account, "1807-04-05", -4_000)).drift).toEqual([]);
+    insertMovement({ accountId: account, amount: -3_000, currency: "clp", occurredOn: "1807-01-25", note: `${TAG} stray` });
+    const { drift } = guardCheckingLedgerWrite([account], "1807-04-06", hand(account, "1807-04-06", -1_000));
+    expect(drift).toEqual([{ account_id: account, stored_anchor_clp: 100_000, derived_anchor_clp: 103_000 }]);
+  }));
+
+  it("a transfer that supersedes the bank row it stands for nets to zero and is written", inRollback(() => {
+    const account = threeMonths("hand-transfer");
+    const other = createAccount("hand-transfer-other");
+    const compraC = rows(account).find((r) => r.amount === -5_000)!;
+    const { result } = guardCheckingLedgerWrite([account, other], "1807-02-10", () => {
+      const id = insertMovement({ fromAccountId: account, toAccountId: other, amount: 5_000, currency: "clp", occurredOn: "1807-02-10" });
+      return supersedeImportedCheckingRowsForTransfer(id, account, other, 5_000, "1807-02-10");
+    });
+    expect(result.removed_ids).toEqual([compraC.id]);
+  }));
+});
+
+describe("the deliberate rebuild of a ledger that absorbed bad data", () => {
+  /** The incident on a synthetic account: February written twice by a reader that kept the branch, the anchor moved to hide it. */
+  function incident(name: string): number {
+    const account = createAccount(name);
+    run(account, [JAN()]);
+    febDailyRows(account);
+    const prefixed = FEB("1807-02 cartola.pdf", FEB_MOVES().map((m) => ({ ...m, description: `${m.branch} ${m.description}` })));
+    importCheckingCartola(account, prefixed, db, { rebuild: true });
+    ensureCheckingLedgerAnchor(account, db, { repin: true });
+    return account;
+  }
+
+  it("the ordinary forced import refuses the repair; the rebuild restates the month, removes the copies and pins the anchor back", inRollback(() => {
+    const account = incident("rebuild");
+    expect(anchorOf(account)).toEqual({ amount_clp: 108_000, occurred_on: "1806-12-31" });
+    const daily = rows(account).filter((r) => r.occurred_on.startsWith("1807-02")).slice(0, 3);
+    expect(run(account, [FEB("1807-02 cartola.pdf")], { forceReimport: true }).map((f) => f.status)).toEqual(["refused"]);
+    const r = rebuildCheckingLedgerFromCartolas(account, [FEB("1807-02 cartola.pdf")]);
+    expect(r.anchor_before).toEqual({ amount_clp: 108_000, occurred_on: "1806-12-31" });
+    expect(r.anchor_after).toEqual({ amount_clp: 100_000, occurred_on: "1806-12-31" });
+    expect(r.months).toEqual([{ period_month: "1807-02", replaced: true, inserted: 0, restated: 3, folded: 0, removed: 0, cartola_rows_removed: 3 }]);
+    expect(rows(account).filter((x) => x.occurred_on.startsWith("1807-02")).map((x) => x.id)).toEqual(daily.map((x) => x.id));
+    expect(checkingLedgerMonthsOffTheirCartolas(account)).toEqual([]);
+  }));
+
+  it("a rebuild that leaves a month off its cartola writes nothing", inRollback(() => {
+    const account = incident("rebuild-refused");
+    const before = { rows: rows(account), anchor: anchorOf(account) };
+    const prefixed = FEB("1807-02 cartola.pdf", FEB_MOVES().map((m) => ({ ...m, description: `Agustinas ${m.description}` })));
+    expect(() => rebuildCheckingLedgerFromCartolas(account, [prefixed])).toThrow(CheckingLedgerRebuildRefused);
+    expect({ rows: rows(account), anchor: anchorOf(account) }).toEqual(before);
+  }));
+});
+
+describe("whole-month coverage", () => {
+  it("HASTA on the month's last bank day, on the next month's DESDE, later or none is the whole month; a HASTA before it is part", () => {
+    // 2025-10-31 is a holiday and 2025-12-31 a bank holiday: the month closes the day before.
+    expect(cartolaCoversWholeMonth({ period_month: "2025-10", period_from: "2025-09-30", period_to: "2025-10-30" })).toBe(true);
+    expect(cartolaCoversWholeMonth({ period_month: "2025-12", period_from: "2025-11-28", period_to: "2025-12-30" })).toBe(true);
+    expect(cartolaCoversWholeMonth({ period_month: "2025-10", period_from: "2025-09-30", period_to: "2025-10-29" })).toBe(false);
+    // An older month the calendar knows no holiday of: the next month's DESDE states the close.
+    expect(cartolaCoversWholeMonth({ period_month: "2019-10", period_from: "2019-09-30", period_to: "2019-10-30" })).toBe(false);
+    expect(cartolaCoversWholeMonth({ period_month: "2019-10", period_from: "2019-09-30", period_to: "2019-10-30" }, "2019-10-30")).toBe(true);
+    expect(cartolaCoversWholeMonth({ period_month: "2026-09", period_from: "2026-08-31", period_to: null })).toBe(true);
+    expect(cartolaCoversWholeMonth({ period_month: "2026-09", period_from: "2026-09-12", period_to: "2026-09-30" })).toBe(false);
+  });
 });

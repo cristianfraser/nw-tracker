@@ -15,14 +15,17 @@ export type InputErrorStatus = 400 | 404 | 409 | 413;
  */
 export class InputError extends Error {
   readonly status: InputErrorStatus;
-  constructor(message: string, status: InputErrorStatus = 400) {
+  /** A coded error's fields, sent beside `error` (`code` and what the client words it with). */
+  readonly fields: Readonly<Record<string, string | number>> | null;
+  constructor(message: string, status: InputErrorStatus = 400, fields: Readonly<Record<string, string | number>> | null = null) {
     super(message);
     this.status = status;
+    this.fields = fields;
   }
 }
 
 /**
- * A write route: `InputError` → its status `{ error }`, every other throw (or rejection) → `next(err)`,
+ * A write route: `InputError` → its status `{ error, …fields }`, every other throw (or rejection) → `next(err)`,
  * the 500 middleware. Replaces the catch-all `try { … } catch { 400 }` that turned integrity throws
  * into input errors.
  */
@@ -33,7 +36,7 @@ export const writeHandler =
       .then(() => fn(req, res))
       .catch((err: unknown) => {
         if (err instanceof InputError && !res.headersSent) {
-          res.status(err.status).json({ error: err.message });
+          res.status(err.status).json({ error: err.message, ...(err.fields ?? {}) });
           return;
         }
         next(err);

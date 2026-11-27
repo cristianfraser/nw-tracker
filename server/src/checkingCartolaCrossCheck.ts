@@ -7,7 +7,8 @@
  * movements, and at each position the same bank day, signed pesos, document number, description
  * and branch (text compared through `normalizeCartolaText`), and the same printed opening and
  * closing balances. Equal → the month record notes the confirming document; any difference
- * refuses the document, every difference listed.
+ * refuses the document, every difference listed. A day's rows are compared as a set: the same rows
+ * in another order are an `order` note, not a difference.
  *
  * What is on file for the month (`cartolaMonthListingOnFile`): the listing facts of the rows its
  * cartola wrote or restated (`stated_period`, `stated_position` on their evidence), and those a
@@ -100,8 +101,15 @@ export function cartolaMonthListingOnFile(accountId: number, periodMonth: string
 
 type MonthRecord = { movement_count: number; saldo_inicial_clp: number | null; saldo_final_clp: number | null };
 
-/** Every difference between `cartola` and its month on file (empty: the document states the month as it is). */
-export function compareCartolaWithMonthOnFile(accountId: number, cartola: ParsedCheckingCartola, dbHandle: Database = db): CartolaMonthDifference[] {
+/**
+ * `differences`: what refuses the document (empty: it states the month as it is); `order`: rows of
+ * one day the two renderings print in another order — the same rows, reported, never refused
+ * (the month keeps the row keys of the document it was imported from, `flows/cartolaRowKey.ts`).
+ */
+export type CartolaMonthComparison = { differences: CartolaMonthDifference[]; order: string[] };
+
+/** `cartola` against its month on file (see `CartolaMonthComparison`). */
+export function compareCartolaWithMonthOnFile(accountId: number, cartola: ParsedCheckingCartola, dbHandle: Database = db): CartolaMonthComparison {
   const record = dbHandle
     .prepare(`SELECT movement_count, saldo_inicial_clp, saldo_final_clp FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
     .get(accountId, cartola.period_month) as MonthRecord | undefined;
@@ -119,45 +127,74 @@ export function compareCartolaWithMonthOnFile(accountId: number, cartola: Parsed
   }
 
   const listed = cartolaMonthListingOnFile(accountId, cartola.period_month, dbHandle);
-  // Positions no listing keeps: movements the month's import confirmed onto a transfer leg or a
-  // mail-written row. The planner says whether the document's movement there still is one.
-  let confirmed: Set<number> | null = null;
-  const confirmedNow = (): Set<number> => {
-    if (confirmed == null) {
-      const plan = planCheckingCartola({ ...loadCheckingCartolaPlanInput(accountId, cartola, dbHandle), replace_month: true });
-      confirmed = new Set(plan.confirm.map((c) => c.movement));
-    }
-    return confirmed;
+  // Movements no listing keeps: the ones the month's import confirmed onto a transfer leg or a
+  // mail-written row. The planner says which of the document's movements still are one.
+  const plan = planCheckingCartola({ ...loadCheckingCartolaPlanInput(accountId, cartola, dbHandle), replace_month: true });
+  const confirmed = new Set(plan.confirm.map((c) => c.movement));
+  const gaps = record.movement_count - listed.size;
+  const docText = (i: number) => {
+    const mv = cartola.movements[i]!;
+    return `${mv.occurred_on} ${mv.amount_clp} «${mv.description}»`;
   };
-  const n = Math.max(record.movement_count, cartola.movements.length);
-  for (let position = 0; position < n; position++) {
-    const mv = cartola.movements[position];
-    const onFile = listed.get(position);
-    const docText = mv == null ? "—" : `${mv.occurred_on} ${mv.amount_clp} «${mv.description}»`;
-    if (onFile == null) {
-      if (position >= record.movement_count) {
-        diffs.push({ position, field: "movement", on_file: "—", document: docText });
-      } else if (mv == null || !confirmedNow().has(position)) {
-        diffs.push({ position, field: "movement", on_file: "a transfer leg or mail row the month's cartola confirmed", document: docText });
-      }
-      continue;
-    }
-    if (mv == null) {
-      diffs.push({ position, field: "movement", on_file: `${onFile.bank_day} ${onFile.amount_clp} «${onFile.description}»`, document: "—" });
-      continue;
-    }
-    const doc = cartolaListingFacts(cartola.period_month, mv, position);
-    if (onFile.bank_day !== doc.bank_day) diffs.push({ position, field: "bank_day", on_file: onFile.bank_day, document: doc.bank_day });
-    if (Math.round(onFile.amount_clp) !== mv.amount_clp) diffs.push({ position, field: "amount", on_file: String(onFile.amount_clp), document: String(mv.amount_clp) });
-    for (const [field, a, b] of [
-      ["document_no", onFile.document_no, doc.document_no],
-      ["description", onFile.description, doc.description],
-      ["branch", onFile.branch, doc.branch ?? ""],
-    ] as const) {
-      if (normalizeCartolaText(a) !== normalizeCartolaText(b)) diffs.push({ position, field, on_file: a, document: b });
+  const fileText = (r: CartolaListedRow) => `${r.bank_day} ${r.amount_clp} «${r.description}»`;
+
+  // Pair the document's listed movements with the rows on file: the same position with the same
+  // day, pesos and text; then, inside a day, the same pesos and text, then the same pesos (two renderings may
+  // print a day's rows in another order: reported apart, `order`); then what is left, by position.
+  const docLeft = new Set(cartola.movements.map((_, i) => i));
+  const fileLeft = new Map(listed);
+  const pairs: { position: number; row: CartolaListedRow; filePosition: number }[] = [];
+  const take = (i: number, p: number) => {
+    pairs.push({ position: i, row: fileLeft.get(p)!, filePosition: p });
+    docLeft.delete(i);
+    fileLeft.delete(p);
+  };
+  const sameText = (i: number, r: CartolaListedRow) =>
+    normalizeCartolaText(r.description) === normalizeCartolaText(cartolaListingFacts(cartola.period_month, cartola.movements[i]!, i).description);
+  for (const i of [...docLeft]) {
+    const r = fileLeft.get(i);
+    const mv = cartola.movements[i]!;
+    if (r && r.bank_day === mv.occurred_on && Math.round(r.amount_clp) === mv.amount_clp && sameText(i, r)) take(i, i);
+  }
+  for (const match of [(i: number, r: CartolaListedRow) => sameText(i, r), () => true]) {
+    for (const i of [...docLeft]) {
+      const mv = cartola.movements[i]!;
+      const hit = [...fileLeft].find(([, r]) => r.bank_day === mv.occurred_on && Math.round(r.amount_clp) === mv.amount_clp && match(i, r));
+      if (hit) take(i, hit[0]);
     }
   }
-  return diffs;
+  // What no listed row took and the planner confirms onto a leg or a mail row stands for the
+  // month's confirmed movements (a converted leg keeps its listing and was paired above).
+  const viaLegOrMail = [...docLeft].filter((i) => confirmed.has(i));
+  for (const i of viaLegOrMail) docLeft.delete(i);
+  for (const i of [...docLeft]) if (fileLeft.has(i)) take(i, i);
+
+  const order: string[] = [];
+  for (const { position, row, filePosition } of pairs.sort((x, y) => x.position - y.position)) {
+    if (filePosition !== position) order.push(`${cartola.period_month} movement ${position + 1} of the document is movement ${filePosition + 1} on file (same day)`);
+    const mv = cartola.movements[position]!;
+    const doc = cartolaListingFacts(cartola.period_month, mv, position);
+    if (row.bank_day !== doc.bank_day) diffs.push({ position, field: "bank_day", on_file: row.bank_day, document: doc.bank_day });
+    if (Math.round(row.amount_clp) !== mv.amount_clp) diffs.push({ position, field: "amount", on_file: String(row.amount_clp), document: String(mv.amount_clp) });
+    for (const [field, a, b2] of [
+      ["document_no", row.document_no, doc.document_no],
+      ["description", row.description, doc.description],
+      ["branch", row.branch, doc.branch ?? ""],
+    ] as const) {
+      if (normalizeCartolaText(a) !== normalizeCartolaText(b2)) diffs.push({ position, field, on_file: a, document: b2 });
+    }
+  }
+  for (const i of [...docLeft].sort((x, y) => x - y)) diffs.push({ position: i, field: "movement", on_file: "—", document: docText(i) });
+  for (const [p, r] of [...fileLeft].sort((x, y) => x[0] - y[0])) diffs.push({ position: p, field: "movement", on_file: fileText(r), document: "—" });
+  if (viaLegOrMail.length !== gaps) {
+    diffs.push({
+      position: null,
+      field: "movement",
+      on_file: `${gaps} movement(s) on a transfer leg or mail row`,
+      document: `${viaLegOrMail.length} such movement(s)`,
+    });
+  }
+  return { differences: diffs.sort((x, y) => (x.position ?? -1) - (y.position ?? -1)), order };
 }
 
 /** One line per difference, for the refusal. */

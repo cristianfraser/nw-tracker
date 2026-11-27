@@ -22,6 +22,7 @@ import { requestExpenseLinkSync, withExpenseLinkSyncDeferred } from "./expenseLi
 import { adoptRetiredMovementFlow, type RetiredMovementAdoption } from "./flows/flowAdoption.js";
 import { recordMovementFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { recordBankListingFacts, type BankListingFacts } from "./movementListingFacts.js";
+import { signedClpDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 
 /**
  * Runs an import's movement writes; the expense deposit links re-sync once when it ends — unless it
@@ -185,10 +186,54 @@ export function insertBankPesoMovement(
  * adoption.
  */
 export function repointMovementReferences(fromId: number, toId: number, dbHandle: Database = db): void {
+  repointTaxSettlements(fromId, toId, dbHandle);
   dbHandle.prepare(`UPDATE payroll_work_earnings SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
   dbHandle.prepare(`UPDATE OR IGNORE payslip_advances SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
   dbHandle.prepare(`DELETE FROM payslip_advances WHERE movement_id = ?`).run(fromId);
   dbHandle.prepare(`UPDATE incoming_wire_bookings SET transfer_movement_id = ? WHERE transfer_movement_id = ?`).run(toId, fromId);
+}
+
+/**
+ * A tax settlement that names a row the import folds away or removes, refused: it can only move to
+ * a row that moves the same pesos on its account (and, for the 1040, one no other settlement names).
+ */
+export class TaxSettlementRepointError extends Error {
+  constructor(
+    readonly table: "f22_settlements" | "us_f1040_settlements",
+    readonly taxYear: number,
+    readonly fromId: number,
+    readonly toId: number,
+    reason: string
+  ) {
+    super(`${table} of tax year ${taxYear} names movement ${fromId}, which the import replaces by movement ${toId}: ${reason}`);
+  }
+}
+
+/**
+ * The F22 and 1040 settlements naming `fromId` name `toId` instead (the row that records the same
+ * money once `fromId` goes: a fold, a daily row a transfer leg or mail row lists). The settlement
+ * keeps its account, day and pesos; `toId` must move those pesos on that account
+ * (`signedClpDeltaForAccountMovement`), else `TaxSettlementRepointError`.
+ */
+function repointTaxSettlements(fromId: number, toId: number, dbHandle: Database): void {
+  const movement = dbHandle.prepare(`SELECT account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind FROM movements WHERE id = ?`);
+  for (const table of ["f22_settlements", "us_f1040_settlements"] as const) {
+    const rows = dbHandle.prepare(`SELECT id, tax_year, account_id FROM ${table} WHERE movement_id = ?`).all(fromId) as { id: number; tax_year: number; account_id: number }[];
+    for (const r of rows) {
+      const from = movement.get(fromId) as MovementTransferRow | undefined;
+      const to = movement.get(toId) as MovementTransferRow | undefined;
+      if (!from || !to) throw new TaxSettlementRepointError(table, r.tax_year, fromId, toId, "a row is gone");
+      const touches = to.account_id === r.account_id || to.from_account_id === r.account_id || to.to_account_id === r.account_id;
+      if (!touches) throw new TaxSettlementRepointError(table, r.tax_year, fromId, toId, `movement ${toId} is not on the settlement's account ${r.account_id}`);
+      const a = Math.round(signedClpDeltaForAccountMovement(from, r.account_id));
+      const b = Math.round(signedClpDeltaForAccountMovement(to, r.account_id));
+      if (a !== b) throw new TaxSettlementRepointError(table, r.tax_year, fromId, toId, `it moves ${b} CLP on the account, the settled row ${a}`);
+      if (table === "us_f1040_settlements" && dbHandle.prepare(`SELECT 1 FROM us_f1040_settlements WHERE movement_id = ?`).get(toId) != null) {
+        throw new TaxSettlementRepointError(table, r.tax_year, fromId, toId, `another 1040 settlement already names movement ${toId}`);
+      }
+      dbHandle.prepare(`UPDATE ${table} SET movement_id = ? WHERE id = ?`).run(toId, r.id);
+    }
+  }
 }
 
 /**

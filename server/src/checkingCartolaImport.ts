@@ -1,6 +1,7 @@
-import { isCartolaDesdeBoundaryPhantomMonth } from "./calendarMonth.js";
+import { isCartolaDesdeBoundaryPhantomMonth, ymCompare } from "./calendarMonth.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 import type { RetiredMovementAdoption } from "./flows/flowAdoption.js";
-import { deleteAccountMovements, deleteMovements } from "./movementWrites.js";
+import { deleteAccountMovements, deleteMovements, TaxSettlementRepointError } from "./movementWrites.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { planCheckingCartola, type CheckingCartolaPlan } from "./checkingCartolaPlan.js";
@@ -15,8 +16,10 @@ import {
   type CheckingCartolaImportRunLog,
 } from "./checkingCartolaParseLog.js";
 import {
+  CheckingLedgerAnchorPinnedError,
   clearCheckingAccountValuations,
   ensureCheckingLedgerAnchor,
+  storedCheckingLedgerAnchor,
 } from "./checkingCartolaBalances.js";
 import { assertCheckingCartolaSaldoIdentity } from "./checkingCartolaSaldoValidation.js";
 import { cartolaCoversWholeMonth, type CartolaMonthPeriod } from "./checkingCartolaMonthBounds.js";
@@ -25,8 +28,11 @@ import {
   assertCartolaLedgerAfterApply,
   assertCartolaOpeningAgrees,
   assertCartolaSaldoRefreshAgrees,
+  assertNoLedgerDrift,
   CartolaImportRefusal,
   cartolaLedgerFrame,
+  checkingLedgerMonthsOffTheirCartolas,
+  type CartolaLedgerFrame,
   type CheckingLedgerAnchorAt,
 } from "./checkingCartolaLedgerGuard.js";
 import { assertCartolaMonthWrote, countExistingCartolaMovementsForMonth, recordCartolaMonthImport } from "./checkingCartolaMonthRecord.js";
@@ -227,24 +233,37 @@ export function importCheckingCartola(
   accountId: number,
   cartola: ParsedCheckingCartola,
   dbHandle: Database = db,
-  /** `runAnchor`: the anchor an earlier cartola of the run derived (`CheckingCartolaImportResult.anchor_derived`). */
-  opts?: { replaceMonth?: boolean; runAnchor?: CheckingLedgerAnchorAt | null }
+  /**
+   * `runAnchor`: the anchor an earlier cartola of the run derived (`CheckingCartolaImportResult.anchor_derived`).
+   * `rebuild`: the repair run's frame (`rebuildCheckingLedgerFromCartolas`): no check of its own.
+   */
+  opts?: { replaceMonth?: boolean; runAnchor?: CheckingLedgerAnchorAt | null; rebuild?: boolean }
 ): CheckingCartolaImportResult {
   // The ledger must agree with the cartola's printed opening before anything is written, and with
   // its closing once applied (inside the apply's transaction): `checkingCartolaLedgerGuard.ts`.
   // The document's own consistency first (its printed balances against its movements).
   assertCheckingCartolaSaldoIdentity(cartola);
-  const frame = cartolaLedgerFrame(accountId, cartola.period_month, dbHandle, opts?.runAnchor ?? null);
+  const frame: CartolaLedgerFrame = opts?.rebuild ? { kind: "rebuild" } : cartolaLedgerFrame(accountId, cartola.period_month, dbHandle, opts?.runAnchor ?? null);
+  assertNoLedgerDrift(accountId, cartola, frame, opts?.runAnchor != null, dbHandle);
   assertCartolaOpeningAgrees(accountId, cartola, frame, dbHandle);
   const plan = planCheckingCartola({ ...loadCheckingCartolaPlanInput(accountId, cartola, dbHandle), replace_month: opts?.replaceMonth === true });
+  refuseTaxSettlementsLeftBehind(accountId, cartola, plan, dbHandle);
   const changesBefore = totalChanges(dbHandle);
   let anchorDerived: CheckingLedgerAnchorAt | null = null;
-  const applied = applyCheckingCartolaPlan(accountId, cartola, plan, dbHandle, {
-    replaceMonth: opts?.replaceMonth === true,
-    afterWrite: () => {
-      anchorDerived = assertCartolaLedgerAfterApply(accountId, cartola, frame, dbHandle);
-    },
-  });
+  let applied: ReturnType<typeof applyCheckingCartolaPlan>;
+  try {
+    applied = applyCheckingCartolaPlan(accountId, cartola, plan, dbHandle, {
+      replaceMonth: opts?.replaceMonth === true,
+      afterWrite: () => {
+        anchorDerived = assertCartolaLedgerAfterApply(accountId, cartola, frame, dbHandle);
+      },
+    });
+  } catch (e) {
+    if (e instanceof TaxSettlementRepointError) {
+      throw new CartolaImportRefusal(cartola.period_month, cartola.source_file, "tax_settlement", [`${e.message}; nothing of this cartola was written`]);
+    }
+    throw e;
+  }
   const flowOf = (index: number): ImportFlowItem => {
     const mv = cartola.movements[index]!;
     return { occurred_on: mv.occurred_on, description: mv.description, amount_clp: mv.amount_clp };
@@ -273,6 +292,26 @@ export function importCheckingCartola(
     left_alone: applied.left_alone,
     anchor_derived: anchorDerived,
   };
+}
+
+/**
+ * A replaced month's row a tax settlement names that the new cartola no longer lists would stay
+ * beside the rows that record the month (no row takes its money, so the settlement cannot move):
+ * the import is refused naming the row, the table and the tax year.
+ */
+function refuseTaxSettlementsLeftBehind(accountId: number, cartola: ParsedCheckingCartola, plan: CheckingCartolaPlan, dbHandle: Database): void {
+  const problems: string[] = [];
+  for (const l of plan.left_alone) {
+    for (const table of l.tables.filter((t) => t === "f22_settlements" || t === "us_f1040_settlements")) {
+      const years = (dbHandle.prepare(`SELECT DISTINCT tax_year FROM ${table} WHERE movement_id = ? ORDER BY tax_year`).all(l.row_id) as { tax_year: number }[]).map((r) => r.tax_year);
+      const row = dbHandle.prepare(`SELECT occurred_on, amount FROM movements WHERE id = ?`).get(l.row_id) as { occurred_on: string; amount: number };
+      problems.push(
+        `movement ${l.row_id} (${row.occurred_on}, ${row.amount} CLP) is named by ${table} of tax year ${years.join(", ")}, and the cartola lists no movement for it: ` +
+          `link the settlement to the row that records its money, then import again`
+      );
+    }
+  }
+  if (problems.length > 0) throw new CartolaImportRefusal(cartola.period_month, cartola.source_file, "tax_settlement", problems);
 }
 
 function totalChanges(dbHandle: Database): number {
@@ -364,6 +403,14 @@ function cartolaMonthRecordPeriod(accountId: number, periodMonth: string, dbHand
   return row;
 }
 
+/** The DESDE of the next month's cartola on file (the bank's statement of this month's close), or null. */
+function nextCartolaMonthDesde(accountId: number, periodMonth: string, dbHandle: Database = db): string | null {
+  const row = dbHandle
+    .prepare(`SELECT period_from FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
+    .get(accountId, addCalendarMonths(periodMonth, 1)) as { period_from: string | null } | undefined;
+  return row?.period_from ?? null;
+}
+
 /** Update reference saldos on an already-imported month (movements unchanged). */
 export function updateCheckingCartolaImportSaldos(
   accountId: number,
@@ -450,7 +497,10 @@ export function importCartolaList(
   // The anchor a cartola of this run derived (it starts the history): the run's next cartolas are
   // checked against it, and `finishCartolaImportRun` writes it.
   let runAnchor: CheckingLedgerAnchorAt | null = null;
-  for (const { cartola, label } of cartolas) {
+  // Oldest month first, whatever order the feeder read the documents in (a stable sort: one
+  // month's documents keep their order): the guard checks each month against the ones before it.
+  const ordered = [...cartolas].sort((a, b) => ymCompare(a.cartola.period_month, b.cartola.period_month));
+  for (const { cartola, label } of ordered) {
     if (isPhantomBoundaryCartolaSlice(cartola)) {
       console.log(
         `  skip phantom boundary month ${cartola.period_month} (${cartola.source_file}, 0 movements)`
@@ -494,17 +544,20 @@ export function importCartolaList(
         fileLogs.push(skippedAlreadyImported(label, cartola));
         continue;
       }
-      if (cartolaCoversWholeMonth(cartolaMonthRecordPeriod(accountId, cartola.period_month)) && cartolaCoversWholeMonth(cartola)) {
-        let diffs: ReturnType<typeof compareCartolaWithMonthOnFile>;
+      const nextDesde = nextCartolaMonthDesde(accountId, cartola.period_month);
+      if (cartolaCoversWholeMonth(cartolaMonthRecordPeriod(accountId, cartola.period_month), nextDesde) && cartolaCoversWholeMonth(cartola, nextDesde)) {
+        let comparison: ReturnType<typeof compareCartolaWithMonthOnFile>;
         try {
-          diffs = compareCartolaWithMonthOnFile(accountId, cartola);
+          comparison = compareCartolaWithMonthOnFile(accountId, cartola);
         } catch (e) {
           fileLogs.push(logParseError(label, e, cartola.period_month));
           continue;
         }
+        const diffs = comparison.differences;
         if (diffs.length === 0) {
           if (!opts.dryRun) recordCartolaMonthConfirmed(accountId, cartola);
-          fileLogs.push(fileLogFromCartola(label, cartola, { status: "confirmed", movements_imported: 0 }));
+          for (const o of comparison.order) console.log(`  ORDER ${label}: ${o}`);
+          fileLogs.push({ ...fileLogFromCartola(label, cartola, { status: "confirmed", movements_imported: 0 }), ...(comparison.order.length > 0 ? { order_notes: comparison.order } : {}) });
           continue;
         }
         const problems = diffs.map((d) => describeCartolaMonthDifference(cartola.period_month, d));
@@ -603,7 +656,28 @@ export function finishCartolaImportRun(
     }
     // The anchor stays pinned unless a cartola of this run derived it (it starts the history, or
     // none was on file): that cartola was checked against the anchor written here.
-    const anchor = ensureCheckingLedgerAnchor(accountId, db, { repin: fileLogs.some((f) => f.anchor_derived === true) });
+    let anchor: ReturnType<typeof ensureCheckingLedgerAnchor>;
+    try {
+      anchor = ensureCheckingLedgerAnchor(accountId, db, { repin: fileLogs.some((f) => f.anchor_derived === true) });
+    } catch (e) {
+      // The ledger disagrees with the cartolas on file for a reason no cartola of this run caused
+      // (each was checked): reported as its own entry; the cartolas this run imported stay.
+      if (!(e instanceof CheckingLedgerAnchorPinnedError)) throw e;
+      console.error(`  LEDGER ANCHOR: ${e.message}`);
+      fileLogs.push({
+        file: "(ledger anchor)",
+        period_month: "",
+        status: "refused",
+        movements_parsed: 0,
+        movements_imported: 0,
+        skipped_rows: [],
+        saldo_final_clp: null,
+        saldo_inicial_clp: null,
+        error: e.message,
+        problems: [e.message],
+      });
+      anchor = { inserted: false, updated: false, cleared: false, amount_clp: null, occurred_on: null, anchor_period_month: null };
+    }
     if (anchor.inserted) {
       console.log(
         `Inserted ledger anchor ${anchor.amount_clp} CLP on ${anchor.occurred_on} (${anchor.anchor_period_month} saldo final).`
@@ -644,4 +718,57 @@ export function finishCartolaImportRun(
       .filter((f) => f.status === "parse_error")
       .map((f) => ({ file: f.file, error: f.error ?? "unknown" })),
   };
+}
+
+/** The rebuild ended with months off their cartolas: everything it did was rolled back. */
+export class CheckingLedgerRebuildRefused extends Error {
+  constructor(readonly accountId: number, readonly problems: string[]) {
+    super(`account ${accountId}: the rebuild leaves ${problems.length} printed balance(s) off the ledger, rolled back:\n  ${problems.join("\n  ")}`);
+  }
+}
+
+export type CheckingLedgerRebuildResult = {
+  anchor_before: { amount_clp: number; occurred_on: string } | null;
+  anchor_after: { amount_clp: number; occurred_on: string } | null;
+  months: { period_month: string; replaced: boolean; inserted: number; restated: number; folded: number; removed: number; cartola_rows_removed: number }[];
+};
+
+/**
+ * The deliberate repair of a cartola account whose ledger and anchor absorbed bad data (rows
+ * written twice, the anchor moved to hide them): the given cartolas are imported again in place
+ * (each month on file replaced, `replaceMonth`), oldest first, without the per-cartola ledger
+ * guard (it reads the anchor being repaired); then the anchor is derived again from the newest
+ * cartola (`repin`), and every cartola month on file must hold — its printed opening and closing
+ * balance against the ledger (`checkingLedgerMonthsOffTheirCartolas`) — or the whole rebuild rolls
+ * back (`CheckingLedgerRebuildRefused`). One transaction. Run by hand only
+ * (`server/scripts/rebuild-checking-ledger-from-cartolas.ts`, report-first).
+ */
+export function rebuildCheckingLedgerFromCartolas(accountId: number, cartolas: ParsedCheckingCartola[], dbHandle: Database = db): CheckingLedgerRebuildResult {
+  return dbHandle.transaction(() => {
+    const anchorBefore = storedCheckingLedgerAnchor(accountId, dbHandle);
+    const months: CheckingLedgerRebuildResult["months"] = [];
+    for (const cartola of [...cartolas].sort((a, b) => ymCompare(a.period_month, b.period_month))) {
+      const replaced = isCheckingCartolaMonthImported(accountId, cartola.period_month, dbHandle);
+      const r = importCheckingCartola(accountId, cartola, dbHandle, { replaceMonth: replaced, rebuild: true });
+      months.push({
+        period_month: cartola.period_month,
+        replaced,
+        inserted: r.movementsInserted,
+        restated: r.partialsRestated + r.movementsSkipped,
+        folded: r.partialsFolded,
+        removed: r.partialsRemoved,
+        cartola_rows_removed: r.cartolaRowsRemoved,
+      });
+    }
+    clearCheckingAccountValuations(accountId, dbHandle);
+    ensureCheckingLedgerAnchor(accountId, dbHandle, { repin: true });
+    const off = checkingLedgerMonthsOffTheirCartolas(accountId, dbHandle);
+    if (off.length > 0) throw new CheckingLedgerRebuildRefused(accountId, off);
+    const after = storedCheckingLedgerAnchor(accountId, dbHandle);
+    return {
+      anchor_before: anchorBefore && { amount_clp: anchorBefore.amount_clp, occurred_on: anchorBefore.occurred_on },
+      anchor_after: after && { amount_clp: after.amount_clp, occurred_on: after.occurred_on },
+      months,
+    };
+  })();
 }
