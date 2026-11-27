@@ -104,6 +104,20 @@ covered the mirror or the cupo gap before this change. Nothing tests: plan-super
 assignments, the card-to-card sync's re-creation, mirror conversion and undo, bucket settlement of
 a credit, or the ordering inputs listed above.
 
+## Plan (branch `claude/reimport-identity`)
+
+Each wave: implementers work in their own worktree off the branch tip, an independent review of
+each diff follows, findings are fixed, the full server suite runs, then the wave merges into the
+branch. A pause after every wave.
+
+| Wave | Items | What changes |
+|---|---|---|
+| 1a | 3, 5, 10 | A one-shot line its cuota plan replaces hands the plan its whole flow (category, note, big group, pieces), not only its arrival; `covered_by_plan` does the same; a real twin beside the plan's purchase is not deleted |
+| 1b | 13, 14, 16 | Mirror conversion by hand, its undo and the automatic card-payment conversion keep the legs' arrival and assignments |
+| 2a | 4, 6, 7 | Bucket settlement of a credit, payment or cuota-tagged line printed under another name; re-import lines with no pair; `unpaired` and `gone` reported in every import result |
+| 2b | 8, 9, 15, 17 | Re-listed and bare annulments; the cartola folding a daily row a transfer or mail row already lists; a fuller cartola's re-rendered row |
+| 3 | 11, scripts, general step | The ledger rebuild, the four manual scripts, and whether card lines get a general "take the retired flow back by key on insert" step once waves 1–2 show what is left |
+
 ## Suggested order of work
 
 1. **3** — the most common way filed work is lost: every purchase paid in cuotas goes through it.
