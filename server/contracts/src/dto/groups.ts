@@ -179,6 +179,13 @@ export interface GroupGlanceRowDto {
   /** Lifetime aportes (net deposits). */
   deposits: Money | null;
   /**
+   * The day's, the month's and the year's P/L and net aportes, the figures behind the `*_pct`
+   * cells (a child: the card's `child[period]` `delta_period` / `deposits_period`; the total row:
+   * `parent[period]`; an account: its row's `delta_*` / `deposits_*`; a liquidated row: its rows'
+   * sums). Null on a cash glance and on the linked cards' row.
+   */
+  period_figures: GroupGlancePeriodFiguresDto | null;
+  /**
    * A cash glance's rows: the balance in the currency each account holds, one entry per currency,
    * largest value in the display unit first (an account has one; a group one per currency its
    * accounts hold; the linked cards their peso total, negative). Empty on an investment glance.
@@ -210,6 +217,14 @@ export interface GroupGlanceRowDto {
    */
   members: GroupGlanceRowDto[];
 }
+
+/** One period of a glance row: its P/L and its net aportes, in the display unit (null when unknown). */
+export interface GroupGlancePeriodFigureDto {
+  pl: Money | null;
+  deposits: Money | null;
+}
+
+export type GroupGlancePeriodFiguresDto = Record<"day" | "month" | "year", GroupGlancePeriodFigureDto>;
 
 /** One currency of a cash group: what its accounts hold in it. */
 export interface GroupGlanceCurrencyDto {

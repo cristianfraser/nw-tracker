@@ -258,13 +258,26 @@ describe("group_glance on the nav-context payload", () => {
     expect(g.total.total_pl?.value ?? null).toBe(card.parent.month.delta_total);
     expect(g.total.deposits?.value ?? null).toBe(card.parent.month.deposits);
     for (const k of ["day", "month", "year"] as const) {
+      expect(g.total.period_figures![k].pl?.value ?? null).toBe(card.parent[k].delta_period);
+      expect(g.total.period_figures![k].deposits?.value ?? null).toBe(card.parent[k].deposits_period);
       expect(g.periods[k].pl?.value ?? null).toBe(card.parent[k].delta_period);
       expect(g.periods[k].pct).toBe(card.parent_pct[k].value);
     }
     expect(g.day).toEqual(g.periods.day);
     expect(g.total.day_pct).toBe(card.parent_pct.day.value);
     const s2Card = ctx.card_metrics_by_slug[`${PREFIX}_s2`];
-    if (s2Card) expect(g.rows[1]!.month_pct).toBe(s2Card.row_pct.month.value);
+    if (s2Card) {
+      expect(g.rows[1]!.month_pct).toBe(s2Card.row_pct.month.value);
+      for (const k of ["day", "month", "year"] as const) {
+        expect(g.rows[1]!.period_figures![k].pl?.value ?? null).toBe(s2Card.child[k].delta_period);
+        expect(g.rows[1]!.period_figures![k].deposits?.value ?? null).toBe(s2Card.child[k].deposits_period);
+      }
+    }
+    // An account row's figures are its dashboard row's.
+    const member = g.rows[0]!.members[0]!;
+    const accountRow = ctx.accounts.find((a) => a.account_id === member.account_id)!;
+    expect(member.period_figures!.month.pl?.value ?? null).toBe(accountRow.delta_month ?? null);
+    expect(member.period_figures!.year.deposits?.value ?? null).toBe(accountRow.deposits_year ?? null);
   });
 
   it("sums the composition over the members and draws a sparkline per row", async () => {
@@ -367,6 +380,13 @@ describe("group_glance on the nav-context payload", () => {
     expect(liquidated.total_pl).toMatchObject({ currency: "usd" });
     expect(liquidated.total_pl!.value).toBeCloseTo(sum((m) => m.total_pl!.value), 9);
     expect(liquidated.deposits!.value).toBeCloseTo(sum((m) => m.deposits!.value), 9);
+    // Its period figures are its rows' too.
+    for (const k of ["day", "month", "year"] as const) {
+      const parts = liquidated.members.map((m) => m.period_figures![k].deposits).filter((m) => m != null);
+      expect(liquidated.period_figures![k].deposits?.value ?? null).toBe(
+        parts.length > 0 ? parts.reduce((s, m) => s + m!.value, 0) : null
+      );
+    }
   });
 
   it("leaves a list alone with one sold-out row, or with nothing held", async () => {

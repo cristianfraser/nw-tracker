@@ -3971,13 +3971,13 @@
           "en": "value",
           "es": "valor"
         },
+        "today": {
+          "en": "today",
+          "es": "hoy"
+        },
         "share": {
           "en": "weight",
           "es": "peso"
-        },
-        "day": {
-          "en": "day",
-          "es": "día"
         },
         "month": {
           "en": "month",
@@ -3990,6 +3990,16 @@
         "total": {
           "en": "total",
           "es": "total"
+        }
+      },
+      "figure": {
+        "dayPl": {
+          "en": "today's P/L",
+          "es": "P/L de hoy"
+        },
+        "pl": {
+          "en": "P/L",
+          "es": "P/L"
         },
         "deposits": {
           "en": "contributions",
