@@ -10,11 +10,15 @@
  * --xlsx-only, --only-xlsx=a.xlsx,b.xlsx, --dir=<xlsx dir>. To start an account's cartola ledger
  * over, wipe it on the server first (`npm run wipe:cartola-ledger -w nw-tracker-server`).
  *
- * Exit status: non-zero when a cartola could not be read or imported, or the server refused.
+ * Exit status: non-zero when a cartola could not be read or imported, or the server refused one
+ * (the ledger does not agree with it, or it states a month on file differently): each reason is a
+ * step problem, listed in the run's notification. A refused cartola stays where it is and is sent
+ * again with the next run, like every cartola on disk.
  */
 import { bankAccountStatementsKind, type BankAccountStatementsApplyDetails } from "nw-tracker-contracts";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { readCheckingCartolas, readCuentaVistaCartolas } from "./cartolas.js";
+import { reportStepResult } from "../stepResult.js";
 
 const argv = process.argv.slice(2);
 const flag = (name: string) => argv.includes(`--${name}`);
@@ -56,12 +60,24 @@ async function main(): Promise<number> {
     console.error(`FAILED — ${describeIngestFailure(err)}`);
     return 1;
   }
+  const problems: string[] = [];
   for (const f of details.files) {
     if (f.status === "skipped_already_imported") continue;
+    if (f.status === "refused") {
+      // Nothing of it was written; every reason reaches the run's notification.
+      console.error(`  ${f.file} ${f.period_month} REFUSED, nothing written:`);
+      for (const p of f.problems) {
+        console.error(`    ${p}`);
+        problems.push(`${f.file}: ${p}`);
+      }
+      continue;
+    }
+    if (f.status === "parse_error") problems.push(`${f.file}${f.period_month ? ` ${f.period_month}` : ""}: ${f.error ?? "could not be read"}`);
     console.log(`  ${f.file} ${f.period_month} ${f.status}${f.movements_imported ? ` (${f.movements_imported} movement(s))` : ""}${f.error ? ` — ${f.error}` : ""}`);
   }
   for (const line of details.report) console.log(line);
-  return details.files.some((f) => f.status === "parse_error") ? 1 : 0;
+  if (problems.length > 0) reportStepResult({ problems });
+  return problems.length > 0 ? 1 : 0;
 }
 
 process.exitCode = await main();

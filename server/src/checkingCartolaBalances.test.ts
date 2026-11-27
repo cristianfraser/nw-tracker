@@ -4,7 +4,7 @@ import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
-import { checkingLedgerAnchorNote, checkingMovementBalanceAtMonthEnd, checkingMovementBalanceClpAt, checkingMovementBalanceClpAtCached, clearCheckingAccountValuations, clearCheckingLedgerAnchor, defaultCheckingLedgerAnchorDate, ensureCheckingLedgerAnchor, getCartolaDerivedAnchor, getCheckingLedgerAnchor, nonAnchorClpFlowTotals, upsertCheckingLedgerAnchor } from "./checkingCartolaBalances.js";
+import { CheckingLedgerAnchorPinnedError, checkingLedgerAnchorNote, checkingMovementBalanceAtMonthEnd, checkingMovementBalanceClpAt, checkingMovementBalanceClpAtCached, clearCheckingAccountValuations, clearCheckingLedgerAnchor, defaultCheckingLedgerAnchorDate, ensureCheckingLedgerAnchor, getCartolaDerivedAnchor, getCheckingLedgerAnchor, nonAnchorClpFlowTotals, upsertCheckingLedgerAnchor } from "./checkingCartolaBalances.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
@@ -148,7 +148,7 @@ describe("checkingCartolaBalances", () => {
       }
     });
 
-    it("recomputes anchor amount when a manual gap-fill movement is added", () => {
+    it("an anchor on file is pinned: a movement that would move it throws, and a cleared anchor is derived again", () => {
       const accountId = createSyntheticAnchorAccount();
       try {
         seedCartolaImport(accountId, TEST_MONTH_EARLY, 500);
@@ -164,22 +164,22 @@ describe("checkingCartolaBalances", () => {
            VALUES (?, 50, 'clp', ?, 'manual gap-fill', NULL)`
         ).run(accountId, `${TEST_MONTH_LATE}-15`);
 
+        // The walk no longer lands on the newest cartola: never absorbed by moving the anchor.
+        expect(() => ensureCheckingLedgerAnchor(accountId)).toThrow(CheckingLedgerAnchorPinnedError);
+        expect(getCheckingLedgerAnchor(accountId)?.amount_clp).toBe(900);
+        // The explicit path: the anchor cleared by hand is derived again.
+        clearCheckingLedgerAnchor(accountId);
         const resync = ensureCheckingLedgerAnchor(accountId);
-        expect(resync.updated).toBe(true);
+        expect(resync.inserted).toBe(true);
         // anchor = saldo_final(900) - movement(50) = 850
         expect(resync.amount_clp).toBe(850);
-
-        const balanceAtAnchor = checkingMovementBalanceClpAt(
-          accountId,
-          monthEndUtcYmd(TEST_MONTH_LATE)
-        );
-        expect(balanceAtAnchor).toBe(900);
+        expect(checkingMovementBalanceClpAt(accountId, monthEndUtcYmd(TEST_MONTH_LATE))).toBe(900);
       } finally {
         destroySyntheticAnchorAccount(accountId);
       }
     });
 
-    it("auto-sync overwrites manual UI anchor amount and date", () => {
+    it("a hand-set anchor stays pinned: the derivation refuses to overwrite it", () => {
       const accountId = createSyntheticAnchorAccount();
       try {
         seedCartolaImport(accountId, TEST_MONTH_EARLY, 500);
@@ -191,10 +191,8 @@ describe("checkingCartolaBalances", () => {
         expect(manual?.amount_clp).toBe(123);
         expect(manual?.occurred_on).toBe(`${TEST_MONTH_LATE}-20`);
 
-        const resync = ensureCheckingLedgerAnchor(accountId);
-        expect(resync.updated).toBe(true);
-        expect(resync.amount_clp).toBe(900);
-        expect(resync.occurred_on).toBe(TEST_DEFAULT_ANCHOR_DATE);
+        expect(() => ensureCheckingLedgerAnchor(accountId)).toThrow(/pinned by the cartolas on file.*difference 777/);
+        expect(getCheckingLedgerAnchor(accountId)?.amount_clp).toBe(123);
       } finally {
         destroySyntheticAnchorAccount(accountId);
       }

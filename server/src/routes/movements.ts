@@ -11,9 +11,9 @@ import { db } from "../db.js";
 import { insertMovement } from "../movementWrites.js";
 import { clearAggregationCache } from "../cacheRegistry.js";
 import { supersedeImportedCheckingRowsForTransfer } from "../checkingTransferLegReconcile.js";
-import { isCheckingLedgerAnchorNote, maybeSyncCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
+import { CheckingLedgerAnchorPinnedError, isCheckingLedgerAnchorNote, maybeSyncCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { accountIdFromReq, parseBody } from "./shared.js";
-import { writeHandler } from "../inputError.js";
+import { InputError, writeHandler } from "../inputError.js";
 import {
   movementCreateBodySchema,
   optionAssignmentSchema,
@@ -91,10 +91,19 @@ app.post("/api/accounts/:id/movements", writeHandler((req, res) => {
     return;
   }
   const { amount, currency, occurred_on, note, units_delta } = validated;
-  const id = insertMovement({ accountId, amount, currency, occurredOn: occurred_on, note, unitsDelta: units_delta });
   const bucketKind = accountBucketKindSlug(account.bucket_slug);
-  if (!isCheckingLedgerAnchorNote(note)) {
-    maybeSyncCheckingLedgerAnchor(accountId, bucketKind);
+  // The movement and the anchor check in one transaction: a movement that would put the ledger
+  // off a cartola on file is refused, never absorbed by moving the anchor.
+  let id: number;
+  try {
+    id = db.transaction(() => {
+      const written = insertMovement({ accountId, amount, currency, occurredOn: occurred_on, note, unitsDelta: units_delta });
+      if (!isCheckingLedgerAnchorNote(note)) maybeSyncCheckingLedgerAnchor(accountId, bucketKind);
+      return written;
+    })();
+  } catch (err) {
+    if (err instanceof CheckingLedgerAnchorPinnedError) throw new InputError(err.message, 409);
+    throw err;
   }
   res.status(201).json({ id, units_delta });
 }));

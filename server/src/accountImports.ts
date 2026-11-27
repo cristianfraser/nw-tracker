@@ -1,5 +1,6 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
+import { InputError } from "./inputError.js";
 import { importCcStatementPdfsForAccount, type CcPdfUploadFile } from "./ccStatementPdfUpload.js";
 import {
   newWebPasteBatchId,
@@ -195,6 +196,9 @@ function applyCartolaUpload(payload: BankAccountStatementsPayload, filename: str
   const details = applyBankAccountStatements(payload, flows);
   const failed = details.files.find((f) => f.status === "parse_error");
   if (failed) throw new Error(`${filename}: ${failed.error ?? "the cartola could not be imported"}`);
+  // A cartola the ledger guard or the second-document cross-check refused: nothing of it was written.
+  const refused = details.files.find((f) => f.status === "refused");
+  if (refused) throw new InputError(`${filename}: refused, nothing written — ${refused.problems.join("; ")}`, 409);
   const periodMonth = payload.statements[0]!.period_month;
   const alreadyImported = details.files.every((f) => f.status !== "imported");
   const inserted = details.files.reduce((n, f) => n + f.movements_imported, 0);

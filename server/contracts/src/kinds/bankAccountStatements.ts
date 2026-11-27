@@ -70,8 +70,10 @@ export const unreadableBankStatementSchema = z
 
 /**
  * A bank account's statements (cartolas), as many as the feeder read this run. The server imports
- * each period it has not imported yet (a period imported already only refreshes its printed
- * balances, or replaces an empty one), and re-derives the account's opening anchor from the latest.
+ * each period it has not imported yet into a ledger that agrees with its printed balances (a
+ * period imported already only refreshes its printed balances, is cross-checked by another
+ * document covering the whole month, or is replaced by a fuller partial one); each statement is
+ * applied or refused on its own.
  */
 export const bankAccountStatementsKind = defineIngestKind({
   kind: "bank_account.statements",
@@ -97,11 +99,17 @@ export type BankAccountStatementsApplyDetails = {
   files: {
     file: string;
     period_month: string;
-    /** imported | dry_run | skipped_already_imported | updated_saldo_ref | parse_error */
+    /**
+     * imported | dry_run | skipped_already_imported | updated_saldo_ref | parse_error | confirmed
+     * (a second document stated the month on file alike) | refused (the ledger does not agree with
+     * it, or it states a month on file differently: nothing of it written, `problems` says why).
+     */
     status: string;
     movements_parsed: number;
     movements_imported: number;
     error: string | null;
+    /** A refused statement's reasons, one per line (empty otherwise). */
+    problems: string[];
   }[];
   /** The import's own log, line by line, as the feeder prints it. */
   report: string[];

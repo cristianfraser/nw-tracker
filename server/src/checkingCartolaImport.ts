@@ -19,6 +19,16 @@ import {
   ensureCheckingLedgerAnchor,
 } from "./checkingCartolaBalances.js";
 import { assertCheckingCartolaSaldoIdentity } from "./checkingCartolaSaldoValidation.js";
+import { cartolaCoversWholeMonth, type CartolaMonthPeriod } from "./checkingCartolaMonthBounds.js";
+import { compareCartolaWithMonthOnFile, describeCartolaMonthDifference, recordCartolaMonthConfirmed } from "./checkingCartolaCrossCheck.js";
+import {
+  assertCartolaLedgerAfterApply,
+  assertCartolaOpeningAgrees,
+  assertCartolaSaldoRefreshAgrees,
+  CartolaImportRefusal,
+  cartolaLedgerFrame,
+  type CheckingLedgerAnchorAt,
+} from "./checkingCartolaLedgerGuard.js";
 import { assertCartolaMonthWrote, countExistingCartolaMovementsForMonth, recordCartolaMonthImport } from "./checkingCartolaMonthRecord.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
@@ -196,24 +206,45 @@ export type CheckingCartolaImportResult = {
   listed_row_folds: ListedRowFold[];
   /** Rows the cartola would remove or fold away that a tax settlement or payslip names: left as they are. */
   left_alone: CheckingCartolaPlan["left_alone"];
+  /**
+   * The anchor this cartola derived (it starts the account's history, or no anchor was on file):
+   * not written here — the run carries it to its next cartolas and writes it at its end
+   * (`finishCartolaImportRun`). Null when the anchor on file stood.
+   */
+  anchor_derived: CheckingLedgerAnchorAt | null;
 };
 
 /**
  * One cartola month into the checking account, as a plan applied (`checkingCartolaPlan.ts` →
  * `checkingCartolaPlanApply.ts`): rows on file — the cartola's own from an earlier import, the daily
  * listing's — are restated, not deleted and written again; the gates (saldo identity, saldo chain,
- * «wrote none») throw before anything is written. `replaceMonth`: the month is imported again from a
+ * «wrote none») throw before anything is written, and the ledger guard refuses a cartola the
+ * ledger does not agree with (`checkingCartolaLedgerGuard.ts`: its opening before, its closing
+ * after, inside the apply's transaction). `replaceMonth`: the month is imported again from a
  * corrected or fuller cartola (its rows the new one no longer lists go, the others are restated).
  */
 export function importCheckingCartola(
   accountId: number,
   cartola: ParsedCheckingCartola,
   dbHandle: Database = db,
-  opts?: { replaceMonth?: boolean }
+  /** `runAnchor`: the anchor an earlier cartola of the run derived (`CheckingCartolaImportResult.anchor_derived`). */
+  opts?: { replaceMonth?: boolean; runAnchor?: CheckingLedgerAnchorAt | null }
 ): CheckingCartolaImportResult {
+  // The ledger must agree with the cartola's printed opening before anything is written, and with
+  // its closing once applied (inside the apply's transaction): `checkingCartolaLedgerGuard.ts`.
+  // The document's own consistency first (its printed balances against its movements).
+  assertCheckingCartolaSaldoIdentity(cartola);
+  const frame = cartolaLedgerFrame(accountId, cartola.period_month, dbHandle, opts?.runAnchor ?? null);
+  assertCartolaOpeningAgrees(accountId, cartola, frame, dbHandle);
   const plan = planCheckingCartola({ ...loadCheckingCartolaPlanInput(accountId, cartola, dbHandle), replace_month: opts?.replaceMonth === true });
   const changesBefore = totalChanges(dbHandle);
-  const applied = applyCheckingCartolaPlan(accountId, cartola, plan, dbHandle, { replaceMonth: opts?.replaceMonth === true });
+  let anchorDerived: CheckingLedgerAnchorAt | null = null;
+  const applied = applyCheckingCartolaPlan(accountId, cartola, plan, dbHandle, {
+    replaceMonth: opts?.replaceMonth === true,
+    afterWrite: () => {
+      anchorDerived = assertCartolaLedgerAfterApply(accountId, cartola, frame, dbHandle);
+    },
+  });
   const flowOf = (index: number): ImportFlowItem => {
     const mv = cartola.movements[index]!;
     return { occurred_on: mv.occurred_on, description: mv.description, amount_clp: mv.amount_clp };
@@ -240,6 +271,7 @@ export function importCheckingCartola(
     flow_adoptions: applied.flow_adoptions,
     listed_row_folds: applied.listed_row_folds,
     left_alone: applied.left_alone,
+    anchor_derived: anchorDerived,
   };
 }
 
@@ -310,15 +342,29 @@ export function cartolaImportShouldReplaceExisting(
   return newCount > oldCount || (newCount > 0 && oldCount === 0);
 }
 
-/** Update reference saldos on an already-imported month (movements unchanged). */
-/** Whether the month's record names the cartola's own document (by basename). */
+/**
+ * Whether the month's record names the cartola's own document (by basename): the document it was
+ * imported from, or the second document that confirmed it (`checkingCartolaCrossCheck.ts`).
+ */
 export function cartolaMonthRecordNamesFile(accountId: number, cartola: ParsedCheckingCartola, dbHandle: Database = db): boolean {
   const row = dbHandle
-    .prepare(`SELECT source_file FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
-    .get(accountId, cartola.period_month) as { source_file: string } | undefined;
-  return row != null && cartolaSourceFileBasename(row.source_file) === cartolaSourceFileBasename(cartola.source_file);
+    .prepare(`SELECT source_file, confirmed_by_file FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
+    .get(accountId, cartola.period_month) as { source_file: string; confirmed_by_file: string | null } | undefined;
+  if (row == null) return false;
+  const own = cartolaSourceFileBasename(cartola.source_file);
+  return cartolaSourceFileBasename(row.source_file) === own || (row.confirmed_by_file != null && cartolaSourceFileBasename(row.confirmed_by_file) === own);
 }
 
+/** The month record's own period (DESDE / HASTA of the document it was imported from). */
+function cartolaMonthRecordPeriod(accountId: number, periodMonth: string, dbHandle: Database = db): CartolaMonthPeriod {
+  const row = dbHandle
+    .prepare(`SELECT period_month, period_from, period_to FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`)
+    .get(accountId, periodMonth) as CartolaMonthPeriod | undefined;
+  if (row == null) throw new Error(`account ${accountId}: no cartola month ${periodMonth} on file`);
+  return row;
+}
+
+/** Update reference saldos on an already-imported month (movements unchanged). */
 export function updateCheckingCartolaImportSaldos(
   accountId: number,
   cartola: ParsedCheckingCartola,
@@ -371,6 +417,28 @@ export function shouldBackfillCartolaSaldoRef(
   return row.saldo_final_clp !== cartola.saldo_final_clp;
 }
 
+function skippedAlreadyImported(label: string, cartola: ParsedCheckingCartola): CheckingCartolaFileImportLog {
+  return {
+    file: label,
+    period_month: cartola.period_month,
+    status: "skipped_already_imported",
+    movements_parsed: cartola.movements.length,
+    movements_imported: 0,
+    skipped_rows: cartola.skipped,
+    saldo_final_clp: cartola.saldo_final_clp,
+    saldo_inicial_clp: cartola.saldo_inicial_clp,
+  };
+}
+
+/** A refused cartola's log: nothing of it was written; its problems, one per line. */
+function refusedLog(label: string, cartola: ParsedCheckingCartola, refusal: CartolaImportRefusal): CheckingCartolaFileImportLog {
+  return {
+    ...fileLogFromCartola(label, cartola, { status: "refused", movements_imported: 0 }),
+    error: refusal.message,
+    problems: refusal.problems,
+  };
+}
+
 export function importCartolaList(
   accountId: number,
   cartolas: { cartola: ParsedCheckingCartola; label: string }[],
@@ -379,6 +447,9 @@ export function importCartolaList(
   /** Collects each imported cartola's rows, for an upload's result view. */
   flows?: { inserted: ImportFlowItem[]; skipped: SkippedImportFlowItem[] }
 ): void {
+  // The anchor a cartola of this run derived (it starts the history): the run's next cartolas are
+  // checked against it, and `finishCartolaImportRun` writes it.
+  let runAnchor: CheckingLedgerAnchorAt | null = null;
   for (const { cartola, label } of cartolas) {
     if (isPhantomBoundaryCartolaSlice(cartola)) {
       console.log(
@@ -387,38 +458,64 @@ export function importCartolaList(
       continue;
     }
     // A month on file is written again only when the file replaces it: forced (`forceReimport`;
-    // with `forceSameFileOnly`, only a month whose record names this document), or fuller
-    // (`cartolaImportShouldReplaceExisting`). Then it is a diff against the month's rows (restate,
-    // insert, remove what the new file no longer lists); any other rendering of the month — the
-    // same file again, the other format, a slice of the next document — writes nothing (its printed
-    // saldo only refreshes the record of the same file), decided before the account is read.
+    // with `forceSameFileOnly`, only a month whose record names this document), or, for a document
+    // covering part of a month, fuller (`cartolaImportShouldReplaceExisting`). Then it is a diff
+    // against the month's rows (restate, insert, remove what the new file no longer lists). The
+    // same document again writes nothing (its printed saldo only refreshes its record); another
+    // document covering the whole month, as the month on file does, is a cross-check
+    // (`checkingCartolaCrossCheck.ts`): equal confirms the month, different is refused. Decided
+    // before the account's rows are read.
     const onFile = !opts.wipe && isCheckingCartolaMonthImported(accountId, cartola.period_month);
-    const forced = opts.forceReimport === true && (!opts.forceSameFileOnly || cartolaMonthRecordNamesFile(accountId, cartola));
-    const replaceMonth = onFile && (forced || cartolaImportShouldReplaceExisting(accountId, cartola));
-    if (onFile && !replaceMonth) {
-      if (shouldBackfillCartolaSaldoRef(accountId, cartola)) {
-        if (!opts.dryRun) {
-          updateCheckingCartolaImportSaldos(accountId, cartola);
+    const sameDocument = onFile && cartolaMonthRecordNamesFile(accountId, cartola);
+    const forced = opts.forceReimport === true && (!opts.forceSameFileOnly || sameDocument);
+    // On file and reaching the import: forced, or replaced by a fuller document.
+    const replaceMonth = onFile;
+    if (onFile && !forced) {
+      if (sameDocument) {
+        if (shouldBackfillCartolaSaldoRef(accountId, cartola)) {
+          try {
+            assertCartolaSaldoRefreshAgrees(accountId, cartola);
+          } catch (e) {
+            if (!(e instanceof CartolaImportRefusal)) throw e;
+            fileLogs.push(refusedLog(label, cartola, e));
+            continue;
+          }
+          if (!opts.dryRun) {
+            updateCheckingCartolaImportSaldos(accountId, cartola);
+          }
+          fileLogs.push(
+            fileLogFromCartola(label, cartola, {
+              status: "updated_saldo_ref",
+              movements_imported: 0,
+            })
+          );
+          continue;
         }
-        fileLogs.push(
-          fileLogFromCartola(label, cartola, {
-            status: "updated_saldo_ref",
-            movements_imported: 0,
-          })
-        );
+        fileLogs.push(skippedAlreadyImported(label, cartola));
         continue;
       }
-      fileLogs.push({
-        file: label,
-        period_month: cartola.period_month,
-        status: "skipped_already_imported",
-        movements_parsed: cartola.movements.length,
-        movements_imported: 0,
-        skipped_rows: cartola.skipped,
-        saldo_final_clp: cartola.saldo_final_clp,
-        saldo_inicial_clp: cartola.saldo_inicial_clp,
-      });
-      continue;
+      if (cartolaCoversWholeMonth(cartolaMonthRecordPeriod(accountId, cartola.period_month)) && cartolaCoversWholeMonth(cartola)) {
+        let diffs: ReturnType<typeof compareCartolaWithMonthOnFile>;
+        try {
+          diffs = compareCartolaWithMonthOnFile(accountId, cartola);
+        } catch (e) {
+          fileLogs.push(logParseError(label, e, cartola.period_month));
+          continue;
+        }
+        if (diffs.length === 0) {
+          if (!opts.dryRun) recordCartolaMonthConfirmed(accountId, cartola);
+          fileLogs.push(fileLogFromCartola(label, cartola, { status: "confirmed", movements_imported: 0 }));
+          continue;
+        }
+        const problems = diffs.map((d) => describeCartolaMonthDifference(cartola.period_month, d));
+        console.error(`  REFUSED ${label}: it states ${cartola.period_month} differently from the month on file:\n    ${problems.join("\n    ")}`);
+        fileLogs.push(refusedLog(label, cartola, new CartolaImportRefusal(cartola.period_month, cartola.source_file, "second_document_differs", problems)));
+        continue;
+      }
+      if (!cartolaImportShouldReplaceExisting(accountId, cartola)) {
+        fileLogs.push(skippedAlreadyImported(label, cartola));
+        continue;
+      }
     }
 
     if (opts.dryRun) {
@@ -432,7 +529,8 @@ export function importCartolaList(
     }
 
     try {
-      const r = importCheckingCartola(accountId, cartola, db, { replaceMonth });
+      const r = importCheckingCartola(accountId, cartola, db, { replaceMonth, runAnchor });
+      if (r.anchor_derived) runAnchor = r.anchor_derived;
       const ambiguous = r.flow_adoptions.filter((a) => a.status === "ambiguous");
       if (r.flow_adoptions.length > 0) {
         console.log(
@@ -468,13 +566,19 @@ export function importCartolaList(
       }
       flows?.inserted.push(...r.inserted_flows);
       flows?.skipped.push(...r.skipped_flows);
-      fileLogs.push(
-        fileLogFromCartola(label, cartola, {
+      fileLogs.push({
+        ...fileLogFromCartola(label, cartola, {
           status: "imported",
           movements_imported: r.movementsInserted,
-        })
-      );
+        }),
+        ...(r.anchor_derived ? { anchor_derived: true } : {}),
+      });
     } catch (e) {
+      if (e instanceof CartolaImportRefusal) {
+        console.error(`  REFUSED ${label}: ${e.problems.join("; ")}`);
+        fileLogs.push(refusedLog(label, cartola, e));
+        continue;
+      }
       fileLogs.push(logParseError(label, e, cartola.period_month));
     }
   }
@@ -497,7 +601,9 @@ export function finishCartolaImportRun(
     if (pruned.length > 0) {
       console.log(`  pruned phantom boundary month(s): ${pruned.join(", ")}`);
     }
-    const anchor = ensureCheckingLedgerAnchor(accountId);
+    // The anchor stays pinned unless a cartola of this run derived it (it starts the history, or
+    // none was on file): that cartola was checked against the anchor written here.
+    const anchor = ensureCheckingLedgerAnchor(accountId, db, { repin: fileLogs.some((f) => f.anchor_derived === true) });
     if (anchor.inserted) {
       console.log(
         `Inserted ledger anchor ${anchor.amount_clp} CLP on ${anchor.occurred_on} (${anchor.anchor_period_month} saldo final).`
