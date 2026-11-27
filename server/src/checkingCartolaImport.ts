@@ -6,7 +6,7 @@ import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { planCheckingCartola, type CheckingCartolaPlan } from "./checkingCartolaPlan.js";
 import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
-import { applyCheckingCartolaPlan } from "./checkingCartolaPlanApply.js";
+import { applyCheckingCartolaPlan, checkingFoldConflictReport, type CheckingRowFoldConflict } from "./checkingCartolaPlanApply.js";
 import type { ListedRowFold } from "./checkingCartolaRestate.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import {
@@ -202,6 +202,10 @@ export type CheckingCartolaImportResult = {
   partialsRemoved: number;
   /** A replaced month's cartola rows the new cartola no longer lists, removed. */
   cartolaRowsRemoved: number;
+  /** The rebuild's replaced cartola rows folded into the kept row of their bank day and pesos. */
+  cartolaRowsFolded: number;
+  /** Folds whose rows held different assignments (notes joined, a category or big group dropped). */
+  fold_conflicts: CheckingRowFoldConflict[];
   /** Whether the import wrote anything (a cartola on file as it states writes nothing). */
   wrote: boolean;
   inserted_flows: ImportFlowItem[];
@@ -246,7 +250,21 @@ export function importCheckingCartola(
   const frame: CartolaLedgerFrame = opts?.rebuild ? { kind: "rebuild" } : cartolaLedgerFrame(accountId, cartola.period_month, dbHandle, opts?.runAnchor ?? null);
   assertNoLedgerDrift(accountId, cartola, frame, opts?.runAnchor != null, dbHandle);
   assertCartolaOpeningAgrees(accountId, cartola, frame, dbHandle);
-  const plan = planCheckingCartola({ ...loadCheckingCartolaPlanInput(accountId, cartola, dbHandle), replace_month: opts?.replaceMonth === true });
+  const plan = planCheckingCartola({
+    ...loadCheckingCartolaPlanInput(accountId, cartola, dbHandle),
+    replace_month: opts?.replaceMonth === true,
+    rebuild: opts?.rebuild === true,
+  });
+  if (plan.unfoldable.length > 0) {
+    throw new CheckingLedgerRebuildRefused(
+      accountId,
+      plan.unfoldable.map(
+        (u) =>
+          `${cartola.period_month}: cartola row ${u.row_id} (${u.bank_day}, ${u.amount_clp}) carries what the user filed, the new cartola no longer lists it and no kept row of its day and pesos takes it`
+      ),
+      "would drop filed work"
+    );
+  }
   refuseTaxSettlementsLeftBehind(accountId, cartola, plan, dbHandle);
   const changesBefore = totalChanges(dbHandle);
   let anchorDerived: CheckingLedgerAnchorAt | null = null;
@@ -281,9 +299,11 @@ export function importCheckingCartola(
     movementsInserted: applied.inserted.length,
     movementsSkipped: plan.keep.filter((k) => k.why !== "daily_listing").length + plan.confirm.length,
     partialsRestated: plan.keep.filter((k) => k.why === "daily_listing").length,
-    partialsFolded: plan.fold.length,
+    partialsFolded: plan.fold.filter((f) => f.why === "daily_listing").length,
     partialsRemoved: dailyRemoved,
     cartolaRowsRemoved: plan.remove.length - dailyRemoved,
+    cartolaRowsFolded: plan.fold.filter((f) => f.why === "replaced_cartola_row").length,
+    fold_conflicts: applied.fold_conflicts,
     wrote: totalChanges(dbHandle) !== changesBefore,
     inserted_flows,
     skipped_flows,
@@ -598,6 +618,7 @@ export function importCartolaList(
             refused.map((f) => `daily row ${f.row_id} → ${f.kept_row_id} (${f.reason})`).join("; ")
         );
       }
+      for (const c of r.fold_conflicts) console.log(`  cartola ${cartola.period_month}: ${checkingFoldConflictReport(c)}`);
       if (r.left_alone.length > 0) {
         console.log(
           `  cartola ${cartola.period_month}: LEFT AS THEY ARE (a record names them; the month lists their money elsewhere): ` +
@@ -720,17 +741,33 @@ export function finishCartolaImportRun(
   };
 }
 
-/** The rebuild ended with months off their cartolas: everything it did was rolled back. */
+/**
+ * The rebuild was refused, everything it did rolled back: it ended with months off their cartolas,
+ * or it would drop a replaced cartola row with filed work no kept row takes.
+ */
 export class CheckingLedgerRebuildRefused extends Error {
-  constructor(readonly accountId: number, readonly problems: string[]) {
-    super(`account ${accountId}: the rebuild leaves ${problems.length} printed balance(s) off the ledger, rolled back:\n  ${problems.join("\n  ")}`);
+  constructor(readonly accountId: number, readonly problems: string[], what = "leaves printed balance(s) off the ledger") {
+    super(`account ${accountId}: the rebuild ${what} (${problems.length}), rolled back:\n  ${problems.join("\n  ")}`);
   }
 }
 
 export type CheckingLedgerRebuildResult = {
   anchor_before: { amount_clp: number; occurred_on: string } | null;
   anchor_after: { amount_clp: number; occurred_on: string } | null;
-  months: { period_month: string; replaced: boolean; inserted: number; restated: number; folded: number; removed: number; cartola_rows_removed: number }[];
+  months: {
+    period_month: string;
+    replaced: boolean;
+    inserted: number;
+    restated: number;
+    folded: number;
+    removed: number;
+    cartola_rows_removed: number;
+    /** Replaced cartola rows folded into the kept row of their bank day and pesos (what was filed on them moved). */
+    cartola_rows_folded: number;
+    fold_conflicts: CheckingRowFoldConflict[];
+    /** Set when the slice was not imported: the month's record names another document that owns it. */
+    owned_by?: string;
+  }[];
 };
 
 /**
@@ -740,15 +777,38 @@ export type CheckingLedgerRebuildResult = {
  * guard (it reads the anchor being repaired); then the anchor is derived again from the newest
  * cartola (`repin`), and every cartola month on file must hold — its printed opening and closing
  * balance against the ledger (`checkingLedgerMonthsOffTheirCartolas`) — or the whole rebuild rolls
- * back (`CheckingLedgerRebuildRefused`). One transaction. Run by hand only
+ * back (`CheckingLedgerRebuildRefused`). A replaced month's cartola row the new cartola no longer
+ * lists folds into the kept row of its bank day and signed pesos (`CheckingCartolaPlanInput.rebuild`),
+ * so what the user filed on a copy moves to the row that stays; one with filed work and no such row
+ * refuses the rebuild naming it. `sameFileOnly` (the cuenta vista, whose documents straddle months):
+ * a month on file is replaced only by the document its record names, or by a fuller one — the
+ * import's ownership rule (`importCartolaList`'s `forceSameFileOnly`); another document's slice is
+ * left out, reported as `owned_by`. One transaction. Run by hand only
  * (`server/scripts/rebuild-checking-ledger-from-cartolas.ts`, report-first).
  */
-export function rebuildCheckingLedgerFromCartolas(accountId: number, cartolas: ParsedCheckingCartola[], dbHandle: Database = db): CheckingLedgerRebuildResult {
+export function rebuildCheckingLedgerFromCartolas(
+  accountId: number,
+  cartolas: ParsedCheckingCartola[],
+  dbHandle: Database = db,
+  opts: { sameFileOnly?: boolean } = {}
+): CheckingLedgerRebuildResult {
   return dbHandle.transaction(() => {
     const anchorBefore = storedCheckingLedgerAnchor(accountId, dbHandle);
     const months: CheckingLedgerRebuildResult["months"] = [];
     for (const cartola of [...cartolas].sort((a, b) => ymCompare(a.period_month, b.period_month))) {
       const replaced = isCheckingCartolaMonthImported(accountId, cartola.period_month, dbHandle);
+      if (
+        replaced &&
+        opts.sameFileOnly &&
+        !cartolaMonthRecordNamesFile(accountId, cartola, dbHandle) &&
+        !cartolaImportShouldReplaceExisting(accountId, cartola, dbHandle)
+      ) {
+        const owner = (dbHandle.prepare(`SELECT source_file FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).get(accountId, cartola.period_month) as {
+          source_file: string;
+        }).source_file;
+        months.push({ period_month: cartola.period_month, replaced: false, inserted: 0, restated: 0, folded: 0, removed: 0, cartola_rows_removed: 0, cartola_rows_folded: 0, fold_conflicts: [], owned_by: owner });
+        continue;
+      }
       const r = importCheckingCartola(accountId, cartola, dbHandle, { replaceMonth: replaced, rebuild: true });
       months.push({
         period_month: cartola.period_month,
@@ -758,6 +818,8 @@ export function rebuildCheckingLedgerFromCartolas(accountId: number, cartolas: P
         folded: r.partialsFolded,
         removed: r.partialsRemoved,
         cartola_rows_removed: r.cartolaRowsRemoved,
+        cartola_rows_folded: r.cartolaRowsFolded,
+        fold_conflicts: r.fold_conflicts,
       });
     }
     clearCheckingAccountValuations(accountId, dbHandle);

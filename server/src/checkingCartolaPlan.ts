@@ -13,7 +13,12 @@
  *    stays as it is; only its bank posting / confirmation is recorded);
  *  - `insert`: a cartola movement no row on file is (taking back a retired flow of its document
  *    when exactly one is on file);
- *  - `fold`: a row that is the same movement as a kept row (the earliest seen is kept);
+ *  - `fold`: a row that is the same movement as a kept row (the earliest seen is kept); in the
+ *    rebuild (`rebuild`), also a replaced month's cartola row no movement keeps, into the kept row of
+ *    its bank day and signed pesos (what the user filed on it moves, the earlier arrival's
+ *    assignments winning);
+ *  - `unfoldable`: (the rebuild) such a row with filed work and no kept row to fold into: the
+ *    rebuild is refused naming it;
  *  - `remove`: a daily row a transfer leg or a mail row already represents, or (a replaced month) a
  *    cartola row the new cartola no longer lists;
  *  - `ambiguous`: several retired flows for one document (left alone);
@@ -57,6 +62,8 @@ export type CheckingFileRow = {
    * which only a fold moves to the kept row): such a row is never removed or folded away.
    */
   named_by?: readonly string[];
+  /** Its flow holds what the user filed (a category, note, big group, pieces, a link: `flowHoldsAssignments`). */
+  filed?: boolean;
 };
 
 /** The tables whose rows stop a movement's delete (`ON DELETE RESTRICT`, a payslip's plain reference). */
@@ -87,6 +94,12 @@ export type CheckingCartolaPlanInput = {
    * movement keeps are removed, and the kept ones are restated by their movement.
    */
   replace_month?: boolean;
+  /**
+   * The deliberate rebuild (`rebuildCheckingLedgerFromCartolas`): a replaced month's cartola row no
+   * movement keeps folds into the kept row of its bank day and signed pesos instead of being
+   * removed; one with filed work and no such row is `unfoldable`.
+   */
+  rebuild?: boolean;
 };
 
 export type CheckingKeepReason = "document_key" | "already_present" | "same_day_amount" | "daily_listing";
@@ -95,7 +108,7 @@ export type CheckingCartolaPlan = {
   keep: { row_id: number; movement: number; why: CheckingKeepReason; redate: { occurred_on: string; bank_day: string } | null }[];
   confirm: { row_id: number; movement: number; why: "transfer_leg" | "mail_notice" }[];
   insert: { movement: number; retired_flow_id: number | null }[];
-  fold: { row_id: number; into_row_id: number; movement: number; why: "daily_listing" }[];
+  fold: { row_id: number; into_row_id: number; movement: number; why: "daily_listing" | "replaced_cartola_row" }[];
   /** `movement` -1: a cartola row of a replaced month no movement of the new cartola keeps. */
   remove: { row_id: number; movement: number; why: "listed_by_transfer_leg" | "listed_by_mail" | "replaced_cartola_row" }[];
   ambiguous: { what: string; movement: number; flow_ids: number[] }[];
@@ -106,11 +119,13 @@ export type CheckingCartolaPlan = {
    * settlements move to it (`repointMovementReferences`).
    */
   left_alone: { row_id: number; movement: number; why: "listed_by_transfer_leg" | "listed_by_mail" | "replaced_cartola_row" | "folded"; tables: string[] }[];
+  /** The rebuild's replaced cartola rows with filed work and no kept row of their bank day and pesos to fold into. */
+  unfoldable: { row_id: number; bank_day: string; amount_clp: number }[];
 };
 
 /** Plans one cartola month's import (see the module doc). */
 export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCartolaPlan {
-  const plan: CheckingCartolaPlan = { keep: [], confirm: [], insert: [], fold: [], remove: [], ambiguous: [], left_alone: [] };
+  const plan: CheckingCartolaPlan = { keep: [], confirm: [], insert: [], fold: [], remove: [], ambiguous: [], left_alone: [], unfoldable: [] };
   // A row whose money another row records after the import (a fold, a daily row a leg or a mail
   // row lists): its payslip and its tax settlements move to that row (`repointMovementReferences`),
   // so they do not hold it. A replaced month's cartola row has no such row: they hold it.
@@ -297,8 +312,31 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
       plan.insert.splice(plan.insert.indexOf(inserts[0]!), 1);
       restated.add(rows[0]!.id);
     }
-    for (const r of leftOver) {
+    // The rebuild: a row left over is the copy of a movement a kept row already records when that
+    // row is of its bank day and signed pesos (one to one, in id order): it folds into it, so what
+    // the user filed on it is not left on a retired flow.
+    const foldTargets = new Map<string, { row_id: number; movement: number }[]>();
+    if (input.rebuild) {
+      for (const k of plan.keep) {
+        if (restated.has(k.row_id)) continue;
+        const m = movementOf.get(k.movement)!;
+        const key = dayAmount(m.occurred_on, m.amount_clp);
+        foldTargets.set(key, [...(foldTargets.get(key) ?? []), { row_id: k.row_id, movement: k.movement }]);
+      }
+    }
+    for (const r of [...leftOver].sort((a, b) => a.id - b.id)) {
       if (restated.has(r.id)) continue;
+      if (input.rebuild) {
+        const into = foldTargets.get(dayAmount(r.bank_posted_on, r.amount_clp))?.shift();
+        if (into) {
+          plan.fold.push({ row_id: r.id, into_row_id: into.row_id, movement: into.movement, why: "replaced_cartola_row" });
+          continue;
+        }
+        if (r.filed) {
+          plan.unfoldable.push({ row_id: r.id, bank_day: r.bank_posted_on, amount_clp: r.amount_clp });
+          continue;
+        }
+      }
       const tables = holders(r.id, false);
       if (tables.length > 0) plan.left_alone.push({ row_id: r.id, movement: -1, why: "replaced_cartola_row", tables });
       else plan.remove.push({ row_id: r.id, movement: -1, why: "replaced_cartola_row" });
