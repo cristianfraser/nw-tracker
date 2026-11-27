@@ -155,12 +155,13 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
       .get(checkingAccountId(), MONTH) as Record<string, unknown>;
     return { count: rows.length, amounts: rows.map((r) => r.amount), saldo: rec.saldo_final_clp };
   }
-  // Both renderings print the same balances (read once, before either is imported).
+  // Both renderings print the same balances and, in the shared reading, the same text (read once,
+  // before either is imported).
   let renderings: { xlsx: BankAccountStatement; pdf: BankAccountStatement } | null = null;
   const rendering = (which: "xlsx" | "pdf") => {
     renderings ??= {
       xlsx: { ...statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-05", -8_000, "Compra Dos")]), document: `vitest-keep-rows-${MONTH}.xlsx` },
-      pdf: { ...statement([mv("1805-04-03", -12_000, "COMPRA UNO"), mv("1805-04-05", -8_000, "COMPRA DOS")]), document: `vitest-keep-rows-${MONTH}.pdf` },
+      pdf: { ...statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-05", -8_000, "Compra Dos")]), document: `vitest-keep-rows-${MONTH}.pdf` },
     };
     return renderings[which];
   };
@@ -175,7 +176,7 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
     it(`a month that arrives in two renderings ends the same, and the next night writes nothing (${name})`, inRollback(() => {
       renderings = null;
       const statuses = order.map((night) => applyBankAccountStatements({ ...payload(night[0]!()), statements: night.map((f) => f()) }).files.map((f) => f.status));
-      // The second rendering confirms the month on file (text compared case- and accent-folded).
+      // The second rendering confirms the month on file (its text compared exactly).
       expect(statuses.flat().filter((st) => st !== "skipped_already_imported")).toEqual(["imported", "confirmed"]);
       expect(importedMonth()).toEqual({ count: 2, amounts: [-12_000, -8_000], saldo: xlsx().closing_balance });
       const mark = changes();
@@ -248,6 +249,51 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
     const tolls = after.filter((r) => r.amount === -2_000);
     expect(tolls).toHaveLength(2);
     expect(tolls.some((r) => before.some((b) => b.id === r.id))).toBe(false);
+  }));
+
+  it("a replaced month restates rows an older reader stored with the branch, spaces or document number elsewhere", inRollback(() => {
+    const row = (date: string, amount: number, description: string, document_no = "") => ({ date, branch: "Agustinas", description, document_no, amount });
+    // As the old PDF reader stored them: the SUCURSAL cell at the description's start, a run of
+    // spaces, a document number glued to the description.
+    applyBankAccountStatements(
+      payload(
+        statement([
+          row("1805-04-25", 4_000, `Agustinas ${TAG} 0111111111 Transf. Uno`, "1234567"),
+          row("1805-04-25", 4_000, `Agustinas ${TAG} 0222222222 Transf.  Dos`, "1234567"),
+          row("1805-04-26", -7_000, `${TAG} Traspaso a Cuentaejemplo7654321`),
+          row("1805-04-26", -7_000, `${TAG} Traspaso a Cuentaotro`),
+        ])
+      )
+    );
+    const before = rowsOfMonth();
+    // Read again by the shared reading, two same-day rows in the other order.
+    applyBankAccountStatements(
+      payload(
+        statement([
+          row("1805-04-25", 4_000, `${TAG} 0222222222 Transf. Dos`, "1234567"),
+          row("1805-04-25", 4_000, `${TAG} 0111111111 Transf. Uno`, "1234567"),
+          row("1805-04-26", -7_000, `${TAG} Traspaso a Cuentaejemplo`, "7654321"),
+          row("1805-04-26", -7_000, `${TAG} Traspaso a Cuentaotro`),
+        ]),
+        true
+      )
+    );
+    const after = new Map(rowsOfMonth().map((r) => [r.id, r.note]));
+    expect([...after.keys()].sort()).toEqual(before.map((r) => r.id).sort());
+    const noteOf = (old: (typeof before)[number]) => after.get(old.id)!;
+    expect(noteOf(before.find((r) => r.note.includes("Transf. Uno"))!)).toMatch(/KEEPROWS 0111111111 Transf\. Uno\|/);
+    expect(noteOf(before.find((r) => r.note.includes("Dos"))!)).toMatch(/KEEPROWS 0222222222 Transf\. Dos\|/);
+    expect(noteOf(before.find((r) => r.note.includes("Cuentaejemplo"))!)).toMatch(/KEEPROWS Traspaso a Cuentaejemplo\|doc:7654321/);
+  }));
+
+  it("a replaced month restates N twins of a day and pesos reworded alike in place, in order", inRollback(() => {
+    // The month as an old reader stored it (a branch word in the description), then read again.
+    applyBankAccountStatements(payload(statement([mv("1805-04-24", -9_000, "Centro Transf a Otro Banco"), mv("1805-04-24", -9_000, "Centro Transf a Otro Banco")])));
+    const before = rowsOfMonth();
+    applyBankAccountStatements(payload(statement([mv("1805-04-24", -9_000, "Transf a Otro Banco"), mv("1805-04-24", -9_000, "Transf a Otro Banco")]), true));
+    const after = rowsOfMonth();
+    expect(after.map((r) => [r.id, r.flow_id])).toEqual(before.map((r) => [r.id, r.flow_id]));
+    expect(after.every((r) => /KEEPROWS Transf a Otro Banco\|/.test(r.note))).toBe(true);
   }));
 
   it("a shorter rendering of a daily row is the same movement and writes nothing (no flip-flop)", inRollback(() => {

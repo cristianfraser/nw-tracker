@@ -1,0 +1,18 @@
+{
+  "$comment": "The shared reading of a cartola's printed text (server/contracts/src/formats/cartolaText.ts, ingest/python/cartola_text.py): `raw` as a reader finds it, `text` as it is stored. Synthetic names only.",
+  "cases": [
+    { "why": "plain text stays", "raw": "Traspaso Internet a T. Crédito", "text": "Traspaso Internet a T. Crédito" },
+    { "why": "the xlsx's fixed-width cells: runs of spaces collapse", "raw": "0111111111 Transf  EJEMPLO   UNO", "text": "0111111111 Transf EJEMPLO UNO" },
+    { "why": "trimmed; tabs, line breaks and no-break spaces are spaces", "raw": "  PAGO\tEN LINEA\nEJEMPLO  ", "text": "PAGO EN LINEA EJEMPLO" },
+    { "why": "xlsx damage: UTF-8 bytes printed as Latin-1", "raw": "Transf a JosÃ© MuÃ±oz", "text": "Transf a José Muñoz" },
+    { "why": "xlsx damage of a capital letter (Latin-1 C1 byte)", "raw": "PEÃ\u0091A", "text": "PEÑA" },
+    { "why": "xlsx damage of í (soft hyphen second byte)", "raw": "MarÃ­a", "text": "María" },
+    { "why": "PDF damage: the font prints Ã as A", "raw": "Transf a JosA© MuA±oz", "text": "Transf a José Muñoz" },
+    { "why": "PDF damage of ó and ú", "raw": "RamA³n RaAºl", "text": "Ramón Raúl" },
+    { "why": "PDF form only right after a letter", "raw": "PISO A° 3", "text": "PISO A° 3" },
+    { "why": "PDF form only for the Spanish lowercase letters", "raw": "SALA A¿", "text": "SALA A¿" },
+    { "why": "Windows-1252 damage is left as printed", "raw": "PEÃ‘A", "text": "PEÃ‘A" },
+    { "why": "a capital A that starts a word stays", "raw": "Transf a ANA ¡HOLA", "text": "Transf a ANA ¡HOLA" },
+    { "why": "empty", "raw": "   ", "text": "" }
+  ]
+}

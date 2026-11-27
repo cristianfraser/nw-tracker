@@ -38,6 +38,8 @@ import {
 import { assertCartolaMonthWrote, countExistingCartolaMovementsForMonth, recordCartolaMonthImport } from "./checkingCartolaMonthRecord.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
+import { bankRowText } from "./bankRowFacts.js";
+import { describeRestatementCarry, restatementCarryIsEmpty, restatementIdentityHook, type RestatementCarry } from "./checkingRestatementHook.js";
 
 export { assertCartolaMonthWrote, recordCartolaMonthImport };
 
@@ -213,6 +215,11 @@ export type CheckingCartolaImportResult = {
   /** Rows the cartola would remove or fold away that a tax settlement or payslip names: left as they are. */
   left_alone: CheckingCartolaPlan["left_alone"];
   /**
+   * A replaced month whose rows the new cartola prints in other text: what the carry kept
+   * (`checkingRestatementCarry.ts`); null when no kept row's text changed.
+   */
+  restatement_carry: RestatementCarry | null;
+  /**
    * The anchor this cartola derived (it starts the account's history, or no anchor was on file):
    * not written here — the run carries it to its next cartolas and writes it at its end
    * (`finishCartolaImportRun`). Null when the anchor on file stood.
@@ -246,8 +253,14 @@ export function importCheckingCartola(
   const frame: CartolaLedgerFrame = opts?.rebuild ? { kind: "rebuild" } : cartolaLedgerFrame(accountId, cartola.period_month, dbHandle, opts?.runAnchor ?? null);
   assertNoLedgerDrift(accountId, cartola, frame, opts?.runAnchor != null, dbHandle);
   assertCartolaOpeningAgrees(accountId, cartola, frame, dbHandle);
-  const plan = planCheckingCartola({ ...loadCheckingCartolaPlanInput(accountId, cartola, dbHandle), replace_month: opts?.replaceMonth === true });
+  const input = loadCheckingCartolaPlanInput(accountId, cartola, dbHandle);
+  const plan = planCheckingCartola({ ...input, replace_month: opts?.replaceMonth === true });
   refuseTaxSettlementsLeftBehind(accountId, cartola, plan, dbHandle);
+  // A replaced month whose kept rows the cartola prints in other text: what the pages show of them
+  // is read before the write and carried across it (`checkingRestatementCarry.ts`).
+  const identity = opts?.replaceMonth === true && keptRowTextChanges(input, plan) ? restatementIdentityHook() : null;
+  const identityBefore = identity ? identity.snapshot(accountId, [cartola.period_month]) : null;
+  let restatementCarry: RestatementCarry | null = null;
   const changesBefore = totalChanges(dbHandle);
   let anchorDerived: CheckingLedgerAnchorAt | null = null;
   let applied: ReturnType<typeof applyCheckingCartolaPlan>;
@@ -256,6 +269,7 @@ export function importCheckingCartola(
       replaceMonth: opts?.replaceMonth === true,
       afterWrite: () => {
         anchorDerived = assertCartolaLedgerAfterApply(accountId, cartola, frame, dbHandle);
+        if (identity) restatementCarry = identity.carry(accountId, cartola, identityBefore, dbHandle);
       },
     });
   } catch (e) {
@@ -290,8 +304,20 @@ export function importCheckingCartola(
     flow_adoptions: applied.flow_adoptions,
     listed_row_folds: applied.listed_row_folds,
     left_alone: applied.left_alone,
+    restatement_carry: restatementCarry,
     anchor_derived: anchorDerived,
   };
+}
+
+/** Whether a kept cartola row of the month is printed in other text (description, document, branch). */
+function keptRowTextChanges(input: ReturnType<typeof loadCheckingCartolaPlanInput>, plan: CheckingCartolaPlan): boolean {
+  const rows = new Map(input.rows.map((r) => [r.id, r]));
+  return plan.keep.some((k) => {
+    const row = rows.get(k.row_id);
+    if (row?.kind !== "cartola" || row.listed == null) return false;
+    const mv = input.movements[k.movement]!;
+    return row.listed.description !== mv.listed.description || row.listed.document_no !== mv.listed.document_no || (bankRowText(row.id).branch ?? "") !== (mv.branch || "—");
+  });
 }
 
 /**
@@ -617,6 +643,9 @@ export function importCartolaList(
             `${r.cartolaRowsRemoved} no longer listed removed`
         );
       }
+      if (r.restatement_carry && !restatementCarryIsEmpty(r.restatement_carry)) {
+        console.log(`  cartola ${cartola.period_month} read in other text:\n${describeRestatementCarry(r.restatement_carry).join("\n")}`);
+      }
       flows?.inserted.push(...r.inserted_flows);
       flows?.skipped.push(...r.skipped_flows);
       fileLogs.push({
@@ -625,6 +654,7 @@ export function importCartolaList(
           movements_imported: r.movementsInserted,
         }),
         ...(r.anchor_derived ? { anchor_derived: true } : {}),
+        ...(r.restatement_carry ? { restatement_carry: r.restatement_carry } : {}),
       });
     } catch (e) {
       if (e instanceof CartolaImportRefusal) {
@@ -730,7 +760,16 @@ export class CheckingLedgerRebuildRefused extends Error {
 export type CheckingLedgerRebuildResult = {
   anchor_before: { amount_clp: number; occurred_on: string } | null;
   anchor_after: { amount_clp: number; occurred_on: string } | null;
-  months: { period_month: string; replaced: boolean; inserted: number; restated: number; folded: number; removed: number; cartola_rows_removed: number }[];
+  months: {
+    period_month: string;
+    replaced: boolean;
+    inserted: number;
+    restated: number;
+    folded: number;
+    removed: number;
+    cartola_rows_removed: number;
+    restatement_carry: RestatementCarry | null;
+  }[];
 };
 
 /**
@@ -758,6 +797,7 @@ export function rebuildCheckingLedgerFromCartolas(accountId: number, cartolas: P
         folded: r.partialsFolded,
         removed: r.partialsRemoved,
         cartola_rows_removed: r.cartolaRowsRemoved,
+        restatement_carry: r.restatement_carry,
       });
     }
     clearCheckingAccountValuations(accountId, dbHandle);

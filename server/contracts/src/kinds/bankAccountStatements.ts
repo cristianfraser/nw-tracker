@@ -1,8 +1,11 @@
 import { z } from "zod";
-import { isoDateSchema, yearMonthSchema } from "../formats/index.js";
+import { isCartolaText, isoDateSchema, yearMonthSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 const pesos = z.number().int();
+
+/** A printed cell in the shared cartola reading (`formats/cartolaText.ts`): every reader stores it so. */
+const cartolaCell = z.string().refine(isCartolaText, { message: "not in the shared cartola reading (cartolaText): spaces, accent damage" });
 
 /** A bank account as the issuer names its product; the server maps it to its own account. */
 export const bankStatementAccountSchema = z
@@ -13,13 +16,16 @@ export const bankStatementAccountSchema = z
   })
   .strict();
 
-/** One movement as the statement prints it. Its printed fields key the ledger row (the movement note). */
+/**
+ * One movement as the statement prints it, its cells in the shared reading (`cartolaText`), so the
+ * xlsx and the PDF of a month state it alike. Its printed fields key the ledger row (the movement note).
+ */
 export const bankStatementMovementSchema = z
   .object({
     date: isoDateSchema,
-    branch: z.string(),
-    description: z.string(),
-    document_no: z.string(),
+    branch: cartolaCell,
+    description: cartolaCell,
+    document_no: cartolaCell,
     /** Signed: a credit positive, a debit negative. */
     amount: pesos,
   })
@@ -77,7 +83,7 @@ export const unreadableBankStatementSchema = z
  */
 export const bankAccountStatementsKind = defineIngestKind({
   kind: "bank_account.statements",
-  schema_version: 2,
+  schema_version: 3,
   description: "A bank account's statements (cartolas): periods, printed balances and movements.",
   ref: "read",
   payload: z

@@ -236,7 +236,8 @@ describe("a month on file and a second document", () => {
     run(account, [FEB()]);
     return account;
   }
-  const pdfMoves = () => FEB_MOVES().map((m) => ({ ...m, description: m.description.toUpperCase().replace("COMPRA", "COMPRÁ") }));
+  // Both readers store a cell in the one shared reading, so the PDF states the xlsx's text.
+  const pdfMoves = () => FEB_MOVES();
 
   it("a second document stating the month alike writes nothing but the confirmation; it is the same document after", inRollback(() => {
     const account = febOnFile("confirm");
@@ -265,6 +266,18 @@ describe("a month on file and a second document", () => {
       `1807-02 movement 4 movement: on file —, document 1807-02-20 1000 «${TAG} Abono F»`,
     ]);
     expect({ rows: rows(account), record: record(account, "1807-02") }).toEqual(before);
+  }));
+
+  it("a description that differs only in case, an accent or a space is a difference: the text compares exactly", inRollback(() => {
+    const account = febOnFile("exact-text");
+    const variants = [(d: string) => d.toUpperCase(), (d: string) => d.replace("Compra", "Comprá"), (d: string) => d.replace(" Compra", "  Compra")];
+    const logs = run(
+      account,
+      variants.map((v, k) => FEB(`1807-02 variant ${k}.pdf`, pdfMoves().map((m, i) => (i === 1 ? { ...m, description: v(m.description) } : m))))
+    );
+    expect(logs.map((f) => f.status)).toEqual(["refused", "refused", "refused"]);
+    expect(logs.map((f) => f.problems?.length)).toEqual([1, 1, 1]);
+    expect(logs[0]!.problems![0]).toMatch(/^1807-02 movement 2 description: on file .*Compra C, document .*COMPRA C$/);
   }));
 
   it("a month whose row was converted into a transfer still compares equal", inRollback(() => {
@@ -440,7 +453,7 @@ describe("the deliberate rebuild of a ledger that absorbed bad data", () => {
     return account;
   }
 
-  it("the ordinary forced import refuses the repair; the rebuild restates the month, removes the copies and pins the anchor back", inRollback(() => {
+  it("the ordinary forced import refuses the repair; the rebuild restates the month, folds the copies away and pins the anchor back", inRollback(() => {
     const account = incident("rebuild");
     expect(anchorOf(account)).toEqual({ amount_clp: 108_000, occurred_on: "1806-12-31" });
     const daily = rows(account).filter((r) => r.occurred_on.startsWith("1807-02")).slice(0, 3);
@@ -448,7 +461,9 @@ describe("the deliberate rebuild of a ledger that absorbed bad data", () => {
     const r = rebuildCheckingLedgerFromCartolas(account, [FEB("1807-02 cartola.pdf")]);
     expect(r.anchor_before).toEqual({ amount_clp: 108_000, occurred_on: "1806-12-31" });
     expect(r.anchor_after).toEqual({ amount_clp: 100_000, occurred_on: "1806-12-31" });
-    expect(r.months).toEqual([{ period_month: "1807-02", replaced: true, inserted: 0, restated: 3, folded: 0, removed: 0, cartola_rows_removed: 3 }]);
+    // The copies read the same cells as the movements (the branch the old reader left in them set
+    // aside): they are the same movements, folded into the daily rows seen first.
+    expect(r.months).toEqual([{ period_month: "1807-02", replaced: true, inserted: 0, restated: 3, folded: 3, removed: 0, cartola_rows_removed: 0, restatement_carry: null }]);
     expect(rows(account).filter((x) => x.occurred_on.startsWith("1807-02")).map((x) => x.id)).toEqual(daily.map((x) => x.id));
     expect(checkingLedgerMonthsOffTheirCartolas(account)).toEqual([]);
   }));

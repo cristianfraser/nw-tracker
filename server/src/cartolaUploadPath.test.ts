@@ -27,7 +27,7 @@ const PAYLOAD: BankAccountStatementsPayload = {
 vi.mock("./ingestFeeder.js", () => ({
   requestFeederParse: async () => ({
     status: "parsed",
-    result: { kind: "bank_account.statements", schema_version: 2, payload: PAYLOAD },
+    result: { kind: "bank_account.statements", schema_version: 3, payload: PAYLOAD },
   }),
 }));
 vi.mock("./bankAccountStatementsApply.js", () => ({

@@ -25,8 +25,12 @@ export { foldVendorName };
 
 export type VendorCatalogKind = "exact" | "prefix" | "branch" | "rut";
 
-/** `choice`: a branch the user picked on an expense row among the places a cut name could be. */
-export type VendorCatalogSource = "seed" | "user" | "choice";
+/**
+ * `choice`: a branch the user picked on an expense row among the places a cut name could be;
+ * `spelling`: a cartola description's new spelling named as its old one was (a month imported
+ * again in place, `checkingRestatementCarry.ts`). Neither is touched by the user-file loader.
+ */
+export type VendorCatalogSource = "seed" | "user" | "choice" | "spelling";
 
 export type VendorCatalogEntry = {
   kind: VendorCatalogKind;
@@ -88,7 +92,7 @@ export type VendorCatalog = {
   lookupRut(rut: string | null): string | null;
 };
 
-const SOURCE_ORDER: Record<VendorCatalogSource, number> = { user: 0, choice: 1, seed: 2 };
+const SOURCE_ORDER: Record<VendorCatalogSource, number> = { user: 0, choice: 1, spelling: 1, seed: 2 };
 
 /**
  * `exactBrand`: what an exact entry's brand is. `base` (the rule): a display «Brand (branch)» whose

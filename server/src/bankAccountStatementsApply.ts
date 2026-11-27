@@ -1,3 +1,6 @@
+// A replaced month read in other text carries its categories and names (registers the hook).
+import "./checkingRestatementCarry.js";
+import { describeRestatementCarry, restatementCarryIsEmpty } from "./checkingRestatementHook.js";
 import type { BankAccountStatement, BankAccountStatementsApplyDetails, BankAccountStatementsPayload } from "nw-tracker-contracts";
 import {
   checkingAccountId,
@@ -122,6 +125,12 @@ function applyStatements(
       `${refused.length} refused, ${result.errors.length} error(s)`,
     ...result.errors.map((e) => `  ${e.file}: ${e.error}`),
     ...refused.flatMap((f) => [`  REFUSED ${f.file} (${f.period_month}), nothing written:`, ...(f.problems ?? []).map((p) => `    ${p}`)]),
+    // A month imported again in place whose rows read in other text: what the carry kept.
+    ...fileLogs.flatMap((f) =>
+      f.restatement_carry && !restatementCarryIsEmpty(f.restatement_carry)
+        ? [`  ${f.file} (${f.period_month}) read in other text:`, ...describeRestatementCarry(f.restatement_carry).map((l) => `  ${l}`)]
+        : []
+    ),
   ];
   return {
     account_id: accountId,

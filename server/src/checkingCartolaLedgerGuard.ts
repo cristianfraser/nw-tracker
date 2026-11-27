@@ -39,7 +39,9 @@ export type CartolaRefusalReason =
   | "anchor_would_move"
   | "ledger_drift"
   | "second_document_differs"
-  | "tax_settlement";
+  | "tax_settlement"
+  /** A month imported again in place would change a row's category or shown name (`checkingRestatementCarry.ts`). */
+  | "restatement_identity";
 
 /** A cartola the import refuses: nothing of it is written; `problems` says why, line by line. */
 export class CartolaImportRefusal extends Error {

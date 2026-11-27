@@ -4,9 +4,10 @@
  * cuenta vista ledger anchor»):
  *
  *  - `keep`: a row on file and the cartola movement that restates it — the month's cartola row
- *    already imported (its document key, the same printed figures, or the tolerant content match:
- *    another rendering of the month; in a replaced month, last, the one row the new cartola would
- *    remove and the one movement it would write of a bank day and signed pesos), or the
+ *    already imported (its document key, the same printed figures, the same cells as an older reader
+ *    read them, or the tolerant content match: another rendering of the month; in a replaced month, last, the one row the new cartola would
+ *    remove and the one movement it would write of a bank day and signed pesos, or N such twins
+ *    that read alike), or the
  *    daily-listing row the cartola movement lists, with the receipt-corrected day it carries
  *    (`redate`);
  *  - `confirm`: a transfer leg or a mail-written movement the cartola movement confirms (the row
@@ -27,6 +28,7 @@
  * description, document, cartola month) come in structured (`CheckingListedFacts`); nothing here
  * reads a note.
  */
+import { cartolaText } from "nw-tracker-contracts";
 import type { ParsedCheckingMovement } from "./checkingCartolaParse.js";
 import { checkingMovementContentMatches, normalizeForPartialMatch } from "./checkingCartolaPartialReconcile.js";
 import { pickTransferLegForBankRow, type TransferLegCandidate } from "./checkingTransferLegReconcile.js";
@@ -154,6 +156,18 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
         r.listed!.document_no === String(mv.document_no ?? "").trim()
     )
   );
+  // The same cells read by an older reader (a month stored before both readers shared one reading,
+  // re-read now): the description in the shared reading (`cartolaText`: spaces, accent damage),
+  // the SUCURSAL cell the old PDF reader left at its start set aside, and the document number
+  // wherever it put it — the same characters, in any order (it glued a number to a word).
+  const cellChars = (text: string) => [...text.replace(/\s+/g, "")].sort().join("");
+  const olderReading = (mv: CheckingCartolaMovement, listed: CheckingListedFacts) => {
+    const description = cartolaText(listed.description);
+    const branchFirst = mv.branch ? `${cartolaText(mv.branch)} ` : null;
+    const own = branchFirst != null && description.startsWith(branchFirst) ? description.slice(branchFirst.length) : description;
+    return cellChars(`${own} ${listed.document_no}`) === cellChars(`${mv.description} ${mv.document_no ?? ""}`);
+  };
+  pass("already_present", (mv) => cartolaRows.find((r) => monthRow(r) && r.bank_day === mv.occurred_on && r.amount_clp === mv.amount_clp && olderReading(mv, r.listed!)));
   pass("already_present", (mv) =>
     cartolaRows.find(
       (r) =>
@@ -279,7 +293,9 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
     // A row the new cartola prints so differently that no pass took it (a reworded or shortened
     // description): when it is the only row left over of its bank day and signed pesos and the
     // movement to be written of that day and pesos is the only one too, it is that movement,
-    // restated in place. Anything else of the day stays as it was planned (removed, written).
+    // restated in place. So are N twins: N rows left over of one bank day and pesos that read alike
+    // and N movements to be written of it that read alike (identical rows are interchangeable), in
+    // order. Anything else of the day stays as it was planned (removed, written).
     const dayAmount = (day: string, amount: number) => `${day}|${amount}`;
     const insertable = plan.insert.filter((i) => i.retired_flow_id == null);
     const movementOf = new Map(input.movements.map((m) => [m.index, m]));
@@ -291,11 +307,24 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
       group(dayAmount(m.occurred_on, m.amount_clp)).inserts.push(i);
     }
     const restated = new Set<number>();
+    const alike = <T,>(xs: readonly T[], text: (x: T) => string) => xs.every((x) => text(x) === text(xs[0]!));
     for (const { rows, inserts } of groups.values()) {
-      if (rows.length !== 1 || inserts.length !== 1) continue;
-      plan.keep.push({ row_id: rows[0]!.id, movement: inserts[0]!.movement, why: "same_day_amount", redate: null });
-      plan.insert.splice(plan.insert.indexOf(inserts[0]!), 1);
-      restated.add(rows[0]!.id);
+      if (rows.length === 0 || rows.length !== inserts.length) continue;
+      const twins =
+        rows.length === 1 ||
+        (alike(rows, (r) => `${r.listed!.description}|${r.listed!.document_no}`) &&
+          alike(inserts, (i) => {
+            const m = movementOf.get(i.movement)!;
+            return `${m.description}|${m.document_no}`;
+          }));
+      if (!twins) continue;
+      const byId = [...rows].sort((a, b) => a.id - b.id);
+      const byIndex = [...inserts].sort((a, b) => a.movement - b.movement);
+      byId.forEach((row, k) => {
+        plan.keep.push({ row_id: row.id, movement: byIndex[k]!.movement, why: "same_day_amount", redate: null });
+        plan.insert.splice(plan.insert.indexOf(byIndex[k]!), 1);
+        restated.add(row.id);
+      });
     }
     for (const r of leftOver) {
       if (restated.has(r.id)) continue;

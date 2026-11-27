@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import XLSX from "xlsx";
-import { cartolaMovementDateIso } from "nw-tracker-contracts";
+import { cartolaMovementDateIso, cartolaText } from "nw-tracker-contracts";
 import { isChileanNumber, parseChileanNumber } from "nw-tracker-contracts";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
@@ -9,7 +9,9 @@ import { parseDdMmYyToIso } from "nw-tracker-contracts";
  * Santander's monthly checking cartola workbook (`… Cartola de cuenta Corriente - <Mes> <año>.xlsx`)
  * → its period, printed balances and movements (the ledger note helpers live in
  * `server/src/checkingCartolaParse.ts`). A row the table holds but that is no movement is
- * kept in `skipped` with why; a running balance that disagrees with the printed one throws.
+ * kept in `skipped` with why; a running balance that disagrees with the printed one throws. A
+ * movement's cells are stored in the shared cartola reading (`cartolaText`: spaces collapsed, the
+ * bank's accent damage repaired), as the PDF parser stores them, so both renderings read alike.
  */
 
 function monthKeyFromYmd(ymd: string): string {
@@ -350,9 +352,9 @@ export function parseCheckingCartolaWorkbook(
       continue;
     }
 
-    const branch = cell(row, 1);
-    const description = cell(row, 2);
-    const documentNo = cell(row, 3);
+    const branch = cartolaText(cell(row, 1));
+    const description = cartolaText(cell(row, 2));
+    const documentNo = cartolaText(cell(row, 3));
     // FECHA prints no year: the one year the DESDE..HASTA period allows (throws otherwise).
     const [day, month] = fecha.split("/").map(Number) as [number, number];
     const occurredOn = cartolaMovementDateIso(
