@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import { readPref, writePref } from "../../usePersistedPref";
 import { ChevronIcon } from "../ui/ChevronIcon";
 import { ColorMarker } from "../ui/ColorMarker";
@@ -16,6 +16,7 @@ import {
 } from "../account/PositionGlance";
 import { formatSignedMoney, formatSignedPct, pctOf } from "../account/positionGlanceLayout";
 import { loadableClass } from "../ui/Loadable";
+import { openByDefault, rowKey } from "./groupGlanceRows";
 import styles from "./GroupGlance.module.css";
 
 const BLANK = " ";
@@ -57,10 +58,18 @@ export function GroupGlanceTitle({
   );
 }
 
-/** A row's display name: the server's label, or its i18n key translated at render. */
-function useRowLabel(): (row: Pick<GroupGlanceRowDto, "label" | "label_i18n_key">) => string {
+/**
+ * A row's display name: the server's label, or its i18n key translated at render (a liquidated
+ * row's with the number of rows it folds).
+ */
+function useRowLabel(): (row: Pick<GroupGlanceRowDto, "kind" | "label" | "label_i18n_key" | "members">) => string {
   const { t } = useTranslation();
-  return (row) => (row.label_i18n_key ? t(row.label_i18n_key) : row.label);
+  return (row) =>
+    !row.label_i18n_key
+      ? row.label
+      : row.kind === "liquidated"
+        ? t(row.label_i18n_key, { count: row.members.length })
+        : t(row.label_i18n_key);
 }
 
 /**
@@ -192,15 +201,6 @@ type SparkView = { mode: "perf"; zeroY: number } | { mode: "balance" };
 
 const GLANCE_OPEN_LS_PREFIX = "nw-tracker.groupGlance.open.";
 
-/**
- * A child row starts open while it holds something and every row under it is a group (a group of
- * groups); one holding accounts — a basket, a leaf group, a group mixing accounts and sub-groups —
- * or a sold-out one starts closed. Same rule as the accounts tree.
- */
-function openByDefault(row: GroupGlanceRowDto): boolean {
-  return row.held && row.members.length > 0 && row.members.every((m) => m.kind === "group");
-}
-
 /** Tolerant parse of the stored choices (a per-viewer convenience): anything else is no choice. */
 function parseOpenChoices(raw: string | null): Record<string, boolean> {
   if (raw == null) return {};
@@ -216,10 +216,6 @@ function parseOpenChoices(raw: string | null): Record<string, boolean> {
     if (typeof open === "boolean") out[key] = open;
   }
   return out;
-}
-
-function rowKey(row: Pick<GroupGlanceRowDto, "kind" | "slug" | "account_id">): string {
-  return row.kind === "account" ? `a:${row.account_id}` : row.kind === "group" ? `g:${row.slug}` : `c:${row.slug}`;
 }
 
 /**
@@ -303,17 +299,23 @@ function CashGlanceRow({
   );
 }
 
-/** One line of the table: dot + name | sparkline | valor | peso | día | mes | año | total | aportes. */
+/**
+ * One line of the table: dot + name | sparkline | valor | peso | día | mes | año | total | aportes.
+ * A member row is indented by its `depth` under the page's rows. A liquidated row has no page: a
+ * click on its name opens it, like its caret.
+ */
 function GlanceRow({
   row,
   color,
   variant,
+  depth = 1,
   sparkView,
   caret,
 }: {
   row: GroupGlanceRowDto;
   color: string;
   variant: "total" | "child" | "member";
+  depth?: number;
   sparkView: SparkView;
   caret?: { open: boolean; onToggle: () => void };
 }) {
@@ -329,6 +331,7 @@ function GlanceRow({
         variant === "member" && styles.memberRow,
         sold && styles.soldRow
       )}
+      style={variant === "member" ? ({ "--glance-depth": depth } as CSSProperties) : undefined}
     >
       <span role="cell" className={styles.nameCell}>
         {caret ? (
@@ -347,9 +350,16 @@ function GlanceRow({
           <span className={styles.caretSpace} />
         )}
         <ColorMarker color={color} className={styles.dot} />
-        <Link to={row.route_path} className={styles.name}>
-          {label}
-        </Link>
+        {row.kind === "liquidated" ? (
+          // A pointer target only: the caret beside it is the control (name and state).
+          <span className={cn(styles.name, styles.nameToggle)} onClick={caret?.onToggle}>
+            {label}
+          </span>
+        ) : (
+          <Link to={row.route_path} className={styles.name}>
+            {label}
+          </Link>
+        )}
       </span>
       <span role="cell" className={styles.sparkCell}>
         <Spark
@@ -440,8 +450,9 @@ function PendingRow({ label, total = false, cash = false }: { label: string; tot
 
 /**
  * The children table (server `group_glance`): the group's own row first, a hairline, then one
- * row per child heaviest first, a child group opening one level (its rows indented under a caret;
- * `openByDefault`, toggles kept per page), sold-out children last and muted. The sparkline column
+ * row per child heaviest first, a row with rows under it opening them (indented under a caret, at
+ * any depth; `openByDefault`, toggles kept per page), sold-out children last and muted — two or
+ * more folded by the server into one «Liquidadas (n)» row, closed until opened. The sparkline column
  * draws each row's chained return on one shared scale (default) or its balance, one choice kept for
  * every group page. One row list at every width: a container query keeps
  * name, value, mes and total when narrow (no horizontal scroll). Each dot takes the child's chart
@@ -499,6 +510,42 @@ export function GroupGlanceTable({
       : { mode: "balance" }
     : undefined;
   const rowOpen = (row: GroupGlanceRowDto) => row.members.length > 0 && (openChoices[rowKey(row)] ?? openByDefault(row));
+  /**
+   * A row and, while open, the rows under it, at any depth. A row's colour is its parent's, the
+   * page's rows their own; a liquidated row passes on the colour its list has. Open choices are
+   * kept by the row's path (a page row's is its own key; a row that gets folded starts over).
+   */
+  const renderRow = (
+    row: GroupGlanceRowDto,
+    depth: number,
+    path: string,
+    inherited: string | null,
+    view: SparkView
+  ): ReactNode => {
+    const folded = row.kind === "liquidated";
+    const color = folded ? "transparent" : (inherited ?? colorFor(row));
+    const hasMembers = row.members.length > 0;
+    const open = hasMembers && (openChoices[path] ?? openByDefault(row));
+    const membersView: SparkView =
+      view.mode === "perf" && row.members_perf_zero_y != null ? { mode: "perf", zeroY: row.members_perf_zero_y } : view;
+    return (
+      <Fragment key={path}>
+        <GlanceRow
+          row={row}
+          color={color}
+          variant={depth === 0 ? "child" : "member"}
+          depth={depth}
+          sparkView={view}
+          caret={hasMembers ? { open, onToggle: () => toggle(path, open) } : undefined}
+        />
+        {open
+          ? row.members.map((m) =>
+              renderRow(m, depth + 1, `${path}>${rowKey(m)}`, folded ? inherited : color, membersView)
+            )
+          : null}
+      </Fragment>
+    );
+  };
   if (cash) {
     return (
       <div className={loadableClass(loading, styles.frame)}>
@@ -613,38 +660,11 @@ export function GroupGlanceTable({
         {glance && sparkView ? (
           <>
             <GlanceRow row={glance.total} color={totalColor} variant="total" sparkView={sparkView} />
-            {glance.rows.map((row) => {
-              const key = rowKey(row);
-              const color = colorFor(row);
-              const hasMembers = row.members.length > 0;
-              const open = rowOpen(row);
-              return (
-                <div key={key} role="rowgroup" className={styles.rowGroup}>
-                  <GlanceRow
-                    row={row}
-                    color={color}
-                    variant="child"
-                    sparkView={sparkView}
-                    caret={hasMembers ? { open, onToggle: () => toggle(key, open) } : undefined}
-                  />
-                  {hasMembers && open
-                    ? row.members.map((m) => (
-                        <GlanceRow
-                          key={rowKey(m)}
-                          row={m}
-                          color={color}
-                          variant="member"
-                          sparkView={
-                            sparkView.mode === "perf" && row.members_perf_zero_y != null
-                              ? { mode: "perf", zeroY: row.members_perf_zero_y }
-                              : sparkView
-                          }
-                        />
-                      ))
-                    : null}
-                </div>
-              );
-            })}
+            {glance.rows.map((row) => (
+              <div key={rowKey(row)} role="rowgroup" className={styles.rowGroup}>
+                {renderRow(row, 0, rowKey(row), null, sparkView)}
+              </div>
+            ))}
           </>
         ) : (
           <>

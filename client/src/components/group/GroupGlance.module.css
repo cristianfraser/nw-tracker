@@ -172,7 +172,7 @@
 }
 
 .memberRow .nameCell {
-  padding-left: 1.1rem;
+  padding-left: calc(1.1rem * var(--glance-depth, 1));
 }
 
 .memberRow .dot {
@@ -248,6 +248,11 @@
 
 a.name:hover {
   text-decoration: underline;
+}
+
+/* A liquidated row's name: no page of its own, a click opens the row (the caret is the control). */
+.nameToggle {
+  cursor: pointer;
 }
 
 .sparkCell {
@@ -397,7 +402,7 @@ a.name:hover {
   }
 
   .memberRow .nameCell {
-    padding-left: 0.6rem;
+    padding-left: calc(0.6rem * var(--glance-depth, 1));
   }
 
   .sparkCell,

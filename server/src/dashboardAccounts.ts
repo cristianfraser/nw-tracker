@@ -55,7 +55,7 @@ import { getLiabilitiesNavRootNode, getNavChartGroupNodeBySlug, getNetWorthNavGr
 import { findBySlug, navContextScope, valueMapSubtree } from "./navContextScope.js";
 import { buildBasketGlance } from "./basketGlance.js";
 import { buildGroupGlance } from "./groupGlance.js";
-import { accountDailyPctPoints, groupDailyPctPoints } from "./dailyPctSeries.js";
+import { accountDailyPctPoints, dailyPctPointsForScope, groupDailyPctPoints } from "./dailyPctSeries.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
@@ -701,16 +701,20 @@ async function buildDashboardNavContextInner(unit: TsUnit, rootSlug: string) {
           cardMetricsBySlug: nav.card_metrics_by_slug,
           dailyPctFor: (scope) => {
             if (scope.kind === "group") return groupDailyPctPoints(scope.slug, unit);
-            const row = nav.accounts.find((a) => a.account_id === scope.accountId);
-            if (!row) throw new Error(`Group glance ${rootSlug}: account ${scope.accountId} has no dashboard row`);
-            const importKey =
-              (db.prepare(`SELECT import_key FROM accounts WHERE id = ?`).get(scope.accountId) as
-                | { import_key: string | null }
-                | undefined)?.import_key ?? null;
-            return accountDailyPctPoints(
-              { account_id: row.account_id, name: row.name, bucket_slug: row.bucket_slug, import_key: importKey },
-              unit
-            );
+            const ref = (accountId: number) => {
+              const row = nav.accounts.find((a) => a.account_id === accountId);
+              if (!row) throw new Error(`Group glance ${rootSlug}: account ${accountId} has no dashboard row`);
+              const importKey =
+                (db.prepare(`SELECT import_key FROM accounts WHERE id = ?`).get(accountId) as
+                  | { import_key: string | null }
+                  | undefined)?.import_key ?? null;
+              return { account_id: row.account_id, name: row.name, bucket_slug: row.bucket_slug, import_key: importKey };
+            };
+            if (scope.kind === "account") return accountDailyPctPoints(ref(scope.accountId), unit);
+            // The liquidated rows of one row list: one series over their accounts, under the
+            // scope key and account shape the card's liquidated rows use (`chainedGroupPctResolver`),
+            // so the same set is built once.
+            return dailyPctPointsForScope(`liquidated:${scope.parentSlug}`, scope.accountIds.map(ref), unit);
           },
         })
       : null;

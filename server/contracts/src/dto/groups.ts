@@ -135,10 +135,17 @@ export interface GroupGlanceRowDto {
   /**
    * "group" = a child nav group (or the page's own group for the total row), "account" = a direct
    * account, "linked_cards" = what the linked credit cards owe, as the negative amount a cash
-   * group's total nets (a cash glance only; `slug` and `route_path` are the cards' group's).
+   * group's total nets (a cash glance only; `slug` and `route_path` are the cards' group's),
+   * "liquidated" = the liquidated rows of one row list (the page's, or a child group's members:
+   * the ones holding nothing today that once held money) folded into one row after the held ones,
+   * when there are two or more beside a held row (an investment glance only): `members` are the
+   * folded rows, `slug` the group the list belongs to, `label` empty —
+   * `label_i18n_key` takes `count` = `members.length` — and `route_path` empty (no page of its own).
+   * Its lifetime P/L and aportes are its rows' sums, its %s and performance line one daily series
+   * over their counted accounts.
    */
-  kind: "group" | "account" | "linked_cards";
-  /** Group and linked-cards rows. */
+  kind: "group" | "account" | "linked_cards" | "liquidated";
+  /** Group and linked-cards rows; a liquidated row: the group whose list it folds. */
   slug: string | null;
   /** Account rows. */
   account_id: number | null;
@@ -198,7 +205,8 @@ export interface GroupGlanceRowDto {
   /**
    * One level under a child row: a basket's member accounts, any other child group's own rows (its
    * sub-groups and accounts, as its page lists them, without members of their own); empty for an
-   * account, the total row and the members themselves.
+   * account, the total row and the members themselves. A liquidated row's are the rows it folds,
+   * each as it would stand in the list (a page's folded child group keeps its own members).
    */
   members: GroupGlanceRowDto[];
 }
