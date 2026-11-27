@@ -335,20 +335,25 @@ function TodayCell({ row, sold }: { row: GroupGlanceRowDto; sold: boolean }) {
  * none, so a row's cells line up. A sold-out row's month and year read «—».
  */
 function PeriodCell({
+  label,
   pct,
   figure,
   className,
   empty = false,
 }: {
+  /** The period's name, shown in the cell only where the row is a card (narrow frame). */
+  label: string;
   pct: number | null;
   figure: GroupGlancePeriodFigureDto | null;
   className: string | undefined;
   empty?: boolean;
 }) {
   const { t } = useTranslation();
+  const labelLine = <span className={styles.periodLabel}>{label}</span>;
   if (empty) {
     return (
-      <span role="cell" className={cn("mono", styles.num, styles.period, className)}>
+      <span role="cell" className={cn(styles.num, styles.period, className)}>
+        {labelLine}
         <span className={styles.periodPct}>—</span>
       </span>
     );
@@ -357,7 +362,8 @@ function PeriodCell({
   const deposits = figure?.deposits ?? null;
   const depositsShown = deposits != null && deposits.value !== 0;
   return (
-    <span role="cell" className={cn("mono", styles.num, styles.period, className)}>
+    <span role="cell" className={cn(styles.num, styles.period, className)}>
+      {labelLine}
       <span className={cn(styles.periodPct, toneClass(pct ?? pl?.value))}>{pct != null ? formatSignedPct(pct) : "—"}</span>
       <span className={cn(styles.figureAmount, toneClass(pl?.value))}>
         <span className="visually-hidden">{t("groupPage.investmentGlance.figure.pl")} </span>
@@ -465,9 +471,22 @@ function GlanceRow({
           </>
         )}
       </span>
-      <PeriodCell pct={row.month_pct} figure={figures?.month ?? null} className={styles.month} empty={sold} />
-      <PeriodCell pct={row.year_pct} figure={figures?.year ?? null} className={styles.year} empty={sold} />
       <PeriodCell
+        label={t("groupPage.investmentGlance.col.month")}
+        pct={row.month_pct}
+        figure={figures?.month ?? null}
+        className={styles.month}
+        empty={sold}
+      />
+      <PeriodCell
+        label={t("groupPage.investmentGlance.col.year")}
+        pct={row.year_pct}
+        figure={figures?.year ?? null}
+        className={styles.year}
+        empty={sold}
+      />
+      <PeriodCell
+        label={t("groupPage.investmentGlance.col.total")}
         pct={row.total_pct}
         figure={{ pl: row.total_pl, deposits: row.deposits }}
         className={styles.total}
@@ -524,7 +543,9 @@ function PendingRow({ label, total = false, cash = false }: { label: string; tot
  * draws each row's chained return on one shared scale (default) or its balance, one choice kept for
  * every group page. «hoy» is today's value over the day's P/L and %; mes, año and total stack the
  * %, the P/L and the period's aportes (lifetime for total). One row list at every width: a
- * container query keeps name, hoy, mes and total when narrow (no horizontal scroll). Each dot takes the child's chart
+ * container query drops año on a middle frame and, narrow, turns each row into a card — name and
+ * hoy on one line, mes / año / total side by side under it, each naming itself (no horizontal
+ * scroll). Each dot takes the child's chart
  * colour (`colorFor`, the page's group colour maps), so dot, band and bar match.
  *
  * A cash group (`cash`): the same rows without return figures — the line is always the balance,

@@ -131,6 +131,9 @@
     max-content max-content max-content;
   column-gap: 1.5rem;
   font-size: var(--font-size-ui);
+  /* The names' inset from the table's edge, and a member row's indent per depth under its row. */
+  --glance-inset: 0.5rem;
+  --glance-step: 1.1rem;
 }
 
 /* A cash group: name | balance line | own-currency balance | value | weight | month | year. */
@@ -172,8 +175,19 @@
   color: var(--muted);
 }
 
-.memberRow .nameCell {
-  padding-left: calc(1.1rem * var(--glance-depth, 1));
+/* The group's own row takes no chevron slot (it never opens), so it starts a small inset from the
+   table's edge and its rows — behind their chevron slot — sit a step in from it, at every width and
+   on both table kinds. Members go one more step in per depth. */
+.totalRow .caretSpace {
+  display: none;
+}
+
+.row .nameCell {
+  padding-left: var(--glance-inset);
+}
+
+.row.memberRow .nameCell {
+  padding-left: calc(var(--glance-inset) + var(--glance-step) * var(--glance-depth, 1));
 }
 
 .memberRow .dot {
@@ -398,6 +412,12 @@ a.name:hover {
   font-weight: 400;
 }
 
+/* The figures are numbers (the cell itself is not .mono: its narrow-frame label is text). */
+.period > :not(.periodLabel) {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .periodPct {
   font-size: 0.82rem;
   line-height: 1.2;
@@ -422,6 +442,12 @@ a.name:hover {
 /* No aportes in the period: the line keeps its place, so the row's cells line up. */
 .periodDepositsEmpty {
   visibility: hidden;
+}
+
+/* A period cell's own name: the column header names it while the rows are lines; shown only where
+   a row is a card (narrow frame, below), where the header row is gone. */
+.periodLabel {
+  display: none;
 }
 
 /* Middle frame (a small desktop's tile): año gives way; the line, hoy, weight, mes and total stay. */
@@ -449,36 +475,108 @@ a.name:hover {
   }
 }
 
-/* Narrow frame: name, hoy, mes and total on one line. */
+/* Narrow frame: the line and the weight give way and año comes back, so an investment row is name,
+   hoy, mes, año and total on one line. A cash group keeps name, own-currency balance and value. */
 @container group-glance (max-width: 46rem) {
   .table {
-    grid-template-columns: minmax(4.5rem, 1fr) max-content max-content max-content;
-    column-gap: 0.75rem;
-  }
-
-  .memberRow .nameCell {
-    padding-left: calc(0.6rem * var(--glance-depth, 1));
+    --glance-inset: 0.3rem;
+    --glance-step: 0.6rem;
   }
 
   .sparkCell,
-  .shareCell,
-  .year {
+  .shareCell {
     display: none;
   }
 
-  /* A cash group keeps name, own-currency balance and value. */
+  .table:not(.tableCash) {
+    grid-template-columns: minmax(4.5rem, 1fr) repeat(4, max-content);
+    column-gap: 0.75rem;
+  }
+
+  .table:not(.tableCash) .year {
+    display: block;
+  }
+
+  .table:not(.tableCash) .period.year {
+    display: flex;
+  }
+
   .tableCash {
     grid-template-columns: minmax(4.5rem, 1fr) max-content max-content;
+    column-gap: 0.75rem;
   }
 
-  .tableCash .month {
+  .tableCash .month,
+  .tableCash .year {
     display: none;
+  }
+}
+
+/* A phone's frame: an investment row is a card (the mockup's) — name and hoy on its first line,
+   then mes / año / total side by side under a hairline, each cell naming itself. */
+@container group-glance (max-width: 38rem) {
+  .table:not(.tableCash) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 0;
+  }
+
+  .table:not(.tableCash) .headRow {
+    display: none;
+  }
+
+  .table:not(.tableCash) .row {
+    row-gap: 8px;
+    padding-block: 10px;
+  }
+
+  .table:not(.tableCash) .nameCell {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .table:not(.tableCash) .today {
+    grid-column: 2 / 4;
+    grid-row: 1;
+  }
+
+  .table:not(.tableCash) .month,
+  .table:not(.tableCash) .year,
+  .table:not(.tableCash) .total {
+    grid-row: 2;
+  }
+
+  .table:not(.tableCash) .month {
+    grid-column: 1;
+  }
+
+  .table:not(.tableCash) .year {
+    grid-column: 2;
+  }
+
+  .table:not(.tableCash) .total {
+    grid-column: 3;
+  }
+
+  /* One hairline across the card between its two lines (no column gap to break it). */
+  .table:not(.tableCash) .period {
+    align-self: stretch;
+    justify-content: flex-start;
+    padding-top: 8px;
+    padding-left: 0.5rem;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .periodLabel {
+    display: block;
+    margin-bottom: 2px;
+    font-size: var(--font-size-card-meta-sm);
+    color: var(--muted);
   }
 }
 
 /* A phone's frame: the figures one step smaller, so the names keep a few letters more. */
 @container group-glance (max-width: 26rem) {
-  .table {
+  .tableCash {
     column-gap: 0.6rem;
   }
 
@@ -493,13 +591,6 @@ a.name:hover {
   .todayChange,
   .figureAmount {
     font-size: var(--font-size-card-meta-sm);
-  }
-
-  /* The day's P/L over its %: the row is three lines tall already (the period cells). */
-  .todayChange {
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
   }
 
   .periodDeposits {
