@@ -236,6 +236,12 @@ export type CcInstallmentLedgerMergeResult = {
   gapFilled: number;
   /** Pieces of one-shot lines this merge's plans replaced, dropped (a plan takes none). */
   pieces_dropped: CardLinePiecesDropped[];
+  /**
+   * The plan each loan chain ended on, by the chain's own fingerprint (`loanChainPlanFacts` →
+   * `installmentPurchaseLedgerDedupeKey`): the row an upsert kept may fingerprint differently (a
+   * row on file under the chain's canonical row keeps its merchant, a manual one its total).
+   */
+  chain_plans: { fingerprint: string; plan_id: number }[];
 };
 
 export type CcInstallmentLedgerMergeOpts = {
@@ -310,6 +316,7 @@ function mergeInstallmentLedgerInSession(
   );
 
   let purchaseUpserts = 0;
+  const chainPlans: { fingerprint: string; plan_id: number }[] = [];
   let earliestNewPurchaseDate: string | null = null;
   let paymentUpserts = 0;
   const touchedPlanIds = new Set<number>();
@@ -423,6 +430,7 @@ function mergeInstallmentLedgerInSession(
         purchaseUpserts++;
       }
       touchedPlanIds.add(pid);
+      chainPlans.push({ fingerprint, plan_id: pid });
       const planIdByTwin = planIdsByLoan.get(loanKey) ?? new Map<number, number>();
       planIdByTwin.set(agg.twin_index, pid);
       planIdsByLoan.set(loanKey, planIdByTwin);
@@ -497,6 +505,7 @@ function mergeInstallmentLedgerInSession(
     earliestNewPurchaseDate,
     gapFilled,
     pieces_dropped,
+    chain_plans: chainPlans,
   };
 };
 

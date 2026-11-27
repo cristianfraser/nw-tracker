@@ -71,7 +71,7 @@ import {
   markAnnulledPurchaseBankCredited,
 } from "../ccAnnulledPurchases.js";
 import { moveOpenBucketLinesToBillingMonth } from "../ccOpenWebPasteRepair.js";
-import { installmentPurchaseLedgerDedupeKey, listPlansForLineMatching, plansCoveringOneShotLine } from "./purchases.js";
+import { installmentPurchaseLedgerDedupeKey, plansCoveringOneShotLine } from "./purchases.js";
 import { describeRemovedCardLine, notifyRemovedCardLinesWithFiled } from "./removedCardLines.js";
 import { carryPlanPrepaymentLines } from "../ccPlanPrepayments.js";
 import { confirmManualPaymentForPlanted, listPlantedPaymentLines } from "../ccPlantedPayments.js";
@@ -433,20 +433,21 @@ function applyInSession(
   const coveredLeft = [...coveredByPlan].filter((id) => afterLedger.has(id));
   if (coveredLeft.length > 0) {
     const factsOf = new Map(plan.remove.filter((r) => r.why === "covered_by_plan" && r.plan_facts).map((r) => [r.row.id, r.plan_facts!]));
-    const plansNow = listPlansForLineMatching(accountId);
     const foldOntoPlans: { fromLineId: number; planId: number }[] = [];
     for (const id of coveredLeft) {
+      // The plan the ledger merge wrote for the chain the planner named (by the chain's own
+      // fingerprint: the row an upsert kept may read differently), else the one plan whose purchase
+      // the line is, else nothing: the line is reported (the fold keeps identity, not money).
       const facts = factsOf.get(id);
-      if (facts) {
-        const fp = installmentPurchaseLedgerDedupeKey(facts);
-        const named = plansNow.filter((p) => installmentPurchaseLedgerDedupeKey(p) === fp);
-        if (named.length !== 1) throw new Error(`keep-rows apply: line ${id} folds into the plan of ${facts.purchase_date} ${facts.total_amount_clp}, found ${named.length} on file`);
-        foldOntoPlans.push({ fromLineId: id, planId: named[0]!.id });
+      const fp = facts ? installmentPurchaseLedgerDedupeKey(facts) : null;
+      const written = [...new Set(ledger.chain_plans.filter((c) => c.fingerprint === fp).map((c) => c.plan_id))];
+      if (written.length === 1) {
+        foldOntoPlans.push({ fromLineId: id, planId: written[0]! });
         continue;
       }
       const plans = plansCoveringOneShotLine(accountId, id);
       if (plans.length === 1) foldOntoPlans.push({ fromLineId: id, planId: plans[0]!.id });
-      else removedWithoutPair.push(describeRemovedCardLine(id, "covered_by_plan", "several_candidates"));
+      else removedWithoutPair.push(describeRemovedCardLine(id, "covered_by_plan", plans.length > 1 || written.length > 1 ? "several_candidates" : null));
     }
     piecesDropped.push(...applyCardLinePlanDetailed(accountId, { deleteLineIds: coveredLeft, carry: [], foldOntoPlans }).pieces_dropped);
   }
@@ -672,7 +673,7 @@ function importResult(
   };
   return {
     statements: statementsResult,
-    ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0, pieces_dropped: [] },
+    ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0, pieces_dropped: [], chain_plans: [] },
     overlap_removed: a?.overlap_removed ?? 0,
     pieces_dropped: a?.pieces_dropped ?? [],
     manual_installment_reconcile: a?.manual_installment_reconcile ?? emptyManualReconcile(),

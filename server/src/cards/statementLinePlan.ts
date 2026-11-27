@@ -31,8 +31,8 @@
  *     plan the documents bring of its principal near its day; the annulments settle;
  *  5. what a replaced statement gave up pairs with its document lines (`planCcLineMoves`: the same
  *     parser row, then identity; a split re-parse fans out), then a source takeover pairs what is
- *     left of one close by the settle figures and the merchant's rendering, then a changed line pairs
- *     as the one line left of its close, day and merchant (or signed amount).
+ *     left of one close by the settle figures and the merchant's rendering, then a line whose amount
+ *     changed pairs as the one line left of its close, day and merchant.
  *
  * Steps 4 and 5 join rows into groups (one charge); of a group's rows the earliest seen is the kept
  * one — the oldest arrival (`compareArrival`: a row with no stamp was on file before the stamps),
@@ -64,12 +64,15 @@ import {
 } from "../flows/cardLineAdoption.js";
 import { compareArrival, type FlowArrival } from "../flows/flowFirstSeen.js";
 import type { PlantedPaymentRow } from "../ccPlantedPayments.js";
+import type { CardLineKind } from "nw-tracker-contracts";
 
 // ── input ────────────────────────────────────────────────────────────────────────────────────────
 
 /** A card line's columns as the matchers read them (stored shape: padded `dd/mm/yyyy` days). */
 export type PlanLineColumns = BucketSettlementLine & {
   installment_flag: boolean;
+  /** Its stored kind (`cc_statement_lines.kind`; a document line's own). */
+  kind: CardLineKind;
   nro_cuota_current: number | null;
   nro_cuota_total: number | null;
   parser_row_id: string | null;
@@ -165,6 +168,8 @@ export type CardStatementLinePlanInput = {
   annulments: (AnnulmentForSettlement & { arrival: FlowArrival })[];
   planted_payments: PlantedPaymentRow[];
   prepayment_roles: [number, PlanPrepaymentLineRole][];
+  /** Peso refunds of prepaid plans whose credit is not on file yet (`cc_plan_prepayments.credit_line_id` null). */
+  pending_prepayment_credits_clp: number[];
 };
 
 // ── output ───────────────────────────────────────────────────────────────────────────────────────
@@ -187,7 +192,7 @@ export type KeepReason =
   | "reimport_fan_out"
   /** The same close from another source (a JSON close its PDF takes over), paired by the settle figures. */
   | "source_takeover"
-  /** A re-imported statement's line whose amount or merchant changed, the one line left of its day and merchant (or amount). */
+  /** A re-imported statement's line whose amount changed, the one line left of its close, day and merchant. */
   | "reimport_changed"
   | "annulment_billed";
 
@@ -536,6 +541,12 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       cuotaPurchaseKind: (id) => live.get(id)?.cuota_purchase_kind ?? null,
       planCoversOneShot: (merchant, iso, amount) => findPlanAmong(input.plans_after, merchant, iso, amount) != null,
       documentPlans: input.plans_after.filter((p) => !planIdsBefore.has(p.id) && !plansTaken.has(p.id)),
+      lineKind: (id) => {
+        const l = live.get(id);
+        if (!l) throw new Error(`statement-line planner: line ${id} is not on the ledger the settlement reads`);
+        return l.kind;
+      },
+      pendingPrepaymentCreditsClp: input.pending_prepayment_credits_clp,
     });
     for (const t of settlement.taggedOntoPlan) {
       const p = input.plans_after.find((x) => x.id === t.planId)!;
@@ -707,56 +718,48 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       groups.fold(docToken(target.id), lineToken(id));
     }
   }
-  // A re-imported statement whose line changed (a parser fix: another amount, another merchant):
-  // what is left of one close pairs one to one when the choice is unambiguous — the one gone and the
-  // one written line of a day and merchant (letters and digits), then of a day and signed amount.
-  // A key with several lines on either side pairs nothing; its gone lines are reported.
+  // A re-imported statement whose line changed amount (a parser fix): what is left of one close
+  // pairs one to one when the choice is unambiguous — the one gone and the one written line of a
+  // day, currency and merchant (letters and digits). A key with several lines on either side pairs
+  // nothing; its gone lines are reported. A different merchant at the same amount never pairs here
+  // (the takeover pass above already pairs a re-rendered one): a parser fix that drops a phantom
+  // line and adds a missed one of that day and amount must not hand the phantom's identity over.
   const rootsWithRows = new Set(
     [...input.file_lines.map((l) => lineToken(l.id)), ...input.annulments.map((a) => annulToken(a.id))].map((t) => groups.find(t))
   );
   const reimportChanged = new Set<number>();
   const reimportAmbiguous = new Set<number>();
-  type KeyOf = (close: string, l: PlanLineColumns) => string | null;
-  const dayOf = (l: PlanLineColumns) => linePurchaseIso(l);
-  const byMerchant: KeyOf = (close, l) => {
+  const dayMerchantKey = (close: string, l: PlanLineColumns): string | null => {
     const m = merchantLettersAndDigits(l.merchant);
-    const day = dayOf(l);
+    const day = linePurchaseIso(l);
     return m && day ? `${close}|${l.currency}|${day}|${m}` : null;
   };
-  const byAmount: KeyOf = (close, l) => {
-    const day = dayOf(l);
-    return l.amount != null && day ? `${close}|${l.currency}|${day}|${Math.round(l.amount * 100)}` : null;
-  };
-  for (const keyOf of [byMerchant, byAmount]) {
-    const goneByKey = new Map<string, number[]>();
-    for (const id of gone) {
-      if (takeoverFrom.has(id) || reimportChanged.has(id)) continue;
-      const l = fileById.get(id)!;
-      const k = keyOf(l.statement_close, l);
-      if (k) goneByKey.set(k, [...(goneByKey.get(k) ?? []), id]);
-    }
-    const docsByKey = new Map<string, LiveLine[]>();
-    for (const d of candidates) {
-      if (pairedTo.has(d.id) || rootsWithRows.has(groups.find(docToken(d.id)))) continue;
-      const k = keyOf(closeOfDoc.get(d.doc!.statement_key)!.close, d);
-      if (k) docsByKey.set(k, [...(docsByKey.get(k) ?? []), d]);
-    }
-    for (const [k, ids] of goneByKey) {
-      const docs = docsByKey.get(k) ?? [];
-      if (docs.length === 0) continue;
-      if (ids.length !== 1 || docs.length !== 1) {
-        for (const id of ids) reimportAmbiguous.add(id);
-        continue;
-      }
-      const [id] = ids as [number];
-      const [d] = docs as [LiveLine];
-      pairedTo.add(d.id);
-      reimportChanged.add(id);
-      reimportAmbiguous.delete(id);
-      groups.fold(docToken(d.id), lineToken(id));
-    }
+  const goneByKey = new Map<string, number[]>();
+  for (const id of gone) {
+    if (takeoverFrom.has(id)) continue;
+    const l = fileById.get(id)!;
+    const k = dayMerchantKey(l.statement_close, l);
+    if (k) goneByKey.set(k, [...(goneByKey.get(k) ?? []), id]);
   }
-  for (const id of reimportChanged) reimportAmbiguous.delete(id);
+  const docsByKey = new Map<string, LiveLine[]>();
+  for (const d of candidates) {
+    if (pairedTo.has(d.id) || rootsWithRows.has(groups.find(docToken(d.id)))) continue;
+    const k = dayMerchantKey(closeOfDoc.get(d.doc!.statement_key)!.close, d);
+    if (k) docsByKey.set(k, [...(docsByKey.get(k) ?? []), d]);
+  }
+  for (const [k, ids] of goneByKey) {
+    const docs = docsByKey.get(k) ?? [];
+    if (docs.length === 0) continue;
+    if (ids.length !== 1 || docs.length !== 1) {
+      for (const id of ids) reimportAmbiguous.add(id);
+      continue;
+    }
+    const [id] = ids as [number];
+    const [d] = docs as [LiveLine];
+    pairedTo.add(d.id);
+    reimportChanged.add(id);
+    groups.fold(docToken(d.id), lineToken(id));
+  }
   if (takeoverFrom.size + reimportChanged.size > 0) {
     plan.ambiguous = plan.ambiguous.filter((a) => !a.rows.every((r) => r.kind === "line" && (takeoverFrom.has(r.id) || reimportChanged.has(r.id))));
   }

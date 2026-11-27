@@ -30,6 +30,7 @@ import { buildExpenseKey } from "../expenseKeys.js";
 import { keepEvidenceAsHistory } from "../flows/flowEvidence.js";
 import { adoptFlow, foldRetiredFlowOfDocumentInto, refreshFlowFromEvidence } from "../flows/flowAdoption.js";
 import { compareArrival, flowArrival } from "../flows/flowFirstSeen.js";
+import { isListingSourceKind } from "../ccStatementSourceKind.js";
 
 /** The columns a document line is stored with (the line importer's INSERT). */
 const STORED = [
@@ -155,7 +156,9 @@ export type CardLineRestateOutcome = {
  */
 export function restateCardLineRow(lineId: number, accountId: number, row: StoredCardLine): CardLineRestateOutcome {
   const before = cardLineOnAccount(lineId, accountId);
-  const target = db.prepare(`SELECT account_id FROM cc_statements WHERE id = ?`).get(row.statement_id) as { account_id: number } | undefined;
+  const target = db.prepare(`SELECT account_id, source_kind FROM cc_statements WHERE id = ?`).get(row.statement_id) as
+    | { account_id: number; source_kind: string }
+    | undefined;
   if (!target) throw new Error(`card line ${lineId}: statement ${String(row.statement_id)} does not exist`);
   if (target.account_id !== accountId) throw new Error(`card line ${lineId}: statement ${String(row.statement_id)} is on account ${target.account_id}`);
   if (before.flow_id == null) throw new Error(`card line ${lineId}: has no flow`);
@@ -172,6 +175,11 @@ export function restateCardLineRow(lineId: number, accountId: number, row: Store
       ...Object.fromEntries(columns.map((c) => [c, row[c]])),
       id: lineId,
     });
+  }
+  // A cuota-purchase tag is a listing's (`ccFeedCuotaPurchases.ts`): a statement that bills the
+  // line as it states it is what the bank billed, so the tag goes.
+  if (!isListingSourceKind(target.source_kind)) {
+    db.prepare(`UPDATE cc_statement_lines SET cuota_purchase_kind = NULL WHERE id = ? AND cuota_purchase_kind IS NOT NULL`).run(lineId);
   }
   // The kind trigger re-derives the kind from the amount and merchant; the line keeps the
   // document's, as an insert of it would.

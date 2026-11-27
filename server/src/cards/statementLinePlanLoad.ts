@@ -32,6 +32,7 @@ import { listAnnulledPurchases } from "../ccAnnulledPurchases.js";
 import { listPlantedPaymentLines } from "../ccPlantedPayments.js";
 import { planPrepaymentRows } from "../ccPlanPrepaymentsRead.js";
 import { flowArrival, type FlowArrival } from "../flows/flowFirstSeen.js";
+import { requireStoredCardLineKind } from "./lineKinds.js";
 import { cardLineAssignmentSignature, ccLineRefFromRow, CC_LINE_REF_SELECT } from "../flows/cardLineAdoption.js";
 import {
   closedPeriodIsoRange,
@@ -73,6 +74,7 @@ type FileLineRow = {
   dedupe_key: string | null;
   cuota_purchase_kind: string | null;
   flow_id: number | null;
+  kind: string | null;
   statement_date: string;
   statement_currency: string;
 };
@@ -111,7 +113,7 @@ export function loadCardStatementLinePlanInput(
   const rows = db
     .prepare(
       `SELECT l.id, l.statement_id, l.transaction_date, l.posting_date, l.merchant, l.amount, l.currency, l.installment_flag,
-              l.nro_cuota_current, l.nro_cuota_total, l.parser_row_id, l.dedupe_key, l.cuota_purchase_kind, l.flow_id,
+              l.nro_cuota_current, l.nro_cuota_total, l.parser_row_id, l.dedupe_key, l.cuota_purchase_kind, l.flow_id, l.kind,
               s.statement_date, s.currency AS statement_currency
        FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.account_id = ? ORDER BY l.id`
@@ -140,6 +142,7 @@ export function loadCardStatementLinePlanInput(
     parser_row_id: r.parser_row_id,
     dedupe_key: r.dedupe_key,
     cuota_purchase_kind: r.cuota_purchase_kind,
+    kind: requireStoredCardLineKind(r.kind, r.id),
     statement_close: closeKey(r.statement_date, r.statement_currency),
     plan_match_amount_clp: planAmount.get(r.id) ?? null,
     arrival: arrivalOf(r.flow_id),
@@ -178,7 +181,9 @@ export function loadCardStatementLinePlanInput(
   }
 
   const prepayment_roles: [number, PlanPrepaymentLineRole][] = [];
+  const pending_prepayment_credits_clp: number[] = [];
   for (const r of planPrepaymentRows(accountId)) {
+    if (r.credit_line_id == null) pending_prepayment_credits_clp.push(r.amount_clp);
     if (r.line_id != null) prepayment_roles.push([r.line_id, "prepayment"]);
     if (r.credit_line_id != null) prepayment_roles.push([r.credit_line_id, "credit"]);
   }
@@ -207,6 +212,7 @@ export function loadCardStatementLinePlanInput(
           amount: line.amount,
           currency: line.currency,
           installment_flag: line.installment != null,
+          kind: line.kind,
           nro_cuota_current: columns.nro_cuota_current,
           nro_cuota_total: columns.nro_cuota_total,
           parser_row_id: columns.parser_row_id,
@@ -237,6 +243,7 @@ export function loadCardStatementLinePlanInput(
     annulments: listAnnulledPurchases(accountId).map((a) => ({ ...a, arrival: arrivalOf(a.flow_id) })),
     planted_payments: listPlantedPaymentLines(accountId),
     prepayment_roles,
+    pending_prepayment_credits_clp,
   };
 }
 

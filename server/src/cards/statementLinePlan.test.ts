@@ -345,6 +345,7 @@ describe("planCardStatementLines (pure)", () => {
       amount,
       currency: "clp",
       installment_flag: false,
+      kind: amount > 0 ? "card_purchase" : "card_refund",
       nro_cuota_current: 0,
       nro_cuota_total: 0,
       parser_row_id: `web:${id}`,
@@ -385,6 +386,7 @@ describe("planCardStatementLines (pure)", () => {
             amount: d.amount,
             currency: "clp",
             installment_flag: false,
+            kind: d.amount > 0 ? ("card_purchase" as const) : ("card_refund" as const),
             nro_cuota_current: 0,
             nro_cuota_total: 0,
             parser_row_id: `st:${i}`,
@@ -412,6 +414,7 @@ describe("planCardStatementLines (pure)", () => {
       annulments: [],
       planted_payments: [],
       prepayment_roles: [],
+      pending_prepayment_credits_clp: [],
     };
   }
 
