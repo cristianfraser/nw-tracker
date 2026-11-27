@@ -25,6 +25,7 @@ import { registerClientDistStatic, serveClientDistEnabled } from "./staticClient
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
 import { ensureCacheFresh } from "./cacheRegistry.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
+import { startLateDocumentCheck } from "./lateDocuments.js";
 import { startDemoMarketPublishJob } from "./demoMarketPublishJob.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAccountsRoutes } from "./routes/accounts.js";
@@ -158,6 +159,7 @@ const server = app.listen(PORT, HOST, () => {
   startDemoArrivals();
   startLiveMarketQuotesScheduler();
   startDbBackupScheduler();
+  startLateDocumentCheck();
   startDemoMarketPublishJob();
   startDashboardCacheWarmer();
   startIngestRunScheduler();

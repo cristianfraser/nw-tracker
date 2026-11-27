@@ -65,6 +65,8 @@ export type ServerConfig = {
   /** The nightly demo-market publish (`demoMarketPublishJob.ts`); also needs `DEMO_MARKET_PUBLISH_TOKEN`. */
   demoMarketPublish: boolean;
   usageLog: boolean;
+  /** The daily «Document not received» check (`lateDocuments.ts`); never on the demo. */
+  lateDocumentCheck: boolean;
   /** The ingest scheduler (`ingestRunScheduler.ts`): only the primary instance's LaunchAgent sets it. */
   ingestScheduler: boolean;
   /** The job queue's executor (`jobQueueExecutor.ts`); defaults to the ingest scheduler's value. */
@@ -95,6 +97,7 @@ export const BACKGROUND_JOB_FLAGS = [
   "INGEST_SCHEDULER_ENABLED",
   "JOB_QUEUE_EXECUTOR_ENABLED",
   "DEMO_MARKET_PUBLISH_ENABLED",
+  "LATE_DOCUMENT_CHECK_ENABLED",
 ] as const;
 
 /**
@@ -237,6 +240,8 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     // Never on the demo itself, whatever the flag says: it is what the demo reads.
     demoMarketPublish: !demo && flag("DEMO_MARKET_PUBLISH_ENABLED", true),
     usageLog: flag("USAGE_LOG_ENABLED", true),
+    // Never on the demo, whatever the flag says: its documents are generated, nobody awaits them.
+    lateDocumentCheck: !demo && flag("LATE_DOCUMENT_CHECK_ENABLED", true),
     ingestScheduler,
     jobQueueExecutor,
     bcentralGate: {
@@ -341,7 +346,7 @@ export function describeServerConfig(c: ServerConfig): string {
   return (
     `config: ${c.profile.demo ? "demo" : "personal"} profile; background jobs ${on(c.backgroundJobs)}; ` +
     `global sync ${on(c.globalSync.enabled)}, live quotes ${on(c.liveQuotes.enabled)}, backup ${on(c.dbBackup.enabled)}, ` +
-    `cache warm ${on(c.cacheWarm)}, usage log ${on(c.usageLog)}, ingest scheduler ${on(c.ingestScheduler)}, ` +
+    `cache warm ${on(c.cacheWarm)}, usage log ${on(c.usageLog)}, late documents ${on(c.lateDocumentCheck)}, ingest scheduler ${on(c.ingestScheduler)}, ` +
     `job executor ${on(c.jobQueueExecutor)}`
   );
 }
