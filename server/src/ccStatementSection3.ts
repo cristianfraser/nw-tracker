@@ -6,6 +6,7 @@ import {
   USD_GARBLED_MERCHANT_MARKERS,
   isCcPaymentMerchant,
   isClpSection3Merchant,
+  isClpSection3SettlementMerchant,
   isUsdSection3Merchant,
 } from "nw-tracker-contracts";
 import { ccCardRegistry } from "./ccCardRegistry.js";
@@ -52,6 +53,6 @@ export function classifyCcStatementLine(line: {
   if (BCI_SECTION3_LAYOUTS.has(layout)) {
     return isCcPaymentMerchant(line.merchant) ? "mid_period_payments" : "cargos_abonos";
   }
-  if (isClpSection3Merchant(line.merchant)) return "cargos_abonos";
+  if (isClpSection3Merchant(line.merchant) || isClpSection3SettlementMerchant(line.merchant)) return "cargos_abonos";
   return line.amount > 0 ? "operaciones" : "ignored";
 }

@@ -2,6 +2,7 @@ import {
   canonicalStatementsFromParsedPayload,
   type CardCanonicalStatement,
   type CardLineRemovedWithoutPair,
+  type CardStatementUnverifiedLines,
   type CardParsedStatementsApplyDetails,
   type CardParsedStatementsPayload,
 } from "nw-tracker-contracts";
@@ -131,6 +132,7 @@ function applyStatements(
       purchase_upserts: 0,
       payment_upserts: 0,
       removed_without_pair: [] as CardLineRemovedWithoutPair[],
+      unverified_lines: [] as CardStatementUnverifiedLines[],
     };
     const filtered = opts.full
       ? { changed: accountStatements, skippedKeys: [] as string[] }
@@ -166,6 +168,10 @@ function applyStatements(
         );
       }
       row.removed_without_pair = kr.removed_without_pair;
+      row.unverified_lines = kr.unverified_lines;
+      for (const u of kr.unverified_lines) {
+        report.push(`# account ${accountId}: imported unverified — ${u.statement} (${u.currency.toUpperCase()} ${u.billing_month}): ${u.reason}`);
+      }
       for (const r of kr.removed_without_pair) report.push(`#   ${removedCardLineReport(r)}`);
       for (const c of kr.copies_folded) report.push(`#   ${copiesFoldedReport(c)}`);
       for (const c of kr.fold_conflicts) report.push(`#   ${foldConflictReport(c)}`);

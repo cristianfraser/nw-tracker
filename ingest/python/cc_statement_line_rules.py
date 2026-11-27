@@ -8,8 +8,8 @@ and the import-time reconcile (`ccStatementImportReconcile.ts`) sum a statement 
 A non-installment line goes to one of:
 
 - ``operaciones``: a purchase (section 1, «Total operaciones»).
-- ``cargos_abonos``: section 3 (interest, fees, taxes, notas de crédito, the USD side's
-  «ABONO DE DIVISAS»).
+- ``cargos_abonos``: section 3 (interest, fees, taxes, notas de crédito, a prepaid cuota plan's
+  «PREPAGO EN CUOTAS», the USD side's «ABONO DE DIVISAS»).
 - ``mid_period_payments``: a payment printed as a line (the compact / OCR payment layouts, and
   BCI's section-3 PAGO rows).
 - ``ignored``: counted nowhere (a payment or refund outside those layouts).
@@ -33,6 +33,7 @@ _KEYS = (
     "usd_debt_abono_merchant",
     "traspaso_deuda_tokens",
     "clp_section3_charge_pattern",
+    "clp_section3_settlement_pattern",
     "usd_section3_pattern",
     "usd_garbled_merchant_pattern",
     "usd_garbled_merchant_markers",
@@ -60,6 +61,7 @@ PAYMENT_MERCHANTS = frozenset(RULES["payment_merchants"])
 USD_DEBT_ABONO_MERCHANT: str = RULES["usd_debt_abono_merchant"]
 TRASPASO_DEUDA_TOKENS: List[str] = RULES["traspaso_deuda_tokens"]
 RE_CLP_SECTION3_CHARGE = re.compile(RULES["clp_section3_charge_pattern"], re.I)
+RE_CLP_SECTION3_SETTLEMENT = re.compile(RULES["clp_section3_settlement_pattern"], re.I)
 RE_USD_SECTION3 = re.compile(RULES["usd_section3_pattern"], re.I)
 RE_USD_GARBLED_MERCHANT = re.compile(RULES["usd_garbled_merchant_pattern"], re.I)
 USD_GARBLED_MERCHANT_MARKERS: List[str] = RULES["usd_garbled_merchant_markers"]
@@ -95,6 +97,12 @@ def is_clp_section3_merchant(merchant: object) -> bool:
     if is_payment_merchant(m):
         return False
     return bool(RE_CLP_SECTION3_CHARGE.search(m))
+
+
+def is_clp_section3_settlement_merchant(merchant: object) -> bool:
+    """«PREPAGO EN CUOTAS»: a section-3 peso line that is no financing cost (a prepaid cuota plan,
+    billed whole outside «TOTAL OPERACIONES») — `isClpSection3SettlementMerchant` in `lineRules.ts`."""
+    return bool(RE_CLP_SECTION3_SETTLEMENT.search(str(merchant or "").strip()))
 
 
 def is_usd_section3_merchant(merchant: object, amount_usd: float) -> bool:
@@ -140,6 +148,6 @@ def classify_statement_line(currency: str, merchant: object, layout: str, amount
         # and miss BCI's forms («IMPUESTO DL 3475», merchant-named notas), which the bank nets
         # into Monto Total Facturado. Its PAGO rows are payments.
         return "mid_period_payments" if is_payment_merchant(merchant) else "cargos_abonos"
-    if is_clp_section3_merchant(merchant):
+    if is_clp_section3_merchant(merchant) or is_clp_section3_settlement_merchant(merchant):
         return "cargos_abonos"
     return "operaciones" if amount > 0 else "ignored"

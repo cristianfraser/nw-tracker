@@ -12,6 +12,9 @@ export const ccStatementLineRulesSchema = z.strictObject({
   usd_debt_abono_merchant: z.string().describe("Substring naming the payment of the USD debt («ABONO DE DIVISAS»)."),
   traspaso_deuda_tokens: strings.describe("Every token must appear for a traspaso de deuda (USD debt moved onto the CLP side)."),
   clp_section3_charge_pattern: z.string().describe("Case-insensitive regex: a CLP section-3 charge (interest, fees, taxes, notas de crédito)."),
+  clp_section3_settlement_pattern: z
+    .string()
+    .describe("Case-insensitive regex: a CLP section-3 line that is no financing cost (a cuota plan the bank prepaid, billed whole)."),
   usd_section3_pattern: z.string().describe("Case-insensitive regex: a USD section-3 line."),
   usd_garbled_merchant_pattern: z.string().describe("Case-insensitive regex: a USD row made of two merged pdftotext lines."),
   usd_garbled_merchant_markers: strings,

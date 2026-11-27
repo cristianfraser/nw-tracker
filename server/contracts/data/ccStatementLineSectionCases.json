@@ -5,6 +5,7 @@
   { "currency": "clp", "layout": "wide_master_simple", "merchant": "IMPTO. DECRETO LEY 3475", "amount": 80, "section": "cargos_abonos" },
   { "currency": "clp", "layout": "wide_master_simple", "merchant": "NOTA DE CREDITO", "amount": -9990, "section": "cargos_abonos" },
   { "currency": "clp", "layout": "wide_master_simple", "merchant": "TRASPASO DE DEUDA INTERNACIONAL", "amount": 72000, "section": "cargos_abonos", "traspaso_deuda": true },
+  { "currency": "clp", "layout": "wide_master_simple", "merchant": "PREPAGO EN CUOTAS", "amount": 45000, "section": "cargos_abonos", "note": "a prepaid cuota plan prints in section 3, outside TOTAL OPERACIONES; no financing cost" },
   { "currency": "clp", "layout": "wide_master_simple", "merchant": "MONTO CANCELADO", "amount": -50000, "section": "ignored" },
   { "currency": "clp", "layout": "compact_de_simple", "merchant": "  monto   cancelado ", "amount": -1000, "section": "ignored" },
   { "currency": "clp", "layout": "wide_master_simple", "merchant": "PAGO INTERESES MORA", "amount": 1200, "section": "cargos_abonos", "note": "only the exact payment literals are payments: a PAGO-prefixed charge is still a section-3 charge" },

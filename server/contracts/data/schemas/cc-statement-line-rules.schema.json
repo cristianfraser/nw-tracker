@@ -24,6 +24,10 @@
       "type": "string",
       "description": "Case-insensitive regex: a CLP section-3 charge (interest, fees, taxes, notas de crédito)."
     },
+    "clp_section3_settlement_pattern": {
+      "type": "string",
+      "description": "Case-insensitive regex: a CLP section-3 line that is no financing cost (a cuota plan the bank prepaid, billed whole)."
+    },
     "usd_section3_pattern": {
       "type": "string",
       "description": "Case-insensitive regex: a USD section-3 line."
@@ -65,6 +69,7 @@
     "usd_debt_abono_merchant",
     "traspaso_deuda_tokens",
     "clp_section3_charge_pattern",
+    "clp_section3_settlement_pattern",
     "usd_section3_pattern",
     "usd_garbled_merchant_pattern",
     "usd_garbled_merchant_markers",

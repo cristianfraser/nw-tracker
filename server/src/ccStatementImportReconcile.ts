@@ -18,8 +18,10 @@ import {
   isCcTraspasoDeudaMerchant,
   type CardCanonicalLine,
   type CardCanonicalStatement,
+  type CardStatementUnverifiedLines,
 } from "nw-tracker-contracts";
 import { isHomeCurrency } from "./displayUnits.js";
+import { IngestRefusal } from "./ingestReceiver.js";
 import { lineHasPesoDollarView } from "./cards/lineAmountSql.js";
 
 const TOL_CLP = 1;
@@ -53,6 +55,11 @@ export type CcReconcileRow = {
 
 export type CcParsedSectionSums = {
   parsed_operaciones: number;
+  /**
+   * Peso credits the line rules count nowhere (a refund that is no nota de crédito nor payment):
+   * the bank nets them into «TOTAL OPERACIONES», so the operaciones check adds them back.
+   */
+  parsed_operaciones_credits: number;
   parsed_cargos_abonos: number;
   parsed_cuotas: number;
   parsed_mid_period_payments: number;
@@ -66,40 +73,65 @@ export type CcImportReconcileCheck = {
   actual: number | null;
   delta: number | null;
   detail: string;
+  /** The check sums the parsed lines; one comparing printed figures alone says nothing about the parse. */
+  reads_lines: boolean;
+  /** False for a line check on an OCR'd scan: reported (`unverified_reason`), never failing the import. */
+  enforced: boolean;
 };
 
 export type CcImportReconcileResult = {
   billing_month: string;
   source_pdf: string | null;
+  /** The statement's currency (the rows'). */
+  currency: string;
   ok: boolean;
   skipped: boolean;
   skip_reason: string | null;
   checks: CcImportReconcileCheck[];
   parsed_sums: CcParsedSectionSums;
   row_count: number;
+  /**
+   * Why the parsed lines were imported unverified (no printed figure they can be checked against,
+   * or an OCR'd scan missing one); null when a check read them and held.
+   */
+  unverified_reason: string | null;
 };
 
-export class CcStatementImportReconcileError extends Error {
+/**
+ * A statement whose parsed lines do not reproduce its printed figures. Thrown inside the card-line
+ * write, so nothing of the account's batch is written; through the ingest route it is a refusal
+ * (422 `statement_not_reconciled`) whose message names the statement, each figure and the rows
+ * printed more than once, one fact per line.
+ */
+export class CcStatementImportReconcileError extends IngestRefusal {
   readonly detail: CcImportReconcileResult;
 
   constructor(message: string, detail: CcImportReconcileResult) {
-    super(message);
+    super("statement_not_reconciled", message);
     this.name = "CcStatementImportReconcileError";
     this.detail = detail;
   }
 }
 
-/** A parsed-statement CSV header amount (Chilean style): an empty cell reads 0, text that is not a number throws. */
+/** The statements of an import whose lines no printed figure verified. */
+export function unverifiedStatementLines(results: readonly CcImportReconcileResult[]): CardStatementUnverifiedLines[] {
+  return results.flatMap((r) =>
+    r.unverified_reason == null
+      ? []
+      : [{ statement: r.source_pdf ?? "statement", currency: r.currency, billing_month: r.billing_month, reason: r.unverified_reason }]
+  );
+}
+
+/**
+ * A cuota line bills in «TOTAL OPERACIONES» when it prints the cuota it bills (1/N or later). A
+ * 00/N row — section 4's «compras en cuotas en el período», whatever layout read it — bills
+ * nothing yet, nor do the TCOM / periodic summaries.
+ */
 function installmentCuotaCountsTowardOperaciones(row: CcReconcileRow): boolean {
   const layout = row.parser_layout;
   if (layout.includes("wide_master_tcom_cuotas_tasa")) return false;
   if (layout.includes("wide_master_periodic_summary")) return false;
-  const cur = row.nro_cuota_current ?? 0;
-  if (cur >= 1) return true;
-  if (layout.includes("wide_master_precio_summary") || layout.includes("wide_master_installment")) {
-    return true;
-  }
-  return false;
+  return (row.nro_cuota_current ?? 0) >= 1;
 }
 
 function reconcileCurrencyFromRows(rows: readonly CcReconcileRow[]): string {
@@ -136,6 +168,7 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
   let cargos_abonos = 0;
   let cuotas = 0;
   let midPeriodPayments = 0;
+  let operacionesCredits = 0;
 
   for (const row of rows) {
     if (row.currency !== "clp") continue; // convention-ok: the parsed-PDF reconcile rules are the Chilean statements' peso and dollar sections
@@ -166,10 +199,14 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
     if (section === "operaciones") operaciones += row.amount_clp;
     else if (section === "cargos_abonos") cargos_abonos += row.amount_clp;
     else if (section === "mid_period_payments") midPeriodPayments += row.amount_clp;
+    else if (section === "ignored" && row.amount_clp < 0 && !isCcPaymentMerchant(row.merchant)) {
+      operacionesCredits += row.amount_clp;
+    }
   }
 
   return {
     parsed_operaciones: Math.round(operaciones),
+    parsed_operaciones_credits: Math.round(operacionesCredits),
     parsed_cargos_abonos: Math.round(cargos_abonos),
     parsed_cuotas: Math.round(cuotas),
     parsed_mid_period_payments: Math.round(midPeriodPayments),
@@ -211,6 +248,7 @@ export function sumParsedSectionsUsd(rows: readonly CcReconcileRow[]): CcParsedS
 
   return {
     parsed_operaciones: Math.round(operaciones * 100) / 100,
+    parsed_operaciones_credits: 0,
     parsed_cargos_abonos: Math.round(cargos_abonos * 100) / 100,
     parsed_cuotas: 0,
     parsed_mid_period_payments: 0,
@@ -269,6 +307,31 @@ export type CcReconcileHeader = {
   pdf_total_operaciones?: number | null;
 };
 
+/** Every parsed line is a Chilean OCR read (`ocr_*` layouts): a scan, whose known gaps are OCR's. */
+function isOcrScan(rows: readonly CcReconcileRow[]): boolean {
+  return rows.length > 0 && rows.every((r) => r.parser_layout.startsWith("ocr_"));
+}
+
+/**
+ * Reconciles one statement's parsed lines (`rows`, one currency) with the figures it prints
+ * (`header`). The rule: wherever the statement prints a figure its lines can reproduce, the PARSED
+ * LINES must reproduce it — a check of printed figures against each other is no evidence about
+ * the parse (`reads_lines: false`) and never verifies a statement by itself.
+ *
+ * - Pesos, «TOTAL OPERACIONES» printed (Santander, BCI's operaciones subtotal): the parsed
+ *   operaciones, refunds netted, equal it to the peso, both ways (`operaciones_lines`) — a doubled
+ *   reading of a line is as wrong as a lost one.
+ * - Santander pesos, «Monto Total Facturado» printed: one of the bank's identities built from the
+ *   parsed lines (operaciones — or the printed total once `operaciones_lines` holds it equal — plus
+ *   the parsed section 3, with the saldo / previous period's carries) equals it within the issuer's
+ *   band; never the header alone.
+ * - BCI pesos: parsed operaciones + section 3 = Monto Total Facturado (the issuer's band).
+ * - Foreign currency: the parsed operaciones equal the printed compras to the cent
+ *   (`header_compras_vs_operaciones`); with no compras printed, the monto check reads the lines.
+ *
+ * A statement none of whose checks reads its lines is imported as before and reported
+ * (`unverified_reason`). On an OCR'd scan the line checks are reported, never enforced.
+ */
 export function reconcileBillingMonthMovements(
   billingMonth: string,
   rows: readonly CcReconcileRow[],
@@ -283,99 +346,74 @@ export function reconcileBillingMonthMovements(
       ? sumParsedSectionsUsd(facturadoRows)
       : sumParsedSectionsClp(facturadoRows);
   const checks: CcImportReconcileCheck[] = [];
+  const ocrScan = isOcrScan(facturadoRows);
+  const add = (check: Omit<CcImportReconcileCheck, "enforced">) =>
+    checks.push({ ...check, enforced: !(ocrScan && check.reads_lines) });
   const monto = header.monto_facturado;
   const compras = header.compras_cargos;
+  const opPdf = header.pdf_total_operaciones ?? null;
   const reconcileIssuer = reconcileIssuerForRows(facturadoRows);
   const bciLider = reconcileIssuer.slug === "bci";
 
-  // The BCI `bci_incomplete_parse` hatch (<12 rows, or >8% gap vs pdf_total_operaciones) was
-  // removed 2026-08-28: genuinely incomplete BCI parses already fail loudly at PARSE level
-  // (the operaciones subtotal is a required check in cc_statement_reconcile.py), so at import
-  // level the hatch only ever disarmed the monto_facturado gate — which is exactly what let
-  // the 2026-08 ·0101 facturación import with 9 of 16 lines silently missing (the doubled
-  // pdf_total_operaciones from the concat-text collection tripped the 8% arm). The BCI
-  // monto_facturado check below is a hard gate now.
+  if (currency === "clp" && opPdf != null) { // convention-ok: the parsed-PDF reconcile rules are the Chilean statements' peso and dollar sections
+    const actual = parsed.parsed_operaciones + parsed.parsed_operaciones_credits;
+    add({
+      code: "operaciones_lines",
+      ok: closeEnough(actual, opPdf, TOL_CLP),
+      expected: opPdf,
+      actual,
+      delta: actual - opPdf,
+      detail: "parsed operaciones (refunds netted) vs printed TOTAL OPERACIONES",
+      reads_lines: true,
+    });
+  }
 
   if (currency === "clp" && monto != null && monto > 0) { // convention-ok: the parsed-PDF reconcile rules are the Chilean statements' peso and dollar sections
     if (bciLider) {
       const billed = parsed.parsed_operaciones + parsed.parsed_cargos_abonos;
-      const delta = billed - monto;
       const tol = Math.max(TOL_CLP, Math.abs(monto) * reconcileIssuer.monto_facturado_tolerance_pct);
-      const ok = closeEnough(billed, monto, tol);
-      checks.push({
+      add({
         code: "monto_facturado",
-        ok,
+        ok: closeEnough(billed, monto, tol),
         expected: monto,
         actual: billed,
-        delta,
+        delta: billed - monto,
         detail: "operaciones+cargos vs Monto Total Facturado",
+        reads_lines: true,
       });
     } else {
-    const saldo = header.saldo_anterior ?? 0;
-    let cargos = parsed.parsed_cargos_abonos;
-    const pagado = header.monto_pagado_anterior;
-    if (
-      pagado != null &&
-      cargos !== 0 &&
-      Math.abs(Math.abs(cargos) - Math.abs(pagado)) <=
-        Math.max(TOL_CLP, Math.abs(pagado) * 0.01)
-    ) {
-      cargos = 0;
-    }
-    const pay = parsed.parsed_mid_period_payments;
-    const montoPrev = header.monto_facturado_anterior;
-    const opPdf = header.pdf_total_operaciones;
-    const midPeriodPaymentCarry =
-      pagado != null &&
-      pagado !== 0 &&
-      opPdf != null &&
-      closeEnoughOperaciones(parsed.parsed_operaciones, opPdf, currency);
-    if (midPeriodPaymentCarry) {
-      checks.push({
+      const saldo = header.saldo_anterior ?? 0;
+      let cargos = parsed.parsed_cargos_abonos;
+      const pagado = header.monto_pagado_anterior;
+      if (
+        pagado != null &&
+        cargos !== 0 &&
+        Math.abs(Math.abs(cargos) - Math.abs(pagado)) <= Math.max(TOL_CLP, Math.abs(pagado) * 0.01)
+      ) {
+        cargos = 0;
+      }
+      const pay = parsed.parsed_mid_period_payments;
+      const montoPrev = header.monto_facturado_anterior;
+      // The printed operaciones stand for the parsed ones only beside `operaciones_lines`, which
+      // holds the two equal; every candidate carries the parsed section 3.
+      const operaciones = opPdf != null ? [parsed.parsed_operaciones, opPdf] : [parsed.parsed_operaciones];
+      const candidates: number[] = [];
+      for (const op of operaciones) {
+        candidates.push(op + cargos + saldo, op + cargos);
+        if (pay !== 0) candidates.push(op + cargos + pay);
+        if (montoPrev != null && pagado != null) candidates.push(montoPrev + op + cargos + pagado);
+      }
+      const billed = candidates.reduce((best, c) => (Math.abs(c - monto) < Math.abs(best - monto) ? c : best));
+      const tol = Math.max(TOL_CLP, Math.abs(monto) * reconcileIssuer.monto_facturado_tolerance_pct);
+      add({
         code: "monto_facturado",
-        ok: true,
+        ok: closeEnough(billed, monto, tol),
         expected: monto,
-        actual: monto,
-        delta: 0,
-        detail:
-          "operaciones match PDF total; monto from statement header (prior-period payment carry)",
+        actual: billed,
+        delta: billed - monto,
+        detail: "operaciones+cargos(+saldo_anterior | +payments | +previous period) vs Monto Total Facturado",
+        reads_lines: true,
       });
-    } else {
-    const candidates = [
-      parsed.parsed_operaciones + cargos + saldo,
-      parsed.parsed_operaciones + cargos,
-    ];
-    if (pay !== 0) {
-      candidates.push(parsed.parsed_operaciones + cargos + pay);
-    }
-    if (opPdf != null) {
-      candidates.push(opPdf + cargos);
-      if (pay !== 0) {
-        candidates.push(opPdf + cargos + pay);
-      }
-    }
-    if (montoPrev != null && pagado != null) {
-      candidates.push(montoPrev + parsed.parsed_operaciones + cargos + pagado);
-      if (opPdf != null) {
-        candidates.push(montoPrev + opPdf + cargos + pagado);
-      }
-    }
-    const billed = candidates.reduce((best, c) =>
-      Math.abs(c - monto) < Math.abs(best - monto) ? c : best
-    );
-    const delta = billed - monto;
-    const tol = Math.max(TOL_CLP, Math.abs(monto) * reconcileIssuer.monto_facturado_tolerance_pct);
-    const ok = closeEnough(billed, monto, tol);
-    checks.push({
-      code: "monto_facturado",
-      ok,
-      expected: monto,
-      actual: billed,
-      delta,
-      detail:
-        "operaciones+cargos+saldo_anterior+pagado_anterior vs Monto Total Facturado",
-    });
-    }
     }
   }
 
@@ -383,39 +421,35 @@ export function reconcileBillingMonthMovements(
     const saldo = header.saldo_anterior;
     const abono = header.abono;
     const deuda = header.deuda_total;
-    if (
-      saldo != null &&
-      abono != null &&
-      compras != null &&
-      deuda != null
-    ) {
+    if (saldo != null && abono != null && compras != null && deuda != null) {
       const traspaso = parsed.parsed_traspaso_nacional;
       const expected = saldo + abono + compras + traspaso;
-      const delta = expected - deuda;
       // A card can bill interest and fees (section 3) on top of the purchases.
       const ok =
         closeEnough(expected, deuda, TOL_USD) || closeEnough(expected + parsed.parsed_cargos_abonos, deuda, TOL_USD);
-      checks.push({
+      add({
         code: "usd_balance",
         ok,
         expected: deuda,
         actual: expected,
-        delta,
+        delta: expected - deuda,
         detail: "saldo+abono+compras+traspaso vs deuda_total",
+        reads_lines: false,
       });
     }
   }
 
-  if (compras != null && compras > 0 && parsed.parsed_operaciones > 0) {
-    const delta = compras - parsed.parsed_operaciones;
-    const ok = closeEnoughOperaciones(parsed.parsed_operaciones, compras, currency);
-    checks.push({
+  // The parsed lines against the printed compras: a statement whose lines were all lost still
+  // prints its compras, so the check runs whatever the lines add up to.
+  if (compras != null && compras > 0) {
+    add({
       code: "header_compras_vs_operaciones",
-      ok,
+      ok: closeEnoughOperaciones(parsed.parsed_operaciones, compras, currency),
       expected: compras,
       actual: parsed.parsed_operaciones,
-      delta,
+      delta: compras - parsed.parsed_operaciones,
       detail: "parsed operaciones vs header compras/cargos",
+      reads_lines: true,
     });
   }
 
@@ -432,8 +466,8 @@ export function reconcileBillingMonthMovements(
    * Forcing a single formula would fail legitimate statements — and because
    * `assertCcImportReconcilesOrThrow` gates writes, a false failure blocks a real import.
    *
-   * This is a header-consistency check; the line-level guard is `header_compras_vs_operaciones`
-   * above, which is what actually catches a dropped charge.
+   * With compras printed this is a header-consistency check; the line-level guard is
+   * `header_compras_vs_operaciones` above, which is what actually catches a dropped charge.
    */
   if (!isHomeCurrency(currency) && monto != null && monto > 0) {
     const saldo = header.saldo_anterior ?? 0;
@@ -450,39 +484,34 @@ export function reconcileBillingMonthMovements(
       comprasForMonto + parsed.parsed_cargos_abonos + saldo + abono,
     ];
     const best = candidates.reduce((a, b) => (Math.abs(b - monto) < Math.abs(a - monto) ? b : a));
-    checks.push({
+    add({
       code: "monto_facturado",
       ok: candidates.some((c) => closeEnough(c, monto, TOL_USD)),
       expected: monto,
       actual: best,
       delta: monto - best,
       detail: "compras, or compras+saldo+abono, vs monto facturado",
+      reads_lines: compras == null,
     });
   }
 
+  const base = { billing_month: billingMonth, source_pdf: header.source_pdf, currency, parsed_sums: parsed, row_count: facturadoRows.length };
   if (checks.length === 0) {
-    return {
-      billing_month: billingMonth,
-      source_pdf: header.source_pdf,
-      ok: true,
-      skipped: true,
-      skip_reason: "no_header_totals",
-      checks: [],
-      parsed_sums: parsed,
-      row_count: facturadoRows.length,
-    };
+    return { ...base, ok: true, skipped: true, skip_reason: "no_header_totals", checks: [], unverified_reason: "the statement prints no total" };
   }
-
-  const ok = checks.every((c) => c.ok);
+  const unenforcedMisses = checks.filter((c) => !c.enforced && !c.ok);
+  const unverified_reason = !checks.some((c) => c.reads_lines)
+    ? `no printed figure the parsed lines add up to (only ${checks.map((c) => c.code).join(", ")}, which compare printed figures)`
+    : unenforcedMisses.length > 0
+      ? `OCR scan: ${unenforcedMisses.map((c) => `${c.code} printed ${c.expected} vs parsed ${c.actual}`).join("; ")}`
+      : null;
   return {
-    billing_month: billingMonth,
-    source_pdf: header.source_pdf,
-    ok,
+    ...base,
+    ok: checks.every((c) => !c.enforced || c.ok),
     skipped: false,
     skip_reason: null,
     checks,
-    parsed_sums: parsed,
-    row_count: facturadoRows.length,
+    unverified_reason,
   };
 }
 
@@ -818,6 +847,76 @@ function affectedBillingMonths(incoming: readonly CardCanonicalStatement[]): str
   return [...months].sort();
 }
 
+/** A reconcile row's own amount as the statement prints it: a cuota line's cuota, else its amount. */
+function printedRowAmount(row: CcReconcileRow): number {
+  if (!isHomeCurrency(row.currency)) return row.amount_usd;
+  return row.installment_flag ? cuotaAmountClp(row) : row.amount_clp;
+}
+
+function formatReconcileAmount(n: number, currency: string): string {
+  const abs = Math.abs(n).toLocaleString("es-CL", { maximumFractionDigits: 2 });
+  return `${n < 0 ? "-" : ""}${isHomeCurrency(currency) ? "$" : `${currency.toUpperCase()} `}${abs}`;
+}
+
+/**
+ * Lines of one statement printed more than once on the same day, at the same amount, with the same
+ * merchant letters and digits (one rendering may carry a glued column after them, «… COMPRAS
+ * P.A.T.») — the shape of a statement read twice and merged badly (also of genuine twin purchases,
+ * so a hint, never a verdict).
+ */
+export function repeatedReconcileRows(rows: readonly CcReconcileRow[]): { date: string; merchant: string; amount: number; count: number }[] {
+  const byDayAmount = new Map<string, { letters: string; merchant: string; date: string; amount: number }[]>();
+  for (const row of rows) {
+    if (row.from_web_paste) continue;
+    const date = purchaseDateForReconcileRow(row);
+    const amount = printedRowAmount(row);
+    const key = `${date}\t${amount}`;
+    const merchant = String(row.merchant ?? "").replace(/\s+/g, " ").trim();
+    byDayAmount.set(key, [...(byDayAmount.get(key) ?? []), { letters: merchant.toUpperCase().replace(/[^A-Z0-9]/g, ""), merchant, date, amount }]);
+  }
+  const out: { date: string; merchant: string; amount: number; count: number }[] = [];
+  for (const group of byDayAmount.values()) {
+    if (group.length < 2) continue;
+    const clusters: { letters: string; merchant: string; date: string; amount: number; count: number }[] = [];
+    for (const r of [...group].sort((x, y) => x.letters.length - y.letters.length)) {
+      const c = clusters.find((k) => r.letters.startsWith(k.letters));
+      if (c) c.count += 1;
+      else clusters.push({ ...r, count: 1 });
+    }
+    for (const c of clusters) if (c.count > 1) out.push({ date: c.date, merchant: c.merchant, amount: c.amount, count: c.count });
+  }
+  return out;
+}
+
+/**
+ * What a person needs to fix a refused statement, one fact per line: the statement, each failed
+ * check's printed figure, parsed sum and difference, and the rows printed more than once.
+ */
+export function reconcileFailureMessage(result: CcImportReconcileResult, rows: readonly CcReconcileRow[]): string {
+  const cur = result.currency;
+  const lines = [
+    `CC import reconcile failed for ${result.billing_month} (${result.source_pdf ?? "statement"}, ${cur.toUpperCase()}): ` +
+      "the parsed lines do not add up to the figures the statement prints; nothing was written for this card.",
+  ];
+  for (const c of result.checks.filter((x) => x.enforced && !x.ok)) {
+    const printed = c.expected != null ? formatReconcileAmount(c.expected, cur) : "—";
+    const parsedSum = c.actual != null ? formatReconcileAmount(c.actual, cur) : "—";
+    const diff = c.expected != null && c.actual != null ? c.actual - c.expected : null;
+    const diffText = diff == null ? "—" : `${diff > 0 ? "+" : ""}${formatReconcileAmount(diff, cur)}`;
+    lines.push(`${c.code}: printed ${printed}, parsed lines ${parsedSum}, difference ${diffText} (${c.detail})`);
+  }
+  const repeated = repeatedReconcileRows(rows);
+  if (repeated.length > 0) {
+    const sum = repeated.reduce((n, g) => n + g.amount * (g.count - 1), 0);
+    lines.push(
+      `Rows printed more than once (same day, amount and merchant; extra copies sum ${formatReconcileAmount(sum, cur)} — a doubled reading of the PDF?): ` +
+        repeated.map((g) => `${g.date} ${g.merchant} ${formatReconcileAmount(g.amount, cur)} ×${g.count}`).join("; ")
+    );
+  }
+  lines.push("Fix the parse of this statement (or quarantine it) and import again.");
+  return lines.join("\n");
+}
+
 export function assertCcImportReconcilesOrThrow(
   accountId: number,
   incoming: readonly CardCanonicalStatement[],
@@ -854,7 +953,23 @@ export function assertCcImportReconcilesOrThrow(
         );
         const header = mergeImportReconcileHeader(dbAnchor, csvHeader);
 
+        const statementLabel = header?.source_pdf ?? sourcePdf;
+        const noTotals = (): void => {
+          results.push({
+            billing_month: billingMonth,
+            source_pdf: statementLabel,
+            currency: headerCurrency,
+            ok: true,
+            skipped: true,
+            skip_reason: "no_header_totals",
+            checks: [],
+            parsed_sums: { parsed_operaciones: 0, parsed_operaciones_credits: 0, parsed_cargos_abonos: 0, parsed_cuotas: 0, parsed_mid_period_payments: 0, parsed_traspaso_nacional: 0 },
+            row_count: 0,
+            unverified_reason: "the statement prints no total",
+          });
+        };
         if (!header) {
+          noTotals();
           continue;
         }
         if (
@@ -862,6 +977,7 @@ export function assertCcImportReconcilesOrThrow(
           (header.monto_facturado ?? 0) <= 0 &&
           (header.compras_cargos ?? 0) <= 0
         ) {
+          noTotals();
           continue;
         }
         if (
@@ -871,6 +987,7 @@ export function assertCcImportReconcilesOrThrow(
           (header.compras_cargos ?? 0) === 0 &&
           (header.saldo_anterior ?? 0) === 0
         ) {
+          noTotals();
           continue;
         }
 
@@ -881,16 +998,7 @@ export function assertCcImportReconcilesOrThrow(
         results.push(result);
 
         if (!result.ok && !result.skipped) {
-          const failed = result.checks.filter((c) => !c.ok);
-          const parts = failed.map((c) => {
-            const exp = c.expected != null ? `$${c.expected.toLocaleString("es-CL")}` : "—";
-            const act = c.actual != null ? `$${c.actual.toLocaleString("es-CL")}` : "—";
-            return `${c.code}: expected ${exp}, movements ${act} (${c.detail})`;
-          });
-          const msg =
-            `CC import reconcile failed for ${billingMonth} (${header.source_pdf ?? "statement"}): ` +
-            parts.join("; ") +
-            ". Movement total does not match statement facturado — fix paste/PDF parse or dedupe before importing.";
+          const msg = reconcileFailureMessage(result, rows);
           console.error(`[cc-import-reconcile] ${msg}`);
           throw new CcStatementImportReconcileError(msg, result);
         }

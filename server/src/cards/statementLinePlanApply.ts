@@ -33,7 +33,7 @@
  * row already stating its document line, nothing to insert, fold, remove or settle — writes nothing
  * at all: no row, no change-log entry, no session finish.
  */
-import type { CardCanonicalLine, CardCanonicalStatement, CardLineRemovedWithoutPair } from "nw-tracker-contracts";
+import type { CardCanonicalLine, CardCanonicalStatement, CardLineRemovedWithoutPair, CardStatementUnverifiedLines } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { ccStatementSourceKindOf, isListingSourceKind, isStatementSourceKind } from "../ccStatementSourceKind.js";
 import {
@@ -48,7 +48,7 @@ import {
 import { canonicalLineDedupeKeys, storedStatementColumns, takeBatchDedupeKeys } from "./statementStorage.js";
 import { ccCardGroupOrDefault } from "../ccIssuers.js";
 import { jsonStatementsSupersededByPdf, mergeInstallmentLedgerFromStatements, runBucketPasses } from "../ccInstallmentLedgerMerge.js";
-import { assertCcImportReconcilesOrThrow } from "../ccStatementImportReconcile.js";
+import { assertCcImportReconcilesOrThrow, unverifiedStatementLines } from "../ccStatementImportReconcile.js";
 import { deleteJsonStatementsByIds } from "../ccStatementJsonSource.js";
 import { assertFeedClosesMatchStatements } from "../ccBillingCloses.js";
 import { assertOneStatementPerFacturacion } from "./facturacion.js";
@@ -135,6 +135,8 @@ export type StatementLinePlanApplyResult = {
   overlap_removed: number;
   /** Lines removed without handing their identity to another row (`removedCardLines.ts`); also a notification when one carried what the user filed. */
   removed_without_pair: CardLineRemovedWithoutPair[];
+  /** Statements imported with lines no printed figure verified (the reconcile gate's report). */
+  unverified_lines: CardStatementUnverifiedLines[];
   ledger: ReturnType<typeof mergeInstallmentLedgerFromStatements>;
   manual_installment_reconcile: ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport>;
   grocery_branch_learning: ReturnType<typeof learnGroceryBranchesFromCardLines>;
@@ -227,7 +229,9 @@ function applyInSession(
   });
   const json = jsonStatementsSupersededByPdf(accountId, statements);
   const replaceKeys = new Set<string>([...(opts?.replaceStatementKeys ?? []), ...json.supersededReplaceKeys]);
-  assertCcImportReconcilesOrThrow(accountId, statements, { replaceStatementKeys: replaceKeys });
+  const unverifiedLines = unverifiedStatementLines(
+    assertCcImportReconcilesOrThrow(accountId, statements, { replaceStatementKeys: replaceKeys })
+  );
   const categorySnap = snapshotLineCategories(accountId);
   const superseded = new Set(json.supersededJsonStatementIds);
 
@@ -529,6 +533,7 @@ function applyInSession(
     annulments_credited: credited,
     overlap_removed: overlap.removed_line_ids.length,
     removed_without_pair: removedWithoutPair,
+    unverified_lines: unverifiedLines,
     pieces_dropped: piecesDropped,
     ledger,
     manual_installment_reconcile: manual,
@@ -617,6 +622,8 @@ export type StatementDocumentsImportResult = {
     unpaired: number[];
     /** Every line removed without handing its identity to another row (the unpaired ones included), with what was filed on it. */
     removed_without_pair: CardLineRemovedWithoutPair[];
+    /** Statements imported with lines no printed figure verified (`unverified_reason` of the reconcile). */
+    unverified_lines: CardStatementUnverifiedLines[];
   };
 };
 
@@ -755,6 +762,7 @@ function importResult(
       copied: plan.insert.filter((i) => i.copies_classification_from != null).length,
       unpaired,
       removed_without_pair: a?.removed_without_pair ?? [],
+      unverified_lines: a?.unverified_lines ?? [],
     },
   };
 }

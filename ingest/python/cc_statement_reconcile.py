@@ -12,6 +12,7 @@ import cc_cards
 from cc_statement_line_rules import (
     classify_statement_line,
     is_clp_section3_merchant,
+    is_payment_merchant,
     is_traspaso_deuda_merchant,
     is_usd_section3_merchant,
 )
@@ -25,7 +26,8 @@ TOL_USD = 0.02
 
 
 def _installment_cuota_counts_toward_operaciones(row: Dict[str, Any]) -> bool:
-    """Section 1 includes continuing cuotas; new plans (TCOM / section 4) do not."""
+    """Section 1 includes continuing cuotas (1/N or later); new plans (a 00/N row of section 4,
+    whatever layout read it, TCOM / periodic summaries) do not — `installmentCuotaCountsTowardOperaciones`."""
     layout = str(row.get("parser_layout") or row.get("layout") or "")
     if "wide_master_tcom_cuotas_tasa" in layout:
         return False
@@ -35,11 +37,7 @@ def _installment_cuota_counts_toward_operaciones(row: Dict[str, Any]) -> bool:
         cur = int(row.get("nro_cuota_current") or 0)
     except (TypeError, ValueError):
         cur = 0
-    if cur >= 1:
-        return True
-    if "wide_master_precio_summary" in layout or "wide_master_installment" in layout:
-        return True
-    return False
+    return cur >= 1
 
 
 def _is_installment_contract_summary(merchant: str, layout: str) -> bool:
@@ -164,6 +162,9 @@ def sum_parsed_sections(
     cuotas = 0.0
     traspaso_nacional = 0.0
     mid_period_payments = 0.0
+    # Peso credits the line rules count nowhere (a refund that is no nota de crédito nor payment):
+    # the bank nets them into «TOTAL OPERACIONES».
+    operaciones_credits = 0.0
 
     for row in _iter_reconcile_rows(rows):
         currency, amount = _parse_amount_from_row(row, parse_clp, parse_usd)
@@ -190,9 +191,12 @@ def sum_parsed_sections(
                 traspaso_nacional += amount
         elif section == "mid_period_payments":
             mid_period_payments += amount
+        elif section == "ignored" and currency == "clp" and amount < 0 and not is_payment_merchant(merchant):
+            operaciones_credits += amount
 
     return {
         "parsed_operaciones": operaciones,
+        "parsed_operaciones_credits": operaciones_credits,
         "parsed_cargos_abonos": cargos_abonos,
         "parsed_cuotas": cuotas,
         "parsed_traspaso_nacional": traspaso_nacional,
@@ -1074,28 +1078,31 @@ def reconcile_statement(
             parsed.get("parsed_operaciones"),
             required=True,
         )
-    # No lost lines: on a Santander peso statement read from its text, the parsed operaciones
-    # may not fall short of the printed «TOTAL OPERACIONES». The check above is off whenever the
-    # period had a payment (nearly always), and its 3% band let the parser drop 13 ·0161 charges
-    # named «PAGO FACIL» / «PAGOS.FLOW.CL …» unnoticed (2020-12 → 2023-09). Only a shortfall fails:
-    # a parse that counts more is the line classifier setting a refund aside, which the printed
-    # total nets. An OCR'd scan (flat text, no line breaks) is exempt — its known gaps are OCR's.
+    # The parsed lines are the printed «TOTAL OPERACIONES» to the peso on a peso statement read
+    # from its text (Santander, and BCI's operaciones subtotal), refunds the line rules set aside
+    # netted back. The check above is off whenever the period had a payment (nearly always) and
+    # its 3% band hides whole lines: it let the parser drop 13 ·0161 charges named «PAGO FACIL» /
+    # «PAGOS.FLOW.CL …» (2020-12 → 2023-09, `operaciones_shortfall`) and read seven lines of a
+    # 2026-10 statement twice (`operaciones_excess`). An OCR'd scan (flat text, no line breaks) is
+    # exempt — its known gaps are OCR's. Same rule as the import's `operaciones_lines`.
     ocr_flat = "\n" not in full.strip() and len(full) > 400
-    if santander_clp and op_pdf is not None and float(op_pdf) >= 0 and not ocr_flat:
-        parsed_op = float(parsed.get("parsed_operaciones") or 0)
-        shortfall = float(op_pdf) - parsed_op
-        ok = shortfall <= TOL_CLP
-        checks.append(
-            ReconcileCheck(
-                code="operaciones_shortfall",
-                ok=ok,
-                expected=float(op_pdf),
-                actual=parsed_op,
-                delta=-shortfall,
-            )
+    if currency == "clp" and op_pdf is not None and float(op_pdf) >= 0 and not ocr_flat:
+        parsed_op = float(parsed.get("parsed_operaciones") or 0) + float(
+            parsed.get("parsed_operaciones_credits") or 0
         )
-        if not ok:
-            issue_codes.append("operaciones_shortfall")
+        gap = parsed_op - float(op_pdf)
+        for code, ok in (("operaciones_shortfall", gap >= -TOL_CLP), ("operaciones_excess", gap <= TOL_CLP)):
+            checks.append(
+                ReconcileCheck(
+                    code=code,
+                    ok=ok,
+                    expected=float(op_pdf),
+                    actual=parsed_op,
+                    delta=gap,
+                )
+            )
+            if not ok:
+                issue_codes.append(code)
     cargos_required = pdf_totals.get("pdf_total_cargos_abonos") is not None
     if is_bci_lider_statement(full):
         # Section-3 PAGO rows ARE emitted since 2026-07 (the walk needs their dates), but the

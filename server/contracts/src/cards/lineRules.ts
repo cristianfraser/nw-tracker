@@ -30,6 +30,7 @@ export const CC_PAYMENT_MERCHANTS: ReadonlySet<string> = new Set(RULES.payment_m
 export const CC_USD_DEBT_ABONO_MERCHANT = RULES.usd_debt_abono_merchant;
 export const CC_TRASPASO_DEUDA_TOKENS: readonly string[] = RULES.traspaso_deuda_tokens;
 export const RE_CLP_SECTION3_CHARGE = new RegExp(RULES.clp_section3_charge_pattern, "i");
+export const RE_CLP_SECTION3_SETTLEMENT = new RegExp(RULES.clp_section3_settlement_pattern, "i");
 export const RE_USD_SECTION3 = new RegExp(RULES.usd_section3_pattern, "i");
 export const RE_USD_GARBLED_MERCHANT = new RegExp(RULES.usd_garbled_merchant_pattern, "i");
 export const USD_GARBLED_MERCHANT_MARKERS: readonly string[] = RULES.usd_garbled_merchant_markers;
@@ -58,6 +59,14 @@ export function isClpSection3Merchant(merchant: string | null): boolean {
   const m = String(merchant ?? "").trim();
   if (isCcPaymentMerchant(m)) return false;
   return RE_CLP_SECTION3_CHARGE.test(m);
+}
+
+/**
+ * A section-3 peso line that is no financing cost: «PREPAGO EN CUOTAS», a cuota plan the bank
+ * prepaid, billed whole in section 3 and outside «TOTAL OPERACIONES».
+ */
+export function isClpSection3SettlementMerchant(merchant: string | null): boolean {
+  return RE_CLP_SECTION3_SETTLEMENT.test(String(merchant ?? "").trim());
 }
 
 /**
