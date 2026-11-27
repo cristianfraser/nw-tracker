@@ -14,6 +14,7 @@ import {
   formatCompactMoney,
   formatCcExpenseLineAmount,
   formatGroupedDecimal,
+  formatGroupedDecimalExact,
   formatNumberInput,
   formatPct,
   formatPctCompact,
@@ -145,6 +146,16 @@ describe("decimal-separator preference applies to every currency", () => {
     expect(formatMoney({ value: 40_763.45, currency: "clp" }, { digits: 2 })).toBe("$40,763.45");
     expect(formatUsdFine(1_234.56)).toBe("US$1,234.56");
     expect(formatGroupedDecimal(1_234.5, 2)).toBe("1,234.50");
+  });
+});
+
+describe("formatGroupedDecimalExact", () => {
+  it("groups the digits and keeps every fraction digit in the active convention", () => {
+    expect(formatGroupedDecimalExact(1_234.5678)).toBe("1.234,5678");
+    expect(formatGroupedDecimalExact(-1_500_000)).toBe("-1.500.000");
+    expect(formatGroupedDecimalExact(1.5e-7)).toBe("0,00000015");
+    setDecimalSeparatorForFormatting("period");
+    expect(formatGroupedDecimalExact(1_234.5678)).toBe("1,234.5678");
   });
 });
 

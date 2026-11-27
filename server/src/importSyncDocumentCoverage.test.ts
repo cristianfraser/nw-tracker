@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { ImportSyncDocumentRef } from "nw-tracker-contracts/dto/sync";
 import { db } from "./db.js";
 import {
   matrixMonthForCartolaPeriodMonth,
@@ -29,15 +30,17 @@ import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 
 /**
- * Coverage looks for each document on disk. The test database is synthetic, so the folders are
- * pointed at a temporary directory holding an empty file for every cartola it imported — never at
- * the real `cfraser/`, whose files belong to another database.
+ * Coverage looks for each document on disk. The test database is synthetic, so the folders (and
+ * the parsed-cartola JSON folder, left empty) are pointed at a temporary directory holding an
+ * empty file for every cartola it imported — never at the real `cfraser/`, whose files belong to
+ * another database.
  */
 const DOCUMENT_DIR_ENV = [
   "CFRASER_PDFS_DIR",
   "CFRASER_CHECKING_CARTOLAS_DIR",
   "CFRASER_CHECKING_CARTOLA_PDFS_DIR",
   "CFRASER_CUENTA_VISTA_PDFS_DIR",
+  "CFRASER_CARTOLA_PARSED_JSON_DIR",
 ] as const;
 let documentRoot: string | null = null;
 
@@ -142,10 +145,10 @@ describe("importSyncDocumentCoverage", () => {
       const rowMonth = payload.months[mi]!;
       for (let ai = 0; ai < payload.accounts.length; ai += 1) {
         const cell = payload.cells[mi]?.[ai];
-        if (!cell?.imported || !cell.file_path) continue;
+        if (!cell?.imported || !cell.document) continue;
         const acc = payload.accounts[ai]!;
         expect(hasImportSyncDocumentForMonth(acc, rowMonth)).toBe(true);
-        const base = path.basename(cell.file_path);
+        const base = cell.document.file_name;
         if (acc.document_kind === "cc_statement") {
           const rows = db
             .prepare(
@@ -193,17 +196,22 @@ describe("importSyncDocumentCoverage", () => {
 });
 
 describe("buildImportSyncDocumentYears", () => {
-  const cell = (imported: boolean, file_path: string | null = null, file_sin_movimientos = false) => ({ imported, file_path, file_sin_movimientos });
+  /** A cell whose month has `fileName` on disk (null: none). */
+  const document = (fileName: string | null): ImportSyncDocumentRef | null =>
+    fileName == null
+      ? null
+      : { file_name: fileName, preview_kind: "pdf", view_href: `/synthetic/${fileName}`, download_href: `/synthetic/${fileName}?download=1`, sheet_href: null };
+  const cell = (imported: boolean, fileName: string | null = null, file_sin_movimientos = false) => ({ imported, document: document(fileName), file_sin_movimientos });
 
   it("leaves the months before a column's first document out and adds each year up", () => {
     // Newest first. Column 0 starts in 2030-11; column 1 has a hole in 2031-01 and a file never imported.
     const months = ["2031-02", "2031-01", "2030-12", "2030-11", "2030-10"];
     const { cells, years } = buildImportSyncDocumentYears(months, 2, [
-      [cell(false), cell(false, "/synthetic/b-2031-02.pdf")],
-      [cell(true, "/synthetic/a-2031-01.pdf"), cell(false)],
-      [cell(true), cell(true, "/synthetic/b-2030-12.pdf", true)],
-      [cell(true, "/synthetic/a-2030-11.pdf"), cell(true, "/synthetic/b-2030-11.pdf")],
-      [cell(false), cell(true, "/synthetic/b-2030-10.pdf")],
+      [cell(false), cell(false, "b-2031-02.pdf")],
+      [cell(true, "a-2031-01.pdf"), cell(false)],
+      [cell(true), cell(true, "b-2030-12.pdf", true)],
+      [cell(true, "a-2030-11.pdf"), cell(true, "b-2030-11.pdf")],
+      [cell(false), cell(true, "b-2030-10.pdf")],
     ], "2031-03");
     expect(cells.map((row) => row.map((c) => c.state))).toEqual([
       ["missing", "file_not_imported"],
@@ -224,8 +232,8 @@ describe("buildImportSyncDocumentYears", () => {
       ["2031-02", "2031-01"],
       2,
       [
-        [cell(false), cell(true, "/synthetic/b-2031-02.pdf")],
-        [cell(true, "/synthetic/a-2031-01.pdf"), cell(true, "/synthetic/b-2031-01.pdf")],
+        [cell(false), cell(true, "b-2031-02.pdf")],
+        [cell(true, "a-2031-01.pdf"), cell(true, "b-2031-01.pdf")],
       ],
       "2031-02"
     );
@@ -242,7 +250,7 @@ describe("buildImportSyncDocumentYears", () => {
       2,
       [
         [cell(false), cell(false)],
-        [cell(true, "/synthetic/a-2030-12.pdf"), cell(true, "/synthetic/b-2030-12.pdf")],
+        [cell(true, "a-2030-12.pdf"), cell(true, "b-2030-12.pdf")],
       ],
       "2031-01"
     );
@@ -261,7 +269,7 @@ describe("buildImportSyncDocumentYears", () => {
     const { cells } = buildImportSyncDocumentYears(
       ["2031-01"],
       1,
-      [[{ imported: false, file_path: "/synthetic/a-2031-01.pdf", file_sin_movimientos: true }]],
+      [[cell(false, "a-2031-01.pdf", true)]],
       "2031-02"
     );
     expect(cells[0]![0]!.state).toBe("file_not_imported");

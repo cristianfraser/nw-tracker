@@ -104,6 +104,7 @@ export const queryKeys = {
   jobQueue: () => ["jobQueue"] as const,
   liveQuotesStamp: () => ["liveQuotesStamp"] as const,
   importSyncDocumentCoverage: () => ["importSyncDocumentCoverage"] as const,
+  importSyncSheetPreview: (sheetHref: string) => ["importSyncSheetPreview", sheetHref] as const,
   genericUniqueMerchants: () => ["genericUniqueMerchants"] as const,
   /** Bare `income()` is the prefix every income invalidation uses. */
   income: (unit?: DisplayUnit) => (unit ? (["income", unit] as const) : (["income"] as const)),

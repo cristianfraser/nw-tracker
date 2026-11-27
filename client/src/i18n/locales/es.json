@@ -635,6 +635,14 @@
       "notDue": "{{account}}: {{month}} está en curso, su documento aún no corresponde",
       "fileNotImported": "{{account}}: archivo de {{month}} en disco, sin importar"
     },
+    "viewer": {
+      "title": "{{account}} · {{month}}",
+      "pdfFrameTitle": "Documento {{file}}",
+      "download": "Descargar",
+      "openInTab": "Abrir en pestaña nueva",
+      "sheetsLabel": "Hojas",
+      "sheetEmpty": "Esta hoja está vacía."
+    },
     "sync": {
       "lastSync": "Último sync: {{time}} ({{ago}})",
       "lastSyncNever": "Último sync: —",

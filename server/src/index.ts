@@ -55,8 +55,7 @@ import { stopAllScheduledJobs } from "./schedulerKernel.js";
 import { db } from "./db.js";
 import { jsonResponseMiddleware } from "./jsonResponse.js";
 import { LIVE_INPUTS_HEADER, liveInputsMiddleware } from "./liveInputsHeader.js";
-import { DisplayUnitRequestError } from "./displayUnits.js";
-import { InputError } from "./inputError.js";
+import { terminalErrorHandler } from "./terminalErrorHandler.js";
 
 seedNavTree();
 // The seed places no account: one that is not where its asset group says fails the boot.
@@ -150,21 +149,7 @@ if (serveClientDistEnabled()) {
   console.log("static: serving client/dist with SPA fallback (SERVE_CLIENT_DIST=1)");
 }
 
-app.use(
-  (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(
-      `[api] route error: ${err instanceof Error ? (err.stack ?? msg) : msg}`
-    );
-    if (res.headersSent) return;
-    // A request the user can fix, thrown outside `writeHandler` (a display unit, a route's `parseBody`).
-    if (err instanceof DisplayUnitRequestError || err instanceof InputError) {
-      res.status(err.status).json({ error: msg });
-      return;
-    }
-    res.status(500).json({ error: msg });
-  }
-);
+app.use(terminalErrorHandler);
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`nw-tracker API http://${HOST}:${PORT}`);

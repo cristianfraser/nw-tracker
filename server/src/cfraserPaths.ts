@@ -94,6 +94,13 @@ export function resolveCfraserCheckingCartolaPdfsDir(): string {
   return path.resolve(__dirname, "..", "..", "cfraser", "cartolas-cuenta-corriente");
 }
 
+/** Folder of the parsed-cartola JSON files (`checking-cartolas-from-pdf.json`, …; `cfraser/`). */
+export function resolveCfraserCartolaParsedJsonDir(): string {
+  const env = liveEnvText("CFRASER_CARTOLA_PARSED_JSON_DIR");
+  if (env) return path.resolve(env);
+  return path.resolve(__dirname, "..", "..", "cfraser");
+}
+
 /** Santander cuenta vista (CUENTAMATICA) cartola PDFs (`cfraser/cartolas-cuenta-vista/`). */
 export function resolveCfraserCuentaVistaCartolaPdfsDir(): string {
   const env = liveEnvText("CFRASER_CUENTA_VISTA_PDFS_DIR");

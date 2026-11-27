@@ -10,6 +10,14 @@ import { attachLiveInputs, LIVE_INPUTS_HEADER, parseLiveInputs, type LiveQuoteMo
 const base = () => import.meta.env.VITE_API_URL ?? "";
 
 /**
+ * A server-built `/api/…` link (an `<a href>`, an `<iframe src>`) resolved against the same API
+ * base every request uses, so it reaches the server in dev (Vite proxy) and production alike.
+ */
+export function apiHref(path: string): string {
+  return `${base()}${path}`;
+}
+
+/**
  * What a user sees when the API answers with a page instead of JSON or does not answer at all.
  * The developer instruction (start the API) is appended in dev builds only. Translated at call
  * time — never cache the result.
@@ -872,6 +880,8 @@ export const api = {
     j<import("./types").ImportSyncDocumentCoverageResponse>(
       "/api/import-sync/document-coverage"
     ),
+  /** `sheetHref` is a cell's server-built `document.sheet_href`. */
+  importSyncSheetPreview: (sheetHref: string) => j<import("./types").ImportSyncSheetPreviewResponse>(sheetHref),
   genericUniqueMerchants: () =>
     j<import("./types").GenericUniqueMerchantsResponse>(
       "/api/import-sync/generic-unique-merchants"

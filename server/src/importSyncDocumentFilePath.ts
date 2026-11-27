@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import { ccStatementSourceKindOf, isCorpusPdfSourceKind, isListingSourceKind } from "./ccStatementSourceKind.js";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import {
   cartolaPeriodRangeCoversMonth,
@@ -11,6 +10,7 @@ import {
 } from "./importSyncDocumentMonth.js";
 import {
   ccStatementPdfSearchDirs,
+  resolveCfraserCartolaParsedJsonDir,
   resolveCfraserCheckingCartolaPdfsDir,
   resolveCfraserCheckingCartolasDir,
   resolveCfraserCuentaVistaCartolaPdfsDir,
@@ -21,8 +21,6 @@ import { db } from "./db.js";
 import type { ImportSyncDocumentAccount } from "./importSyncDocumentTypes.js";
 import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 export type CartolaParsedPdfJsonEntry = {
   source_file: string;
@@ -68,7 +66,7 @@ export function resolveCartolaParsedPdfJsonPath(
     kind === "cuenta_vista_cartola"
       ? "cuenta-vista-cartolas-from-pdf.json"
       : "checking-cartolas-from-pdf.json";
-  return path.join(REPO_ROOT, "cfraser", fileName);
+  return path.join(resolveCfraserCartolaParsedJsonDir(), fileName);
 }
 
 export function loadCartolaParsedPdfJsonEntries(

@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import { apiHref } from "../../api";
 import { formatMonthShortLabel } from "../../formatDateLabel";
 import { useTranslation } from "../../i18n";
-import { absolutePathToFileUrl } from "../../localFileUrl";
+import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 import type {
   ImportSyncDocumentAccount,
   ImportSyncDocumentCell,
@@ -16,9 +18,13 @@ import {
   buildAvailableDocumentsColumns,
   type AvailableDocumentsColumn,
 } from "./availableDocumentsColumns";
+import { DocumentViewerModal, type DocumentViewerTarget } from "./DocumentViewerModal";
+import { documentClickOpensViewer, plainClickOpensViewer } from "./documentViewerOpen";
 import styles from "./AvailableDocumentsTable.module.css";
 
 type T = (key: string, opts?: Record<string, string | number>) => string;
+/** Opens the viewer on a cell's document. */
+type OpenDocument = (target: DocumentViewerTarget) => void;
 type ShownState = Exclude<ImportSyncDocumentCellState, "before_first">;
 
 const MARK_CLASS: Record<ShownState, string> = {
@@ -82,21 +88,41 @@ function CoverageCell({
   cell,
   month,
   className,
+  narrowViewport,
+  onOpen,
   t,
 }: {
   acc: ImportSyncDocumentAccount;
   cell: ImportSyncDocumentCell;
   month: string;
   className?: string;
+  narrowViewport: boolean;
+  onOpen: OpenDocument;
   t: T;
 }) {
   // Before the column's first document there is nothing to have or to miss: an empty cell.
   if (cell.state === "before_first") return <td className={cn(styles.cell, className)} />;
-  const label = cellLabel(cell.state, cell.imported, columnName(acc, t), month, t);
+  const name = columnName(acc, t);
+  const label = cellLabel(cell.state, cell.imported, name, month, t);
+  const doc = cell.document;
   return (
     <td className={cn(styles.cell, className)}>
-      {cell.file_path ? (
-        <a href={absolutePathToFileUrl(cell.file_path)} className={styles.cellLink} title={`${cell.file_path}\n${label}`} aria-label={label}>
+      {doc ? (
+        // A link, so a modified or middle click opens the file in a tab; a plain click opens the viewer.
+        <a
+          href={apiHref(doc.view_href)}
+          target="_blank"
+          rel="noreferrer"
+          className={styles.cellLink}
+          title={`${doc.file_name}\n${label}`}
+          aria-label={label}
+          aria-haspopup={plainClickOpensViewer(doc.preview_kind, narrowViewport) ? "dialog" : undefined}
+          onClick={(e) => {
+            if (!documentClickOpensViewer(doc.preview_kind, narrowViewport, e)) return;
+            e.preventDefault();
+            onOpen({ columnName: name, month, document: doc });
+          }}
+        >
           <Mark state={cell.state} />
         </a>
       ) : (
@@ -161,11 +187,15 @@ function YearMatrix({
   year,
   data,
   columns,
+  narrowViewport,
+  onOpen,
   t,
 }: {
   year: ImportSyncDocumentYear;
   data: ImportSyncDocumentCoverageResponse;
   columns: AvailableDocumentsColumn[];
+  narrowViewport: boolean;
+  onOpen: OpenDocument;
   t: T;
 }) {
   const { months, accounts, cells } = data;
@@ -182,6 +212,8 @@ function YearMatrix({
               cell={cells[monthIdx]![accountIndex]!}
               month={ym}
               className={className}
+              narrowViewport={narrowViewport}
+              onOpen={onOpen}
               t={t}
             />
           );
@@ -214,6 +246,11 @@ export function AvailableDocumentsTable({
   loading?: boolean;
 }) {
   const { t } = useTranslation();
+  // A PDF on the narrow layout opens in a tab: the width is a proxy for browsers that do not show
+  // a PDF in an iframe (mobile ones).
+  const narrowViewport = useIsNarrowViewport();
+  // One viewer for the whole matrix, open on the clicked cell's document.
+  const [viewing, setViewing] = useState<DocumentViewerTarget | null>(null);
   const accounts = data?.accounts ?? [];
   const columns = buildAvailableDocumentsColumns(accounts);
 
@@ -263,6 +300,8 @@ export function AvailableDocumentsTable({
                       ? year.columns[col.accountIndex] != null
                       : year.columns[col.usdIndex] != null || year.columns[col.clpIndex] != null
                   )}
+                  narrowViewport={narrowViewport}
+                  onOpen={setViewing}
                   t={t}
                 />
               ) : null}
@@ -270,6 +309,7 @@ export function AvailableDocumentsTable({
           );
         })}
       </OpenRows>
+      {viewing ? <DocumentViewerModal target={viewing} onClose={() => setViewing(null)} /> : null}
     </div>
   );
 }

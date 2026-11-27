@@ -1967,6 +1967,32 @@
         "es": "{{account}}: archivo de {{month}} en disco, sin importar"
       }
     },
+    "viewer": {
+      "title": {
+        "en": "{{account}} · {{month}}",
+        "es": "{{account}} · {{month}}"
+      },
+      "pdfFrameTitle": {
+        "en": "Document {{file}}",
+        "es": "Documento {{file}}"
+      },
+      "download": {
+        "en": "Download",
+        "es": "Descargar"
+      },
+      "openInTab": {
+        "en": "Open in new tab",
+        "es": "Abrir en pestaña nueva"
+      },
+      "sheetsLabel": {
+        "en": "Sheets",
+        "es": "Hojas"
+      },
+      "sheetEmpty": {
+        "en": "This sheet is empty.",
+        "es": "Esta hoja está vacía."
+      }
+    },
     "sync": {
       "lastSync": {
         "en": "Last sync: {{time}} ({{ago}})",

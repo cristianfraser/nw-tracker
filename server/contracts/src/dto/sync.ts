@@ -80,10 +80,39 @@ export type ImportSyncDocumentCellState =
   | "not_due"
   | "before_first";
 
+/** How the page shows a document: the browser's PDF viewer, or a table of the workbook's rows. */
+export type ImportSyncDocumentPreviewKind = "pdf" | "sheet";
+
+/** A month's source file on the server's disk, as the page opens it (server-built links). */
+export type ImportSyncDocumentRef = {
+  /** The file's name on disk (no folder). */
+  file_name: string;
+  /** The file itself, `Content-Disposition: inline` (a PDF shows in the browser). */
+  view_href: string;
+  /** The same file as an attachment. */
+  download_href: string;
+} & (
+  | { preview_kind: "pdf"; sheet_href: null }
+  /** `sheet_href`: `GET` → `ImportSyncSheetPreviewResponse`. */
+  | { preview_kind: "sheet"; sheet_href: string }
+);
+
+/**
+ * `GET /api/import-sync/documents/:accountId/:month/sheet` — a workbook's cells, every sheet
+ * (hidden ones too), at least one. A text cell is its text; a number cell is the raw number (the
+ * page formats it with the user's separators); a date cell is `YYYY-MM-DD` (`YYYY-MM-DD HH:MM`
+ * when it carries a time, `HH:MM` alone for a time of day); an empty cell is "". A merged range shows in its top-left cell only.
+ * Rows may differ in length.
+ */
+export interface ImportSyncSheetPreviewResponse {
+  file_name: string;
+  sheets: { name: string; rows: (string | number)[][] }[];
+}
+
 export interface ImportSyncDocumentCell {
   imported: boolean;
-  /** Absolute local path to the source PDF/XLSX when present on disk. */
-  file_path: string | null;
+  /** The month's source PDF/XLSX when it is on the server's disk. */
+  document: ImportSyncDocumentRef | null;
   /** PDF text includes `** CARTOLA SIN MOVIMIENTOS **`. */
   file_sin_movimientos?: boolean;
   state: ImportSyncDocumentCellState;

@@ -1,0 +1,99 @@
+/* The import-sync document viewer (DocumentViewerModal.tsx): a wide, tall dialog whose body is
+   the document — a PDF frame or a workbook's table, which scrolls inside the body. The class is
+   doubled on the rules that override Modal.module.css, so they win whatever the stylesheet order. */
+.dialog.dialog {
+  width: min(1100px, 95vw);
+  max-width: min(1100px, 95vw);
+  height: 90vh;
+  height: 90dvh;
+  max-height: 90vh;
+  max-height: 90dvh;
+}
+
+.dialog.dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.body.body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+}
+
+.frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: var(--surface2);
+}
+
+.sheetFrame {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.tabs {
+  padding: var(--space-xs) var(--space-base);
+  border-bottom: 1px solid var(--border);
+}
+
+.sheetScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.note {
+  margin: 0;
+  padding: var(--space-base);
+}
+
+/* Plain cells, one line each; no row is a header (bank workbooks open with banner lines). */
+.sheet {
+  width: auto;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-card-meta);
+}
+
+.sheet td {
+  padding: 0.25rem 0.6rem;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* A lone text cell over the rest of its row: zero own width (it never widens a column), filling
+   the cells it spans and wrapping inside them. */
+.spill {
+  width: 0;
+  min-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sheet td.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+  padding: var(--space-md) var(--space-base);
+}
+
+.action {
+  text-decoration: none;
+}

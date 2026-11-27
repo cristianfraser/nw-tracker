@@ -12,6 +12,16 @@ import {
 } from "../globalSyncStale.js";
 import { buildImportSyncDocumentCoveragePayload } from "../importSyncDocumentCoverage.js";
 import {
+  IMPORT_SYNC_DOCUMENT_SLOTS,
+  importSyncDocumentContentDisposition,
+  importSyncDocumentContentType,
+  documentSendFailure,
+  readImportSyncSheetPreview,
+  resolveImportSyncDocumentColumn,
+  resolveImportSyncDocumentFile,
+  type ImportSyncDocumentFile,
+} from "../importSyncDocumentFile.js";
+import {
   createExpenseGenericUniqueMerchant,
   deleteExpenseGenericUniqueMerchant,
   listExpenseGenericUniqueMerchants,
@@ -19,8 +29,8 @@ import {
 } from "../expenseGenericUniqueMerchants.js";
 import { normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import { backfillGenericTransferUniquePurchases } from "../ccExpenseGenericTransferBackfill.js";
-import { writeHandler } from "../inputError.js";
-import { parseBody, queryChoice } from "./shared.js";
+import { InputError, writeHandler } from "../inputError.js";
+import { parseBody, queryChoice, queryFlag } from "./shared.js";
 import { genericUniqueMerchantSchema, manualIngestRunSchema, syncForceStaleSchema } from "nw-tracker-contracts/requests/sync";
 import { lastSyncRunCreatedAt } from "../syncRunLog.js";
 import { getGlobalSyncSchedulerSnapshot, notifyGlobalSyncScheduler } from "../globalSyncScheduler.js";
@@ -56,6 +66,26 @@ function ingestRunsStatusPayload(now: Date) {
       next_slot_at: next[kind].toISOString(),
     })),
   };
+}
+
+/**
+ * The file a documents request names: `:accountId` (a positive integer), `:month` (`YYYY-MM`) and
+ * `?slot=clp|usd` pick one coverage column and its month's file; malformed → 400, no such column
+ * or no file that month → 404 (`InputError`, answered by the terminal error middleware).
+ */
+function documentFileFromReq(req: express.Request): ImportSyncDocumentFile {
+  const rawId = String(req.params.accountId ?? "");
+  if (!/^[1-9]\d*$/.test(rawId)) throw new InputError("accountId must be a positive integer");
+  const month = String(req.params.month ?? "");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new InputError("month must be YYYY-MM");
+  const rawSlot = req.query.slot;
+  let slot: (typeof IMPORT_SYNC_DOCUMENT_SLOTS)[number] | null = null;
+  if (rawSlot !== undefined) {
+    const found = IMPORT_SYNC_DOCUMENT_SLOTS.find((s) => s === rawSlot);
+    if (!found) throw new InputError(`slot must be one of ${IMPORT_SYNC_DOCUMENT_SLOTS.join(", ")}`);
+    slot = found;
+  }
+  return resolveImportSyncDocumentFile(resolveImportSyncDocumentColumn(Number(rawId), slot), month);
 }
 
 export function registerSyncRoutes(app: express.Express): void {
@@ -117,6 +147,60 @@ app.post("/api/import-sync/jobs/:id/retry", jobAction(retryJob));
 
 app.get("/api/import-sync/document-coverage", (_req, res) => {
   res.json(buildImportSyncDocumentCoveragePayload());
+});
+
+// A coverage cell's source file itself (the page's PDF viewer, or a download), resolved on the
+// server from the column and month: the only request path that reads those files. A thrown
+// `InputError` answers its status through the terminal error middleware.
+const DOCUMENT_FILE_HEADERS = [
+  "Content-Type",
+  "Content-Disposition",
+  "X-Content-Type-Options",
+  "Cache-Control",
+  "Cross-Origin-Resource-Policy",
+  "Content-Security-Policy",
+] as const;
+/** What `send` may have set before failing. */
+const SEND_HEADERS = ["ETag", "Last-Modified", "Accept-Ranges", "Content-Range", "Content-Length"] as const;
+app.get("/api/import-sync/documents/:accountId/:month/file", (req, res, next) => {
+  const download = queryFlag(req, res, "download");
+  if (download == null) return;
+  const file = documentFileFromReq(req);
+  const headers: Record<(typeof DOCUMENT_FILE_HEADERS)[number], string> = {
+    "Content-Type": importSyncDocumentContentType(file.preview_kind),
+    "Content-Disposition": importSyncDocumentContentDisposition(download ? "attachment" : "inline", file.file_name),
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "private, no-store",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Content-Security-Policy": "frame-ancestors 'self'",
+  };
+  for (const name of DOCUMENT_FILE_HEADERS) res.setHeader(name, headers[name]);
+  // The path is the server's own, checked inside the document folders, so a dot folder on it is served.
+  res.sendFile(file.abs_path, { dotfiles: "allow", cacheControl: false }, (err?: Error) => {
+    if (!err) return;
+    const failure = documentSendFailure(err as Error & { code?: string; status?: number }, res.headersSent);
+    if (failure.action === "ignore") return;
+    if (failure.action === "destroy") {
+      res.destroy(err);
+      return;
+    }
+    for (const name of [...DOCUMENT_FILE_HEADERS, ...SEND_HEADERS]) res.removeHeader(name);
+    if (failure.action === "not_found") {
+      res.status(404).json({ error: `${file.file_name} is no longer on disk` });
+      return;
+    }
+    if (failure.action === "client_error") {
+      for (const [name, value] of Object.entries(failure.headers)) res.setHeader(name, value);
+      res.status(failure.status).json({ error: err.message });
+      return;
+    }
+    next(err);
+  });
+});
+
+// A coverage cell's workbook as displayed text, sheet by sheet; a PDF is a 400, over 20 MB or 200 000 cells a 413.
+app.get("/api/import-sync/documents/:accountId/:month/sheet", (req, res) => {
+  res.json(readImportSyncSheetPreview(documentFileFromReq(req).abs_path));
 });
 
 app.get("/api/import-sync/generic-unique-merchants", (_req, res) => {

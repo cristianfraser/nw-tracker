@@ -635,6 +635,14 @@
       "notDue": "{{account}}: {{month}} is in progress, its document is not due yet",
       "fileNotImported": "{{account}}: {{month}} file on disk, not imported"
     },
+    "viewer": {
+      "title": "{{account}} · {{month}}",
+      "pdfFrameTitle": "Document {{file}}",
+      "download": "Download",
+      "openInTab": "Open in new tab",
+      "sheetsLabel": "Sheets",
+      "sheetEmpty": "This sheet is empty."
+    },
     "sync": {
       "lastSync": "Last sync: {{time}} ({{ago}})",
       "lastSyncNever": "Last sync: —",
