@@ -31,16 +31,27 @@ export type StepResult = {
 
 /**
  * Report this command's result; a no-op outside a run. Several reports merge, later fields
- * winning — except `notices`, which add up (a command's children write to the same file).
+ * winning — except `notices` and `problems`, which add up (a command's children write to the same
+ * file: the inbox pipeline's withheld statements and its statement import's refusal are both the
+ * step's problems).
  */
 export function reportStepResult(result: StepResult, env: NodeJS.ProcessEnv = process.env): void {
   const file = env[STEP_RESULT_ENV];
   if (!file) return;
   const current = fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, "utf8") || "{}") as StepResult) : {};
-  const { notices: earlier = [], ...rest } = current;
-  const { notices: added = [], ...fields } = result;
+  const { notices: earlier = [], problems: earlierProblems = [], ...rest } = current;
+  const { notices: added = [], problems: addedProblems = [], ...fields } = result;
   const notices = [...earlier, ...added];
-  fs.writeFileSync(file, JSON.stringify({ ...rest, ...fields, ...(notices.length > 0 ? { notices } : {}) }));
+  const problems = [...earlierProblems, ...addedProblems];
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      ...rest,
+      ...fields,
+      ...(notices.length > 0 ? { notices } : {}),
+      ...(problems.length > 0 ? { problems } : {}),
+    })
+  );
 }
 
 /** What the step's command reported; `{}` when it reported nothing. */

@@ -30,17 +30,31 @@ export const CC_PAYMENT_MERCHANTS: ReadonlySet<string> = new Set(RULES.payment_m
 export const CC_USD_DEBT_ABONO_MERCHANT = RULES.usd_debt_abono_merchant;
 export const CC_TRASPASO_DEUDA_TOKENS: readonly string[] = RULES.traspaso_deuda_tokens;
 export const RE_CLP_SECTION3_CHARGE = new RegExp(RULES.clp_section3_charge_pattern, "i");
+export const RE_CLP_SECTION3_SETTLEMENT = new RegExp(RULES.clp_section3_settlement_pattern, "i");
 export const RE_USD_SECTION3 = new RegExp(RULES.usd_section3_pattern, "i");
 export const RE_USD_GARBLED_MERCHANT = new RegExp(RULES.usd_garbled_merchant_pattern, "i");
 export const USD_GARBLED_MERCHANT_MARKERS: readonly string[] = RULES.usd_garbled_merchant_markers;
+export const RE_PRINTED_PAYMENT_PREFIX = new RegExp(RULES.printed_payment_prefix_pattern, "i");
+export const OPERACIONES_LAYOUTS: ReadonlySet<string> = new Set(RULES.operaciones_layouts);
+export const SECTION3_LAYOUTS: ReadonlySet<string> = new Set(RULES.section3_layouts);
 export const MID_PERIOD_PAYMENT_LAYOUTS: ReadonlySet<string> = new Set(RULES.mid_period_payment_layouts);
-export const SECTION3_CHARGE_LAYOUTS: ReadonlySet<string> = new Set(RULES.section3_charge_layouts);
-export const BCI_SECTION3_LAYOUTS: ReadonlySet<string> = new Set(RULES.bci_section3_layouts);
+export const MERCHANT_RULE_LAYOUTS: ReadonlySet<string> = new Set(RULES.merchant_rule_layouts);
 
 /** CC statement / listing payment merchants (exact literals, after `normalizeMerchantText`). */
 export function isCcPaymentMerchant(merchant: string | null | undefined): boolean {
   const m = normalizeMerchantText(String(merchant ?? ""));
   return m.length > 0 && CC_PAYMENT_MERCHANTS.has(m);
+}
+
+/**
+ * A payment printed on a statement (the parser's `_is_printed_payment`): an exact payment
+ * merchant, or a line opening like one («PAGO EN LINEA», «ABONO …») that prints negative. «PAGO
+ * FACIL», «PAGOS.FLOW.CL (WEB)» … are bills paid WITH the card: they print positive.
+ */
+export function isCcPrintedPayment(merchant: string | null | undefined, amount: number): boolean {
+  const m = normalizeMerchantText(String(merchant ?? ""));
+  if (!RE_PRINTED_PAYMENT_PREFIX.test(m)) return false;
+  return CC_PAYMENT_MERCHANTS.has(m) || amount < 0;
 }
 
 /** «ABONO DE DIVISAS»: the payment of the USD debt (substring — some formats suffix it). */
@@ -58,6 +72,14 @@ export function isClpSection3Merchant(merchant: string | null): boolean {
   const m = String(merchant ?? "").trim();
   if (isCcPaymentMerchant(m)) return false;
   return RE_CLP_SECTION3_CHARGE.test(m);
+}
+
+/**
+ * A section-3 peso line that is no financing cost: «PREPAGO EN CUOTAS», a cuota plan the bank
+ * prepaid, billed whole in section 3 and outside «TOTAL OPERACIONES».
+ */
+export function isClpSection3SettlementMerchant(merchant: string | null): boolean {
+  return RE_CLP_SECTION3_SETTLEMENT.test(String(merchant ?? "").trim());
 }
 
 /**

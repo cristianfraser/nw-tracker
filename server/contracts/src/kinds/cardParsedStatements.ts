@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineIngestKind } from "../defineKind.js";
-import type { CardLineRemovedWithoutPair } from "./cardStatement.js";
+import type { CardLineRemovedWithoutPair, CardStatementUnverifiedLines } from "./cardStatement.js";
 
 /**
  * The columns of a card statement parser's output, one row per statement line — the shape the
@@ -119,6 +119,8 @@ export type CardParsedStatementsApplyDetails = {
     payment_upserts: number;
     /** Lines on file the import removed without handing their identity to another row. */
     removed_without_pair: CardLineRemovedWithoutPair[];
+    /** Statements imported with lines no printed figure verified. */
+    unverified_lines: CardStatementUnverifiedLines[];
   }[];
   /** The import's own log, line by line, as the feeder prints it. */
   report: string[];

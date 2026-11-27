@@ -107,6 +107,31 @@ def _row(merchant: str, amount: str, layout: str, currency: str = "clp", key: st
 class SumParsedSectionsTest(unittest.TestCase):
     """Sums go through the shared line rules (cc_statement_line_rules.py), synthetic rows."""
 
+    def test_a_prepaid_plan_is_section_3_and_a_00_n_cuota_bills_nothing(self) -> None:
+        new_plan = {
+            **_row("PLAN NUEVO", "90000", "wide_master_precio_summary", key="n"),
+            "installment_flag": "true",
+            "valor_cuota_mensual_clp": "30000",
+            "nro_cuota_current": "",
+            "nro_cuota_total": "3",
+        }
+        old_plan = {**new_plan, "merchant": "PLAN VIEJO", "row_id": "o", "nro_cuota_current": "2"}
+        sums = mod.sum_parsed_sections(
+            [
+                _row("TIENDA UNO", "50000", "wide_master_simple"),
+                _row("PREPAGO EN CUOTAS", "40000", "wide_master_simple"),
+                _row("DEVOLUCION TIENDA", "-2000", "wide_master_simple"),
+                _row("MONTO CANCELADO", "-60000", "wide_master_date_first"),
+                new_plan,
+                old_plan,
+            ],
+            parse_clp,
+            parse_usd,
+        )
+        self.assertEqual(sums["parsed_operaciones"], 80000)
+        self.assertEqual(sums["parsed_cargos_abonos"], 40000)
+        self.assertEqual(sums["parsed_operaciones_credits"], -2000)
+
     def test_bci_section3_rows_net_by_layout(self) -> None:
         sums = mod.sum_parsed_sections(
             [
@@ -201,6 +226,33 @@ class OperacionesShortfallTest(unittest.TestCase):
         ]
         self.assertTrue(self._check(rows, self._full()).ok)
 
+    def _excess(self, rows):
+        result = mod.reconcile_statement(
+            self.SOURCE, {"currency": "clp"}, rows, self._full(), parse_clp, parse_usd, layout_text=self._full()
+        )
+        return next(c for c in result.checks if c.code == "operaciones_excess")
+
+    def test_a_line_read_twice_fails(self) -> None:
+        rows = [
+            _row("TIENDA DEMO", "2217", "wide_master_simple", key="a"),
+            _row("PAGO FACIL", "8880", "wide_master_simple", key="b"),
+            _row("PAGO FACIL", "8880", "compact_de_simple", key="b#dup1"),
+        ]
+        check = self._excess(rows)
+        self.assertFalse(check.ok)
+        self.assertEqual(check.delta, 8880.0)
+        self.assertTrue(self._check(rows, self._full()).ok)
+
+    def test_a_refund_the_rules_set_aside_nets_back(self) -> None:
+        rows = [
+            _row("TIENDA DEMO", "2217", "wide_master_simple", key="a"),
+            _row("PAGO FACIL", "8880", "wide_master_simple", key="b"),
+            _row("TIENDA EXTRA", "1000", "wide_master_simple", key="c"),
+            _row("DEVOLUCION TIENDA", "-1000", "wide_master_simple", key="d"),
+        ]
+        self.assertTrue(self._excess(rows).ok)
+        self.assertTrue(self._check(rows, self._full()).ok)
+
     def test_an_ocr_scan_is_not_checked(self) -> None:
         flat = " ".join(self._full().split("\n")) + " " + "x" * 400
         result = mod.reconcile_statement(
@@ -211,8 +263,95 @@ class OperacionesShortfallTest(unittest.TestCase):
             parse_clp,
             parse_usd,
         )
-        self.assertFalse(any(c.code == "operaciones_shortfall" for c in result.checks))
+        self.assertFalse(any(c.code in ("operaciones_shortfall", "operaciones_excess") for c in result.checks))
 
+
+
+class BciOperacionesExcessTest(unittest.TestCase):
+    """BCI's operaciones subtotal holds the parsed lines both ways (synthetic)."""
+
+    SOURCE = "2036-08-26 eecc 4343.pdf"
+
+    def _result(self, rows):
+        return mod.reconcile_statement(self.SOURCE, {"currency": "clp"}, rows, BCI_RENDERING, parse_clp, parse_usd)
+
+    def _rows(self):
+        return [
+            _row("TIENDA UNO (T)", "10000", "bci_lider_operaciones", key="a"),
+            _row("TIENDA DOS (T)", "20000", "bci_lider_operaciones", key="b"),
+            _row("SERVICIO TRES (T)", "70000", "bci_lider_operaciones", key="c"),
+        ]
+
+    def test_lines_over_the_subtotal_fail_inside_the_three_percent_band(self) -> None:
+        result = self._result([*self._rows(), _row("TIENDA CUATRO (T)", "2000", "bci_lider_operaciones", key="d")])
+        excess = next(c for c in result.checks if c.code == "operaciones_excess")
+        self.assertFalse(excess.ok)
+        self.assertEqual(excess.delta, 2000.0)
+        self.assertTrue(next(c for c in result.checks if c.code == "operaciones").ok)
+
+    def test_the_printed_lines_pass(self) -> None:
+        self.assertTrue(next(c for c in self._result(self._rows()).checks if c.code == "operaciones_excess").ok)
+
+
+class Section4CuotasTest(unittest.TestCase):
+    """Section 4 prints the first cuota of each plan bought in the period (synthetic)."""
+
+    SOURCE = "2036-08-24 estado de cuenta tarjeta 4141.pdf"
+    FULL = "\n".join(
+        [
+            "MONTO PAGADO PERIODO ANTERIOR                              $ -79.928",
+            "2. PERIODO ACTUAL",
+            "1. TOTAL OPERACIONES                                       $ 2.217",
+            "SANTIAGO        02/08/2036 TIENDA DEMO                     $ 2.217",
+            "4. INFORMACION COMPRAS EN CUOTAS EN EL PERIODO             $ 30.000",
+            "MONTO TOTAL FACTURADO A PAGAR                              $ 2.217",
+        ]
+    )
+
+    def _plan(self, key: str) -> dict:
+        return {
+            **_row("PLAN DEMO", "90000", "wide_master_periodic_summary", key=key),
+            "installment_flag": "true",
+            "valor_cuota_mensual_clp": "30000",
+            "nro_cuota_current": "",
+            "nro_cuota_total": "3",
+        }
+
+    def _check(self, rows):
+        result = mod.reconcile_statement(self.SOURCE, {"currency": "clp"}, rows, self.FULL, parse_clp, parse_usd, layout_text=self.FULL)
+        return next(c for c in result.checks if c.code == "section4_cuotas")
+
+    def test_the_announced_plan_matches(self) -> None:
+        self.assertTrue(self._check([_row("TIENDA DEMO", "2217", "wide_master_simple", key="a"), self._plan("p")]).ok)
+
+    def test_a_doubled_announcement_row_fails(self) -> None:
+        check = self._check([_row("TIENDA DEMO", "2217", "wide_master_simple", key="a"), self._plan("p"), self._plan("p#dup1")])
+        self.assertFalse(check.ok)
+        self.assertEqual(check.delta, 30000.0)
+
+
+class WithholdStatementsTest(unittest.TestCase):
+    def test_a_withheld_statement_leaves_the_csv_and_the_manifest_the_others_stay(self) -> None:
+        rows = [{"source_pdf": "a.pdf", "row_id": "1"}, {"source_pdf": "b.pdf", "row_id": "2"}, {"source_pdf": "c.pdf", "row_id": "3"}]
+        entries = [
+            {"pdf_sha256": "x", "parser_version": "v", "source_pdf": "a.pdf", "statement": "a.pdf"},
+            {"pdf_sha256": "y", "parser_version": "v", "source_pdf": "b-file.pdf", "statement": "b.pdf"},
+            {"pdf_sha256": "z", "parser_version": "v", "source_pdf": "c.pdf", "statement": "c.pdf"},
+        ]
+        kept_rows, kept_entries = mod.withhold_statements(rows, entries, {"b.pdf"})
+        self.assertEqual([r["source_pdf"] for r in kept_rows], ["a.pdf", "c.pdf"])
+        self.assertEqual([e["pdf_sha256"] for e in kept_entries], ["x", "z"])
+        result = mod.ReconcileResult(source_pdf="b.pdf", currency="clp", ok=False, withheld=True)
+        self.assertTrue(mod.reconcile_result_to_json(result)["withheld"])
+
+
+class RowIdCountTest(unittest.TestCase):
+    def test_two_rows_sharing_a_dedupe_key_are_two_lines(self) -> None:
+        # The import counts rows by row id; the parse check must too.
+        a = {**_row("TIENDA DEMO", "2000", "wide_master_simple", key="r1"), "dedupe_key": "k"}
+        b = {**_row("TIENDA DEMO", "2000", "compact_de_simple", key="r2"), "dedupe_key": "k"}
+        sums = mod.sum_parsed_sections([a, b], parse_clp, parse_usd)
+        self.assertEqual(sums["parsed_operaciones"], 4000)
 
 
 class UsdTwinsAndPeriodBlockTest(unittest.TestCase):

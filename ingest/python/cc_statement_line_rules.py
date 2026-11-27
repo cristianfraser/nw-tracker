@@ -8,11 +8,13 @@ and the import-time reconcile (`ccStatementImportReconcile.ts`) sum a statement 
 A non-installment line goes to one of:
 
 - ``operaciones``: a purchase (section 1, «Total operaciones»).
-- ``cargos_abonos``: section 3 (interest, fees, taxes, notas de crédito, the USD side's
-  «ABONO DE DIVISAS»).
+- ``cargos_abonos``: section 3 (interest, fees, taxes, notas de crédito, a prepaid cuota plan's
+  «PREPAGO EN CUOTAS», the USD side's «ABONO DE DIVISAS»).
 - ``mid_period_payments``: a payment printed as a line (the compact / OCR payment layouts, and
-  BCI's section-3 PAGO rows).
-- ``ignored``: counted nowhere (a payment or refund outside those layouts).
+  the PAGO rows of a section-3 layout).
+- ``operaciones_credit``: a peso credit outside section 3 that is no payment (a refund); the
+  bank nets it into «Total operaciones».
+- ``ignored``: counted nowhere (a payment outside the payment layouts).
 - ``skip``: a garbled international row (two pdftotext lines merged) — not a real line.
 
 A missing or malformed rules file raises: it is committed, so its absence is a broken checkout.
@@ -22,7 +24,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import cc_cards
 
@@ -33,12 +35,15 @@ _KEYS = (
     "usd_debt_abono_merchant",
     "traspaso_deuda_tokens",
     "clp_section3_charge_pattern",
+    "clp_section3_settlement_pattern",
     "usd_section3_pattern",
     "usd_garbled_merchant_pattern",
     "usd_garbled_merchant_markers",
+    "printed_payment_prefix_pattern",
+    "operaciones_layouts",
+    "section3_layouts",
     "mid_period_payment_layouts",
-    "section3_charge_layouts",
-    "bci_section3_layouts",
+    "merchant_rule_layouts",
 )
 
 
@@ -60,12 +65,15 @@ PAYMENT_MERCHANTS = frozenset(RULES["payment_merchants"])
 USD_DEBT_ABONO_MERCHANT: str = RULES["usd_debt_abono_merchant"]
 TRASPASO_DEUDA_TOKENS: List[str] = RULES["traspaso_deuda_tokens"]
 RE_CLP_SECTION3_CHARGE = re.compile(RULES["clp_section3_charge_pattern"], re.I)
+RE_CLP_SECTION3_SETTLEMENT = re.compile(RULES["clp_section3_settlement_pattern"], re.I)
 RE_USD_SECTION3 = re.compile(RULES["usd_section3_pattern"], re.I)
 RE_USD_GARBLED_MERCHANT = re.compile(RULES["usd_garbled_merchant_pattern"], re.I)
 USD_GARBLED_MERCHANT_MARKERS: List[str] = RULES["usd_garbled_merchant_markers"]
+RE_PRINTED_PAYMENT_PREFIX = re.compile(RULES["printed_payment_prefix_pattern"], re.I)
+OPERACIONES_LAYOUTS = frozenset(RULES["operaciones_layouts"])
+SECTION3_LAYOUTS = frozenset(RULES["section3_layouts"])
 MID_PERIOD_PAYMENT_LAYOUTS = frozenset(RULES["mid_period_payment_layouts"])
-SECTION3_CHARGE_LAYOUTS = frozenset(RULES["section3_charge_layouts"])
-BCI_SECTION3_LAYOUTS = frozenset(RULES["bci_section3_layouts"])
+MERCHANT_RULE_LAYOUTS = frozenset(RULES["merchant_rule_layouts"])
 
 
 def norm_merchant(merchant: object) -> str:
@@ -77,6 +85,18 @@ def is_payment_merchant(merchant: object) -> bool:
     """Exact PAGO / MONTO CANCELADO / ABONO — `isCcPaymentMerchant` in `ccPaymentLines.ts`."""
     m = norm_merchant(merchant)
     return bool(m) and m in PAYMENT_MERCHANTS
+
+
+def is_printed_payment(merchant: object, amount: Optional[float]) -> bool:
+    """A payment printed on a statement: an exact payment merchant, or a line opening like one
+    («PAGO EN LINEA», «ABONO …») that prints negative. «PAGO FACIL», «PAGOS.FLOW.CL (WEB)»,
+    «PAGOS.F*COMUNIDAD …», «PAGOS MASIVOS …» are bills paid WITH the card: they print positive,
+    and treating them as payments dropped 13 ·0161 charges (2020-12 → 2023-09) from the parse.
+    `isCcPrintedPayment` in `lineRules.ts`."""
+    m = norm_merchant(merchant)
+    if not RE_PRINTED_PAYMENT_PREFIX.match(m):
+        return False
+    return m in PAYMENT_MERCHANTS or (amount is not None and amount < 0)
 
 
 def is_usd_debt_abono_merchant(merchant: object) -> bool:
@@ -95,6 +115,12 @@ def is_clp_section3_merchant(merchant: object) -> bool:
     if is_payment_merchant(m):
         return False
     return bool(RE_CLP_SECTION3_CHARGE.search(m))
+
+
+def is_clp_section3_settlement_merchant(merchant: object) -> bool:
+    """«PREPAGO EN CUOTAS»: a section-3 peso line that is no financing cost (a prepaid cuota plan,
+    billed whole outside «TOTAL OPERACIONES») — `isClpSection3SettlementMerchant` in `lineRules.ts`."""
+    return bool(RE_CLP_SECTION3_SETTLEMENT.search(str(merchant or "").strip()))
 
 
 def is_usd_section3_merchant(merchant: object, amount_usd: float) -> bool:
@@ -123,7 +149,10 @@ def is_garbled_usd_merchant(merchant: object) -> bool:
 
 
 def classify_statement_line(currency: str, merchant: object, layout: str, amount: float) -> str:
-    """Section of a non-installment line (see the module docstring for the section names)."""
+    """Section of a non-installment line (see the module docstring for the section names). A peso
+    line's section is the one its parser layout states it was printed in; only the layouts whose
+    reader does not track the printed section (`merchant_rule_layouts`) go by the merchant rules.
+    `classifyCcStatementLine` in `ccStatementSection3.ts`."""
     if str(currency or "clp").lower() == "usd":
         if is_garbled_usd_merchant(merchant):
             return "skip"
@@ -131,15 +160,20 @@ def classify_statement_line(currency: str, merchant: object, layout: str, amount
             return "cargos_abonos"
         return "operaciones" if amount > 0 else "ignored"
     lay = str(layout or "")
+    payment = is_printed_payment(merchant, amount)
     if lay in MID_PERIOD_PAYMENT_LAYOUTS:
         return "mid_period_payments"
-    if lay in SECTION3_CHARGE_LAYOUTS:
+    if lay in SECTION3_LAYOUTS:
+        # Section 3 as printed — BCI's rows included, whose forms the Santander merchant patterns
+        # miss («IMPUESTO DL 3475», merchant-named notas): the bank nets them into Monto Total
+        # Facturado. Its PAGO rows are payments.
+        return "mid_period_payments" if payment else "cargos_abonos"
+    if lay in OPERACIONES_LAYOUTS:
+        return "ignored" if payment else "operaciones"
+    if lay not in MERCHANT_RULE_LAYOUTS:
+        raise ValueError(f"card statement line {merchant!r}: parser layout {lay!r} states no section (ccStatementLineRules.json)")
+    if payment:
+        return "ignored"
+    if is_clp_section3_merchant(merchant) or is_clp_section3_settlement_merchant(merchant):
         return "cargos_abonos"
-    if lay in BCI_SECTION3_LAYOUTS:
-        # BCI section-3 rows carry their own layout: the merchant patterns are Santander-shaped
-        # and miss BCI's forms («IMPUESTO DL 3475», merchant-named notas), which the bank nets
-        # into Monto Total Facturado. Its PAGO rows are payments.
-        return "mid_period_payments" if is_payment_merchant(merchant) else "cargos_abonos"
-    if is_clp_section3_merchant(merchant):
-        return "cargos_abonos"
-    return "operaciones" if amount > 0 else "ignored"
+    return "operaciones" if amount > 0 else "operaciones_credit"

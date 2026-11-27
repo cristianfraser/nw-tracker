@@ -11,7 +11,9 @@
  *    statement nor a cartola, or no password opens it) is moved to `inbox/held/` and becomes a
  *    notice of this step (`StepResult.notices`), never a failure.
  * 3. Organize checking cartola `.xlsx` from the inbox → `excels/cuenta corriente/`
- * 4. Parse credit-card PDFs (per-PDF cache) → merged CSV
+ * 4. Parse credit-card PDFs (per-PDF cache) → merged CSV. A statement whose parsed lines do not
+ *    add up to what it prints is withheld from the CSV (its rows on file stay as they are): the
+ *    pipeline goes on with the others and the step ends failed, naming it in its problems.
  * 5. Send the parsed statements (`card.statement`, canonical)
  * 6. Checking cartolas (when the inbox filed one, or `--checking`), the daily «ultimos
  *    movimientos» xlsx, the card-payment receipts, then the server tasks
@@ -40,6 +42,7 @@ import { resolveRepoRoot } from "../paths.js";
 import { loadRootDotenv } from "../rootDotenv.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { reportStepResult } from "../stepResult.js";
+import { parseReconciliationPath, withheldStatementProblems } from "../cards/parseReconciliation.js";
 import {
   basenamesFromCfraserOrganizePaths,
   emptyCfraserOrganizeManifest,
@@ -152,6 +155,7 @@ async function main(): Promise<void> {
     xlsxMoved = (JSON.parse(fs.readFileSync(xlsxManifest, "utf8")) as { moved: { from: string; to: string }[] }).moved;
   }
 
+  let deferredFailureCode = 0;
   if (!skipParse) {
     const code = runStep("Parse credit-card PDFs", "npm", ["run", "parse:cc-pdfs", "-w", "nw-tracker-ingest"]);
     if (code !== 0) {
@@ -159,6 +163,14 @@ async function main(): Promise<void> {
         "Parse failed or left PDFs with 0 rows (see # WARN zero_rows in output). Fix parser or PDF, then retry."
       );
       process.exit(code);
+    }
+    // A statement that does not reconcile fails only itself: the others import below, and the
+    // step fails at the end with the withheld ones as its problems.
+    const withheld = withheldStatementProblems(parseReconciliationPath());
+    if (withheld.length > 0) {
+      for (const p of withheld) console.error(`# WITHHELD: ${p}`);
+      reportStepResult({ problems: withheld });
+      deferredFailureCode = 1;
     }
   } else {
     console.log("\n=== Parse credit-card PDFs (skipped) ===");
@@ -275,7 +287,6 @@ async function main(): Promise<void> {
     );
   }
 
-  let deferredFailureCode = 0;
   // Grocery receipts (ingest: photo inbox → staged → OCR/parse → `store.receipt`): the Lider
   // «Boleta Digital» PDFs staged by fetch:lider-boletas plus the generic cfraser/grocery-receipts/
   // root. Incremental: the command stops at once when no photo waits in the inbox and every

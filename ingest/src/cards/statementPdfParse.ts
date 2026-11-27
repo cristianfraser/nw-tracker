@@ -5,6 +5,7 @@ import path from "node:path";
 import { cardStatementKind, type FeederParseResult } from "nw-tracker-contracts";
 import { resolveRepoRoot } from "../paths.js";
 import { canonicalStatementsPayload, readParsedStatementsCsv } from "./parsedStatements.js";
+import { parseReconciliationPath, withheldStatementProblems } from "./parseReconciliation.js";
 
 /** Parsing a scanned statement runs OCR; well within the server's wait for this format. */
 const PARSE_TIMEOUT_MS = 140_000;
@@ -14,7 +15,8 @@ const PARSE_TIMEOUT_MS = 140_000;
  * the card statement parser (`ingest/python/parse-cc-statement-pdfs.py`) run on a directory
  * holding only this file, its merged CSV converted to canonical statements as the corpus is. The parser's per-PDF cache
  * is the corpus's own (keyed by the PDF's bytes), so a statement already in the corpus parses
- * from cache. A parse that fails or reads no line is `unreadable`.
+ * from cache. A parse that fails, reads no line, or does not add up to what the statement prints
+ * (withheld by the parser) is `unreadable`.
  */
 export async function parseCardStatementPdf(content: Buffer, filename: string): Promise<FeederParseResult> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nw-cc-pdf-"));
@@ -40,6 +42,8 @@ export async function parseCardStatementPdf(content: Buffer, filename: string): 
       });
     });
     if (code !== 0) throw new Error(output.trim().split("\n").slice(-5).join("\n") || `the parser exited ${code}`);
+    const withheld = withheldStatementProblems(parseReconciliationPath(outCsv));
+    if (withheld.length > 0) throw new Error(withheld.join("\n"));
     const csv = readParsedStatementsCsv(outCsv);
     if (!csv) throw new Error("the parser read no statement line from this PDF");
     return {

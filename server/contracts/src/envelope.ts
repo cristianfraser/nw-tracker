@@ -99,6 +99,8 @@ export const INGEST_ERROR_CODES = [
   "unsupported_currency",
   /** A kind whose handler dates rows by when the document was read, sent without `source.fetched_at`. */
   "missing_fetched_at",
+  /** A card statement whose parsed lines do not add up to the figures it prints (nothing written). */
+  "statement_not_reconciled",
   "unknown_ingest_run",
   "invalid_run_report",
   "run_not_waiting",

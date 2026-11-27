@@ -222,7 +222,10 @@ describe("ccStatementImportReconcile", () => {
       pdf_total_operaciones: 1_170_941,
     };
     const header = mergeImportReconcileHeader(dbAnchor, csvHeader)!;
-    const rows = [line({ amount_clp: 930_991, merchant: "FPAY" })];
+    const rows = [
+      line({ amount_clp: 930_991, merchant: "FPAY" }),
+      line({ amount_clp: 239_950, merchant: "TIENDA DEMO", dedupe_key: "dk2", row_id: "r2" }),
+    ];
     const result = reconcileBillingMonthMovements("2020-12", rows, header);
     expect(result.ok).toBe(true);
   });

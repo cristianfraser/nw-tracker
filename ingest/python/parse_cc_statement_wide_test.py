@@ -23,6 +23,32 @@ spec.loader.exec_module(mod)
 import cc_statement_reconcile  # noqa: E402  (on sys.path once the parser module loaded)
 
 
+class WideCuotasTasaRowTest(unittest.TestCase):
+    """Section 4 of the older Master layout: «NN CUOTAS, TASA r %» rows, with or without «TCOM N»."""
+
+    def test_a_row_without_the_tcom_label_is_the_new_plan_not_a_one_shot(self) -> None:
+        text = "\n".join(
+            [
+                "4. INFORMACION COMPRAS EN CUOTAS EN EL PERIODO                     $ 40.000",
+                "08/11/2036 TIENDA DEMO CUOTAS          03 CUOTAS, TASA    3,09 %       "
+                "$ 110.000        $ 120.000                       $ 40.000",
+                "09/11/2036 TIENDA DEMO TCOM TCOM 2          03 CUOTAS, TASA         3,01 %       "
+                "$ 60.000        $ 66.000                        $ 22.000",
+            ]
+        )
+        rows = mod.parse_wide_document(text)
+        self.assertEqual(
+            [
+                (r["layout"], r["merchant"], r["installment_flag"], r["amount_clp"], r["valor_cuota_mensual_clp"], r["nro_cuota_current"], r["nro_cuota_total"])
+                for r in rows
+            ],
+            [
+                ("wide_master_tcom_cuotas_tasa", "TIENDA DEMO CUOTAS", True, 110000, 40000, "", 3),
+                ("wide_master_tcom_cuotas_tasa", "TIENDA DEMO TCOM TCOM 2", True, 60000, 22000, "", 3),
+            ],
+        )
+
+
 class WidePeriodicSummaryRowTest(unittest.TestCase):
     """Section «4. INFORMACION COMPRAS EN CUOTAS EN EL PERIODO»: a cuota purchase of the cycle."""
 

@@ -91,7 +91,7 @@ from cc_pdf_ocr import (  # noqa: E402
 import cc_cards  # noqa: E402
 # One list of section-3 charge merchants for the parse (which lines are section-3 rows) and the
 # reconcile (which section a line sums into) — see cc_statement_line_rules.py.
-from cc_statement_line_rules import RE_CLP_SECTION3_CHARGE, is_payment_merchant  # noqa: E402
+from cc_statement_line_rules import RE_CLP_SECTION3_CHARGE, RE_PRINTED_PAYMENT_PREFIX, is_printed_payment  # noqa: E402
 from cc_statement_pdf_paths import (  # noqa: E402
     is_excluded_cc_pdf_path,
     pdf_already_in_card_slot,
@@ -103,6 +103,7 @@ from statement_values import (  # noqa: E402
     repair_jammed_year,
 )
 import cc_parse_acceptance as acceptance  # noqa: E402
+from cc_statement_reconcile import withhold_statements  # noqa: E402
 from cc_statement_reconcile import (  # noqa: E402
     merge_section_totals_into_meta,
     usd_period_block_amounts,
@@ -2315,9 +2316,11 @@ RE_WIDE_PRECIO_SUMMARY = re.compile(
     r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(\d,\d{2}\s*%)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s+(\d{1,2})/(\d{1,2})\s+\$\s*([\d.]+)\s*$",
     re.I,
 )
-# Older Master layout: «TCOM 2 03 CUOTAS, TASA 3,01 % $ orig $ final $ cuota» (no NN/MM index).
+# Older Master layout, section 4 («compras en cuotas en el período», a new plan's 00/N row):
+# «TCOM 2 03 CUOTAS, TASA 3,01 % $ orig $ final $ cuota» (no NN/MM index). The «TCOM N» plan
+# label is not always printed: «FLOW *COMUNIDAD … 03 CUOTAS, TASA 3,09 % $ … $ … $ …» (2023-11).
 RE_WIDE_TCOM_CUOTAS_TASA = re.compile(
-    r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+TCOM\s+(\d+)\s+(\d{2})\s+CUOTAS,\s+TASA\s+(\d,\d{2}\s*%)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s*$",
+    r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(?:TCOM\s+(\d+)\s+)?(\d{2})\s+CUOTAS,\s+TASA\s+(\d,\d{2}\s*%)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s*$",
     re.I,
 )
 
@@ -2431,7 +2434,7 @@ def _append_wide_tcom_cuotas_tasa_row(
     tot1 = parse_clp_amount(m.group(6))
     tot2 = parse_clp_amount(m.group(7))
     cuota = parse_clp_amount(m.group(8))
-    merchant = f"{merchant_base} TCOM {tcom_plan}".strip()
+    merchant = f"{merchant_base} TCOM {tcom_plan}".strip() if tcom_plan else merchant_base
     _append_origin_row(
         out,
         {
@@ -2449,7 +2452,7 @@ def _append_wide_tcom_cuotas_tasa_row(
             "nro_cuota_total": nplan,
             "installment_flag": True,
             "interest_rate_text": rate,
-            "tipo_cuota": f"{nplan:02d} CUOTAS TCOM",
+            "tipo_cuota": f"{nplan:02d} CUOTAS TCOM" if tcom_plan else f"{nplan:02d} CUOTAS, TASA",
             "foreign_currency": _extract_fx(merchant_base),
             "authorization_code": _extract_auth(merchant_base),
         },
@@ -2634,19 +2637,13 @@ def _extract_auth(s: str) -> str:
     return m.group(1) if m else ""
 
 
-RE_COMPACT_PAYMENT_MERCHANT = re.compile(r"^(PAGO|MONTO\s+CANCELADO|ABONO\b)", re.I)
+RE_COMPACT_PAYMENT_MERCHANT = RE_PRINTED_PAYMENT_PREFIX
 
 
 def _is_printed_payment(merchant: str, amount: Optional[float]) -> bool:
-    """A payment to the card: exactly PAGO / MONTO CANCELADO / ABONO, or a line opening with one of
-    those words that prints negative. «PAGO FACIL», «PAGOS.FLOW.CL (WEB)», «PAGOS.F*COMUNIDAD …»,
-    «PAGOS MASIVOS …» are bills paid WITH the card: they print positive, and treating them as
-    payments dropped 13 ·0161 charges (2020-12 → 2023-09) from the parse."""
-    if not RE_COMPACT_PAYMENT_MERCHANT.match(merchant):
-        return False
-    if is_payment_merchant(merchant):
-        return True
-    return amount is not None and amount < 0
+    """A payment to the card (`is_printed_payment`, the shared line rules): exactly PAGO / MONTO
+    CANCELADO / ABONO, or a line opening with one of those words that prints negative."""
+    return is_printed_payment(merchant, amount)
 
 
 def _row_amount_clp(row: Dict[str, Any]) -> Optional[float]:
@@ -3906,6 +3903,7 @@ def main() -> int:
                 full_text = str(cached.get("full") or "")
                 source_pdf = statement_source_pdf_name(meta, p.name, parser, full_text)
                 meta["source_pdf"] = source_pdf
+                manifest_entries[-1]["statement"] = source_pdf
                 if source_pdf in pdf_context:
                     # Second physical copy of an already-parsed statement (e.g. the same
                     # PDF filed under both 0161/clp/ and legacy/clp/): same rows, same
@@ -3940,14 +3938,14 @@ def main() -> int:
                     if not no_cache:
                         pdf_hash = save_parse_cache(p, parser_version, parse_cache_payload(p, card_group, ctx))
                         manifest_entries.append(
-                            {"pdf_sha256": pdf_hash, "parser_version": parser_version, "source_pdf": p.name}
+                            {"pdf_sha256": pdf_hash, "parser_version": parser_version, "source_pdf": p.name, "statement": source_pdf}
                         )
                     continue
                 pdf_context[source_pdf] = ctx
                 if not no_cache:
                     pdf_hash = save_parse_cache(p, parser_version, parse_cache_payload(p, card_group, ctx))
                     manifest_entries.append(
-                        {"pdf_sha256": pdf_hash, "parser_version": parser_version, "source_pdf": p.name}
+                        {"pdf_sha256": pdf_hash, "parser_version": parser_version, "source_pdf": p.name, "statement": source_pdf}
                     )
             all_rows.extend(rows)
             per_pdf_counts[str(ctx.get("pdf_path") or p.name)] = len(rows)
@@ -4027,6 +4025,16 @@ def main() -> int:
 
     reconcile_results: List[Any] = []
     reconcile_fail_count = 0
+    # A statement whose parse does not reconcile fails only itself: its rows stay out of the CSV
+    # (the import never sees it, so its rows on file stay as they are), its cache entry out of the
+    # manifest (never accepted), and the reconciliation file marks it `withheld` for the pipeline,
+    # which reports it as the step's problem. Every other statement goes on.
+    withheld: set[str] = set()
+    reconcile_jsonl = (
+        Path(out_all).with_name(Path(out_all).stem + ".reconciliation.jsonl")
+        if out_all
+        else CFRASER_DIR / "cc-statements-parse-reconciliation.jsonl"
+    )
     if not no_reconcile:
         rows_by_pdf: Dict[str, List[Dict[str, Any]]] = {}
         for r in all_rows_sorted:
@@ -4054,6 +4062,8 @@ def main() -> int:
                 and not result.ok
             ):
                 reconcile_fail_count += 1
+                result.withheld = True
+                withheld.add(pdf_name)
             summary = result.mismatch_summary()
             if summary:
                 for r in stmt_rows:
@@ -4061,10 +4071,8 @@ def main() -> int:
                         prev = str(r.get("mismatch_notes") or "").strip()
                         r["mismatch_notes"] = f"{prev};{summary}" if prev else summary
                         break
-        write_reconciliation_jsonl(
-            CFRASER_DIR / "cc-statements-parse-reconciliation.jsonl",
-            reconcile_results,
-        )
+        write_reconciliation_jsonl(reconcile_jsonl, reconcile_results)
+        all_rows_sorted, manifest_entries = withhold_statements(all_rows_sorted, manifest_entries, withheld)
 
     parsed_csv_path = Path(out_all) if out_all else CFRASER_DIR / "cc-statements-parsed-all.csv"
     write_csv(parsed_csv_path, all_rows_sorted)
@@ -4113,13 +4121,15 @@ def main() -> int:
                 continue
             if not r.ok:
                 issues = ",".join(r.issue_codes) or "unknown"
-                print(f"# RECONCILE_FAIL\t{r.source_pdf}\t{issues}")
+                tag = "WITHHELD" if r.source_pdf in withheld else "RECONCILE_FAIL"
+                print(f"# {tag}\t{r.source_pdf}\t{issues}")
                 for ch in r.checks:
                     if not ch.ok:
                         print(
                             f"#   {ch.code}: expected={ch.expected} actual={ch.actual} delta={ch.delta}"
                         )
-    reconcile_exit = reconcile_fail_count > 0 if not no_reconcile else False
+    if withheld:
+        print(f"# WITHHELD statements={len(withheld)} (left out of the CSV; see {reconcile_jsonl.name})")
 
     reconcile_by_source = {r.source_pdf: r for r in reconcile_results}
     zero_row_fatal = [
@@ -4136,7 +4146,7 @@ def main() -> int:
         print(f"# WARN zero_rows_fatal={len(zero_row_fatal)}")
         for name in zero_row_fatal:
             print(f"# WARN zero_rows_fatal\t{name}")
-    if failures or zero_row_fatal or reconcile_exit:
+    if failures or zero_row_fatal:
         return 1
     if not no_cache:
         # What the statements import accepts once it succeeds (`accept:cc-parses`).

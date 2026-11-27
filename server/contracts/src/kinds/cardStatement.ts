@@ -168,6 +168,19 @@ export type CardLineRemovedWithoutPair = {
   filed: CardLineFiledAssignment[];
 };
 
+/**
+ * A statement imported with lines no printed figure verified: it prints no total the parsed lines
+ * can be checked against (a dateless international JSON, a header-less cycle), or it is an OCR'd
+ * scan whose lines miss a printed figure (reported, never refused).
+ */
+export type CardStatementUnverifiedLines = {
+  /** The statement's document (file name or source). */
+  statement: string;
+  currency: string;
+  billing_month: string;
+  reason: string;
+};
+
 /** `details` of an applied `card.statement`. */
 export type CardStatementApplyDetails = {
   account_id: number;
