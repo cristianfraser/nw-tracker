@@ -186,6 +186,16 @@
   padding-left: var(--glance-inset);
 }
 
+/* The group's own row is the whole row shifted a step left (figures and rule too), so it hangs out
+   of the list as the parent of the rows under it; its name keeps its inset from the table's edge. */
+.row.totalRow {
+  transform: translateX(calc(-1 * var(--glance-step)));
+}
+
+.row.totalRow .nameCell {
+  padding-left: calc(var(--glance-inset) + var(--glance-step));
+}
+
 .row.memberRow .nameCell {
   padding-left: calc(var(--glance-inset) + var(--glance-step) * var(--glance-depth, 1));
 }
