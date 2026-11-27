@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@crfrsr/ui";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { ManualExpenseDialog } from "../components/credit-card/ManualExpenseDialog";
-import { useFlowsExpensesSpent, useFlowsExpensesSpentLines, useFlowsExpensesSummary } from "../queries/hooks";
+import { useHeldFlowsExpensesSpent, useHeldFlowsExpensesSpentLines, useHeldFlowsExpensesSummary } from "../queries/hooks";
 import { BigExpenseGroupsSection } from "../components/credit-card/BigExpenseGroupsSection";
 import { CreditCardUnclassifiedExpensesTable } from "../components/credit-card/CreditCardUnclassifiedExpensesTable";
 import { CreditCardDepositMatchedExpensesTable } from "../components/credit-card/CreditCardDepositMatchedExpensesTable";
@@ -21,7 +21,6 @@ import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import { useExpensesIncludePreTax } from "../useExpensesIncludePreTax";
 import { useCcExpenseCategoryLevel } from "../useCcExpenseCategoryLevel";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
-import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 import { loadableClass } from "../components/ui/Loadable";
 import { EXPENSES_SPENT_RANGES, type ExpensesSpentRange, type FlowCcExpenseLineRow } from "../types";
 
@@ -49,7 +48,9 @@ export function ExpensesPage() {
   const { categoryLevel, setCategoryLevel } = useCcExpenseCategoryLevel();
   const { includePreTax, setIncludePreTax } = useExpensesIncludePreTax();
 
-  const summary = useFlowsExpensesSummary(displayUnit);
+  // Every payload is held across a unit switch, dimmed, in its own unit: the summary's held catalog
+  // keeps the active groups (so the chart's exclusion and the spent request do not churn).
+  const summary = useHeldFlowsExpensesSummary("expenses.summary", displayUnit);
   const activeBigGroups = useMemo(() => summary.data?.active_big_group_slugs ?? [], [summary.data]);
   const { excludedBigGroups, isExcluded, toggleExcluded } = useCcExpenseExcludedBigGroups(activeBigGroups);
   const excludedBigGroupList = useMemo(() => [...excludedBigGroups], [excludedBigGroups]);
@@ -66,7 +67,7 @@ export function ExpensesPage() {
     [displayUnit, installmentMode, categoryLevel, range, excludedBigGroupList, includePreTax]
   );
   // The default exclusion is every big group the lines carry: wait for the summary before asking.
-  const spent = useFlowsExpensesSpent(params, summary.data != null);
+  const spent = useHeldFlowsExpensesSpent("expenses.spent", params, summary.data != null);
   const data = spent.data;
   const monthKeys = useMemo(() => (data?.months ?? []).map((m) => m.month), [data]);
   const selectableMonths = useMemo(() => new Set(monthKeys), [monthKeys]);
@@ -82,15 +83,15 @@ export function ExpensesPage() {
       ? sel.category
       : null;
 
-  const lines = useFlowsExpensesSpentLines(params, { month, day, category }, summary.data != null && month !== "");
+  const lines = useHeldFlowsExpensesSpentLines("expenses.spentLines", params, { month, day, category }, summary.data != null && month !== "");
 
-  const loadError = queryLoadError(summary) ?? queryLoadError(spent) ?? queryLoadError(lines);
+  const loadError = summary.error ?? spent.error ?? lines.error;
   if (loadError) {
     return <p className="error">{loadError instanceof Error ? loadError.message : t("common.loadFailed")}</p>;
   }
 
-  const spentLoading = queryShowsLoading(spent);
-  const linesLoading = queryShowsLoading(lines);
+  const spentLoading = spent.loading;
+  const linesLoading = lines.loading;
   const categories = summary.data?.categories ?? [];
   const unit = data?.unit ?? displayUnit;
   const selectedMonth = data?.months.find((m) => m.month === month);
@@ -227,6 +228,7 @@ export function ExpensesPage() {
               onClearCategory={() => setSel((s) => ({ ...s, category: null }))}
               onEditManual={setManualLine}
               loading={linesLoading}
+              unit={unit}
             />
             </div>
           </div>
@@ -257,7 +259,11 @@ export function ExpensesPage() {
         loading={spentLoading}
       />
 
-      <AdditionalCardsSection summary={summary.data?.additional_cards} displayUnit={displayUnit} loading={summary.data == null} />
+      <AdditionalCardsSection
+        summary={summary.data?.additional_cards}
+        displayUnit={summary.data?.unit ?? displayUnit}
+        loading={summary.data == null || summary.loading}
+      />
 
       <CreditCardUnclassifiedExpensesTable includePreTax={includePreTax} />
 

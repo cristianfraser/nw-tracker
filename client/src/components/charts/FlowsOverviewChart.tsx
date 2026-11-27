@@ -94,6 +94,8 @@ export function FlowsOverviewChart({
       <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")}>
         <AppComposedChart
           data={points as FlowsOverviewChartPoint[]}
+          // The shown payload's unit: a held payload turning into the new unit's tweens like data arriving.
+          animationKey={displayUnit}
           stackOffset="sign"
           tooltip={{
             formatValue: (v) => formatFlowMoney(v, displayUnit),

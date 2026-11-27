@@ -1,7 +1,7 @@
 import { Button } from "@crfrsr/ui";
 import { HeadingLink } from "../ui/HeadingLink";
 import { useTranslation } from "../../i18n";
-import { useLatestMovements } from "../../queries/hooks";
+import { useHeldLatestMovements } from "../../queries/hooks";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, LatestCardPayment, LatestIncomeMovement, LatestMovementsResponse } from "../../types";
 import { hasSchemaVersion, persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
 import { PageGridTile } from "../layout/PageGridTile";
@@ -16,7 +16,6 @@ import { ExpenseOriginIcon } from "../credit-card/ExpenseOriginIcon";
 import { ExpenseVendorLabel } from "../credit-card/ExpenseVendorLabel";
 import { PillPicker } from "../ui/PillPicker";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { queryLoadError } from "../../queries/pageShapeReady";
 
 const LATEST_MOVEMENTS_LIMIT = 15;
 
@@ -105,11 +104,14 @@ function CardPaymentRow({
   payment,
   categories,
   bigGroups,
+  unit,
 }: {
   on: string;
   payment: LatestCardPayment;
   categories: readonly CcExpenseCategoryDto[];
   bigGroups: readonly CcExpenseBigGroupDto[];
+  /** The unit the panel's payload was requested in. */
+  unit: string | null;
 }) {
   const { t } = useTranslation();
   const from =
@@ -153,6 +155,7 @@ function CardPaymentRow({
         payment.lines.length > 0 ? (
           <CreditCardExpenseLinesTable
             lines={payment.lines}
+            unit={unit}
             categories={categories}
             bigGroups={bigGroups}
             showBigGroupControls
@@ -176,10 +179,19 @@ function CardPaymentRow({
 export function LatestMovementsTable() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const query = useLatestMovements(LATEST_MOVEMENTS_LIMIT, displayUnit);
-  // Until live data is here, the last stored one (per unit: its rows carry values in the unit).
-  const { value: data } = usePersistedPayload(LATEST_MOVEMENTS, [displayUnit], query.data);
-  const loadError = queryLoadError(query);
+  // Held across a unit switch, in the unit it was requested in (`query.unit`: the payload has none).
+  const query = useHeldLatestMovements("home.latestMovements", LATEST_MOVEMENTS_LIMIT, displayUnit);
+  // Before anything was drawn this session, the last stored copy of this unit (its rows' values
+  // are in it; the payload names no unit, so its unit is the one it was stored under).
+  const { value: data, storedUnit } = usePersistedPayload(
+    LATEST_MOVEMENTS,
+    { surface: `latestMovements|${LATEST_MOVEMENTS_LIMIT}`, unit: displayUnit, scope: [displayUnit] },
+    { shown: query.data, live: query.live, failed: query.error != null }
+  );
+  const unit = storedUnit ?? query.unit ?? null;
+  // A stored copy of this unit paints undimmed (first paint); one held across a switch dims.
+  const loading = data == null || (storedUnit != null ? storedUnit !== displayUnit : query.loading);
+  const loadError = query.error;
 
   const items: ExpenseListItem[] = (data?.rows ?? []).map((r) => {
     if (r.kind === "expense") return { kind: "expense", on: r.on, line: r.line, arrivalKey: r.arrival_key };
@@ -191,7 +203,13 @@ export function LatestMovementsTable() {
       key: r.payment.key,
       arrivalKey: r.arrival_key,
       node: (
-        <CardPaymentRow on={r.on} payment={r.payment} categories={data?.categories ?? []} bigGroups={data?.big_groups ?? []} />
+        <CardPaymentRow
+          on={r.on}
+          payment={r.payment}
+          categories={data?.categories ?? []}
+          bigGroups={data?.big_groups ?? []}
+          unit={unit}
+        />
       ),
     };
   });
@@ -215,7 +233,8 @@ export function LatestMovementsTable() {
             enableCheckingNotes
             hideHeader
             emptyLabel={t("dashboard.latestMovements.empty")}
-            loading={data == null}
+            loading={loading}
+            unit={unit}
             animateArrivals
           />
           {/* Not wired yet: a longer list comes later. */}

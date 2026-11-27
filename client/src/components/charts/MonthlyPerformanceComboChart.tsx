@@ -362,6 +362,8 @@ export function MonthlyPerformanceComboChart({
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={plotPoints}
+          // A held payload turning into the new unit's tweens like data arriving.
+          animationKey={displayUnit}
           {...(hasStacks ? { stackOffset: "sign" as const } : {})}
           barGroup={{
             count: barSlotCount,

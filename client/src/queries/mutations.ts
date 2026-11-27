@@ -13,7 +13,7 @@ import {
   expenseLineMatchesPurchaseKey,
   expenseLineMatchesPurchaseBigGroupPatch,
 } from "../ccExpenseLineBuckets";
-import { queryKeys, type DisplayUnit } from "./keys";
+import { queryKeys } from "./keys";
 import { invalidateResources, resources } from "./resources";
 
 /** Any cached payload carrying expense lines (every `GET /api/flows/expenses/lines` selector). */
@@ -175,8 +175,8 @@ export function applyCcExpenseLineCategoryPatchFromServer<T extends WithLines>(
 }
 
 /** A card write: its account page, the expense lines and the deposits. */
-function cardWriteResources(accountId: string | number, displayUnit: DisplayUnit) {
-  return [resources.accountPage(accountId, displayUnit), resources.expenseLines(), resources.deposits()];
+function cardWriteResources(accountId: string | number) {
+  return [resources.accountPage(accountId), resources.expenseLines(), resources.deposits()];
 }
 
 export function usePatchCcExpenseLineCategoryMutation() {
@@ -463,85 +463,76 @@ export function useDeleteCcExpenseBigGroupMutation() {
   });
 }
 
-export function useDeleteCcPurchaseMutation(opts: {
-  accountId: number;
-  displayUnit: DisplayUnit;
-}) {
+export function useDeleteCcPurchaseMutation(opts: { accountId: number }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (purchaseId: number) => api.deleteCcPurchase(opts.accountId, purchaseId),
     onSettled: () => {
-      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId));
     },
   });
 }
 
 /** A manual plan's cuota count, changed from its row. */
-export function useUpdateCcPurchaseCuotasMutation(opts: { accountId: number; displayUnit: DisplayUnit }) {
+export function useUpdateCcPurchaseCuotasMutation(opts: { accountId: number }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ purchaseId, cuotas_totales }: { purchaseId: number; cuotas_totales: number }) =>
       api.updateCcPurchaseCuotas(opts.accountId, purchaseId, cuotas_totales),
     onSettled: () => {
-      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId));
     },
   });
 }
 
-export function useDeleteCcStatementLineMutation(opts: {
-  accountId: number;
-  displayUnit: DisplayUnit;
-}) {
+export function useDeleteCcStatementLineMutation(opts: { accountId: number }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (lineId: number) => api.deleteCcStatementLine(opts.accountId, lineId),
     onSettled: () => {
-      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId));
     },
   });
 }
 
-export function useAnnulCcPurchaseMutation(opts: { accountId: number; displayUnit: DisplayUnit }) {
+export function useAnnulCcPurchaseMutation(opts: { accountId: number }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ lineId, annulledOn }: { lineId: number; annulledOn: string }) =>
       api.annulCcPurchase(opts.accountId, lineId, annulledOn),
     onSettled: () => {
-      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId));
     },
   });
 }
 
-export function useUndoCcAnnulledPurchaseMutation(opts: { accountId: number; displayUnit: DisplayUnit }) {
+export function useUndoCcAnnulledPurchaseMutation(opts: { accountId: number }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (annulId: number) => api.undoCcAnnulledPurchase(opts.accountId, annulId),
     onSettled: () => {
-      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId));
     },
   });
 }
 
-export function useMakeStatementLineInstallmentMutation(opts: {
-  accountId: number;
-  displayUnit: DisplayUnit;
-}) {
+export function useMakeStatementLineInstallmentMutation(opts: { accountId: number }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ lineId, cuotas_totales }: { lineId: number; cuotas_totales: number }) =>
       api.makeStatementLineInstallment(opts.accountId, lineId, cuotas_totales),
     onSettled: () => {
-      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId));
     },
   });
 }
 
-export function useAccountImportMutation(opts: { accountId: number; displayUnit: DisplayUnit }) {
+export function useAccountImportMutation(opts: { accountId: number }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (run: () => Promise<Record<string, unknown>>) => run(),
     onSettled: () => {
-      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId, opts.displayUnit));
+      void invalidateResources(queryClient, ...cardWriteResources(opts.accountId));
     },
   });
 }

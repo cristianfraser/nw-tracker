@@ -16,16 +16,17 @@ import {
   prefetchDashboardNavSnapshot,
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
-import { dailyPayloadPending, isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
+import { bundleContent, dailyPayloadPending } from "../queries/pageShapeReady";
+import { storedFirstPaint } from "../queries/heldUnitPayload";
 import {
   nwBucketTotalsFromDashTotals,
   writeDashboardNavSnapshotCache,
 } from "../queries/dashboardNavSnapshotCache";
 import {
   useAccountsByPortfolioGroup,
-  useDashboardBundle,
   useDashboardNavSnapshot,
-  useDashboardOverviewDaily,
+  useHeldDashboardBundle,
+  useHeldDashboardOverviewDaily,
   useSidebarNav,
 } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -51,7 +52,7 @@ import {
   useSurfacePercentMode,
   useSurfacePrefs,
 } from "../surfaceDisplayPrefs";
-import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
+import { ValueMapPanel, valueMapView } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { DashboardFlowsChart, DashboardFlowsPeriods } from "../components/dashboard/DashboardFlowsSummary";
 import { PageGridTile } from "../components/layout/PageGridTile";
@@ -87,6 +88,9 @@ const DAILY_OVERVIEW_POINT_FIELD: Record<string, string> = {
 
 type ComboRow = Record<string, string | number | null>;
 
+/** The card strip's figures and the unit they are in. */
+type StripCards = { dash: ReturnType<typeof dashPickForNavStrip>; unit: string };
+
 /**
  * The P/L combo's yearly rows: class Δs and Σ Δ sum over the year's months in range,
  * YTD is that Σ Δ, the all-time level is sampled at year-end. `rollupChartPointsByYear` cannot
@@ -112,7 +116,7 @@ export function DashboardPage() {
   const belowFoldShown = fold === "full";
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { displayUnit, previousDisplayUnit } = useDisplayPreferences();
+  const { displayUnit } = useDisplayPreferences();
   const overviewPrefs = useSurfacePrefs("home.overview", "day", "3y");
   const combosPrefs = useSurfacePrefs("home.combos", "month", "3y");
   const perfArea = useSurfaceAreaMode("home.perf");
@@ -127,7 +131,7 @@ export function DashboardPage() {
 
   const navShell = useMemo(
     () => (netWorthNav ? buildGroupPageShellFromNav(netWorthNav) : null),
-    [netWorthNav, displayUnit]
+    [netWorthNav]
   );
 
   const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);
@@ -136,12 +140,9 @@ export function DashboardPage() {
     displayUnit,
     Boolean(netWorthNav)
   );
-  const {
-    data,
-    error,
-    isPending: bundlePending,
-    isPlaceholderData,
-  } = useDashboardBundle(displayUnit);
+  // The bundle on screen: this unit's, or the one held while it loads (in ITS unit, dimmed).
+  const bundle = useHeldDashboardBundle("home.bundle", displayUnit);
+  const { error } = bundle;
 
   useEffect(() => {
     void prefetchDashboardNavSnapshot(queryClient, displayUnit);
@@ -154,34 +155,32 @@ export function DashboardPage() {
     [displayUnit, navSnapshot?.chart_shape]
   );
 
-  const bundleReady = Boolean(
-    data?.dash && data?.ts?.overview
-  );
-  const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
-  const contentLoading = isBundleContentLoading({
-    isPending: bundlePending,
-    isPlaceholderData,
-    bundleReady,
-  });
+  const {
+    content,
+    loading: contentLoading,
+    live,
+  } = bundleContent(bundle, (d) => Boolean(d.dash && d.ts?.overview));
 
-  const resolved = useRealBundle && data ? data : placeholderBundle;
+  // The zero placeholder only while there is no bundle to show at all (first visit).
+  const resolved = content ?? placeholderBundle;
   const dash = resolved.dash;
   const ts = resolved.ts;
   const inversionesPerf = resolved.inversionesPerf;
 
+  // Only this unit's live bundle is stored (never a held one under the new unit's key).
   useEffect(() => {
-    if (!useRealBundle || !data) return;
-    writeDashboardNavSnapshotCache(displayUnit, {
-      schema_version: data.dash.schema_version,
-      unit: data.dash.unit,
-      accounts: data.dash.accounts,
-      liabilities_breakdown: data.dash.liabilities_breakdown,
-      dashboard_layout: data.dash.dashboard_layout,
-      nw_bucket_totals: nwBucketTotalsFromDashTotals(data.dash.totals),
-      card_metrics_by_slug: data.dash.card_metrics_by_slug,
-      chart_shape: chartShapeFromLoadedDashboardBundle(data),
+    if (!live) return;
+    writeDashboardNavSnapshotCache(live.dash.unit, {
+      schema_version: live.dash.schema_version,
+      unit: live.dash.unit,
+      accounts: live.dash.accounts,
+      liabilities_breakdown: live.dash.liabilities_breakdown,
+      dashboard_layout: live.dash.dashboard_layout,
+      nw_bucket_totals: nwBucketTotalsFromDashTotals(live.dash.totals),
+      card_metrics_by_slug: live.dash.card_metrics_by_slug,
+      chart_shape: chartShapeFromLoadedDashboardBundle(live),
     });
-  }, [useRealBundle, data, displayUnit]);
+  }, [live]);
 
 
   // No snapshot yet (cold cache): a zero strip from the sidebar nav, in its placeholder phase.
@@ -189,31 +188,37 @@ export function DashboardPage() {
     () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav) : null),
     [sidebarNav]
   );
-  // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous).
-  const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
-  // Strip cards during a unit switch: the new unit's stored snapshot when it has one, else the
-  // previous unit's values, dimmed and in THEIR unit — the cards then flip to the new values once
-  // the bundle lands, never through a blank strip or an fx-converted guess.
-  const stripFromHeldBundle = holdingPrevUnit && !navSnapshot;
-  const stripUnit = stripFromHeldBundle ? previousDisplayUnit : displayUnit;
-  const dashForStrip = useMemo(() => {
-    if (!netWorthNav) return null;
-    if (useRealBundle && data) return data.dash;
-    if (stripFromHeldBundle && data) return data.dash;
-    if (!navSnapshot) return placeholderStripDash;
-    return dashPickForNavStrip(
-      {
-        accounts: navSnapshot.accounts,
-        liabilities_breakdown: navSnapshot.liabilities_breakdown,
-        dashboard_layout: navSnapshot.dashboard_layout,
-        nw_bucket_totals: navSnapshot.nw_bucket_totals,
-        card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
-      }
-    );
-  }, [netWorthNav, useRealBundle, stripFromHeldBundle, data, navSnapshot, placeholderStripDash]);
+  // The strip's cards follow the bundle's own decision (`heldUnitPayload.ts`): the bundle on
+  // screen — this unit's, or the one held across a switch or a remount, in ITS unit. Only before
+  // any bundle was drawn this session the stored snapshot paints them, and once painted it is held
+  // (in its unit) until a bundle is drawn (`storedFirstPaint`).
+  const firstPaintSnapshot = storedFirstPaint("navStrip|net_worth", {
+    shown: content != null,
+    failed: error != null,
+    unit: displayUnit,
+    read: () => navSnapshot,
+  }).value;
+  const strip = useMemo((): StripCards | undefined => {
+    if (content) return { dash: content.dash, unit: content.dash.unit };
+    const snapshot = firstPaintSnapshot;
+    if (!snapshot) return undefined;
+    return {
+      dash: dashPickForNavStrip({
+        accounts: snapshot.accounts,
+        liabilities_breakdown: snapshot.liabilities_breakdown,
+        dashboard_layout: snapshot.dashboard_layout,
+        nw_bucket_totals: snapshot.nw_bucket_totals,
+        card_metrics_by_slug: snapshot.card_metrics_by_slug,
+      }),
+      unit: snapshot.unit,
+    };
+  }, [content, firstPaintSnapshot]);
+  const stripCards = netWorthNav ? (strip ?? null) : null;
+  // Nothing to show yet (cold cache): a zero strip from the sidebar nav, in its placeholder phase.
+  const stripDash = netWorthNav ? (stripCards?.dash ?? placeholderStripDash) : null;
   // The cards show real numbers (the bundle, a held bundle or a snapshot, never the zero
   // placeholder): the demo's About page shows its preview from then on (dashboardFold.ts).
-  const stripReady = dashForStrip != null && dashForStrip !== placeholderStripDash;
+  const stripReady = stripCards != null;
   const reportStripReady = useContext(DashboardStripReadyContext);
   useEffect(() => {
     if (stripReady) reportStripReady?.();
@@ -230,42 +235,28 @@ export function DashboardPage() {
   const combosIsYearly = combosPeriod === "year";
   const isYearly = combosIsYearly;
 
-  // Day view: the net-worth chart swaps to the daily series (overview-daily fetch).
-  const overviewDaily = useDashboardOverviewDaily(
-    displayUnit,
-    timeRangeToDays(overviewRange),
-    overviewIsDaily
-  );
+  // Day view: the net-worth chart swaps to the daily series (overview-daily fetch), held like
+  // the bundle across a unit or range change (a held daily series is drawn, dimmed, in its unit).
+  const overviewDays = timeRangeToDays(overviewRange);
+  const overviewDaily = useHeldDashboardOverviewDaily("home.overviewDaily", displayUnit, overviewDays, overviewIsDaily);
   const overviewDailyData = overviewDaily.data;
-  // The value map replaces the composition chart; only the real bundle carries it.
-  const valueMapRoot = useMemo(
-    () =>
-      useRealBundle && data
-        ? valueMapRootForPage(data.dash.value_map, "net_worth")
-        : null,
-    [useRealBundle, data]
-  );
-  // While a unit switch or refetch loads, the map keeps the last data it drew (old unit).
-  const heldValueMap = useHeldValueMap(
-    "net_worth",
-    valueMapRoot,
-    useRealBundle ? data?.dash.value_map_color_bounds : undefined,
-    displayUnit
+  // The value map replaces the composition chart; only a real bundle (live or held) carries it.
+  const valueMap = useMemo(
+    () => valueMapView(content?.dash.value_map, content?.dash.value_map_color_bounds, "net_worth", dash.unit),
+    [content, dash.unit]
   );
   // Net worth always has group children: the selected view is shown whatever is loading.
   const valueMapShown = compositionView.view === "map";
   const allocationIsDaily = allocationPrefs.period === "day";
-  const allocationDaily = useDashboardOverviewDaily(
-    displayUnit,
-    timeRangeToDays(allocationPrefs.range),
-    allocationIsDaily && !valueMapShown && belowFoldShown
-  );
+  const allocationDays = timeRangeToDays(allocationPrefs.range);
+  const allocationDailyEnabled = allocationIsDaily && !valueMapShown && belowFoldShown;
+  const allocationDaily = useHeldDashboardOverviewDaily("home.allocationDaily", displayUnit, allocationDays, allocationDailyEnabled);
   const allocationDailyData = allocationDaily.data;
   // The bundle's own loading dims every chart.
   const overviewDailyPending = dailyPayloadPending(overviewIsDaily, overviewDaily);
   const allocationDailyPending = dailyPayloadPending(allocationIsDaily, allocationDaily);
-  const valuationChartsLoading = contentLoading || overviewDailyPending;
-  const allocationLoading = contentLoading || allocationDailyPending;
+  const valuationChartsLoading = contentLoading || (overviewIsDaily && overviewDaily.loading);
+  const allocationLoading = contentLoading || (allocationIsDaily && allocationDaily.loading);
   const dailyOverviewBlock = useMemo(() => {
     if (!overviewIsDaily || overviewDailyPending) return null;
     if (!overviewDailyData?.points.length || !ts?.overview) return null;
@@ -282,8 +273,8 @@ export function DashboardPage() {
       }
       return row;
     });
-    // The milestone anchors only while both payloads are in the same unit (a held prior-unit
-    // monthly bundle would mix units).
+    // The milestone anchors only while both payloads are in the same unit (a held bundle or a
+    // held daily series of another unit would mix units).
     return {
       lines,
       points,
@@ -341,12 +332,9 @@ export function DashboardPage() {
   const brokerageColor = bucketColorBySlug.get("brokerage") ?? allocationBucketColor("brokerage");
 
   const netWorthTableAccounts = useMemo(() => {
-    const rows =
-      useRealBundle && data
-        ? data.dash.accounts
-        : (navSnapshot?.accounts ?? navShell?.dashAccounts ?? []);
+    const rows = content ? content.dash.accounts : (firstPaintSnapshot?.accounts ?? navShell?.dashAccounts ?? []);
     return netWorthTableAccountsFromDash(rows);
-  }, [useRealBundle, data, navSnapshot?.accounts, navShell?.dashAccounts]);
+  }, [content, firstPaintSnapshot?.accounts, navShell?.dashAccounts]);
 
   const accountsTreeRoot = useMemo(
     () =>
@@ -446,15 +434,16 @@ export function DashboardPage() {
         <LineChartPanel
           title={t("dashboard.sections.overviewTitle")}
           block={
-            // Until the real data is in, every period shows the pending frame (title, controls,
-            // legend), never the placeholder's zero lines: those only flashed before the draw-in.
+            // Until a real bundle is on hand (live or held), every period shows the pending frame
+            // (title, controls, legend), never the placeholder's zero lines: those only flashed
+            // before the draw-in.
             overviewIsDaily
               ? (dailyOverviewBlock ?? { lines: overviewBlock.lines, points: [] })
-              : useRealBundle
+              : content
                 ? overviewBlock
                 : { lines: overviewBlock.lines, points: [] }
           }
-          displayUnit={displayUnit}
+          displayUnit={overviewIsDaily ? (overviewDailyData?.unit ?? ts.unit) : ts.unit}
           thickKey="total_nw"
           includeAccumulatedLines={false}
           colorPlan={{ kind: "dashboard-overview" }}
@@ -507,7 +496,7 @@ export function DashboardPage() {
                 isYearly ? t("dashboard.sections.perfChartTitleYearly") : t("dashboard.sections.perfChartTitleMonthly")
               }
               points={perfChartPoints}
-              displayUnit={displayUnit}
+              displayUnit={inversionesPerf?.unit ?? ts.unit}
               valueFormat={perfPctView ? "percent" : "money"}
               xAxisGranularity={combosXAxis}
               timeRange={combosRange}
@@ -590,9 +579,9 @@ export function DashboardPage() {
           surfaceId="home.map"
           view={compositionView.view}
           onViewChange={compositionView.setView}
-          root={heldValueMap.root}
-          bounds={heldValueMap.bounds}
-          unit={heldValueMap.unit}
+          root={valueMap.root}
+          bounds={valueMap.bounds}
+          unit={valueMap.unit}
           loading={contentLoading}
         />
       ) : (
@@ -628,12 +617,12 @@ export function DashboardPage() {
     <GroupInfoBase
       loading={contentLoading}
       portfolio={
-        netWorthNav && dashForStrip
+        netWorthNav && stripDash
           ? {
               navNode: netWorthNav,
               groupSlug: "net_worth",
-              dash: dashForStrip,
-              unit: stripUnit,
+              dash: stripDash,
+              unit: stripCards?.unit ?? displayUnit,
             }
           : null
       }
@@ -652,7 +641,12 @@ export function DashboardPage() {
             {/* One row whenever both fit, «Próximos pagos» taking what the periods leave (page-grid.css `.dashboard-flows-pair`); stacked in the rail. */}
             <div className="page-tile dashboard-flows-pair">
               <DashboardFlowsPeriods displayUnit={displayUnit} />
-              <UpcomingPaymentsPanel data={data?.upcomingPayments ?? null} loading={contentLoading} />
+              <UpcomingPaymentsPanel
+                data={bundle.data?.upcomingPayments ?? null}
+                live={bundle.live?.upcomingPayments ?? null}
+                loading={contentLoading}
+                error={bundle.error}
+              />
             </div>
             <LatestMovementsTable />
           </>

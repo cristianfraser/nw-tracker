@@ -99,6 +99,8 @@ export function DepositsByCategoryChart({
       <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")}>
         <AppComposedChart
           data={densePoints}
+          // The shown payload's unit: a held payload turning into the new unit's tweens like data arriving.
+          animationKey={displayUnit}
           barGroup={{
             count: CATEGORY_BAR.length,
             maxBarSize: BAR_MAX_SIZE,

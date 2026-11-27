@@ -6,7 +6,6 @@ import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { PerfDetailRows, type PerfDetailRow } from "./PerfDetailRows";
 import { perfDetailServesYtdPct, perfDetailYtdPct } from "./perfDetailYtd";
 import { CoinsIcon } from "../icons/CoinsIcon";
-import type { DisplayUnit } from "../../queries/keys";
 
 const PAGE_SIZE = 12;
 
@@ -25,12 +24,11 @@ function cellPct(p: number | null | undefined) {
  */
 export function DailyPerfDetailTable({
   series,
-  displayUnit,
   dimClosedDays = false,
   loading = false,
 }: {
+  /** The series on screen (this unit's or a held one): every amount is formatted in its own `unit`. */
   series: DailySeriesResponse | null | undefined;
-  displayUnit: DisplayUnit;
   dimClosedDays?: boolean;
   /** The series is not in yet (or is held prior data): the table dims; with no rows it shows its header only, never the empty copy. */
   loading?: boolean;
@@ -38,8 +36,8 @@ export function DailyPerfDetailTable({
   const { t } = useTranslation();
 
   const fmt = (n: number | null | undefined): string => {
-    if (n == null || !Number.isFinite(n)) return "—";
-    return formatMoney({ value: n, currency: displayUnit });
+    if (n == null || !Number.isFinite(n) || !series) return "—";
+    return formatMoney({ value: n, currency: series.unit });
   };
 
   const rowsDesc: DailySeriesPointDto[] = useMemo(

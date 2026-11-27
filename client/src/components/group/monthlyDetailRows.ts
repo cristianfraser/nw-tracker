@@ -1,16 +1,16 @@
 import type { ConsolidatedMonthlyPerfRow } from "../../types";
 
 /**
- * Rows for the detalle-por-mes table. Real (display-unit-resolved) rows always win — including
- * FX-converted keep-previous rows during a CLP↔USD switch — so the table never blanks to the
- * null-column placeholder rows while data it could show is on hand. Placeholders appear only
- * while loading with nothing usable (first paint, or a unit switch with no FX rate).
+ * Rows for the detalle-por-mes table. Real rows always win — this unit's or the ones held across
+ * a unit switch (drawn in their own unit, dimmed) — so the table never blanks to the null-column
+ * placeholder rows while data it could show is on hand. Placeholders appear only while loading
+ * with nothing to show (first paint, or another group).
  */
 export function resolveMonthlyDetailRows(opts: {
   serverPaginated: boolean;
-  /** Server-paginated branch rows, display-unit resolved; undefined = none / unconvertible. */
+  /** Server-paginated branch rows (live or held); undefined = none on hand. */
   serverRows: ConsolidatedMonthlyPerfRow[] | undefined;
-  /** Client-paginated branch rows, display-unit resolved; empty = none / unconvertible. */
+  /** Client-paginated branch rows (live or held); empty = none on hand. */
   clientRows: ConsolidatedMonthlyPerfRow[];
   pageLoading: boolean;
   tablesLoading: boolean;

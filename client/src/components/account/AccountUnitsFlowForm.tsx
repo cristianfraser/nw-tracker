@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { formatNumberInput, parseNumberInputOrThrow } from "../../format";
-import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import {
   brokerageMovementFieldLabelStyle,
@@ -70,10 +69,9 @@ type Props = {
   accountId: number;
   /** Unit label from `movement_create.unit_label` (cuotas / BTC / ETH). */
   unitLabel: string;
-  displayUnit: DisplayUnit;
 };
 
-export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Props) {
+export function AccountUnitsFlowForm({ accountId, unitLabel }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [movements, setMovements] = useState<UnitsFlowDraft[]>([]);
@@ -95,7 +93,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
       setMovements([]);
       setFormError(null);
       setLastSavedCount(count);
-      await invalidateResources(queryClient, resources.accountMovements(accountId, displayUnit));
+      await invalidateResources(queryClient, resources.accountMovements(accountId));
     },
     onError: (err: Error) => {
       setFormError(err.message);

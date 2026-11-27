@@ -4,10 +4,10 @@ import { cn } from "../cn";
 import { useTranslation } from "../i18n";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import {
-  useDailySeries,
-  useLiabilitiesGlance,
-  useMortgageGroupGlance,
-  usePortfolioGroupBundle,
+  useHeldDailySeries,
+  useHeldLiabilitiesGlance,
+  useHeldMortgageGroupGlance,
+  useHeldPortfolioGroupBundle,
   usePortfolioGroupCcLanes,
   useSidebarNav,
 } from "../queries/hooks";
@@ -67,16 +67,18 @@ export function LiabilitiesPage() {
   const node = useMemo(() => findBestNavNodeForPathname(sidebarNav?.main, pathname), [sidebarNav, pathname]);
   const slug = node?.slug;
 
-  const glanceQuery = useLiabilitiesGlance(slug, displayUnit);
+  // The unit-keyed payloads are held across a unit switch (`heldUnitPayload.ts`), each formatted
+  // in its own unit.
+  const glanceQuery = useHeldLiabilitiesGlance("liabilities.glance", slug, displayUnit);
   const glance = glanceQuery.data;
-  const glanceLoading = queryShowsLoading(glanceQuery);
+  const glanceLoading = glanceQuery.loading;
   // Before the head answers, a group is drawn (dimmed); the head then says which ones exist.
   const hasCards = glance == null || glance.cards != null;
   const hasMortgage = glance == null || glance.mortgage != null;
   const lanesQuery = usePortfolioGroupCcLanes(CREDIT_CARD_SLUG, Boolean(slug) && hasCards);
-  const mortgageQuery = useMortgageGroupGlance(hasMortgage && slug ? MORTGAGE_SLUG : undefined, displayUnit);
+  const mortgageQuery = useHeldMortgageGroupGlance("liabilities.mortgage", hasMortgage && slug ? MORTGAGE_SLUG : undefined, displayUnit);
 
-  const error = queryLoadError(glanceQuery);
+  const error = glanceQuery.error;
   if (!node && navSettled) return <Navigate to={DASHBOARD_PATH} replace />;
   const title = node ? resolveNavTreeLabel(node) : "";
   if (error) {
@@ -89,9 +91,9 @@ export function LiabilitiesPage() {
   }
 
   const lanesLoading = queryShowsLoading(lanesQuery);
-  const mortgageLoading = queryShowsLoading(mortgageQuery);
+  const mortgageLoading = mortgageQuery.loading;
   const lanesError = queryLoadError(lanesQuery);
-  const mortgageError = queryLoadError(mortgageQuery);
+  const mortgageError = mortgageQuery.error;
 
   return (
     <main>
@@ -248,15 +250,15 @@ function ChartsRow({ slug, glance, loading }: { slug: string; glance: Liabilitie
   // The surface key the root's coverage chart has always used, so a stored choice survives.
   const prefs = useSurfacePrefs(`liab.${slug}.proportional`, "month", "3y");
   const daily = prefs.period === "day";
-  const bundle = usePortfolioGroupBundle({ portfolio_group: slug, unit: displayUnit, enabled: !daily });
-  const dailySeries = useDailySeries({ portfolioGroup: slug }, displayUnit, timeRangeToDays(prefs.range), daily);
+  const bundle = useHeldPortfolioGroupBundle("liabilities.coverageBundle", { portfolio_group: slug, unit: displayUnit, enabled: !daily });
+  const dailySeries = useHeldDailySeries("liabilities.coverageDaily", { portfolioGroup: slug }, displayUnit, timeRangeToDays(prefs.range), daily);
   const dailyPending = dailyPayloadPending(daily, dailySeries);
   const block = daily
     ? dailyPending
       ? null
       : (dailySeries.data?.reference_coverage ?? null)
     : (bundle.data?.ts?.reference_coverage ?? null);
-  const coverageLoading = daily ? dailyPending : queryShowsLoading(bundle);
+  const coverageLoading = daily ? dailySeries.loading : bundle.loading;
   return (
     <PageGridTile id="liabilities-charts" className="chart-grid">
       <div className={loadableClass(loading, "chart-grid__col")}>

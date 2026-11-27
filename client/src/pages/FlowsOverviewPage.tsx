@@ -10,7 +10,7 @@ import { flowsOverviewRangeTotals, rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVE
 import { flowTableGranularity, formatFlowMoney } from "../flowsDisplay";
 import { clipMonthsThenRollup, clipPointsToTimeRange, timeRangeToDays } from "../timeRange";
 import { useTranslation } from "../i18n";
-import { useFlowsOverview } from "../queries/hooks";
+import { useHeldFlowsOverview } from "../queries/hooks";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import type { FlowsOverviewTotals } from "../types";
 
@@ -51,8 +51,9 @@ export function FlowsOverviewPage() {
   );
   const { installmentMode } = useCcInstallmentGastosMode();
 
-  // Day mode asks for the day rows of the chart's window too.
-  const overview = useFlowsOverview(
+  // Day mode asks for the day rows of the chart's window too. Held across a unit, mode or window
+  // change (dimmed, in its own unit: everything below formats with `unit`).
+  const overview = useHeldFlowsOverview("flows.overview", 
     displayUnit,
     installmentMode,
     isDaily ? timeRangeToDays(timeRange) : undefined
@@ -63,9 +64,10 @@ export function FlowsOverviewPage() {
       : overview.error
         ? t("common.loadFailed")
         : null;
-  // Pending (or holding a prior mode/window): the page renders its frame with zero totals and
-  // no rows, dimmed.
-  const loading = !overview.data || overview.isPlaceholderData;
+  // Pending with nothing to show: the frame with zero totals and no rows, dimmed; a held payload
+  // shows dimmed.
+  const loading = !overview.data || overview.loading;
+  const unit = overview.data?.unit ?? displayUnit;
   const monthRows = overview.data?.months ?? null;
   /** Day rows (Diario chart only); the detail table below stays month/year. */
   const dayRows = isDaily ? (overview.data?.days ?? null) : null;
@@ -100,7 +102,8 @@ export function FlowsOverviewPage() {
     [chartRows]
   );
 
-  /** Headline totals stay full history; `rangeTotals` (shown when Rango ≠ Todo) follow the chart. */
+  /** Headline totals stay full history; `rangeTotals` (shown when Rango ≠ Todo) follow the chart. The
+   * zero totals only while there is nothing to show. */
   const fullTotals = overview.data?.totals ?? ZERO_FLOWS_OVERVIEW_TOTALS;
   const rangeTotals = useMemo(() => flowsOverviewRangeTotals(chartRows), [chartRows]);
 
@@ -115,14 +118,14 @@ export function FlowsOverviewPage() {
       <p className={loadableClass(loading, "muted")}>
         {t("flows.overview.summaryLabel")}{" "}
         <span className="mono flow-summary-value">
-          {formatFlowMoney(fullTotals.net_worth_change, displayUnit)}
+          {formatFlowMoney(fullTotals.net_worth_change, unit)}
         </span>
         <span className="muted flow-summary-note">
           (
           {NET_WORTH_PARTS.map((part, i) => (
             <span key={part.labelKey}>
               {i > 0 ? " · " : null}
-              {t(part.labelKey)} <span className="mono">{formatFlowMoney(part.value(fullTotals), displayUnit)}</span>
+              {t(part.labelKey)} <span className="mono">{formatFlowMoney(part.value(fullTotals), unit)}</span>
             </span>
           ))}
           )
@@ -130,7 +133,7 @@ export function FlowsOverviewPage() {
         {timeRange !== "total" ? (
           <span className="muted flow-summary-note">
             · {t("flows.rangeTotalLabel")}{" "}
-            <span className="mono">{formatFlowMoney(rangeTotals.net_worth_change, displayUnit)}</span>
+            <span className="mono">{formatFlowMoney(rangeTotals.net_worth_change, unit)}</span>
           </span>
         ) : null}
       </p>
@@ -141,7 +144,7 @@ export function FlowsOverviewPage() {
           title={t("flows.overview.chartTitle")}
           points={chartPoints}
           xAxisGranularity={chartGranularity}
-          displayUnit={displayUnit}
+          displayUnit={unit}
           loading={loading}
         />
       </div>
@@ -162,7 +165,7 @@ export function FlowsOverviewPage() {
           key={tableGranularity}
           months={monthRows}
           granularity={tableGranularity}
-          displayUnit={displayUnit}
+          displayUnit={unit}
           loading={loading}
         />
       </PageGridTile>

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { consolidatedRowsForDisplay } from "../../useGroupInfoConsolidatedTables";
 import type { ConsolidatedMonthlyPerfRow } from "../../types";
 import { resolveMonthlyDetailRows } from "./monthlyDetailRows";
 
@@ -21,7 +20,7 @@ function row(partial: Partial<ConsolidatedMonthlyPerfRow> = {}): ConsolidatedMon
 const placeholderRows = [row({ nominal_pl: null, prior_closing: null })];
 
 describe("resolveMonthlyDetailRows", () => {
-  it("keeps real client rows even while the page bundle is loading (unit switch)", () => {
+  it("keeps real client rows (live or held from another unit) while the page bundle is loading", () => {
     const clientRows = [row()];
     const out = resolveMonthlyDetailRows({
       serverPaginated: false,
@@ -81,19 +80,5 @@ describe("resolveMonthlyDetailRows", () => {
       placeholderRows,
     });
     expect(out).toBe(placeholderRows);
-  });
-});
-
-describe("consolidatedRowsForDisplay", () => {
-  it("same-unit and uf payloads pass through by reference", () => {
-    const rows = [row()];
-    expect(consolidatedRowsForDisplay(rows, "clp", "clp")).toBe(rows);
-    expect(consolidatedRowsForDisplay(rows, "usd", "usd")).toBe(rows);
-    expect(consolidatedRowsForDisplay(rows, "uf", "usd")).toBe(rows);
-  });
-
-  it("returns null for a held prior-unit payload (caller falls back to placeholders)", () => {
-    expect(consolidatedRowsForDisplay([row()], "clp", "usd")).toBeNull();
-    expect(consolidatedRowsForDisplay([row()], "usd", "clp")).toBeNull();
   });
 });

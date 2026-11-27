@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { useFlowsDepositsReconciliation } from "../queries/hooks";
+import { useHeldFlowsDepositsReconciliation } from "../queries/hooks";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { FlowMonthList, MonthRowDay } from "../components/flows/FlowMonthList";
 import listStyles from "../components/flows/FlowMonthRows.module.css";
@@ -20,7 +20,6 @@ import type {
   DepositsReconciliationPayload,
 } from "../types";
 import type { DisplayUnit } from "../queries/keys";
-import { queryLoadError } from "../queries/pageShapeReady";
 import styles from "./DepositsReconciliationPage.module.css";
 
 const DEPOSIT_SECTION_TITLE: Record<DepositReconciliationStatus, string> = {
@@ -41,7 +40,7 @@ const REDEMPTION_SECTION_TITLE: Record<DepositRedemptionStatus, string> = {
 const emptySection = <S extends string>(status: S) => ({ status, count: 0, total: 0, months: [] });
 
 /**
- * The frame drawn until the first payload arrives: every heading with a zero total and no rows (a
+ * The frame drawn while there is no payload to show: every heading with a zero total and no rows (a
  * guess at the shape, as `coldPageShape.ts` is). The sections follow the key order of the two title
  * maps above, which must stay the server's (`DEPOSIT_SECTION_ORDER` / `REDEMPTION_SECTION_ORDER`
  * in `flowsDepositsReconciliation.ts`), or the tiles swap places when the payload lands.
@@ -63,21 +62,6 @@ const PLACEHOLDER: DepositsReconciliationPayload = {
   fx_conversion_error: false,
   fx_conversion_warnings: [],
 };
-
-/**
- * The frame drawn while another unit's payload loads: the last payload's own tiles (the statuses
- * that had rows, the manual marks and «By month» when it had them), with zero figures and no rows,
- * so only the figures blank and no tile comes or goes.
- */
-function blankFrame(last: DepositsReconciliationPayload): DepositsReconciliationPayload {
-  const blank = <S extends string>(sections: { status: S; count: number }[]) =>
-    sections.filter((s) => s.count > 0).map((s) => emptySection(s.status));
-  return {
-    ...PLACEHOLDER,
-    deposits: { ...PLACEHOLDER.deposits, sections: blank(last.deposits.sections) },
-    redemptions: { ...PLACEHOLDER.redemptions, sections: blank(last.redemptions.sections) },
-  };
-}
 
 /** An amount in the payload's unit; one with no rate on file reads «—». */
 function money(v: number | null, unit: DisplayUnit): string {
@@ -140,38 +124,41 @@ function StatusSections<S extends DepositReconciliationStatus, R extends Deposit
   sections,
   titleKeys,
   rowKey,
+  unit,
   loading,
+  placeholder,
 }: {
   idPrefix: string;
   sections: DepositReconciliationSection<S, R>[];
   titleKeys: Record<S, string>;
   rowKey: (row: R, index: number) => string | number;
+  unit: DisplayUnit;
   loading: boolean;
+  /** The placeholder frame (nothing to show yet): every status keeps its tile, loading is not absence. */
+  placeholder: boolean;
 }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  // While loading every status keeps its tile (the placeholder's): loading is not absence.
-  const empty = loading ? [] : sections.filter((s) => s.count === 0);
+  const empty = placeholder ? [] : sections.filter((s) => s.count === 0);
   return (
     <>
       {sections
-        .filter((s) => loading || s.count > 0)
+        .filter((s) => placeholder || s.count > 0)
         .map((s) => (
           <PageGridTile key={s.status} id={`${idPrefix}-${s.status}`}>
             <ListHeading
               as="h4"
               title={t(titleKeys[s.status])}
               count={s.count}
-              total={money(s.total, displayUnit)}
+              total={money(s.total, unit)}
               loading={loading}
             />
             <FlowMonthList
               months={s.months}
               loading={loading}
               monthHeading="h5"
-              monthTotal={(m) => money(m.total, displayUnit)}
+              monthTotal={(m) => money(m.total, unit)}
               rowKey={rowKey}
-              renderRow={(r) => movementRow(r, displayUnit)}
+              renderRow={(r) => movementRow(r, unit)}
             />
           </PageGridTile>
         ))}
@@ -199,27 +186,28 @@ function manualAssertionNote(r: DepositManualAssertionRow, t: (k: string, o?: Re
 /** The checking outflows marked as deposits that found no deposit, as the same list by month. */
 function ManualAssertions({
   block,
+  unit,
   loading,
 }: {
   block: DepositsReconciliationPayload["manual_assertions"];
+  unit: DisplayUnit;
   loading: boolean;
 }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
   return (
     <PageGridTile id="asserted">
       <ListHeading
         as="h4"
         title={t("depositsReconciliation.assertedTitle")}
         count={block.count}
-        total={money(block.total, displayUnit)}
+        total={money(block.total, unit)}
         loading={loading}
       />
       <FlowMonthList
         months={block.months}
         loading={loading}
         monthHeading="h5"
-        monthTotal={(m) => money(m.total, displayUnit)}
+        monthTotal={(m) => money(m.total, unit)}
         rowKey={(r) => r.purchase_key}
         renderRow={(r) => (
           <>
@@ -228,7 +216,7 @@ function ManualAssertions({
               <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
               <span className={listStyles.sub}>{manualAssertionNote(r, t)}</span>
             </span>
-            <span className={cn("mono", listStyles.num)}>{money(r.amount, displayUnit)}</span>
+            <span className={cn("mono", listStyles.num)}>{money(r.amount, unit)}</span>
           </>
         )}
       />
@@ -246,13 +234,14 @@ function ManualAssertions({
 /** «By month»: the same list, a month's rows being the statuses with deposits in it. */
 function ByMonth({
   months,
+  unit,
   loading,
 }: {
   months: DepositsReconciliationPayload["deposits"]["by_month"];
+  unit: DisplayUnit;
   loading: boolean;
 }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
   return (
     <PageGridTile id="by-month">
       <ListHeading as="h4" title={t("depositsReconciliation.byMonth")} loading={loading} />
@@ -260,12 +249,12 @@ function ByMonth({
         months={months.map((m) => ({ month: m.month, total: m.total, rows: m.statuses }))}
         loading={loading}
         monthHeading="h5"
-        monthTotal={(m) => money(m.total, displayUnit)}
+        monthTotal={(m) => money(m.total, unit)}
         rowKey={(r) => r.status}
         renderRow={(r) => (
           <>
             <span className={listStyles.span2}>{t(`depositsReconciliation.statusShort.${r.status}`)}</span>
-            <span className={cn("mono", listStyles.num)}>{money(r.total, displayUnit)}</span>
+            <span className={cn("mono", listStyles.num)}>{money(r.total, unit)}</span>
           </>
         )}
       />
@@ -276,27 +265,23 @@ function ByMonth({
 export function DepositsReconciliationPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const { data, error: queryError } = useFlowsDepositsReconciliation(displayUnit);
-  // The last payload drawn, kept across a unit switch (state set during render, React's pattern
-  // for a value derived from a previous render).
-  const [last, setLast] = useState<DepositsReconciliationPayload | null>(null);
-  if (data && data !== last) setLast(data);
-  const error = queryLoadError({ data, error: queryError });
+  // Held across a unit switch: its own tiles and figures, dimmed, in its own `unit`.
+  const query = useHeldFlowsDepositsReconciliation("flows.depositsReconciliation", displayUnit);
+  const { data, error } = query;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   if (err) {
     return <p className="error">{err}</p>;
   }
 
-  // The frame renders with its headings, zero totals and no rows until the payload arrives: the
-  // last payload's tiles when there was one (a unit switch), else the placeholder's.
-  const loading = !data;
-  const page = data ?? (last ? blankFrame(last) : PLACEHOLDER);
+  // The placeholder frame (headings, zero totals, no rows) only while there is nothing to show.
+  const loading = !data || query.loading;
+  const page = data ?? PLACEHOLDER;
+  const unit = data?.unit ?? displayUnit;
   const { manual_assertions: manual } = page;
-  // What the server states once loaded; while loading, what the last payload stated (else shown).
-  const shape = data ?? last;
-  const showManual = shape ? shape.manual_assertions.count > 0 || shape.manual_assertions.linked_count > 0 : true;
-  const showByMonth = shape ? shape.deposits.by_month.length > 0 : true;
+  // What the shown payload states; before there is one, every tile shows.
+  const showManual = data ? data.manual_assertions.count > 0 || data.manual_assertions.linked_count > 0 : true;
+  const showByMonth = data ? data.deposits.by_month.length > 0 : true;
 
   return (
     <>
@@ -307,7 +292,7 @@ export function DepositsReconciliationPage() {
           <ListHeading
             as="h3"
             title={t("depositsReconciliation.depositsTitle")}
-            total={money(page.deposits.total, displayUnit)}
+            total={money(page.deposits.total, unit)}
             loading={loading}
           />
         </PageGridTile>
@@ -316,10 +301,12 @@ export function DepositsReconciliationPage() {
           sections={page.deposits.sections}
           titleKeys={DEPOSIT_SECTION_TITLE}
           rowKey={(r) => r.movement_id}
+          unit={unit}
           loading={loading}
+          placeholder={!data}
         />
-        {showManual ? <ManualAssertions block={manual} loading={loading} /> : null}
-        {showByMonth ? <ByMonth months={page.deposits.by_month} loading={loading} /> : null}
+        {showManual ? <ManualAssertions block={manual} unit={unit} loading={loading} /> : null}
+        {showByMonth ? <ByMonth months={page.deposits.by_month} unit={unit} loading={loading} /> : null}
       </div>
 
       <div className={cn(styles.side, styles.sideEnd)}>
@@ -327,7 +314,7 @@ export function DepositsReconciliationPage() {
           <ListHeading
             as="h3"
             title={t("depositsReconciliation.redemptionsTitle")}
-            total={money(page.redemptions.total, displayUnit)}
+            total={money(page.redemptions.total, unit)}
             loading={loading}
           />
         </PageGridTile>
@@ -336,7 +323,9 @@ export function DepositsReconciliationPage() {
           sections={page.redemptions.sections}
           titleKeys={REDEMPTION_SECTION_TITLE}
           rowKey={(r, idx) => `${r.account_id}-${r.occurred_on}-${idx}`}
+          unit={unit}
           loading={loading}
+          placeholder={!data}
         />
       </div>
     </>

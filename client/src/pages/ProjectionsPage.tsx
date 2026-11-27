@@ -22,8 +22,7 @@ import {
   writeStoredProjectionOverrides,
   type ProjectionOverrides,
 } from "../projectionsOverrides";
-import { useCurrencies, useProjections } from "../queries/hooks";
-import { queryLoadError } from "../queries/pageShapeReady";
+import { useCurrencies, useHeldProjections } from "../queries/hooks";
 import glance from "../components/account/PositionGlance.module.css";
 import band from "./accountDetail/PositionAccountDetailPage.module.css";
 import styles from "./ProjectionsPage.module.css";
@@ -55,13 +54,15 @@ export function ProjectionsPage() {
     () => validProjectionOverrides(groups.flatMap((g) => g.fields), overrides),
     [overrides, groups]
   );
-  const query = useProjections(displayUnit, validOverrides);
-  const { data, isPending } = query;
-  // A failed refetch keeps the data on screen; the error shows only with nothing to show.
-  const error = queryLoadError(query);
-  // The form is inert only until the first response (an edit keeps the previous data on screen);
-  // the figures and chart also dim while the other display unit's numbers are held.
-  const resultsLoading = isPending || (data != null && data.unit !== displayUnit);
+  // Held across a unit or assumptions change (`heldUnitPayload.ts`); the error shows only with
+  // nothing to show.
+  const query = useHeldProjections("projections", displayUnit, validOverrides);
+  const { data, error } = query;
+  // The form is inert only until the first response (an edit keeps the previous figures on screen,
+  // undimmed, while they recompute); the figures and chart dim while a response requested in
+  // another display unit is held.
+  const firstLoad = data == null;
+  const resultsLoading = firstLoad || (query.held && query.unit !== displayUnit);
 
   useEffect(() => {
     writeStoredProjectionOverrides(localStorage, overrides);
@@ -155,7 +156,7 @@ export function ProjectionsPage() {
         displayUnit={displayUnit}
         retireAge={data?.retire_age}
         inflationDefaults={data?.inflation_default_pct}
-        loading={isPending}
+        loading={firstLoad}
         onChange={setParam}
         onBlur={commitParam}
         onReset={() => {

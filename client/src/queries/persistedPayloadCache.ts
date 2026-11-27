@@ -1,6 +1,7 @@
 /**
- * The browser's last copy of a payload, so a reload paints the last figures it saw instead of an
- * empty or zero view until the server answers (docs/untangle-plan.md F8): the card strip, the
+ * The browser's last copy of a payload, so a session's first paint shows the last figures it saw
+ * instead of an empty or zero view (docs/untangle-plan.md F8; once anything is drawn, a stored copy
+ * is never read again for that surface: `storedFirstPaint`, `heldUnitPayload.ts`): the card strip, the
  * sidebar tree, a group page's shell and the home panels. One key scheme for all of them,
  * `nw:cache:<name>:v<version>[:<scope>…]`, where the version is the payload's `schema_version`
  * (`DTO_SCHEMA_VERSIONS` in contracts) or, for a shape the client builds itself, the client's own.
@@ -10,7 +11,8 @@
  * still on the previous payload, during a deploy). Older versions and the keys of the conventions
  * before this helper are swept once at boot (`sweepPersistedPayloads`).
  */
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
+import { storedFirstPaint } from "./heldUnitPayload";
 import { useStructuralValue } from "../useStructuralValue";
 import { DTO_SCHEMA_VERSIONS, type DtoSchemaVersionName } from "nw-tracker-contracts/dto/schemaVersions";
 
@@ -91,17 +93,24 @@ export function removePersistedPayload(def: PersistedPayload<unknown>, scope: re
 }
 
 /**
- * What a view shows: the live payload once it is here (and stored for the next visit), the stored
- * one until then. `cached` tells the view it is showing the stored one. `liveSchemaVersion` is the
- * live payload's own `schema_version` when the stored value is a part of it: a part from a payload
- * in another version is shown but not stored.
+ * A home panel over its stored copy: draws `shown` (its request's held view data, or a part of it:
+ * live, or held across a switch or a remount, `heldUnitPayload.ts`) and, only before anything was
+ * drawn for the panel in this session, the copy stored under `scope` for the requested `unit`
+ * (`storedFirstPaint`: once painted it is held, in its own unit, until a payload is drawn; a
+ * failed request paints none). Stores `live` (the requested key's own fetched payload, never a held
+ * one) under `scope` for the next visit. `storedUnit` is set while the stored copy is drawn: its
+ * unit (the scope's: the stored rows may carry none). `liveSchemaVersion` is the live payload's own
+ * `schema_version` when the stored value is a part of it: a part from a payload in another version
+ * is shown but not stored.
  */
 export function usePersistedPayload<T>(
   def: PersistedPayload<T>,
-  scope: readonly string[],
-  live: T | null | undefined,
+  where: { surface: string; unit: string; scope: readonly string[] },
+  view: { shown: T | null | undefined; live: T | null | undefined; failed: boolean },
   liveSchemaVersion?: number
-): { value: T | null; cached: boolean } {
+): { value: T | null; storedUnit: string | undefined } {
+  const { shown, live, failed } = view;
+  const { scope } = where;
   const key = persistedPayloadKey(def.name, scope);
   const versionOk = liveSchemaVersion === undefined || liveSchemaVersion === PERSISTED_PAYLOAD_VERSIONS[def.name];
   useEffect(() => {
@@ -109,13 +118,15 @@ export function usePersistedPayload<T>(
     // `key` stands for `def` + `scope`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, live, versionOk]);
-  // Read once per key, not on every render while the live payload is pending (each read parses a
-  // new object). Shared across the stored → live switch, so equal parts keep their objects.
-  const pending = live == null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands for `def` + `scope`
-  const stored = useMemo(() => (pending ? (readPersistedPayload(def, scope) ?? null) : null), [key, pending]);
-  const value = useStructuralValue(live ?? stored);
-  return { value, cached: pending };
+  const stored = storedFirstPaint<T>(`${def.name}|${where.surface}`, {
+    shown: shown != null,
+    failed,
+    unit: where.unit,
+    read: () => readPersistedPayload(def, scope),
+  });
+  // Shared across the stored → live switch, so equal parts keep their objects.
+  const value = useStructuralValue(shown ?? stored.value ?? null);
+  return { value, storedUnit: shown != null ? undefined : stored.unit };
 }
 
 /** Exact keys no longer read: global prefs that went per-surface, the old fx cache. */

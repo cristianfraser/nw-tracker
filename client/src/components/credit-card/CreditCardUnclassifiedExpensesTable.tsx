@@ -1,8 +1,7 @@
 import { PageGridTile } from "../layout/PageGridTile";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { useFlowsExpenseLines } from "../../queries/hooks";
-import { queryShowsLoading } from "../../queries/pageShapeReady";
+import { useHeldFlowsExpenseLines } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { loadableClass } from "../ui/Loadable";
 import { PaginatedTable } from "../ui/PaginatedTable";
@@ -24,13 +23,14 @@ export function CreditCardUnclassifiedExpensesTable({ includePreTax }: { include
   const [page, setPage] = useState(1);
   // A different list (the pre-tax toggle) starts from its first page.
   useEffect(() => setPage(1), [includePreTax]);
-  const query = useFlowsExpenseLines(
+  // Held across a unit or page change (dimmed, in its own unit).
+  const query = useHeldFlowsExpenseLines("expenses.uncategorized", 
     displayUnit,
     { kind: "uncategorized", include_pre_tax: includePreTax },
     true,
     { page, pageSize: UNCLASSIFIED_PAGE_SIZE }
   );
-  const loading = queryShowsLoading(query);
+  const loading = query.loading;
   const categories = query.data?.categories ?? [];
   const bigGroups = query.data?.big_groups ?? [];
   const total = query.data?.page?.total ?? 0;
@@ -48,12 +48,15 @@ export function CreditCardUnclassifiedExpensesTable({ includePreTax }: { include
       <h3>
         {t("expenses.creditCard.unclassifiedTableTitle")}
         <span
-          className={loadableClass(query.data == null, "muted mono")}
+          className={loadableClass(loading, "muted mono")}
           style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}
         >
           {total}
         </span>
       </h3>
+      {query.error != null ? (
+        <p className="error">{query.error instanceof Error ? query.error.message : t("common.loadFailed")}</p>
+      ) : (
       <PaginatedTable
         page={shownPage}
         pageSize={UNCLASSIFIED_PAGE_SIZE}
@@ -70,11 +73,13 @@ export function CreditCardUnclassifiedExpensesTable({ includePreTax }: { include
             emptyLabel={t("expenses.creditCard.unclassifiedTableEmpty")}
             showCategoryControls
             enableCheckingNotes
-            loading={query.data == null}
+            loading={loading}
+            unit={query.data?.unit ?? null}
           />
           <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
         </CreditCardExpenseLinesSelectionProvider>
       </PaginatedTable>
+      )}
     </PageGridTile>
   );
 }

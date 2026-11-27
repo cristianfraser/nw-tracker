@@ -5,7 +5,6 @@ import { api } from "../../api";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { formatMoney, formatNumberInput, parseNumberInputOrThrow } from "../../format";
 import { formatUfDayPesos } from "../../formatNative";
-import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import type {
   AccountSummaryResponse,
@@ -23,7 +22,6 @@ import { Button, Field, Input } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
-  displayUnit: DisplayUnit;
   schema: NonNullable<AccountSummaryResponse["mortgage_payment_create"]>;
 };
 
@@ -103,7 +101,6 @@ function buildBody(
 
 export function MortgagePaymentForm({
   accountId,
-  displayUnit,
   schema,
 }: Props) {
   const { t } = useTranslation();
@@ -216,8 +213,8 @@ export function MortgagePaymentForm({
       setPreview(null);
       await invalidateResources(
         queryClient,
-        resources.accountPage(accountId, displayUnit),
-        resources.dashboardInUnit(displayUnit),
+        resources.accountPage(accountId),
+        resources.dashboardAndNav(),
       );
     },
     onError: (err: Error) => {

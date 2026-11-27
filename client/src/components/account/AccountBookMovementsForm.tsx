@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { parseNumberInputOrThrow } from "../../format";
-import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import {
   brokerageMovementFieldLabelStyle,
@@ -73,10 +72,9 @@ function buildPostBody(row: BookMovementDraft): Record<string, unknown> | null {
 
 type Props = {
   accountId: number;
-  displayUnit: DisplayUnit;
 };
 
-export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
+export function AccountBookMovementsForm({ accountId }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [movements, setMovements] = useState<BookMovementDraft[]>([]);
@@ -98,7 +96,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
       setMovements([]);
       setFormError(null);
       setLastSavedCount(count);
-      await invalidateResources(queryClient, resources.accountMovements(accountId, displayUnit));
+      await invalidateResources(queryClient, resources.accountMovements(accountId));
     },
     onError: (err: Error) => {
       setFormError(err.message);

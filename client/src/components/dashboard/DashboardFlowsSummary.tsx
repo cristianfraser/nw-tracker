@@ -10,7 +10,7 @@ import { formatFlowMoney } from "../../flowsDisplay";
 import { currencyFormatInfo, minAdaptiveUsdFractionDigits } from "../../format";
 import { rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVERVIEW_TOTALS } from "../../flowsOverviewRows";
 import { useTranslation } from "../../i18n";
-import { useFlowsOverview } from "../../queries/hooks";
+import { useHeldFlowsOverview } from "../../queries/hooks";
 import type { DisplayUnit } from "../../queries/keys";
 import {
   LONG_RANGE_OPTIONS,
@@ -102,16 +102,20 @@ const SUMMARY_LINES: readonly SummaryLine[] = [
 export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUnit }) {
   const { t } = useTranslation();
   const { installmentMode } = useCcInstallmentGastosMode();
-  const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
-  // A held payload of the other unit is never stored; until live data is here, the last stored one.
-  const live = overview.isPlaceholderData ? null : overview.data;
-  const { value: closed } = usePersistedPayload(
+  // Held across a unit or mode switch (dimmed, in its own unit); only this key's live payload is stored.
+  const overview = useHeldFlowsOverview("home.flowsPeriods", displayUnit, installmentMode, undefined);
+  // Before anything was drawn this session, the copy stored for this unit and mode.
+  const { value: closed, storedUnit } = usePersistedPayload(
     FLOWS_CLOSED,
-    [displayUnit, installmentMode],
-    live?.closed,
-    live?.schema_version
+    { surface: "dashboard.flows", unit: displayUnit, scope: [displayUnit, installmentMode] },
+    { shown: overview.data?.closed, live: overview.live?.closed, failed: overview.error != null },
+    overview.live?.schema_version
   );
-  const loading = closed == null;
+  // The stored rows carry no unit: a stored copy's unit is the one it was stored under.
+  const unit = storedUnit ?? overview.data?.unit ?? displayUnit;
+  // A stored copy of this unit paints undimmed (first paint); one held across a switch dims.
+  const loading = closed == null || (storedUnit != null ? storedUnit !== displayUnit : overview.loading);
+  const error = overview.error;
 
   const periods = [
     { labelKey: "dashboard.flows.lastMonth", row: closed?.last_month ?? ZERO_ROW },
@@ -123,6 +127,9 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
       <h2>
         <HeadingLink to="/flows">{t("dashboard.flows.title")}</HeadingLink>
       </h2>
+      {error != null ? (
+        <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>
+      ) : (
       <div className={loadableClass(loading, "cards cards--pair", styles.periods)}>
         {periods.map(({ labelKey, row }) => (
           <div key={labelKey} className={`card ${styles.period}`}>
@@ -141,14 +148,15 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
                         <DeltaMetricFlow
                           delta={value}
                           animated={false}
+                          unit={unit}
                           fractionDigits={
-                            currencyFormatInfo(displayUnit).minorDigits > 0
+                            currencyFormatInfo(unit).minorDigits > 0
                               ? minAdaptiveUsdFractionDigits(SUMMARY_LINES.filter((l) => l.delta).map((l) => l.value(row)))
                               : 0
                           }
                         />
                       ) : (
-                        formatFlowMoney(value, displayUnit)
+                        formatFlowMoney(value, unit)
                       )}
                     </dd>
                   </div>
@@ -158,6 +166,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
           </div>
         ))}
       </div>
+      )}
     </PageGridTile>
   );
 }
@@ -180,9 +189,10 @@ export function DashboardFlowsChart({
   const granularity = monthYearSurfacePeriod(prefs.period);
   const range = longSurfaceRange(prefs.range, "1y");
   const { installmentMode } = useCcInstallmentGastosMode();
-  const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
+  // Held across a unit or mode switch: drawn dimmed, in the held payload's own unit.
+  const overview = useHeldFlowsOverview("home.flowsChart", displayUnit, installmentMode, undefined);
   const data = overview.data;
-  const loading = !data || overview.isPlaceholderData;
+  const loading = !data || overview.loading;
 
   // Structurally shared: a refetch that changes only totals or another grain keeps the points.
   const builtChartPoints = useMemo(() => {
@@ -210,6 +220,9 @@ export function DashboardFlowsChart({
       smallSpan={alone ? undefined : dashboardTileSmallSpan("flows-chart")}
       className="chart-grid chart-grid--full-line"
     >
+      {overview.error != null ? (
+        <p className="error">{overview.error instanceof Error ? overview.error.message : t("common.loadFailed")}</p>
+      ) : (
       <FlowsOverviewChart
         title={t("flows.overview.chartTitle")}
         controls={
@@ -224,9 +237,10 @@ export function DashboardFlowsChart({
         }
         points={chartPoints}
         xAxisGranularity={granularity}
-        displayUnit={displayUnit}
+        displayUnit={data?.unit ?? displayUnit}
         loading={loading}
       />
+      )}
     </PageGridTile>
   );
 }

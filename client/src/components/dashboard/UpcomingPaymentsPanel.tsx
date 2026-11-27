@@ -211,22 +211,44 @@ function ItemLabel({ item }: { item: UpcomingPaymentItemDto }) {
  * as the server built it (`upcoming_payments` on the page bundle). A card per month, its total
  * beside its name, its payments below with the date and amount on the right. The first two months
  * show; «Show more» opens the rest of the server's horizon. The bills read in their own currency whatever the
- * display unit; in another unit the hover adds each amount in it (stored per unit). The
- * panel is always there: dimmed and empty before the server has answered (`data` null on a
- * placeholder bundle, no stored copy), an empty state when nothing is due.
+ * display unit; in another unit the hover adds each amount in it (in the payload's own `unit`). The
+ * panel is always there: dimmed and empty before the server has answered (no bundle and no stored
+ * copy), an empty state when nothing is due, the bundle's error when it failed with nothing to show.
+ * `data` is the bundle's block as the page shows it (held across a unit switch or a remount, dimmed,
+ * in its own unit); `live` is this unit's own fetched block, the only one stored. The stored copy
+ * paints only before anything was drawn for the panel in this session.
  */
-export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { data: UpcomingPaymentsDto | null; loading: boolean }) {
+export function UpcomingPaymentsPanel({
+  data: shown,
+  live,
+  loading: shownLoading,
+  error,
+}: {
+  data: UpcomingPaymentsDto | null;
+  live: UpcomingPaymentsDto | null;
+  loading: boolean;
+  /** The bundle's load error (only when it has nothing to show). */
+  error: unknown;
+}) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  // One stored entry per display unit (the hover's converted amounts); until the bundle answers,
-  // the last stored one. A held bundle of another unit is not stored under this one, but its bills
-  // are the same, so it shows (its hover in its own unit) until this unit's arrives.
   const { displayUnit } = useDisplayPreferences();
-  const liveInUnit = live != null && live.unit === displayUnit ? live : null;
-  const { value: stored, cached } = usePersistedPayload(UPCOMING_PAYMENTS, [displayUnit], liveInUnit);
-  const data = stored ?? live;
+  const { value: data, storedUnit } = usePersistedPayload(
+    UPCOMING_PAYMENTS,
+    { surface: "dashboard", unit: displayUnit, scope: [displayUnit] },
+    { shown, live, failed: error != null }
+  );
   const unit = data?.unit ?? displayUnit;
-  const loading = liveLoading && !cached;
+  // A stored copy of this unit paints undimmed (first paint); one held across a switch dims.
+  const loading = storedUnit != null ? storedUnit !== displayUnit : shownLoading;
+  if (error != null) {
+    return (
+      <PageGridTile id="cc-upcoming">
+        <h2>{t("dashboard.ccUpcoming.title")}</h2>
+        <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>
+      </PageGridTile>
+    );
+  }
   const allMonths = data?.months ?? [];
   const months = expanded ? allMonths : allMonths.slice(0, COLLAPSED_MONTHS);
   return (

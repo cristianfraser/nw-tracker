@@ -1,4 +1,3 @@
-import { isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
 import {
   createContext,
   useCallback,
@@ -38,24 +37,13 @@ function readStoredUnit(): DisplayUnit {
   return "clp";
 }
 
-/** Before any switch, the unit a held placeholder would be in: the other of pesos and dollars. */
-function initialPreviousUnit(unit: DisplayUnit): DisplayUnit {
-  return isHomeCurrency(unit) ? "usd" : "clp";
-}
-
-type UnitState = { unit: DisplayUnit; previous: DisplayUnit };
-
-function switchedUnit(state: UnitState, next: DisplayUnit): UnitState {
-  return next === state.unit ? state : { unit: next, previous: state.unit };
-}
-
 type DisplayPreferencesContextValue = {
-  displayUnit: DisplayUnit;
   /**
-   * The unit shown before the latest switch: the one a page's held (keep-previous) data is in
-   * while the new unit loads.
+   * The unit requests are made in (query keys) and the picker shows. A payload on screen is
+   * formatted in its own `unit`, never this one: across a switch it may be a held payload of
+   * another unit (`queries/heldUnitPayload.ts`).
    */
-  previousDisplayUnit: DisplayUnit;
+  displayUnit: DisplayUnit;
   setDisplayUnit: (u: DisplayUnit) => void;
   /** Separator convention shared by every number, whatever the display currency. */
   decimalSeparator: DecimalSeparator;
@@ -71,12 +59,7 @@ type DisplayPreferencesContextValue = {
 const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue | null>(null);
 
 export function DisplayPreferencesProvider({ children }: { children: ReactNode }) {
-  const [unitState, setUnitState] = useState<UnitState>(() => {
-    const unit = readStoredUnit();
-    return { unit, previous: initialPreviousUnit(unit) };
-  });
-  const displayUnit = unitState.unit;
-  const previousDisplayUnit = unitState.previous;
+  const [displayUnit, setDisplayUnitState] = useState<DisplayUnit>(readStoredUnit);
   const [decimalSeparator, setDecimalSeparatorState] = useState<DecimalSeparator>(
     readInitialDecimalSeparator
   );
@@ -99,7 +82,7 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
   }, []);
 
   const setDisplayUnit = useCallback((u: DisplayUnit) => {
-    setUnitState((st) => switchedUnit(st, u));
+    setDisplayUnitState(u);
     try {
       localStorage.setItem(DISPLAY_UNIT_LS_KEY, u);
     } catch {
@@ -146,7 +129,7 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
       if (!change) return;
       switch (change.pref) {
         case "displayUnit":
-          setUnitState((st) => switchedUnit(st, change.value));
+          setDisplayUnitState(change.value);
           break;
         case "decimalSeparator":
           applyDecimalSeparator(change.value);
@@ -166,7 +149,6 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
   const value = useMemo(
     (): DisplayPreferencesContextValue => ({
       displayUnit,
-      previousDisplayUnit,
       setDisplayUnit,
       decimalSeparator,
       setDecimalSeparator,
@@ -177,7 +159,6 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
     }),
     [
       displayUnit,
-      previousDisplayUnit,
       setDisplayUnit,
       decimalSeparator,
       setDecimalSeparator,

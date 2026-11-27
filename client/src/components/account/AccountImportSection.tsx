@@ -4,14 +4,12 @@ import { api } from "../../api";
 import { useTranslation } from "../../i18n";
 import { AccountImportPanel, useAccountImportSlots } from "./AccountImportPanel";
 import { PageGridTile } from "../layout/PageGridTile";
-import type { DisplayUnit } from "../../queries/keys";
 
 type Props = {
   accountId: number;
-  displayUnit: DisplayUnit;
 };
 
-export function AccountImportSection({ accountId, displayUnit }: Props) {
+export function AccountImportSection({ accountId }: Props) {
   const { t } = useTranslation();
   const { data: specs } = useQuery({
     queryKey: queryKeys.accountImportSpecs(accountId),
@@ -23,7 +21,6 @@ export function AccountImportSection({ accountId, displayUnit }: Props) {
     <PageGridTile id="import">
       <AccountImportPanel
         accountId={accountId}
-        displayUnit={displayUnit}
         slots={slots}
       />
     </PageGridTile>

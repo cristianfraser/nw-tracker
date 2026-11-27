@@ -17,13 +17,13 @@ export const DISPLAY_UNIT_STALE_MS = 5 * 60_000;
 const LIVE_DASHBOARD_REFETCH_MS = LIVE_QUOTES_DEFAULT_INTERVAL_MS;
 
 /**
- * keepPreviousData scoped to one entity. The held payload is offered only while the first
- * `entityKeyLength` elements of the query key are unchanged: a unit, period, range, page or
- * filter change keeps the previous data on screen (the page converts or dims it), while a
- * different group, account or scope starts from its placeholder. Bare `keepPreviousData` is
- * key-agnostic — account A → account B rendered A's bundle under B's title while B loaded.
+ * keepPreviousData scoped to one entity, for the raw list queries (flows lists, the account lists):
+ * the held payload is offered only while the first `entityKeyLength` elements of the query key
+ * are unchanged, so a page or filter change keeps the previous rows on screen while a different
+ * group or account starts from its placeholder. Display-unit surfaces hold through the seam
+ * instead (`useHeldX`, `heldUnitPayload.ts`), which ignores react-query's placeholder.
  */
-export function keepPreviousDataSameEntity(queryKey: readonly unknown[], entityKeyLength: number) {
+function keepPreviousDataSameEntity(queryKey: readonly unknown[], entityKeyLength: number) {
   // Generic in the data type so react-query instantiates it per call site (the hook's TData).
   return <TData,>(
     previousData: TData | undefined,
@@ -38,18 +38,19 @@ export function keepPreviousDataSameEntity(queryKey: readonly unknown[], entityK
   };
 }
 
+/** {@link keepPreviousDataSameEntity} at the entity length the key was declared with (`keys.ts`). */
+export function sameEntityPlaceholder(queryKey: readonly unknown[]) {
+  return keepPreviousDataSameEntity(queryKey, entityKeyLength(queryKey));
+}
+
 /**
  * Query options for the display-unit payloads (bundles, series, tables, flows): warm for five
- * minutes, refetched on the live-quote cadence, and previous data held only across same-entity
- * key changes (see {@link keepPreviousDataSameEntity}; the key declares its entity length).
+ * minutes and refetched on the live-quote cadence.
  */
-export function displayUnitQueryBehaviorFor(queryKey: readonly unknown[]) {
-  return {
-    staleTime: DISPLAY_UNIT_STALE_MS,
-    refetchInterval: LIVE_DASHBOARD_REFETCH_MS,
-    placeholderData: keepPreviousDataSameEntity(queryKey, entityKeyLength(queryKey)),
-  };
-}
+export const DISPLAY_UNIT_QUERY_BEHAVIOR = {
+  staleTime: DISPLAY_UNIT_STALE_MS,
+  refetchInterval: LIVE_DASHBOARD_REFETCH_MS,
+} as const;
 
 export function prefetchDashboardBundle(queryClient: QueryClient, unit: DisplayUnit): Promise<void> {
   return queryClient.prefetchQuery({

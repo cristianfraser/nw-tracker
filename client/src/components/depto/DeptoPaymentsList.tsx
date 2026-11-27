@@ -2,11 +2,10 @@ import { useState, type ReactNode } from "react";
 import { cn } from "../../cn";
 import { BenchmarkSelectOptions } from "../../benchmarkLabels";
 import { useTranslation } from "../../i18n";
-import { useBenchmarks, useDeptoPrepayments } from "../../queries/hooks";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { useBenchmarks, useHeldDeptoPrepayments } from "../../queries/hooks";
 import { useSurfaceBenchmark } from "../../surfaceDisplayPrefs";
-import { queryLoadError } from "../../queries/pageShapeReady";
 import { formatMoney, formatPct } from "../../format";
-import type { DisplayUnit } from "../../queries/keys";
 import type {
   DeptoNextCuotaDto,
   DeptoPaymentBarDto,
@@ -125,14 +124,12 @@ function PrepayCell({ cell, unit, irr }: { cell: DeptoPrepayCellDto | undefined;
 export function DeptoPaymentsList({
   scope,
   payments,
-  unit,
   loanCurrency,
   payCurrency,
   onRegisterPayment,
 }: {
   scope: DeptoPrepayScope;
   payments: DeptoPaymentsListInput;
-  unit: DisplayUnit;
   loanCurrency: string;
   payCurrency: string;
   /** Opens the payment form; null when the account has no such capability. */
@@ -145,14 +142,18 @@ export function DeptoPaymentsList({
   const benchmarks = useBenchmarks();
   const options = (benchmarks.data?.benchmarks ?? []).filter((o) => o.slug !== "mortgage");
   const selected = options.some((o) => o.slug === benchmark) ? benchmark : payments.default_benchmark;
-  // Never in the bundle: a stale benchmark series fails this column only.
-  const prepay = useDeptoPrepayments(scope, selected, unit, true);
+  // Never in the bundle: a stale benchmark series fails this column only. Requested in the display
+  // unit and held across a switch: the column draws the block on screen in its own unit (the rest
+  // of the list is in the loan's and the payment's currencies).
+  const { displayUnit } = useDisplayPreferences();
+  const prepay = useHeldDeptoPrepayments("depto.prepayments", scope, selected, displayUnit, true);
   const block: DeptoPrepayBlockDto | null =
-    prepay.data != null && prepay.data.benchmark === selected && prepay.data.unit === unit ? prepay.data : null;
-  // The block in flight: the prepay column dims (the rest of the list stays).
-  const prepayLoading = (prepay.isPending || prepay.isPlaceholderData) && prepay.error == null;
+    prepay.data != null && prepay.data.benchmark === selected ? prepay.data : null;
+  const unit = block?.unit ?? displayUnit;
+  // The block in flight or held: the prepay column dims (the rest of the list stays).
+  const prepayLoading = prepay.loading;
   // The block failed and nothing is held: say so (the cells show «—»).
-  const prepayFailed = queryLoadError(prepay) != null;
+  const prepayFailed = prepay.error != null;
   // A benchmark whose history starts after the first payment leaves the earlier ones out of Σ.
   const partial = block != null && block.totals.covered_payments < Object.keys(block.rows).length ? block.totals : null;
 

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import {
   useSurfacePrefs,
@@ -63,7 +62,7 @@ export function ValueMapPanel({
  * something to tile — sub-groups, or accounts of its own (a leaf group: Acciones holding only
  * stocks, Crypto holding one coin) — and the payload must carry the display unit's values.
  */
-export function valueMapRootForPage(
+function valueMapRootForPage(
   valueMap: NavValueMapNodeDto | undefined,
   slug: string
 ): NavValueMapNodeDto | null {
@@ -82,31 +81,24 @@ export function valueMapRootForPage(
   return node;
 }
 
-export type HeldValueMap = {
+export type ValueMapView = {
   root: NavValueMapNodeDto | null;
   bounds: NavValueMapColorBounds | null;
-  /** The unit `root` was drawn in — the previous one while a unit switch is loading. */
+  /** The unit of the payload the map comes from (a payload held across a switch keeps its own). */
   unit: DisplayUnit;
 };
 
 /**
- * The map to draw: the current payload's when it carries the display unit, else the last one
- * this page drew (old unit, old data) until the new payload lands — never a chart-type swap.
- * Resets when the page (`scope`) changes.
+ * The map the page at `slug` draws from the payload on screen (this unit's, or the one held
+ * across a switch, `heldUnitPayload.ts`, which does all the holding): its subtree and colour
+ * bounds, or nothing to draw.
  */
-export function useHeldValueMap(
-  scope: string,
-  root: NavValueMapNodeDto | null,
+export function valueMapView(
+  valueMap: NavValueMapNodeDto | undefined,
   bounds: NavValueMapColorBounds | undefined,
+  slug: string,
   unit: DisplayUnit
-): HeldValueMap {
-  const [held, setHeld] = useState<(HeldValueMap & { scope: string }) | null>(null);
-  if (root && bounds) {
-    if (held?.scope !== scope || held.root !== root || held.unit !== unit || held.bounds !== bounds) {
-      setHeld({ scope, root, bounds, unit });
-    }
-    return { root, bounds, unit };
-  }
-  if (held && held.scope === scope) return { root: held.root, bounds: held.bounds, unit: held.unit };
-  return { root: null, bounds: null, unit };
+): ValueMapView {
+  const root = valueMapRootForPage(valueMap, slug);
+  return root && bounds ? { root, bounds, unit } : { root: null, bounds: null, unit };
 }

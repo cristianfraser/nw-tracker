@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { queryKeys, type DisplayUnit } from "./keys";
+import { queryKeys } from "./keys";
 
 /** One invalidation: a key (a prefix unless `exact`). */
 export type Invalidation = { queryKey: readonly unknown[]; exact?: boolean };
@@ -42,14 +42,15 @@ export const resources = {
   /** A declared residency period: the list, and every año tributario's regime. */
   taxResidency: (): Invalidation[] => [{ queryKey: queryKeys.taxResidency() }, { queryKey: queryKeys.taxReturnAll() }],
   /**
-   * One account's page bundle (monthly) in a unit, and the blocks fetched apart: the
+   * One account's page bundles in every unit (a unit the page is not showing must not keep an
+   * older copy to step back to), and the blocks fetched apart: the
    * prepaid-vs-invested ones of every mortgage, since a property and its mortgage share one
    * ledger and a payment is written or edited from either page, and the pages that read every
    * loan's or card's page: the mortgage group, the card lanes (credit-card group and Liabilities)
    * and the Liabilities page.
    */
-  accountPage: (accountId: string | number, unit: DisplayUnit): Invalidation[] => [
-    { queryKey: queryKeys.accountDetail(String(accountId), unit, "monthly") },
+  accountPage: (accountId: string | number): Invalidation[] => [
+    { queryKey: queryKeys.accountDetailAll(String(accountId)) },
     { queryKey: queryKeys.deptoPrepaymentsAll() },
     { queryKey: queryKeys.mortgageGroupGlanceAll() },
     { queryKey: queryKeys.realEstateGroupGlanceAll() },
@@ -81,22 +82,22 @@ export const resources = {
     { queryKey: queryKeys.accountMonthlyPerformanceAll() },
   ],
   dashboard: (): Invalidation[] => [{ queryKey: queryKeys.dashboardAll() }],
-  /** The home bundle and the nav context of one display unit (what an account write moves there). */
-  dashboardInUnit: (unit: DisplayUnit): Invalidation[] => [
-    { queryKey: queryKeys.dashboard(unit) },
-    { queryKey: queryKeys.dashboardNav(unit) },
+  /** The home bundle and the nav contexts, every display unit (what an account write moves there). */
+  dashboardAndNav: (): Invalidation[] => [
+    { queryKey: queryKeys.dashboardAll() },
+    { queryKey: queryKeys.dashboardNavAll() },
   ],
-  /** Movements written from an account page's form: its bundle, every flows list, the unit's dashboard. */
-  accountMovements: (accountId: string | number, unit: DisplayUnit): Invalidation[] => [
-    { queryKey: queryKeys.accountDetail(String(accountId), unit, "monthly") },
+  /** Movements written from an account page's form: its bundles, every flows list, the dashboard (every unit). */
+  accountMovements: (accountId: string | number): Invalidation[] => [
+    { queryKey: queryKeys.accountDetailAll(String(accountId)) },
     { queryKey: queryKeys.accountFlowsAll() },
     // A movement on a loan's or a card's page moves the mortgage group and Liabilities pages.
     { queryKey: queryKeys.mortgageGroupGlanceAll() },
     { queryKey: queryKeys.realEstateGroupGlanceAll() },
     { queryKey: queryKeys.liabilitiesGlanceAll() },
     { queryKey: queryKeys.deptoPrepaymentsAll() },
-    { queryKey: queryKeys.dashboard(unit) },
-    { queryKey: queryKeys.dashboardNav(unit) },
+    { queryKey: queryKeys.dashboardAll() },
+    { queryKey: queryKeys.dashboardNavAll() },
   ],
   /** The account lists: sidebar tree, the panel's tree, the accounts list. */
   accountLists: (): Invalidation[] => [
@@ -109,8 +110,7 @@ export const resources = {
     { queryKey: queryKeys.accountsAll() },
     { queryKey: queryKeys.panelNetWorthTree() },
     { queryKey: queryKeys.sidebarNav() },
-    { queryKey: queryKeys.dashboard("clp") },
-    { queryKey: queryKeys.dashboard("usd") },
+    { queryKey: queryKeys.dashboardAll() },
   ],
   /** A buy / sell rate saved from the rates page: its review list and everything the page draws. */
   ratesPage: (): Invalidation[] => [

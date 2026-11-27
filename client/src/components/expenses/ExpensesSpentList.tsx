@@ -28,6 +28,7 @@ export function ExpensesSpentList({
   onClearCategory,
   onEditManual,
   loading,
+  unit: frameUnit,
 }: {
   data: FlowsExpensesSpentLinesResponse | undefined;
   /** The months the stepper walks, oldest first. */
@@ -44,9 +45,12 @@ export function ExpensesSpentList({
   onClearCategory: () => void;
   onEditManual: (line: FlowCcExpenseLineRow) => void;
   loading: boolean;
+  /** The page's unit, for the frame drawn before any lines are on hand. */
+  unit: string;
 }) {
   const { t } = useTranslation();
-  const unit = data?.unit ?? "clp";
+  // The lines' own unit (held across a switch); the page's only for the frame before any lines.
+  const unit = data?.unit ?? frameUnit;
   const at = months.indexOf(month);
   const color = categories.find((c) => c.slug === category)?.chart_color;
 
@@ -118,6 +122,7 @@ export function ExpensesSpentList({
           defaultSort={NEWEST_FIRST}
           dateOf={dateOf}
           loading={loading && data == null}
+          unit={data?.unit ?? null}
         />
       </div>
     </div>

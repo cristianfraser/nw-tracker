@@ -10,9 +10,12 @@ import { formatCardBillingPesos } from "../../formatNative";
 export function CreditCardFacturacionModalSections({
   bucket,
   categories,
+  unit,
 }: {
   bucket: FacturacionModalBucket;
   categories: readonly CcExpenseCategoryDto[];
+  /** The unit the facturación's lines were requested in (the shown payload's). */
+  unit: string;
 }) {
   const { t } = useTranslation();
   const gastosSum = useMemo(() => sumLineAmountsClp(bucket.gastos), [bucket.gastos]);
@@ -37,6 +40,7 @@ export function CreditCardFacturacionModalSections({
         ) : null}
       </h3>
       <CreditCardExpenseLinesTable
+        unit={unit}
         lines={bucket.gastos}
         categories={categories}
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
@@ -52,6 +56,7 @@ export function CreditCardFacturacionModalSections({
         ) : null}
       </h3>
       <CreditCardExpenseLinesTable
+        unit={unit}
         lines={bucket.costeFinanciero}
         categories={categories}
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
@@ -67,6 +72,7 @@ export function CreditCardFacturacionModalSections({
         ) : null}
       </h3>
       <CreditCardExpenseLinesTable
+        unit={unit}
         lines={bucket.abonos}
         categories={categories}
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}

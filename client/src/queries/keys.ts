@@ -1,8 +1,8 @@
 import type { ExpensesSpentParams, FlowsExpenseLinesSelector } from "../types";
 /**
  * A display unit: a lowercase core currency code the server loads (`clp`, `usd`, `eur`, …;
- * `GET /api/currencies`). Data, not a closed union. The unit a page was showing before a switch
- * (the one keep-previous data belongs to) is `previousDisplayUnit` in DisplayPreferencesContext.
+ * `GET /api/currencies`). Data, not a closed union. A payload held across a switch carries its
+ * own `unit` (`heldUnitPayload.ts`).
  */
 export type DisplayUnit = string;
 
@@ -49,9 +49,11 @@ export function entityKeyLength(key: readonly unknown[]): number {
 export const queryKeys = {
   dashboard: (unit: DisplayUnit) =>
     withEntity(["dashboard", unit] as const, 1),
-  /** Without `root`, the prefix of every page's nav-context in that unit (for invalidation). */
-  dashboardNav: (unit: DisplayUnit, root?: string) =>
-    withEntity((root == null ? ["dashboardNav", unit] : ["dashboardNav", unit, root]) as readonly unknown[], 3),
+  /** One page's nav context (`root` = the page's nav node slug): held across a unit switch. */
+  dashboardNav: (root: string, unit: DisplayUnit) =>
+    withEntity(["dashboardNav", root, unit] as const, 2),
+  /** Prefix of every page's nav context, every unit. */
+  dashboardNavAll: () => ["dashboardNav"] as const,
   dashboardNavSnapshot: (unit: DisplayUnit) =>
     withEntity(["dashboardNavSnapshot", unit] as const, 2),
   dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,
@@ -65,7 +67,7 @@ export const queryKeys = {
     withEntity(["groupConsolidatedTables", group, unit] as const, 2),
   groupPeriodReturns: (group: string, unit: DisplayUnit) =>
     withEntity(["groupPeriodReturns", group, unit] as const, 2),
-  latestMovements: (limit: number, unit: DisplayUnit) => ["latestMovements", limit, unit] as const,
+  latestMovements: (limit: number, unit: DisplayUnit) => withEntity(["latestMovements", limit, unit] as const, 2),
   latestMovementsAll: () => ["latestMovements"] as const,
   groupConsolidatedMonthlyPage: (
     group: string,
@@ -84,15 +86,15 @@ export const queryKeys = {
   currencies: () => ["currencies"] as const,
   /** Prefix keys (no unit) invalidate every unit's copy at once. */
   marketTickerAll: () => ["marketTicker"] as const,
-  marketTicker: (unit: DisplayUnit) => ["marketTicker", unit] as const,
+  marketTicker: (unit: DisplayUnit) => withEntity(["marketTicker", unit] as const, 1),
   watchlistAll: () => ["watchlist"] as const,
-  watchlist: (unit: DisplayUnit) => ["watchlist", unit] as const,
+  watchlist: (unit: DisplayUnit) => withEntity(["watchlist", unit] as const, 1),
   watchlistSymbolSearch: (q: string) => ["watchlist-symbol-search", q] as const,
   /** Prefix key (no unit) invalidates every unit's copy at once. */
   marketSeriesAll: () => ["marketSeries"] as const,
-  marketSeries: (unit: DisplayUnit) => ["marketSeries", unit] as const,
+  marketSeries: (unit: DisplayUnit) => withEntity(["marketSeries", unit] as const, 1),
   ratesGlanceAll: () => ["ratesGlance"] as const,
-  ratesGlance: (unit: DisplayUnit) => ["ratesGlance", unit] as const,
+  ratesGlance: (unit: DisplayUnit) => withEntity(["ratesGlance", unit] as const, 1),
   fxBidAskGaps: () => ["fxBidAskGaps"] as const,
   mortgageUfReminder: () => ["mortgageUfReminder"] as const,
   messagesUnread: () => ["messages", "unreadCount"] as const,
@@ -107,12 +109,18 @@ export const queryKeys = {
   importSyncSheetPreview: (sheetHref: string) => ["importSyncSheetPreview", sheetHref] as const,
   genericUniqueMerchants: () => ["genericUniqueMerchants"] as const,
   /** Bare `income()` is the prefix every income invalidation uses. */
-  income: (unit?: DisplayUnit) => (unit ? (["income", unit] as const) : (["income"] as const)),
+  income: () => ["income"] as const,
+  /** The income page in a unit (one entity: held across a unit switch). */
+  incomePage: (unit: DisplayUnit) => withEntity(["income", unit] as const, 1),
   /** Under `income()`, so every income invalidation reaches it. */
   incomeRentPlaces: () => ["income", "rentPlaces"] as const,
-  flowsDeposits: (unit?: DisplayUnit) => (unit ? (["flowsDeposits", unit] as const) : (["flowsDeposits"] as const)),
-  flowsPl: (unit: DisplayUnit, days?: number) => ["flowsPl", unit, days ?? null] as const,
-  flowsDepositsReconciliation: (unit: DisplayUnit) => ["flowsDepositsReconciliation", unit] as const,
+  /** Bare `flowsDeposits()` is the prefix every deposits invalidation uses. */
+  flowsDeposits: () => ["flowsDeposits"] as const,
+  /** The /flows/deposits page in a unit (one entity: held across a unit switch). */
+  flowsDepositsPage: (unit: DisplayUnit) => withEntity(["flowsDeposits", unit] as const, 1),
+  /** One entity: held across a unit or Diario window change. */
+  flowsPl: (unit: DisplayUnit, days?: number) => withEntity(["flowsPl", unit, days ?? null] as const, 1),
+  flowsDepositsReconciliation: (unit: DisplayUnit) => withEntity(["flowsDepositsReconciliation", unit] as const, 1),
   flowsRealEstateExpenses: () => ["flowsRealEstateExpenses"] as const,
   /** Prefix of every link-candidates list. */
   realEstateLinkCandidatesAll: () => ["realEstateLinkCandidates"] as const,
@@ -124,22 +132,36 @@ export const queryKeys = {
   realEstatePropertyAccounts: () => ["realEstatePropertyAccounts"] as const,
   flowsExpenses: () => ["flowsExpenses"] as const,
   /**
-   * One selector's expense lines in a unit (each line's `converted`); nested under
-   * `flowsExpensesLinesAll()`, the prefix every optimistic line patch walks.
+   * One expense-lines list in a unit (each line's `converted`); a paged list (uncategorized) adds
+   * `<page>/<page size>`. Nested under `flowsExpensesLinesAll()`, the prefix every optimistic line
+   * patch walks. Entity = the selector («none»: no list asked for): held across a unit or page change,
+   * never across lists.
    */
-  /** One expense-lines list; a paged list (uncategorized) adds `<page>/<page size>`. */
-  flowsExpenseLines: (unit: DisplayUnit, selector: FlowsExpenseLinesSelector, page?: { page: number; pageSize: number }) =>
-    ["flowsExpenses", "lines", unit, expenseLinesSelectorKey(selector), page ? `${page.page}/${page.pageSize}` : "all"] as const,
+  flowsExpenseLines: (
+    unit: DisplayUnit,
+    selector: FlowsExpenseLinesSelector | null,
+    page?: { page: number; pageSize: number }
+  ) =>
+    withEntity(
+      [
+        "flowsExpenses",
+        "lines",
+        selector ? expenseLinesSelectorKey(selector) : "none",
+        unit,
+        page ? `${page.page}/${page.pageSize}` : "all",
+      ] as const,
+      3
+    ),
   flowsExpensesLinesAll: () => ["flowsExpenses", "lines"] as const,
   /** The Expenses page's catalogs and summaries (categories, big groups, additional cards). */
   flowsExpensesSummaryAll: () => ["flowsExpenses", "summary"] as const,
-  flowsExpensesSummary: (unit: DisplayUnit) => ["flowsExpenses", "summary", unit] as const,
+  flowsExpensesSummary: (unit: DisplayUnit) => withEntity(["flowsExpenses", "summary", unit] as const, 2),
   /** The purchases one card credit may refund (under `flowsExpenses()`: a line write refetches it). */
   cardRefundCandidates: (unit: DisplayUnit, accountId: number, lineId: number) =>
-    ["flowsExpenses", "refundCandidates", unit, accountId, lineId] as const,
+    withEntity(["flowsExpenses", "refundCandidates", accountId, lineId, unit] as const, 4),
   /** The financing manager's pickers; under `flowsExpenses()`, so every line write refreshes them. */
   flowsExpensesFinancingCandidates: (unit: DisplayUnit) =>
-    ["flowsExpenses", "financingCandidates", unit] as const,
+    withEntity(["flowsExpenses", "financingCandidates", unit] as const, 2),
   /**
    * The Expenses page by spending day, both payloads (the page's and its line lists); under
    * `flowsExpenses()`, so every line write refetches it.
@@ -147,13 +169,21 @@ export const queryKeys = {
   flowsExpensesSpentAll: () => ["flowsExpenses", "spent"] as const,
   /** The spent line lists only (lines grouped by day). */
   flowsExpensesSpentLinesAll: () => ["flowsExpenses", "spent", "lines"] as const,
+  /** One entity: held across a unit or any selector change (mode, level, range, groups, pre-tax). */
   flowsExpensesSpent: (p: ExpensesSpentParams) =>
-    ["flowsExpenses", "spent", p.unit, p.mode, p.level, p.range, [...p.excludedBigGroups].sort().join(","), p.includePreTax] as const,
+    withEntity(
+      ["flowsExpenses", "spent", p.unit, p.mode, p.level, p.range, [...p.excludedBigGroups].sort().join(","), p.includePreTax] as const,
+      2
+    ),
+  /** One entity: held across a unit, month, day or category change. */
   flowsExpensesSpentLines: (p: ExpensesSpentParams, month: string, day: string | null, category: string | null) =>
-    ["flowsExpenses", "spent", "lines", p.unit, p.mode, p.level, [...p.excludedBigGroups].sort().join(","), p.includePreTax, month, day, category] as const,
-  /** Nested under `flowsExpenses()` too: a line edit refetches the overview. Entity = up to the unit. */
+    withEntity(
+      ["flowsExpenses", "spent", "lines", p.unit, p.mode, p.level, [...p.excludedBigGroups].sort().join(","), p.includePreTax, month, day, category] as const,
+      3
+    ),
+  /** Nested under `flowsExpenses()` too: a line edit refetches the overview. One entity: held across a unit, mode or window change. */
   flowsOverview: (unit: DisplayUnit, installmentMode: "split" | "total", days?: number) =>
-    withEntity(["flowsExpenses", "overview", unit, installmentMode, days ?? null] as const, 3),
+    withEntity(["flowsExpenses", "overview", unit, installmentMode, days ?? null] as const, 2),
   creditCardConfig: (accountId: string) => ["creditCardConfig", accountId] as const,
   ccFacturadoFinancingLinks: () => ["ccFacturadoFinancingLinks"] as const,
   portfolioGroup: (group: string, unit: DisplayUnit) =>
@@ -202,18 +232,19 @@ export const queryKeys = {
   checkingStatement: (id: string, filtersKey: string) =>
     withEntity(["accountFlows", id, "checking_statement", filtersKey] as const, 3),
   movementMirrorCandidates: () => ["movementMirrorCandidates"] as const,
-  projections: (unit: string, overridesKey: string) => ["projections", unit, overridesKey] as const,
-  wealthPercentile: (unit: DisplayUnit) => ["wealth-percentile", unit] as const,
+  /** One entity: held across a unit or assumptions change. */
+  projections: (unit: string, overridesKey: string) => withEntity(["projections", unit, overridesKey] as const, 1),
+  wealthPercentile: (unit: DisplayUnit) => withEntity(["wealth-percentile", unit] as const, 1),
   benchmarks: () => ["benchmarks"] as const,
   deptoPrepayments: (accountId: number, benchmark: string, unit: DisplayUnit) =>
-    ["deptoPrepayments", accountId, benchmark, unit] as const,
+    withEntity(["deptoPrepayments", accountId, benchmark, unit] as const, 3),
   /** Every mortgage's prepaid-vs-invested blocks (a payment is written from either depto page). */
   /** Under the `deptoPrepayments` prefix, so a payment written on a loan page reaches it. */
   mortgageGroupPrepayments: (group: string, benchmark: string, unit: DisplayUnit) =>
-    ["deptoPrepayments", "group", group, benchmark, unit] as const,
+    withEntity(["deptoPrepayments", "group", group, benchmark, unit] as const, 4),
   deptoPrepaymentsAll: () => ["deptoPrepayments"] as const,
   benchmarkComparison: (scope: string, benchmark: string, unit: DisplayUnit) =>
-    ["benchmarkComparison", scope, benchmark, unit] as const,
+    withEntity(["benchmarkComparison", scope, benchmark, unit] as const, 3),
   taxReturn: (taxYear: number | null) => ["tax-return", taxYear] as const,
   taxReturnAll: () => ["tax-return"] as const,
   taxResidency: () => ["tax-residency"] as const,

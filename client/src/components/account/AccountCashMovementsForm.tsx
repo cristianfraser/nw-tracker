@@ -4,20 +4,18 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { buildCashMovementPostBody, cashFlowKindsFor } from "../../panelAccounts/cashAccountFormTypes";
 import { type InitialMovementDraft } from "../../panelAccounts/stockAccountFormTypes";
-import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import { BrokerageMovementsSection } from "../panel/BrokerageMovementsSection";
 import { Button } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
-  displayUnit: DisplayUnit;
   /** The currency the cash ledger holds (the server's `movement_create.cash_currency`). */
   currency: string;
 };
 
 /** The movement form of a cash ledger account, in whatever currency the account holds. */
-export function AccountCashMovementsForm({ accountId, displayUnit, currency }: Props) {
+export function AccountCashMovementsForm({ accountId, currency }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [movements, setMovements] = useState<InitialMovementDraft[]>([]);
@@ -41,7 +39,7 @@ export function AccountCashMovementsForm({ accountId, displayUnit, currency }: P
       setMovements([]);
       setFormError(null);
       setLastSavedCount(count);
-      await invalidateResources(queryClient, resources.accountMovements(accountId, displayUnit));
+      await invalidateResources(queryClient, resources.accountMovements(accountId));
     },
     onError: (err: Error) => {
       setFormError(err.message);

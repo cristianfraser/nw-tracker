@@ -65,11 +65,17 @@ export function ProjectionsAssumptions({
   const narrow = useIsNarrowViewport();
   const baseId = useId();
   const [opened, setOpened] = useState<Readonly<Record<string, boolean>>>({});
-  const unitCode = displayUnit.toUpperCase();
+  // The unit the form reads in: the shown params' (a held response of another unit keeps its own).
+  // While it is not the display unit the form is dimmed and read-only: an edit is typed in the
+  // display unit, and the echoed figures are not.
+  const formUnit = params ? paramsUnit : displayUnit;
+  const foreign = formUnit !== displayUnit;
+  const inert = loading || foreign;
+  const unitCode = formUnit.toUpperCase();
   // Until the first response the retirement age is unknown: titles and labels naming it stay blank.
   const BLANK = " ";
 
-  const valueOf = (f: ProjectionField) => projectionFieldValue(f, overrides, displayUnit, params);
+  const valueOf = (f: ProjectionField) => projectionFieldValue(f, overrides, formUnit, params);
   const fieldError = (f: ProjectionField): string | null => {
     const key = projectionFieldKey(f);
     const draft = drafts[key];
@@ -97,8 +103,8 @@ export function ProjectionsAssumptions({
       const v = num(key);
       if (v == null) return "—";
       // An override typed here is in the unit on screen; an echo is in the response's.
-      const typedHere = typeof overrides[key] === "number" && overrides[`${key}_currency`] === displayUnit;
-      return formatMoney({ value: v, currency: typedHere ? displayUnit : paramsUnit });
+      const typedHere = typeof overrides[key] === "number" && overrides[`${key}_currency`] === formUnit;
+      return formatMoney({ value: v, currency: typedHere ? formUnit : paramsUnit });
     };
     switch (group.id) {
       case "growth":
@@ -133,7 +139,7 @@ export function ProjectionsAssumptions({
     <PageGridTile id="assumptions" className={cn("page-grid", styles.tile)}>
       <div className={styles.head}>
         <h2>{t("projections.assumptions")}</h2>
-        <Button variant="secondary" disabled={Object.keys(overrides).length === 0} onClick={onReset}>
+        <Button variant="secondary" disabled={inert || Object.keys(overrides).length === 0} onClick={onReset}>
           {t("projections.reset")}
         </Button>
       </div>
@@ -167,7 +173,7 @@ export function ProjectionsAssumptions({
                 {title}
               </h3>
             )}
-            <div id={bodyId} hidden={!open} className={loadableClass(loading, form.form, styles.form)}>
+            <div id={bodyId} hidden={!open} className={loadableClass(inert, form.form, styles.form)}>
               {group.fields.map((f) => {
                 const key = projectionFieldKey(f);
                 const error = fieldError(f);
@@ -183,8 +189,11 @@ export function ProjectionsAssumptions({
                       inputMode={min < 0 ? undefined : "decimal"}
                       aria-invalid={error != null || undefined}
                       aria-describedby={error != null ? errorId : undefined}
+                      readOnly={inert}
                       value={drafts[key] ?? (value != null ? formatNumberInput(value) : "")}
-                      onChange={(e) => onChange(f, e.target.value)}
+                      onChange={(e) => {
+                        if (!inert) onChange(f, e.target.value);
+                      }}
                       onBlur={() => onBlur(f)}
                     />
                     {error != null ? (

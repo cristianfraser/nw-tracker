@@ -2,7 +2,6 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { useEffect, useMemo } from "react";
 import { api } from "../api";
 import {
-  dashPickForNavStrip,
   fetchAccountsByPortfolioGroup,
   fetchDashboardBundle,
   fetchDashboardNavContext,
@@ -16,14 +15,20 @@ import {
   readDashboardNavSnapshotCache,
   writeDashboardNavSnapshotCache,
 } from "./dashboardNavSnapshotCache";
-import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor, keepPreviousDataSameEntity } from "./displayUnitQueries";
+import {
+  DISPLAY_UNIT_QUERY_BEHAVIOR,
+  DISPLAY_UNIT_STALE_MS,
+  sameEntityPlaceholder,
+} from "./displayUnitQueries";
 import { queryKeys, type AccountFlowsScope, type DisplayUnit } from "./keys";
 import { invalidateResources, resources } from "./resources";
+import { useHeldUnitQuery, type HeldUnitQuery } from "./heldUnitPayload";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
-import type { ExpensesSpentParams, NavTreeNodeDto } from "../types";
+import type { DailySeriesResponse, ExpensesSpentParams, NavTreeNodeDto } from "../types";
 import { setCurrencyRegistry } from "../format";
+import type { DashboardBundle, DashboardNavContext, PortfolioGroupBundle } from "./fetchers";
 
 /** Snapshots read from localStorage (placeholders), as opposed to live server payloads. */
 const navSnapshotsFromLocalCache = new WeakSet<object>();
@@ -38,68 +43,116 @@ function readNavSnapshotCacheForUnit(unit: DisplayUnit) {
 
 export { hasDashboardNavSnapshotCache } from "./dashboardNavSnapshotCache";
 
-export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.dashboard(unit),
+/*
+ * A display-unit query is drawn through `useHeldX` (the query as a surface shows it across a unit
+ * switch, `heldUnitPayload.ts`), whose first argument is the call site's surface id; key, fetcher,
+ * `enabled` and the query's cadence are stated once, in the hook (in an options function when a
+ * raw `useX` shares them: only where something reads the query without drawing it, a warm-up).
+ * The bundles, series, tables, glances and the flows overview refetch on
+ * `DISPLAY_UNIT_QUERY_BEHAVIOR`; the other flows,
+ * expenses, market and rates pages keep react-query's defaults (the ticker and watchlist their
+ * minute poll).
+ */
+
+function dashboardBundleOptions(unit: DisplayUnit, enabled: boolean) {
+  const queryKey = queryKeys.dashboard(unit);
+  return {
+    queryKey,
     queryFn: () => fetchDashboardBundle(unit),
     enabled,
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboard(unit)),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
 }
 
-/** Daily net-worth series for the day period view (fetched only while the D toggle is active). */
-export function useDashboardOverviewDaily(unit: DisplayUnit, days: number, enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.dashboardOverviewDaily(unit, days),
+export function useHeldDashboardBundle(surface: string, unit: DisplayUnit): HeldUnitQuery<DashboardBundle> {
+  return useHeldUnitQuery(dashboardBundleOptions(unit, true), unit, surface);
+}
+
+function dashboardOverviewDailyOptions(unit: DisplayUnit, days: number, enabled: boolean) {
+  const queryKey = queryKeys.dashboardOverviewDaily(unit, days);
+  return {
+    queryKey,
     queryFn: () => api.dashboardOverviewDaily(unit, days),
     enabled,
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboardOverviewDaily(unit, days)),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
 }
 
-/** Daily series for one group page or account (day period view: chart + detalle por día). */
-export function useDailySeries(
-  scope: { portfolioGroup?: string; accountId?: number },
-  unit: DisplayUnit,
-  days: number,
-  enabled = true,
-  /** Ask for the day-mode P/L levels (`perf_levels`) the P/L combos pick. */
-  opts?: { perfLevels?: boolean }
-) {
-  const scopeKey = scope.portfolioGroup
+export function useHeldDashboardOverviewDaily(surface: string, unit: DisplayUnit, days: number, enabled: boolean) {
+  return useHeldUnitQuery(dashboardOverviewDailyOptions(unit, days, enabled), unit, surface);
+}
+
+type DailySeriesScope = { portfolioGroup?: string; accountId?: number };
+
+function dailySeriesScopeKey(scope: DailySeriesScope): string {
+  return scope.portfolioGroup
     ? `pg:${scope.portfolioGroup}`
     : scope.accountId != null
       ? `account:${scope.accountId}`
       : "";
+}
+
+function dailySeriesOptions(
+  scope: DailySeriesScope,
+  unit: DisplayUnit,
+  days: number,
+  enabled: boolean,
+  opts?: { perfLevels?: boolean }
+) {
+  const scopeKey = dailySeriesScopeKey(scope);
   const perfLevels = opts?.perfLevels === true;
-  const key = queryKeys.dailySeries(scopeKey, perfLevels ? "perf" : "base", unit, days);
-  return useQuery({
-    queryKey: key,
+  const queryKey = queryKeys.dailySeries(scopeKey, perfLevels ? "perf" : "base", unit, days);
+  return {
+    queryKey,
     queryFn: () => api.dailySeries(unit, scope, days, { perfLevels }),
     enabled: enabled && scopeKey !== "",
-    ...displayUnitQueryBehaviorFor(key),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
 }
 
 /**
- * One page's nav strip (`root` = the page's nav node slug; null = not known yet, nothing fetched).
- * Its figures are merged into the stored snapshot, so a reload of that page paints today's cards,
- * not the ones another page saw on its last visit.
+ * Daily series for one group page or account (day period view: chart + detalle por día), as a
+ * surface shows it: held across a unit or range change, in its own unit. `perfLevels` asks for the
+ * day-mode P/L levels (`perf_levels`) the P/L combos pick.
  */
-export function useDashboardNavContext(unit: DisplayUnit, root: string | null, enabled = true) {
-  const key = queryKeys.dashboardNav(unit, root ?? "");
-  return useQuery({
-    queryKey: key,
+export function useHeldDailySeries(
+  surface: string,
+  scope: DailySeriesScope,
+  unit: DisplayUnit,
+  days: number,
+  enabled = true,
+  opts?: { perfLevels?: boolean }
+): HeldUnitQuery<DailySeriesResponse> {
+  return useHeldUnitQuery(dailySeriesOptions(scope, unit, days, enabled, opts), unit, surface);
+}
+
+function dashboardNavContextOptions(unit: DisplayUnit, root: string | null, enabled: boolean) {
+  const queryKey = queryKeys.dashboardNav(root ?? "", unit);
+  return {
+    queryKey,
     queryFn: async () => {
       const ctx = await fetchDashboardNavContext(unit, root!);
       mergeNavContextIntoSnapshotCache(unit, ctx);
       return ctx;
     },
     enabled: enabled && root != null,
-    // A unit change holds nothing: the pages fall back to the unit's own nav snapshot cache, never
-    // a converted context; another page starts from its own.
-    ...displayUnitQueryBehaviorFor(key),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
+}
+
+/**
+ * One page's nav context (`root` = the page's nav node slug; null = not known yet, nothing
+ * fetched), held across a unit switch in its own unit. Its figures are merged into the stored
+ * snapshot, so a reload of that page paints today's cards, not the ones another page saw on its
+ * last visit.
+ */
+export function useHeldDashboardNavContext(
+  surface: string,
+  unit: DisplayUnit,
+  root: string | null,
+  enabled: boolean
+): HeldUnitQuery<DashboardNavContext> {
+  return useHeldUnitQuery(dashboardNavContextOptions(unit, root, enabled), unit, surface);
 }
 
 const DASHBOARD_NAV_SNAPSHOT_STALE_MS = 10 * 60_000;
@@ -117,13 +170,15 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
       return snapshot;
     },
     initialData: () => (cachedStrip ? readNavSnapshotCacheForUnit(unit) : undefined),
-    initialDataUpdatedAt: cachedStrip ? Date.now() : undefined,
+    // A stored copy counts as updated at 0: older than anything fetched, so across a unit switch
+    // it never replaces cards already on screen (`heldUnitPayload.ts`), only paints an empty strip.
+    initialDataUpdatedAt: cachedStrip ? 0 : undefined,
     // With a cached strip this query never refetches; freshness relies on the live payloads
-    // re-writing the cache: DashboardPage from its page bundle, useDashboardNavContext from nav-context.
+    // re-writing the cache: DashboardPage from its page bundle, the nav-context fetch.
     enabled: enabled && !cachedStrip,
-    // Keyed on the unit: a unit change holds nothing (a CLP snapshot has no USD fields; the pages
-    // hold the previous unit's strip themselves, see useHeldNavStrip).
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboardNavSnapshot(unit)),
+    // Keyed on the unit: a unit change holds nothing (a CLP snapshot has no USD fields). It paints
+    // only a strip with nothing to show; the pages' strips follow their held payloads.
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
     staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
     gcTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
   });
@@ -142,96 +197,69 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
   return staleCachedSnapshot ? { ...query, data: undefined } : query;
 }
 
-/** What a nav strip renders while the page holds the previous unit: cards in THAT unit. */
-export type HeldNavStrip = {
-  dash: ReturnType<typeof dashPickForNavStrip>;
-  /** The unit the held cards are in (the previous display unit). */
-  unit: DisplayUnit;
-};
-
-/**
- * The previous unit's nav strip while a unit switch holds the page (`holding`): its live nav
- * context when react-query still has it, else its stored snapshot — shown in ITS unit, dimmed,
- * never converted; null when neither is on hand. Read only: neither query is enabled here, so
- * nothing is fetched for a unit the user left.
- */
-export function useHeldNavStrip(
-  /** The unit the page showed before the switch (`previousDisplayUnit`). */
-  heldUnit: DisplayUnit,
-  holding: boolean,
-  root: string | null
-): HeldNavStrip | null {
-  const other = heldUnit;
-  const { data: navCtx } = useDashboardNavContext(other, root, false);
-  const { data: navSnapshot } = useDashboardNavSnapshot(other, false);
-  return useMemo(() => {
-    if (!holding) return null;
-    if (navCtx) {
-      return { dash: dashPickForNavStrip(navCtx), unit: other };
-    }
-    if (!navSnapshot) return null;
-    return {
-      dash: dashPickForNavStrip({
-        accounts: navSnapshot.accounts,
-        liabilities_breakdown: navSnapshot.liabilities_breakdown,
-        dashboard_layout: navSnapshot.dashboard_layout,
-        nw_bucket_totals: navSnapshot.nw_bucket_totals,
-        card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
-      }),
-      unit: other,
-    };
-  }, [holding, navCtx, navSnapshot, other]);
-}
-
-export function useGroupConsolidatedTables(
-  portfolioGroup: string,
-  unit: DisplayUnit,
-  enabled: boolean
-) {
-  return useQuery({
-    queryKey: queryKeys.groupConsolidatedTables(portfolioGroup, unit),
+function groupConsolidatedTablesOptions(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  const queryKey = queryKeys.groupConsolidatedTables(portfolioGroup, unit);
+  return {
+    queryKey,
     queryFn: () => api.groupConsolidatedTables(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupConsolidatedTables(portfolioGroup, unit)),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
 }
 
-/** The Rentabilidad table alone (dashboard net_worth, whose detalle table is server-paginated). */
-export function useGroupPeriodReturns(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.groupPeriodReturns(portfolioGroup, unit),
+export function useHeldGroupConsolidatedTables(surface: string, portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  return useHeldUnitQuery(groupConsolidatedTablesOptions(portfolioGroup, unit, enabled), unit, surface);
+}
+
+function groupPeriodReturnsOptions(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  const queryKey = queryKeys.groupPeriodReturns(portfolioGroup, unit);
+  return {
+    queryKey,
     queryFn: () => api.groupPeriodReturns(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupPeriodReturns(portfolioGroup, unit)),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
 }
 
-/** Home «Últimos movimientos»: the newest expense lines and income credits, interleaved. */
-export function useLatestMovements(limit: number, unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.latestMovements(limit, unit),
-    queryFn: () => api.latestMovements(limit, unit),
-  });
+export function useHeldGroupPeriodReturns(surface: string, portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  return useHeldUnitQuery(groupPeriodReturnsOptions(portfolioGroup, unit, enabled), unit, surface);
 }
 
-/** One server page of the consolidated detalle table (dashboard net_worth). */
-export function useGroupConsolidatedMonthlyPage(
+/**
+ * Home «Últimos movimientos»: the newest expense lines and income credits, interleaved; held across
+ * a unit switch (the payload carries no `unit`: the view's `unit` is the one it was requested in).
+ */
+export function useHeldLatestMovements(surface: string, limit: number, unit: DisplayUnit) {
+  const queryKey = queryKeys.latestMovements(limit, unit);
+  return useHeldUnitQuery({ queryKey, queryFn: () => api.latestMovements(limit, unit) }, unit, surface);
+}
+
+/**
+ * One server page of the consolidated detalle table (dashboard net_worth), as the table shows it:
+ * held across a unit, page or period change. `installmentMode`: the expense mode net worth's
+ * income and expenses are counted in.
+ */
+export function useHeldGroupConsolidatedMonthlyPage(
+  surface: string,
   portfolioGroup: string,
   unit: DisplayUnit,
   period: "month" | "year",
   page: number,
   pageSize: number,
   enabled: boolean,
-  /** Net worth: the expense mode its rows' income and expenses are counted in. */
   installmentMode: "split" | "total"
 ) {
-  const key = queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page, pageSize, installmentMode);
-  return useQuery({
-    queryKey: key,
-    queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period, installmentMode }),
-    enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(key),
-  });
+  const queryKey = queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page, pageSize, installmentMode);
+  return useHeldUnitQuery(
+    {
+      queryKey,
+      queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period, installmentMode }),
+      enabled: enabled && Boolean(portfolioGroup),
+      ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+    },
+    unit,
+    surface
+  );
 }
 
 /** `GET /api/accounts?portfolio_group=…` — group/dashboard page shape (account list). */
@@ -244,25 +272,34 @@ export function useAccountsByPortfolioGroup(
     queryKey: queryKeys.accountsByPortfolioGroup(portfolioGroup, unit),
     queryFn: () => fetchAccountsByPortfolioGroup(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.accountsByPortfolioGroup(portfolioGroup, unit)),
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+    placeholderData: sameEntityPlaceholder(queryKeys.accountsByPortfolioGroup(portfolioGroup, unit)),
     staleTime: DISPLAY_UNIT_STALE_MS,
     gcTime: DISPLAY_UNIT_STALE_MS,
   });
 }
 
-export function usePortfolioGroupBundle(opts: {
+/** A group page's bundle as the page shows it: held across a unit switch, in its own unit. */
+export function useHeldPortfolioGroupBundle(surface: string, opts: {
   portfolio_group: string;
   unit: DisplayUnit;
   enabled?: boolean;
-}) {
+}): HeldUnitQuery<PortfolioGroupBundle> {
+  return useHeldUnitQuery(portfolioGroupBundleOptions(useQueryClient(), opts), opts.unit, surface);
+}
+
+function portfolioGroupBundleOptions(
+  queryClient: ReturnType<typeof useQueryClient>,
+  opts: { portfolio_group: string; unit: DisplayUnit; enabled?: boolean }
+) {
   const { portfolio_group, unit, enabled = true } = opts;
-  const queryClient = useQueryClient();
-  return useQuery({
-    queryKey: queryKeys.portfolioGroup(portfolio_group, unit),
+  const queryKey = queryKeys.portfolioGroup(portfolio_group, unit);
+  return {
+    queryKey,
     queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }, queryClient),
     enabled: enabled && Boolean(portfolio_group),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroup(portfolio_group, unit)),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
 }
 
 const GROUP_PAGE_SHELL_STALE_MS = 10 * 60_000;
@@ -290,7 +327,8 @@ export function useGroupPageShell(opts: {
       cachedShell ? readGroupPageShellCache(portfolioGroup, unit) : undefined,
     initialDataUpdatedAt: cachedShell ? Date.now() : undefined,
     enabled: enabled && Boolean(portfolioGroup && navNode) && !cachedShell,
-    ...displayUnitQueryBehaviorFor(queryKeys.groupPageShell(portfolioGroup, unit)),
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+    placeholderData: sameEntityPlaceholder(queryKeys.groupPageShell(portfolioGroup, unit)),
     staleTime: GROUP_PAGE_SHELL_STALE_MS,
     gcTime: GROUP_PAGE_SHELL_STALE_MS,
   });
@@ -345,25 +383,38 @@ export function useCurrencies() {
 
 const MARKET_TICKER_MS = 60_000;
 
-/** Marquee snapshot in the display unit (values convert server-side; the key carries the unit). */
-export function useMarketTicker(unit: DisplayUnit) {
-  return useQuery({
+function marketTickerOptions(unit: DisplayUnit) {
+  return {
     queryKey: queryKeys.marketTicker(unit),
     queryFn: () => api.marketTicker(unit),
     staleTime: MARKET_TICKER_MS,
     refetchInterval: MARKET_TICKER_MS,
-    placeholderData: keepPreviousData,
-  });
+  };
 }
 
-export function useWatchlist(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.watchlist(unit),
-    queryFn: () => api.watchlist(unit),
-    staleTime: MARKET_TICKER_MS,
-    refetchInterval: MARKET_TICKER_MS,
-    placeholderData: keepPreviousData,
-  });
+/** Marquee snapshot in the display unit (values convert server-side; the key carries the unit);
+ * the raw query, for a page that only warms it. */
+export function useMarketTicker(unit: DisplayUnit) {
+  return useQuery(marketTickerOptions(unit));
+}
+
+/** {@link useMarketTicker} as the marquee shows it: held across a unit switch, in its own unit. */
+export function useHeldMarketTicker(surface: string, unit: DisplayUnit) {
+  return useHeldUnitQuery(marketTickerOptions(unit), unit, surface);
+}
+
+/** The watchlist page in the display unit, held across a unit switch, in its own unit. */
+export function useHeldWatchlist(surface: string, unit: DisplayUnit) {
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.watchlist(unit),
+      queryFn: () => api.watchlist(unit),
+      staleTime: MARKET_TICKER_MS,
+      refetchInterval: MARKET_TICKER_MS,
+    },
+    unit,
+    surface
+  );
 }
 
 /**
@@ -427,21 +478,14 @@ export function useDeleteWatchlistRow() {
   });
 }
 
-export function useMarketSeries(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.marketSeries(unit),
-    queryFn: () => api.marketSeries(unit),
-    placeholderData: keepPreviousData,
-  });
+/** The rates page's series, held across a unit switch, in its own unit. */
+export function useHeldMarketSeries(surface: string, unit: DisplayUnit) {
+  return useHeldUnitQuery({ queryKey: queryKeys.marketSeries(unit), queryFn: () => api.marketSeries(unit) }, unit, surface);
 }
 
-/** The rates page's glances; reads live rates, so the stamp poll refetches it on a move. */
-export function useRatesGlance(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.ratesGlance(unit),
-    queryFn: () => api.ratesGlance(unit),
-    placeholderData: keepPreviousData,
-  });
+/** The rates page's glances; reads live rates, so the stamp poll refetches it on a move. Held across a unit switch. */
+export function useHeldRatesGlance(surface: string, unit: DisplayUnit) {
+  return useHeldUnitQuery({ queryKey: queryKeys.ratesGlance(unit), queryFn: () => api.ratesGlance(unit) }, unit, surface);
 }
 
 /** The buy / sell rates waiting for review, by year. */
@@ -617,37 +661,28 @@ export function useMarkMessagesReadMutation() {
   });
 }
 
-/** The income page payload with its aggregates in `unit` (never held across units). */
-export function useIncome(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.income(unit),
-    queryFn: () => api.income(unit),
-  });
+/** The income page payload with its aggregates in `unit`, held across a unit switch, in its own unit. */
+export function useHeldIncome(surface: string, unit: DisplayUnit) {
+  return useHeldUnitQuery({ queryKey: queryKeys.incomePage(unit), queryFn: () => api.income(unit) }, unit, surface);
 }
 
-/** The /flows/deposits page in `unit` (never held across units). */
-export function useFlowsDeposits(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.flowsDeposits(unit),
-    queryFn: () => api.flowsDeposits(unit),
-  });
+/** The /flows/deposits page in `unit`, held across a unit switch, in its own unit. */
+export function useHeldFlowsDeposits(surface: string, unit: DisplayUnit) {
+  return useHeldUnitQuery({ queryKey: queryKeys.flowsDepositsPage(unit), queryFn: () => api.flowsDeposits(unit) }, unit, surface);
 }
 
-/** The /flows P/L page in `unit`: held across a Diario window change, never across units. */
-export function useFlowsPl(unit: DisplayUnit, days?: number) {
-  const queryKey = queryKeys.flowsPl(unit, days);
-  return useQuery({
-    queryKey,
-    queryFn: () => api.flowsPl(unit, days),
-    placeholderData: keepPreviousDataSameEntity(queryKey, 2),
-  });
+/** The /flows P/L page in `unit`, held across a unit or Diario window change, in its own unit. */
+export function useHeldFlowsPl(surface: string, unit: DisplayUnit, days?: number) {
+  return useHeldUnitQuery({ queryKey: queryKeys.flowsPl(unit, days), queryFn: () => api.flowsPl(unit, days) }, unit, surface);
 }
 
-export function useFlowsDepositsReconciliation(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.flowsDepositsReconciliation(unit),
-    queryFn: () => api.flowsDepositsReconciliation(unit),
-  });
+/** The deposits reconciliation page in `unit`, held across a unit switch, in its own unit. */
+export function useHeldFlowsDepositsReconciliation(surface: string, unit: DisplayUnit) {
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.flowsDepositsReconciliation(unit), queryFn: () => api.flowsDepositsReconciliation(unit) },
+    unit,
+    surface
+  );
 }
 
 export function useRealEstateExpenses() {
@@ -697,99 +732,112 @@ export function useRealEstatePropertyAccounts(enabled: boolean) {
 }
 
 /**
- * One selector's expense lines (a month, a facturación, a list, a big group), each line's
- * `converted` in `unit`. No placeholder: a list never shows another selector's lines while its
- * own load; one already cached shows at once.
+ * One expense-lines list (a facturación, a list, a big group), each line's `converted` in `unit`, as
+ * the list shows it: held across a unit or page change (dimmed, in its own `unit`); a list never
+ * shows another list's rows while it loads, and one already cached shows at once.
  */
-/**
- * One expense-lines list. A list never shows another list's rows while it loads; a paged list
- * (`page`) keeps its previous page, dimmed, while the next page loads (same unit and selector).
- */
-export function useFlowsExpenseLines(
+export function useHeldFlowsExpenseLines(
+  surface: string,
   unit: DisplayUnit,
   selector: import("../types").FlowsExpenseLinesSelector | null,
   enabled = true,
   page?: { page: number; pageSize: number }
 ) {
-  const queryKey = selector
-    ? queryKeys.flowsExpenseLines(unit, selector, page)
-    : [...queryKeys.flowsExpensesLinesAll(), unit, "none"];
-  return useQuery({
-    queryKey,
-    queryFn: () => api.flowsExpenseLines(unit, selector!, page),
-    enabled: enabled && selector != null,
-    placeholderData: page
-      ? <T,>(previousData: T | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined) =>
-          previousQuery &&
-          previousQuery.queryKey.length === queryKey.length &&
-          previousQuery.queryKey.slice(0, 4).every((k, i) => Object.is(k, queryKey[i]))
-            ? previousData
-            : undefined
-      : undefined,
-  });
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.flowsExpenseLines(unit, selector, page),
+      queryFn: () => api.flowsExpenseLines(unit, selector!, page),
+      enabled: enabled && selector != null,
+    },
+    unit,
+    surface
+  );
 }
 
-/** The Expenses page's catalogs and summaries (categories, big groups, additional cards). */
-export function useFlowsExpensesSummary(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.flowsExpensesSummary(unit),
-    queryFn: () => api.flowsExpensesSummary(unit),
-  });
+/** The Expenses page's catalogs and summaries (categories, big groups, additional cards), held across a unit switch. */
+export function useHeldFlowsExpensesSummary(surface: string, unit: DisplayUnit) {
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.flowsExpensesSummary(unit), queryFn: () => api.flowsExpensesSummary(unit) },
+    unit,
+    surface
+  );
 }
 
-/** The purchases a card credit may refund, fetched while its picker is open. */
-export function useCardRefundCandidates(unit: DisplayUnit, accountId: number, lineId: number, enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.cardRefundCandidates(unit, accountId, lineId),
-    queryFn: () => api.cardRefundCandidates(unit, accountId, lineId),
-    enabled,
-  });
+/** The purchases a card credit may refund, fetched while its picker is open; held across a unit switch. */
+export function useHeldCardRefundCandidates(surface: string, unit: DisplayUnit, accountId: number, lineId: number, enabled: boolean) {
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.cardRefundCandidates(unit, accountId, lineId),
+      queryFn: () => api.cardRefundCandidates(unit, accountId, lineId),
+      enabled,
+    },
+    unit,
+    surface
+  );
 }
 
-/** The financing manager's pickers: financed cards with their facturaciones, and the plans. */
-export function useFlowsExpensesFinancingCandidates(unit: DisplayUnit, enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.flowsExpensesFinancingCandidates(unit),
-    queryFn: () => api.flowsExpensesFinancingCandidates(unit),
-    enabled,
-  });
+/** The financing manager's pickers: financed cards with their facturaciones, and the plans; held across a unit switch. */
+export function useHeldFlowsExpensesFinancingCandidates(surface: string, unit: DisplayUnit, enabled: boolean) {
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.flowsExpensesFinancingCandidates(unit),
+      queryFn: () => api.flowsExpensesFinancingCandidates(unit),
+      enabled,
+    },
+    unit,
+    surface
+  );
 }
 
-/** The Expenses page by spending day: chart, day strip, the months' calendar days and matrix cells. */
-export function useFlowsExpensesSpent(params: ExpensesSpentParams, enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.flowsExpensesSpent(params),
-    queryFn: () => api.flowsExpensesSpent(params),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+/**
+ * The Expenses page by spending day: chart, day strip, the months' calendar days and matrix cells.
+ * Held across a unit or any selector change (mode, level, range, groups, pre-tax), in its own unit.
+ */
+export function useHeldFlowsExpensesSpent(surface: string, params: ExpensesSpentParams, enabled = true) {
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.flowsExpensesSpent(params), queryFn: () => api.flowsExpensesSpent(params), enabled },
+    params.unit,
+    surface
+  );
 }
 
-/** The lines of one month (a day of it, a category) by spending day, grouped by day. */
-export function useFlowsExpensesSpentLines(
+/**
+ * The lines of one month (a day of it, a category) by spending day, grouped by day; held across a
+ * unit, month, day or category change, in its own unit.
+ */
+export function useHeldFlowsExpensesSpentLines(
+  surface: string,
   params: ExpensesSpentParams,
   sel: { month: string; day: string | null; category: string | null },
   enabled = true
 ) {
-  return useQuery({
-    queryKey: queryKeys.flowsExpensesSpentLines(params, sel.month, sel.day, sel.category),
-    queryFn: () => api.flowsExpensesSpentLines(params, sel),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.flowsExpensesSpentLines(params, sel.month, sel.day, sel.category),
+      queryFn: () => api.flowsExpensesSpentLines(params, sel),
+      enabled,
+    },
+    params.unit,
+    surface
+  );
 }
 
 /**
  * The flows overview (income, expenses, deposits, P/L, net by month, by day when `days` is given,
- * this month / year). Held across an installment-mode or window change, never across units.
+ * this month / year), as a surface shows it: held across a unit, installment-mode or window change,
+ * in its own unit.
  */
-export function useFlowsOverview(unit: DisplayUnit, installmentMode: "split" | "total", days?: number) {
+export function useHeldFlowsOverview(surface: string, unit: DisplayUnit, installmentMode: "split" | "total", days?: number) {
   const queryKey = queryKeys.flowsOverview(unit, installmentMode, days);
-  return useQuery({
-    queryKey,
-    queryFn: () => api.flowsOverview(unit, installmentMode, days),
-    ...displayUnitQueryBehaviorFor(queryKey),
-  });
+  return useHeldUnitQuery(
+    {
+      queryKey,
+      queryFn: () => api.flowsOverview(unit, installmentMode, days),
+      ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+    },
+    unit,
+    surface
+  );
 }
 
 export function useCcFacturadoFinancingLinks() {
@@ -850,7 +898,7 @@ export function usePortfolioGroupCcLedger(slug: string | undefined, enabled = tr
     queryKey: queryKeys.portfolioGroupCcLedger(slug ?? ""),
     queryFn: () => api.portfolioGroupCcLedger(slug!),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupCcLedger(slug ?? "")),
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
   });
 }
 
@@ -860,50 +908,68 @@ export function usePortfolioGroupCcLanes(slug: string | undefined, enabled = tru
     queryKey: queryKeys.portfolioGroupCcLanes(slug ?? ""),
     queryFn: () => api.portfolioGroupCcLanes(slug!),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupCcLanes(slug ?? "")),
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
   });
 }
 
-export function useMortgageGroupGlance(slug: string | undefined, unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.mortgageGroupGlance(slug ?? "", unit),
+function mortgageGroupGlanceOptions(slug: string | undefined, unit: DisplayUnit) {
+  const queryKey = queryKeys.mortgageGroupGlance(slug ?? "", unit);
+  return {
+    queryKey,
     queryFn: () => api.mortgageGroupGlance(slug!, unit),
     enabled: Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.mortgageGroupGlance(slug ?? "", unit)),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
 }
 
-/** The real-estate group page (`realEstateGroupGlance.ts`). */
-export function useRealEstateGroupGlance(slug: string | undefined, unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.realEstateGroupGlance(slug ?? "", unit),
+/** The mortgage group page (`mortgageGroupGlance.ts`), held across a unit switch, in its own unit. */
+export function useHeldMortgageGroupGlance(surface: string, slug: string | undefined, unit: DisplayUnit) {
+  return useHeldUnitQuery(mortgageGroupGlanceOptions(slug, unit), unit, surface);
+}
+
+function realEstateGroupGlanceOptions(slug: string | undefined, unit: DisplayUnit) {
+  const queryKey = queryKeys.realEstateGroupGlance(slug ?? "", unit);
+  return {
+    queryKey,
     queryFn: () => api.realEstateGroupGlance(slug!, unit),
     enabled: Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.realEstateGroupGlance(slug ?? "", unit)),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
 }
 
-/** The Liabilities page's head and upcoming payments (`liabilitiesGlance.ts`). */
-export function useLiabilitiesGlance(slug: string | undefined, unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.liabilitiesGlance(slug ?? "", unit),
+/** The real-estate group page (`realEstateGroupGlance.ts`), held across a unit switch, in its own unit. */
+export function useHeldRealEstateGroupGlance(surface: string, slug: string | undefined, unit: DisplayUnit) {
+  return useHeldUnitQuery(realEstateGroupGlanceOptions(slug, unit), unit, surface);
+}
+
+function liabilitiesGlanceOptions(slug: string | undefined, unit: DisplayUnit) {
+  const queryKey = queryKeys.liabilitiesGlance(slug ?? "", unit);
+  return {
+    queryKey,
     queryFn: () => api.liabilitiesGlance(slug!, unit),
     enabled: Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.liabilitiesGlance(slug ?? "", unit)),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
 }
 
-export function useAccountDetailBundle(
-  id: string | undefined,
-  unit: DisplayUnit,
-  chartGranularity: "monthly" | "daily"
-) {
-  return useQuery({
-    queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity),
+/** The Liabilities page's head and upcoming payments (`liabilitiesGlance.ts`), held across a unit switch. */
+export function useHeldLiabilitiesGlance(surface: string, slug: string | undefined, unit: DisplayUnit) {
+  return useHeldUnitQuery(liabilitiesGlanceOptions(slug, unit), unit, surface);
+}
+
+function accountDetailBundleOptions(id: string | undefined, unit: DisplayUnit, chartGranularity: "monthly" | "daily") {
+  const queryKey = queryKeys.accountDetail(id ?? "", unit, chartGranularity);
+  return {
+    queryKey,
     queryFn: () => api.accountDetailBundle(id!, unit, { granularity: chartGranularity }),
     enabled: Boolean(id),
-    ...displayUnitQueryBehaviorFor(queryKeys.accountDetail(id ?? "", unit, chartGranularity)),
-  });
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+  };
+}
+
+/** An account page's bundle as the page shows it: held across a unit switch, in its own unit. */
+export function useHeldAccountDetailBundle(surface: string, id: string | undefined, unit: DisplayUnit, chartGranularity: "monthly" | "daily") {
+  return useHeldUnitQuery(accountDetailBundleOptions(id, unit, chartGranularity), unit, surface);
 }
 
 export type FlowsQueryFilters = {
@@ -968,7 +1034,8 @@ export function useGroupFlows(slug: string, filters: FlowsQueryFilters, enabled 
         exclude_spending: filters.exclude_spending,
       }),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupFlows(slug, filtersKey)),
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+    placeholderData: sameEntityPlaceholder(queryKeys.groupFlows(slug, filtersKey)),
   });
 }
 
@@ -1003,13 +1070,12 @@ export function useAccountFlows(
 ) {
   const filtersKey = useMemo(() => serializeFlowFilters(filters), [filters]);
   const queryKey = queryKeys.accountFlows(id ?? "", scope, filtersKey);
-  const behavior = displayUnitQueryBehaviorFor(queryKey);
   return useQuery({
     queryKey,
     queryFn: () => fetchAccountFlows(id!, filters),
     enabled: enabled && Boolean(id),
-    ...behavior,
-    placeholderData: scope === "panel" ? behavior.placeholderData : undefined,
+    ...DISPLAY_UNIT_QUERY_BEHAVIOR,
+    placeholderData: scope === "panel" ? sameEntityPlaceholder(queryKey) : undefined,
   });
 }
 
@@ -1030,7 +1096,7 @@ export function useCheckingStatement(accountId: number, filters: CheckingStateme
     getNextPageParam: (last) => last.next_before,
     enabled: enabled && accountId > 0,
     staleTime: DISPLAY_UNIT_STALE_MS,
-    placeholderData: keepPreviousDataSameEntity(queryKey, 3),
+    placeholderData: sameEntityPlaceholder(queryKey),
   });
 }
 
@@ -1042,16 +1108,18 @@ export function useMovementMirrorCandidates() {
 }
 
 
-export function useProjections(
+/** The projections in `unit` for these assumptions, held across a unit or assumptions change, in its own unit. */
+export function useHeldProjections(
+  surface: string,
   unit: DisplayUnit,
   overrides: import("../projectionsOverrides").ProjectionOverrides
 ) {
   const overridesKey = useMemo(() => JSON.stringify(overrides), [overrides]);
-  return useQuery({
-    queryKey: queryKeys.projections(unit, overridesKey),
-    queryFn: () => api.projections(unit, overrides),
-    placeholderData: (prev) => prev,
-  });
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.projections(unit, overridesKey), queryFn: () => api.projections(unit, overrides) },
+    unit,
+    surface
+  );
 }
 
 export function useTaxReturn(taxYear: number | null) {
@@ -1085,18 +1153,10 @@ export function useBenchmarks() {
   });
 }
 
-/**
- * The mortgage payments list's prepaid-vs-invested block for `benchmark` (the bundle carries the
- * default benchmark's; this fetches another one only when picked).
- */
-/** A mortgage payments list's prepaid-vs-invested column: one loan's, or the mortgage group's merged list. */
-export function useDeptoPrepayments(
-  scope: { accountId: number } | { portfolioGroup: string },
-  benchmark: string,
-  unit: DisplayUnit,
-  enabled: boolean
-) {
-  return useQuery({
+type PrepaymentsScope = { accountId: number } | { portfolioGroup: string };
+
+function deptoPrepaymentsOptions(scope: PrepaymentsScope, benchmark: string, unit: DisplayUnit, enabled: boolean) {
+  return {
     queryKey:
       "accountId" in scope
         ? queryKeys.deptoPrepayments(scope.accountId, benchmark, unit)
@@ -1108,30 +1168,65 @@ export function useDeptoPrepayments(
     enabled,
     staleTime: DISPLAY_UNIT_STALE_MS,
     refetchInterval: DISPLAY_UNIT_STALE_MS,
-  });
+  };
 }
 
-/** The Rentabilidad comparison row for an account or a group page. */
-export function useBenchmarkComparison(
-  scope: { accountId: number } | { portfolioGroup: string },
+/**
+ * A mortgage payments list's prepaid-vs-invested column for `benchmark`: one loan's, or the
+ * mortgage group's merged list. Held across a unit switch, in its own unit.
+ */
+export function useHeldDeptoPrepayments(
+  surface: string,
+  scope: PrepaymentsScope,
   benchmark: string,
   unit: DisplayUnit,
   enabled: boolean
 ) {
+  return useHeldUnitQuery(deptoPrepaymentsOptions(scope, benchmark, unit, enabled), unit, surface);
+}
+
+function benchmarkComparisonOptions(scope: PrepaymentsScope, benchmark: string, unit: DisplayUnit, enabled: boolean) {
   const scopeKey = "accountId" in scope ? `a:${scope.accountId}` : `g:${scope.portfolioGroup}`;
-  return useQuery({
+  return {
     queryKey: queryKeys.benchmarkComparison(scopeKey, benchmark, unit),
     queryFn: () => api.benchmarkComparison(scope, benchmark, unit),
     enabled,
     staleTime: DISPLAY_UNIT_STALE_MS,
     refetchInterval: DISPLAY_UNIT_STALE_MS,
-  });
+  };
 }
 
-export function useWealthPercentile(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.wealthPercentile(unit),
-    queryFn: () => api.wealthPercentile(unit),
-    placeholderData: keepPreviousData,
-  });
+/**
+ * The Rentabilidad comparison row for an account or a group page, requested in the unit of the
+ * list it sits beside (`unit`) and held across a change of it, in its own unit. While the list
+ * shows another unit than the display unit (a switch in flight), the display unit's comparison is
+ * fetched too (`warmUnit`), so it is in when the list flips.
+ */
+export function useHeldBenchmarkComparison(
+  surface: string,
+  scope: PrepaymentsScope,
+  benchmark: string,
+  unit: DisplayUnit,
+  warmUnit: DisplayUnit,
+  enabled: boolean
+) {
+  const queryClient = useQueryClient();
+  const scopeKey = "accountId" in scope ? `a:${scope.accountId}` : `g:${scope.portfolioGroup}`;
+  useEffect(() => {
+    if (!enabled || warmUnit === unit) return;
+    // Fetched afresh: a cached copy may be older than the comparison on screen (`heldUnitPayload.ts`).
+    void queryClient.prefetchQuery({ ...benchmarkComparisonOptions(scope, benchmark, warmUnit, true), staleTime: 0 });
+    // `scopeKey` stands for `scope`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient, scopeKey, benchmark, unit, warmUnit, enabled]);
+  return useHeldUnitQuery(benchmarkComparisonOptions(scope, benchmark, unit, enabled), unit, surface);
+}
+
+/** The wealth percentile page in `unit`, held across a unit switch, in its own unit. */
+export function useHeldWealthPercentile(surface: string, unit: DisplayUnit) {
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.wealthPercentile(unit), queryFn: () => api.wealthPercentile(unit) },
+    unit,
+    surface
+  );
 }

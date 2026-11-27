@@ -49,7 +49,7 @@ export function PositionAccountDetailPage({
   pendingShape: PositionGlanceShape | null;
 }) {
   const { t } = useTranslation();
-  const { summary, displayUnit, periodReturns, monthlyPerfRows, depositInflows } = data;
+  const { summary, periodReturns, monthlyPerfRows, depositInflows } = data;
   const loading = data.contentLoading;
   const glance = data.positionGlance ?? undefined;
   const surfaces = useAccountChartSurfaces(data);
@@ -93,7 +93,7 @@ export function PositionAccountDetailPage({
       loading={loading}
     >
       {/* Self-gates on the server's import specs (a capability): hidden until they arrive. */}
-      <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
+      <AccountImportSection accountId={summary.account_id} />
 
       {/* The valuation chart beside the rail; on a phone the chart first, then the rail's groups. */}
       <PageGridTile id="position-band" className={cn("page-grid", styles.band)}>
@@ -133,7 +133,6 @@ export function PositionAccountDetailPage({
             <PeriodReturnsWithBenchmark
               title={t("periodReturns.title")}
               data={periodReturns ?? null}
-              displayUnit={displayUnit}
               scope={{ accountId: summary.account_id }}
               surfaceId={`account.${summary.account_id}.returns`}
               loading={loading}
@@ -190,7 +189,7 @@ export function PositionAccountDetailPage({
       ) : null}
 
       {showBookLedgerEdit ? (
-        <AccountBookLedgerSection accountId={summary.account_id} displayUnit={displayUnit} />
+        <AccountBookLedgerSection accountId={summary.account_id} />
       ) : null}
     </AccountDetailSharedLayout>
   );

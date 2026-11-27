@@ -1,6 +1,6 @@
 import { DEMO_EDITS_LIMITED } from "../../demoEdits";
 import { chileTodayYmd } from "../../calendarMonth";
-import { Fragment, type ReactNode, useCallback, useMemo, useState } from "react";
+import { createContext, Fragment, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { Button, Input } from "@crfrsr/ui";
 import { cn } from "../../cn";
 import { shownNameText, useTranslation } from "../../i18n";
@@ -36,11 +36,10 @@ import {
   useUpdateCcPurchaseCuotasMutation,
   useMakeStatementLineInstallmentMutation,
   usePostVendorBranchChoiceMutation,
-  useCardRefundCandidates,
+  useHeldCardRefundCandidates,
   useLinkCardRefundMutation,
   useUnlinkCardRefundMutation,
 } from "../../queries/hooks";
-import { queryLoadError, queryShowsLoading } from "../../queries/pageShapeReady";
 import { nextSeenKeys } from "../../rowArrivalAnimation";
 import { ROW_ARRIVED_ATTR, useRowArrivalAnimation } from "./useRowArrivalAnimation";
 import styles from "./CreditCardExpenseLinesTable.module.css";
@@ -227,6 +226,25 @@ function FixedCategoryPill({
 }
 
 /**
+ * The unit the lines on screen were requested in (their `converted` figures): the shown payload's
+ * own `unit`, which during a unit switch is the held payload's, not the picker's. Set by every
+ * lines table (`unit`, required) and by {@link ExpenseLinesUnitScope}; there is no fallback.
+ */
+const LinesUnitContext = createContext<string | null>(null);
+
+/** Sets the lines' unit for the rows below that are not inside a lines table (a candidates list). */
+export function ExpenseLinesUnitScope({ unit, children }: { unit: string; children: ReactNode }) {
+  return <LinesUnitContext.Provider value={unit}>{children}</LinesUnitContext.Provider>;
+}
+
+/** The unit an expense row formats its `converted` figure in; a row drawn outside one fails. */
+function useLinesUnit(): string {
+  const unit = useContext(LinesUnitContext);
+  if (unit == null) throw new Error("an expense row is drawn outside a lines table or ExpenseLinesUnitScope (no unit)");
+  return unit;
+}
+
+/**
  * A money amount in its own currency and, when the display unit is another currency, its value in
  * the unit in parentheses («US$13,30 ($13.083)»; «≈» at today's rate). Two spans: in a list narrower
  * than 450 px the row shows only the value in the unit (`.amountOwn` and the parentheses hidden).
@@ -236,8 +254,8 @@ export function MoneyAmount({
 }: {
   money: { amount: { value: number; currency: string }; converted: FlowCcExpenseLineRow["converted"] };
 }) {
-  const { displayUnit } = useDisplayPreferences();
-  const parts = lineAmountParts(money, displayUnit);
+  const unit = useLinesUnit();
+  const parts = lineAmountParts(money, unit);
   if (!parts.converted) return <span className={styles.amountOwn}>{parts.own}</span>;
   return (
     <>
@@ -300,8 +318,8 @@ type RowActions = {
 /** Delete for a card-feed / pasted line: confirm, then the server removes it. */
 function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  const del = useDeleteCcStatementLineMutation({ accountId: line.account_id, displayUnit });
+  const unit = useLinesUnit();
+  const del = useDeleteCcStatementLineMutation({ accountId: line.account_id });
   const [confirming, setConfirming] = useState(false);
   const failure = useActionError();
   return (
@@ -323,7 +341,7 @@ function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
         title={t("accountDetail.creditCard.facturacionDeleteConfirmTitle")}
         message={t("accountDetail.creditCard.facturacionDeleteConfirmBody", {
           merchant: shownNameText(line.name),
-          amount: formatLineAmount(line, displayUnit),
+          amount: formatLineAmount(line, unit),
         })}
         confirmLabel={t("accountDetail.creditCard.facturacionDeleteConfirmAction")}
         cancelLabel={t("accountDetail.creditCard.facturacionDeleteConfirmCancel")}
@@ -344,8 +362,7 @@ function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
 /** «Anulada por el banco»: the bank dropped this unbilled purchase; the day it did, entered here. */
 function AnnulPurchaseControl({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  const annul = useAnnulCcPurchaseMutation({ accountId: line.account_id, displayUnit });
+  const annul = useAnnulCcPurchaseMutation({ accountId: line.account_id });
   const [day, setDay] = useState(() => chileTodayYmd());
   const failure = useActionError();
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(day);
@@ -383,8 +400,7 @@ function AnnulPurchaseControl({ line }: { line: FlowCcExpenseLineRow }) {
 /** Undo for an annulment the user marked: confirm, then the purchase is listed again. */
 function UndoAnnulmentButton({ line, annulId }: { line: FlowCcExpenseLineRow; annulId: number }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  const undo = useUndoCcAnnulledPurchaseMutation({ accountId: line.account_id, displayUnit });
+  const undo = useUndoCcAnnulledPurchaseMutation({ accountId: line.account_id });
   const [confirming, setConfirming] = useState(false);
   const failure = useActionError();
   return (
@@ -423,8 +439,7 @@ function UndoAnnulmentButton({ line, annulId }: { line: FlowCcExpenseLineRow; an
 /** The installment count, entered right where the row asks for it. */
 function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  const make = useMakeStatementLineInstallmentMutation({ accountId: line.account_id, displayUnit });
+  const make = useMakeStatementLineInstallmentMutation({ accountId: line.account_id });
   const [value, setValue] = useState("");
   const failure = useActionError();
   const parsed = parseNumberInput(value);
@@ -463,10 +478,9 @@ function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
 /** A manual plan's count, changed in place, and «Quitar cuotas» to turn it back into one charge. */
 function PlanCuotasControls({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
   const purchaseId = line.installment_purchase_id;
-  const update = useUpdateCcPurchaseCuotasMutation({ accountId: line.account_id, displayUnit });
-  const remove = useDeleteCcPurchaseMutation({ accountId: line.account_id, displayUnit });
+  const update = useUpdateCcPurchaseCuotasMutation({ accountId: line.account_id });
+  const remove = useDeleteCcPurchaseMutation({ accountId: line.account_id });
   const [value, setValue] = useState(line.nro_cuota_total != null ? String(line.nro_cuota_total) : "");
   const [confirming, setConfirming] = useState(false);
   if (purchaseId == null) {
@@ -532,7 +546,8 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
   const [open, setOpen] = useState(false);
   const link = useLinkCardRefundMutation();
   const unlink = useUnlinkCardRefundMutation();
-  const candidates = useCardRefundCandidates(displayUnit, line.account_id, line.statement_line_id, open);
+  // Held across a unit switch while open (dimmed, in its own unit).
+  const candidates = useHeldCardRefundCandidates("expenseRow.refundCandidates", displayUnit, line.account_id, line.statement_line_id, open);
   const busy = link.isPending || unlink.isPending;
   const { error: failureText, onError, clear } = useActionError();
   const failureNode = failureText ? (
@@ -584,7 +599,7 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
   }
 
   const suggestion = line.refund_suggestion;
-  const loadError = queryLoadError(candidates);
+  const loadError = candidates.error;
   return (
     <div className={styles.refundLink}>
       {!open ? (
@@ -607,30 +622,35 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
           </Button>
         </div>
       ) : (
-        <div className={loadableClass(queryShowsLoading(candidates))}>
+        <div className={loadableClass(candidates.loading)}>
           {loadError ? (
             <p className="error">{loadError instanceof Error ? loadError.message : t("common.loadFailed")}</p>
           ) : candidates.data && candidates.data.candidates.length === 0 ? (
             <p className="muted">{t("expenses.creditCard.lineRow.refund.empty")}</p>
           ) : (
-            <div role="list" aria-label={t("expenses.creditCard.lineRow.refund.pickAria")} className={styles.refundCandidates}>
-              {(candidates.data?.candidates ?? []).map((c) => (
-                <button
-                  key={c.line_id}
-                  type="button"
-                  role="listitem"
-                  className={cn(styles.refundCandidate, c.merchant_match && styles.refundCandidateMatch)}
-                  disabled={busy}
-                  onClick={() => linkTo(c.line_id)}
-                >
-                  <span className="mono muted">{c.purchase_date}</span>
-                  <span className={styles.refundCandidateName}>{shownNameText(c.name)}</span>
-                  <span className="mono">
-                    <MoneyAmount money={c} />
-                  </span>
-                </button>
-              ))}
-            </div>
+            candidates.data ? (
+              // The candidates' own unit (held across a switch), not the lines table's.
+              <ExpenseLinesUnitScope unit={candidates.data.unit}>
+                <div role="list" aria-label={t("expenses.creditCard.lineRow.refund.pickAria")} className={styles.refundCandidates}>
+                  {candidates.data.candidates.map((c) => (
+                    <button
+                      key={c.line_id}
+                      type="button"
+                      role="listitem"
+                      className={cn(styles.refundCandidate, c.merchant_match && styles.refundCandidateMatch)}
+                      disabled={busy}
+                      onClick={() => linkTo(c.line_id)}
+                    >
+                      <span className="mono muted">{c.purchase_date}</span>
+                      <span className={styles.refundCandidateName}>{shownNameText(c.name)}</span>
+                      <span className="mono">
+                        <MoneyAmount money={c} />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </ExpenseLinesUnitScope>
+            ) : null
           )}
           <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
             {t("expenses.creditCard.lineRow.refund.close")}
@@ -1007,6 +1027,7 @@ export function CreditCardExpenseLinesTable({
   dateOf,
   loading,
   animateArrivals = false,
+  unit: unitProp,
 }: {
   lines?: readonly FlowCcExpenseLineRow[];
   /**
@@ -1043,6 +1064,11 @@ export function CreditCardExpenseLinesTable({
    * desktop (`items` only; first data and value-only refetches animate nothing).
    */
   animateArrivals?: boolean;
+  /**
+   * The unit the lines were requested in (the shown payload's `unit`, never the picker's); rows
+   * below read it. Null only while there are no lines (nothing shown yet).
+   */
+  unit: string | null;
 }) {
   const { t, i18n } = useTranslation();
   const listRef = useRowArrivalAnimation(animateArrivals && items != null);
@@ -1070,17 +1096,21 @@ export function CreditCardExpenseLinesTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n.language: the labels translate at render (no cached t()).
     [categories, i18n.language]
   );
-  const { displayUnit } = useDisplayPreferences();
+  const unit = unitProp;
+  const rowCount = items != null ? items.length : lines.length;
+  if (rowCount > 0 && unit == null) throw new Error("CreditCardExpenseLinesTable: lines drawn without the unit they were requested in");
   const sorted = useMemo(
     () =>
-      sortLines(lines, sort, displayUnit, (ln) => {
-        const slug = lineCategorySlug(ln);
-        return slug ? (categoryLabelBySlug.get(slug) ?? slug) : null;
-      }, dateOf),
-    [categoryLabelBySlug, lines, sort, displayUnit, dateOf]
+      // No unit only with no lines (checked above): nothing to sort.
+      unit == null
+        ? lines
+        : sortLines(lines, sort, unit, (ln) => {
+            const slug = lineCategorySlug(ln);
+            return slug ? (categoryLabelBySlug.get(slug) ?? slug) : null;
+          }, dateOf),
+    [categoryLabelBySlug, lines, sort, unit, dateOf]
   );
 
-  const rowCount = items != null ? items.length : lines.length;
   if (rowCount === 0 && !loading) {
     return <p className="muted" style={{ margin: 0 }}>{emptyLabel}</p>;
   }
@@ -1110,6 +1140,7 @@ export function CreditCardExpenseLinesTable({
   const anySelected = selection != null && selection.selectedKeys.size > 0;
 
   return (
+    <LinesUnitContext.Provider value={unit}>
     <div className={cn(styles.wrap, loading && loadableClass(true))}>
       <div
         className={cn(
@@ -1183,5 +1214,6 @@ export function CreditCardExpenseLinesTable({
         </Button>
       ) : null}
     </div>
+    </LinesUnitContext.Provider>
   );
 }

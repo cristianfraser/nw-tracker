@@ -2,7 +2,7 @@ import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "../../i18n";
 import { buildCcDailyHistorialRows } from "../../ccDailyHistorial";
 import { windowCcHistorialRows } from "../../chartRangeWindow";
-import { useDailySeries } from "../../queries/hooks";
+import { useHeldDailySeries } from "../../queries/hooks";
 import { dailyPayloadPending } from "../../queries/pageShapeReady";
 import { monthYearSurfacePeriod, useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { timeRangeToDays } from "../../timeRange";
@@ -77,7 +77,8 @@ export function CreditCardHistorialSurface({
   const rows = ccLedger.historial_chart;
   const hasHistorial = ccLedger.has_installment_ledger && (rows?.length ?? 0) > 0;
 
-  const daily = useDailySeries(
+  // Always in pesos (the card's billing frame); held across a range change.
+  const daily = useHeldDailySeries("cc.historialDaily", 
     scope.variant === "account"
       ? { accountId: scope.accountId }
       : { portfolioGroup: scope.portfolioGroup },
@@ -114,11 +115,11 @@ export function CreditCardHistorialSurface({
           onRangeChange={prefs.setRange}
         />
       </div>
-      {isDaily && dailyRows == null && daily.isError ? (
+      {isDaily && dailyRows == null && daily.error != null ? (
         <p className="error">
           {daily.error instanceof Error ? daily.error.message : t("common.loadFailed")}
         </p>
-      ) : isDaily && dailyRows == null && daily.data && !daily.isPlaceholderData ? (
+      ) : isDaily && dailyRows == null && daily.data && !daily.loading ? (
         // Loaded, and the server states there is no daily series: a real absence.
         <p className="muted">{t("accountDetail.creditCard.historialEmpty")}</p>
       ) : (
@@ -127,7 +128,7 @@ export function CreditCardHistorialSurface({
           openBillingMonth={ccLedger.open_billing_month}
           dailyRows={dailyRows}
           period={prefs.period}
-          loading={loading || (isDaily && dailyRows == null)}
+          loading={loading || (isDaily && (dailyRows == null || daily.loading))}
         />
       )}
     </PageGridTile>

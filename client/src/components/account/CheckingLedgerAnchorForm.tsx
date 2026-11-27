@@ -4,7 +4,6 @@ import { api } from "../../api";
 import { formatNumberInput, parseNumberInputOrThrow } from "../../format";
 import { formatCartolaPesos } from "../../formatNative";
 import { useTranslation } from "../../i18n";
-import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import type { CartolaDerivedAnchorDto, CheckingLedgerAnchorDto } from "../../types";
 import { formatYearMonthLabel } from "../../formatDateLabel";
@@ -12,14 +11,12 @@ import { Button, Input } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
-  displayUnit: DisplayUnit;
   ledgerAnchor: CheckingLedgerAnchorDto | null;
   cartolaDerivedAnchor: CartolaDerivedAnchorDto | null;
 };
 
 export function CheckingLedgerAnchorForm({
   accountId,
-  displayUnit,
   ledgerAnchor,
   cartolaDerivedAnchor,
 }: Props) {
@@ -44,7 +41,7 @@ export function CheckingLedgerAnchorForm({
 
   const invalidate = async () => {
     // The anchor moves every balance of the statement too (`resources.accountFlows` covers it).
-    await invalidateResources(queryClient, resources.accountPage(accountId, displayUnit), resources.accountFlows());
+    await invalidateResources(queryClient, resources.accountPage(accountId), resources.accountFlows());
   };
 
   const saveMutation = useMutation({

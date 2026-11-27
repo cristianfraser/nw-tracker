@@ -11,8 +11,7 @@ import { flowTableGranularity, formatFlowMoney } from "../flowsDisplay";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import { rollupFlowsPlChartPointsByYear } from "../flowsPlAggregate";
 import { flowsPlBucketLabel, useTranslation } from "../i18n";
-import { useFlowsPl } from "../queries/hooks";
-import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
+import { useHeldFlowsPl } from "../queries/hooks";
 
 /** Flows → PL: monthly market P/L of the buckets (brokerage / retiro / efectivo / inmuebles) — the flows overview's P/L. */
 export function FlowsPlPage() {
@@ -37,14 +36,12 @@ export function FlowsPlPage() {
   );
   const isDaily = chartGranularity === "day";
   // Day mode fetches the server-windowed per-day P/L; M/Y keep the days-less payload.
-  const { data, error: queryError, isPending, isPlaceholderData } = useFlowsPl(
-    displayUnit,
-    isDaily ? timeRangeToDays(timeRange) : undefined
-  );
-  const error = queryLoadError({ data, error: queryError });
+  // Held across a unit or Diario window change: dimmed, and formatted in its own `unit`.
+  const pl = useHeldFlowsPl("flows.pl", displayUnit, isDaily ? timeRangeToDays(timeRange) : undefined);
+  const { data, error } = pl;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
-  // Pending, or holding the prior Diario window while the new one loads: dimmed.
-  const loading = queryShowsLoading({ isPending, isPlaceholderData });
+  const loading = pl.loading;
+  const unit = data?.unit ?? displayUnit;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
@@ -76,7 +73,7 @@ export function FlowsPlPage() {
           title={t("flows.pl.chartTitle")}
           points={chartPoints}
           xAxisGranularity={chartGranularity}
-          displayUnit={displayUnit}
+          displayUnit={unit}
           loading={loading}
         />
       </div>
@@ -95,7 +92,7 @@ export function FlowsPlPage() {
           key={tableGranularity}
           months={data?.chart_monthly ?? null}
           granularity={tableGranularity}
-          displayUnit={displayUnit}
+          displayUnit={unit}
           loading={loading}
         />
       </PageGridTile>
@@ -109,10 +106,10 @@ export function FlowsPlPage() {
             <h4>
               {flowsPlBucketLabel(block.slug)}
               <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-                {formatFlowMoney(block.total_cumulative, displayUnit)}
+                {formatFlowMoney(block.total_cumulative, unit)}
               </span>
             </h4>
-            <FlowsPlAccountRows block={block} displayUnit={displayUnit} loading={loading} />
+            <FlowsPlAccountRows block={block} displayUnit={unit} loading={loading} />
           </PageGridTile>
         ))}
       </PageGridTile>

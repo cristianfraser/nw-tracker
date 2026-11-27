@@ -9,8 +9,8 @@ import { AccountCashMovementsForm } from "../../components/account/AccountCashMo
 import { AccountUnitsFlowForm } from "../../components/account/AccountUnitsFlowForm";
 import { buildDailyValuationBlock } from "../../dailySeriesChart";
 import { servedDailyPerfComboPoints } from "../../servedDailyPerfCombo";
-import { useDailySeries } from "../../queries/hooks";
-import { dailyPayloadPending, queryShowsLoading } from "../../queries/pageShapeReady";
+import { useHeldDailySeries } from "../../queries/hooks";
+import { dailyPayloadPending } from "../../queries/pageShapeReady";
 import { timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../../components/ui/SurfaceControls";
@@ -43,14 +43,15 @@ export function useAccountChartSurfaces(data: AccountDetailPageData) {
   const loading = data.contentLoading;
   const valuationIsDaily = valuationPrefs.period === "day";
   const perfIsDaily = perfPrefs.period === "day";
-  // Day view: per-session line + day P/L bars, fetched lazily while a D control is on.
-  const dailySeries = useDailySeries(
+  // Day view: per-session line + day P/L bars, fetched lazily while a D control is on; each held
+  // across a unit or range change (a held daily series is drawn, dimmed, in its own unit).
+  const dailySeries = useHeldDailySeries("account.valuationDaily", 
     { accountId: summary.account_id },
     displayUnit,
     timeRangeToDays(valuationPrefs.range),
     valuationIsDaily
   );
-  const perfDailySeries = useDailySeries(
+  const perfDailySeries = useHeldDailySeries("account.perfDaily", 
     { accountId: summary.account_id },
     displayUnit,
     timeRangeToDays(perfPrefs.range),
@@ -85,7 +86,9 @@ export function useAccountChartSurfaces(data: AccountDetailPageData) {
         ? (dailyValuationBlock ?? EMPTY_VALUATION_BLOCK)
         : (valuationBlockForChart ?? ts.accounts),
       granularity: granularityOf(valuationPrefs.period),
-      loading: loading || valuationDailyPending,
+      /** The unit of the payload the chart draws (the daily series' or the bundle's). */
+      unit: valuationIsDaily ? (dailySeries.data?.unit ?? data.unit) : data.unit,
+      loading: loading || (valuationIsDaily && dailySeries.loading),
       controls: (
         <SurfaceControls
           period={valuationPrefs.period}
@@ -99,7 +102,8 @@ export function useAccountChartSurfaces(data: AccountDetailPageData) {
       isDaily: perfIsDaily,
       dailyPoints: dailyPerfPoints,
       granularity: granularityOf(perfPrefs.period),
-      loading: loading || perfDailyPending,
+      unit: perfIsDaily ? (perfDailySeries.data?.unit ?? data.unit) : data.unit,
+      loading: loading || (perfIsDaily && perfDailySeries.loading),
       controls: (
         <SurfaceControls
           period={perfPrefs.period}
@@ -132,7 +136,7 @@ export function AccountValuationChart({
     <LineChartPanel
       title={t("charts.valuationAndDeposits")}
       block={surfaces.valuation.block}
-      displayUnit={data.displayUnit}
+      displayUnit={surfaces.valuation.unit}
       xAxisGranularity={surfaces.valuation.granularity}
       timeRange={data.valuationPrefs.range}
       controls={surfaces.valuation.controls}
@@ -162,7 +166,7 @@ export function AccountPlYtdCombo({
       title={title ?? t("accountDetail.plMonthlyVsYtdTitle")}
       titleAs={titleAs}
       points={perf.isDaily ? (perf.dailyPoints ?? []) : data.ytdChartPoints}
-      displayUnit={data.displayUnit}
+      displayUnit={perf.unit}
       xAxisGranularity={perf.granularity}
       timeRange={data.perfPrefs.range}
       controls={perf.controls}
@@ -204,7 +208,7 @@ export function AccountDetalleSurface({
     "total"
   );
   const isDaily = detallePrefs.period === "day";
-  const detalleDailySeries = useDailySeries(
+  const detalleDailySeries = useHeldDailySeries("account.detalleDaily", 
     { accountId: summary.account_id },
     displayUnit,
     0,
@@ -226,18 +230,13 @@ export function AccountDetalleSurface({
         <SurfaceControls period={detallePrefs.period} onPeriodChange={detallePrefs.setPeriod} />
       </div>
       {isDaily ? (
-        <DailyPerfDetailTable
-          series={detalleDailySeries.data}
-          displayUnit={displayUnit}
-          dimClosedDays
-          loading={queryShowsLoading(detalleDailySeries)}
-        />
+        <DailyPerfDetailTable series={detalleDailySeries.data} dimClosedDays loading={detalleDailySeries.loading} />
       ) : (
         <MonthlyPerfDetailTable
-          key={`${data.id}-${displayUnit}-mp-detail`}
+          key={`${data.id}-mp-detail`}
           rows={data.monthlyPerfRows}
           yearlyRows={data.monthlyPerfYearlyRows}
-          displayUnit={displayUnit}
+          displayUnit={data.unit}
           period={detallePrefs.period === "year" ? "year" : "month"}
           isAfpAccount={isCuotaLedgerAccount}
           unitsKind={summary.units_kind}
@@ -255,7 +254,7 @@ export function AccountDetalleSurface({
  */
 export function useAccountMovementForm(data: AccountDetailPageData): { form: ReactNode } {
   const { t } = useTranslation();
-  const { summary, displayUnit } = data;
+  const { summary } = data;
   const loading = data.contentLoading;
   const cashFormCurrency = cashMovementsCurrency(summary.movement_create);
   const foreignCashCapability = cashFormCurrency != null && !isHomeCurrency(cashFormCurrency);
@@ -269,15 +268,14 @@ export function useAccountMovementForm(data: AccountDetailPageData): { form: Rea
     : null;
   const form =
     cashFormCurrency != null ? (
-      <AccountCashMovementsForm accountId={summary.account_id} displayUnit={displayUnit} currency={cashFormCurrency} />
+      <AccountCashMovementsForm accountId={summary.account_id} currency={cashFormCurrency} />
     ) : showBrokerageMovementsForm ? (
       <AccountBrokerageMovementsForm
         accountId={summary.account_id}
-        displayUnit={displayUnit}
         flowKinds={summary.option_contract != null ? OPTION_CONTRACT_FLOW_KINDS : undefined}
       />
     ) : showUnitsFlowForm && unitsFlowUnitLabel ? (
-      <AccountUnitsFlowForm accountId={summary.account_id} unitLabel={unitsFlowUnitLabel} displayUnit={displayUnit} />
+      <AccountUnitsFlowForm accountId={summary.account_id} unitLabel={unitsFlowUnitLabel} />
     ) : null;
   return { form };
 }
