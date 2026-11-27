@@ -96,5 +96,82 @@ class PrintedPaymentTest(unittest.TestCase):
         self.assertTrue(mod._compact_should_skip_purchase_row(paid))
 
 
+def _row(layout: str, day: str, merchant: str, amount: int) -> dict:
+    return {"layout": layout, "transaction_date": day, "merchant": merchant, "amount_clp": amount}
+
+
+def _compact(day: str, merchant: str, amount: int) -> dict:
+    return _row("compact_de_simple", day, merchant, amount)
+
+
+def _wide(day: str, merchant: str, amount: int) -> dict:
+    return _row("wide_master_simple", day, merchant, amount)
+
+
+class SantanderClpReadingsMergeTest(unittest.TestCase):
+    """The compact (pypdf) and wide (layout) readings of one printed line are one row."""
+
+    def _merged(self, compact, wide):
+        return [
+            (r["layout"], r["merchant"], r["amount_clp"])
+            for r in mod._merge_santander_clp_row_lists(compact, wide)
+        ]
+
+    def test_readings_differing_by_internal_spaces_merge(self) -> None:
+        self.assertEqual(
+            self._merged(
+                [_compact("03/10/2036", "DEMO   *RIDE SHOP", 5100)],
+                [_wide("03/10/2036", "DEMO *RIDE SHOP", 5100)],
+            ),
+            [("wide_master_simple", "DEMO *RIDE SHOP", 5100)],
+        )
+
+    def test_a_neighbouring_column_the_wide_reading_appended_merges(self) -> None:
+        self.assertEqual(
+            self._merged(
+                [
+                    _compact("06/10/2036", "SEGURO DEMO", 21000),
+                    _row("compact_cargos_charge", "05/10/2036", "IMPTO. DEMO LEY 1", 400),
+                ],
+                [
+                    _wide("06/10/2036", "SEGURO DEMO          COMPRAS P.A.T.", 21000),
+                    _wide("05/10/2036", "IMPTO. DEMO LEY 1     TIENDA DEMO X   0,066 %", 400),
+                ],
+            ),
+            [
+                # Which reading's text is kept follows the layout rank, as for every merge.
+                ("wide_master_simple", "SEGURO DEMO          COMPRAS P.A.T.", 21000),
+                ("compact_cargos_charge", "IMPTO. DEMO LEY 1", 400),
+            ],
+        )
+
+    def test_a_longer_merchant_without_a_column_gap_is_another_line(self) -> None:
+        merged = self._merged(
+            [_compact("08/10/2036", "CAFE DEMO", 900)],
+            [_wide("08/10/2036", "CAFE DEMO LAS CONDES", 900)],
+        )
+        self.assertEqual(len(merged), 2)
+
+    def test_identical_purchases_in_both_readings_stay_two(self) -> None:
+        merged = self._merged(
+            [_compact("09/10/2036", "DEMO   *FOOD", 7000), _compact("09/10/2036", "DEMO   *FOOD", 7000)],
+            [_wide("09/10/2036", "DEMO *FOOD", 7000), _wide("09/10/2036", "DEMO *FOOD", 7000)],
+        )
+        self.assertEqual(merged, [("wide_master_simple", "DEMO *FOOD", 7000)] * 2)
+
+    def test_a_twin_twice_in_one_reading_and_once_in_the_other_keeps_two(self) -> None:
+        merged = self._merged(
+            [_compact("10/10/2036", "PEAJE DEMO", 1500), _compact("10/10/2036", "PEAJE DEMO", 1500)],
+            [_wide("10/10/2036", "PEAJE DEMO          COMPRAS P.A.T.", 1500)],
+        )
+        self.assertEqual(
+            merged,
+            [
+                ("wide_master_simple", "PEAJE DEMO          COMPRAS P.A.T.", 1500),
+                ("compact_de_simple", "PEAJE DEMO", 1500),
+            ],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

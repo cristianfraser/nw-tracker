@@ -1680,21 +1680,71 @@ def _collapse_extraction_duplicated_body(rows: List[Dict[str, Any]]) -> List[Dic
     return out
 
 
+RE_MERCHANT_COLUMN_GAP = re.compile(r"\s{2,}")
+
+
+def _collapse_merchant_spaces(merchant: str) -> str:
+    return " ".join(merchant.split())
+
+
+def _merchant_column_prefixes(merchant: str) -> List[str]:
+    """The merchant cut at each column boundary (a run of two or more spaces), spaces
+    collapsed: the layout reading can carry the next printed column after the merchant
+    («SEGURO DEMO          COMPRAS P.A.T.», a stamp tax's rate)."""
+    out: List[str] = []
+    for gap in RE_MERCHANT_COLUMN_GAP.finditer(merchant.strip()):
+        prefix = _collapse_merchant_spaces(merchant.strip()[: gap.start()])
+        if prefix:
+            out.append(prefix)
+    return out
+
+
+def _santander_clp_row_merge_keys(
+    rows: List[Dict[str, Any]], other_rows: List[Dict[str, Any]]
+) -> List[str]:
+    """Merge key per row: date | merchant | amount, the merchant compared with spaces
+    collapsed («DEMO   *SHOP» = «DEMO *SHOP»), and cut at a column boundary
+    when only the cut names a merchant the other reading has on the same date and
+    amount («SEGURO DEMO          COMPRAS P.A.T.» = «SEGURO DEMO»)."""
+    other_merchants: Dict[Tuple[str, str], set] = {}
+    for row in other_rows:
+        day_amount = (str(row.get("transaction_date") or ""), str(row.get("amount_clp") or ""))
+        other_merchants.setdefault(day_amount, set()).add(
+            _collapse_merchant_spaces(str(row.get("merchant") or ""))
+        )
+    keys: List[str] = []
+    for row in rows:
+        day, amount = str(row.get("transaction_date") or ""), str(row.get("amount_clp") or "")
+        raw_merchant = str(row.get("merchant") or "")
+        merchant = _collapse_merchant_spaces(raw_merchant)
+        candidates = other_merchants.get((day, amount), set())
+        if merchant not in candidates:
+            merchant = next(
+                (p for p in _merchant_column_prefixes(raw_merchant) if p in candidates),
+                merchant,
+            )
+        keys.append("|".join([day, merchant, amount]))
+    return keys
+
+
 def _merge_santander_clp_row_lists(
     compact_rows: List[Dict[str, Any]], wide_rows: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """Compact supplies section-3 / payment lines; wide supplies place+date movimientos.
 
-    Keys carry an occurrence index WITHIN each input list so genuine duplicate
-    purchases (identical date+merchant+amount twice on one statement — e.g. a
-    double PAT charge later reversed by NOTA DE CREDITO) survive: the Nth twin
+    The two readings of one printed line merge on `_santander_clp_row_merge_keys`
+    (spaces collapsed, a swallowed neighbouring column cut off); the stored row keeps
+    its own reading's text. Keys carry an occurrence index WITHIN each input list so
+    genuine duplicate purchases (identical date+merchant+amount twice on one statement
+    — e.g. a double PAT charge later reversed by NOTA DE CREDITO) survive: the Nth twin
     in one body merges with the Nth twin in the other, never with its sibling.
     """
+    compact_rows = _collapse_extraction_duplicated_body(compact_rows)
+    wide_rows = _collapse_extraction_duplicated_body(wide_rows)
     by_key: Dict[str, Dict[str, Any]] = {}
-    for rows in (compact_rows, wide_rows):
+    for rows, other_rows in ((compact_rows, wide_rows), (wide_rows, compact_rows)):
         occurrence: Dict[str, int] = {}
-        for row in _collapse_extraction_duplicated_body(rows):
-            base = _santander_clp_row_base_key(row)
+        for row, base in zip(rows, _santander_clp_row_merge_keys(rows, other_rows)):
             n = occurrence.get(base, 0)
             occurrence[base] = n + 1
             key = f"{base}|#{n}"
