@@ -53,7 +53,7 @@ export function FlowsOverviewPage() {
 
   // Day mode asks for the day rows of the chart's window too. Held across a unit, mode or window
   // change (dimmed, in its own unit: everything below formats with `unit`).
-  const overview = useHeldFlowsOverview(
+  const overview = useHeldFlowsOverview("flows.overview", 
     displayUnit,
     installmentMode,
     isDaily ? timeRangeToDays(timeRange) : undefined

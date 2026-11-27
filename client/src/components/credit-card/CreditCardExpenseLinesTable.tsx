@@ -547,7 +547,7 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
   const link = useLinkCardRefundMutation();
   const unlink = useUnlinkCardRefundMutation();
   // Held across a unit switch while open (dimmed, in its own unit).
-  const candidates = useHeldCardRefundCandidates(displayUnit, line.account_id, line.statement_line_id, open);
+  const candidates = useHeldCardRefundCandidates("expenseRow.refundCandidates", displayUnit, line.account_id, line.statement_line_id, open);
   const busy = link.isPending || unlink.isPending;
   const { error: failureText, onError, clear } = useActionError();
   const failureNode = failureText ? (
@@ -1101,11 +1101,13 @@ export function CreditCardExpenseLinesTable({
   if (rowCount > 0 && unit == null) throw new Error("CreditCardExpenseLinesTable: lines drawn without the unit they were requested in");
   const sorted = useMemo(
     () =>
-      // No unit only with no lines (checked above): nothing to compare.
-      sortLines(lines, sort, unit ?? "", (ln) => {
-        const slug = lineCategorySlug(ln);
-        return slug ? (categoryLabelBySlug.get(slug) ?? slug) : null;
-      }, dateOf),
+      // No unit only with no lines (checked above): nothing to sort.
+      unit == null
+        ? lines
+        : sortLines(lines, sort, unit, (ln) => {
+            const slug = lineCategorySlug(ln);
+            return slug ? (categoryLabelBySlug.get(slug) ?? slug) : null;
+          }, dateOf),
     [categoryLabelBySlug, lines, sort, unit, dateOf]
   );
 

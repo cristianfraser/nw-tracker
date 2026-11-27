@@ -266,7 +266,7 @@ export function DepositsReconciliationPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   // Held across a unit switch: its own tiles and figures, dimmed, in its own `unit`.
-  const query = useHeldFlowsDepositsReconciliation(displayUnit);
+  const query = useHeldFlowsDepositsReconciliation("flows.depositsReconciliation", displayUnit);
   const { data, error } = query;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 

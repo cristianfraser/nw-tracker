@@ -17,7 +17,7 @@ import {
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { bundleContent, dailyPayloadPending } from "../queries/pageShapeReady";
-import { useStoredFirstPaint } from "../queries/heldUnitPayload";
+import { storedFirstPaint } from "../queries/heldUnitPayload";
 import {
   nwBucketTotalsFromDashTotals,
   writeDashboardNavSnapshotCache,
@@ -141,7 +141,7 @@ export function DashboardPage() {
     Boolean(netWorthNav)
   );
   // The bundle on screen: this unit's, or the one held while it loads (in ITS unit, dimmed).
-  const bundle = useHeldDashboardBundle(displayUnit);
+  const bundle = useHeldDashboardBundle("home.bundle", displayUnit);
   const { error } = bundle;
 
   useEffect(() => {
@@ -191,8 +191,8 @@ export function DashboardPage() {
   // The strip's cards follow the bundle's own decision (`heldUnitPayload.ts`): the bundle on
   // screen — this unit's, or the one held across a switch or a remount, in ITS unit. Only before
   // any bundle was drawn this session the stored snapshot paints them, and once painted it is held
-  // (in its unit) until a bundle is drawn (`useStoredFirstPaint`).
-  const firstPaintSnapshot = useStoredFirstPaint("navStrip|net_worth", {
+  // (in its unit) until a bundle is drawn (`storedFirstPaint`).
+  const firstPaintSnapshot = storedFirstPaint("navStrip|net_worth", {
     shown: content != null,
     failed: error != null,
     unit: displayUnit,
@@ -238,7 +238,7 @@ export function DashboardPage() {
   // Day view: the net-worth chart swaps to the daily series (overview-daily fetch), held like
   // the bundle across a unit or range change (a held daily series is drawn, dimmed, in its unit).
   const overviewDays = timeRangeToDays(overviewRange);
-  const overviewDaily = useHeldDashboardOverviewDaily(displayUnit, overviewDays, overviewIsDaily);
+  const overviewDaily = useHeldDashboardOverviewDaily("home.overviewDaily", displayUnit, overviewDays, overviewIsDaily);
   const overviewDailyData = overviewDaily.data;
   // The value map replaces the composition chart; only a real bundle (live or held) carries it.
   const valueMap = useMemo(
@@ -250,7 +250,7 @@ export function DashboardPage() {
   const allocationIsDaily = allocationPrefs.period === "day";
   const allocationDays = timeRangeToDays(allocationPrefs.range);
   const allocationDailyEnabled = allocationIsDaily && !valueMapShown && belowFoldShown;
-  const allocationDaily = useHeldDashboardOverviewDaily(displayUnit, allocationDays, allocationDailyEnabled);
+  const allocationDaily = useHeldDashboardOverviewDaily("home.allocationDaily", displayUnit, allocationDays, allocationDailyEnabled);
   const allocationDailyData = allocationDaily.data;
   // The bundle's own loading dims every chart.
   const overviewDailyPending = dailyPayloadPending(overviewIsDaily, overviewDaily);

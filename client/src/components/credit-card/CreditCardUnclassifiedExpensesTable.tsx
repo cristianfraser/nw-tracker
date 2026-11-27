@@ -24,7 +24,7 @@ export function CreditCardUnclassifiedExpensesTable({ includePreTax }: { include
   // A different list (the pre-tax toggle) starts from its first page.
   useEffect(() => setPage(1), [includePreTax]);
   // Held across a unit or page change (dimmed, in its own unit).
-  const query = useHeldFlowsExpenseLines(
+  const query = useHeldFlowsExpenseLines("expenses.uncategorized", 
     displayUnit,
     { kind: "uncategorized", include_pre_tax: includePreTax },
     true,

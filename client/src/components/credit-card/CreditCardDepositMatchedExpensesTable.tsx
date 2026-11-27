@@ -27,7 +27,7 @@ export function CreditCardDepositMatchedExpensesTable({ includePreTax }: { inclu
   const { displayUnit } = useDisplayPreferences();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   // Held across a unit switch (dimmed, in its own unit).
-  const query = useHeldFlowsExpenseLines(displayUnit, { kind: "deposit_matched", include_pre_tax: includePreTax });
+  const query = useHeldFlowsExpenseLines("expenses.depositMatched", displayUnit, { kind: "deposit_matched", include_pre_tax: includePreTax });
   const loading = query.data == null || query.loading;
   const categories = query.data?.categories ?? [];
   const lines = query.data?.lines;

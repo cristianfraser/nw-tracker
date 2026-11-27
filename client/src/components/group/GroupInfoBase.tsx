@@ -209,7 +209,7 @@ export function GroupInfoBase({
   // table comes alone (`/api/groups/:slug/period-returns`).
   const leanPeriodReturnsEnabled = tablesFetchEnabled && serverPaginatedMonthlyDetail;
   // Held across a unit switch like every table: shown in its own unit, dimmed.
-  const leanPeriodReturnsShown = useHeldGroupPeriodReturns(
+  const leanPeriodReturnsShown = useHeldGroupPeriodReturns("group.periodReturns", 
     portfolio?.groupSlug ?? "",
     displayUnit,
     leanPeriodReturnsEnabled
@@ -230,7 +230,7 @@ export function GroupInfoBase({
   const setMonthlyPage = (page: number) => setMonthlyPageState({ period: tablePeriod, page });
   const serverMonthlyEnabled = tablesFetchEnabled && serverPaginatedMonthlyDetail && tablePeriod !== "day";
   // The page on screen: this unit's, or the one held across a unit / page / period change.
-  const serverMonthly = useHeldGroupConsolidatedMonthlyPage(
+  const serverMonthly = useHeldGroupConsolidatedMonthlyPage("group.detalleMonthly", 
     portfolio?.groupSlug ?? "",
     displayUnit,
     // Detalle tables are month/year surfaces — the day toggle renders the monthly view.
@@ -247,7 +247,7 @@ export function GroupInfoBase({
   // A group whose nav node states no member accounts has no daily series (the route answers 404
   // «no accounts for group»): nothing is requested and the table reads empty, not loading.
   const groupHasNoAccounts = portfolio?.navNode.member_account_ids?.length === 0;
-  const dailySeries = useHeldDailySeries(
+  const dailySeries = useHeldDailySeries("group.detalleDaily", 
     { portfolioGroup: portfolio?.groupSlug || undefined },
     displayUnit,
     0,

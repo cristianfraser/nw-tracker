@@ -271,7 +271,7 @@ export function WatchlistPage() {
   // Prices and changes follow the CLP/USD toggle (converted server-side, unit in the query key).
   const { displayUnit } = useDisplayPreferences();
   // Held across a unit switch: the other unit's rows, dimmed, in their own unit, while this unit's load.
-  const { data, loading, error } = useHeldWatchlist(displayUnit);
+  const { data, loading, error } = useHeldWatchlist("watchlist", displayUnit);
   if (error) {
     return (
       <main>

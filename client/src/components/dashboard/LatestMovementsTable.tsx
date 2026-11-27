@@ -180,7 +180,7 @@ export function LatestMovementsTable() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   // Held across a unit switch, in the unit it was requested in (`query.unit`: the payload has none).
-  const query = useHeldLatestMovements(LATEST_MOVEMENTS_LIMIT, displayUnit);
+  const query = useHeldLatestMovements("home.latestMovements", LATEST_MOVEMENTS_LIMIT, displayUnit);
   // Before anything was drawn this session, the last stored copy of this unit (its rows' values
   // are in it; the payload names no unit, so its unit is the one it was stored under).
   const { value: data, storedUnit } = usePersistedPayload(

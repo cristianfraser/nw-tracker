@@ -170,11 +170,11 @@ export function RatesPage() {
   const { displayUnit } = useDisplayPreferences();
   const { tab: view, setTab: setView } = useSurfaceTab<RatesView>("rates.view", RATES_VIEWS);
 
-  const seriesQuery = useHeldMarketSeries(displayUnit);
+  const seriesQuery = useHeldMarketSeries("rates.series", displayUnit);
   const payload = seriesQuery.data;
   // Dim while there is no payload yet or the previous unit's is held.
   const seriesPending = seriesQuery.loading;
-  const glanceQuery = useHeldRatesGlance(displayUnit);
+  const glanceQuery = useHeldRatesGlance("rates.glance", displayUnit);
   const glance = glanceQuery.data;
   const glancePending = glanceQuery.loading;
   const { data: syncStatus } = useSyncStatus();

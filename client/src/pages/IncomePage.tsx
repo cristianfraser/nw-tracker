@@ -40,7 +40,7 @@ export function IncomePage() {
     tablePrefs.period
   );
   // Held across a unit switch: dimmed, everything formatted in its own `unit`.
-  const income = useHeldIncome(displayUnit);
+  const income = useHeldIncome("flows.income", displayUnit);
   const { data, error } = income;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
   // The frame renders with zero totals and no rows until there is a payload to show.

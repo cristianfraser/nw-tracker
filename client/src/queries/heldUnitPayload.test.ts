@@ -5,7 +5,10 @@ import { entityKeyLength, queryKeys } from "./keys";
 import {
   contentChangedAt,
   fetchedAt,
+  forcedRefetchSettled,
   initialHeldUnitState,
+  renderHeldUnit,
+  resetHeldUnitSession,
   settleHeldUnit,
   stepHeldUnit,
   trackFetchTimes,
@@ -57,7 +60,7 @@ function surface(qc: QueryClient, fetchList: (unit: string) => Promise<List>, gr
     const key = hashKey(queryKey);
     const own = r.data !== undefined && !r.isPlaceholderData ? r.data : undefined;
     const out = stepHeldUnit(state, {
-      candidate: own !== undefined ? { data: own, updatedAt: fetchedAt(qc, queryKey) } : undefined,
+      candidate: own !== undefined ? { data: own, updatedAt: fetchedAt(qc, queryKey), patchedAt: r.dataUpdatedAt } : undefined,
       pending: r.isPending,
       error: r.error,
       unit: current.unit,
@@ -240,6 +243,33 @@ describe("stepHeldUnit over react-query, real fetch order", () => {
     s.dispose();
   });
 
+  it("a patch of only the shown unit's copy makes the unpatched sibling older", async () => {
+    const srv = server({ usd: ["a"], clp: ["a"] });
+    const s = surface(qc, srv.fetch);
+    at(1_000);
+    s.step();
+    await s.settle();
+    at(2_000);
+    s.show("clp");
+    await s.settle();
+    at(2_500);
+    s.show("usd");
+    await s.settle();
+    // Back on clp: its copy (2 000) postdates the usd content (first seen at 1 000): instant.
+    at(2_600);
+    expect(s.show("clp")).toMatchObject({ data: { unit: "clp" }, held: false });
+    // An optimistic edit patches the clp copy only (a new object) at 3 000.
+    at(3_000);
+    qc.setQueryData<List>(queryKeys.portfolioGroup("brokerage", "clp"), (old) => old && { ...old, rows: ["a*"] });
+    s.step();
+    srv.rows.usd = ["a*"];
+    // usd was fetched at 2 500, before the patch: older, held over and refetched.
+    at(4_000);
+    expect(s.show("usd")).toMatchObject({ data: { unit: "clp", rows: ["a*"] }, held: true, loading: true });
+    expect((await s.settle()).data).toEqual({ unit: "usd", rows: ["a*"] });
+    s.dispose();
+  });
+
   it("clp → usd (pending) → eur (older copy) holds the clp payload, in clp", async () => {
     const srv = server({ eur: ["e"], clp: ["c"] });
     const s = surface(qc, srv.fetch);
@@ -405,5 +435,66 @@ describe("contentChangedAt", () => {
     expect(contentChangedAt(stored, 0)).toBe(0);
     expect(contentChangedAt(stored, 7)).toBe(7);
     expect(contentChangedAt(stored, 8)).toBe(7);
+  });
+});
+
+describe("renderHeldUnit (the session's records)", () => {
+  type Series = { unit: string; days: number };
+  const ENTITY = "dailySeries|account:7|perf";
+  const input = (over: Partial<HeldUnitInput<Series>>): HeldUnitInput<Series> => ({
+    candidate: undefined,
+    pending: false,
+    error: null,
+    unit: "usd",
+    entity: ENTITY,
+    key: "k",
+    enabled: true,
+    canRefetch: true,
+    ...over,
+  });
+  beforeEach(() => resetHeldUnitSession());
+
+  it("two surfaces of one entity with different keys hold their own payloads; an error drops only its own", () => {
+    let chart = initialHeldUnitState<Series>();
+    let table = initialHeldUnitState<Series>();
+    const draw = (surface: "chart" | "table", over: Partial<HeldUnitInput<Series>>) => {
+      const out = renderHeldUnit(surface, surface === "chart" ? chart : table, input(over));
+      if (surface === "chart") chart = out.local;
+      else table = out.local;
+      return out.view;
+    };
+    draw("chart", { candidate: { data: { unit: "usd", days: 90 }, updatedAt: 10 }, key: "usd-90" });
+    draw("table", { candidate: { data: { unit: "usd", days: 0 }, updatedAt: 11 }, key: "usd-0" });
+    // Switch to clp: each holds its own range.
+    expect(draw("chart", { pending: true, unit: "clp", key: "clp-90" }).data).toEqual({ unit: "usd", days: 90 });
+    expect(draw("table", { pending: true, unit: "clp", key: "clp-0" }).data).toEqual({ unit: "usd", days: 0 });
+    // The table's clp fetch fails: its hold ends; the chart still holds its own.
+    expect(draw("table", { unit: "clp", key: "clp-0", error: new Error("down") })).toMatchObject({ data: undefined });
+    expect(draw("chart", { pending: true, unit: "clp", key: "clp-90" }).data).toEqual({ unit: "usd", days: 90 });
+  });
+
+  it("with no record, a target fetched before another unit's cached copy is drawn dimmed and refetched", () => {
+    const local = initialHeldUnitState<Series>();
+    const older = { data: { unit: "usd", days: 90 }, updatedAt: 10 };
+    const out = renderHeldUnit("chart", local, input({ candidate: older, siblingFetchedAt: 20 }));
+    expect(out.view).toMatchObject({ data: older.data, held: false, loading: true, live: undefined });
+    expect(out.refetchAgainst).toBe(20);
+    // Once that refetch settled (or the copy is newer), it shows as it is.
+    const settled = settleHeldUnit(out.local, "k", 20);
+    expect(renderHeldUnit("chart", settled, input({ candidate: older, siblingFetchedAt: 20 })).view.loading).toBe(false);
+    const fresh = { data: { unit: "usd", days: 90 }, updatedAt: 30 };
+    resetHeldUnitSession();
+    expect(renderHeldUnit("chart", local, input({ candidate: fresh, siblingFetchedAt: 20 })).view.loading).toBe(false);
+  });
+});
+
+describe("forcedRefetchSettled", () => {
+  it("settles on a completed or failed fetch, never on a cancelled one", () => {
+    expect(forcedRefetchSettled({ fetchedBefore: 10, fetchedAfter: 20, startedAt: 15, errorUpdatedAt: 0 })).toBe(true);
+    expect(forcedRefetchSettled({ fetchedBefore: 10, fetchedAfter: 10, startedAt: 15, errorUpdatedAt: 16 })).toBe(true);
+    // Cancelled by an optimistic patch (reverted): no new fetch, no new error.
+    expect(forcedRefetchSettled({ fetchedBefore: 10, fetchedAfter: 10, startedAt: 15, errorUpdatedAt: 0 })).toBe(false);
+    // An error from before it started does not count.
+    expect(forcedRefetchSettled({ fetchedBefore: 10, fetchedAfter: 10, startedAt: 15, errorUpdatedAt: 12 })).toBe(false);
   });
 });

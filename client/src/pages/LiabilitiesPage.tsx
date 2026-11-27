@@ -69,14 +69,14 @@ export function LiabilitiesPage() {
 
   // The unit-keyed payloads are held across a unit switch (`heldUnitPayload.ts`), each formatted
   // in its own unit.
-  const glanceQuery = useHeldLiabilitiesGlance(slug, displayUnit);
+  const glanceQuery = useHeldLiabilitiesGlance("liabilities.glance", slug, displayUnit);
   const glance = glanceQuery.data;
   const glanceLoading = glanceQuery.loading;
   // Before the head answers, a group is drawn (dimmed); the head then says which ones exist.
   const hasCards = glance == null || glance.cards != null;
   const hasMortgage = glance == null || glance.mortgage != null;
   const lanesQuery = usePortfolioGroupCcLanes(CREDIT_CARD_SLUG, Boolean(slug) && hasCards);
-  const mortgageQuery = useHeldMortgageGroupGlance(hasMortgage && slug ? MORTGAGE_SLUG : undefined, displayUnit);
+  const mortgageQuery = useHeldMortgageGroupGlance("liabilities.mortgage", hasMortgage && slug ? MORTGAGE_SLUG : undefined, displayUnit);
 
   const error = glanceQuery.error;
   if (!node && navSettled) return <Navigate to={DASHBOARD_PATH} replace />;
@@ -250,8 +250,8 @@ function ChartsRow({ slug, glance, loading }: { slug: string; glance: Liabilitie
   // The surface key the root's coverage chart has always used, so a stored choice survives.
   const prefs = useSurfacePrefs(`liab.${slug}.proportional`, "month", "3y");
   const daily = prefs.period === "day";
-  const bundle = useHeldPortfolioGroupBundle({ portfolio_group: slug, unit: displayUnit, enabled: !daily });
-  const dailySeries = useHeldDailySeries({ portfolioGroup: slug }, displayUnit, timeRangeToDays(prefs.range), daily);
+  const bundle = useHeldPortfolioGroupBundle("liabilities.coverageBundle", { portfolio_group: slug, unit: displayUnit, enabled: !daily });
+  const dailySeries = useHeldDailySeries("liabilities.coverageDaily", { portfolioGroup: slug }, displayUnit, timeRangeToDays(prefs.range), daily);
   const dailyPending = dailyPayloadPending(daily, dailySeries);
   const block = daily
     ? dailyPending

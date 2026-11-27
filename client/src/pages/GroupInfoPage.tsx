@@ -150,13 +150,13 @@ export function GroupInfoPage() {
   const groupHasNoAccounts = navMatchNode?.member_account_ids?.length === 0;
   const dailyGroup = groupHasNoAccounts ? "" : portfolioGroup;
   // Each held across a unit or range change (a held daily series is drawn, dimmed, in its unit).
-  const dailySeries = useHeldDailySeries(
+  const dailySeries = useHeldDailySeries("group.valuationDaily", 
     { portfolioGroup: dailyGroup || undefined },
     displayUnit,
     timeRangeToDays(valuationPrefs.range),
     valuationIsDaily && dailyGroup !== ""
   );
-  const perfDailySeries = useHeldDailySeries(
+  const perfDailySeries = useHeldDailySeries("group.perfDaily", 
     { portfolioGroup: dailyGroup || undefined },
     displayUnit,
     timeRangeToDays(perfPrefs.range),

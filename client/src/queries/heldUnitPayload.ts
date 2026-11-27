@@ -42,13 +42,17 @@ import { entityKeyLength, type DisplayUnit } from "./keys";
  *    (`refetchInterval`) keeps reporting the error until it succeeds, instead of flipping back to
  *    a dimmed empty frame on every try.
  *
- * 4. **Session memory.** What a surface drew is remembered for the session, per entity, outside
- *    the component ({@link sessionRecord}): a surface that remounts (a page left and come back to,
- *    a tile hidden and drawn again) holds and compares exactly as if it had stayed mounted. Two
- *    surfaces drawing the same entity share the record; each still decides on its own request.
+ * 4. **Session memory.** What a surface drew is remembered for the session per (surface,
+ *    entity), outside the component ({@link renderHeldUnit}; `surface` is the call site's stable
+ *    id, required on every `useHeldX`): a surface that remounts (a page left and come back to, a
+ *    tile hidden and drawn again) holds and compares exactly as if it had stayed mounted, and two
+ *    surfaces of one entity asking different keys (two ranges of one daily series) each keep
+ *    their own. The records are bounded ({@link SESSION_KEPT}); with no record (a first mount, a
+ *    dropped one) a target fetched before another unit's cached copy of the entity is still
+ *    «older» (`siblingFetchedAt`): drawn dimmed and refetched, never as fresh.
  * 5. **Stored copies are first paint only.** A browser copy (localStorage: the home panels, the
  *    nav strip) paints a surface only while nothing has been drawn for it in this session
- *    ({@link useStoredFirstPaint}); once painted it is what the surface shows, held like any
+ *    ({@link storedFirstPaint}); once painted it is what the surface shows, held like any
  *    payload across a switch or a remount, until a fetched payload is shown. After that no stored
  *    copy is read again for it, and a failed request reports its error, never a stored copy.
  *
@@ -57,7 +61,14 @@ import { entityKeyLength, type DisplayUnit } from "./keys";
  */
 
 /** A payload the surface could show: the requested key's own data and when it was fetched. */
-export type UnitCandidate<T> = { data: T; updatedAt: number };
+export type UnitCandidate<T> = {
+  data: T;
+  /** When it was last fetched ({@link fetchedAt}; 0: never). */
+  updatedAt: number;
+  /** When it last changed in the cache, an in-place patch included (`dataUpdatedAt`): dates a new
+   * object's first sighting no earlier than the patch that made it. */
+  patchedAt?: number;
+};
 
 /** What a surface shows. */
 export type HeldUnitView<T> = {
@@ -100,9 +111,11 @@ export function initialHeldUnitState<T>(): HeldUnitState<T> {
 }
 
 /**
- * What the session's surfaces drew, by surface key (`shown|<entity>`, `firstPaint|<surface>`):
- * the newest {@link SESSION_KEPT}, least recently read dropped first. It holds payloads, so it is
- * bounded; a dropped record only makes its surface start as on a first visit.
+ * What the session's surfaces drew, by record key (`shown|<surface>|<entity>`,
+ * `firstPaint|<surface>`): the newest {@link SESSION_KEPT}, least recently read dropped first. It
+ * holds payloads, so it is bounded; a dropped record makes its surface start as on a first visit,
+ * where the query cache still dates the target against the entity's other units
+ * (`otherUnitFetchedAt`).
  */
 const SESSION_KEPT = 64;
 const sessionRecords = new Map<string, unknown>();
@@ -174,6 +187,12 @@ export type HeldUnitInput<T> = {
   enabled: boolean;
   /** An older copy can be refetched (else it is shown). */
   canRefetch: boolean;
+  /**
+   * The newest fetch of a cached copy of this entity in ANOTHER unit (0: none). With no record of
+   * what the surface drew (a first mount, a dropped record), a target fetched before it is older
+   * too: shown dimmed and refetched once, never as fresh.
+   */
+  siblingFetchedAt?: number;
 };
 
 const firstSeenAt = new WeakMap<object, number>();
@@ -232,7 +251,23 @@ export function stepHeldUnit<T>(
         refetchAgainst: prev.changedAt,
       };
     }
-    const changedAt = contentChangedAt(candidate.data, candidate.updatedAt);
+    const sibling = input.siblingFetchedAt ?? 0;
+    if (
+      prev == null &&
+      input.canRefetch &&
+      candidate.updatedAt > 0 &&
+      candidate.updatedAt < sibling &&
+      state.settled.get(input.key) !== sibling
+    ) {
+      // Nothing of this surface remembered, but another unit's copy is newer: this one may be
+      // missing what it shows. Drawn dimmed while it refetches (no other payload to hold).
+      return {
+        view: { data: candidate.data, held: false, unit, loading: true, live: undefined, error: null },
+        state,
+        refetchAgainst: sibling,
+      };
+    }
+    const changedAt = contentChangedAt(candidate.data, Math.max(candidate.updatedAt, candidate.patchedAt ?? 0));
     const same =
       prev != null && prev.data === candidate.data && prev.unit === unit && prev.changedAt === changedAt;
     const next = same ? state : withShown({ data: candidate.data, changedAt, unit, entity });
@@ -293,16 +328,19 @@ export function settleHeldUnit<T>(state: HeldUnitState<T>, key: string, against:
 }
 
 /**
- * One render of a mounted surface: {@link stepHeldUnit} over the session record of `entity` (what
- * any mount of a surface of that entity drew last, kept outside the component) and this mount's
- * own memory (`local`: its forced refetches and failure). Writes the record back; returns this
- * mount's next memory (the same object when unchanged).
+ * One render of a mounted surface: {@link stepHeldUnit} over the session record of (`surface`,
+ * `entity`) — what this surface last drew for that entity, kept outside the component, so a
+ * remount finds it — and this mount's own memory (`local`: its forced refetches and failure).
+ * `surface` names the call site (a stable id; two instances of one component that may draw one
+ * entity with different keys need distinct ids). Writes the record back; returns this mount's
+ * next memory (the same object when unchanged).
  */
 export function renderHeldUnit<T>(
+  surface: string,
   local: HeldUnitState<T>,
   input: HeldUnitInput<T>
 ): { view: HeldUnitView<T>; local: HeldUnitState<T>; refetchAgainst: number | null } {
-  const recordKey = `shown|${input.entity}`;
+  const recordKey = `shown|${surface}|${input.entity}`;
   const remembered = sessionRecord<ShownRecord<T>>(recordKey) ?? null;
   const step = stepHeldUnit({ ...local, shown: remembered }, input);
   if (step.state.shown !== remembered) setSessionRecord(recordKey, step.state.shown ?? undefined);
@@ -315,11 +353,30 @@ export function renderHeldUnit<T>(
 }
 
 /**
+ * Whether a forced refetch settled its hold: it completed (the key's fetch time moved) or failed
+ * (an error recorded after it started). A cancelled one (an optimistic patch cancels the queries
+ * it writes, reverting them) settles nothing: the hold stays and the refetch is asked again.
+ */
+export function forcedRefetchSettled(r: {
+  fetchedBefore: number;
+  fetchedAfter: number;
+  startedAt: number;
+  errorUpdatedAt: number;
+}): boolean {
+  return r.fetchedAfter > r.fetchedBefore || r.errorUpdatedAt >= r.startedAt;
+}
+
+/** Cancelled forced refetches asked again before the hold gives up and shows its copy. */
+const FORCED_REFETCH_TRIES = 3;
+
+/**
  * {@link renderHeldUnit} as a hook. `candidate.data`'s identity dates its content (react-query's
  * structural sharing keeps it while equal). `refetch` is run, once per (key, held timestamp),
- * when the requested copy is older; without one an older copy is shown.
+ * when the requested copy is older, and answers whether it settled ({@link forcedRefetchSettled});
+ * without one an older copy is shown.
  */
 function useHeldUnitValue<T>(opts: {
+  surface: string;
   candidate: UnitCandidate<T> | undefined;
   pending: boolean;
   error?: unknown;
@@ -327,11 +384,12 @@ function useHeldUnitValue<T>(opts: {
   entity: string;
   key: string;
   enabled?: boolean;
-  refetch?: () => Promise<unknown>;
+  siblingFetchedAt?: number;
+  refetch?: () => Promise<boolean>;
 }): HeldUnitView<T> {
   const { key, refetch } = opts;
   const [local, setLocal] = useState<HeldUnitState<T>>(initialHeldUnitState);
-  const step = renderHeldUnit(local, {
+  const step = renderHeldUnit(opts.surface, local, {
     candidate: opts.candidate,
     pending: opts.pending,
     error: opts.error ?? null,
@@ -340,6 +398,7 @@ function useHeldUnitValue<T>(opts: {
     key,
     enabled: opts.enabled ?? true,
     canRefetch: refetch != null,
+    siblingFetchedAt: opts.siblingFetchedAt,
   });
   // Derived during render: the first frame of a switch (or of a remount) already compares
   // against what was on screen, so a stale copy never flashes.
@@ -348,8 +407,18 @@ function useHeldUnitValue<T>(opts: {
   const against = step.refetchAgainst;
   useEffect(() => {
     if (against == null || !refetch) return;
-    // Settled per key: a late settle of an earlier key never overwrites a later key's.
-    void refetch().finally(() => setLocal((s) => settleHeldUnit(s, key, against)));
+    let live = true;
+    // Settled per key (a late settle of an earlier key never overwrites a later key's), and only
+    // by a fetch that completed or failed: a cancelled one is asked again.
+    void (async () => {
+      for (let i = 0; i < FORCED_REFETCH_TRIES && live; i++) {
+        if (await refetch().catch(() => true)) break;
+      }
+      if (live) setLocal((s) => settleHeldUnit(s, key, against));
+    })();
+    return () => {
+      live = false;
+    };
     // Once per (request, held timestamp): a re-render while it runs must not refetch again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, against]);
@@ -385,20 +454,13 @@ export function stepStoredFirstPaint<T>(
 }
 
 /**
- * A surface's stored first paint ({@link stepStoredFirstPaint}) over its session record
- * (`surface` names the surface and its entity, e.g. `navStrip|net_worth`): the stored copy of the
- * requested unit paints only before anything was drawn for the surface in this session; once
- * painted it is held (its own `unit`) across a switch or a remount until a payload is drawn.
+ * A surface's stored first paint ({@link stepStoredFirstPaint}) over its session record, for one
+ * render (no React state: the record is the session's). `surface` names the surface and its
+ * entity, e.g. `navStrip|net_worth`: the stored copy of the requested unit paints only before
+ * anything was drawn for the surface in this session; once painted it is held (its own `unit`)
+ * across a switch or a remount until a payload is drawn.
  */
-export function useStoredFirstPaint<T>(
-  surface: string,
-  input: { shown: boolean; failed: boolean; unit: DisplayUnit; read: () => T | undefined }
-): { value: T | undefined; unit: DisplayUnit | undefined } {
-  return renderStoredFirstPaint(surface, input);
-}
-
-/** One render of {@link useStoredFirstPaint} (no React state: the record is the session's). */
-export function renderStoredFirstPaint<T>(
+export function storedFirstPaint<T>(
   surface: string,
   input: { shown: boolean; failed: boolean; unit: DisplayUnit; read: () => T | undefined }
 ): { value: T | undefined; unit: DisplayUnit | undefined } {
@@ -424,25 +486,63 @@ export type HeldUnitQuery<T> = HeldUnitView<T> & { refetch: () => Promise<unknow
  * the key's declared entity part. React-query's own placeholder is not used: the surface holds
  * only what it drew.
  */
-export function useHeldUnitQuery<T>(options: UnitQueryOptions<T>, unit: DisplayUnit): HeldUnitQuery<T> {
+export function useHeldUnitQuery<T>(
+  options: UnitQueryOptions<T>,
+  unit: DisplayUnit,
+  /** The call site's stable id (`heldUnitPayload.ts` «Session memory»). */
+  surface: string
+): HeldUnitQuery<T> {
   const { queryKey } = options;
   const client = useQueryClient();
   trackFetchTimes(client);
-  const query = useQuery<T, Error, T, readonly unknown[]>({ ...options, placeholderData: undefined });
+  const query = useQuery<T, Error, T, readonly unknown[]>(options);
   // Read during render: the fetch's success is recorded before its observers re-render.
   const updatedAt = query.data !== undefined ? fetchedAt(client, queryKey) : 0;
   const own = query.data !== undefined && !query.isPlaceholderData ? query.data : undefined;
-  // Joins a fetch already in flight (its data is newer than what is shown) instead of restarting it.
-  const refetch = () => query.refetch({ cancelRefetch: false });
+  const entityKey = queryKey.slice(0, entityKeyLength(queryKey));
+  const key = hashKey(queryKey);
+  // Joins a fetch already in flight (its data is newer than what is shown) instead of restarting
+  // it; answers whether it completed or failed (a cancelled one did neither).
+  const refetchSettles = async (): Promise<boolean> => {
+    const startedAt = Date.now();
+    const fetchedBefore = fetchedAt(client, queryKey);
+    const r = await query.refetch({ cancelRefetch: false });
+    return forcedRefetchSettled({
+      fetchedBefore,
+      fetchedAfter: fetchedAt(client, queryKey),
+      startedAt,
+      errorUpdatedAt: r.error != null ? r.errorUpdatedAt : 0,
+    });
+  };
   const view = useHeldUnitValue<T>({
-    candidate: own !== undefined ? { data: own, updatedAt } : undefined,
+    surface,
+    candidate: own !== undefined ? { data: own, updatedAt, patchedAt: query.dataUpdatedAt } : undefined,
     pending: query.isPending,
     error: query.error,
     unit,
-    entity: hashKey(queryKey.slice(0, entityKeyLength(queryKey))),
-    key: hashKey(queryKey),
+    entity: hashKey(entityKey),
+    key,
     enabled: options.enabled !== false,
-    refetch,
+    siblingFetchedAt: own !== undefined ? otherUnitFetchedAt(client, entityKey, key, unit) : 0,
+    refetch: refetchSettles,
   });
-  return { ...view, refetch };
+  return { ...view, refetch: () => query.refetch({ cancelRefetch: false }) };
+}
+
+/**
+ * The newest fetch of a cached copy of `entityKey` in another unit than `unit`: a key of the
+ * entity that does not name `unit` (every display-unit key carries its unit as one element).
+ */
+export function otherUnitFetchedAt(
+  client: QueryClient,
+  entityKey: readonly unknown[],
+  key: string,
+  unit: DisplayUnit
+): number {
+  let newest = 0;
+  for (const q of client.getQueryCache().findAll({ queryKey: entityKey })) {
+    if (q.queryHash === key || q.queryKey.includes(unit)) continue;
+    newest = Math.max(newest, fetchedAtByQuery.get(q) ?? 0);
+  }
+  return newest;
 }

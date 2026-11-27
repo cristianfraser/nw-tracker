@@ -103,7 +103,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
   const { t } = useTranslation();
   const { installmentMode } = useCcInstallmentGastosMode();
   // Held across a unit or mode switch (dimmed, in its own unit); only this key's live payload is stored.
-  const overview = useHeldFlowsOverview(displayUnit, installmentMode, undefined);
+  const overview = useHeldFlowsOverview("home.flowsPeriods", displayUnit, installmentMode, undefined);
   // Before anything was drawn this session, the copy stored for this unit and mode.
   const { value: closed, storedUnit } = usePersistedPayload(
     FLOWS_CLOSED,
@@ -190,7 +190,7 @@ export function DashboardFlowsChart({
   const range = longSurfaceRange(prefs.range, "1y");
   const { installmentMode } = useCcInstallmentGastosMode();
   // Held across a unit or mode switch: drawn dimmed, in the held payload's own unit.
-  const overview = useHeldFlowsOverview(displayUnit, installmentMode, undefined);
+  const overview = useHeldFlowsOverview("home.flowsChart", displayUnit, installmentMode, undefined);
   const data = overview.data;
   const loading = !data || overview.loading;
 

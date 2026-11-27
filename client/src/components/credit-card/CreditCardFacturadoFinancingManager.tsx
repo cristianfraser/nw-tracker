@@ -33,7 +33,7 @@ export function CreditCardFacturadoFinancingManager() {
   // The pickers (server-built: financed cards with their facturaciones, the plans), while open;
   // held across a unit switch. The amounts they list are the cards' billing pesos (`amount_clp`,
   // formatted as such), whatever the payload's `unit`.
-  const candidatesQuery = useHeldFlowsExpensesFinancingCandidates(displayUnit, open);
+  const candidatesQuery = useHeldFlowsExpensesFinancingCandidates("expenses.financingCandidates", displayUnit, open);
   const loading = candidatesQuery.data == null || candidatesQuery.loading;
   const financedAccounts = useMemo(() => candidatesQuery.data?.financed_accounts ?? [], [candidatesQuery.data]);
 

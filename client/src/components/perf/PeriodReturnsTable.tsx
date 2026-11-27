@@ -445,7 +445,7 @@ export function PeriodReturnsWithBenchmark({
   const listUnit = data?.unit;
   // Asked for in the list's own unit, so the pair flips together; the display unit's is warmed
   // while the list still shows another one.
-  const comparison = useHeldBenchmarkComparison(
+  const comparison = useHeldBenchmarkComparison(`periodReturns.${surfaceId}`, 
     scope,
     selected,
     listUnit ?? displayUnit,

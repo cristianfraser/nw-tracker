@@ -81,7 +81,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const perfRange = perfPrefs.range;
 
   // The bundle on screen: this unit's, or this account's held across a unit switch (in ITS unit).
-  const shownDetail = useHeldAccountDetailBundle(id, displayUnit, "monthly");
+  const shownDetail = useHeldAccountDetailBundle("account.bundle", id, displayUnit, "monthly");
   const { data: detail, error: detailError } = shownDetail;
   const { data: sidebarNav } = useSidebarNav();
   const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);

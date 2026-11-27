@@ -165,7 +165,7 @@ export function CreditCardFacturacionesTable({
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CcFacturacionDto | null>(null);
   // The facturación's lines (the server's rule for which lines a facturación lists), while open.
-  const facturacionLines = useHeldFlowsExpenseLines(
+  const facturacionLines = useHeldFlowsExpenseLines("account.facturacionLines", 
     displayUnit,
     selected ? { kind: "facturacion", account_id: accountId, billing_month: selected.billing_month } : null,
     modalOpen

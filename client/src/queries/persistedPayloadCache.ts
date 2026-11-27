@@ -1,7 +1,7 @@
 /**
  * The browser's last copy of a payload, so a session's first paint shows the last figures it saw
  * instead of an empty or zero view (docs/untangle-plan.md F8; once anything is drawn, a stored copy
- * is never read again for that surface: `useStoredFirstPaint`, `heldUnitPayload.ts`): the card strip, the
+ * is never read again for that surface: `storedFirstPaint`, `heldUnitPayload.ts`): the card strip, the
  * sidebar tree, a group page's shell and the home panels. One key scheme for all of them,
  * `nw:cache:<name>:v<version>[:<scope>…]`, where the version is the payload's `schema_version`
  * (`DTO_SCHEMA_VERSIONS` in contracts) or, for a shape the client builds itself, the client's own.
@@ -12,7 +12,7 @@
  * before this helper are swept once at boot (`sweepPersistedPayloads`).
  */
 import { useEffect } from "react";
-import { useStoredFirstPaint } from "./heldUnitPayload";
+import { storedFirstPaint } from "./heldUnitPayload";
 import { useStructuralValue } from "../useStructuralValue";
 import { DTO_SCHEMA_VERSIONS, type DtoSchemaVersionName } from "nw-tracker-contracts/dto/schemaVersions";
 
@@ -96,7 +96,7 @@ export function removePersistedPayload(def: PersistedPayload<unknown>, scope: re
  * A home panel over its stored copy: draws `shown` (its request's held view data, or a part of it:
  * live, or held across a switch or a remount, `heldUnitPayload.ts`) and, only before anything was
  * drawn for the panel in this session, the copy stored under `scope` for the requested `unit`
- * (`useStoredFirstPaint`: once painted it is held, in its own unit, until a payload is drawn; a
+ * (`storedFirstPaint`: once painted it is held, in its own unit, until a payload is drawn; a
  * failed request paints none). Stores `live` (the requested key's own fetched payload, never a held
  * one) under `scope` for the next visit. `storedUnit` is set while the stored copy is drawn: its
  * unit (the scope's: the stored rows may carry none). `liveSchemaVersion` is the live payload's own
@@ -118,7 +118,7 @@ export function usePersistedPayload<T>(
     // `key` stands for `def` + `scope`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, live, versionOk]);
-  const stored = useStoredFirstPaint<T>(`${def.name}|${where.surface}`, {
+  const stored = storedFirstPaint<T>(`${def.name}|${where.surface}`, {
     shown: shown != null,
     failed,
     unit: where.unit,

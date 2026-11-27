@@ -146,7 +146,7 @@ export function DeptoPaymentsList({
   // unit and held across a switch: the column draws the block on screen in its own unit (the rest
   // of the list is in the loan's and the payment's currencies).
   const { displayUnit } = useDisplayPreferences();
-  const prepay = useHeldDeptoPrepayments(scope, selected, displayUnit, true);
+  const prepay = useHeldDeptoPrepayments("depto.prepayments", scope, selected, displayUnit, true);
   const block: DeptoPrepayBlockDto | null =
     prepay.data != null && prepay.data.benchmark === selected ? prepay.data : null;
   const unit = block?.unit ?? displayUnit;

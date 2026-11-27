@@ -38,7 +38,7 @@ export function RealEstateGroupPage() {
   const navSettled = !navPending && !navFetching;
   const node = useMemo(() => findBestNavNodeForPathname(sidebarNav?.main, pathname), [sidebarNav, pathname]);
   // Held across a unit switch (`heldUnitPayload.ts`): formatted in the shown payload's own unit.
-  const query = useHeldRealEstateGroupGlance(node?.slug, displayUnit);
+  const query = useHeldRealEstateGroupGlance("realEstateGroup.glance", node?.slug, displayUnit);
   const glance = query.data;
   const loading = query.loading;
   const error = query.error;

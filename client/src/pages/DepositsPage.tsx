@@ -35,7 +35,7 @@ export function DepositsPage() {
   );
   const chartGranularity = metricsPeriod;
   // Held across a unit switch: dimmed, everything formatted in its own `unit`.
-  const deposits = useHeldFlowsDeposits(displayUnit);
+  const deposits = useHeldFlowsDeposits("flows.deposits", displayUnit);
   const { data, error } = deposits;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
   // The frame renders with a zero total and empty category tables until there is a payload to show.

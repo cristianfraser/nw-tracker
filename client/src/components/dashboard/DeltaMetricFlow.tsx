@@ -54,7 +54,7 @@ export function DeltaMetricFlow({
       <AnimatedNumberFlow
         value={delta}
         animated={animated}
-        unit={unit}
+        unit={unit ?? null}
         mapDisplayValue={(n) =>
           deltaFormat === "percent"
             ? plainPercentNumberFlowParts(n, fractionDigits)

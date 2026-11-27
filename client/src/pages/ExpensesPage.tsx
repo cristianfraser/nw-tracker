@@ -50,7 +50,7 @@ export function ExpensesPage() {
 
   // Every payload is held across a unit switch, dimmed, in its own unit: the summary's held catalog
   // keeps the active groups (so the chart's exclusion and the spent request do not churn).
-  const summary = useHeldFlowsExpensesSummary(displayUnit);
+  const summary = useHeldFlowsExpensesSummary("expenses.summary", displayUnit);
   const activeBigGroups = useMemo(() => summary.data?.active_big_group_slugs ?? [], [summary.data]);
   const { excludedBigGroups, isExcluded, toggleExcluded } = useCcExpenseExcludedBigGroups(activeBigGroups);
   const excludedBigGroupList = useMemo(() => [...excludedBigGroups], [excludedBigGroups]);
@@ -67,7 +67,7 @@ export function ExpensesPage() {
     [displayUnit, installmentMode, categoryLevel, range, excludedBigGroupList, includePreTax]
   );
   // The default exclusion is every big group the lines carry: wait for the summary before asking.
-  const spent = useHeldFlowsExpensesSpent(params, summary.data != null);
+  const spent = useHeldFlowsExpensesSpent("expenses.spent", params, summary.data != null);
   const data = spent.data;
   const monthKeys = useMemo(() => (data?.months ?? []).map((m) => m.month), [data]);
   const selectableMonths = useMemo(() => new Set(monthKeys), [monthKeys]);
@@ -83,7 +83,7 @@ export function ExpensesPage() {
       ? sel.category
       : null;
 
-  const lines = useHeldFlowsExpensesSpentLines(params, { month, day, category }, summary.data != null && month !== "");
+  const lines = useHeldFlowsExpensesSpentLines("expenses.spentLines", params, { month, day, category }, summary.data != null && month !== "");
 
   const loadError = summary.error ?? spent.error ?? lines.error;
   if (loadError) {

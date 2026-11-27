@@ -10,7 +10,7 @@ import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
 import { queryKeys, type DisplayUnit } from "../queries/keys";
 import { bundleContent } from "../queries/pageShapeReady";
-import { useStoredFirstPaint } from "../queries/heldUnitPayload";
+import { storedFirstPaint } from "../queries/heldUnitPayload";
 import {
   useAccountsByPortfolioGroup,
   useDashboardNavSnapshot,
@@ -56,7 +56,7 @@ export function usePortfolioPageData(opts: {
   const { data: shapeAccounts } = useAccountsByPortfolioGroup(portfolioGroup, displayUnit, enabled);
   const { data: shell } = useGroupPageShell({ portfolioGroup, unit: displayUnit, navNode, enabled });
 
-  const heldBundle = useHeldPortfolioGroupBundle({ portfolio_group: portfolioGroup, unit: displayUnit, enabled });
+  const heldBundle = useHeldPortfolioGroupBundle("group.bundle", { portfolio_group: portfolioGroup, unit: displayUnit, enabled });
 
   useEffect(() => {
     if (!enabled) return;
@@ -75,7 +75,7 @@ export function usePortfolioPageData(opts: {
   // The nav context's own request, beside the page's: it waits for nothing the page loads. Held
   // once here; every surface reading it (strip, glance blocks, value map) draws this copy.
   const navCtxEnabled = pathnameUsesDashboardNavContext(pathname) && navNode != null;
-  const navCtx = useHeldDashboardNavContext(displayUnit, navNode?.slug ?? null, navCtxEnabled);
+  const navCtx = useHeldDashboardNavContext("group.navContext", displayUnit, navNode?.slug ?? null, navCtxEnabled);
   const liveNavCtx = navCtx.live;
 
   const accounts = content ? content.accounts : (shapeAccounts ?? shell?.accounts ?? []);
@@ -93,12 +93,12 @@ export function usePortfolioPageData(opts: {
   // screen — this unit's, or the one held across a switch, in ITS unit, dimmed — with the stored
   // snapshot filling fields it leaves out (same unit only). The stored snapshot alone paints it,
   // dimmed, only before any context was drawn for this page this session; once painted it is
-  // held (in its unit) until a context is drawn (`useStoredFirstPaint`). A failed context paints
+  // held (in its unit) until a context is drawn (`storedFirstPaint`). A failed context paints
   // nothing (the page reports `navCtx.error`). A page without a nav context has the snapshot as
   // its strip's only source: it reads it as is.
   const shownCtx = navCtx.data;
   const failedCtx = navCtx.error != null;
-  const pinnedSnapshot = useStoredFirstPaint(`navStrip|${navNode?.slug ?? ""}`, {
+  const pinnedSnapshot = storedFirstPaint(`navStrip|${navNode?.slug ?? ""}`, {
     shown: shownCtx != null,
     failed: failedCtx,
     unit: displayUnit,

@@ -45,13 +45,13 @@ export function useAccountChartSurfaces(data: AccountDetailPageData) {
   const perfIsDaily = perfPrefs.period === "day";
   // Day view: per-session line + day P/L bars, fetched lazily while a D control is on; each held
   // across a unit or range change (a held daily series is drawn, dimmed, in its own unit).
-  const dailySeries = useHeldDailySeries(
+  const dailySeries = useHeldDailySeries("account.valuationDaily", 
     { accountId: summary.account_id },
     displayUnit,
     timeRangeToDays(valuationPrefs.range),
     valuationIsDaily
   );
-  const perfDailySeries = useHeldDailySeries(
+  const perfDailySeries = useHeldDailySeries("account.perfDaily", 
     { accountId: summary.account_id },
     displayUnit,
     timeRangeToDays(perfPrefs.range),
@@ -208,7 +208,7 @@ export function AccountDetalleSurface({
     "total"
   );
   const isDaily = detallePrefs.period === "day";
-  const detalleDailySeries = useHeldDailySeries(
+  const detalleDailySeries = useHeldDailySeries("account.detalleDaily", 
     { accountId: summary.account_id },
     displayUnit,
     0,

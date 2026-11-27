@@ -37,7 +37,7 @@ export function FlowsPlPage() {
   const isDaily = chartGranularity === "day";
   // Day mode fetches the server-windowed per-day P/L; M/Y keep the days-less payload.
   // Held across a unit or Diario window change: dimmed, and formatted in its own `unit`.
-  const pl = useHeldFlowsPl(displayUnit, isDaily ? timeRangeToDays(timeRange) : undefined);
+  const pl = useHeldFlowsPl("flows.pl", displayUnit, isDaily ? timeRangeToDays(timeRange) : undefined);
   const { data, error } = pl;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
   const loading = pl.loading;

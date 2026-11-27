@@ -54,7 +54,7 @@ function BigGroupBlock({
   const { displayUnit } = useDisplayPreferences();
 
   // The group's lines, fetched once the block is opened.
-  const linesQuery = useHeldFlowsExpenseLines(
+  const linesQuery = useHeldFlowsExpenseLines("expenses.bigGroupLines", 
     displayUnit,
     { kind: "big_group", slug, include_pre_tax: includePreTax },
     open

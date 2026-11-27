@@ -78,7 +78,7 @@ export function CreditCardHistorialSurface({
   const hasHistorial = ccLedger.has_installment_ledger && (rows?.length ?? 0) > 0;
 
   // Always in pesos (the card's billing frame); held across a range change.
-  const daily = useHeldDailySeries(
+  const daily = useHeldDailySeries("cc.historialDaily", 
     scope.variant === "account"
       ? { accountId: scope.accountId }
       : { portfolioGroup: scope.portfolioGroup },

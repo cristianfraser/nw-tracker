@@ -84,7 +84,7 @@ export function WealthPercentilePage() {
   const [openYearsChoice, setOpenYearsChoice] = useState<ReadonlySet<number> | null>(null);
   const { displayUnit } = useDisplayPreferences();
   // Dim while nothing has loaded or the previous unit's payload is held (shown in its own unit).
-  const { data, error, loading } = useHeldWealthPercentile(displayUnit);
+  const { data, error, loading } = useHeldWealthPercentile("wealthPercentile", displayUnit);
   const amountsUnit = data?.unit ?? displayUnit;
 
   const toggleBenchmark = (country: WealthBenchmarkCountry) => {

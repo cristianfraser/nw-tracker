@@ -17,7 +17,7 @@ export function useGroupInfoConsolidatedTables(
 ) {
   // The tables on screen: this unit's, or the ones held across a unit switch — shown in THEIR
   // unit (`tablesUnit`), dimmed, never converted.
-  const shown = useHeldGroupConsolidatedTables(portfolioGroupSlug, displayUnit, enabled);
+  const shown = useHeldGroupConsolidatedTables("group.consolidatedTables", portfolioGroupSlug, displayUnit, enabled);
   const { data, error } = shown;
   // Nothing to show yet (not a background refetch): callers substitute placeholder rows, and a
   // refetch keeps showing the rows already loaded.

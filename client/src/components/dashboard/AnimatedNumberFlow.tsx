@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import type { NUMBER_FLOW_INT_FORMAT } from "../../format";
-import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { NUMBER_CHANGE_FLASH_ENABLED } from "../../numberChangeEffect";
 import styles from "./AnimatedNumberFlow.module.css";
 
@@ -58,8 +57,9 @@ export type AnimatedNumberFlowProps = NumberFlowPassthrough & {
    * (`.is-loading` around it), keeps `animated`.
    */
   flashOnChange?: boolean;
-  /** The currency the value is in (default: the display unit); a change of it rolls, never flashes. */
-  unit?: string;
+  /** The currency the value is in (its payload's unit; null for a unitless figure, a percent); a
+   * change of it rolls, never flashes. */
+  unit: string | null;
 };
 
 export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFlowProps>(
@@ -74,7 +74,7 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
       transformTiming,
       spinTiming,
       flashOnChange = false,
-      unit: unitProp,
+      unit: displayUnit,
       ...rest
     },
     ref
@@ -82,9 +82,7 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
     const hostRef = useRef<NumberFlowElement | null>(null);
     useImperativeHandle(ref, () => hostRef.current as NumberFlowElement);
     const wrapRef = useRef<HTMLSpanElement | null>(null);
-    const { displayUnit: contextUnit } = useDisplayPreferences();
-    const displayUnit = unitProp ?? contextUnit;
-    const last = useRef<{ shown: string; value: number; unit: string; settled: boolean } | null>(null);
+    const last = useRef<{ shown: string; value: number; unit: string | null; settled: boolean } | null>(null);
 
     const flow = value == null ? null : mapDisplayValue(value);
     const shown = flow ? `${flow.prefix ?? ""}|${flow.value}|${flow.suffix ?? ""}` : "";

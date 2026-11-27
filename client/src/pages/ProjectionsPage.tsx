@@ -56,7 +56,7 @@ export function ProjectionsPage() {
   );
   // Held across a unit or assumptions change (`heldUnitPayload.ts`); the error shows only with
   // nothing to show.
-  const query = useHeldProjections(displayUnit, validOverrides);
+  const query = useHeldProjections("projections", displayUnit, validOverrides);
   const { data, error } = query;
   // The form is inert only until the first response (an edit keeps the previous figures on screen,
   // undimmed, while they recompute); the figures and chart dim while a response requested in

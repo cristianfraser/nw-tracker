@@ -12,7 +12,7 @@ import {
 import {
   initialHeldUnitState,
   renderHeldUnit,
-  renderStoredFirstPaint,
+  storedFirstPaint,
   resetHeldUnitSession,
   settleHeldUnit,
   type HeldUnitState,
@@ -95,7 +95,7 @@ describe("a home panel's first paint (the session's memory)", () => {
    * The browser session around one panel («Últimos movimientos»): react-query's cache per unit
    * (data and fetch time, or a failed fetch), the panel's stored copies per unit, and what the panel
    * stored. `mount()` draws the panel the way `useHeldUnitQuery` + `usePersistedPayload` do
-   * (`renderHeldUnit`, `renderStoredFirstPaint`); a new mount starts with empty component state.
+   * (`renderHeldUnit`, `storedFirstPaint`); a new mount starts with empty component state.
    */
   function session(storage: Record<string, Rows>) {
     resetHeldUnitSession();
@@ -105,7 +105,7 @@ describe("a home panel's first paint (the session's memory)", () => {
     const mount = () => {
       let local: HeldUnitState<Rows> = initialHeldUnitState();
       const show = (unit: string) => {
-        const step = renderHeldUnit(local, {
+        const step = renderHeldUnit("home.latestMovements", local, {
           candidate: cache[unit],
           pending: cache[unit] == null && failed[unit] == null,
           error: failed[unit] ?? null,
@@ -119,7 +119,7 @@ describe("a home panel's first paint (the session's memory)", () => {
         const view = step.view;
         // Only the requested key's own fetched payload is stored.
         if (view.live) writes.add(`${unit}:${view.live.rows.join("")}`);
-        const stored = renderStoredFirstPaint<Rows>(`latest_movements|${ENTITY}`, {
+        const stored = storedFirstPaint<Rows>(`latest_movements|${ENTITY}`, {
           shown: view.data !== undefined,
           failed: view.error != null,
           unit,
