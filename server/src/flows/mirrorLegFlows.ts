@@ -83,6 +83,16 @@ export function mirrorLegFlowsConflict(legFlowIds: readonly number[], dbHandle: 
   if (both(`SELECT 1 FROM flow_parts x WHERE x.flow_id = ? AND EXISTS (SELECT 1 FROM flow_parts y WHERE y.flow_id = ?)`)) {
     return { code: "conflicting_pieces", detail: "both legs are split into pieces" };
   }
+  return flowLinksMergeConflict(a, b, dbHandle);
+}
+
+/**
+ * The links and charges two flows cannot both carry into one (null when they can): `mergeFlowInto`
+ * would fail on them mid-merge — a bill link on both on one portion and piece, a funding link from
+ * both to one deposit, a financing link or a facturado payment charge of one record on both.
+ */
+export function flowLinksMergeConflict(a: number, b: number, dbHandle: Database = db): MirrorLegConflict | null {
+  const both = (sql: string) => dbHandle.prepare(sql).get(a, b) != null;
   const linkClash = (kind: string, same: string) =>
     both(
       `SELECT 1 FROM flow_links x JOIN flow_links y ON y.kind = x.kind AND y.portion = x.portion AND y.piece_seq = x.piece_seq ${same}
@@ -131,7 +141,7 @@ function flowHoldsAssignments(flowId: number, dbHandle: Database): boolean {
  * see key-named rows only through it. A flow already answering to the key folds in (its
  * assignments lose to this flow's).
  */
-function answerToKeyWhenHolding(flowId: number, key: string, dbHandle: Database): void {
+export function answerToKeyWhenHolding(flowId: number, key: string, dbHandle: Database): void {
   if (!flowHoldsAssignments(flowId, dbHandle)) return;
   const parts = expenseKeyParts(key);
   if (!parts) throw new Error(`not an expense purchase key: «${key}»`);

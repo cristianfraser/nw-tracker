@@ -13,6 +13,7 @@ import { webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js"
 import { snapshotTables } from "./test/snapshotTables.js";
 import { applyLinePlan } from "./cards/lineWrites.js";
 import { getFlowCategory } from "./flows/flowCategories.js";
+import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
 
 const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_metrics"]);
 
@@ -174,6 +175,7 @@ describe("annulled purchases: the writers", () => {
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM flow_categories WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM flows WHERE from_account_id = ? OR to_account_id = ?`).run(accountId, accountId);
     db.prepare(`DELETE FROM import_batches WHERE raw_text LIKE ?`).run(`%"account_id":${accountId},%`);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
@@ -350,6 +352,63 @@ describe("annulled purchases: the writers", () => {
       )
       .all(accountId);
     expect(back).toHaveLength(1);
+  });
+
+  const flowOfLine = (id: number): number =>
+    (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+
+  it("a purchase re-listed a day later under a cut name is one line on the annulment's flow", () => {
+    const sept = bucket();
+    const voided = insertLine(sept, "2026-09-10", "VITEST RELISTED STORE", 71_300);
+    recordCardLineFlowFirstSeen(voided, "2026-09-10");
+    setFlowNote(accountId, resolveCcExpensePurchaseKey(voided), "vitest: the user's note");
+    const flow = flowOfLine(voided);
+    const arrival = flowArrival(flow);
+    expect(arrival.kind).toBe("stamped");
+    feed({ lines: [listingLine("2026-09-03", "VITEST TIENDA", 10_000)] });
+    expect(annulments()[0]!.flow_id).toBe(flow);
+
+    // The bank re-authorizes it: listed a day later, the merchant cut at 15 characters (another key).
+    vi.setSystemTime(new Date("2026-09-21T15:00:00Z"));
+    const again = feed({
+      lines: [listingLine("2026-09-03", "VITEST TIENDA", 10_000), listingLine("2026-09-11", "VITEST RELISTED", 71_300)],
+      observedAt: "2026-09-21T12:00:00.000Z",
+    });
+    expect(annulments()).toEqual([]);
+    const back = db
+      .prepare(
+        `SELECT l.id, l.flow_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ? AND l.amount = 71300`
+      )
+      .all(accountId) as { id: number; flow_id: number }[];
+    expect(back).toHaveLength(1);
+    expect(again.relisted_annulments.map((r) => r.line_id)).toEqual([back[0]!.id]);
+    expect(back[0]!.flow_id).toBe(flow);
+    expect(getFlowNote(accountId, resolveCcExpensePurchaseKey(back[0]!.id))).toBe("vitest: the user's note");
+    expect(flowArrival(flow)).toEqual(arrival);
+  });
+
+  it("a line with nothing filed on it keeps its flow and arrival through its annulment, and the billed line takes them", () => {
+    vi.setSystemTime(new Date("2026-09-26T15:00:00Z"));
+    const sept = bucket();
+    const was = insertLine(sept, "2026-09-06", "VITEST BARE", 4_000);
+    recordCardLineFlowFirstSeen(was, "2026-09-06");
+    const flow = flowOfLine(was);
+    const arrival = flowArrival(flow);
+    expect(arrival.kind).toBe("stamped");
+    const { plan, annulled } = annulOpenBucketLines(accountId, [was], { annulledOn: "2026-09-12", basis: "feed_drop", evidence: "vitest" });
+    applyLinePlan(accountId, "vitest annul", plan);
+    // The annulment holds the flow: retired with the line, not deleted.
+    expect(annulments()[0]!.flow_id).toBe(flow);
+    expect(flowArrival(flow)).toEqual(arrival);
+
+    const stmt = septemberStatement();
+    const written = insertLine(stmt, "2026-09-07", "VITEST BARE", 4_000);
+    recordCardLineFlowFirstSeen(written, "2026-09-26"); // the statement's line, seen at the close
+    const { result, lineId } = importStatementOnFile(accountId, [stmt]);
+    expect(result.keep_rows.annulments_billed).toEqual([annulled[0]!.id]);
+    expect(flowOfLine(lineId(written))).toBe(flow);
+    expect(flowArrival(flow)).toEqual(arrival);
   });
 
   it("does not let a still-listed twin undo its voided sibling's annulment", () => {

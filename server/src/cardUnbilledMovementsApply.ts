@@ -18,6 +18,7 @@ import { db } from "./db.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import {
   createPlansForFeedCuotaPurchases,
+  listOpenBucketLines,
   tagFeedCuotaPurchaseLines,
   type CcFeedPlanCreated,
 } from "./ccFeedCuotaPurchases.js";
@@ -31,6 +32,7 @@ import {
   annulUnlistedLines,
   chileDayOf,
   removeRelistedAnnulments,
+  settleRelistedAnnulments,
   type CcRelistedAnnulment,
 } from "./ccAnnulmentWriters.js";
 import { planCupoGap, type CcCupoGapReport } from "./ccAnnulmentCupoGap.js";
@@ -325,8 +327,10 @@ function applyCardListing(
   const feedClose = applied?.close ?? null;
   // Before the lines: a plan makes its purchase row import as an installment overlap.
   const plansCreated = createPlansForFeedCuotaPurchases(accountId, lines, sourceRef);
-  // Before the lines: a purchase the bank lists again is not annulled any more.
-  const relistedAnnulments = removeRelistedAnnulments(accountId, lines);
+  // Before the lines: a purchase the bank lists again is not annulled any more; once its line is
+  // written, the line takes the annulment's flow.
+  const bucketLinesBefore = new Set(listOpenBucketLines(accountId).map((l) => l.id));
+  const relisted = removeRelistedAnnulments(accountId, lines);
   const result = insertLines(
     accountId,
     { lines, errors: [] },
@@ -336,6 +340,8 @@ function applyCardListing(
       ...(card.listing_order ? { listingOrder: card.listing_order } : {}),
     }
   );
+  const relistedAnnulments = settleRelistedAnnulments(accountId, relisted, bucketLinesBefore);
+  if (relistedAnnulments.some((r) => r.line_id != null)) noteCardLineWritten(accountId);
   const tagged = tagFeedCuotaPurchaseLines(accountId, lines);
   const planPrepayments = recordPlanPrepayments(accountId, lines, prepaymentMatches);
   // A close with nothing to write (no movements, or only repeats) changed the facturación state

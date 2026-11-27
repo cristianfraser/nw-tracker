@@ -164,6 +164,37 @@ export function repointMovementReferences(fromId: number, toId: number, dbHandle
   dbHandle.prepare(`UPDATE payroll_work_earnings SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
 }
 
+/**
+ * Records outside the flows that name a movement by id and go with it (a cascade) or block its
+ * delete, beyond the payslip {@link repointMovementReferences} moves and the row's own bank posting
+ * and mirror-pair refusals: a superseding row's import reports them, since a fold cannot say which
+ * row of the kept movement they belong to.
+ */
+const MOVEMENT_RECORD_REFERENCES: readonly { table: string; column: string }[] = [
+  { table: "loan_payments", column: "movement_id" },
+  { table: "payslip_advances", column: "movement_id" },
+  { table: "pension_contribution_periods", column: "movement_id" },
+  { table: "movement_transfer_notices", column: "movement_id" },
+  { table: "transfer_notice_movements", column: "movement_id" },
+  { table: "movement_event_times", column: "movement_id" },
+  { table: "movement_dividend_details", column: "movement_id" },
+  { table: "incoming_wire_bookings", column: "transfer_movement_id" },
+  { table: "incoming_wire_bookings", column: "fee_movement_id" },
+  { table: "f22_settlements", column: "movement_id" },
+  { table: "us_f1040_settlements", column: "movement_id" },
+];
+
+/** The tables of {@link MOVEMENT_RECORD_REFERENCES} holding a row that names `movementId`. */
+export function movementRecordsNaming(movementId: number, dbHandle: Database = db): string[] {
+  return [
+    ...new Set(
+      MOVEMENT_RECORD_REFERENCES.filter(
+        ({ table, column }) => dbHandle.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(movementId) != null
+      ).map((r) => r.table)
+    ),
+  ];
+}
+
 /** Deletes movements another row supersedes; returns how many went. */
 export function deleteMovements(ids: readonly number[], dbHandle: Database = db): number {
   const del = dbHandle.prepare(`DELETE FROM movements WHERE id = ?`);

@@ -66,6 +66,7 @@ import { runFlowFirstSeen310 } from "./migrationHooks/flowFirstSeen310.js";
 import { runFlowFirstSeenTime367 } from "./migrationHooks/flowFirstSeenTime367.js";
 import { runFlowEventTimes368 } from "./migrationHooks/flowEventTimes368.js";
 import { runFintualGoalNavs378 } from "./migrationHooks/fintualGoalNavs378.js";
+import { runAnnulledPurchasesHold380 } from "./migrationHooks/annulledPurchasesHold380.js";
 import { runCardLineDates370 } from "./migrationHooks/cardLineDates370.js";
 import { runEvidenceListingFacts371 } from "./migrationHooks/evidenceListingFacts371.js";
 import { runMirrorMergeListingFacts372 } from "./migrationHooks/mirrorMergeListingFacts372.js";
@@ -447,6 +448,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "373_bank_row_facts.sql": runBankRowFacts373,
   "377_fund_unit_cert_scratch.sql": runMarkInputChangeTriggers377,
   "378_fintual_goal_navs.sql": runFintualGoalNavs378,
+  "380_cc_annulled_purchases_hold_flows.sql": runAnnulledPurchasesHold380,
   "363_vendor_catalog_checking_names.sql": runVendorCatalog363,
 };
 

@@ -207,6 +207,33 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
     expect(after.get(b!.id)).toMatch(/KEEPROWS Traspaso a cuenta propia 77\|/);
   }));
 
+  it("a replaced month restates a reworded row when it is the one row and the one movement of its day and pesos", inRollback(() => {
+    const first = statement([
+      mv("1805-04-22", -1_500, "Comision Mantencion"),
+      mv("1805-04-23", -2_000, "Pago Peaje"),
+      mv("1805-04-23", -2_000, "Pago Peaje Ruta"),
+    ]);
+    applyBankAccountStatements(payload(first));
+    const before = rowsOfMonth();
+    // The fuller cartola prints the fee under another wording, and the two tolls of the 23rd too.
+    const fuller = statement([
+      mv("1805-04-21", -900, "Compra Nueva"),
+      mv("1805-04-22", -1_500, "Cargo Por Mantencion De Cuenta"),
+      mv("1805-04-23", -2_000, "Autopista Uno"),
+      mv("1805-04-23", -2_000, "Autopista Dos"),
+    ]);
+    applyBankAccountStatements(payload(fuller, true));
+    const after = rowsOfMonth();
+    const fee = after.find((r) => r.amount === -1_500)!;
+    expect([fee.id, fee.flow_id]).toEqual([before[0]!.id, before[0]!.flow_id]);
+    expect(fee.note).toMatch(/KEEPROWS Cargo Por Mantencion De Cuenta\|/);
+    // Two rows and two movements of one day and pesos: which is which cannot be told, so the old
+    // rows go and the new ones are written.
+    const tolls = after.filter((r) => r.amount === -2_000);
+    expect(tolls).toHaveLength(2);
+    expect(tolls.some((r) => before.some((b) => b.id === r.id))).toBe(false);
+  }));
+
   it("a shorter rendering of a daily row is the same movement and writes nothing (no flip-flop)", inRollback(() => {
     const account = checkingAccountId();
     const full = { occurred_on: "1805-04-16", amount_clp: -4_000, description: `${TAG} Pago Gas Cliente 55`, document_no: "" };

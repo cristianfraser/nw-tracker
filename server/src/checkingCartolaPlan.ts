@@ -5,8 +5,10 @@
  *
  *  - `keep`: a row on file and the cartola movement that restates it — the month's cartola row
  *    already imported (its document key, the same printed figures, or the tolerant content match:
- *    another rendering of the month), or the daily-listing row the cartola movement lists, with the
- *    receipt-corrected day it carries (`redate`);
+ *    another rendering of the month; in a replaced month, last, the one row the new cartola would
+ *    remove and the one movement it would write of a bank day and signed pesos), or the
+ *    daily-listing row the cartola movement lists, with the receipt-corrected day it carries
+ *    (`redate`);
  *  - `confirm`: a transfer leg or a mail-written movement the cartola movement confirms (the row
  *    stays as it is; only its bank posting / confirmation is recorded);
  *  - `insert`: a cartola movement no row on file is (taking back a retired flow of its document
@@ -76,7 +78,7 @@ export type CheckingCartolaPlanInput = {
   replace_month?: boolean;
 };
 
-export type CheckingKeepReason = "document_key" | "already_present" | "daily_listing";
+export type CheckingKeepReason = "document_key" | "already_present" | "same_day_amount" | "daily_listing";
 
 export type CheckingCartolaPlan = {
   keep: { row_id: number; movement: number; why: CheckingKeepReason; redate: { occurred_on: string; bank_day: string } | null }[];
@@ -240,8 +242,30 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
   plan.remove.push(...plannedRemoved);
   if (input.replace_month) {
     const held = new Set([...plan.keep.map((k) => k.row_id), ...plan.fold.map((f) => f.row_id)]);
-    for (const r of input.rows) {
-      if (r.kind !== "cartola" || r.listed?.period_month !== input.period_month || held.has(r.id)) continue;
+    const leftOver = input.rows.filter((r) => r.kind === "cartola" && r.listed?.period_month === input.period_month && !held.has(r.id));
+    // A row the new cartola prints so differently that no pass took it (a reworded or shortened
+    // description): when it is the only row left over of its bank day and signed pesos and the
+    // movement to be written of that day and pesos is the only one too, it is that movement,
+    // restated in place. Anything else of the day stays as it was planned (removed, written).
+    const dayAmount = (day: string, amount: number) => `${day}|${amount}`;
+    const insertable = plan.insert.filter((i) => i.retired_flow_id == null);
+    const movementOf = new Map(input.movements.map((m) => [m.index, m]));
+    const groups = new Map<string, { rows: CheckingFileRow[]; inserts: CheckingCartolaPlan["insert"] }>();
+    const group = (k: string) => groups.get(k) ?? groups.set(k, { rows: [], inserts: [] }).get(k)!;
+    for (const r of leftOver) group(dayAmount(r.bank_posted_on, r.amount_clp)).rows.push(r);
+    for (const i of insertable) {
+      const m = movementOf.get(i.movement)!;
+      group(dayAmount(m.occurred_on, m.amount_clp)).inserts.push(i);
+    }
+    const restated = new Set<number>();
+    for (const { rows, inserts } of groups.values()) {
+      if (rows.length !== 1 || inserts.length !== 1) continue;
+      plan.keep.push({ row_id: rows[0]!.id, movement: inserts[0]!.movement, why: "same_day_amount", redate: null });
+      plan.insert.splice(plan.insert.indexOf(inserts[0]!), 1);
+      restated.add(rows[0]!.id);
+    }
+    for (const r of leftOver) {
+      if (restated.has(r.id)) continue;
       plan.remove.push({ row_id: r.id, movement: -1, why: "replaced_cartola_row" });
     }
   }

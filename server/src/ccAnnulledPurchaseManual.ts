@@ -10,6 +10,7 @@ import { isListingSourceKind } from "./ccStatementSourceKind.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { applyLinePlan, cardLineWrite, insertLines } from "./cards/lineWrites.js";
+import { adoptFlow, flowExists, rowFlowId } from "./flows/flowAdoption.js";
 import { webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { ccCardRegistry } from "./ccCardRegistry.js";
@@ -62,7 +63,7 @@ export function markAnnulledPurchaseManually(accountId: number, lineId: number, 
 /**
  * Undoes a manual annulment: the row goes and the purchase is listed again in the open bucket,
  * through the same path a paste takes, so its expense key (and with it category, note, big group
- * and receipt) is the one the row stored. A `#dupN` twin is re-listed with its N siblings, which the
+ * and receipt) is the one the row stored, and the line takes the annulment's flow back. A `#dupN` twin is re-listed with its N siblings, which the
  * merge dedupes against the lines on file.
  */
 export function undoManualAnnulledPurchase(accountId: number, annulId: number): void {
@@ -102,6 +103,11 @@ export function undoManualAnnulledPurchase(accountId: number, annulId: number): 
     const key = resolveCcExpensePurchaseKey(back[0]!.id);
     if (key !== row.purchase_key) {
       throw new Error(`annulled purchase ${annulId}: the re-listed line's expense key «${key}» differs from the stored «${row.purchase_key}»`);
+    }
+    // The re-listed line is the purchase the app first saw: it takes the annulment's flow (its arrival among it).
+    const arriving = rowFlowId("cc_statement_lines", back[0]!.id);
+    if (flowExists(row.flow_id) && arriving != null && arriving !== row.flow_id) {
+      adoptFlow({ survivor: row.flow_id, arriving }, { prefer: "survivor", key, previousKey: row.purchase_key });
     }
   });
 }

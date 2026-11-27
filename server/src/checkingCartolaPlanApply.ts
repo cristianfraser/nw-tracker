@@ -11,8 +11,9 @@
  *  - `insert`: the cartola row is written (`insertBankPesoMovement`, which takes a retired flow of its
  *    document back; several retired flows for one document are left alone and reported);
  *  - `fold`: the row folds into the kept row (`foldMovementInto`);
- *  - `remove`: a daily row a transfer leg or a mail row already represents, or a cartola row of a
- *    replaced month the new cartola no longer lists.
+ *  - `remove`: a daily row a transfer leg or a mail row already represents (its flow folds into
+ *    that row's first, `foldListedRowIntoConfirmed`; a fold the two flows cannot make is reported),
+ *    or a cartola row of a replaced month the new cartola no longer lists.
  *
  * Several daily rows of one movement fold into the earliest seen. The caller (`importCartolaList`)
  * applies a plan only to a month written for the first time or replaced; a restate or record that
@@ -30,7 +31,7 @@ import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcP
 import { confirmTransferNoticeMovement, confirmTransferNoticeMovementForTransferLeg } from "./transferNoticeMovements.js";
 import { deleteMovements, insertBankPesoMovement } from "./movementWrites.js";
 import { cartolaListingFacts } from "./movementListingFacts.js";
-import { foldMovementInto, restateMovementFromCartola } from "./checkingCartolaRestate.js";
+import { foldListedRowIntoConfirmed, foldMovementInto, restateMovementFromCartola, type ListedRowFold } from "./checkingCartolaRestate.js";
 import type { RetiredMovementAdoption } from "./flows/flowAdoption.js";
 import type { CheckingCartolaPlan } from "./checkingCartolaPlan.js";
 
@@ -44,6 +45,8 @@ export type CheckingCartolaPlanApplyResult = {
   confirmed: number[];
   /** Written rows that took a retired flow back, or found several (left alone). */
   flow_adoptions: NonNullable<RetiredMovementAdoption>[];
+  /** Daily rows removed for a transfer leg or a mail row: folded into it, or refused (their flow went with them). */
+  listed_row_folds: ListedRowFold[];
 };
 
 /** Applies `plan` (planned for `cartola` on `accountId`, see the module doc), in one transaction. */
@@ -57,7 +60,7 @@ export function applyCheckingCartolaPlan(
   assertCheckingCartolaSaldoIdentity(cartola);
   const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
   if (chainErr) throw new Error(`Cartola ${cartola.period_month} (${cartola.source_file}): ${chainErr}`);
-  const out: CheckingCartolaPlanApplyResult = { restated: [], inserted: [], folded: [], removed: [], confirmed: [], flow_adoptions: [] };
+  const out: CheckingCartolaPlanApplyResult = { restated: [], inserted: [], folded: [], removed: [], confirmed: [], flow_adoptions: [], listed_row_folds: [] };
   const kindOf = dbHandle.prepare(`SELECT source_kind FROM flow_evidence WHERE source_table = 'movements' AND source_row_id = ?`);
   dbHandle.transaction(() => {
     let wrote = 0;
@@ -120,6 +123,11 @@ export function applyCheckingCartolaPlan(
     });
     // Removed last (a written row never takes a removed row's id).
     for (const r of plan.remove) {
+      if (r.why !== "replaced_cartola_row") {
+        const kept = plan.confirm.find((c) => c.movement === r.movement);
+        if (!kept) throw new Error(`keep-rows apply: daily row ${r.row_id} is removed for movement ${r.movement}, which confirms no row`);
+        out.listed_row_folds.push(foldListedRowIntoConfirmed(r.row_id, kept.row_id, accountId, dbHandle));
+      }
       deleteMovements([r.row_id], dbHandle);
       out.removed.push(r.row_id);
     }

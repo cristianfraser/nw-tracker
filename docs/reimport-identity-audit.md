@@ -46,6 +46,10 @@ Two facts about the plumbing make the last row costly:
 | 13 | Mirror conversion by hand (`convertMirrorPairs`) | The transfer was stamped now; neither leg's arrival, note or category was carried. | Fixed: both legs' flows fold into the transfer's (older arrival, earliest event time, assignments); a pair whose legs' assignments conflict is blocked in the list and skipped by a batch. Tests added |
 | 14 | Mirror undo (`undoMirrorConversion`) | Restored legs were stamped now; their retired flows were not taken back. | Fixed: restored legs take back a retired flow of their document, then the transfer's arrival, event time and assignments (inflow-account categories and notes to the inflow leg, the rest to the outflow leg). Test added |
 | 16 | Automatic card-payment conversion (`convertCcPaymentMirrors`) | Arrival was copied; the debit's note, big group or refund mark was not. | Fixed: the debit's flow folds into the transfer's; its undo hands it back. Test extended |
+| 8 | Re-listed annulment (`removeRelistedAnnulments`) | The annulment was deleted and the listing row imported under a new key and flow when re-listed a day later or under another rendering. | Fixed: the one new bucket line written from the listing row takes the annulment's flow (`settleRelistedAnnulments`, `adoptFlow`); a line two annulments could claim takes nothing (`line_id: null`). Test added |
+| 9 | Annulment of a line with nothing filed on it | The delete trigger deleted the bare flow, so the annulment lost its flow and arrival. | Fixed: migration 380 makes the annulment hold its flow (retired, not deleted); a billed line no longer drops the annulment's stamp (its unstamped flow counted as older). Test added |
+| 15 | Cartola removes a daily row a transfer leg or a mail row already lists | The daily row's category, note, income classification and arrival were not folded into the kept row. | Fixed: folded first (`foldListedRowIntoConfirmed`, earliest arrival's assignments win); a fold the flows cannot make is refused and reported (`listed_row_folds`). Tests added |
+| 17 | Fuller cartola replaces a month (`replaced_cartola_row`) | A reworded row the three passes miss was deleted and written again on a new flow. | Fixed: a fourth pass restates the one left-over row and the one new movement of a bank day and signed pesos (`same_day_amount`); two or more of either are left as before. Test added |
 
 ### Open — card side
 
@@ -54,8 +58,7 @@ Two facts about the plumbing make the last row costly:
 | 4 | Bucket settlement, unmatched in-cycle line that cannot be annulled (a credit, a payment, a cuota-tagged line) | Statement close, when the statement prints it under another merchant or day | Everything; the statement's line is stamped new | Reported |
 | 6 | Statement re-import, vanished line with no pair (`gone`) | A parser fix that changes a line's amount or merchant | Arrival, note, big group, flow category; not reported anywhere | Reported |
 | 7 | Statement re-import, identity group with differing counts (`unpaired`) | A re-parse that splits or merges lines | Everything on the old lines; reported only in the `import:cc-parsed` text and `report-document-import.ts`, dropped from the statement JSON write and the PDF upload results | Reported |
-| 8 | Re-listed annulment (`removeRelistedAnnulments`) | A listing shows an annulled purchase again a day later or under another rendering | The annulment is deleted and the line imports with a new key | Reported (risk) |
-| 9 | Annulment of a line with nothing filed on it | Bank voids a purchase, then bills it after all | The flow is deleted, so the billed line has no arrival to take | Reported (risk) |
+| 9b | Annulments recorded before migration 380 whose bare flow was already deleted (`flow_id` NULL) | Billed or re-listed later | The arrival: nothing to take back | Open (data, not code) |
 | 10b | A twin listed after its plan is on file (`plan_on_file` in `statementLinePlan.ts`, `shouldSkipOneShotStatementImport` in the listing merge, `findPlanAmong` / `findPlanForOneShotLine`) | A genuine twin purchase listed or printed once the plan exists | The twin is skipped as the plan's purchase. The slot rule cannot apply here: the plan's own row re-listed the next night (its line deleted, so its dedupe key is gone) reads exactly like a twin, and taking it would double-count every feed cuota purchase. Needs a stored identity of the row a plan took (its listing key) | Open |
 | 11 | Ledger rebuild (`import:cc-parsed --replace-ledger`) | Manual run | Plans get new ids and flows; anything keyed by plan id detaches | Reported (risk) |
 
@@ -63,8 +66,7 @@ Two facts about the plumbing make the last row costly:
 
 | # | Path | Trigger | Lost | Status |
 |---|---|---|---|---|
-| 15 | Cartola removes a daily row a transfer leg or a mail row already lists | Monthly cartola | The daily row's category, note, income classification are not folded into the kept row | Reported |
-| 17 | Fuller cartola replaces a month (`replaced_cartola_row`) | A movement printed differently that the content match misses | New flow, old assignments retired | Reported (risk) |
+| 15b | Records naming a removed daily row by id other than the payslip (`movementRecordsNaming`: loan payments, payslip advances, pension periods, transfer notices, event times, wire bookings, tax settlements) | Cartola removal or fold | They cascade with the row (tax settlements block the delete); now reported, not moved | Open |
 
 ### Scripts (manual runs)
 

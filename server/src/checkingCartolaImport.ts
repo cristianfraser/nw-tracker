@@ -6,6 +6,7 @@ import { db } from "./db.js";
 import { planCheckingCartola } from "./checkingCartolaPlan.js";
 import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
 import { applyCheckingCartolaPlan } from "./checkingCartolaPlanApply.js";
+import type { ListedRowFold } from "./checkingCartolaRestate.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import {
   fileLogFromCartola,
@@ -191,6 +192,8 @@ export type CheckingCartolaImportResult = {
   skipped_flows: SkippedImportFlowItem[];
   /** Rows that took a retired flow back (a re-imported month), or found several (left alone). */
   flow_adoptions: NonNullable<RetiredMovementAdoption>[];
+  /** Daily rows removed for a transfer leg or a mail row: folded into that row, or refused (reported). */
+  listed_row_folds: ListedRowFold[];
 };
 
 /**
@@ -233,6 +236,7 @@ export function importCheckingCartola(
     inserted_flows,
     skipped_flows,
     flow_adoptions: applied.flow_adoptions,
+    listed_row_folds: applied.listed_row_folds,
   };
 }
 
@@ -431,6 +435,20 @@ export function importCartolaList(
         console.log(
           `  cartola ${cartola.period_month}: ${r.flow_adoptions.length - ambiguous.length} row(s) took their flow back` +
             (ambiguous.length > 0 ? `; AMBIGUOUS (left alone): movements ${ambiguous.map((a) => a.movement_id).join(", ")}` : "")
+        );
+      }
+      const refused = r.listed_row_folds.filter((f) => f.status === "refused");
+      if (refused.length > 0) {
+        console.log(
+          `  cartola ${cartola.period_month}: REMOVED WITHOUT FOLDING (what was filed on them is not on the kept row): ` +
+            refused.map((f) => `daily row ${f.row_id} → ${f.kept_row_id} (${f.reason})`).join("; ")
+        );
+      }
+      const dropped = r.listed_row_folds.filter((f) => f.records_dropped.length > 0);
+      if (dropped.length > 0) {
+        console.log(
+          `  cartola ${cartola.period_month}: records that named a removed daily row went with it: ` +
+            dropped.map((f) => `${f.row_id} (${f.records_dropped.join(", ")})`).join("; ")
         );
       }
       if (replaceMonth) {
