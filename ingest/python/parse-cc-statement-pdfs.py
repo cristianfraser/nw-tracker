@@ -399,12 +399,17 @@ def parse_one_pdf(
         if not full_layout.strip() and "\n" not in full.strip() and len(full) > 400:
             full_layout = full
         body = choose_clp_parse_body(full, full_layout, parser)
+        SANTANDER_CLP_UNPAIRED_READINGS.clear()
         parsed = parse_clp_document(
             full,
             parser,
             movement_full=body,
             layout_full=full_layout,
         )
+        # Not a failure: both rows stay, but a possible double read of one line is named.
+        for day, amount in dict.fromkeys(SANTANDER_CLP_UNPAIRED_READINGS):
+            print(f"# WARN readings_unpaired\t{pdf_path.name}\t{day}\t{amount}")
+        SANTANDER_CLP_UNPAIRED_READINGS.clear()
         meta = extract_meta(full, pdf_path.name)
         finalize_statement_meta(meta, pdf_path)
         if full_layout.strip():
@@ -1680,51 +1685,105 @@ def _collapse_extraction_duplicated_body(rows: List[Dict[str, Any]]) -> List[Dic
     return out
 
 
-RE_MERCHANT_COLUMN_GAP = re.compile(r"\s{2,}")
+def _merchant_match_text(merchant: str) -> str:
+    """A merchant as the two readings are compared: spaces collapsed, case folded."""
+    return " ".join(merchant.split()).casefold()
 
 
-def _collapse_merchant_spaces(merchant: str) -> str:
-    return " ".join(merchant.split())
+def _row_day_amount(row: Dict[str, Any]) -> Tuple[str, str]:
+    return (str(row.get("transaction_date") or ""), str(row.get("amount_clp") or ""))
 
 
-def _merchant_column_prefixes(merchant: str) -> List[str]:
-    """The merchant cut at each column boundary (a run of two or more spaces), spaces
-    collapsed: the layout reading can carry the next printed column after the merchant
-    («SEGURO DEMO          COMPRAS P.A.T.», a stamp tax's rate)."""
-    out: List[str] = []
-    for gap in RE_MERCHANT_COLUMN_GAP.finditer(merchant.strip()):
-        prefix = _collapse_merchant_spaces(merchant.strip()[: gap.start()])
-        if prefix:
-            out.append(prefix)
-    return out
+def _text_printed_beside_merchant(row: Dict[str, Any]) -> str:
+    """What a row's own reading printed on its line besides the merchant (place, charge
+    type, rate), case folded: the printed line less the merchant's text."""
+    raw = " ".join(str(row.get("description_raw") or "").split()).casefold()
+    merchant = _merchant_match_text(str(row.get("merchant") or ""))
+    return raw.replace(merchant, " ", 1) if merchant else raw
 
 
-def _santander_clp_row_merge_keys(
-    rows: List[Dict[str, Any]], other_rows: List[Dict[str, Any]]
-) -> List[str]:
-    """Merge key per row: date | merchant | amount, the merchant compared with spaces
-    collapsed («DEMO   *SHOP» = «DEMO *SHOP»), and cut at a column boundary
-    when only the cut names a merchant the other reading has on the same date and
-    amount («SEGURO DEMO          COMPRAS P.A.T.» = «SEGURO DEMO»)."""
-    other_merchants: Dict[Tuple[str, str], set] = {}
-    for row in other_rows:
-        day_amount = (str(row.get("transaction_date") or ""), str(row.get("amount_clp") or ""))
-        other_merchants.setdefault(day_amount, set()).add(
-            _collapse_merchant_spaces(str(row.get("merchant") or ""))
-        )
-    keys: List[str] = []
-    for row in rows:
-        day, amount = str(row.get("transaction_date") or ""), str(row.get("amount_clp") or "")
-        raw_merchant = str(row.get("merchant") or "")
-        merchant = _collapse_merchant_spaces(raw_merchant)
-        candidates = other_merchants.get((day, amount), set())
-        if merchant not in candidates:
-            merchant = next(
-                (p for p in _merchant_column_prefixes(raw_merchant) if p in candidates),
-                merchant,
-            )
-        keys.append("|".join([day, merchant, amount]))
-    return keys
+def _trailing_text_is_a_column_of(trailing: str, row: Dict[str, Any]) -> bool:
+    """The text another reading appended after `row`'s merchant is a neighbouring column
+    of the same printed line when `row`'s own reading printed every word of it outside
+    the merchant (pypdf glues the columns in another order: «0,066 %RECAUDACION …»)."""
+    beside = _text_printed_beside_merchant(row)
+    words = sorted(trailing.split(), key=len, reverse=True)
+    if not words:
+        return False
+    for word in words:
+        at = beside.find(word)
+        if at < 0:
+            return False
+        beside = beside[:at] + " " + beside[at + len(word) :]
+    return True
+
+
+def _column_cut_match(longer: Dict[str, Any], shorter: Dict[str, Any]) -> int:
+    """Length of the cut when `longer`'s merchant is `shorter`'s followed by a neighbouring
+    column (any gap: the layout reading can glue a column after one space); 0 otherwise."""
+    long_text = _merchant_match_text(str(longer.get("merchant") or ""))
+    short_text = _merchant_match_text(str(shorter.get("merchant") or ""))
+    if not short_text or not long_text.startswith(short_text + " "):
+        return 0
+    trailing = long_text[len(short_text) + 1 :]
+    return len(short_text) if _trailing_text_is_a_column_of(trailing, shorter) else 0
+
+
+def _pair_santander_clp_readings(
+    compact_rows: List[Dict[str, Any]], wide_rows: List[Dict[str, Any]]
+) -> Tuple[Dict[int, int], List[Tuple[str, str]]]:
+    """Which wide row is the same printed line as which compact row (index → index), and
+    the (date, amount) groups where both readings keep rows the other has no match for.
+
+    Per date and amount: equal merchants pair first (spaces and case aside), the Nth of a
+    merchant in one reading with the Nth in the other, so twins stay two. Rows left over
+    on both sides then pair one to one when one merchant is the other plus a neighbouring
+    column (`_column_cut_match`), the longest cut first, ties in reading order."""
+    groups: Dict[Tuple[str, str], Tuple[List[int], List[int]]] = {}
+    for i, row in enumerate(compact_rows):
+        groups.setdefault(_row_day_amount(row), ([], []))[0].append(i)
+    for j, row in enumerate(wide_rows):
+        groups.setdefault(_row_day_amount(row), ([], []))[1].append(j)
+    pairs: Dict[int, int] = {}
+    unsure: List[Tuple[str, str]] = []
+    for day_amount, (cs, ws) in groups.items():
+        if not cs or not ws:
+            continue
+        by_text: Dict[str, List[int]] = {}
+        for j in ws:
+            by_text.setdefault(_merchant_match_text(str(wide_rows[j].get("merchant") or "")), []).append(j)
+        left_c: List[int] = []
+        for i in cs:
+            same = by_text.get(_merchant_match_text(str(compact_rows[i].get("merchant") or "")))
+            if same:
+                pairs[i] = same.pop(0)
+            else:
+                left_c.append(i)
+        taken = set(pairs.values())
+        left_w = [j for j in ws if j not in taken]
+        candidates: List[Tuple[int, int, int]] = []
+        for i in left_c:
+            for j in left_w:
+                cut = _column_cut_match(wide_rows[j], compact_rows[i]) or _column_cut_match(
+                    compact_rows[i], wide_rows[j]
+                )
+                if cut:
+                    candidates.append((-cut, i, j))
+        used_c: set = set()
+        used_w: set = set()
+        for _neg_cut, i, j in sorted(candidates):
+            if i in used_c or j in used_w:
+                continue
+            pairs[i] = j
+            used_c.add(i)
+            used_w.add(j)
+        if any(i not in used_c for i in left_c) and any(j not in used_w for j in left_w):
+            unsure.append(day_amount)
+    return pairs, unsure
+
+
+# (date, amount) of lines the two readings could not pair, for the statement's warning.
+SANTANDER_CLP_UNPAIRED_READINGS: List[Tuple[str, str]] = []
 
 
 def _merge_santander_clp_row_lists(
@@ -1732,28 +1791,29 @@ def _merge_santander_clp_row_lists(
 ) -> List[Dict[str, Any]]:
     """Compact supplies section-3 / payment lines; wide supplies place+date movimientos.
 
-    The two readings of one printed line merge on `_santander_clp_row_merge_keys`
-    (spaces collapsed, a swallowed neighbouring column cut off); the stored row keeps
-    its own reading's text. Keys carry an occurrence index WITHIN each input list so
-    genuine duplicate purchases (identical date+merchant+amount twice on one statement
-    — e.g. a double PAT charge later reversed by NOTA DE CREDITO) survive: the Nth twin
-    in one body merges with the Nth twin in the other, never with its sibling.
+    Rows the two readings print for one line (`_pair_santander_clp_readings`) are one
+    row: the higher layout rank's, the wide one on a tie, with its own reading's text.
+    Unpaired rows stay — genuine duplicate purchases (identical date+merchant+amount twice
+    on one statement, e.g. a double PAT charge later reversed by NOTA DE CREDITO) survive
+    because the Nth twin in one reading pairs with the Nth in the other, never its sibling.
+    A date and amount where both readings keep unpaired rows is recorded in
+    `SANTANDER_CLP_UNPAIRED_READINGS`.
     """
     compact_rows = _collapse_extraction_duplicated_body(compact_rows)
     wide_rows = _collapse_extraction_duplicated_body(wide_rows)
-    by_key: Dict[str, Dict[str, Any]] = {}
-    for rows, other_rows in ((compact_rows, wide_rows), (wide_rows, compact_rows)):
-        occurrence: Dict[str, int] = {}
-        for row, base in zip(rows, _santander_clp_row_merge_keys(rows, other_rows)):
-            n = occurrence.get(base, 0)
-            occurrence[base] = n + 1
-            key = f"{base}|#{n}"
-            prev = by_key.get(key)
-            if prev is None or _santander_clp_row_merge_rank(
-                str(row.get("layout") or "")
-            ) >= _santander_clp_row_merge_rank(str(prev.get("layout") or "")):
-                by_key[key] = row
-    return list(by_key.values())
+    pairs, unsure = _pair_santander_clp_readings(compact_rows, wide_rows)
+    SANTANDER_CLP_UNPAIRED_READINGS.extend(unsure)
+    out: List[Dict[str, Any]] = []
+    for i, row in enumerate(compact_rows):
+        j = pairs.get(i)
+        if j is not None and _santander_clp_row_merge_rank(
+            str(wide_rows[j].get("layout") or "")
+        ) >= _santander_clp_row_merge_rank(str(row.get("layout") or "")):
+            row = wide_rows[j]
+        out.append(row)
+    paired_wide = set(pairs.values())
+    out.extend(row for j, row in enumerate(wide_rows) if j not in paired_wide)
+    return out
 
 
 def _finish_clp_parsed_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

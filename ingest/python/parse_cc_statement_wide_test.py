@@ -96,12 +96,21 @@ class PrintedPaymentTest(unittest.TestCase):
         self.assertTrue(mod._compact_should_skip_purchase_row(paid))
 
 
-def _row(layout: str, day: str, merchant: str, amount: int) -> dict:
-    return {"layout": layout, "transaction_date": day, "merchant": merchant, "amount_clp": amount}
+def _row(layout: str, day: str, merchant: str, amount: int, raw: str = "") -> dict:
+    return {
+        "layout": layout,
+        "transaction_date": day,
+        "merchant": merchant,
+        "amount_clp": amount,
+        "description_raw": raw or f"{day} SANTIAGO {merchant} $ {amount}",
+    }
 
 
-def _compact(day: str, merchant: str, amount: int) -> dict:
-    return _row("compact_de_simple", day, merchant, amount)
+def _compact(day: str, merchant: str, amount: int, beside: str = "") -> dict:
+    # The pypdf line glues date, place, any other column, amount and merchant.
+    return _row(
+        "compact_de_simple", day, merchant, amount, f"{day}SANTIAGO {beside} ${amount}{merchant}"
+    )
 
 
 def _wide(day: str, merchant: str, amount: int) -> dict:
@@ -110,6 +119,9 @@ def _wide(day: str, merchant: str, amount: int) -> dict:
 
 class SantanderClpReadingsMergeTest(unittest.TestCase):
     """The compact (pypdf) and wide (layout) readings of one printed line are one row."""
+
+    def setUp(self) -> None:
+        mod.SANTANDER_CLP_UNPAIRED_READINGS.clear()
 
     def _merged(self, compact, wide):
         return [
@@ -126,12 +138,27 @@ class SantanderClpReadingsMergeTest(unittest.TestCase):
             [("wide_master_simple", "DEMO *RIDE SHOP", 5100)],
         )
 
+    def test_readings_differing_by_letter_case_merge(self) -> None:
+        self.assertEqual(
+            self._merged(
+                [_compact("03/10/2036", "Demo Ride Shop", 5100)],
+                [_wide("03/10/2036", "DEMO RIDE SHOP", 5100)],
+            ),
+            [("wide_master_simple", "DEMO RIDE SHOP", 5100)],
+        )
+
     def test_a_neighbouring_column_the_wide_reading_appended_merges(self) -> None:
         self.assertEqual(
             self._merged(
                 [
-                    _compact("06/10/2036", "SEGURO DEMO", 21000),
-                    _row("compact_cargos_charge", "05/10/2036", "IMPTO. DEMO LEY 1", 400),
+                    _compact("06/10/2036", "SEGURO DEMO", 21000, "COMPRAS P.A.T."),
+                    _row(
+                        "compact_cargos_charge",
+                        "05/10/2036",
+                        "IMPTO. DEMO LEY 1",
+                        400,
+                        "05/10/2036SANTIAGO 0,066 %TIENDA DEMO X $400IMPTO. DEMO LEY 1",
+                    ),
                 ],
                 [
                     _wide("06/10/2036", "SEGURO DEMO          COMPRAS P.A.T.", 21000),
@@ -144,13 +171,58 @@ class SantanderClpReadingsMergeTest(unittest.TestCase):
                 ("compact_cargos_charge", "IMPTO. DEMO LEY 1", 400),
             ],
         )
+        self.assertEqual(mod.SANTANDER_CLP_UNPAIRED_READINGS, [])
 
-    def test_a_longer_merchant_without_a_column_gap_is_another_line(self) -> None:
-        merged = self._merged(
-            [_compact("08/10/2036", "CAFE DEMO", 900)],
-            [_wide("08/10/2036", "CAFE DEMO LAS CONDES", 900)],
+    def test_a_column_appended_after_a_single_space_merges(self) -> None:
+        self.assertEqual(
+            self._merged(
+                [_compact("06/10/2036", "SEGURO DEMO", 21000, "COMPRAS P.A.T.")],
+                [_wide("06/10/2036", "SEGURO DEMO COMPRAS P.A.T.", 21000)],
+            ),
+            [("wide_master_simple", "SEGURO DEMO COMPRAS P.A.T.", 21000)],
         )
-        self.assertEqual(len(merged), 2)
+
+    def test_trailing_text_that_is_no_column_of_the_line_keeps_two_purchases(self) -> None:
+        # «SHOP» only in one reading, «SHOP  ANNEX» only in the other: the compact line
+        # prints no «ANNEX» beside its merchant, so it is another purchase.
+        merged = self._merged(
+            [_compact("08/10/2036", "SHOP", 900)],
+            [_wide("08/10/2036", "SHOP  ANNEX", 900)],
+        )
+        self.assertEqual(
+            merged,
+            [("compact_de_simple", "SHOP", 900), ("wide_master_simple", "SHOP  ANNEX", 900)],
+        )
+
+    def test_both_readings_left_with_rows_of_a_date_and_amount_are_recorded(self) -> None:
+        self._merged(
+            [_compact("08/10/2036", "SHOP", 900), _compact("09/10/2036", "CAFE DEMO", 700)],
+            [_wide("08/10/2036", "SHOP  ANNEX", 900), _wide("09/10/2036", "CAFE DEMO", 700)],
+        )
+        self.assertEqual(mod.SANTANDER_CLP_UNPAIRED_READINGS, [("08/10/2036", "900")])
+
+    def test_a_cut_never_takes_the_name_of_a_row_paired_exactly(self) -> None:
+        for compact in (
+            [_compact("11/10/2036", "DEMO   *FOOD", 800, "*FOOD"), _compact("11/10/2036", "DEMO", 800)],
+            [_compact("11/10/2036", "DEMO", 800), _compact("11/10/2036", "DEMO   *FOOD", 800, "*FOOD")],
+        ):
+            merged = self._merged(compact, [_wide("11/10/2036", "DEMO", 800)])
+            self.assertEqual(
+                sorted(m for _l, m, _a in merged), ["DEMO", "DEMO   *FOOD"], msg=str(compact)
+            )
+
+    def test_the_longest_cut_pairs_first(self) -> None:
+        merged = self._merged(
+            [
+                _compact("12/10/2036", "TIENDA", 600, "NORTE COMPRAS"),
+                _compact("12/10/2036", "TIENDA NORTE", 600, "COMPRAS"),
+            ],
+            [_wide("12/10/2036", "TIENDA  NORTE  COMPRAS", 600)],
+        )
+        self.assertEqual(
+            merged,
+            [("compact_de_simple", "TIENDA", 600), ("wide_master_simple", "TIENDA  NORTE  COMPRAS", 600)],
+        )
 
     def test_identical_purchases_in_both_readings_stay_two(self) -> None:
         merged = self._merged(
@@ -161,7 +233,10 @@ class SantanderClpReadingsMergeTest(unittest.TestCase):
 
     def test_a_twin_twice_in_one_reading_and_once_in_the_other_keeps_two(self) -> None:
         merged = self._merged(
-            [_compact("10/10/2036", "PEAJE DEMO", 1500), _compact("10/10/2036", "PEAJE DEMO", 1500)],
+            [
+                _compact("10/10/2036", "PEAJE DEMO", 1500, "COMPRAS P.A.T."),
+                _compact("10/10/2036", "PEAJE DEMO", 1500, "COMPRAS P.A.T."),
+            ],
             [_wide("10/10/2036", "PEAJE DEMO          COMPRAS P.A.T.", 1500)],
         )
         self.assertEqual(
