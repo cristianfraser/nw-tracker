@@ -24,6 +24,7 @@ import {
   installmentPurchaseLedgerDedupeKey,
   listOneShotLinesForAccount,
   listPlansForLineMatching,
+  withTakenRenderings,
   type CardPlanForMatching,
 } from "./purchases.js";
 import { sourceLinesOfPlans } from "../ccCrossImportDedupe.js";
@@ -148,11 +149,14 @@ export function loadCardStatementLinePlanInput(
       : null,
   }));
 
-  const rawPlans = db
-    .prepare(
-      `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index FROM cc_installment_purchases WHERE account_id = ?`
-    )
-    .all(accountId) as CardPlanForMatching[];
+  const rawPlans = withTakenRenderings(
+    accountId,
+    db
+      .prepare(
+        `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index FROM cc_installment_purchases WHERE account_id = ?`
+      )
+      .all(accountId) as CardPlanForMatching[]
+  );
   const fingerprints = new Set(rawPlans.map(installmentPurchaseLedgerDedupeKey));
   let nextPlanId = Math.max(0, ...rawPlans.map((p) => p.id)) + 1;
   const documentPlans: CardPlanForMatching[] = [];

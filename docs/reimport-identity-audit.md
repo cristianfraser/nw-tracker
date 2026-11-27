@@ -20,7 +20,7 @@ myself or reproduced it; **reported** = an audit agent's reading, not yet re-che
 | Restate in place (`restateCardLineRow`, `restateMovementFromCartola`) | kept | kept | kept |
 | Carry (`CardLinePlan.carry` → `adoptReplacingCardLines`) | old flow moves to the new row | older kept | kept |
 | Fold (`fold` → `foldCardLineFlowInto`, `mergeFlowInto`) | merged | older kept | earlier arrival's win |
-| Arrival only (`arrivalsOntoPlans`, `copyFlowFirstSeen`) | new | kept | **lost** |
+| Arrival only (`copyFlowFirstSeen`) | new | kept | **lost** |
 | Delete and insert | new | **lost** | **lost** |
 
 Two facts about the plumbing make the last row costly:
@@ -39,20 +39,20 @@ Two facts about the plumbing make the last row costly:
 |---|---|---|---|
 | 1 | Cupo-gap removal of a restated line (`cardUnbilledMovementsApply.ts`, `planCupoGap`) | A receipt's card line the bank listed under its acquirer's name was deleted with `carry: []`; the bank's line was a new flow. This is the 2026-11-26 incident: the purchase jumped to the top of «Últimos movimientos» two and a half hours after it was first seen. It is the only path a listing with no stated close (BCI) takes. | Verified by replaying the listing on a snapshot copy; fixed (`carryOnto`), test added |
 | 2 | Feed mirror restatement (`planOpenBucketMirror`) | Same defect on listings that state a close (Santander). | Fixed (carry when exactly one row restates the line), tests added |
+| 3 | One-shot line replaced by its cuota plan (`planOneShotLinesSupersededByInstallmentPurchases`, `planOneShotLinesForInstallmentPurchase`) | Only the arrival reached the plan; the line's «Único» category, note, big group were stranded (the per-line override only on the statement path). | Fixed: the line's flow folds into the plan's (`foldLineFlowOntoPlan`), earlier arrival's assignments win, override on every path, pieces refused; conversion copies them. Tests through the expense lines |
+| 5 | Bucket settlement, `covered_by_plan` | A bucket line a plan covers that the supersede step did not take was deleted with nothing carried. | Fixed: deleted after the ledger merge, folding into the one plan that covers it (two plans: nothing carried). Test added |
+| 10 | Plan matching took every look-alike (`findOneShotLinesOfPlan`, `oneShotLinesSupersededAmong`) | A genuine twin (same shop, day, pesos) beside the plan's purchase was deleted. | Fixed: a plan takes one line per exact merchant and pesos, counting lines it took before (history evidence); a different rendering still goes. Tests added |
 | 12 | Card-to-card payment transfers (`syncCardToCardPaymentTransfers`) | Deleted and written again on every card write or boot whenever a part's line id, plan id, amount or day changed: a new flow stamped now, so the payment re-entered «Últimos movimientos» as new and lost its note or big group. | Fixed: a part re-keyed with the same transfer keeps its movement; a changed transfer folds the old flow into the new one. Tests added |
 
 ### Open — card side
 
 | # | Path | Trigger | Lost | Status |
 |---|---|---|---|---|
-| 3 | One-shot line replaced by its cuota plan (`planOneShotLinesSupersededByInstallmentPurchases`, `planOneShotLinesForInstallmentPurchase`, `ccCrossImportDedupe.ts`) | Every statement import, listing merge, feed-created plan, hand-entered plan | Arrival is kept; the line's «Único» category, note, big group and pieces are not (the supersede path copies only the per-line override; plan creation copies nothing) | Verified |
 | 4 | Bucket settlement, unmatched in-cycle line that cannot be annulled (a credit, a payment, a cuota-tagged line) | Statement close, when the statement prints it under another merchant or day | Everything; the statement's line is stamped new | Reported |
-| 5 | Bucket settlement, `covered_by_plan` | A plan covers the line but the supersede step did not take it | Arrival and assignments | Reported (narrow) |
 | 6 | Statement re-import, vanished line with no pair (`gone`) | A parser fix that changes a line's amount or merchant | Arrival, note, big group, flow category; not reported anywhere | Reported |
 | 7 | Statement re-import, identity group with differing counts (`unpaired`) | A re-parse that splits or merges lines | Everything on the old lines; reported only in the `import:cc-parsed` text and `report-document-import.ts`, dropped from the statement JSON write and the PDF upload results | Reported |
 | 8 | Re-listed annulment (`removeRelistedAnnulments`) | A listing shows an annulled purchase again a day later or under another rendering | The annulment is deleted and the line imports with a new key | Reported (risk) |
 | 9 | Annulment of a line with nothing filed on it | Bank voids a purchase, then bills it after all | The flow is deleted, so the billed line has no arrival to take | Reported (risk) |
-| 10 | Plan matching deletes every look-alike (`findOneShotLinesOfPlan`) | A real twin purchase beside the plan's purchase | The twin is deleted | Reported (risk) |
 | 11 | Ledger rebuild (`import:cc-parsed --replace-ledger`) | Manual run | Plans get new ids and flows; anything keyed by plan id detaches | Reported (risk) |
 
 ### Open — checking and transfers
@@ -100,9 +100,8 @@ snapshots, and the observation may have been a misreading.
 ## Test coverage
 
 Stamp preservation is tested for the statement line re-import and the cartola restate. No test
-covered the mirror or the cupo gap before this change. Nothing tests: plan-supersedes-line
-assignments, the card-to-card sync's re-creation, mirror conversion and undo, bucket settlement of
-a credit, or the ordering inputs listed above.
+covered the mirror or the cupo gap before this change. Nothing tests: mirror conversion and undo,
+bucket settlement of a credit, or the ordering inputs listed above.
 
 ## Plan (branch `claude/reimport-identity`)
 

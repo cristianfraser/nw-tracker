@@ -66,6 +66,7 @@ import {
   markAnnulledPurchaseBankCredited,
 } from "../ccAnnulledPurchases.js";
 import { moveOpenBucketLinesToBillingMonth } from "../ccOpenWebPasteRepair.js";
+import { plansCoveringOneShotLine } from "./purchases.js";
 import { carryPlanPrepaymentLines } from "../ccPlanPrepayments.js";
 import { confirmManualPaymentForPlanted, listPlantedPaymentLines } from "../ccPlantedPayments.js";
 import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
@@ -316,7 +317,10 @@ function applyInSession(
   // The rows, one plan: restated, inserted, folded (their prepayments first), removed.
   carryPlanPrepaymentLines(accountId, lineFolds.map((f) => ({ fromLineId: f.fromLineId, toLineId: f.intoLineId })));
   const supersededByPlan = new Set(plan.remove.filter((r) => r.why === "superseded_by_plan").map((r) => r.row.id));
-  const removed = plan.remove.filter((r) => r.why !== "superseded_by_plan").map((r) => r.row.id);
+  // A bucket line a plan covers that the supersede step did not take goes once the plans are on
+  // file (the ledger merge below may write its plan), handing that plan its flow.
+  const coveredByPlan = new Set(plan.remove.filter((r) => r.why === "covered_by_plan").map((r) => r.row.id));
+  const removed = plan.remove.filter((r) => r.why !== "superseded_by_plan" && r.why !== "covered_by_plan").map((r) => r.row.id);
   const annulmentLineFolds = new Set(annulmentKeeps.flatMap((k) => k.lineFolds));
   const applied = applyCardLinePlanDetailed(accountId, {
     restate,
@@ -401,10 +405,23 @@ function applyInSession(
   applyCardLinePlan(accountId, overlap);
   const afterLedger = lineIds();
   const gone = [...beforeLedger].filter((id) => !afterLedger.has(id));
-  if (gone.length !== supersededByPlan.size || gone.some((id) => !supersededByPlan.has(id))) {
+  // A covered line the plan ledger's own supersede pass took is gone already (its flow folded into
+  // that plan's); the superseded lines must all be gone, and nothing else.
+  if ([...supersededByPlan].some((id) => afterLedger.has(id)) || gone.some((id) => !supersededByPlan.has(id) && !coveredByPlan.has(id))) {
     throw new Error(
       `keep-rows apply: the plans superseded lines ${gone.join(", ") || "none"}, the plan said ${[...supersededByPlan].join(", ") || "none"}`
     );
+  }
+  // The covered lines left: exactly one plan on file covering a line takes its flow (as a superseded
+  // line's, `foldLineFlowOntoPlan`); a line two plans cover (twins) is deleted with nothing carried.
+  const coveredLeft = [...coveredByPlan].filter((id) => afterLedger.has(id));
+  if (coveredLeft.length > 0) {
+    const foldOntoPlans: { fromLineId: number; planId: number }[] = [];
+    for (const id of coveredLeft) {
+      const plans = plansCoveringOneShotLine(accountId, id);
+      if (plans.length === 1) foldOntoPlans.push({ fromLineId: id, planId: plans[0]!.id });
+    }
+    applyCardLinePlan(accountId, { deleteLineIds: coveredLeft, carry: [], foldOntoPlans });
   }
 
   // The bucket lines the statement does not bill: on to the facturación they belong to.
@@ -425,7 +442,7 @@ function applyInSession(
     restated: restate.map((r) => r.lineId),
     inserted: applied.inserted,
     folded: [...lineFolds.map((f) => f.fromLineId), ...annulmentKeeps.flatMap((k) => k.lineFolds)],
-    removed: [...removed, ...supersededByPlan],
+    removed: [...removed, ...coveredByPlan, ...supersededByPlan],
     annulled: plan.annul.map((a) => a.line_id),
     moved: plan.move_to_open.map((m) => m.line_id),
     annulments_billed: billed,

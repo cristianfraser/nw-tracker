@@ -5,6 +5,8 @@ import { db } from "./db.js";
 import { copyFlowFirstSeen, recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import {
   applyCardLinePlan,
+  cardLineHasPieces,
+  copyLineAssignmentsOntoPlan,
   planOneShotLinesForInstallmentPurchase,
   selLineCategory,
   upsertUniqueCat,
@@ -211,6 +213,9 @@ export function convertStatementLineToInstallmentPurchase(
     throw new InputError("line is already converted to a plan");
   }
 
+  // Pieces split one charge by day and category; a plan bills by cuota and takes none.
+  if (cardLineHasPieces(lineId)) throw new InputError("line has pieces: remove them before converting it to cuotas");
+
   return withCardLineSession(accountId, "convert a line to cuotas", () => {
 
     // The plan overlays the line (`source_line_id`): the line stays on file, the purchases module
@@ -226,9 +231,11 @@ export function convertStatementLineToInstallmentPurchase(
       },
       { sourceLineId: lineId }
     );
-    // The plan's expense carries the line's category (an «Único» row under the plan's key, written
-    // once the plan is on file: the key must name it); the line keeps its own rows, so deleting the
-    // plan leaves it as it was.
+    // The plan's expense carries what was filed on the line (its «Único» category, note and big
+    // group, then its per-line category override when the plan has no «Único» row yet), under the
+    // plan's key, written once the plan is on file: the key must name it. The line keeps its own
+    // rows, so deleting the plan leaves it as it was.
+    copyLineAssignmentsOntoPlan(accountId, lineId, created.id);
     const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
     if (cat?.category_id != null) {
       const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({

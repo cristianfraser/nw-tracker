@@ -127,9 +127,10 @@ export type CardLinePlan = {
   fold?: readonly { fromLineId: number; intoLineId: number }[];
   /**
    * Deleted one-shot lines a plan supersedes (the purchase listed before its plan existed): each
-   * line's arrival folds into its plan's flow (`olderArrival`) before the line goes.
+   * line's flow — arrival, category, note, big group, links — folds into its plan's
+   * (`foldLineFlowOntoPlan`) before the line goes.
    */
-  arrivalsOntoPlans?: readonly { fromLineId: number; planId: number }[];
+  foldOntoPlans?: readonly { fromLineId: number; planId: number }[];
 };
 
 export const EMPTY_CARD_LINE_PLAN: CardLinePlan = { deleteLineIds: [], carry: [] };

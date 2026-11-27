@@ -8,7 +8,10 @@ import {
   type CardPlanForMatching,
 } from "./cards/purchases.js";
 import { db } from "./db.js";
-import { copyFlowFirstSeen, recordCardLineFlowFirstSeen } from "./flows/flowFirstSeen.js";
+import { compareArrival, flowArrival, recordCardLineFlowFirstSeen } from "./flows/flowFirstSeen.js";
+import { ensureFlowForKey, expenseKeyParts, flowIdForKey, mergeFlowInto } from "./flows/flowIdentity.js";
+import { WHOLE_FLOW_PIECE } from "./flows/flowKeyedAssignments.js";
+import { keepEvidenceAsHistory } from "./flows/flowEvidence.js";
 import { foldCardLineFlowInto, insertStoredCardLine, restateCardLineRow, storedDocumentLine } from "./cards/lineRowWrites.js";
 import {
   isGenericTransferMerchantKey,
@@ -123,12 +126,11 @@ export function earliestTransactionDateForLineIds(lineIds: number[]): string | n
  * restates in place (`cards/lineRowWrites.ts`; a merchant rule follows a new merchant name), inserts
  * the document lines (stamped in the plan's order when they are new movements), folds each line
  * into its kept line (its flow, its category override and merchant rule follow), carries each
- * replaced line's expense assignments onto the line that replaces it, folds superseded lines'
- * arrivals onto their plans, deletes (the deleted and the folded lines). Throws when a line is not
+ * replaced line's expense assignments onto the line that replaces it, folds each superseded line's
+ * flow into its plan's ({@link foldLineFlowOntoPlan}), deletes (the deleted and the folded lines). Throws when a line is not
  * on the account. Returns the lines deleted.
  */
 const selLineFlow = db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`);
-const selPlanFlow = db.prepare(`SELECT flow_id FROM cc_installment_purchases WHERE id = ?`);
 
 export function applyCardLinePlan(accountId: number, plan: CardLinePlan): number {
   return applyCardLinePlanDetailed(accountId, plan).deleted;
@@ -192,12 +194,7 @@ export function applyCardLinePlanDetailed(accountId: number, plan: CardLinePlan)
     carryMerchantRule(accountId, from.merchant, into.merchant);
   }
   replaceCardLines(plan.carry);
-  for (const a of plan.arrivalsOntoPlans ?? []) {
-    const lineFlow = (selLineFlow.get(a.fromLineId) as { flow_id: number | null } | undefined)?.flow_id;
-    const planFlow = (selPlanFlow.get(a.planId) as { flow_id: number | null } | undefined)?.flow_id;
-    if (lineFlow == null || planFlow == null) throw new Error(`line ${a.fromLineId} / plan ${a.planId}: no flow`);
-    copyFlowFirstSeen(lineFlow, planFlow);
-  }
+  for (const a of plan.foldOntoPlans ?? []) foldLineFlowOntoPlan(accountId, a.fromLineId, a.planId);
   let n = 0;
   for (const id of ids) n += delLines.run(id).changes;
   return { deleted: n, inserted };
@@ -205,33 +202,133 @@ export function applyCardLinePlanDetailed(accountId: number, plan: CardLinePlan)
 
 export type CcCrossImportDedupePlan = CardLinePlan & { removed_line_ids: number[] };
 
+const selPlanForKey = db.prepare(
+  `SELECT id, flow_id, purchase_date, total_amount_clp, cuotas_totales, merchant FROM cc_installment_purchases WHERE id = ? AND account_id = ?`
+);
+const selFlowHasParts = db.prepare(`SELECT 1 FROM flow_parts WHERE flow_id = ? LIMIT 1`);
+const selFlowKeyedRows = db.prepare(
+  `SELECT 1 FROM flow_categories WHERE flow_id = ? UNION ALL SELECT 1 FROM flow_notes WHERE flow_id = ?
+   UNION ALL SELECT 1 FROM flow_big_groups WHERE flow_id = ? LIMIT 1`
+);
+/** Whether a flow holds a category, a note or a big group (rows its key's readers find). */
+const flowHoldsKeyedRows = (flowId: number): boolean => selFlowKeyedRows.get(flowId, flowId, flowId) != null;
+
+/** The expense key a plan's lines carry (its «Total» line and its cuota lines): `installment-h:` with its total. */
+export function planExpenseKey(
+  accountId: number,
+  plan: { purchase_date: string; cuotas_totales: number; total_amount_clp: number; merchant: string | null }
+): string | null {
+  return stableInstallmentHPurchaseKeyFromLedgerArgs({
+    accountId,
+    purchaseDateIso: plan.purchase_date,
+    cuotasTotales: plan.cuotas_totales,
+    totalAmountClp: plan.total_amount_clp,
+    merchant: plan.merchant,
+  });
+}
+
 /**
- * The one-shot lines a plan supersedes (the line its purchase was listed as): a plan for each. A
- * category set on such a line moves to the plan's purchase key («Único» row) — written here, since
- * the line's own row goes with it; the lines are the funnel's to delete, and each line's arrival
- * folds into its plan's flow (the purchase arrived when it was first listed). A line a plan was
- * converted from (`cc_installment_purchases.source_line_id`) stays: the plan overlays it.
+ * A one-shot line its cuota plan replaces (the purchase listed before its plan existed) hands the
+ * plan its whole flow before the line goes: the arrival, the «Único» category, the note, the big
+ * group, the links (`mergeFlowInto`). The plan's side is the flow its lines are read by: the flow
+ * that answers to the plan's `installment-h:` key when one does (twin plans share it), else the
+ * plan's own flow, which then answers to the key once it holds something keyed (the expense readers
+ * find a plan's category, note and big group by that key, on its «Total» and cuota lines alike).
+ *
+ * On a conflict the earlier arrival's assignments win (ties: the plan's), the fold rule of every
+ * other path: what the user filed first was filed on the purchase as they first saw it. A plan
+ * written new is stamped now, so a listed line's assignments win over it; a plan on file before the
+ * line (a hand-entered plan whose purchase a late listing repeats) keeps its own. Several lines of
+ * one plan (a pre-authorisation listed twice) fold one by one, so the earliest of them all wins and
+ * the older arrival stays whatever the order.
+ *
+ * Pieces are refused: they split one charge by day and category, a plan bills by cuota, and the
+ * plan's cuota lines read pieces of its flow as pieces of each cuota. The line's pieces must go
+ * first (the import throws, writing nothing).
+ *
+ * The line's per-line category override (keyed by line id, so it would cascade away with the line)
+ * becomes the plan's «Único» row when the plan has none — after the fold, so an «Único» row the line
+ * carried (which outranks its override) is the one that stays. Call before deleting the line.
+ */
+export function foldLineFlowOntoPlan(accountId: number, lineId: number, planId: number): void {
+  const plan = selPlanForKey.get(planId, accountId) as
+    | { id: number; flow_id: number | null; purchase_date: string; total_amount_clp: number; cuotas_totales: number; merchant: string | null }
+    | undefined;
+  if (!plan) throw new Error(`card line ${lineId}: plan ${planId} is not on account ${accountId}`);
+  const lineFlow = (selLineFlow.get(lineId) as { flow_id: number | null } | undefined)?.flow_id;
+  if (lineFlow == null || plan.flow_id == null) throw new Error(`line ${lineId} / plan ${planId}: no flow`);
+  if (selFlowHasParts.get(lineFlow) != null) {
+    throw new Error(`card line ${lineId} has pieces and its cuota plan ${planId} replaces it: a plan takes no pieces; remove the line's pieces first`);
+  }
+  const key = planExpenseKey(accountId, plan);
+  const flowKey = key ? expenseKeyParts(key)?.flowKey ?? null : null;
+  if (key && !flowKey) throw new Error(`plan ${planId}: not an expense purchase key «${key}»`);
+  const holder = flowKey ? flowIdForKey(flowKey) : null;
+  const target = holder ?? plan.flow_id;
+  if (lineFlow !== target) {
+    const prefer = compareArrival(flowArrival(lineFlow), flowArrival(target)) < 0 ? "from" : "to";
+    mergeFlowInto(lineFlow, target, prefer);
+    // The listing's evidence stays on the plan's flow as history.
+    keepEvidenceAsHistory(db, "cc_statement_lines", lineId);
+  }
+  if (holder == null && flowHoldsKeyedRows(target)) {
+    if (!flowKey) throw new Error(`card line ${lineId}: plan ${planId} has no expense key to carry the line's category, note or big group`);
+    db.prepare(`UPDATE flows SET legacy_key = ? WHERE id = ?`).run(flowKey, target);
+  }
+  const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
+  if (cat?.category_id != null) upsertUniqueCat.run(accountId, key, cat.category_id);
+}
+
+/**
+ * A plan converted from a line overlays it (`source_line_id`): the line stays on file with its own
+ * flow, so deleting the plan leaves it as it was, and the plan's expense starts from what was filed
+ * on the line — its «Único» category, note and big group are copied under the plan's key (rows the
+ * plan already has stay). The caller refuses a line with pieces (a plan takes none).
+ */
+export function copyLineAssignmentsOntoPlan(accountId: number, lineId: number, planId: number): void {
+  const plan = selPlanForKey.get(planId, accountId) as
+    | { purchase_date: string; total_amount_clp: number; cuotas_totales: number; merchant: string | null }
+    | undefined;
+  if (!plan) throw new Error(`card line ${lineId}: plan ${planId} is not on account ${accountId}`);
+  const lineFlow = (selLineFlow.get(lineId) as { flow_id: number | null } | undefined)?.flow_id;
+  if (lineFlow == null) throw new Error(`card line ${lineId}: no flow`);
+  if (!flowHoldsKeyedRows(lineFlow)) return;
+  const key = planExpenseKey(accountId, plan);
+  if (key == null) throw new Error(`card line ${lineId}: plan ${planId} has no expense key to carry the line's category, note or big group`);
+  const target = ensureFlowForKey(key);
+  for (const table of ["flow_categories", "flow_notes", "flow_big_groups"]) {
+    const cols = (db.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[]).map((c) => c.name);
+    const select = cols.map((c) => (c === "flow_id" ? "?" : c)).join(", ");
+    db.prepare(`INSERT OR IGNORE INTO ${table} (${cols.join(", ")}) SELECT ${select} FROM ${table} WHERE flow_id = ? AND piece_seq = ?`).run(
+      target,
+      lineFlow,
+      WHOLE_FLOW_PIECE
+    );
+  }
+}
+
+/** Whether a card line's flow carries pieces (`flow_parts`). */
+export function cardLineHasPieces(lineId: number): boolean {
+  const lineFlow = (selLineFlow.get(lineId) as { flow_id: number | null } | undefined)?.flow_id;
+  return lineFlow != null && selFlowHasParts.get(lineFlow) != null;
+}
+
+/**
+ * The one-shot lines a plan supersedes (the line its purchase was listed as): a plan for each. The
+ * lines are the funnel's to delete, and each line's flow folds into its plan's
+ * ({@link foldLineFlowOntoPlan}: the purchase arrived when it was first listed, and what was filed
+ * on it stays). A line a plan was converted from (`cc_installment_purchases.source_line_id`) stays:
+ * the plan overlays it.
  */
 export function planOneShotLinesSupersededByInstallmentPurchases(accountId: number): CcCrossImportDedupePlan {
   const sourceLineByPlan = sourceLinesOfPlans(accountId);
   const ids: number[] = [];
-  const arrivalsOntoPlans: { fromLineId: number; planId: number }[] = [];
+  const foldOntoPlans: { fromLineId: number; planId: number }[] = [];
   for (const [lineId, purchase] of supersededLinesLessPlanSources(oneShotLinesSupersededByPlans(accountId), sourceLineByPlan)) {
-    const cat = selLineCategory.get(lineId) as { category_id: number } | undefined;
-    if (cat?.category_id != null) {
-      const purchaseKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
-        accountId,
-        purchaseDateIso: purchase.purchase_date,
-        cuotasTotales: purchase.cuotas_totales,
-        totalAmountClp: purchase.total_amount_clp,
-        merchant: purchase.merchant,
-      });
-      upsertUniqueCat.run(accountId, purchaseKey, cat.category_id);
-    }
     ids.push(lineId);
-    arrivalsOntoPlans.push({ fromLineId: lineId, planId: purchase.id });
+    foldOntoPlans.push({ fromLineId: lineId, planId: purchase.id });
   }
-  return { removed_line_ids: ids, deleteLineIds: ids, carry: [], arrivalsOntoPlans };
+  return { removed_line_ids: ids, deleteLineIds: ids, carry: [], foldOntoPlans };
 }
 
 /**
@@ -270,7 +367,7 @@ export function planOneShotLinesForInstallmentPurchase(accountId: number, purcha
     .get(purchaseId, accountId) as CardPlanForMatching | undefined;
   if (!purchase) return { deleteLineIds: [], carry: [] };
   const lineIds = findOneShotLinesOfPlan(accountId, purchase);
-  return { deleteLineIds: lineIds, carry: [], arrivalsOntoPlans: lineIds.map((fromLineId) => ({ fromLineId, planId: purchase.id })) };
+  return { deleteLineIds: lineIds, carry: [], foldOntoPlans: lineIds.map((fromLineId) => ({ fromLineId, planId: purchase.id })) };
 }
 
 export function backfillCcCrossImportDedupe(

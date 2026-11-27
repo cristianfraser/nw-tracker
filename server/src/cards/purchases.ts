@@ -24,6 +24,7 @@
 import type { Database } from "better-sqlite3";
 import type { CcCuotaPurchaseKind } from "../ccCuotaPurchaseKinds.js";
 import { db } from "../db.js";
+import { isHomeCurrency } from "../displayUnits.js";
 import { cardLineAmountClpAtStoredRate } from "../ccExpenseAmountClp.js";
 import {
   isInstallmentContractSummaryMerchant,
@@ -44,6 +45,12 @@ export type CardPlanForMatching = {
   cuotas_totales: number;
   merchant: string | null;
   twin_index: number;
+  /**
+   * The renderings ({@link oneShotLineRendering}) of the one-shot lines the plan already took: their
+   * evidence stays on its flow as history (`foldLineFlowOntoPlan`), so a later pass does not hand
+   * the plan an identical twin line once its own line is gone ({@link withTakenRenderings}).
+   */
+  taken_renderings?: readonly string[];
 };
 
 /** A one-shot statement line (`installment_flag = 0`) with a positive peso amount. */
@@ -123,7 +130,45 @@ export function listPlansForLineMatching(accountId: number): CardPlanForMatching
        FROM cc_installment_purchases WHERE account_id = ?`
     )
     .all(accountId) as CardPlanForMatching[];
-  return dedupeInstallmentPurchaseLedgerRows(rows);
+  return dedupeInstallmentPurchaseLedgerRows(withTakenRenderings(accountId, rows));
+}
+
+/** What makes two one-shot lines two charges rather than one rendered twice: the exact merchant text and the pesos. */
+export function oneShotLineRendering(merchant: string | null, amountClp: number): string {
+  return `${normalizeMerchantText(merchant)}|${Math.abs(Math.trunc(amountClp))}`;
+}
+
+/**
+ * Each plan with the renderings of the one-shot lines it already took: the line evidence its flow
+ * keeps as history that stands for its purchase. Twin plans on one flow (they share a key) share
+ * those rows out in plan id order, one each, so the twin whose line has not come yet still has room.
+ */
+export function withTakenRenderings<P extends CardPlanForMatching>(accountId: number, plans: readonly P[]): P[] {
+  const rows = db
+    .prepare(
+      `SELECT p.flow_id, e.id AS evidence_id, e.stated_description, e.stated_amount, e.stated_on
+       FROM cc_installment_purchases p JOIN flow_evidence e ON e.flow_id = p.flow_id
+       WHERE p.account_id = ? AND e.source_table = 'restated:cc_statement_lines' AND e.stated_amount IS NOT NULL
+       GROUP BY e.id ORDER BY e.id`
+    )
+    .all(accountId) as { flow_id: number; evidence_id: number; stated_description: string | null; stated_amount: number; stated_on: string | null }[];
+  if (rows.length === 0) return [...plans];
+  const flowOf = new Map(
+    (db.prepare(`SELECT id, flow_id FROM cc_installment_purchases WHERE account_id = ?`).all(accountId) as { id: number; flow_id: number | null }[]).map(
+      (r) => [r.id, r.flow_id]
+    )
+  );
+  const taken = new Map<number, string[]>();
+  const byId = [...plans].sort((a, b) => a.id - b.id);
+  for (const r of rows) {
+    const amount = Math.abs(Math.trunc(r.stated_amount));
+    const holders = byId.filter((p) => flowOf.get(p.id) === r.flow_id && planMatchesOneShotLine(p, r.stated_description, r.stated_on, amount));
+    if (holders.length === 0) continue;
+    const rendering = oneShotLineRendering(r.stated_description, amount);
+    const free = holders.find((p) => !(taken.get(p.id) ?? []).includes(rendering)) ?? holders[0]!;
+    taken.set(free.id, [...(taken.get(free.id) ?? []), rendering]);
+  }
+  return plans.map((p) => (taken.has(p.id) ? { ...p, taken_renderings: taken.get(p.id)! } : p));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -216,6 +261,28 @@ export function findPlanAmong<P extends CardPlanForMatching>(
 }
 
 /**
+ * The account's plans whose purchase a one-shot peso line on file stands for ({@link findPlanAmong}'s
+ * rule, every match): the bucket settlement's «covered by a plan» test, read once the plans are on
+ * file. A line in another currency is no plan's (a plan is a peso contract).
+ */
+export function plansCoveringOneShotLine(accountId: number, lineId: number): CardPlanForMatching[] {
+  const line = db
+    .prepare(
+      `SELECT l.merchant, l.transaction_date, l.posting_date, l.amount, l.currency, l.installment_flag
+       FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE l.id = ? AND s.account_id = ?`
+    )
+    .get(lineId, accountId) as
+    | { merchant: string | null; transaction_date: string | null; posting_date: string | null; amount: number | null; currency: string; installment_flag: number }
+    | undefined;
+  if (!line) throw new Error(`card line ${lineId} is not on account ${accountId}`);
+  if (line.installment_flag !== 0 || !isHomeCurrency(line.currency) || line.amount == null) return [];
+  const iso = purchaseDateIsoFromLine(line.transaction_date, line.posting_date);
+  const abs = Math.abs(Math.trunc(line.amount));
+  if (abs <= 0) return [];
+  return listPlansForLineMatching(accountId).filter((p) => planMatchesOneShotLine(p, line.merchant, iso, abs));
+}
+
+/**
  * Read-scope memo for the account-level line scan and the superseded set. Only active inside
  * {@link withCcOneShotScanCache} (synchronous read-only builds like detalle por mes, which ask once
  * per billing month). Import and write flows never enter the scope, so their decisions re-read.
@@ -282,13 +349,17 @@ function listOneShotLinesForAccountUncached(accountId: number): CardOneShotLine[
   return out;
 }
 
-/** The one-shot lines of a plan's purchase on its account. */
+/**
+ * The one-shot lines of a plan's purchase on its account: the lines the account's plans together
+ * supersede that fall to this plan ({@link oneShotLinesSupersededAmong}), so a genuine twin purchase
+ * beside the plan's stays.
+ */
 export function findOneShotLinesOfPlan(accountId: number, plan: CardPlanForMatching): number[] {
+  const plans = listPlansForLineMatching(accountId);
+  if (!plans.some((p) => p.id === plan.id)) throw new Error(`plan ${plan.id} is not on account ${accountId}`);
   const ids: number[] = [];
-  for (const line of listOneShotLinesForAccount(accountId)) {
-    if (planMatchesOneShotLine(plan, line.merchant, line.purchase_date_iso, line.amount_clp)) {
-      ids.push(line.statement_line_id);
-    }
+  for (const [lineId, p] of oneShotLinesSupersededAmong(listOneShotLinesForAccount(accountId), plans)) {
+    if (p.id === plan.id) ids.push(lineId);
   }
   return ids;
 }
@@ -304,18 +375,35 @@ export function oneShotLinesSupersededByPlans(accountId: number): Map<number, Ca
   return oneShotLinesSupersededAmong(listOneShotLinesForAccount(accountId), plans);
 }
 
-/** {@link oneShotLinesSupersededByPlans} over given lines and plans (pure). */
+/**
+ * {@link oneShotLinesSupersededByPlans} over given lines and plans (pure). Lines are taken in id
+ * order (the earliest written first), each by the first matching plan with room for it.
+ *
+ * A plan takes one line per rendering of its purchase: per exact merchant text and amount, counting
+ * the lines it took before (`taken_renderings`). Two lines
+ * that print the same merchant, day and amount are two charges — the import keeps such lines apart
+ * only as distinct charges (a statement's `#dupN` twins; a listing's repeat of one row collides on
+ * its dedupe key and is skipped) — so a genuine one-shot twin beside the plan's purchase is not the
+ * plan's, and a twin plan (`twin_index`) takes the second. A line that renders the purchase
+ * differently (the bank listing one charge twice under another city format, a pending row and its
+ * settled one, the principal and the re-listed cuota) is the same purchase again, and the plan takes
+ * it too.
+ */
 export function oneShotLinesSupersededAmong<P extends CardPlanForMatching>(
   lines: readonly Pick<CardOneShotLine, "statement_line_id" | "merchant" | "purchase_date_iso" | "amount_clp">[],
   plans: readonly P[]
 ): Map<number, P> {
   const superseded = new Map<number, P>();
-  for (const line of lines) {
+  const taken = new Set<string>(plans.flatMap((p) => (p.taken_renderings ?? []).map((r) => `${p.id}|${r}`)));
+  for (const line of [...lines].sort((a, b) => a.statement_line_id - b.statement_line_id)) {
+    const rendering = oneShotLineRendering(line.merchant, line.amount_clp);
     for (const p of plans) {
-      if (planMatchesOneShotLine(p, line.merchant, line.purchase_date_iso, line.amount_clp)) {
-        superseded.set(line.statement_line_id, p);
-        break;
-      }
+      if (!planMatchesOneShotLine(p, line.merchant, line.purchase_date_iso, line.amount_clp)) continue;
+      const slot = `${p.id}|${rendering}`;
+      if (taken.has(slot)) continue;
+      taken.add(slot);
+      superseded.set(line.statement_line_id, p);
+      break;
     }
   }
   return superseded;
