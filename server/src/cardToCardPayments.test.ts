@@ -3,6 +3,7 @@ import { db } from "./db.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 import { syncCardToCardPaymentTransfers } from "./cardToCardPayments.js";
+import { flowArrival } from "./flows/flowFirstSeen.js";
 import {
   deleteCcFacturadoFinancingLink,
   listCcFacturadoFinancingLinks,
@@ -153,14 +154,41 @@ describe("card-to-card facturado payments as transfers", () => {
     const again = syncCardToCardPaymentTransfers();
     expect(again.created.length + again.updated.length + again.deleted.length).toBe(0);
 
-    // The charge's line moves a day: its transfer is replaced.
+    // The charge's line moves a day: its transfer is replaced, and is still the payment the app
+    // first saw (the arrival of the first transfer, not of the rewrite).
+    const flowOfMovement = (id: number): number =>
+      (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+    const chargeTransfer = rows.find((r) => r.part_kind === "charge")!.id;
+    const firstSeen = flowArrival(flowOfMovement(chargeTransfer));
+    expect(firstSeen.kind).toBe("stamped");
     db.prepare(`UPDATE cc_statement_lines SET transaction_date = '16/02/2035' WHERE id = ?`).run(c.lineId);
     const moved = syncCardToCardPaymentTransfers();
     expect(moved.updated).toHaveLength(1);
     expect(moved.updated[0]!.after.occurred_on).toBe("2035-02-16");
+    expect(flowArrival(flowOfMovement(moved.updated[0]!.after.movement_id))).toEqual(firstSeen);
+
+    // A re-import replaces the plan under a new id, the same purchase: its transfer stays the
+    // movement it was, named by the new plan.
+    const planTransfer = transfers().find((r) => r.part_kind === "plan")!.id;
+    const replanned = {
+      id: Number(
+        db
+          .prepare(
+            `INSERT INTO cc_installment_purchases
+               (account_id, card_group, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, merchant, source)
+             VALUES (?, 'A', ?, '2035-02-15', 900000, 3, 'RECAUDACION PLAN b', 'manual')`
+          )
+          .run(paying, `${TAG}|b-again`).lastInsertRowid
+      ),
+    };
+    db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(p.id);
+    const rekeyed = syncCardToCardPaymentTransfers();
+    expect(rekeyed.rekeyed).toEqual([{ movement_id: planTransfer, part_kind: "plan", from_ref: p.id, to_ref: replanned.id }]);
+    expect(rekeyed.created.length + rekeyed.updated.length + rekeyed.deleted.length).toBe(0);
+    expect(transfers().find((r) => r.part_kind === "plan")).toMatchObject({ id: planTransfer, part_ref: replanned.id });
 
     // The plan is gone: its transfer goes.
-    db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(p.id);
+    db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(replanned.id);
     const gone = syncCardToCardPaymentTransfers();
     expect(gone.deleted.map((d) => d.part_kind)).toEqual(["plan"]);
     rows = transfers();

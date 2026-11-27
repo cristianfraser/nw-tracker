@@ -39,6 +39,7 @@ Two facts about the plumbing make the last row costly:
 |---|---|---|---|
 | 1 | Cupo-gap removal of a restated line (`cardUnbilledMovementsApply.ts`, `planCupoGap`) | A receipt's card line the bank listed under its acquirer's name was deleted with `carry: []`; the bank's line was a new flow. This is the 2026-11-26 incident: the purchase jumped to the top of «Últimos movimientos» two and a half hours after it was first seen. It is the only path a listing with no stated close (BCI) takes. | Verified by replaying the listing on a snapshot copy; fixed (`carryOnto`), test added |
 | 2 | Feed mirror restatement (`planOpenBucketMirror`) | Same defect on listings that state a close (Santander). | Fixed (carry when exactly one row restates the line), tests added |
+| 12 | Card-to-card payment transfers (`syncCardToCardPaymentTransfers`) | Deleted and written again on every card write or boot whenever a part's line id, plan id, amount or day changed: a new flow stamped now, so the payment re-entered «Últimos movimientos» as new and lost its note or big group. | Fixed: a part re-keyed with the same transfer keeps its movement; a changed transfer folds the old flow into the new one. Tests added |
 
 ### Open — card side
 
@@ -58,7 +59,6 @@ Two facts about the plumbing make the last row costly:
 
 | # | Path | Trigger | Lost | Status |
 |---|---|---|---|---|
-| 12 | Card-to-card payment transfers (`syncCardToCardPaymentTransfers`) | Every card write and every boot, whenever a part's line id, plan id, amount or day changed | Delete then `insertMovement`: new flow, stamped now. The transfer re-enters «Últimos movimientos» as new and loses its note or big group | Verified |
 | 13 | Mirror conversion by hand (`convertMirrorPairs`) | /panel/mirror-pairs | The transfer is stamped now; neither leg's arrival, note or category is carried (the sibling path `supersedeImportedCheckingRowsForTransfer` does adopt) | Verified |
 | 14 | Mirror undo (`undoMirrorConversion`) | Undo | Restored legs are stamped now; their retired flows are not taken back | Reported |
 | 15 | Cartola removes a daily row a transfer leg or a mail row already lists | Monthly cartola | The daily row's category, note, income classification are not folded into the kept row | Reported |
@@ -106,9 +106,8 @@ a credit, or the ordering inputs listed above.
 
 ## Suggested order of work
 
-1. **12** — it fires without any user action, on every card write.
-2. **3** — the most common way filed work is lost: every purchase paid in cuotas goes through it.
-3. **13–15** — fold or adopt before deleting, as the sibling paths already do.
-4. **4–7** — settlement and re-import leftovers; make 6 and 7 visible in every import result first.
-5. A general step for card lines like the one movements have (take a retired flow back by key on
+1. **3** — the most common way filed work is lost: every purchase paid in cuotas goes through it.
+2. **13–15** — fold or adopt before deleting, as the sibling paths already do.
+3. **4–7** — settlement and re-import leftovers; make 6 and 7 visible in every import result first.
+4. A general step for card lines like the one movements have (take a retired flow back by key on
    insert) would close the remaining gaps in one place rather than path by path.

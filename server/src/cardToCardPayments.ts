@@ -9,10 +9,18 @@
  * can price).
  *
  * Derived state, rebuilt by {@link syncCardToCardPaymentTransfers}: a missing transfer is written,
- * one whose ends, pesos or day changed is replaced (deleted and written again — a movement's flow
- * is not rewritten on update), one whose record or part is gone is deleted. Each transfer's row in
- * `card_to_card_payments` names its part (migration 311); deleting a record cascades its rows and
- * their trigger deletes the transfers.
+ * one whose ends, pesos or day changed is replaced, one whose record or part is gone is deleted.
+ * Each transfer's row in `card_to_card_payments` names its part (migration 311); deleting a record
+ * cascades its rows and their trigger deletes the transfers.
+ *
+ * The payment stays one flow through the sync, so it keeps the day the app first saw it (its place
+ * in «Últimos movimientos») and whatever was filed on it. A part whose reference changed while the
+ * transfer it states did not (a statement re-import replaced the plan or the charge's flow under a
+ * new id) keeps its movement: only the row's `part_ref` moves — one transfer and one new part of
+ * the same record, kind, ends, pesos and day; two look-alikes are replaced as before. A replaced
+ * transfer (a movement's flow is not rewritten on update, so it is written again) hands its flow's
+ * arrival and assignments to the new one before it goes (`mergeFlowInto`). The transfer's note is
+ * provenance and keeps the reference it was written with.
  *
  * What the transfer does to the readers, all by the existing `pago_tarjeta` rules: no deposit
  * event on either card (`accountDeposits.ts` skips card legs), not cash paid to a card in the flows
@@ -24,6 +32,7 @@
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { db } from "./db.js";
 import { deleteMovements, insertMovement } from "./movementWrites.js";
+import { mergeFlowInto } from "./flows/flowIdentity.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
@@ -48,6 +57,8 @@ export type CardToCardPart = {
 };
 
 export type CardToCardSyncResult = {
+  /** Transfers kept as they are under a part's new reference. */
+  rekeyed: { movement_id: number; part_kind: "charge" | "plan"; from_ref: number; to_ref: number }[];
   created: (CardToCardPart & { movement_id: number })[];
   updated: { before: CardToCardPart & { movement_id: number }; after: CardToCardPart & { movement_id: number } }[];
   deleted: (CardToCardPart & { movement_id: number })[];
@@ -175,6 +186,26 @@ const selStored = db.prepare(
 const insRow = db.prepare(
   `INSERT INTO card_to_card_payments (movement_id, financing_link_id, part_kind, part_ref) VALUES (?, ?, ?, ?)`
 );
+const setRowRef = db.prepare(`UPDATE card_to_card_payments SET part_ref = ? WHERE movement_id = ?`);
+const selMovementFlow = db.prepare(`SELECT flow_id FROM movements WHERE id = ?`);
+
+function movementFlow(movementId: number): number {
+  const flow = (selMovementFlow.get(movementId) as { flow_id: number | null } | undefined)?.flow_id;
+  if (flow == null) throw new Error(`card-to-card transfer ${movementId}: no flow`);
+  return flow;
+}
+
+/** What makes two parts the same transfer, whatever names them. */
+function transferSignature(p: {
+  financing_link_id: number;
+  part_kind: string;
+  from_account_id: number;
+  to_account_id: number;
+  amount_clp: number;
+  occurred_on: string;
+}): string {
+  return [p.financing_link_id, p.part_kind, p.from_account_id, p.to_account_id, p.amount_clp, p.occurred_on].join("|");
+}
 
 function noteFor(p: CardToCardPart): string {
   return (
@@ -190,9 +221,9 @@ function noteFor(p: CardToCardPart): string {
 export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
   return db.transaction((): CardToCardSyncResult => {
     const expected = new Map(expectedCardToCardParts().map((p) => [partKey(p), p]));
-    const result: CardToCardSyncResult = { created: [], updated: [], deleted: [], unchanged: 0 };
-    const write = (p: CardToCardPart): number => {
-      const id = insertMovement({
+    const result: CardToCardSyncResult = { rekeyed: [], created: [], updated: [], deleted: [], unchanged: 0 };
+    const writeMovement = (p: CardToCardPart): number =>
+      insertMovement({
         fromAccountId: p.from_account_id,
         toAccountId: p.to_account_id,
         amount: p.amount_clp,
@@ -201,10 +232,12 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
         note: noteFor(p),
         flowKind: FLOW_KIND_PAGO_TARJETA,
       });
+    const write = (p: CardToCardPart): number => {
+      const id = writeMovement(p);
       insRow.run(id, p.financing_link_id, p.part_kind, p.part_ref);
       return id;
     };
-    for (const s of selStored.all() as {
+    type Stored = {
       movement_id: number;
       financing_link_id: number;
       part_kind: "charge" | "plan";
@@ -218,7 +251,9 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
       occurred_on: string;
       flow_kind: string | null;
       financed_billing_month: string;
-    }[]) {
+    };
+    const gone: { stored: Stored; before: CardToCardPart & { movement_id: number } }[] = [];
+    for (const s of selStored.all() as Stored[]) {
       const before = {
         movement_id: s.movement_id,
         financing_link_id: s.financing_link_id,
@@ -233,8 +268,7 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
       const want = expected.get(partKey(s));
       expected.delete(partKey(s));
       if (!want) {
-        deleteMovements([s.movement_id]);
-        result.deleted.push(before);
+        gone.push({ stored: s, before });
         continue;
       }
       const same =
@@ -250,8 +284,34 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
         result.unchanged += 1;
         continue;
       }
+      // Written again: the new transfer's flow takes the old one's arrival and assignments.
+      // The old transfer goes before the new one takes its part (one row per part).
+      const movementId = writeMovement(want);
+      mergeFlowInto(movementFlow(s.movement_id), movementFlow(movementId), "from");
       deleteMovements([s.movement_id]);
-      result.updated.push({ before, after: { ...want, movement_id: write(want) } });
+      insRow.run(movementId, want.financing_link_id, want.part_kind, want.part_ref);
+      result.updated.push({ before, after: { ...want, movement_id: movementId } });
+    }
+    // A stored transfer no part names any more, beside a new part that states the very same
+    // transfer: the part's reference changed, the payment did not.
+    const isPlainTransfer = (s: Stored): boolean =>
+      s.account_id == null && isHomeCurrency(s.currency) && s.counter_amount == null && s.flow_kind === FLOW_KIND_PAGO_TARJETA;
+    const newBySignature = new Map<string, CardToCardPart[]>();
+    for (const p of expected.values()) newBySignature.set(transferSignature(p), [...(newBySignature.get(transferSignature(p)) ?? []), p]);
+    const goneBySignature = new Map<string, number>();
+    for (const g of gone) goneBySignature.set(transferSignature(g.before), (goneBySignature.get(transferSignature(g.before)) ?? 0) + 1);
+    for (const g of gone) {
+      const signature = transferSignature(g.before);
+      const fresh = newBySignature.get(signature) ?? [];
+      if (fresh.length === 1 && goneBySignature.get(signature) === 1 && isPlainTransfer(g.stored)) {
+        const part = fresh[0]!;
+        setRowRef.run(part.part_ref, g.stored.movement_id);
+        expected.delete(partKey(part));
+        result.rekeyed.push({ movement_id: g.stored.movement_id, part_kind: part.part_kind, from_ref: g.before.part_ref, to_ref: part.part_ref });
+        continue;
+      }
+      deleteMovements([g.stored.movement_id]);
+      result.deleted.push(g.before);
     }
     for (const p of expected.values()) result.created.push({ ...p, movement_id: write(p) });
     return result;
@@ -265,9 +325,9 @@ export function syncCardToCardPaymentTransfers(): CardToCardSyncResult {
  */
 export function syncCardToCardPaymentTransfersAtBoot(): void {
   const r = syncCardToCardPaymentTransfers();
-  if (r.created.length + r.updated.length + r.deleted.length === 0) return;
+  if (r.created.length + r.updated.length + r.deleted.length + r.rekeyed.length === 0) return;
   console.log(
-    `[card-to-card] boot sync: ${r.created.length} transfer(s) created, ${r.updated.length} updated, ` +
+    `[card-to-card] boot sync: ${r.created.length} transfer(s) created, ${r.updated.length} updated, ${r.rekeyed.length} kept under a new part reference, ` +
       `${r.deleted.length} deleted, ${r.unchanged} unchanged`
   );
 }
