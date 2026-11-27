@@ -186,6 +186,7 @@ export function applyCardStatementToAccount(accountId: number, payload: CardIssu
       review.report.push(
         `  ✓ written (${result.linesInserted} line(s) inserted, ${result.linesRestated} restated in place, across ${result.currencies.join("+")}), post-write verification clean`
       );
+      for (const line of result.foldReport) review.report.push(`  ! ${line}`);
       for (const r of result.removedWithoutPair) {
         if (r.currency === review.statement.currency) review.report.push(`  ! ${removedCardLineReport(r)}`);
       }

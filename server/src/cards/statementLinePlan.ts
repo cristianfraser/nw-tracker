@@ -64,6 +64,7 @@ import {
 } from "../flows/cardLineAdoption.js";
 import { compareArrival, type FlowArrival } from "../flows/flowFirstSeen.js";
 import type { PlantedPaymentRow } from "../ccPlantedPayments.js";
+import { isCardDebtTransferLine, isCardPaymentLine } from "../ccPaymentLines.js";
 import type { CardLineKind } from "nw-tracker-contracts";
 
 // ── input ────────────────────────────────────────────────────────────────────────────────────────
@@ -190,6 +191,8 @@ export type KeepReason =
   | "reimport_parser_row"
   | "reimport_identity"
   | "reimport_fan_out"
+  /** One of several stored copies of an identity the re-imported document prints once. */
+  | "reimport_copy"
   /** The same close from another source (a JSON close its PDF takes over), paired by the settle figures. */
   | "source_takeover"
   /** A re-imported statement's line whose amount changed, the one line left of its close, day and merchant. */
@@ -645,32 +648,62 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   const survivorRefs = [...live.values()].filter((l) => !l.doc).map(ref);
   const moves = planCcLineMoves(vanishedRefs, appearedRefs, survivorRefs);
   const signature = (r: CcLineRef): string | null => fileById.get(r.lineId)?.assignment_signature ?? null;
+  // A payment, a divisas abono or a debt transfer line moves debt and may be paired with a bank
+  // debit: its copies are never folded into one another (they keep the outcome they had: removed,
+  // reported, or refused by the payment-pairing guard).
+  const movesDebt = (id: number): boolean => {
+    const l = fileById.get(id);
+    return l != null && (isCardPaymentLine(l) || isCardDebtTransferLine(l));
+  };
   // Several stored copies of one purchase and ONE document line of its identity: every copy is that
-  // line (the earliest seen kept and restated, the others folding into it). Only a group with several
-  // document lines on a count of its own is left to the fan-out or unpaired: pairing it would guess.
-  const singleDocGroups = moves.ambiguousGroups.filter((g) => g.news.length === 1 && g.olds.length > 1 && !g.news[0]!.installment);
+  // line (the earliest seen kept and restated, the others folding into it; what the copies' flows
+  // hold apart is reported by the apply). Only a group with several document lines on a count of
+  // its own is left to the fan-out or unpaired: pairing it would guess.
+  const singleDocGroups = moves.ambiguousGroups.filter(
+    (g) => g.news.length === 1 && g.olds.length > 1 && !g.news[0]!.installment && !g.olds.some((o) => movesDebt(o.lineId))
+  );
   const fan = fanOutUniformGroupsGiven(
     moves.ambiguousGroups.filter((g) => !singleDocGroups.includes(g)),
     signature
   );
+  /** Copies of one stored line folding into its one document line's row. */
+  const copyFolds = new Set<number>();
   for (const g of singleDocGroups) {
     for (const from of g.olds) {
       fan.moves.push({ from, to: g.news[0]!, by: "identity" });
       fan.fannedOut.add(from.lineId);
+      copyFolds.add(from.lineId);
     }
   }
   const adoptions: CcLineMove[] = [...moves.moves, ...fan.moves].filter((m) => !m.copy && !m.from.installment && !m.to.installment);
   // A statement's cuota line that comes back under its parser row is the same line (its flow is its
   // plan's, so only the parser row pairs it).
   const cuotaKeeps = [...moves.moves, ...fan.moves].filter((m) => !m.copy && m.from.installment && m.to.installment && m.by === "parser_row_id");
-  const adoptedBy = new Map<number, CcLineMove["by"]>();
+  const adoptedBy = new Map<number, CcLineMove["by"] | "copy">();
+  /** A row already in another document line's group (a bucket line it settled): a copy fold leaves it there. */
+  const inAnotherDocumentGroup = (fromId: number, docVid: number): boolean => {
+    const root = groups.find(lineToken(fromId));
+    if (root === groups.find(docToken(docVid))) return false;
+    return [...docOfVirtual.keys()].some((v) => groups.find(docToken(v)) === root);
+  };
   for (const m of adoptions) {
-    if (m.by === "survivor" && live.get(m.to.lineId)?.doc) {
+    const toDocument = live.get(m.to.lineId)?.doc != null;
+    if (m.by === "survivor" && toDocument) {
       // A removed copy of a document line that came back under its parser row: it joins that line's
       // group, so it folds into the row the line ends on (the row restated for it), never into the
       // line's planning id.
+      if (movesDebt(m.from.lineId) || inAnotherDocumentGroup(m.from.lineId, m.to.lineId)) continue;
       groups.fold(lineToken(m.from.lineId), docToken(m.to.lineId));
-    } else if (m.by === "survivor") {
+      adoptedBy.set(m.from.lineId, "copy");
+      continue;
+    }
+    if (copyFolds.has(m.from.lineId)) {
+      if (inAnotherDocumentGroup(m.from.lineId, m.to.lineId)) continue;
+      groups.fold(docToken(m.to.lineId), lineToken(m.from.lineId));
+      adoptedBy.set(m.from.lineId, "copy");
+      continue;
+    }
+    if (m.by === "survivor") {
       // A removed duplicate copy: its flow folds into the copy that stayed.
       groups.fold(lineToken(m.from.lineId), lineToken(m.to.lineId));
     } else {
@@ -814,6 +847,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     const by = adoptedBy.get(row.id);
     if (by === "parser_row_id") return "reimport_parser_row";
     if (by === "fan_out") return "reimport_fan_out";
+    if (by === "copy") return "reimport_copy";
     return "reimport_identity";
   };
   const claimed = new Set<string>();

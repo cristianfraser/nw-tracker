@@ -50,6 +50,7 @@ import {
 import { requireCardCurrency } from "./cards/cardCurrencies.js";
 import { currencyMinorDigits } from "./displayUnits.js";
 import { legacyAmountColumn } from "./cards/statementStorage.js";
+import { copiesFoldedReport, foldConflictReport } from "./cards/foldedCardLines.js";
 
 const findContractCanonical = db.prepare(
   `SELECT canonical_row_id, merchant FROM cc_installment_purchases
@@ -362,6 +363,8 @@ export type SantanderStatementWriteResult = {
   linesRestated: number;
   /** Lines on file they removed without handing their identity to another row. */
   removedWithoutPair: CardLineRemovedWithoutPair[];
+  /** The printed lines of what the write folded (copies of one line, folds whose rows held different assignments). */
+  foldReport: string[];
 };
 
 /** Write one facturación (every currency together, so a traspaso month links atomically). */
@@ -392,6 +395,7 @@ export function writeSantanderStatements(
     linesInserted: merged.statements.linesInserted,
     linesRestated: merged.statements.linesRestated,
     removedWithoutPair: merged.keep_rows.removed_without_pair,
+    foldReport: [...merged.keep_rows.copies_folded.map(copiesFoldedReport), ...merged.keep_rows.fold_conflicts.map(foldConflictReport)],
   };
 }
 

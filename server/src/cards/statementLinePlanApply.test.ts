@@ -12,6 +12,7 @@ import { applyStatementLinePlan, resolveStatementPlanAmbiguity } from "./stateme
 import { applyLinePlan, replaceStatementLines } from "./lineWrites.js";
 import { annulOpenBucketLines } from "../ccAnnulledPurchases.js";
 import { flowArrival } from "../flows/flowFirstSeen.js";
+import { copiesFoldedReport, FOLDED_APART_TITLE } from "./foldedCardLines.js";
 
 /**
  * The statement-line plan applied (`applyStatementLinePlan`, and the import through
@@ -753,6 +754,82 @@ describe("statement-line plan applied", () => {
         expect([...r.keep_rows.folded].sort((a, b) => a - b)).toEqual([ids[1], ids[2]]);
         expect(r.keep_rows.removed_without_pair).toEqual([]);
         expect(notesOf(flowOf(ids[0]!))).toEqual(["popcorn"]);
+      });
+
+      const foldNotifications = () =>
+        db.prepare(`SELECT body FROM app_messages WHERE kind = 'notification' AND title = ? AND body LIKE ?`).all(FOLDED_APART_TITLE, `%card account ${accountId} %`) as {
+          body: string;
+        }[];
+      afterEach(() => {
+        db.prepare(`DELETE FROM app_messages WHERE title = ? AND body LIKE ?`).run(FOLDED_APART_TITLE, `%card account ${accountId} %`);
+      });
+
+      it("copies folded: the report says how many, and a fold where one copy holds the note is no notification", () => {
+        reimport([copies(3)]);
+        const ids = [1, 2, 3].map((i) => lineIdOfParser(`kra-dup-${i}`));
+        noteOn(ids[1]!, "popcorn");
+        const r = reimport([statement([line("2026-06-02", "CINE", 6_000, { id: "kra-dup-1" })])]);
+        expect(r.keep_rows.copies_folded).toEqual([{ line_id: ids[0], merchant: "CINE", date: "2026-06-02", amount: 6_000, currency: "clp", copies: 2 }]);
+        expect(copiesFoldedReport(r.keep_rows.copies_folded[0]!)).toBe(
+          `2 copies of one line folded into it: line ${ids[0]} «CINE» 2026-06-02 6000 clp (the document prints it once)`
+        );
+        expect(r.keep_rows.fold_conflicts).toEqual([]);
+        expect(foldNotifications()).toEqual([]);
+      });
+
+      it("copies with different notes and categories: the notes are joined, the dropped category named, one notification", () => {
+        reimport([copies(2)]);
+        const [one, two] = [lineIdOfParser("kra-dup-1"), lineIdOfParser("kra-dup-2")];
+        noteOn(one, "with the kids");
+        noteOn(two, "alone");
+        const cats = db.prepare(`SELECT id, slug FROM cc_expense_categories ORDER BY id LIMIT 2`).all() as { id: number; slug: string }[];
+        const cat = db.prepare(`INSERT INTO flow_categories (flow_id, portion, piece_seq, account_id, category_id) VALUES (?, 'gastos', -1, ?, ?)`);
+        cat.run(flowOf(one), accountId, cats[0]!.id);
+        cat.run(flowOf(two), accountId, cats[1]!.id);
+        const r = reimport([statement([line("2026-06-02", "CINE", 6_000, { id: "kra-dup-2" })])]);
+        expect(accountLines()).toEqual([one]);
+        expect(notesOf(flowOf(one))).toEqual(["with the kids\nalone"]);
+        expect(r.keep_rows.fold_conflicts).toEqual([
+          {
+            line_id: one,
+            folded: [two],
+            merchant: "CINE",
+            date: "2026-06-02",
+            amount: 6_000,
+            currency: "clp",
+            notes_joined: "with the kids\nalone",
+            dropped: [{ what: "category", value: cats[1]!.slug, kept: cats[0]!.slug }],
+          },
+        ]);
+        expect(foldNotifications()).toHaveLength(1);
+        expect(foldNotifications()[0]!.body).toContain(`category ${cats[1]!.slug} dropped (kept ${cats[0]!.slug})`);
+      });
+
+      it("a bucket line and two stored copies for one document line: one row, everything folded into it, no ambiguity", () => {
+        reimport([copies(2)]);
+        const [one, two] = [lineIdOfParser("kra-dup-1"), lineIdOfParser("kra-dup-2")];
+        const late = bucketLine("2026-06-02", "CINE", 6_000);
+        noteOn(late, "listed late");
+        const r = reimport([statement([line("2026-06-02", "CINE", 6_000, { id: "kra-dup-1" })])]);
+        // The bucket line has no stamp (on file before the stamps): it is the earliest seen and stays.
+        expect(accountLines()).toEqual([late]);
+        expect(r.keep_rows.restated).toEqual([late]);
+        expect([...r.keep_rows.folded].sort((a, b) => a - b)).toEqual([one, two]);
+        expect(r.keep_rows.removed_without_pair).toEqual([]);
+        expect(notesOf(flowOf(late))).toEqual(["listed late"]);
+      });
+
+      it("payment lines are never folded as copies: the copy the document no longer prints is removed and reported", () => {
+        const pago = (id: string): CardCanonicalLine => ({ ...line("2026-06-05", "MONTO CANCELADO", -50_000, { id }), kind: "card_payment" });
+        reimport([statement([pago("kra-pay-1"), pago("kra-pay-2")])]);
+        const [one, two] = [lineIdOfParser("kra-pay-1"), lineIdOfParser("kra-pay-2")];
+        for (const prid of ["kra-pay-1", "kra-pay-new"]) {
+          const r = rolledBack(() => reimport([statement([pago(prid)])]));
+          expect(r.keep_rows.folded).toEqual([]);
+          expect(r.keep_rows.copies_folded).toEqual([]);
+          expect(r.keep_rows.removed_without_pair.length).toBeGreaterThan(0);
+          expect(r.keep_rows.removed_without_pair.every((x) => x.line_id === one || x.line_id === two)).toBe(true);
+        }
       });
 
       it("genuine twins: two stored rows, the document has two, both stay and nothing folds", () => {

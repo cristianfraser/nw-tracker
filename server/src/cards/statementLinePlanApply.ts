@@ -73,6 +73,12 @@ import {
 import { moveOpenBucketLinesToBillingMonth } from "../ccOpenWebPasteRepair.js";
 import { installmentPurchaseLedgerDedupeKey, plansCoveringOneShotLine } from "./purchases.js";
 import { describeRemovedCardLine, notifyRemovedCardLinesWithFiled } from "./removedCardLines.js";
+import {
+  notifyCardLineFoldConflicts,
+  prepareCardLineFolds,
+  type CardLineCopiesFolded,
+  type CardLineFoldConflict,
+} from "./foldedCardLines.js";
 import { carryPlanPrepaymentLines } from "../ccPlanPrepayments.js";
 import { confirmManualPaymentForPlanted, listPlantedPaymentLines } from "../ccPlantedPayments.js";
 import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
@@ -114,6 +120,10 @@ export type StatementLinePlanApplyResult = {
   /** New lines that took back a flow retired with their document (`takeBackRetiredCardLineFlow`), and the ones that could not. */
   retired_flows_taken_back: RetiredCardLineAdoption[];
   folded: number[];
+  /** Stored copies of one line the document prints once, folded into the row it ends on. */
+  copies_folded: CardLineCopiesFolded[];
+  /** Folds whose rows held different assignments (notes joined, a category or big group dropped); also a notification. */
+  fold_conflicts: CardLineFoldConflict[];
   removed: number[];
   annulled: number[];
   moved: number[];
@@ -248,6 +258,7 @@ function applyInSession(
   /** Annulled purchases whose flow folds into a kept line's. */
   const annulmentFoldsIntoLine: { annulmentId: number; lineId: number }[] = [];
   const lineFolds: { fromLineId: number; intoLineId: number }[] = [];
+  const copiesFolded: CardLineCopiesFolded[] = [];
   for (const k of plan.keep) {
     const d = docOf(k.doc);
     if (isDuplicateKeep(k)) {
@@ -266,6 +277,16 @@ function applyInSession(
       for (const f of folds) {
         if (f.row.kind === "line") lineFolds.push({ fromLineId: f.row.id, intoLineId: k.row.id });
         else annulmentFoldsIntoLine.push({ annulmentId: f.row.id, lineId: k.row.id });
+      }
+      if (k.why === "reimport_copy" || folds.some((f) => f.why === "reimport_copy")) {
+        copiesFolded.push({
+          line_id: k.row.id,
+          merchant: d.line.merchant,
+          date: d.line.transaction_date ?? d.line.posting_date ?? null,
+          amount: d.line.amount,
+          currency: d.line.currency,
+          copies: folds.length,
+        });
       }
       continue;
     }
@@ -346,6 +367,8 @@ function applyInSession(
   const removedWithoutPair: CardLineRemovedWithoutPair[] = plan.remove
     .filter((r) => r.why !== "superseded_by_plan" && r.why !== "covered_by_plan" && !annulmentLineFolds.has(r.row.id))
     .map((r) => describeRemovedCardLine(r.row.id, r.why as CardLineRemovedWithoutPair["reason"], r.ambiguity ?? null));
+  // What the folded rows hold apart: notes joined onto the row that stays, the rest described.
+  const foldConflicts = prepareCardLineFolds(lineFolds);
   const applied = applyCardLinePlanDetailed(accountId, {
     restate,
     insert,
@@ -476,6 +499,7 @@ function applyInSession(
     piecesDropped.push(...applyCardLinePlanDetailed(accountId, { deleteLineIds: coveredLeft, carry: [], foldOntoPlans }).pieces_dropped);
   }
   notifyRemovedCardLinesWithFiled(accountId, removedWithoutPair);
+  notifyCardLineFoldConflicts(accountId, foldConflicts);
 
   // The bucket lines the statement does not bill: on to the facturación they belong to.
   const moves = new Map<string, number[]>();
@@ -496,6 +520,8 @@ function applyInSession(
     inserted: applied.inserted,
     retired_flows_taken_back: applied.retired_flows_taken_back,
     folded: [...lineFolds.map((f) => f.fromLineId), ...annulmentKeeps.flatMap((k) => k.lineFolds)],
+    copies_folded: copiesFolded,
+    fold_conflicts: foldConflicts,
     removed: [...removed, ...coveredByPlan, ...supersededByPlan],
     annulled: plan.annul.map((a) => a.line_id),
     moved: plan.move_to_open.map((m) => m.line_id),
@@ -576,6 +602,10 @@ export type StatementDocumentsImportResult = {
     restated: number[];
     inserted: number[];
     folded: number[];
+    /** Stored copies of one line the document prints once, folded into the row it ends on. */
+    copies_folded: CardLineCopiesFolded[];
+    /** Folds whose rows held different assignments; also a notification. */
+    fold_conflicts: CardLineFoldConflict[];
     removed: number[];
     annulled: number[];
     moved: number[];
@@ -715,6 +745,8 @@ function importResult(
       restated: a?.restated ?? [],
       inserted: a?.inserted ?? [],
       folded: a?.folded ?? [],
+      copies_folded: a?.copies_folded ?? [],
+      fold_conflicts: a?.fold_conflicts ?? [],
       removed: a?.removed ?? [],
       annulled: a?.annulled ?? [],
       moved: a?.moved ?? [],

@@ -10,6 +10,7 @@ import { groupInstallmentLoanChains, statementKeysOf } from "./ccInstallmentLedg
 import { cardAccountsForStatements } from "./cards/documentAccount.js";
 import { replaceStatementLines } from "./cards/lineWrites.js";
 import { removedCardLineReport } from "./cards/removedCardLines.js";
+import { copiesFoldedReport, foldConflictReport } from "./cards/foldedCardLines.js";
 import { withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
 import { buildCcStatementImportAccountLog, logCcStatementImportRun, type CcStatementImportAccountLog } from "./ccStatementImportLog.js";
@@ -158,7 +159,7 @@ function applyStatements(
       row.purchase_upserts = merged.ledger.purchaseUpserts;
       row.payment_upserts = merged.ledger.paymentUpserts;
       const kr = merged.keep_rows;
-      if (kr.folded.length + kr.copied + kr.removed_without_pair.length > 0) {
+      if (kr.folded.length + kr.copied + kr.removed_without_pair.length + kr.copies_folded.length + kr.fold_conflicts.length > 0) {
         report.push(
           `# account ${accountId}: ${kr.restated.length} line(s) restated, ${kr.folded.length} folded into a kept line, ` +
             `${kr.copied} copied a kept twin's category, ${kr.removed_without_pair.length} removed without a pair (unpaired ${kr.unpaired.length})`
@@ -166,6 +167,8 @@ function applyStatements(
       }
       row.removed_without_pair = kr.removed_without_pair;
       for (const r of kr.removed_without_pair) report.push(`#   ${removedCardLineReport(r)}`);
+      for (const c of kr.copies_folded) report.push(`#   ${copiesFoldedReport(c)}`);
+      for (const c of kr.fold_conflicts) report.push(`#   ${foldConflictReport(c)}`);
       report.push(
         `Account ${accountId}: ${row.purchase_upserts} purchases, ${row.payment_upserts} payments, statements ${merged.statements.statementCount} ` +
           `(${row.lines_inserted} lines inserted, ${row.lines_restated} restated), categories restored ${merged.statements.categoriesRestored}, gap-fill ${merged.ledger.gapFilled}.`
