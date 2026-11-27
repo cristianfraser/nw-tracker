@@ -46,6 +46,10 @@
 		<string>1</string>
 		<key>NW_TRACKER_AFC_APPLY</key>
 		<string>1</string>
+		<!-- The session's monthly cartola xlsx download (step checking-cartola-xlsx): off until a
+		     supervised capture run of that step confirmed it (see ingest-sources.md). -->
+		<key>NW_TRACKER_CARTOLA_XLSX_FETCH</key>
+		<string>0</string>
 	</dict>
 	<key>ProcessType</key>
 	<string>Background</string>

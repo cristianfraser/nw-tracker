@@ -49,7 +49,6 @@ export async function fetchCheckingMovements(
   });
 }
 
-// The monthly cartola is not downloaded here: it arrives as the PDF Santander mails every month
-// ("Cartola Mensual de Cuentas."), fetched by `fetch:santander-docs` — one less authenticated
-// navigation against a bank that is sensitive to traffic. The web session is scoped to daily
-// movements only.
+// The monthly cartola arrives as the PDF Santander mails every month (`fetch:santander-docs`) and,
+// as its second reading, as the xlsx the gated step `checking-cartola-xlsx` downloads
+// (`checkingCartolaXlsxFetch.ts`).

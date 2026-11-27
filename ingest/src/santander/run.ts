@@ -5,7 +5,7 @@ import { loadBankConfig } from "../config.js";
 import { readKeychainSecret } from "../keychain.js";
 import { launchBrowser, firstPage } from "../browser.js";
 import { Recorder, SANTANDER_API_HOST_FRAGMENTS, runStampNow } from "../capture.js";
-import { ensureDir, resolveInboxDir, resolveMovementsDir, resolveStatementJsonDir, writeFileAtomic } from "../paths.js";
+import { ensureDir, resolveCfraserDir, resolveInboxDir, resolveMovementsDir, resolveStatementJsonDir, writeFileAtomic } from "../paths.js";
 import { log } from "../log.js";
 import { waitForHosts } from "../network.js";
 import { assertRunAllowed } from "../runGuard.js";
@@ -22,6 +22,12 @@ import { BROWSER_GONE_PATTERN, errorMessage, saveStepDiagnostics } from "./stepS
 import { keepSessionAlive, type SessionKeepAlive } from "./sessionKeepAlive.js";
 import { statementsDueToday } from "./statementSchedule.js";
 import { formatBalancePollResult, requestBalancePoll } from "./balancePoll.js";
+import { reportStepResult } from "../stepResult.js";
+import { chileWallClock } from "./fetchHistory.js";
+import { CARTOLA_XLSX_GATE_SKIP, cartolaXlsxFetchEnabled, cartolaXlsxMonthsOnFile, lastClosedMonth, planCartolaXlsxDownloads } from "./cartolaXlsxSchedule.js";
+import { checkingCartolaAccount } from "./cartolaXlsxDownload.js";
+import { checkingCartolaXlsxDir } from "./cartolas.js";
+import { fetchCheckingCartolaXlsx } from "./checkingCartolaXlsxFetch.js";
 
 /**
  * How many times one run may relaunch Chrome after it dies mid-session.
@@ -261,6 +267,38 @@ export async function runSantander(opts: RunOptions): Promise<number> {
     // function answers «USD account not reached: …» instead of throwing (a dead browser excepted).
     if (listingWanted("checking-usd-movements")) {
       await step("checking USD movements", "checking-usd-movements", (page) => fetchCheckingUsdMovements(page, config, stamp));
+    }
+
+    // The monthly cartola as an xlsx, the second reading of the mailed PDF: only behind its gate
+    // (or asked for by hand), and only for a month not on file (`cartolaXlsxSchedule.ts`).
+    const cartolaXlsxAsked = opts.capture || opts.only.includes("checking-cartola-xlsx");
+    if (
+      !opts.movementsOnly &&
+      !opts.balancePoll &&
+      shouldRunStep(opts.only, "checking-cartola-xlsx") &&
+      (cartolaXlsxAsked || cartolaXlsxFetchEnabled())
+    ) {
+      await step("checking cartola xlsx", "checking-cartola-xlsx", async (page) => {
+        const todayIso = chileWallClock(new Date()).slice(0, 10);
+        // Planned inside the step: a relaunch's retry sees the months the first try already filed.
+        const plan = planCartolaXlsxDownloads(todayIso, cartolaXlsxMonthsOnFile([checkingCartolaXlsxDir(), resolveInboxDir()]));
+        // A capture run confirms the page even when nothing is due; its file never reaches the inbox.
+        const months = plan.months.length > 0 ? plan.months : opts.capture ? [lastClosedMonth(todayIso)] : [];
+        if (months.length === 0) return `nothing due — ${plan.reason}`;
+        // Downloaded outside the inbox; only a checked file moves on (a refused one stays here).
+        const downloadDir = opts.capture ? destDir : ensureDir(path.join(resolveCfraserDir(), "santander-cartola-xlsx", stamp));
+        const outcome = await fetchCheckingCartolaXlsx(page, recorder, { months, account: checkingCartolaAccount(), todayIso, downloadDir, destDir });
+        if (!opts.capture && fs.readdirSync(downloadDir).length === 0) fs.rmdirSync(downloadDir);
+        const done = outcome.saved.map((s) => `${s.month} → ${path.basename(s.file)}`);
+        if (outcome.waiting) done.push(`${outcome.waiting} not published yet`);
+        if (outcome.problems.length > 0) {
+          reportStepResult({ problems: outcome.problems });
+          throw new Error([...done, ...outcome.problems].join("; "));
+        }
+        return done.join(", ");
+      });
+    } else if (!opts.movementsOnly && !opts.balancePoll && shouldRunStep(opts.only, "checking-cartola-xlsx")) {
+      results.push({ name: "checking cartola xlsx", ok: true, detail: `skipped — ${CARTOLA_XLSX_GATE_SKIP}` });
     }
 
     // A facturación's statement only exists after its close: skip the tabs until one is due.
