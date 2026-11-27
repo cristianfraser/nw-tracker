@@ -133,6 +133,9 @@ export function listPlansForLineMatching(accountId: number): CardPlanForMatching
   return dedupeInstallmentPurchaseLedgerRows(withTakenRenderings(accountId, rows));
 }
 
+/** SQL list of the flows of the lines a plan was converted from (`source_line_id`: the plan overlays them). */
+export const CONVERTED_SOURCE_LINE_FLOWS_SQL = `(SELECT l.flow_id FROM cc_statement_lines l JOIN cc_installment_purchases p ON p.source_line_id = l.id WHERE l.flow_id IS NOT NULL)`;
+
 /** What makes two one-shot lines two charges rather than one rendered twice: the exact merchant text and the pesos. */
 export function oneShotLineRendering(merchant: string | null, amountClp: number): string {
   return `${normalizeMerchantText(merchant)}|${Math.abs(Math.trunc(amountClp))}`;

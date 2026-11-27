@@ -18,6 +18,7 @@
 import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import { db } from "./db.js";
 import { createManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
+import type { CardLinePiecesDropped } from "./ccCrossImportDedupe.js";
 import { findPlanForOneShotLine, merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
@@ -112,6 +113,8 @@ export type CcFeedPlanCreated = {
   cuotas: number;
   kind: CcCuotaPurchaseKind;
   first_due_month: string;
+  /** Pieces of the listed line this plan replaced, dropped (a plan takes none). */
+  pieces_dropped: CardLinePiecesDropped[];
 };
 
 const insProvenance = db.prepare(
@@ -158,7 +161,7 @@ function createPlansInSession(
         cuotas_totales: cp.cuota_count!,
         merchant: line.merchant,
         card_group: meta.cardGroup,
-      });
+      }, { piecesOnSupersededLines: "drop" });
       updFirstDue.run(firstDue, p.id);
       insProvenance.run(
         p.id,
@@ -178,6 +181,7 @@ function createPlansInSession(
       cuotas: cp.cuota_count,
       kind: cp.kind,
       first_due_month: firstDue,
+      pieces_dropped: plan.pieces_dropped,
     });
   }
   return created;

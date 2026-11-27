@@ -4,8 +4,9 @@ import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { db } from "./db.js";
 import { copyFlowFirstSeen, recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import {
-  applyCardLinePlan,
+  applyCardLinePlanDetailed,
   cardLineHasPieces,
+  type CardLinePiecesDropped,
   copyLineAssignmentsOntoPlan,
   planOneShotLinesForInstallmentPurchase,
   selLineCategory,
@@ -44,8 +45,13 @@ export function createManualCcInstallmentPurchase(
   opts?: {
     removeSupersededOneShotLines?: boolean;
     sourceLineId?: number;
+    /**
+     * A one-shot line the plan supersedes that carries pieces: `refuse` (the user entering the plan
+     * is told, nothing is written) or `drop` (an import: the pieces go and are reported).
+     */
+    piecesOnSupersededLines?: "refuse" | "drop";
   }
-): { id: number; canonical_row_id: string } {
+): { id: number; canonical_row_id: string; pieces_dropped: CardLinePiecesDropped[] } {
   const purchaseDate = parsePurchaseDateIso(input.purchase_date);
   if (!purchaseDate) throw new InputError("invalid purchase_date");
   const principal = Math.trunc(input.total_amount_clp);
@@ -93,15 +99,20 @@ export function createManualCcInstallmentPurchase(
     // supersedes a previously imported one-shot line. A conversion names its line
     // (`sourceLineId`) and keeps it, so a second same-merchant/same-day line is never
     // collateral-deleted.
+    let pieces_dropped: CardLinePiecesDropped[] = [];
     if (opts?.removeSupersededOneShotLines !== false && opts?.sourceLineId == null) {
-      applyCardLinePlan(accountId, planOneShotLinesForInstallmentPurchase(accountId, purchaseId));
+      const superseded = planOneShotLinesForInstallmentPurchase(accountId, purchaseId);
+      if ((opts?.piecesOnSupersededLines ?? "refuse") === "refuse" && superseded.deleteLineIds.some(cardLineHasPieces)) {
+        throw new InputError("a card line this plan replaces has pieces: remove them first (a cuota plan takes no pieces)");
+      }
+      pieces_dropped = applyCardLinePlanDetailed(accountId, superseded).pieces_dropped;
     }
     // The contract consumes cupo on its purchase date, so stamps written after it are stale. A
     // hand-entered plan, or a tagged feed purchase given its count, may be the one that paid
     // another card's facturado.
     noteCardLineEvidence(accountId, purchaseDate);
     noteCardLineFinancingLinks(accountId);
-    return { id: purchaseId, canonical_row_id: canonical };
+    return { id: purchaseId, canonical_row_id: canonical, pieces_dropped };
   });
 }
 

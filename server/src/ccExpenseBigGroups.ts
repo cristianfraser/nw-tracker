@@ -1,6 +1,7 @@
 import { foldAccents } from "nw-tracker-contracts";
 import { expenseKeyKind } from "./expenseKeys.js";
 import { db } from "./db.js";
+import { CONVERTED_SOURCE_LINE_FLOWS_SQL } from "./cards/purchases.js";
 import { keyedRowsSql, keyTarget, TARGET_WHERE, targetParams } from "./flows/flowKeyedAssignments.js";
 
 export type CcExpenseBigGroupRow = {
@@ -49,9 +50,16 @@ export function loadCcExpensePurchaseBigGroups(): Map<string, string> {
   return new Map(rows.map((r) => [r.purchase_key, r.group_slug]));
 }
 
+/**
+ * The purchases filed in a big group. A line converted to cuotas keeps its own row beside the copy
+ * under its plan's key (`copyLineAssignmentsOntoPlan`), and the plan overlays it: one purchase,
+ * counted on the plan.
+ */
 export function countPurchasesInBigGroup(slug: string): number {
   const row = db
-    .prepare(`SELECT COUNT(*) AS n FROM flow_big_groups WHERE group_slug = ?`)
+    .prepare(
+      `SELECT COUNT(*) AS n FROM flow_big_groups g WHERE g.group_slug = ? AND g.flow_id NOT IN ${CONVERTED_SOURCE_LINE_FLOWS_SQL}`
+    )
     .get(slug) as { n: number };
   return row.n;
 }

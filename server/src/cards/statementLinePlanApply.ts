@@ -54,7 +54,12 @@ import { assertFeedClosesMatchStatements } from "../ccBillingCloses.js";
 import { assertOneStatementPerFacturacion } from "./facturacion.js";
 import { listCcStatementsForAccount } from "../ccStatementsDb.js";
 import { reconcileManualInstallmentPurchasesAfterStatementImport } from "../ccManualInstallmentStatementReconcile.js";
-import { applyCardLinePlan, applyCardLinePlanDetailed, planOneShotLinesSupersededByInstallmentPurchases } from "../ccCrossImportDedupe.js";
+import {
+  applyCardLinePlan,
+  applyCardLinePlanDetailed,
+  planOneShotLinesSupersededByInstallmentPurchases,
+  type CardLinePiecesDropped,
+} from "../ccCrossImportDedupe.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "../ccTraspasoDeudaLinks.js";
 import { learnGroceryBranchesFromCardLines } from "../groceryBranchLearning.js";
 import { patchCcLineOriginCardOnDedupeHit } from "../ccExpenseLineDedupe.js";
@@ -99,6 +104,8 @@ import {
 } from "./statementLinePlan.js";
 
 export type StatementLinePlanApplyResult = {
+  /** Pieces of one-shot lines a plan replaced, dropped (a plan takes none); also a notification. */
+  pieces_dropped: CardLinePiecesDropped[];
   restated: number[];
   inserted: number[];
   folded: number[];
@@ -402,7 +409,7 @@ function applyInSession(
   const ledger = mergeInstallmentLedgerFromStatements(accountId, statements, { replaceLedger: opts?.replaceLedger ?? false });
   const manual = reconcileManualInstallmentPurchasesAfterStatementImport(accountId, statements);
   const overlap = planOneShotLinesSupersededByInstallmentPurchases(accountId);
-  applyCardLinePlan(accountId, overlap);
+  const piecesDropped = [...ledger.pieces_dropped, ...applyCardLinePlanDetailed(accountId, overlap).pieces_dropped];
   const afterLedger = lineIds();
   const gone = [...beforeLedger].filter((id) => !afterLedger.has(id));
   // A covered line the plan ledger's own supersede pass took is gone already (its flow folded into
@@ -421,7 +428,7 @@ function applyInSession(
       const plans = plansCoveringOneShotLine(accountId, id);
       if (plans.length === 1) foldOntoPlans.push({ fromLineId: id, planId: plans[0]!.id });
     }
-    applyCardLinePlan(accountId, { deleteLineIds: coveredLeft, carry: [], foldOntoPlans });
+    piecesDropped.push(...applyCardLinePlanDetailed(accountId, { deleteLineIds: coveredLeft, carry: [], foldOntoPlans }).pieces_dropped);
   }
 
   // The bucket lines the statement does not bill: on to the facturación they belong to.
@@ -448,6 +455,7 @@ function applyInSession(
     annulments_billed: billed,
     annulments_credited: credited,
     overlap_removed: overlap.removed_line_ids.length,
+    pieces_dropped: piecesDropped,
     ledger,
     manual_installment_reconcile: manual,
     grocery_branch_learning: grocery,
@@ -506,6 +514,8 @@ export type StatementDocumentsImportResult = {
   ledger: ReturnType<typeof mergeInstallmentLedgerFromStatements>;
   /** One-shot lines the plan ledger superseded. */
   overlap_removed: number;
+  /** Pieces of one-shot lines a plan replaced, dropped (a plan takes none); also a notification. */
+  pieces_dropped: CardLinePiecesDropped[];
   manual_installment_reconcile: ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport>;
   /** Grocery receipts flagged `pending_branch` on this card that the lines just written paired with. */
   grocery_branch_learning: ReturnType<typeof learnGroceryBranchesFromCardLines>;
@@ -638,8 +648,9 @@ function importResult(
   };
   return {
     statements: statementsResult,
-    ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0 },
+    ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0, pieces_dropped: [] },
     overlap_removed: a?.overlap_removed ?? 0,
+    pieces_dropped: a?.pieces_dropped ?? [],
     manual_installment_reconcile: a?.manual_installment_reconcile ?? emptyManualReconcile(),
     json_closes_superseded_by_pdf: jsonClosesSuperseded,
     grocery_branch_learning: a?.grocery_branch_learning ?? { learned: [], ambiguous: [] },

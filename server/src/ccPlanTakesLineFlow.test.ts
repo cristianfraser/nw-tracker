@@ -17,9 +17,12 @@ import { buildFlowsExpenseLines } from "./flowsExpenses.js";
 import { listCcExpenseCategories, resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { putFlowCategory } from "./flows/flowCategories.js";
 import { setFlowNote } from "./flows/flowNotes.js";
-import { createCcExpenseBigGroup, deleteCcExpenseBigGroup, setCcExpensePurchaseBigGroup } from "./ccExpenseBigGroups.js";
+import { countPurchasesInBigGroup, createCcExpenseBigGroup, deleteCcExpenseBigGroup, setCcExpensePurchaseBigGroup } from "./ccExpenseBigGroups.js";
 import { createManualCcInstallmentPurchase, convertStatementLineToInstallmentPurchase } from "./ccInstallmentManual.js";
-import { oneShotLinesSupersededAmong, oneShotLinesSupersededByPlans } from "./cards/purchases.js";
+import { listPlansForLineMatching, oneShotLinesSupersededAmong, oneShotLinesSupersededByPlans } from "./cards/purchases.js";
+import { billLinkedToKey, insertBillLink } from "./flows/flowLinks.js";
+import { InputError } from "./inputError.js";
+import type { StatementDocumentsImportResult } from "./cards/statementLinePlanApply.js";
 import { replaceExpenseLinePieces } from "./expenseLinePieces.js";
 
 const PREFIX = "VITEST PLANFLOW";
@@ -46,8 +49,14 @@ beforeEach(() => {
   categories = ["supermarket", "hobbies"].map((slug) => all.find((c) => c.slug === slug)!);
   expect(categories).toHaveLength(2);
 });
+const createdEntries: number[] = [];
 afterEach(() => {
   deleteTempCardMaster(accountId);
+  // Flows that took a key are retired, not deleted, with their rows: remove them (their notes,
+  // stamps and evidence cascade), and what else the tests wrote.
+  db.prepare(`DELETE FROM flows WHERE from_account_id = ? OR to_account_id = ?`).run(accountId, accountId);
+  for (const id of createdEntries.splice(0)) db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(id);
+  db.prepare(`DELETE FROM app_messages WHERE title = 'Card line pieces dropped' AND body LIKE ?`).run(`%${PREFIX}%`);
   deleteCcExpenseBigGroup(bigGroup);
   clearAggregationCache();
 });
@@ -76,7 +85,7 @@ function fileOnLine(lineId: number, categoryId: number, note: string, group: str
   if (group) setCcExpensePurchaseBigGroup({ purchaseKey: key, groupSlug: group });
 }
 
-function closeStatementWithPlan(merchant: string, day: string, total: number): void {
+function closeStatementWithPlan(merchant: string, day: string, total: number): StatementDocumentsImportResult {
   const cuota: ParsedRecord = {
     card_group: "santander",
     source_pdf: "vitest-plan-flow-2026-05-22.pdf",
@@ -99,8 +108,9 @@ function closeStatementWithPlan(merchant: string, day: string, total: number): v
     monto_total_a_pagar_clp: String(total),
   };
   const statements = parsedStatements([cuota]);
-  replaceStatementLines(accountId, statements, { replaceStatementKeys: statementKeysOf(statements) });
+  const result = replaceStatementLines(accountId, statements, { replaceStatementKeys: statementKeysOf(statements) });
   clearAggregationCache();
+  return result;
 }
 
 function planId(merchant: string): number {
@@ -177,15 +187,41 @@ describe("a one-shot line its cuota plan replaces", () => {
     expect(n.n).toBe(1);
   });
 
-  it("a line with pieces is refused: the plan write fails and nothing changes", () => {
+  it("a hand-entered plan over a line with pieces is refused with an input error; nothing changes", () => {
     const merchant = `${PREFIX} SPLIT SHOP`;
     const line = listedLine(merchant, "08/05/2026", 30_000, "d");
     replaceExpenseLinePieces("cc", line, [{ amount: 10_000, category_slug: categories[0]!.slug }]);
     expect(() =>
       createManualCcInstallmentPurchase(accountId, { purchase_date: "2026-05-08", total_amount_clp: 30_000, cuotas_totales: 3, merchant })
-    ).toThrow(/has pieces/);
+    ).toThrow(InputError);
     expect(lineExists(line)).toBe(true);
     expect(db.prepare(`SELECT 1 FROM cc_installment_purchases WHERE account_id = ? AND merchant = ?`).get(accountId, merchant)).toBeUndefined();
+    expect(() => convertStatementLineToInstallmentPurchase(accountId, line, 3)).toThrow(InputError);
+  });
+
+  it("a statement import over a line with pieces writes the plan, folds the rest and reports the dropped pieces", () => {
+    const merchant = `${PREFIX} PIECE SHOP`;
+    const line = listedLine(merchant, "08/05/2026", 30_000, "d2");
+    replaceExpenseLinePieces("cc", line, [
+      { amount: 10_000, category_slug: categories[0]!.slug },
+      { amount: 5_000, category_slug: categories[1]!.slug },
+    ]);
+    setFlowNote(accountId, resolveCcExpensePurchaseKey(line), "kept note");
+
+    const result = closeStatementWithPlan(merchant, "08/05/26", 30_000);
+
+    expect(lineExists(line)).toBe(false);
+    const id = planId(merchant);
+    expect(result.pieces_dropped).toEqual([
+      expect.objectContaining({ line_id: line, plan_id: id, merchant, transaction_date: "08/05/2026", amount: 30_000, currency: "clp", pieces: [10_000, 5_000] }),
+    ]);
+    const note = db.prepare(`SELECT body FROM app_messages WHERE kind = 'notification' AND title = 'Card line pieces dropped' AND body LIKE ?`).get(`%${merchant}%`) as
+      | { body: string }
+      | undefined;
+    expect(note?.body).toContain("10000, 5000");
+    for (const row of planRows(id)) expect(row.purchase_notes).toBe("kept note");
+    const planFlows = planRows(id).map((r) => r.flow_id!);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM flow_parts WHERE flow_id IN (${planFlows.map(() => "?").join(",")})`).get(...planFlows)).toEqual({ n: 0 });
   });
 
   it("a line converted to cuotas stays, and its plan shows the line's category, note and big group", () => {
@@ -201,6 +237,44 @@ describe("a one-shot line its cuota plan replaces", () => {
       expect(row.purchase_notes).toBe("the sofa");
       expect(row.big_group_slug).toBe(bigGroup);
     }
+    // Shown and counted once: the overlaid line is no expense row, and the group holds one purchase.
+    const lines = buildFlowsExpenseLines([accountId]);
+    expect(lines.filter((l) => l.statement_line_id === line)).toEqual([]);
+    expect(lines.filter((l) => l.purchase_notes === "the sofa").every((l) => l.installment_purchase_id === plan.id)).toBe(true);
+    expect(countPurchasesInBigGroup(bigGroup)).toBe(1);
+  });
+});
+
+describe("a statement close writing the plan (its cuota lines on file first)", () => {
+  it("a line holding only a per-line override hands it to the plan, and the plan remembers the line it took", () => {
+    const merchant = `${PREFIX} CHAIR SHOP`;
+    const line = listedLine(merchant, "12/05/2026", 36_000, "h");
+    db.prepare(`INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)`).run(line, categories[1]!.id);
+
+    closeStatementWithPlan(merchant, "12/05/26", 36_000);
+
+    expect(lineExists(line)).toBe(false);
+    const id = planId(merchant);
+    for (const row of planRows(id)) expect(row.category_slug).toBe(categories[1]!.slug);
+    const plan = listPlansForLineMatching(accountId).find((p) => p.id === id)!;
+    expect(plan.taken_renderings).toEqual([`${merchant}|36000`]);
+  });
+
+  it("a bill linked to the line stays linked, to the plan", () => {
+    const merchant = `${PREFIX} HEATER SHOP`;
+    const line = listedLine(merchant, "13/05/2026", 42_000, "i");
+    const entry = Number(
+      db.prepare(`INSERT INTO expense_entries (amount, currency, spent_on, category) VALUES (42000, 'clp', '2026-05-31', 'bills')`).run().lastInsertRowid
+    );
+    createdEntries.push(entry);
+    insertBillLink(entry, resolveCcExpensePurchaseKey(line), "manual");
+
+    closeStatementWithPlan(merchant, "13/05/26", 42_000);
+
+    const id = planId(merchant);
+    const total = planRows(id).find((r) => r.purchase_key.startsWith("installment-h:"))!;
+    expect(billLinkedToKey(total.purchase_key)).toBe(entry);
+    expect(listPlansForLineMatching(accountId).find((p) => p.id === id)!.taken_renderings).toEqual([`${merchant}|42000`]);
   });
 });
 

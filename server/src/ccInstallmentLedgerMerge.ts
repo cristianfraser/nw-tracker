@@ -3,7 +3,12 @@ import { ccCardGroupOrDefault } from "./ccIssuers.js";
 import { recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf } from "./ccStatementSourceKind.js";
-import { applyCardLinePlan, planOneShotLinesSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
+import {
+  applyCardLinePlan,
+  applyCardLinePlanDetailed,
+  planOneShotLinesSupersededByInstallmentPurchases,
+  type CardLinePiecesDropped,
+} from "./ccCrossImportDedupe.js";
 import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
@@ -229,6 +234,8 @@ export type CcInstallmentLedgerMergeResult = {
   earliestNewPurchaseDate: string | null;
   paymentUpserts: number;
   gapFilled: number;
+  /** Pieces of one-shot lines this merge's plans replaced, dropped (a plan takes none). */
+  pieces_dropped: CardLinePiecesDropped[];
 };
 
 export type CcInstallmentLedgerMergeOpts = {
@@ -480,7 +487,7 @@ function mergeInstallmentLedgerInSession(
   // The gap fill is the plans this merge wrote (created, or their cuotas re-read): a plan no
   // statement of this import touched keeps the payments it has.
   const gapFilled = backfillMissingInstallmentPaymentsForPlans([...touchedPlanIds]).inserted;
-  applyCardLinePlan(accountId, planOneShotLinesSupersededByInstallmentPurchases(accountId));
+  const { pieces_dropped } = applyCardLinePlanDetailed(accountId, planOneShotLinesSupersededByInstallmentPurchases(accountId));
   // The contract consumes cupo on its purchase date: the stamps written after it are stale.
   noteCardLineEvidence(accountId, earliestNewPurchaseDate);
 
@@ -489,6 +496,7 @@ function mergeInstallmentLedgerInSession(
     paymentUpserts,
     earliestNewPurchaseDate,
     gapFilled,
+    pieces_dropped,
   };
 };
 
@@ -496,6 +504,8 @@ export type CcAccountImportMergeResult = {
   statements: ReturnType<typeof importCcStatementsMerge>;
   ledger: CcInstallmentLedgerMergeResult;
   overlap_removed: number;
+  /** Pieces of one-shot lines a plan replaced, dropped (the ledger's own pass and the overlap pass). */
+  pieces_dropped: CardLinePiecesDropped[];
   manual_installment_reconcile: ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport>;
   web_paste_repair: ReturnType<typeof repairMisplacedOpenWebPasteBuckets>;
   /** Grocery receipts flagged `pending_branch` on this card that the lines just written paired with. */
@@ -624,7 +634,7 @@ function mergeInSession(
   const ledger = mergeInstallmentLedgerFromStatements(accountId, statements, { replaceLedger: false });
   const manual_installment_reconcile = reconcileManualInstallmentPurchasesAfterStatementImport(accountId, statements);
   const overlap = planOneShotLinesSupersededByInstallmentPurchases(accountId);
-  applyCardLinePlan(accountId, overlap);
+  const overlapApplied = applyCardLinePlanDetailed(accountId, overlap);
   const web_paste_repair = repairMisplacedOpenWebPasteBuckets(accountId);
   relinkCcTraspasoDeudaLinksForAccount(accountId);
   // A grocery receipt paid with this card at a branch no map names waits, flagged, for the
@@ -641,6 +651,7 @@ function mergeInSession(
     statements: statementsResult,
     ledger,
     overlap_removed: overlap.removed_line_ids.length,
+    pieces_dropped: [...ledger.pieces_dropped, ...overlapApplied.pieces_dropped],
     manual_installment_reconcile,
     web_paste_repair,
     grocery_branch_learning,
