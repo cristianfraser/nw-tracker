@@ -58,7 +58,11 @@ export function applyCheckingCartolaPlan(
   cartola: ParsedCheckingCartola,
   plan: CheckingCartolaPlan,
   dbHandle: Database = db,
-  opts?: { replaceMonth?: boolean }
+  /**
+   * `afterWrite`: runs inside the transaction once the rows are written and the month recorded (the
+   * import's ledger guard, `checkingCartolaLedgerGuard.ts`); a throw rolls the cartola back.
+   */
+  opts?: { replaceMonth?: boolean; afterWrite?: () => void }
 ): CheckingCartolaPlanApplyResult {
   assertCheckingCartolaSaldoIdentity(cartola);
   const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
@@ -136,6 +140,7 @@ export function applyCheckingCartolaPlan(
     }
     assertCartolaMonthWrote(accountId, cartola, wrote, dbHandle);
     recordCartolaMonthImport(accountId, cartola, dbHandle);
+    opts?.afterWrite?.();
   })();
   return out;
 }

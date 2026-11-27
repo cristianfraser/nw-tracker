@@ -8,7 +8,11 @@ import type {
 export type CheckingCartolaFileImportLog = {
   file: string;
   period_month: string;
-  status: "imported" | "skipped_already_imported" | "updated_saldo_ref" | "parse_error" | "dry_run";
+  /**
+   * `refused`: the ledger guard or the second-document cross-check refused it, nothing written
+   * (`problems`); `confirmed`: a second document stated the month on file alike.
+   */
+  status: "imported" | "skipped_already_imported" | "updated_saldo_ref" | "parse_error" | "dry_run" | "refused" | "confirmed";
   movements_parsed: number;
   movements_imported: number;
   skipped_rows: CartolaSkippedRow[];
@@ -16,6 +20,12 @@ export type CheckingCartolaFileImportLog = {
   saldo_final_clp: number | null;
   saldo_inicial_clp: number | null;
   error?: string;
+  /** A refusal's reasons, one per line. */
+  problems?: string[];
+  /** A confirmed month whose two documents print a day's rows in another order (`confirmed`). */
+  order_notes?: string[];
+  /** The cartola derived the account's anchor (the run writes it at its end). */
+  anchor_derived?: boolean;
 };
 
 export type CheckingCartolaImportRunLog = {
@@ -43,17 +53,28 @@ export function formatCheckingCartolaImportLogBody(log: CheckingCartolaImportRun
   );
   const imported = log.files.filter((f) => f.status === "imported");
   const errors = log.files.filter((f) => f.status === "parse_error");
+  const refused = log.files.filter((f) => f.status === "refused");
   const skippedMonths = log.files.filter((f) => f.status === "skipped_already_imported");
   const totalMovements = imported.reduce((n, f) => n + f.movements_imported, 0);
   const totalParseSkips = log.files.reduce((n, f) => n + f.skipped_rows.length, 0);
   lines.push(
     `Imported ${imported.length} file(s), ${totalMovements} movement(s). ` +
-      `Already imported: ${skippedMonths.length}. Errors: ${errors.length}. Parse skips: ${totalParseSkips}.`
+      `Already imported: ${skippedMonths.length}. Errors: ${errors.length}. Refused: ${refused.length}. Parse skips: ${totalParseSkips}.`
   );
 
   for (const f of log.files) {
     if (f.status === "parse_error") {
       lines.push(`\nERROR ${f.file}: ${f.error ?? "unknown"}`);
+      continue;
+    }
+    if (f.status === "refused") {
+      lines.push(`\nREFUSED ${f.file} (${f.period_month}), nothing written:`);
+      for (const p of f.problems ?? [f.error ?? "unknown"]) lines.push(`  - ${p}`);
+      continue;
+    }
+    if (f.status === "confirmed") {
+      lines.push(`\n${f.file} (${f.period_month}): confirms the month on file.`);
+      for (const o of f.order_notes ?? []) lines.push(`  - order: ${o}`);
       continue;
     }
     if (f.status !== "imported" && f.status !== "dry_run") continue;
@@ -96,6 +117,14 @@ export function logCheckingCartolaImportRun(log: CheckingCartolaImportRunLog): v
   for (const f of log.files) {
     if (f.status === "parse_error") {
       console.error(`  ERROR ${f.file}: ${f.error ?? "unknown"}`);
+      continue;
+    }
+    if (f.status === "refused") {
+      console.error(`  REFUSED ${f.file} (${f.period_month}), nothing written: ${(f.problems ?? [f.error ?? "unknown"]).join("; ")}`);
+      continue;
+    }
+    if (f.status === "confirmed") {
+      console.log(`  CONFIRMED ${f.file} (${f.period_month}): states the month on file alike.`);
       continue;
     }
     if (f.status === "skipped_already_imported") {

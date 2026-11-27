@@ -52,7 +52,11 @@ export function assertCartolaMonthWrote(accountId: number, cartola: ParsedChecki
   }
 }
 
-/** The cartola month's import row (the month's ownership and its saldos); a row already stating them is left as it is. */
+/**
+ * The cartola month's import row (the month's ownership and its saldos); a row already stating them
+ * is left as it is. Another document taking the month clears the confirmation the record held
+ * (`checkingCartolaCrossCheck.ts`).
+ */
 export function recordCartolaMonthImport(accountId: number, cartola: ParsedCheckingCartola, dbHandle: Database = db): void {
   dbHandle
     .prepare(
@@ -62,6 +66,8 @@ export function recordCartolaMonthImport(accountId: number, cartola: ParsedCheck
        )
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(account_id, period_month) DO UPDATE SET
+         confirmed_by_file = CASE WHEN source_file IS excluded.source_file THEN confirmed_by_file END,
+         confirmed_at = CASE WHEN source_file IS excluded.source_file THEN confirmed_at END,
          source_file = excluded.source_file,
          movement_count = excluded.movement_count,
          saldo_final_clp = excluded.saldo_final_clp,

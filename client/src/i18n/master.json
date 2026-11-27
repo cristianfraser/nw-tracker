@@ -3202,6 +3202,10 @@
         "en": "No statement with a final balance — no automatic anchor.",
         "es": "Sin cartola con saldo final — no hay ancla automática."
       },
+      "ledgerContradicted": {
+        "en": "Not saved: this movement changes the balance of {{month}}, and that month's statement lists every movement of the month. If the movement is missing, import that month's statement again; if it belongs to another month, enter it on its own date.",
+        "es": "No se guardó: este movimiento cambia el saldo de {{month}}, y la cartola de ese mes lista todos sus movimientos. Si falta el movimiento, vuelve a importar la cartola de ese mes; si es de otro mes, ingrésalo en su propia fecha."
+      },
       "glance": {
         "range": {
           "90d": {

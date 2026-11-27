@@ -3,7 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BankAccountStatement, ParsedCartolaPdfEntry } from "nw-tracker-contracts";
 import { resolveCfraserDir, resolveRepoRoot } from "../paths.js";
-import { reportStepResult } from "../stepResult.js";
 import {
   listCheckingCartolaXlsxFiles,
   parseCheckingCartolaFile,
@@ -108,7 +107,7 @@ function readPdfJson(file: string): CartolaPdfEntry[] {
 }
 
 function collectPdfEntries(entries: readonly CartolaPdfEntry[], only: readonly string[] | undefined, out: StatementsRead): void {
-  const filter = only?.length ? new Set(only) : null;
+  const filter = only != null ? new Set(only) : null;
   for (const e of entries) {
     if (filter && !filter.has(e.source_file)) continue;
     if (e.parse_status === "skipped") {
@@ -127,7 +126,11 @@ function collectPdfEntries(entries: readonly CartolaPdfEntry[], only: readonly s
   }
 }
 
-/** The cuenta corriente's cartolas: the xlsx first, then the PDFs, as the import always took them. */
+/**
+ * The cuenta corriente's cartolas: the xlsx, then the PDFs (the server imports each account's
+ * cartolas oldest month first, whatever the order). `onlyXlsx` / `onlyPdf`: the documents to read
+ * of that format — an empty list reads none; absent reads every one.
+ */
 export function readCheckingCartolas(opts: {
   dir?: string;
   pdf: boolean;
@@ -137,7 +140,8 @@ export function readCheckingCartolas(opts: {
   runParser?: ParserRunner;
 }): StatementsRead {
   const out: StatementsRead = { statements: [], unreadable: [] };
-  const xlsxFilter = opts.onlyXlsx?.length ? new Set(opts.onlyXlsx) : null;
+  // A list given (even empty) names the documents to read; none given reads every one.
+  const xlsxFilter = opts.onlyXlsx != null ? new Set(opts.onlyXlsx) : null;
   for (const file of listCheckingCartolaXlsxFiles(opts.dir ?? checkingCartolaXlsxDir())) {
     const base = path.basename(file);
     if (xlsxFilter && !xlsxFilter.has(base)) continue;
@@ -147,7 +151,7 @@ export function readCheckingCartolas(opts: {
       out.unreadable.push({ document: base, error: err instanceof Error ? err.message : String(err) });
     }
   }
-  if (!opts.pdf) return out;
+  if (!opts.pdf || (opts.onlyPdf != null && opts.onlyPdf.length === 0)) return out;
   if (!opts.skipPdfParse) {
     const run = (opts.runParser ?? runPythonParser)("parse-checking-cartola-pdfs.py", opts.onlyPdf);
     if (!run.ok) {
@@ -166,6 +170,7 @@ export function readCuentaVistaCartolas(opts: {
   runParser?: ParserRunner;
 }): StatementsRead {
   const out: StatementsRead = { statements: [], unreadable: [] };
+  if (opts.onlyPdf != null && opts.onlyPdf.length === 0) return out;
   const json = path.join(resolveCfraserDir(), "cuenta-vista-cartolas-from-pdf.json");
   if (!opts.skipPdfParse) {
     const run = (opts.runParser ?? runPythonParser)("parse-cuenta-vista-cartola-pdfs.py", opts.onlyPdf);
@@ -176,14 +181,4 @@ export function readCuentaVistaCartolas(opts: {
   }
   collectPdfEntries(readPdfJson(json), opts.onlyPdf, out);
   return out;
-}
-
-/**
- * Each unreadable cartola as a step problem («<file>: <reason>»), so the run message names it;
- * returns them. Nothing is reported when all were read.
- */
-export function reportUnreadableCartolas(read: StatementsRead, env: NodeJS.ProcessEnv = process.env): string[] {
-  const problems = read.unreadable.map((u) => `${u.document}: ${u.error}`);
-  if (problems.length > 0) reportStepResult({ problems }, env);
-  return problems;
 }

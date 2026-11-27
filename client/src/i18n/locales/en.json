@@ -982,6 +982,7 @@
       "ledgerAnchorSaved": "Anchor saved.",
       "ledgerAnchorCleared": "Anchor removed.",
       "ledgerAnchorNoCartola": "No statement with a final balance — no automatic anchor.",
+      "ledgerContradicted": "Not saved: this movement changes the balance of {{month}}, and that month's statement lists every movement of the month. If the movement is missing, import that month's statement again; if it belongs to another month, enter it on its own date.",
       "glance": {
         "range": {
           "90d": "90d",

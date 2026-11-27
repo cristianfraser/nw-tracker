@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { withAgreeingBalances } from "./test/cartolaFixtureBalances.js";
 import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { db } from "./db.js";
 import { stateListingFactsOfFixtures } from "./test/dailyListingFacts.js";
@@ -182,12 +183,14 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
       period_month: periodMonth,
       period_from: "1799-07-01",
       period_to: "1799-07-31",
-      saldo_inicial_clp: 50_000,
-      saldo_final_clp: 44_000,
+      // Printed balances that agree with the ledger: `withAgreeingBalances` at the import.
+      saldo_inicial_clp: null,
+      saldo_final_clp: null,
       movements,
       skipped: [],
       notes: [],
     };
+    let agreeing: ParsedCheckingCartola;
     const cleanup = () => {
       db.prepare(
         `DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`
@@ -199,7 +202,7 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
     };
     cleanup();
 
-    const first = importCheckingCartola(accountId, cartola);
+    const first = importCheckingCartola(accountId, (agreeing = withAgreeingBalances(accountId, cartola)));
     expect(first.movementsInserted).toBe(2);
     expect(first.inserted_flows).toEqual(
       movements.map((mv) => ({
@@ -210,7 +213,8 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
     );
     expect(first.skipped_flows).toEqual([]);
 
-    const second = importCheckingCartola(accountId, cartola);
+    // The same run: the anchor the first derived (written at the run's end) stands for the one on file.
+    const second = importCheckingCartola(accountId, agreeing, db, { runAnchor: first.anchor_derived });
     expect(second.movementsInserted).toBe(0);
     expect(second.inserted_flows).toEqual([]);
     expect(second.skipped_flows.map((f) => f.reason)).toEqual(["duplicate", "duplicate"]);

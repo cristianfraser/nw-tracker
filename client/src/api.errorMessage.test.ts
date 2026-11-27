@@ -13,4 +13,11 @@ describe("apiErrorMessage", () => {
     expect(apiErrorMessage(JSON.stringify({ errors: ["a", "b"] }))).toBe('{"errors":["a","b"]}');
     expect(apiErrorMessage(JSON.stringify({ error: "" }))).toBe('{"error":""}');
   });
+
+  it("words a coded error itself: a movement a cartola on file contradicts", () => {
+    const body = JSON.stringify({ error: "server English", code: "checking_ledger_contradicted", account_id: 22, month: "2026-09", difference: 5000 });
+    const message = apiErrorMessage(body);
+    expect(message).toContain("2026-09");
+    expect(message).not.toBe("server English");
+  });
 });

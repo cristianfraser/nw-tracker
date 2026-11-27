@@ -15,10 +15,11 @@
  *    add up to what it prints is withheld from the CSV (its rows on file stay as they are): the
  *    pipeline goes on with the others and the step ends failed, naming it in its problems.
  * 5. Send the parsed statements (`card.statement`, canonical)
- * 6. Checking cartolas (when the inbox filed one, or `--checking`), the daily «ultimos
- *    movimientos» xlsx, the card-payment receipts, then the server tasks
- *    `synthetic_cc_payments_check` and `cc_payment_mirrors`
- * 7. Cuenta vista cartolas (when the inbox filed one, or `--cuenta-vista`)
+ * 6. Checking cartolas (the ones the inbox filed plus the pending ones, or all with
+ *    `--checking`: `cartolaSteps.ts`), the daily «ultimos movimientos» xlsx, the card-payment
+ *    receipts, then the server tasks `synthetic_cc_payments_check` and `cc_payment_mirrors`
+ * 7. Cuenta vista cartolas (filed plus pending, or all with `--cuenta-vista`)
+ *    A cartola step's failure is deferred: the pipeline runs on and exits non-zero at the end.
  * 8. Grocery receipts
  *
  * Usage (repo root):
@@ -50,6 +51,8 @@ import {
   loadCfraserOrganizeManifest,
   resolveCfraserOrganizeManifestPath,
 } from "./organizeManifest.js";
+import { checkingCartolaStepArgs, cuentaVistaCartolaStepArgs, deferStepFailure } from "./cartolaSteps.js";
+import { readPendingCartolas } from "../santander/cartolaPending.js";
 
 const REPO_ROOT = resolveRepoRoot();
 
@@ -155,6 +158,7 @@ async function main(): Promise<void> {
     xlsxMoved = (JSON.parse(fs.readFileSync(xlsxManifest, "utf8")) as { moved: { from: string; to: string }[] }).moved;
   }
 
+  // A failure that does not stop the steps below: reported at the end.
   let deferredFailureCode = 0;
   if (!skipParse) {
     const code = runStep("Parse credit-card PDFs", "npm", ["run", "parse:cc-pdfs", "-w", "nw-tracker-ingest"]);
@@ -198,29 +202,25 @@ async function main(): Promise<void> {
     console.log("\n=== Import parsed credit-card CSV (skipped) ===");
   }
 
+  // A cartola step that fails (a refused or unreadable cartola, the server down) is reported at
+  // the end: the steps below still run (`deferStepFailure`). Refused and unreadable cartolas stay
+  // pending and are sent again on every run (`santander/cartolaPending.ts`).
   const inboxCheckingPdfs = basenamesFromCfraserOrganizePaths(organizeManifest.checking_pdfs);
-  const inboxChecking =
-    xlsxMoved.length > 0 || inboxCheckingPdfs.length > 0;
-  const runChecking =
-    !hasFlag("skip-checking") && (forceChecking || inboxChecking);
-
-  if (runChecking) {
-    const onlyXlsxBasenames = forceChecking
-      ? undefined
-      : xlsxMoved.map((m) => m.to);
-    const onlyPdfBasenames = forceChecking ? undefined : inboxCheckingPdfs;
-    const runCheckingPdf =
-      !skipCheckingPdf && (forceChecking || inboxCheckingPdfs.length > 0);
-
-    const args = ["run", "import:checking-cartolas", "-w", "nw-tracker-ingest", "--"];
-    if (forceChecking) console.log("\n  (--checking: full xlsx + pdf scan)");
-    if (onlyXlsxBasenames?.length) args.push(`--only-xlsx=${onlyXlsxBasenames.join(",")}`);
-    if (onlyPdfBasenames?.length) args.push(`--only-pdf=${onlyPdfBasenames.join(",")}`);
-    if (!runCheckingPdf) args.push("--xlsx-only");
-    if (hasFlag("skip-checking-pdf-parse")) args.push("--skip-pdf-parse");
-    if (dryRun) args.push("--dry-run");
-    const code = runStep("Import checking cartolas (incremental)", "npm", args);
-    if (code !== 0) process.exit(code);
+  const checkingArgs = hasFlag("skip-checking")
+    ? null
+    : checkingCartolaStepArgs({
+        force: forceChecking,
+        skipCheckingPdf,
+        skipPdfParse: hasFlag("skip-checking-pdf-parse"),
+        dryRun,
+        xlsxFiled: xlsxMoved.map((m) => path.basename(m.to)),
+        pdfFiled: inboxCheckingPdfs,
+        pending: readPendingCartolas("checking").map((p) => p.document),
+      });
+  if (checkingArgs) {
+    if (forceChecking) console.log("\n  (--checking: full xlsx + pdf scan, every month on file cross-checked)");
+    const code = runStep("Import checking cartolas", "npm", checkingArgs);
+    deferredFailureCode = deferStepFailure(deferredFailureCode, code);
   } else {
     console.log("\n=== Import checking cartolas (skipped; pass --checking or drop cartola in inbox) ===");
   }
@@ -269,18 +269,19 @@ async function main(): Promise<void> {
   }
 
   const inboxVistaPdfs = basenamesFromCfraserOrganizePaths(organizeManifest.cuenta_vista_pdfs);
-  const runCuentaVista =
-    !hasFlag("skip-cuenta-vista") &&
-    (forceCuentaVista || inboxVistaPdfs.length > 0);
-
-  if (runCuentaVista) {
-    const args = ["run", "import:cuenta-vista-cartolas", "-w", "nw-tracker-ingest", "--"];
-    if (forceCuentaVista) console.log("\n  (--cuenta-vista: full pdf scan)");
-    else args.push(`--only-pdf=${inboxVistaPdfs.join(",")}`);
-    if (hasFlag("skip-cuenta-vista-pdf-parse")) args.push("--skip-pdf-parse");
-    if (dryRun) args.push("--dry-run");
-    const code = runStep("Import cuenta vista cartolas (pdf)", "npm", args);
-    if (code !== 0) process.exit(code);
+  const vistaArgs = hasFlag("skip-cuenta-vista")
+    ? null
+    : cuentaVistaCartolaStepArgs({
+        force: forceCuentaVista,
+        skipPdfParse: hasFlag("skip-cuenta-vista-pdf-parse"),
+        dryRun,
+        pdfFiled: inboxVistaPdfs,
+        pending: readPendingCartolas("cuenta-vista").map((p) => p.document),
+      });
+  if (vistaArgs) {
+    if (forceCuentaVista) console.log("\n  (--cuenta-vista: full pdf scan, every month on file cross-checked)");
+    const code = runStep("Import cuenta vista cartolas (pdf)", "npm", vistaArgs);
+    deferredFailureCode = deferStepFailure(deferredFailureCode, code);
   } else {
     console.log(
       "\n=== Import cuenta vista cartolas (skipped; pass --cuenta-vista or drop CM cartola in inbox) ==="
@@ -298,7 +299,7 @@ async function main(): Promise<void> {
     // A receipt that will not parse fails the step so the nightly names it, but it is not a
     // reason to hold back the steps below — the pipeline still exits non-zero at the end. (A
     // new store is not a failure: the receipt is flagged and pairs with the card's own line.)
-    if (code !== 0) deferredFailureCode = code;
+    deferredFailureCode = deferStepFailure(deferredFailureCode, code);
   }
 
   console.log("\n=== import:cfraser-inbox done ===");

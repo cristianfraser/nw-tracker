@@ -13,7 +13,6 @@ import {
   movementClpLegOrZero,
   type MovementAmountFields,
 } from "./movementAmounts.js";
-import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import {
   displayLedgerCutoffYmd,
   signedClpDeltaForAccountMovement,
@@ -21,6 +20,7 @@ import {
 } from "./movementTransfer.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import type { MovementTransferRow } from "./movementTransfer.js";
+import { cartolaClosingDay } from "./checkingCartolaMonthBounds.js";
 
 /**
  * Running CLP balance for DISPLAY at `asOfYmd`: movements on or before that date, or every
@@ -250,21 +250,26 @@ function defaultAnchorPlacementDate(
 
 
 
+/**
+ * The newest cartola month with a printed closing balance, and the day that balance is as of
+ * (`cartolaClosingDay`: its HASTA, else the month's end): the anchor is derived so the walk lands
+ * there.
+ */
 function getLatestCartolaSaldoFinal(
   accountId: number,
   dbHandle: Database = db
-): { period_month: string; saldo_final_clp: number } | null {
+): { period_month: string; saldo_final_clp: number; closing_day: string } | null {
   const row = dbHandle
     .prepare(
-      `SELECT period_month, saldo_final_clp
+      `SELECT period_month, saldo_final_clp, period_from, period_to
        FROM checking_cartola_imports
        WHERE account_id = ? AND saldo_final_clp IS NOT NULL
        ORDER BY period_month DESC
        LIMIT 1`
     )
-    .get(accountId) as { period_month: string; saldo_final_clp: number } | undefined;
+    .get(accountId) as { period_month: string; saldo_final_clp: number; period_from: string | null; period_to: string | null } | undefined;
   if (!row || !Number.isFinite(row.saldo_final_clp)) return null;
-  return { period_month: row.period_month, saldo_final_clp: Math.round(row.saldo_final_clp) };
+  return { period_month: row.period_month, saldo_final_clp: Math.round(row.saldo_final_clp), closing_day: cartolaClosingDay(row) };
 }
 
 export type NonAnchorClpFlowTotals = {
@@ -352,13 +357,7 @@ export function getCartolaDerivedAnchor(
   if (!latest) return null;
   const occurredOn = defaultAnchorPlacementDate(accountId, dbHandle);
   if (!occurredOn) return null;
-  const amountCutoff = monthEndUtcYmd(latest.period_month);
-  const amount = computeDerivedAnchorAmount(
-    accountId,
-    latest.saldo_final_clp,
-    amountCutoff,
-    dbHandle
-  );
+  const amount = computeDerivedAnchorAmount(accountId, latest.saldo_final_clp, latest.closing_day, dbHandle);
   return { period_month: latest.period_month, occurred_on: occurredOn, amount_clp: amount };
 }
 
@@ -380,13 +379,7 @@ export function getCheckingLedgerAnchor(
     | undefined;
   if (!existing) return null;
 
-  const amountCutoff = monthEndUtcYmd(latest.period_month);
-  const derivedAmount = computeDerivedAnchorAmount(
-    accountId,
-    latest.saldo_final_clp,
-    amountCutoff,
-    dbHandle
-  );
+  const derivedAmount = computeDerivedAnchorAmount(accountId, latest.saldo_final_clp, latest.closing_day, dbHandle);
 
   return {
     movement_id: existing.id,
@@ -426,16 +419,60 @@ export function upsertCheckingLedgerAnchor(
 }
 
 /**
- * Insert or update one ledger offset from the latest cartola saldo final.
- * Amount aligns ledger at latest month-end; default date is month-end before first timeline month.
- * Reads SQLite only — safe on request paths (POST /movements via maybeSyncCheckingLedgerAnchor).
+ * The derivation would move an anchor the cartolas on file pinned: the ledger walk no longer lands
+ * on the newest cartola's closing balance from the anchor on file, so some row disagrees with a
+ * cartola by `derived − stored`. Never absorbed by moving the anchor.
+ */
+export class CheckingLedgerAnchorPinnedError extends Error {
+  constructor(
+    readonly accountId: number,
+    readonly stored: { amount_clp: number; occurred_on: string },
+    readonly derived: { amount_clp: number; occurred_on: string; period_month: string }
+  ) {
+    super(
+      `account ${accountId}: the ledger anchor (${stored.amount_clp} CLP on ${stored.occurred_on}) is pinned by the cartolas on file; ` +
+        `re-deriving it from the ${derived.period_month} saldo final gives ${derived.amount_clp} CLP on ${derived.occurred_on} ` +
+        `(difference ${derived.amount_clp - stored.amount_clp}): the ledger disagrees with a cartola on file by that much. ` +
+        `Find the row (the month table shows the first month off its cartola); the anchor is re-derived only once it is cleared.`
+    );
+  }
+}
+
+/** The account's ledger anchor row on file, or null. */
+export function storedCheckingLedgerAnchor(
+  accountId: number,
+  dbHandle: Database = db
+): { id: number; amount_clp: number; occurred_on: string; note: string } | null {
+  const row = dbHandle
+    .prepare(
+      `SELECT id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, occurred_on, note FROM movements
+       WHERE account_id = ? AND note LIKE ?
+       LIMIT 1`
+    )
+    .get(accountId, `${ANCHOR_NOTE_PREFIX}%`) as ({ id: number; occurred_on: string; note: string } & MovementAmountFields) | undefined;
+  return row ? { id: row.id, amount_clp: Math.round(movementClpLegOrZero(row)), occurred_on: row.occurred_on, note: row.note } : null;
+}
+
+/**
+ * The account's ledger anchor: the opening balance that makes the walk land on the newest cartola's
+ * closing balance (`getCartolaDerivedAnchor`), dated the month-end before the timeline starts.
+ *
+ * **An anchor on file is pinned.** Every cartola import checks the ledger against the cartola's
+ * printed opening and closing balances with the anchor on file (`checkingCartolaLedgerGuard.ts`),
+ * so re-deriving an established anchor must give it back; when it would not (a row disagrees with
+ * a cartola), this throws `CheckingLedgerAnchorPinnedError` instead of moving it. Only the note
+ * follows the newest month. The anchor is derived (written new or moved) only:
+ *  - when none is on file: the first cartola of the account, or after a wipe or a hand clear;
+ *  - with `repin`: the import run whose cartolas start the account's history (a cartola earlier
+ *    than every month on file, checked against the anchor it derives before it was written).
+ * With no cartola saldo final on file the anchor is cleared. A hand-set anchor
+ * (`upsertCheckingLedgerAnchor`) stays pinned like any other.
  */
 export function ensureCheckingLedgerAnchor(
   accountId: number,
-  dbHandle: Database = db
+  dbHandle: Database = db,
+  opts?: { repin?: boolean }
 ): EnsureCheckingLedgerAnchorResult {
-
-
   const latest = getLatestCartolaSaldoFinal(accountId, dbHandle);
   if (!latest) {
     const cleared = clearCheckingLedgerAnchor(accountId, dbHandle);
@@ -461,31 +498,16 @@ export function ensureCheckingLedgerAnchor(
       anchor_period_month: periodMonth,
     };
   }
-  const amountCutoff = monthEndUtcYmd(periodMonth);
-  const amount = computeDerivedAnchorAmount(
-    accountId,
-    latest.saldo_final_clp,
-    amountCutoff,
-    dbHandle
-  );
+  const amount = computeDerivedAnchorAmount(accountId, latest.saldo_final_clp, latest.closing_day, dbHandle);
   const note = checkingLedgerAnchorNote(periodMonth);
-
-  const existing = dbHandle
-    .prepare(
-      `SELECT id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, occurred_on, note FROM movements
-       WHERE account_id = ? AND note LIKE ?
-       LIMIT 1`
-    )
-    .get(accountId, `${ANCHOR_NOTE_PREFIX}%`) as
-    | ({ id: number; occurred_on: string; note: string } & MovementAmountFields)
-    | undefined;
+  const existing = storedCheckingLedgerAnchor(accountId, dbHandle);
 
   if (existing) {
-    if (
-      Math.round(movementClpLegOrZero(existing)) === amount &&
-      existing.occurred_on === occurredOn &&
-      existing.note === note
-    ) {
+    const same = existing.amount_clp === amount && existing.occurred_on === occurredOn;
+    if (!same && opts?.repin !== true) {
+      throw new CheckingLedgerAnchorPinnedError(accountId, existing, { amount_clp: amount, occurred_on: occurredOn, period_month: periodMonth });
+    }
+    if (same && existing.note === note) {
       return {
         inserted: false,
         updated: false,
@@ -498,7 +520,7 @@ export function ensureCheckingLedgerAnchor(
     writeAnchorRow(accountId, existing.id, { amount, occurredOn, note }, dbHandle);
     return {
       inserted: false,
-      updated: true,
+      updated: !same,
       cleared: false,
       amount_clp: amount,
       occurred_on: occurredOn,
@@ -515,14 +537,4 @@ export function ensureCheckingLedgerAnchor(
     occurred_on: occurredOn,
     anchor_period_month: periodMonth,
   };
-}
-
-/** Re-sync anchor after manual movement on a cash cartola account. */
-export function maybeSyncCheckingLedgerAnchor(
-  accountId: number,
-  bucketKindSlug: string,
-  dbHandle: Database = db
-): void {
-  if (!isMovementBalanceCashCategory(bucketKindSlug)) return;
-  ensureCheckingLedgerAnchor(accountId, dbHandle);
 }

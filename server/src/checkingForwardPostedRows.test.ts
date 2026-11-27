@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { withAgreeingBalances } from "./test/cartolaFixtureBalances.js";
 import type { BankAccountMovementsPayload } from "nw-tracker-contracts";
 import { readOnChileDay } from "./test/listingFetch.js";
 import { db } from "./db.js";
@@ -115,7 +116,7 @@ describe("a recent-movements row the bank dated after the day the listing was re
     };
     try {
       const dailyId = stored(account, late)!.id;
-      const imported = importCheckingCartola(account, cartola);
+      const imported = importCheckingCartola(account, withAgreeingBalances(account, cartola));
       expect(imported.partialsRestated).toBe(1);
       expect(stored(account, late)).toBeUndefined();
       const official = db
@@ -174,10 +175,6 @@ describe("re-dating rows stored before the fetch-day rule", () => {
     const account = checkingId();
     const daily = row("1801-06-11", -3_000, "daily stored on bank day");
     const replaced = row("1801-06-12", -4_000, "replaced by cartola");
-    // As the import stored them before the rule: on the bank's day.
-    for (const mv of [daily]) {
-      insertBankPesoMovement({ accountId: account, amount: mv.amount_clp, occurredOn: mv.occurred_on, note: partialMovementNote(mv), flowKind: null, listed: dailyListingFacts(mv) });
-    }
     const cartola: ParsedCheckingCartola = {
       source_file: `${PREFIX}-cartola-06.xlsx`,
       period_month: "1801-06",
@@ -190,7 +187,12 @@ describe("re-dating rows stored before the fetch-day rule", () => {
       notes: [],
     };
     try {
-      importCheckingCartola(account, cartola);
+      importCheckingCartola(account, withAgreeingBalances(account, cartola));
+      // As the import stored it before the rule: on the bank's day (written after the cartola,
+      // which does not list it, so the cartola's balances hold).
+      for (const mv of [daily]) {
+        insertBankPesoMovement({ accountId: account, amount: mv.amount_clp, occurredOn: mv.occurred_on, note: partialMovementNote(mv), flowKind: null, listed: dailyListingFacts(mv) });
+      }
       const listings = [
         // A later listing alone would not prove an earlier read; the earliest decides.
         { source: "late", account_id: account, fetched_at: readOnChileDay("1801-06-13").fetchedAt, rows: [daily, replaced] },

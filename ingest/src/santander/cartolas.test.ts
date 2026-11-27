@@ -2,8 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { STEP_RESULT_ENV, readStepResult } from "../stepResult.js";
-import { readCheckingCartolas, readCuentaVistaCartolas, reportUnreadableCartolas } from "./cartolas.js";
+import { readCheckingCartolas, readCuentaVistaCartolas } from "./cartolas.js";
 
 function entry(file: string, status: "ok" | "error", error: string | null = null) {
   return {
@@ -52,7 +51,7 @@ describe("cartola PDF batch", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it("sends the readable cartolas and reports the unreadable one by name", () => {
+  it("sends the readable cartolas and names the unreadable one", () => {
     const read = readCheckingCartolas({
       dir: path.join(root, "xlsx"),
       pdf: true,
@@ -64,10 +63,6 @@ describe("cartola PDF batch", () => {
       { document: "b.pdf", error: "b.pdf: row «02/01 Centro …»: nothing in the SUCURSAL column" },
     ]);
 
-    const stepFile = path.join(root, "step.json");
-    const problems = reportUnreadableCartolas(read, { [STEP_RESULT_ENV]: stepFile });
-    expect(problems).toEqual(["b.pdf: b.pdf: row «02/01 Centro …»: nothing in the SUCURSAL column"]);
-    expect(readStepResult(stepFile).problems).toEqual(problems);
   });
 
   it("a parser that did not finish sends nothing of its PDFs, whatever JSON a previous run left", () => {
@@ -85,11 +80,5 @@ describe("cartola PDF batch", () => {
     const vista = readCuentaVistaCartolas({ skipPdfParse: false, runParser: () => ({ ok: false, error: "crashed" }) });
     expect(vista.statements).toEqual([]);
     expect(vista.unreadable).toEqual([{ document: "cuenta-vista-pdf", error: "crashed" }]);
-  });
-
-  it("reports nothing when every cartola was read", () => {
-    const stepFile = path.join(root, "step.json");
-    expect(reportUnreadableCartolas({ statements: [], unreadable: [] }, { [STEP_RESULT_ENV]: stepFile })).toEqual([]);
-    expect(fs.existsSync(stepFile)).toBe(false);
   });
 });

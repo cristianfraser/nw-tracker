@@ -15,10 +15,13 @@ import { movementWrite } from "./movementWrites.js";
 
 /**
  * A bank account's statements (`bank_account.statements`: cartolas the feeder read from the
- * monthly xlsx or PDF) → its ledger, as the cartola import has always done it
- * (`importCartolaList` + `finishCartolaImportRun`): a period not imported yet is imported, one
- * imported already only refreshes its printed balances or replaces an empty import, a phantom
- * boundary month is skipped, and the run re-derives the account's opening anchor.
+ * monthly xlsx or PDF) → its ledger (`importCartolaList` + `finishCartolaImportRun`): a period not
+ * imported yet is imported when the ledger agrees with its printed balances
+ * (`checkingCartolaLedgerGuard.ts`), one imported already only refreshes its printed balances, is
+ * cross-checked by a second document covering the whole month (`checkingCartolaCrossCheck.ts`) or
+ * is replaced by a fuller partial one, a phantom boundary month is skipped, and the anchor stays
+ * pinned. Each statement is applied in its own savepoint: a refused one writes nothing and is
+ * reported (`refused`, its `problems`) while the others import.
  *
  * The cuenta vista prints periods that straddle calendar months, so each of its statements is
  * split by month (`splitCuentaVistaCartolaByCalendarMonth`) after the months its document no
@@ -111,10 +114,14 @@ function applyStatements(
   importCartolaList(accountId, list, { dryRun: false, forceReimport: payload.force_reimport, forceSameFileOnly: vista }, fileLogs, flows);
   const result = finishCartolaImportRun(accountId, { dryRun: false }, fileLogs, vista ? "cuenta vista" : undefined);
 
+  const refused = fileLogs.filter((f) => f.status === "refused");
+  const confirmed = fileLogs.filter((f) => f.status === "confirmed");
   const report = [
     `${vista ? "cuenta vista" : "checking"}: ${result.filesImported.length} file(s) imported, ` +
-      `${result.filesSkipped.length} month(s) already in DB, ${result.errors.length} error(s)`,
+      `${result.filesSkipped.length} month(s) already in DB, ${confirmed.length} confirmed by a second document, ` +
+      `${refused.length} refused, ${result.errors.length} error(s)`,
     ...result.errors.map((e) => `  ${e.file}: ${e.error}`),
+    ...refused.flatMap((f) => [`  REFUSED ${f.file} (${f.period_month}), nothing written:`, ...(f.problems ?? []).map((p) => `    ${p}`)]),
   ];
   return {
     account_id: accountId,
@@ -125,6 +132,7 @@ function applyStatements(
       movements_parsed: f.movements_parsed,
       movements_imported: f.movements_imported,
       error: f.error ?? null,
+      problems: f.problems ?? [],
     })),
     report,
   };

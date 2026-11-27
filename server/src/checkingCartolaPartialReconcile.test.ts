@@ -18,6 +18,7 @@ import { createRealEstatePlace } from "./flowsRealEstateExpenses.js";
 import { insertBankPesoMovement } from "./movementWrites.js";
 import { dailyListingFacts } from "./movementListingFacts.js";
 import { checkingMovementContentMatches, partialDescriptionsMatch } from "./checkingCartolaPartialReconcile.js";
+import { withAgreeingBalances } from "./test/cartolaFixtureBalances.js";
 
 function testCheckingAccountId(): number | null {
   const row = db
@@ -30,19 +31,24 @@ function testCheckingAccountId(): number | null {
   return row?.id ?? null;
 }
 
-/** A cartola month of `movements` (saldos that add up). */
+/**
+ * A cartola month of `movements` whose printed balances agree with the ledger as it stands
+ * (`withAgreeingBalances`: build it right before its import).
+ */
 function cartolaOf(periodMonth: string, movements: ParsedCheckingCartola["movements"]): ParsedCheckingCartola {
-  return {
+  const accountId = testCheckingAccountId();
+  if (accountId == null) throw new Error("no checking account in the test person");
+  return withAgreeingBalances(accountId, {
     source_file: `vitest-partial-${periodMonth}.xlsx`,
     period_month: periodMonth,
     period_from: `${periodMonth}-01`,
     period_to: `${periodMonth}-28`,
-    saldo_inicial_clp: 500_000,
-    saldo_final_clp: 500_000 + movements.reduce((n, m) => n + m.amount_clp, 0),
+    saldo_inicial_clp: null,
+    saldo_final_clp: null,
     movements,
     skipped: [],
     notes: [],
-  };
+  });
 }
 
 /** A daily-listing row as the daily listing's import writes it. */
@@ -178,7 +184,7 @@ describe("checkingCartolaPartialReconcile", () => {
     };
 
     // The daily row is restated as the cartola's row in place: no row written, none deleted.
-    const { partialsRestated, partialsRemoved, movementsInserted } = importCheckingCartola(accountId, cartola);
+    const { partialsRestated, partialsRemoved, movementsInserted } = importCheckingCartola(accountId, withAgreeingBalances(accountId, cartola));
     expect([movementsInserted, partialsRestated, partialsRemoved]).toEqual([0, 1, 0]);
 
     const partial = db
@@ -243,7 +249,7 @@ describe("checkingCartolaPartialReconcile", () => {
     ).run(partialId);
 
     try {
-      const { partialsRestated } = importCheckingCartola(accountId, {
+      const { partialsRestated } = importCheckingCartola(accountId, withAgreeingBalances(accountId, {
         source_file: "vitest-partial-payslip.xlsx",
         period_month: periodMonth,
         period_from: "1801-09-01",
@@ -253,7 +259,7 @@ describe("checkingCartolaPartialReconcile", () => {
         movements: [{ occurred_on: occurredOn, amount_clp: amountClp, branch: "Agustinas", description, document_no: "" }],
         skipped: [],
         notes: [],
-      });
+      }));
       expect(partialsRestated).toBe(1);
       const official = db
         .prepare(`SELECT id FROM movements WHERE account_id = ? AND note LIKE ?`)
@@ -314,16 +320,20 @@ describe("checkingCartolaPartialReconcile", () => {
     );
   });
 
-  it("a cartola leaves a daily row it does not list", () => {
+  it("a cartola leaves a daily row it does not list, and is refused while that row puts the month off its balances", () => {
     const accountId = testCheckingAccountId();
     if (accountId == null) return;
     const unrelated = { occurred_on: "1800-05-01", amount_clp: -1000, description: "Unrelated partial only", document_no: "" };
     removeMonth(accountId, "1800-05", [partialMovementNote(unrelated)]);
     const row = dailyRow(accountId, unrelated);
+    const before = (db.prepare(`SELECT COUNT(*) AS n FROM movements WHERE account_id = ?`).get(accountId) as { n: number }).n;
     try {
-      const r = importCheckingCartola(accountId, cartolaOf("1800-05", [{ occurred_on: "1800-05-02", amount_clp: -2000, branch: "", description: "Other cartola move", document_no: "" }]));
-      expect([r.movementsInserted, r.partialsRestated, r.partialsRemoved]).toEqual([1, 0, 0]);
+      // The bank does not list the daily row: the month on file is the cartola's money plus that row.
+      expect(() =>
+        importCheckingCartola(accountId, cartolaOf("1800-05", [{ occurred_on: "1800-05-02", amount_clp: -2000, branch: "", description: "Other cartola move", document_no: "" }]))
+      ).toThrow(/1800-05 .*refused: the ledger at 1800-04-30 .*ledger − cartola = 1000/);
       expect(db.prepare(`SELECT note FROM movements WHERE id = ?`).get(row)).toEqual({ note: partialMovementNote(unrelated) });
+      expect((db.prepare(`SELECT COUNT(*) AS n FROM movements WHERE account_id = ?`).get(accountId) as { n: number }).n).toBe(before);
     } finally {
       removeMonth(accountId, "1800-05", [partialMovementNote(unrelated)]);
     }

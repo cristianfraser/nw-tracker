@@ -17,8 +17,9 @@
  *  - `remove`: a daily row a transfer leg or a mail row already represents, or (a replaced month) a
  *    cartola row the new cartola no longer lists;
  *  - `ambiguous`: several retired flows for one document (left alone);
- *  - `left_alone`: a row the plan would remove or fold away that a tax settlement or a payslip names
- *    (`named_by`): it stays, reported.
+ *  - `left_alone`: a replaced month's cartola row the new cartola no longer lists that a tax
+ *    settlement or a payslip names (`named_by`): it stays, reported (a row folded or removed for a
+ *    row that records its money hands its payslip and settlements to that row instead).
  *
  * The matchers: `pickTransferLegForBankRow`, `pickTransferNoticeMovementForBankRow`,
  * `checkingMovementContentMatches`. Daily rows pair one to one with movements (the Nth identical
@@ -99,9 +100,10 @@ export type CheckingCartolaPlan = {
   remove: { row_id: number; movement: number; why: "listed_by_transfer_leg" | "listed_by_mail" | "replaced_cartola_row" }[];
   ambiguous: { what: string; movement: number; flow_ids: number[] }[];
   /**
-   * Rows the plan would remove or fold away that a record names (`named_by`): left as they are and
-   * reported. A daily row a transfer leg or mail row lists is held only by a tax settlement (its
-   * payslip moves to the kept row).
+   * A replaced month's cartola row no movement keeps that a record names (`named_by`): left as it
+   * is and reported (the import refuses a month that leaves a tax settlement's row behind). Rows
+   * folded or removed for a row that records their money are never held: their payslip and tax
+   * settlements move to it (`repointMovementReferences`).
    */
   left_alone: { row_id: number; movement: number; why: "listed_by_transfer_leg" | "listed_by_mail" | "replaced_cartola_row" | "folded"; tables: string[] }[];
 };
@@ -109,8 +111,11 @@ export type CheckingCartolaPlan = {
 /** Plans one cartola month's import (see the module doc). */
 export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCartolaPlan {
   const plan: CheckingCartolaPlan = { keep: [], confirm: [], insert: [], fold: [], remove: [], ambiguous: [], left_alone: [] };
-  const holders = (rowId: number, payslipMoves: boolean): string[] =>
-    [...(input.rows.find((r) => r.id === rowId)?.named_by ?? [])].filter((t) => !(payslipMoves && t === "payroll_work_earnings"));
+  // A row whose money another row records after the import (a fold, a daily row a leg or a mail
+  // row lists): its payslip and its tax settlements move to that row (`repointMovementReferences`),
+  // so they do not hold it. A replaced month's cartola row has no such row: they hold it.
+  const holders = (rowId: number, referencesMove: boolean): string[] =>
+    [...(input.rows.find((r) => r.id === rowId)?.named_by ?? [])].filter((t) => !referencesMove);
   const consumedLegs = new Set<number>();
   const legs = input.transfer_legs.map((l) => ({ ...l }));
   const consumedMail = new Set<number>();
@@ -262,7 +267,6 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
     const why = o.kind === "row" && kept === o.id ? o.why : "daily_listing";
     plan.keep.push({ row_id: kept, movement: mv.index, why, redate: redateOf(kept) });
     for (const d of members.slice(1)) {
-      // The payslip moves with a fold; a tax settlement does not.
       const tables = holders(d, true);
       if (tables.length > 0) plan.left_alone.push({ row_id: d, movement: mv.index, why: "folded", tables });
       else plan.fold.push({ row_id: d, into_row_id: kept, movement: mv.index, why: "daily_listing" });

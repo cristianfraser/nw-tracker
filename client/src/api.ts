@@ -43,6 +43,18 @@ function demoReadOnlyMessage(status: number, body: string): string | null {
 }
 
 /**
+ * A route error with a `code` the client words itself (its fields fill the copy); null for any
+ * other. Translated at call time.
+ */
+function codedErrorMessage(body: Record<string, unknown>): string | null {
+  // A hand movement that changes a balance a cartola on file states (server: `checkingLedgerWriteGuard.ts`).
+  if (body.code === "checking_ledger_contradicted" && typeof body.month === "string") {
+    return i18n.t("accountDetail.checking.ledgerContradicted", { month: body.month });
+  }
+  return null;
+}
+
+/**
  * Route errors reach the client as `{ "error": "<message>" }` (server terminal error
  * middleware and most explicit 4xx answers). Surface the message itself, not the JSON text;
  * any other body shape is shown as-is.
@@ -51,6 +63,8 @@ export function apiErrorMessage(body: string): string {
   try {
     const parsed: unknown = JSON.parse(body);
     if (parsed != null && typeof parsed === "object") {
+      const coded = codedErrorMessage(parsed as Record<string, unknown>);
+      if (coded) return coded;
       const error = (parsed as { error?: unknown }).error;
       if (typeof error === "string" && error.trim() !== "") return error;
     }

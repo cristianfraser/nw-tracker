@@ -10,27 +10,30 @@ import { dailyListingFacts } from "./movementListingFacts.js";
 import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { rolledBack } from "./ingestReceiver.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
+import { agreeingCartolaBalances } from "./test/cartolaFixtureBalances.js";
 
 /**
  * A cartola over the daily rows, through the ingest kind's apply (`applyBankAccountStatements`):
  * the rows the daily listing wrote are restated in place, the same cartola again writes nothing, a
  * month imported again from a corrected file keeps the rows it still lists, and two identical
  * movements stay two rows on two flows. Each case runs in a transaction that is rolled back: the
- * cartola run re-derives the account's opening anchor and clears its stored valuations.
+ * cartola run writes the account's opening anchor (a fixture month starts the history) and clears its
+ * stored valuations. Each cartola's printed balances agree with the ledger (`agreeingCartolaBalances`).
  */
 const MONTH = "1805-04";
 const TAG = "VITEST KEEPROWS";
 
 const mv = (date: string, amount: number, what: string) => ({ date, branch: "Agustinas", description: `${TAG} ${what}`, document_no: "", amount });
 
-function statement(movements: ReturnType<typeof mv>[], opening = 500_000): BankAccountStatement {
+/** A cartola of the month whose printed balances agree with the ledger as it stands (`agreeingCartolaBalances`). */
+function statement(movements: ReturnType<typeof mv>[], month = MONTH): BankAccountStatement {
+  const period = { period_month: month, period_from: `${month}-01`, period_to: `${month}-30` };
+  const { opening, closing } = agreeingCartolaBalances(checkingAccountId(), period, movements.map((m) => m.amount));
   return {
-    document: `vitest-keep-rows-${MONTH}.xlsx`,
-    period_month: MONTH,
-    period_from: `${MONTH}-01`,
-    period_to: `${MONTH}-30`,
+    document: `vitest-keep-rows-${month}.xlsx`,
+    ...period,
     opening_balance: opening,
-    closing_balance: opening + movements.reduce((s, m) => s + m.amount, 0),
+    closing_balance: closing,
     month_closing_balances: null,
     movements,
     skipped_rows: [],
@@ -93,12 +96,13 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
     const st = statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-05", -8_000, "Compra Dos")]);
     applyBankAccountStatements(payload(st));
     const before = rowsOfMonth();
-    // The corrected cartola: the first movement as before, the second gone, a new one.
-    const corrected = statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-09", -4_000, "Compra Cuatro")]);
+    // The corrected cartola: the first movement as before, the second gone, a new one (the month's
+    // balances as before: the ledger guard holds the corrected month to them).
+    const corrected = statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-09", -8_000, "Compra Cuatro")]);
     const r = applyBankAccountStatements(payload(corrected, true));
     expect(r.files.map((f) => f.status)).toEqual(["imported"]);
     const after = rowsOfMonth();
-    expect(after.map((x) => x.amount)).toEqual([-12_000, -4_000]);
+    expect(after.map((x) => x.amount)).toEqual([-12_000, -8_000]);
     expect([after[0]!.id, after[0]!.flow_id]).toEqual([before[0]!.id, before[0]!.flow_id]);
     expect(after.some((x) => x.id === before[1]!.id)).toBe(false);
   }));
@@ -151,8 +155,17 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
       .get(checkingAccountId(), MONTH) as Record<string, unknown>;
     return { count: rows.length, amounts: rows.map((r) => r.amount), saldo: rec.saldo_final_clp };
   }
-  const xlsx = () => ({ ...statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-05", -8_000, "Compra Dos")]), document: `vitest-keep-rows-${MONTH}.xlsx` });
-  const pdf = () => ({ ...statement([mv("1805-04-03", -12_000, "COMPRA UNO"), mv("1805-04-05", -8_000, "COMPRA DOS")]), document: `vitest-keep-rows-${MONTH}.pdf` });
+  // Both renderings print the same balances (read once, before either is imported).
+  let renderings: { xlsx: BankAccountStatement; pdf: BankAccountStatement } | null = null;
+  const rendering = (which: "xlsx" | "pdf") => {
+    renderings ??= {
+      xlsx: { ...statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-05", -8_000, "Compra Dos")]), document: `vitest-keep-rows-${MONTH}.xlsx` },
+      pdf: { ...statement([mv("1805-04-03", -12_000, "COMPRA UNO"), mv("1805-04-05", -8_000, "COMPRA DOS")]), document: `vitest-keep-rows-${MONTH}.pdf` },
+    };
+    return renderings[which];
+  };
+  const xlsx = () => rendering("xlsx");
+  const pdf = () => rendering("pdf");
 
   for (const [name, order] of [
     ["xlsx then pdf", [[xlsx], [pdf]]],
@@ -160,8 +173,11 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
     ["both every night", [[xlsx, pdf], [xlsx, pdf]]],
   ] as const) {
     it(`a month that arrives in two renderings ends the same, and the next night writes nothing (${name})`, inRollback(() => {
-      for (const night of order) applyBankAccountStatements({ ...payload(night[0]!()), statements: night.map((f) => f()) });
-      expect(importedMonth()).toEqual({ count: 2, amounts: [-12_000, -8_000], saldo: 480_000 });
+      renderings = null;
+      const statuses = order.map((night) => applyBankAccountStatements({ ...payload(night[0]!()), statements: night.map((f) => f()) }).files.map((f) => f.status));
+      // The second rendering confirms the month on file (text compared case- and accent-folded).
+      expect(statuses.flat().filter((st) => st !== "skipped_already_imported")).toEqual(["imported", "confirmed"]);
+      expect(importedMonth()).toEqual({ count: 2, amounts: [-12_000, -8_000], saldo: xlsx().closing_balance });
       const mark = changes();
       const again = applyBankAccountStatements({ ...payload(xlsx()), statements: [xlsx(), pdf()] });
       expect(again.files.map((f) => f.status)).toEqual(["skipped_already_imported", "skipped_already_imported"]);
@@ -172,7 +188,8 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
   it("a lesser cartola of a month on file (a straddle slice, a broken chain) writes nothing, the record stays the fuller file's", inRollback(() => {
     applyBankAccountStatements(payload(statement([mv("1805-04-03", -12_000, "Compra Uno"), mv("1805-04-28", -8_000, "Compra Dos")])));
     const before = importedMonth();
-    const slice = { ...statement([mv("1805-04-28", -8_000, "Compra Dos")], 123_456), document: "vitest-keep-rows-next.pdf", closing_balance: null };
+    // A straddle slice: its period opens inside the month (it covers part of it).
+    const slice = { ...statement([mv("1805-04-28", -8_000, "Compra Dos")]), document: "vitest-keep-rows-next.pdf", period_from: "1805-04-27", closing_balance: null };
     const mark = changes();
     for (const night of [1, 2]) {
       const r = applyBankAccountStatements(payload(slice));
@@ -187,7 +204,7 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
   }));
 
   it("a month after a gap in the cartola history, sent again, writes nothing", inRollback(() => {
-    const later = { ...statement([mv("1805-06-03", -1_000, "Compra Junio")], 777_000), document: "vitest-keep-rows-1805-06.xlsx", period_month: "1805-06", period_from: "1805-06-01", period_to: "1805-06-30" };
+    const later = { ...statement([mv("1805-06-03", -1_000, "Compra Junio")], "1805-06"), document: "vitest-keep-rows-1805-06.xlsx" };
     applyBankAccountStatements(payload(later));
     applyBankAccountStatements(payload(statement([mv("1805-04-03", -12_000, "Compra Uno")])));
     const mark = changes();
@@ -215,9 +232,8 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
     ]);
     applyBankAccountStatements(payload(first));
     const before = rowsOfMonth();
-    // The fuller cartola prints the fee under another wording, and the two tolls of the 23rd too.
+    // The corrected cartola prints the fee under another wording, and the two tolls of the 23rd too.
     const fuller = statement([
-      mv("1805-04-21", -900, "Compra Nueva"),
       mv("1805-04-22", -1_500, "Cargo Por Mantencion De Cuenta"),
       mv("1805-04-23", -2_000, "Autopista Uno"),
       mv("1805-04-23", -2_000, "Autopista Dos"),

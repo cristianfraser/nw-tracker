@@ -6,12 +6,12 @@ import { accountHasRole } from "../accountRoles.js";
 import express from "express";
 import { accountRowForId } from "../accountRowForMovement.js";
 import { validateMovementCreate } from "../movementUnitsPolicy.js";
-import { accountBucketKindSlug } from "../accountBucket.js";
 import { db } from "../db.js";
 import { insertMovement } from "../movementWrites.js";
 import { clearAggregationCache } from "../cacheRegistry.js";
 import { supersedeImportedCheckingRowsForTransfer } from "../checkingTransferLegReconcile.js";
-import { isCheckingLedgerAnchorNote, maybeSyncCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
+import { isCheckingLedgerAnchorNote } from "../checkingCartolaBalances.js";
+import { guardCheckingLedgerWrite, type CheckingLedgerDrift } from "../checkingLedgerWriteGuard.js";
 import { accountIdFromReq, parseBody } from "./shared.js";
 import { writeHandler } from "../inputError.js";
 import {
@@ -22,6 +22,18 @@ import {
 import { cryptoEquityTickerForAccount } from "../cryptoValuation.js";
 import { assignOptionContract } from "../optionAssignment.js";
 import { isOptionContractAccount } from "../optionContracts.js";
+
+/**
+ * The ledger already disagreed with its cartolas before this write (not the write's doing):
+ * reported beside the result, and logged.
+ */
+function driftField(drift: CheckingLedgerDrift[]): { checking_ledger_drift?: CheckingLedgerDrift[] } {
+  if (drift.length === 0) return {};
+  for (const d of drift) {
+    console.warn(`account ${d.account_id}: the ledger disagrees with its cartolas (anchor on file ${d.stored_anchor_clp}, derived ${d.derived_anchor_clp})`);
+  }
+  return { checking_ledger_drift: drift };
+}
 
 export function registerMovementsRoutes(app: express.Express): void {
 app.post("/api/accounts/:id/movements", writeHandler((req, res) => {
@@ -37,39 +49,38 @@ app.post("/api/accounts/:id/movements", writeHandler((req, res) => {
     return;
   }
   if (validated.mode === "transfer") {
-    const id = insertMovement({
-      fromAccountId: validated.from_account_id,
-      toAccountId: validated.to_account_id,
-      amount: validated.amount,
-      currency: validated.currency,
-      counterAmount: validated.counter_amount,
-      counterCurrency: validated.counter_currency,
-      occurredOn: validated.occurred_on,
-      note: validated.note,
-      unitsDelta: validated.units_delta,
-      counterUnitsDelta: validated.counter_units_delta,
-      flowKind: validated.flow_kind,
-    });
-    // Reverse dedup: if a matching checking bank row was already imported, this transfer supersedes it.
-    // Checking rows are CLP; a non-CLP transfer has no CLP leg to supersede.
-    const superseded =
-      isHomeCurrency(validated.currency)
-        ? supersedeImportedCheckingRowsForTransfer(
-            id,
-            validated.from_account_id,
-            validated.to_account_id,
-            validated.amount,
-            validated.occurred_on
-          )
+    // The transfer, the bank rows it supersedes and the ledger check in one transaction: a hand
+    // transfer that changes a balance a cartola on file states is refused (`checkingLedgerWriteGuard.ts`).
+    const { result, drift } = guardCheckingLedgerWrite([validated.from_account_id, validated.to_account_id], validated.occurred_on, () => {
+      const id = insertMovement({
+        fromAccountId: validated.from_account_id,
+        toAccountId: validated.to_account_id,
+        amount: validated.amount,
+        currency: validated.currency,
+        counterAmount: validated.counter_amount,
+        counterCurrency: validated.counter_currency,
+        occurredOn: validated.occurred_on,
+        note: validated.note,
+        unitsDelta: validated.units_delta,
+        counterUnitsDelta: validated.counter_units_delta,
+        flowKind: validated.flow_kind,
+      });
+      // Reverse dedup: if a matching checking bank row was already imported, this transfer supersedes it.
+      // Checking rows are CLP; a non-CLP transfer has no CLP leg to supersede.
+      const superseded = isHomeCurrency(validated.currency)
+        ? supersedeImportedCheckingRowsForTransfer(id, validated.from_account_id, validated.to_account_id, validated.amount, validated.occurred_on)
         : { removed_ids: [] as number[] };
+      return { id, superseded };
+    });
     res.status(201).json({
-      id,
+      id: result.id,
       from_account_id: validated.from_account_id,
       to_account_id: validated.to_account_id,
       units_delta: validated.units_delta,
       counter_units_delta: validated.counter_units_delta,
       flow_kind: validated.flow_kind,
-      superseded_imported_checking_ids: superseded.removed_ids,
+      superseded_imported_checking_ids: result.superseded.removed_ids,
+      ...driftField(drift),
     });
     return;
   }
@@ -91,12 +102,11 @@ app.post("/api/accounts/:id/movements", writeHandler((req, res) => {
     return;
   }
   const { amount, currency, occurred_on, note, units_delta } = validated;
-  const id = insertMovement({ accountId, amount, currency, occurredOn: occurred_on, note, unitsDelta: units_delta });
-  const bucketKind = accountBucketKindSlug(account.bucket_slug);
-  if (!isCheckingLedgerAnchorNote(note)) {
-    maybeSyncCheckingLedgerAnchor(accountId, bucketKind);
-  }
-  res.status(201).json({ id, units_delta });
+  const write = () => insertMovement({ accountId, amount, currency, occurredOn: occurred_on, note, unitsDelta: units_delta });
+  // The anchor row itself is not judged against the anchor; any other movement on a cash cartola
+  // account is refused when it changes a balance a cartola on file states.
+  const { result: id, drift } = isCheckingLedgerAnchorNote(note) ? { result: write(), drift: [] } : guardCheckingLedgerWrite([accountId], occurred_on, write);
+  res.status(201).json({ id, units_delta, ...driftField(drift) });
 }));
 
 /**
