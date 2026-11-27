@@ -405,10 +405,14 @@ function applyInSession(
     additionalCard(accountId, insertedOf.get(refOf(i.doc))!, i.line.origin_card_last4 ?? i.statement.card_last4, i.statement.card_last4);
   }
   for (const r of restate) additionalCard(accountId, r.lineId, r.line.origin_card_last4 ?? r.statement.card_last4, r.statement.card_last4);
-  // A new line beside kept lines of its identity copies their category and big group.
+  // A new line beside kept lines of its identity copies their category and big group — unless it
+  // took back the flow its document left retired: that flow's own classification is the line's, and
+  // a twin's big group must not join a category the user gave this purchase.
+  const tookBack = new Set(applied.retired_flows_taken_back.filter((t) => t.status === "adopted").map((t) => t.line_id));
   for (const i of plan.insert) {
     if (i.copies_classification_from == null) continue;
     const to = insertedOf.get(refOf(i.doc))!;
+    if (tookBack.has(to)) continue;
     const refs = (db.prepare(`${CC_LINE_REF_SELECT} WHERE l.id IN (?, ?)`).all(i.copies_classification_from, to) as Parameters<typeof ccLineRefFromRow>[0][]).map(ccLineRefFromRow);
     const fromRef = refs.find((r) => r.lineId === i.copies_classification_from)!;
     const toRef = refs.find((r) => r.lineId === to)!;

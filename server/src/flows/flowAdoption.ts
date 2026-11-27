@@ -134,7 +134,12 @@ export type RetiredCardLineAdoption = {
   reason: string | null;
 };
 
-/** Tables a line's brand-new flow may hold a row in that a take-back would have to merge by claim, not by preference. */
+/**
+ * The tables a flow merge cannot settle by preference (`mergeFlowInto`): a refund mark and an income
+ * classification refuse a second row, a bill, financing or deposit link and a facturado payment charge
+ * fail their unique indexes, and pieces keep one flow's set and drop the other's. A take-back merging
+ * flows of which two hold rows in one of them is refused, never attempted.
+ */
 const CLAIM_TABLES = ["flow_refunds", "flow_income_overrides", "flow_links", "flow_parts", "cc_facturado_payment_charges"] as const;
 
 /**
@@ -146,8 +151,11 @@ const CLAIM_TABLES = ["flow_refunds", "flow_income_overrides", "flow_links", "fl
  * arrived). Exact document identity only (`COALESCE(parser_row_id, dedupe_key)`, a twin's `#dupN`
  * included); never a cuota line (its flow is its plan's); never a flow a standing annulment names
  * (`cc_annulled_purchases`: that purchase, not an earlier incarnation of the line). Several
- * candidates, a candidate answering to another key than the line's, or a line flow already holding
- * a claim (a refund mark, a link, pieces) take nothing and are reported. Call after the line's
+ * candidates, a candidate answering to another key than the line's, a document a standing
+ * annulment of the card is (the bank listing the voided purchase again: `settleRelistedAnnulments`
+ * hands the line the annulment's flow, the purchase's identity), or a merge chain — the candidate,
+ * the line's own flow and the flow holding the line's key — of which two flows hold a claim
+ * ({@link CLAIM_TABLES}) take nothing and are reported; nothing is written. Call after the line's
  * arrival stamp is written, so a candidate older than the stamps stays unstamped. Null when the
  * line has no candidate.
  */
@@ -181,6 +189,13 @@ export function takeBackRetiredCardLineFlow(lineId: number, dbHandle: Database =
     reason,
   });
   if (candidates.length > 1) return out("ambiguous", `${candidates.length} flows retired with the document`);
+  const relisted = dbHandle
+    .prepare(
+      `SELECT a.id FROM cc_annulled_purchases a LEFT JOIN flows f ON f.id = a.flow_id
+       WHERE a.account_id = ? AND (COALESCE(a.parser_row_id, a.dedupe_key) = ? OR f.retired_document_key = ?) LIMIT 1`
+    )
+    .get(row.account_id, row.document_key, row.document_key) as { id: number } | undefined;
+  if (relisted) return out("refused", `annulled purchase ${relisted.id} is this document's purchase`);
   const survivor = candidates[0]!;
   const prid = String(row.parser_row_id ?? "").trim();
   const lineKey = prid && !prid.startsWith("synthetic:") ? expenseKeyParts(buildExpenseKey({ kind: "line_pr", parserRowId: prid }))?.flowKey ?? null : null;
@@ -188,8 +203,13 @@ export function takeBackRetiredCardLineFlow(lineId: number, dbHandle: Database =
   if (survivorKey != null && lineKey != null && survivorKey !== lineKey) {
     return out("refused", `the retired flow answers to «${survivorKey}», the line to «${lineKey}»`);
   }
-  const claim = CLAIM_TABLES.find((t) => dbHandle.prepare(`SELECT 1 FROM ${t} WHERE flow_id = ? LIMIT 1`).get(row.flow_id) != null);
-  if (claim) return out("refused", `the line's own flow already holds a row in ${claim}`);
+  // Every flow the adoption merges (`adoptFlow`): the candidate, the line's own, the key's holder.
+  const holder = lineKey ? flowIdForKey(lineKey, dbHandle) : null;
+  const chain = [...new Set([survivor, row.flow_id, ...(holder != null ? [holder] : [])])];
+  for (const t of CLAIM_TABLES) {
+    const holding = chain.filter((f) => dbHandle.prepare(`SELECT 1 FROM ${t} WHERE flow_id = ? LIMIT 1`).get(f) != null);
+    if (holding.length > 1) return out("refused", `flows ${holding.join(", ")} each hold a row in ${t}`);
+  }
   adoptFlow({ survivor, arriving: row.flow_id }, { prefer: "survivor", key: lineKey }, dbHandle);
   return out("adopted", null);
 }

@@ -11,6 +11,7 @@ import { planCardStatementLines, type CardStatementLinePlan } from "./statementL
 import { applyStatementLinePlan, resolveStatementPlanAmbiguity } from "./statementLinePlanApply.js";
 import { applyLinePlan, replaceStatementLines } from "./lineWrites.js";
 import { annulOpenBucketLines } from "../ccAnnulledPurchases.js";
+import { flowArrival } from "../flows/flowFirstSeen.js";
 
 /**
  * The statement-line plan applied (`applyStatementLinePlan`, and the import through
@@ -655,6 +656,45 @@ describe("statement-line plan applied", () => {
         { line_id: cine, merchant: "CINE", date: "2026-06-02", amount: 6_000, currency: "clp", reason: "replaced_statement_line_gone", ambiguity: null, filed: ["note"] },
       ]);
       expect(notifications()).toHaveLength(1);
+    });
+
+    it("a line a re-import removed takes its flow back when the statement brings it again: flow, note, arrival", () => {
+      reimport([first()]);
+      const cine = lineIdOfParser("kra-id-b");
+      noteOn(cine, "with the kids");
+      const flow = flowOf(cine);
+      const arrival = flowArrival(flow);
+      expect(arrival.kind).toBe("stamped");
+      reimport([statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kra-id-a" })])]);
+      expect(db.prepare(`SELECT retired_on IS NOT NULL AS retired, legacy_key FROM flows WHERE id = ?`).get(flow)).toEqual({ retired: 1, legacy_key: null });
+      const r = reimport([first()]);
+      const back = lineIdOfParser("kra-id-b");
+      expect(flowOf(back)).toBe(flow);
+      expect(notesOf(flow)).toEqual(["with the kids"]);
+      expect(flowArrival(flow)).toEqual(arrival);
+      expect(r.statements.retired_flows_taken_back).toEqual([expect.objectContaining({ line_id: back, status: "adopted", flow_ids: [flow] })]);
+    });
+
+    it("a line beside its twin that takes its own flow back keeps its classification: the twin's big group is not copied", () => {
+      const twins = () => statement([line("2026-06-02", "CINE", 6_000, { id: "kra-tw-1" }), line("2026-06-02", "CINE", 6_000, { id: "kra-tw-2" })]);
+      reimport([twins()]);
+      const [one, two] = [lineIdOfParser("kra-tw-1"), lineIdOfParser("kra-tw-2")];
+      const cats = (db.prepare(`SELECT id FROM cc_expense_categories ORDER BY id LIMIT 2`).all() as { id: number }[]).map((c) => c.id);
+      const cat = db.prepare(`INSERT INTO flow_categories (flow_id, portion, piece_seq, account_id, category_id) VALUES (?, 'gastos', -1, ?, ?)`);
+      cat.run(flowOf(one), accountId, cats[0]);
+      cat.run(flowOf(two), accountId, cats[1]);
+      db.prepare(`INSERT OR IGNORE INTO cc_expense_big_groups (slug, label) VALUES ('vitest-kra-trip', 'vitest')`).run();
+      db.prepare(`INSERT INTO flow_big_groups (flow_id, portion, piece_seq, group_slug) VALUES (?, 'gastos', -1, 'vitest-kra-trip')`).run(flowOf(one));
+      const flowTwo = flowOf(two);
+      applyLinePlan(accountId, "vitest: deleted by hand", { deleteLineIds: [two], carry: [] });
+      const r = reimport([twins()]);
+      const back = lineIdOfParser("kra-tw-2");
+      expect(r.keep_rows.copied).toBe(1);
+      expect(flowOf(back)).toBe(flowTwo);
+      expect(db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).all(flowTwo)).toEqual([{ category_id: cats[1] }]);
+      expect(db.prepare(`SELECT group_slug FROM flow_big_groups WHERE flow_id = ?`).all(flowTwo)).toEqual([]);
+      db.prepare(`DELETE FROM flow_big_groups WHERE group_slug = 'vitest-kra-trip'`).run();
+      db.prepare(`DELETE FROM cc_expense_big_groups WHERE slug = 'vitest-kra-trip'`).run();
     });
 
     it("the same removal with nothing filed on the line is returned, with no notification", () => {

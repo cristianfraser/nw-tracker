@@ -156,8 +156,16 @@ Why. A card line's document key is `COALESCE(parser_row_id, dedupe_key)`: a list
 file, position and raw text. The same purchase listed again keeps its key exactly; a different
 purchase gets the same key only when it repeats merchant, amount and day after the first was
 deleted — the case in which the key readers already file the old category, note and big group on
-it, since the retired flow keeps answering to the key (`line-pr:`). What the key readers never
-carried is what sits on the flow itself: its arrival, pieces, links, event time. The gaps it closes:
+it, since the retired flow keeps answering to the key (`line-pr:`).
+
+What actually changes. A retired flow that still carries a key was already the new row's flow for
+the expense lines and «Últimos movimientos»: `withExpenseLineFlowIds` resolves a line by
+`legacy_key` first, retired flows included, so such a row read with the old flow's arrival and did
+not re-enter as new. For it the take-back changes the row's own `flow_id`, so what lives on the
+flow itself and is read through the row — pieces, links, refund links, event time — follows too. A
+retired flow with no key (held only by pieces, a link, a refund link or a row written on the flow
+directly) was read by nobody: the re-inserted line came back as a new flow with a new arrival; now
+it takes the old flow back, arrival included. The gaps it closes:
 a line deleted by hand that the feed lists again, a listing restatement that deleted a line with
 no single row to carry it and the bank later lists the row again, a statement re-imported after a
 script or a prune removed its lines. It does not close 6b or 7b (a changed parse gives the line a
@@ -165,12 +173,19 @@ new parser row id, so no key matches) and nothing for a line deleted bare (its f
 
 Guards: exactly one candidate (several: nothing, reported `ambiguous`); same account and source
 table; never a cuota line or an unstamped insert (a billed annulment takes the annulment's flow
-itself); never a flow a standing annulment holds; refused when the candidate answers to another key
-or the line's new flow already holds a claim (refund mark, link, pieces). Arrival: the older stays
+itself); never a flow a standing annulment holds, and nothing at all for a document a standing
+annulment of the card is (a re-listed annulment: `settleRelistedAnnulments` hands the line the
+annulment's flow, and merging an earlier incarnation in first could fail on two refund marks or
+bills). Refused, nothing written, when the candidate answers to another key, or when two of the
+flows the adoption merges — the candidate, the line's own new flow, the flow holding the line's
+key — each hold a row in a table a merge cannot settle by preference (refund mark, income
+classification, link, facturado payment charge, pieces): an unattended import never throws on it.
+A line beside its twin that took its flow back keeps its own classification (the statement plan's
+copy from the twin is skipped). Arrival: the older stays
 (`olderArrival`); a retired flow without a stamp was on file before the stamps or recorded an
 unstamped line, so the line reads as older than any stamp — an old purchase never reads as new, and
 the only way a genuinely new purchase is hidden is the same-key collision above, whose cost is a
-row that does not animate in «Últimos movimientos» and the earlier purchase's assignments (already
-shown today through the key). A line the user deleted because it was wrong and the bank lists
+row that does not animate in «Últimos movimientos» and the earlier purchase's assignments (shown
+through the key already when the retired flow is keyed). A line the user deleted because it was wrong and the bank lists
 again comes back with what was filed on it, as its key already shows. Every outcome is in
 `retired_flows_taken_back` of the merge result.
