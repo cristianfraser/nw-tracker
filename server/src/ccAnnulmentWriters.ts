@@ -37,6 +37,13 @@ import {
 } from "./ccAnnulledPurchases.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
 import { pairOneToOne } from "./matching/pairing.js";
+import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
+import { adoptFlow, flowExists } from "./flows/flowAdoption.js";
+import { ensureFlowForKey, flowIdForKey } from "./flows/flowIdentity.js";
+import { compareArrival, flowArrival } from "./flows/flowFirstSeen.js";
+import { listPlansForLineMatching, planMatchesOneShotLine, type CardPlanForMatching } from "./cards/purchases.js";
+import { planExpenseKey } from "./ccCrossImportDedupe.js";
+import { isHomeCurrency } from "./displayUnits.js";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 
 export type Currency = ListingCurrency;
@@ -79,18 +86,37 @@ export function chileDayOf(isoInstant: string): string {
 
 // ── a listing that shows an annulled purchase again ───────────────────────────────────────────────
 
-export type CcRelistedAnnulment = { annulled_purchase_id: number; merchant: string; amount: number; currency: string; purchase_date: string };
+export type CcRelistedAnnulment = {
+  annulled_purchase_id: number;
+  merchant: string;
+  amount: number;
+  currency: string;
+  purchase_date: string;
+  /**
+   * What stands for the purchase now: `line` — the bucket line the listing wrote for it; `plan` —
+   * the cuota plan the listing row was skipped for; `statement_line` — the statement line it was
+   * skipped as a duplicate of. Each took the annulment's flow and the annulment went. `left_standing`
+   * — no single row could be named (none, several, or a plan and the annulment's pieces): the
+   * annulment stays, its flow with it, and `reason` says why.
+   */
+  outcome: "line" | "plan" | "statement_line" | "left_standing";
+  /** The line or plan that took the flow (null when left standing). */
+  row_id: number | null;
+  reason: string | null;
+};
+
+/** An annulment a listing shows again, waiting for the lines the listing writes ({@link settleRelistedAnnulments}). */
+export type CcRelistedAnnulmentPending = { annulment: CcAnnulledPurchase; feedLine: CcListingLine };
 
 /**
  * The bank listed an annulled purchase again (it had voided it, then re-authorized the same
- * charge): the annulment goes, so the purchase is not counted twice — its listing row re-imports
- * as the bucket line. Only listing rows no existing bucket line accounts for count (a twin purchase
- * that is still listed must not undo the annulment of its voided sibling), each annulment is undone
- * by at most one row, and the match is the importer's own: same currency and amount, a matching
- * merchant, the dates within `MATCH_WINDOWS.feed_mirror`. Call BEFORE the listing's lines are
- * inserted.
+ * charge). Only listing rows no existing bucket line accounts for count (a twin purchase that is
+ * still listed must not undo the annulment of its voided sibling), each annulment is matched by at
+ * most one row, and the match is the importer's own: same currency and amount, a matching merchant,
+ * the dates within `MATCH_WINDOWS.feed_mirror`. Writes nothing: call BEFORE the listing's lines are
+ * inserted (it reads the bucket as it was), then {@link settleRelistedAnnulments} after.
  */
-export function removeRelistedAnnulments(accountId: number, feedLines: readonly CcListingLine[]): CcRelistedAnnulment[] {
+export function findRelistedAnnulments(accountId: number, feedLines: readonly CcListingLine[]): CcRelistedAnnulmentPending[] {
   const annulled = listAnnulledPurchases(accountId);
   if (annulled.length === 0 || feedLines.length === 0) return [];
   const window = MATCH_WINDOWS.feed_mirror.daysAfter;
@@ -109,12 +135,112 @@ export function removeRelistedAnnulments(accountId: number, feedLines: readonly 
       Math.abs(daysBetweenIso(a.purchase_date, f.transaction_date)) <= window &&
       merchantsSame(a.merchant, f.merchant),
   });
-  const out: CcRelistedAnnulment[] = [];
-  for (const { left: a } of pass.pairs) {
-    deleteAnnulledPurchase(a.id);
-    out.push({ annulled_purchase_id: a.id, merchant: a.merchant, amount: a.amount, currency: a.currency, purchase_date: a.purchase_date });
-  }
-  return out;
+  return pass.pairs.map(({ left, right }) => ({ annulment: left, feedLine: right }));
+}
+
+/** The card's newest line id: the lines a listing writes after it are newer (`settleRelistedAnnulments`). */
+export function lastCardLineId(): number {
+  return (db.prepare(`SELECT COALESCE(MAX(id), 0) AS id FROM cc_statement_lines`).get() as { id: number }).id;
+}
+
+type LineFacts = { id: number; transaction_date: string | null; posting_date: string | null; merchant: string | null; currency: string; amount: number | null; flow_id: number | null };
+
+const selLinesOfKinds = (kinds: "listing" | "statement") =>
+  db.prepare<[number, number]>(
+    `SELECT l.id, l.transaction_date, l.posting_date, l.merchant, l.currency, l.amount, l.flow_id
+     FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+     WHERE s.account_id = ? AND l.id > ? AND l.installment_flag = 0
+       AND s.source_kind ${kinds === "listing" ? "IN" : "NOT IN"} ('listing_open', 'listing_other')
+     ORDER BY l.id`
+  );
+const selWrittenListingLines = selLinesOfKinds("listing");
+const selStatementLines = selLinesOfKinds("statement");
+const selFlowHasParts = db.prepare(`SELECT 1 FROM flow_parts WHERE flow_id = ? LIMIT 1`);
+
+/**
+ * After the listing's lines are written, each re-listed purchase is handed to the row that now
+ * stands for it, which takes the annulment's flow (the purchase the app first saw: its arrival,
+ * category, note, big group), and only then does the annulment go:
+ *  - the new listing line (id above `lastLineIdBefore`) written from its listing row — same
+ *    currency, amount, merchant and day; one line per annulment and one annulment per line
+ *    (`mutual_unique`) — takes it, the line's own flow folding in, the line's key answering for it;
+ *  - else, when the row was skipped as a cuota plan's purchase, the one plan it matches (a peso
+ *    one-shot of the plan's day, its principal or one cuota, `planMatchesOneShotLine`) takes it,
+ *    folded into the flow the plan's lines read (its `installment-h:` key) — never an annulment
+ *    carrying pieces, which a plan takes none of;
+ *  - else, when it was skipped as a duplicate of a statement line, the one statement line of the
+ *    listing row's figures (`bucketLineMatchesFeedLine`, the feed-mirror window) takes it.
+ * The earlier arrival's assignments win in a fold onto a row on file (ties: the row's). An
+ * annulment no single row stands for is left standing with its flow and reported.
+ */
+export function settleRelistedAnnulments(
+  accountId: number,
+  pending: readonly CcRelistedAnnulmentPending[],
+  lastLineIdBefore: number
+): CcRelistedAnnulment[] {
+  if (pending.length === 0) return [];
+  const window = MATCH_WINDOWS.feed_mirror.daysAfter;
+  const written = selWrittenListingLines.all(accountId, lastLineIdBefore) as LineFacts[];
+  const pass = pairOneToOne(pending, written, {
+    strategy: "mutual_unique",
+    accepts: (p, line) => bucketLineMatchesFeedLine(line, p.feedLine, 0),
+  });
+  const lineOf = new Map(pass.pairs.map((pr) => [pr.left, pr.right]));
+  const claimed = new Set(pass.pairs.map((p) => p.right.id));
+  const ambiguous = new Set(pass.ambiguous.map((x) => x.left));
+  let plans: CardPlanForMatching[] | null = null;
+  let statementLines: LineFacts[] | null = null;
+  return pending.map((p) => {
+    const a = p.annulment;
+    const report = (outcome: CcRelistedAnnulment["outcome"], rowId: number | null, reason: string | null): CcRelistedAnnulment => {
+      if (outcome !== "left_standing") deleteAnnulledPurchase(a.id);
+      return { annulled_purchase_id: a.id, merchant: a.merchant, amount: a.amount, currency: a.currency, purchase_date: a.purchase_date, outcome, row_id: rowId, reason };
+    };
+    if (ambiguous.has(p)) return report("left_standing", null, "several new lines fit it, or it and another re-listed purchase fit one line");
+    const line = lineOf.get(p);
+    if (line) {
+      if (line.flow_id == null) throw new Error(`relisted annulment ${a.id}: line ${line.id} has no flow`);
+      if (flowExists(a.flow_id) && a.flow_id !== line.flow_id) {
+        adoptFlow({ survivor: a.flow_id, arriving: line.flow_id }, { prefer: "survivor", key: resolveCcExpensePurchaseKey(line.id), previousKey: a.purchase_key });
+      }
+      return report("line", line.id, null);
+    }
+    // The listing wrote no line for it: a row on file stood for the purchase already.
+    const f = p.feedLine;
+    if (isHomeCurrency(f.currency)) {
+      plans ??= listPlansForLineMatching(accountId);
+      const matching = plans.filter((plan) => planMatchesOneShotLine(plan, f.merchant, f.transaction_date, Math.abs(Math.trunc(f.amount))));
+      if (matching.length > 1) return report("left_standing", null, `${matching.length} cuota plans match its listing row`);
+      if (matching.length === 1) {
+        const plan = matching[0]!;
+        if (flowExists(a.flow_id)) {
+          if (selFlowHasParts.get(a.flow_id) != null) return report("left_standing", null, `split into pieces, which cuota plan ${plan.id} cannot take`);
+          const key = planExpenseKey(accountId, plan);
+          if (key == null) return report("left_standing", null, `cuota plan ${plan.id} has no expense key`);
+          const target = flowIdForKey(key) ?? ensureFlowForKey(key);
+          if (target !== a.flow_id) {
+            const prefer = compareArrival(flowArrival(a.flow_id), flowArrival(target)) < 0 ? "arriving" : "survivor";
+            adoptFlow({ survivor: target, arriving: a.flow_id }, { prefer });
+          }
+        }
+        return report("plan", plan.id, null);
+      }
+    }
+    statementLines ??= selStatementLines.all(accountId, 0) as LineFacts[];
+    const onStatement = statementLines.filter((l) => !claimed.has(l.id) && bucketLineMatchesFeedLine(l, f, window));
+    if (onStatement.length > 1) return report("left_standing", null, `${onStatement.length} statement lines match its listing row`);
+    if (onStatement.length === 1) {
+      const sl = onStatement[0]!;
+      if (sl.flow_id == null) throw new Error(`relisted annulment ${a.id}: statement line ${sl.id} has no flow`);
+      claimed.add(sl.id);
+      if (flowExists(a.flow_id) && a.flow_id !== sl.flow_id) {
+        const prefer = compareArrival(flowArrival(a.flow_id), flowArrival(sl.flow_id)) < 0 ? "arriving" : "survivor";
+        adoptFlow({ survivor: sl.flow_id, arriving: a.flow_id }, { prefer });
+      }
+      return report("statement_line", sl.id, null);
+    }
+    return report("left_standing", null, "the listing wrote no line for it and no plan or statement line stands for it");
+  });
 }
 
 // ── the statement settles annulments ──────────────────────────────────────────────────────────────

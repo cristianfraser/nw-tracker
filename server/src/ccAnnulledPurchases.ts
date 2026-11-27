@@ -14,8 +14,9 @@
  * either, because the bank never billed them.
  *
  * This module owns the table: writers snapshot a bucket line into a row and return the line plan
- * that deletes it; readers list the rows. The row must be written before its line is deleted (the
- * flow-retire trigger keeps the line's flow alive by its key once the line is gone).
+ * that deletes it; readers list the rows. The row must be written before its line is deleted: an
+ * annulment holds the flow it names (migration 380), so the line's delete retires the flow — arrival
+ * stamp, category, note, big group — instead of deleting it, even when nothing was filed on it.
  */
 import { db } from "./db.js";
 import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";

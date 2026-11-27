@@ -93,7 +93,7 @@ export function merchantsSame(a: string | null | undefined, b: string | null | u
  * dates at most `maxDayGap` apart (a pending authorization is restated up to a few days later).
  */
 export function bucketLineMatchesFeedLine(
-  line: CcOpenBucketLine,
+  line: Pick<CcOpenBucketLine, "currency" | "amount" | "transaction_date" | "posting_date" | "merchant">,
   feed: CcListingLine,
   maxDayGap: number
 ): boolean {

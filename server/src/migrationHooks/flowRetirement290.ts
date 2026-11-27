@@ -20,9 +20,10 @@ const ID_KEY_PREFIX: Partial<Record<SourceSpec["table"], string>> = {
  * holding tables and `flow_links`; 366 adds the card refund links (migration 365), whose either end
  * keeps its flow (a refund linked to a purchase that a re-import rewrites must find it again); 371
  * reads a restated row's earlier evidence (`source_table` `restated:<table>`, `flows/flowEvidence.ts`)
- * as history, never as another row of the flow.
+ * as history, never as another row of the flow; 380 adds the annulled card purchases (migration 332), so
+ * a purchase the bank voided keeps its flow (arrival included) while its annulment stands.
  */
-export type FlowHoldingRules = { refundLinks: boolean; restatedEvidence?: boolean };
+export type FlowHoldingRules = { refundLinks: boolean; restatedEvidence?: boolean; annulledPurchases?: boolean };
 
 const HOLDING_290: FlowHoldingRules = { refundLinks: false };
 
@@ -33,6 +34,7 @@ function holdsSomethingSql(flow: string, rules: FlowHoldingRules): string {
     ...(rules.refundLinks
       ? [`EXISTS (SELECT 1 FROM card_refund_links h WHERE h.flow_id = ${flow} OR h.purchase_flow_id = ${flow})`]
       : []),
+    ...(rules.annulledPurchases ? [`EXISTS (SELECT 1 FROM cc_annulled_purchases h WHERE h.flow_id = ${flow})`] : []),
   ].join(" OR ");
 }
 

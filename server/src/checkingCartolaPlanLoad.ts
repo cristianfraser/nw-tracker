@@ -15,7 +15,7 @@ import { listTransferNoticeCandidates } from "./transferNoticeMovements.js";
 import { priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { flowArrival } from "./flows/flowFirstSeen.js";
 import { cartolaListingFacts, LISTED_FACTS_COLUMNS_SQL, listedFactsOfEvidence, type ListedFactsEvidence } from "./movementListingFacts.js";
-import type { CheckingCartolaPlanInput, CheckingFileRow } from "./checkingCartolaPlan.js";
+import { MOVEMENT_DELETE_BLOCKERS, type CheckingCartolaPlanInput, type CheckingFileRow } from "./checkingCartolaPlan.js";
 
 type MovementRow = ListedFactsEvidence & {
   id: number;
@@ -48,6 +48,14 @@ export function loadCheckingCartolaPlanInput(
        ORDER BY m.id`
     )
     .all(accountId, accountId, cartola.period_month) as MovementRow[];
+  const namedBy = new Map<number, string[]>();
+  for (const table of MOVEMENT_DELETE_BLOCKERS) {
+    for (const { id } of dbHandle
+      .prepare(`SELECT DISTINCT t.movement_id AS id FROM ${table} t JOIN movements m ON m.id = t.movement_id WHERE m.account_id = ?`)
+      .all(accountId) as { id: number }[]) {
+      namedBy.set(id, [...(namedBy.get(id) ?? []), table]);
+    }
+  }
   const fileRows: CheckingFileRow[] = rows.map((r) => ({
     id: r.id,
     kind: r.kind,
@@ -57,6 +65,7 @@ export function loadCheckingCartolaPlanInput(
     amount_clp: r.amount_clp,
     listed: listedFactsOfEvidence(r.id, r.kind, r),
     arrival: r.flow_id == null ? { kind: "not_an_arrival" } : flowArrival(r.flow_id, dbHandle),
+    ...(namedBy.has(r.id) ? { named_by: namedBy.get(r.id)! } : {}),
   }));
 
   const legs = dbHandle

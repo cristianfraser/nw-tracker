@@ -9,10 +9,13 @@ import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
 import { planCheckingCartola, type CheckingCartolaPlan } from "./checkingCartolaPlan.js";
 import { applyCheckingCartolaPlan } from "./checkingCartolaPlanApply.js";
 import { cartolaListingFacts, dailyListingFacts } from "./movementListingFacts.js";
-import { foldMovementInto, restateMovementFromCartola } from "./checkingCartolaRestate.js";
+import { foldListedRowIntoConfirmed, foldMovementInto, restateMovementFromCartola } from "./checkingCartolaRestate.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { putFlowCategory } from "./flows/flowCategories.js";
-import { buildExpenseKey } from "./expenseKeys.js";
+import { buildExpenseKey, checkingMovementPurchaseKey } from "./expenseKeys.js";
+import { expenseKeyParts } from "./flows/flowKeyResolve.js";
+import { setFlowNote } from "./flows/flowNotes.js";
+import { flowArrival } from "./flows/flowFirstSeen.js";
 
 /**
  * The cartola plan applied (`applyCheckingCartolaPlan`), in a rolled-back transaction: the
@@ -182,6 +185,88 @@ describe("cartola plan applied", () => {
     expect(r.result.confirmed).toEqual([leg]);
     expect(r.movements).toEqual([]);
     expect(r.month).toEqual([{ period_month: PERIOD, movement_count: 1 }]);
+  });
+
+  it("a daily row a transfer leg lists hands the leg its category, note and older arrival", () => {
+    const row = daily("1803-05-16", -250_000, "TRASPASO A CUENTA PROPIA");
+    const category = categorize(row);
+    setFlowNote(checking, buildExpenseKey({ kind: "checking_mv", movementId: row, portion: "gastos" }), "vitest: the daily row's note");
+    const arrival = flowArrival(flowOfRow(row));
+    expect(arrival.kind).toBe("stamped");
+    // Entered by hand after the daily row arrived: a newer arrival.
+    const leg = insertMovement({ fromAccountId: checking, toAccountId: other, amount: 250_000, currency: "clp", occurredOn: "1803-05-16" });
+    const legFlow = flowOfRow(leg);
+    const c = cartola([mv("1803-05-16", -250_000, "Traspaso A Cuenta Propia")]);
+    const plan = planCheckingCartola(loadCheckingCartolaPlanInput(checking, c));
+    expect(plan.remove).toEqual([{ row_id: row, movement: 0, why: "listed_by_transfer_leg" }]);
+    rolledBack(() => {
+      const result = applyCheckingCartolaPlan(checking, c, plan);
+      expect(result.removed).toEqual([row]);
+      expect(result.listed_row_folds).toEqual([{ row_id: row, kept_row_id: leg, status: "folded", reason: null, records_dropped: [] }]);
+      expect(flowOfRow(leg)).toBe(legFlow);
+      expect(db.prepare(`SELECT portion, category_id FROM flow_categories WHERE flow_id = ?`).all(legFlow)).toEqual([{ portion: "gastos", category_id: category }]);
+      expect(db.prepare(`SELECT notes FROM flow_notes WHERE flow_id = ?`).all(legFlow)).toEqual([{ notes: "vitest: the daily row's note" }]);
+      expect(flowArrival(legFlow)).toEqual(arrival);
+      // The kept flow answers to the transfer's key, so the key readers find what moved.
+      expect(db.prepare(`SELECT legacy_key FROM flows WHERE id = ?`).get(legFlow)).toEqual({
+        legacy_key: expenseKeyParts(checkingMovementPurchaseKey(leg))!.flowKey,
+      });
+    });
+  });
+
+  it("a daily row marked as a refund is removed for its transfer leg without folding, and reported", () => {
+    const row = daily("1803-05-17", 80_000, "TRASPASO DE CUENTA PROPIA");
+    const category = (db.prepare(`SELECT id FROM cc_expense_categories ORDER BY id LIMIT 1`).get() as { id: number }).id;
+    db.prepare(`INSERT INTO flow_refunds (flow_id, category_id) VALUES (?, ?)`).run(flowOfRow(row), category);
+    const leg = insertMovement({ fromAccountId: other, toAccountId: checking, amount: 80_000, currency: "clp", occurredOn: "1803-05-17" });
+    const legFlow = flowOfRow(leg);
+    const c = cartola([mv("1803-05-17", 80_000, "Traspaso De Cuenta Propia")]);
+    rolledBack(() => {
+      const result = importCheckingCartola(checking, c);
+      expect(result.listed_row_folds).toEqual([
+        { row_id: row, kept_row_id: leg, status: "refused", reason: expect.stringMatching(/refund mark/), records_dropped: [] },
+      ]);
+      expect(db.prepare(`SELECT 1 FROM movements WHERE id = ?`).get(row)).toBeUndefined();
+      expect(db.prepare(`SELECT 1 FROM flow_refunds WHERE flow_id = ?`).get(legFlow)).toBeUndefined();
+    });
+  });
+
+  it("a daily row folds into a single-leg kept row (a mail-written row) with its refund mark; refused when both carry one", () => {
+    const category = (db.prepare(`SELECT id FROM cc_expense_categories ORDER BY id LIMIT 1`).get() as { id: number }).id;
+    const row = daily("1803-05-18", 60_000, "DEVOLUCION COMPRA VITEST");
+    db.prepare(`INSERT INTO flow_refunds (flow_id, category_id) VALUES (?, ?)`).run(flowOfRow(row), category);
+    const arrival = flowArrival(flowOfRow(row));
+    // The row a transfer mail wrote for the same money, seen after the daily row.
+    const mail = insertMovement({ accountId: checking, amount: 60_000, currency: "clp", occurredOn: "1803-05-18", note: "vitest mail row" });
+    const mailFlow = flowOfRow(mail);
+    rolledBack(() => {
+      expect(foldListedRowIntoConfirmed(row, mail, checking)).toEqual({ row_id: row, kept_row_id: mail, status: "folded", reason: null, records_dropped: [] });
+      expect(db.prepare(`SELECT category_id FROM flow_refunds WHERE flow_id = ?`).all(mailFlow)).toEqual([{ category_id: category }]);
+      expect(flowArrival(mailFlow)).toEqual(arrival);
+      expect(db.prepare(`SELECT legacy_key FROM flows WHERE id = ?`).get(mailFlow)).toEqual({
+        legacy_key: expenseKeyParts(checkingMovementPurchaseKey(mail))!.flowKey,
+      });
+    });
+    rolledBack(() => {
+      db.prepare(`INSERT INTO flow_refunds (flow_id, category_id) VALUES (?, ?)`).run(mailFlow, category);
+      expect(foldListedRowIntoConfirmed(row, mail, checking)).toMatchObject({ status: "refused", reason: "both rows carry a refund mark" });
+    });
+  });
+
+  it("a daily row a tax settlement names is left as it is, not removed, and reported", () => {
+    const row = daily("1803-05-19", -150_000, "PAGO IMPUESTO VITEST");
+    const leg = insertMovement({ fromAccountId: checking, toAccountId: other, amount: 150_000, currency: "clp", occurredOn: "1803-05-19" });
+    const c = cartola([mv("1803-05-19", -150_000, "Pago Impuesto Vitest")]);
+    rolledBack(() => {
+      db.prepare(
+        `INSERT INTO f22_settlements (tax_year, kind, account_id, movement_id, occurred_on, amount, description) VALUES (1803, 'payment', ?, ?, '1803-05-19', 150000, 'vitest')`
+      ).run(checking, row);
+      const result = importCheckingCartola(checking, c);
+      expect(result.left_alone).toEqual([{ row_id: row, movement: 0, why: "listed_by_transfer_leg", tables: ["f22_settlements"] }]);
+      expect(result.listed_row_folds).toEqual([]);
+      expect(db.prepare(`SELECT 1 AS ok FROM movements WHERE id = ?`).get(row)).toEqual({ ok: 1 });
+      expect(db.prepare(`SELECT 1 AS ok FROM movements WHERE id = ?`).get(leg)).toEqual({ ok: 1 });
+    });
   });
 
   it("a cartola imported again keeps every row; a daily row left over folds into the cartola row", () => {

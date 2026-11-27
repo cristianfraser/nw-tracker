@@ -30,7 +30,9 @@ import {
 import {
   annulUnlistedLines,
   chileDayOf,
-  removeRelistedAnnulments,
+  findRelistedAnnulments,
+  lastCardLineId,
+  settleRelistedAnnulments,
   type CcRelistedAnnulment,
 } from "./ccAnnulmentWriters.js";
 import { planCupoGap, type CcCupoGapReport } from "./ccAnnulmentCupoGap.js";
@@ -325,8 +327,10 @@ function applyCardListing(
   const feedClose = applied?.close ?? null;
   // Before the lines: a plan makes its purchase row import as an installment overlap.
   const plansCreated = createPlansForFeedCuotaPurchases(accountId, lines, sourceRef);
-  // Before the lines: a purchase the bank lists again is not annulled any more.
-  const relistedAnnulments = removeRelistedAnnulments(accountId, lines);
+  // Before the lines: a purchase the bank lists again (read against the bucket as it is); once the
+  // lines are written, the row that stands for it takes the annulment's flow and the annulment goes.
+  const relisted = findRelistedAnnulments(accountId, lines);
+  const lastLineIdBefore = relisted.length > 0 ? lastCardLineId() : 0;
   const result = insertLines(
     accountId,
     { lines, errors: [] },
@@ -336,6 +340,8 @@ function applyCardListing(
       ...(card.listing_order ? { listingOrder: card.listing_order } : {}),
     }
   );
+  const relistedAnnulments = settleRelistedAnnulments(accountId, relisted, lastLineIdBefore);
+  if (relistedAnnulments.some((r) => r.outcome !== "left_standing")) noteCardLineWritten(accountId);
   const tagged = tagFeedCuotaPurchaseLines(accountId, lines);
   const planPrepayments = recordPlanPrepayments(accountId, lines, prepaymentMatches);
   // A close with nothing to write (no movements, or only repeats) changed the facturación state
