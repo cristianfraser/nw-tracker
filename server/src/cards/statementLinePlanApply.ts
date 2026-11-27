@@ -76,7 +76,7 @@ import { describeRemovedCardLine, notifyRemovedCardLinesWithFiled } from "./remo
 import { carryPlanPrepaymentLines } from "../ccPlanPrepayments.js";
 import { confirmManualPaymentForPlanted, listPlantedPaymentLines } from "../ccPlantedPayments.js";
 import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
-import { adoptFlow, flowExists, rowFlowId } from "../flows/flowAdoption.js";
+import { adoptFlow, flowExists, rowFlowId, type RetiredCardLineAdoption } from "../flows/flowAdoption.js";
 import { compareArrival, flowArrival, olderArrival, setFlowArrival } from "../flows/flowFirstSeen.js";
 import { flowIdForKey } from "../flows/flowIdentity.js";
 import {
@@ -110,6 +110,8 @@ export type StatementLinePlanApplyResult = {
   pieces_dropped: CardLinePiecesDropped[];
   restated: number[];
   inserted: number[];
+  /** New lines that took back a flow retired with their document (`takeBackRetiredCardLineFlow`), and the ones that could not. */
+  retired_flows_taken_back: RetiredCardLineAdoption[];
   folded: number[];
   removed: number[];
   annulled: number[];
@@ -481,6 +483,7 @@ function applyInSession(
   return {
     restated: restate.map((r) => r.lineId),
     inserted: applied.inserted,
+    retired_flows_taken_back: applied.retired_flows_taken_back,
     folded: [...lineFolds.map((f) => f.fromLineId), ...annulmentKeeps.flatMap((k) => k.lineFolds)],
     removed: [...removed, ...coveredByPlan, ...supersededByPlan],
     annulled: plan.annul.map((a) => a.line_id),
@@ -679,6 +682,7 @@ function importResult(
     categoriesRestored: a?.categories_restored ?? 0,
     earliestInsertedTxDate: earliestInserted,
     planted_same_purchase: [],
+    retired_flows_taken_back: a?.retired_flows_taken_back ?? [],
     inserted_flows,
     skipped_flows,
   };

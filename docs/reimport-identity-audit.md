@@ -27,9 +27,11 @@ Two facts about the plumbing make the last row costly:
 
 - A flow with nothing filed on it and no stable key is **deleted** with its row, stamp included; a
   flow that holds something is **retired** and nothing reads it again unless a path names it.
-- Only bank movements take a retired flow back on insert (`adoptRetiredMovementFlow`, by document
-  key, called from `insertBankPesoMovement`). Card lines, cuota plans and manual expenses have no
-  such step: every card path must name the old row itself.
+- A row inserted under the document key of a retired flow of its account takes it back: bank
+  movements (`adoptRetiredMovementFlow`, from `insertBankPesoMovement`) and, since wave 3b, one-shot
+  card lines written as new arrivals (`takeBackRetiredCardLineFlow`; see «Card lines and retired
+  flows»). Cuota plans and manual expenses have no such step, and a card path that replaces a row
+  under another key must still name the old row itself.
 
 ## Defects
 
@@ -53,6 +55,8 @@ Two facts about the plumbing make the last row costly:
 | 8 | Re-listed annulment (`removeRelistedAnnulments`) | The annulment was deleted and the listing row imported under a new key and flow when re-listed a day later or under another rendering. | Fixed: the row that stands for the purchase — the new listing line, else the plan or statement line the row was skipped for — takes the annulment's flow before the annulment goes (`settleRelistedAnnulments`); with no single such row the annulment stays standing and is reported. A standing annulment's flow is never folded into another line by document key. Tests added |
 | 9 | Annulment of a line with nothing filed on it | The delete trigger deleted the bare flow, so the annulment lost its flow and arrival. | Fixed: migration 380 makes the annulment hold its flow (retired, not deleted; indexed); a billed line takes the older arrival of the flows folded in, its own unstamped flow left out. Tests added |
 | 15 | Cartola removes a daily row a transfer leg or a mail row already lists | The daily row's category, note, income classification and arrival were not folded into the kept row. | Fixed: folded first into the transfer leg or mail row (`foldListedRowIntoConfirmed`, earliest arrival's assignments win); a fold the flows cannot make is refused and reported (`listed_row_folds`); a row a tax settlement names is left alone and reported (`left_alone`) — before, its delete failed the import. Tests added |
+| 9b | Annulment recorded before migration 380 whose bare flow was deleted (`flow_id` NULL), re-listed or undone by hand | The line that stood for it was stamped now and jumped to the top of «Últimos movimientos». | Fixed: with no flow to take, the stamp that listing wrote goes (`settleRelistedAnnulments`, `undoManualAnnulledPurchase`), so the line reads as on file before the stamps; a statement that bills it already writes it unstamped. Not chosen: stamping it with the purchase day or `annulled_on` (the arrival is unknown; a guessed stamp would rank it among real arrivals). Tests added |
+| 15b | Records naming a removed daily row by id (`movementRecordsNaming`) | Cascaded with the row, reported. | Fixed where the record names the money the kept row lists: a payslip advance and a booked broker withdrawal (`incoming_wire_bookings.transfer_movement_id`) move with the payslip (`repointMovementReferences`), also when the two rows already share a flow. Left, reported: loan payments, pension periods, event times, dividend details (rows of loan, pension and broker accounts, which no cartola folds), transfer-notice pairings (they decide the row's evidence kind; the kept row has its own), a withdrawal's fee row (another movement), tax settlements (block the delete). Test added |
 | 17 | Fuller cartola replaces a month (`replaced_cartola_row`) | A reworded row the three passes miss was deleted and written again on a new flow. | Fixed: a fourth pass restates the one left-over row and the one new movement of a bank day and signed pesos (`same_day_amount`); two or more of either are left as before. Test added |
 
 ### Open — card side
@@ -62,7 +66,6 @@ Two facts about the plumbing make the last row costly:
 | 4 | Bucket settlement, unmatched in-cycle line that cannot be annulled (a credit, a payment, a cuota-tagged line) | Statement close, when the statement prints it under another merchant or day | Everything; the statement's line is stamped new | Reported |
 | 6 | Statement re-import, vanished line with no pair (`gone`) | A parser fix that changes a line's amount or merchant | Arrival, note, big group, flow category; not reported anywhere | Reported |
 | 7 | Statement re-import, identity group with differing counts (`unpaired`) | A re-parse that splits or merges lines | Everything on the old lines; reported only in the `import:cc-parsed` text and `report-document-import.ts`, dropped from the statement JSON write and the PDF upload results | Reported |
-| 9b | Annulments recorded before migration 380 whose bare flow was already deleted (`flow_id` NULL) | Billed or re-listed later | The arrival: nothing to take back | Open (data, not code) |
 | 4b | Bucket settlement of a card payment line the statement does not print as its exact match | Statement close | The bucket payment line is removed (reported in `removed_without_pair`); left to the planted-payment pairing and the payment evidence keys, which pair by card, currency, day and amount, never by row | Open (deliberately not paired) |
 | 6b | Re-import line whose merchant changed but not its amount (a phantom line dropped and a missed one added look the same) | A parser fix | Removed with its flow retired, the new line stamped new; reported in `removed_without_pair` (and notified when it carried something filed) | Open (deliberately not paired) |
 | 7b | Re-import identity group with differing counts (`unpaired`) | A re-parse that splits or merges lines | Still removed with its flow retired; now reported with what was filed and notified | Open (visible, not paired) |
@@ -72,9 +75,7 @@ Two facts about the plumbing make the last row costly:
 
 ### Open — checking and transfers
 
-| # | Path | Trigger | Lost | Status |
-|---|---|---|---|---|
-| 15b | Records naming a removed daily row by id other than the payslip (`movementRecordsNaming`: loan payments, payslip advances, pension periods, transfer notices, event times, wire bookings, tax settlements) | Cartola removal or fold | They cascade with the row (tax settlements block the delete); now reported, not moved | Open |
+Nothing open: the records 15b leaves are left by design (see its row under «Fixed»).
 
 ### Scripts (manual runs)
 
@@ -134,12 +135,42 @@ branch. A pause after every wave.
 | 1b | 13, 14, 16 | Mirror conversion by hand, its undo and the automatic card-payment conversion keep the legs' arrival and assignments |
 | 2a | 4, 6, 7 | Bucket settlement of a credit, payment or cuota-tagged line printed under another name; re-import lines with no pair; `unpaired` and `gone` reported in every import result |
 | 2b | 8, 9, 15, 17 | Re-listed and bare annulments; the cartola folding a daily row a transfer or mail row already lists; a fuller cartola's re-rendered row |
-| 3 | 11, scripts, general step | The ledger rebuild, the four manual scripts, and whether card lines get a general "take the retired flow back by key on insert" step once waves 1–2 show what is left |
+| 3a | 11, scripts | The ledger rebuild and the four manual scripts |
+| 3b | general step, 9b, 15b | Card lines take a retired flow back by document key on insert (see «Card lines and retired flows»); flowless annulments re-listed; records naming a folded daily row |
 
 ## Suggested order of work
 
 1. **3** — the most common way filed work is lost: every purchase paid in cuotas goes through it.
 2. **13–15** — fold or adopt before deleting, as the sibling paths already do.
 3. **4–7** — settlement and re-import leftovers; make 6 and 7 visible in every import result first.
-4. A general step for card lines like the one movements have (take a retired flow back by key on
-   insert) would close the remaining gaps in one place rather than path by path.
+4. Done in wave 3b: see «Card lines and retired flows».
+
+## Card lines and retired flows
+
+Decided in wave 3b: a one-shot card line written as a new arrival takes back the one flow retired
+from a deleted line of its card under the same document key (`takeBackRetiredCardLineFlow`, called
+by the listing merge and the card-line plan once their stamps are written).
+
+Why. A card line's document key is `COALESCE(parser_row_id, dedupe_key)`: a listing's `web:` /
+`json:` id over merchant, amount, day and occurrence (`#dupN`), a PDF line's hash of its statement
+file, position and raw text. The same purchase listed again keeps its key exactly; a different
+purchase gets the same key only when it repeats merchant, amount and day after the first was
+deleted — the case in which the key readers already file the old category, note and big group on
+it, since the retired flow keeps answering to the key (`line-pr:`). What the key readers never
+carried is what sits on the flow itself: its arrival, pieces, links, event time. The gaps it closes:
+a line deleted by hand that the feed lists again, a listing restatement that deleted a line with
+no single row to carry it and the bank later lists the row again, a statement re-imported after a
+script or a prune removed its lines. It does not close 6b or 7b (a changed parse gives the line a
+new parser row id, so no key matches) and nothing for a line deleted bare (its flow went with it).
+
+Guards: exactly one candidate (several: nothing, reported `ambiguous`); same account and source
+table; never a cuota line or an unstamped insert (a billed annulment takes the annulment's flow
+itself); never a flow a standing annulment holds; refused when the candidate answers to another key
+or the line's new flow already holds a claim (refund mark, link, pieces). Arrival: the older stays
+(`olderArrival`); a retired flow without a stamp was on file before the stamps or recorded an
+unstamped line, so the line reads as older than any stamp — an old purchase never reads as new, and
+the only way a genuinely new purchase is hidden is the same-key collision above, whose cost is a
+row that does not animate in «Últimos movimientos» and the earlier purchase's assignments (already
+shown today through the key). A line the user deleted because it was wrong and the bank lists
+again comes back with what was filed on it, as its key already shows. Every outcome is in
+`retired_flows_taken_back` of the merge result.

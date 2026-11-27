@@ -15,6 +15,7 @@ import { ymCompare } from "./calendarMonth.js";
 import { billingMonthContainingPurchase } from "./cards/facturacion.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { db } from "./db.js";
+import { maxFirstSeenSeq } from "./flows/flowFirstSeen.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import {
   createPlansForFeedCuotaPurchases,
@@ -331,6 +332,7 @@ function applyCardListing(
   // lines are written, the row that stands for it takes the annulment's flow and the annulment goes.
   const relisted = findRelistedAnnulments(accountId, lines);
   const lastLineIdBefore = relisted.length > 0 ? lastCardLineId() : 0;
+  const stampsSinceSeq = relisted.length > 0 ? maxFirstSeenSeq() : 0;
   const result = insertLines(
     accountId,
     { lines, errors: [] },
@@ -340,7 +342,7 @@ function applyCardListing(
       ...(card.listing_order ? { listingOrder: card.listing_order } : {}),
     }
   );
-  const relistedAnnulments = settleRelistedAnnulments(accountId, relisted, lastLineIdBefore);
+  const relistedAnnulments = settleRelistedAnnulments(accountId, relisted, lastLineIdBefore, stampsSinceSeq);
   if (relistedAnnulments.some((r) => r.outcome !== "left_standing")) noteCardLineWritten(accountId);
   const tagged = tagFeedCuotaPurchaseLines(accountId, lines);
   const planPrepayments = recordPlanPrepayments(accountId, lines, prepaymentMatches);

@@ -176,19 +176,29 @@ export function insertBankPesoMovement(
 }
 
 /**
- * A row replacing another that a record outside the flows names by id: the payslip a daily salary
- * row paid moves to the cartola row (the link references movements without a cascade, so a row
- * still carrying one cannot be deleted). Everything on the flow follows through adoption.
+ * A row replacing another (the same money: a cartola row, a transfer leg or a mail row listing a
+ * daily row) that a record outside the flows names by id as the money it describes: the payslip a
+ * daily salary row paid (the link references movements without a cascade, so a row still carrying
+ * one cannot be deleted), a payslip's advance paid by that row (a kept row naming it already keeps
+ * its own), and a broker withdrawal booked onto the row (`incoming_wire_bookings`, whose transfer the
+ * dollar cost lots require; its fee row is another movement). Everything on the flow follows through
+ * adoption.
  */
 export function repointMovementReferences(fromId: number, toId: number, dbHandle: Database = db): void {
   dbHandle.prepare(`UPDATE payroll_work_earnings SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
+  dbHandle.prepare(`UPDATE OR IGNORE payslip_advances SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
+  dbHandle.prepare(`DELETE FROM payslip_advances WHERE movement_id = ?`).run(fromId);
+  dbHandle.prepare(`UPDATE incoming_wire_bookings SET transfer_movement_id = ? WHERE transfer_movement_id = ?`).run(toId, fromId);
 }
 
 /**
  * Records outside the flows that name a movement by id and go with it (a cascade) or block its
- * delete, beyond the payslip {@link repointMovementReferences} moves and the row's own bank posting
- * and mirror-pair refusals: a superseding row's import reports them, since a fold cannot say which
- * row of the kept movement they belong to.
+ * delete, beyond what {@link repointMovementReferences} moves and the row's own bank posting and
+ * mirror-pair refusals: a superseding row's import reports them. They stay: a loan payment, a
+ * pension period, an event time and a dividend detail name rows of a loan, pension or broker
+ * account, never a checking row a cartola folds; a transfer notice pairing decides its row's
+ * evidence kind (`mail_notice`), and the kept row carries its own pairing; a booked withdrawal's fee
+ * row is not the money the kept row lists; a tax settlement blocks the delete (the row is left alone).
  */
 const MOVEMENT_RECORD_REFERENCES: readonly { table: string; column: string }[] = [
   { table: "loan_payments", column: "movement_id" },

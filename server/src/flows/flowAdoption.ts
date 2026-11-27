@@ -12,6 +12,7 @@
  */
 import type { Database } from "better-sqlite3";
 import { db } from "../db.js";
+import { buildExpenseKey } from "../expenseKeys.js";
 import { expenseKeyParts, flowIdForKey, mergeFlowInto } from "./flowIdentity.js";
 
 export type FlowAdoption = {
@@ -122,6 +123,75 @@ export function adoptRetiredMovementFlow(movementId: number, dbHandle: Database 
   if (candidates.length > 1) return { status: "ambiguous", movement_id: movementId, flow_ids: candidates };
   adoptFlow({ survivor: candidates[0]!, arriving: row.flow_id }, { prefer: "survivor" }, dbHandle);
   return { status: "adopted", movement_id: movementId, flow_id: candidates[0]! };
+}
+
+export type RetiredCardLineAdoption = {
+  line_id: number;
+  document_key: string;
+  /** `adopted`: the line took the flow back; `ambiguous`: several flows retired with its document; `refused`: see `reason`. */
+  status: "adopted" | "ambiguous" | "refused";
+  flow_ids: number[];
+  reason: string | null;
+};
+
+/** Tables a line's brand-new flow may hold a row in that a take-back would have to merge by claim, not by preference. */
+const CLAIM_TABLES = ["flow_refunds", "flow_income_overrides", "flow_links", "flow_parts", "cc_facturado_payment_charges"] as const;
+
+/**
+ * A one-shot card line written as a new arrival (a listing's line, a statement's line no row on
+ * file is) under the document key of a flow retired from a card line of the same card — the line
+ * deleted earlier (by hand, by a script, a listing restatement nobody carried) holding something
+ * the user put on it — takes that flow back: its category, note, big group, pieces, links, event
+ * time and its arrival (the older one stays, `mergeFlowInto`: the purchase does not read as newly
+ * arrived). Exact document identity only (`COALESCE(parser_row_id, dedupe_key)`, a twin's `#dupN`
+ * included); never a cuota line (its flow is its plan's); never a flow a standing annulment names
+ * (`cc_annulled_purchases`: that purchase, not an earlier incarnation of the line). Several
+ * candidates, a candidate answering to another key than the line's, or a line flow already holding
+ * a claim (a refund mark, a link, pieces) take nothing and are reported. Call after the line's
+ * arrival stamp is written, so a candidate older than the stamps stays unstamped. Null when the
+ * line has no candidate.
+ */
+export function takeBackRetiredCardLineFlow(lineId: number, dbHandle: Database = db): RetiredCardLineAdoption | null {
+  const row = dbHandle
+    .prepare(
+      `SELECT l.flow_id, l.installment_flag, l.parser_row_id, s.account_id, e.document_key FROM cc_statement_lines l
+       JOIN cc_statements s ON s.id = l.statement_id
+       JOIN flow_evidence e ON e.source_table = 'cc_statement_lines' AND e.source_row_id = l.id
+       WHERE l.id = ?`
+    )
+    .get(lineId) as
+    | { flow_id: number | null; installment_flag: number; parser_row_id: string | null; account_id: number; document_key: string | null }
+    | undefined;
+  if (!row?.document_key || row.flow_id == null || row.installment_flag === 1) return null;
+  const candidates = (
+    dbHandle
+      .prepare(
+        `SELECT id FROM flows WHERE retired_on IS NOT NULL AND retired_source_table = 'cc_statement_lines' AND retired_document_key = ?
+           AND (from_account_id = ? OR to_account_id = ?) AND id <> ?
+           AND NOT EXISTS (SELECT 1 FROM cc_annulled_purchases a WHERE a.flow_id = flows.id) ORDER BY id`
+      )
+      .all(row.document_key, row.account_id, row.account_id, row.flow_id) as { id: number }[]
+  ).map((r) => r.id);
+  if (candidates.length === 0) return null;
+  const out = (status: RetiredCardLineAdoption["status"], reason: string | null): RetiredCardLineAdoption => ({
+    line_id: lineId,
+    document_key: row.document_key!,
+    status,
+    flow_ids: candidates,
+    reason,
+  });
+  if (candidates.length > 1) return out("ambiguous", `${candidates.length} flows retired with the document`);
+  const survivor = candidates[0]!;
+  const prid = String(row.parser_row_id ?? "").trim();
+  const lineKey = prid && !prid.startsWith("synthetic:") ? expenseKeyParts(buildExpenseKey({ kind: "line_pr", parserRowId: prid }))?.flowKey ?? null : null;
+  const survivorKey = keyOf(survivor, dbHandle);
+  if (survivorKey != null && lineKey != null && survivorKey !== lineKey) {
+    return out("refused", `the retired flow answers to «${survivorKey}», the line to «${lineKey}»`);
+  }
+  const claim = CLAIM_TABLES.find((t) => dbHandle.prepare(`SELECT 1 FROM ${t} WHERE flow_id = ? LIMIT 1`).get(row.flow_id) != null);
+  if (claim) return out("refused", `the line's own flow already holds a row in ${claim}`);
+  adoptFlow({ survivor, arriving: row.flow_id }, { prefer: "survivor", key: lineKey }, dbHandle);
+  return out("adopted", null);
 }
 
 /**

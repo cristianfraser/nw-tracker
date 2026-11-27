@@ -176,8 +176,8 @@ function listedRowFoldConflict(from: number, to: number, keptIsTransfer: boolean
  * A daily row the cartola removes because a transfer leg or a mail-written row already lists its
  * money: its flow folds into the kept row's — the earlier arrival's assignments win (ties: the kept
  * row's), the older arrival stays (`mergeFlowInto`) — its evidence stays on the flow as history,
- * the payslip naming it moves (`repointMovementReferences`), and the kept flow answers to the kept
- * row's key when it answered to none. A fold {@link listedRowFoldConflict} refuses changes nothing.
+ * the payslip, advance and booked withdrawal naming it move (`repointMovementReferences`), and the
+ * kept flow answers to the kept row's key when it answered to none. A fold {@link listedRowFoldConflict} refuses changes nothing.
  * The caller deletes the row either way.
  */
 export function foldListedRowIntoConfirmed(movementId: number, keptMovementId: number, accountId: number, dbHandle: Database = db): ListedRowFold {
@@ -196,10 +196,13 @@ export function foldListedRowIntoConfirmed(movementId: number, keptMovementId: n
     reason,
     records_dropped: movementRecordsNaming(movementId, dbHandle),
   });
-  if (row.flow_id === kept.flow_id) return out("folded", null);
+  if (row.flow_id === kept.flow_id) {
+    repointMovementReferences(movementId, keptMovementId, dbHandle);
+    return out("folded", null);
+  }
   const conflict = listedRowFoldConflict(row.flow_id, kept.flow_id, keptIsTransfer, dbHandle);
   if (conflict) {
-    // The payslip names the money, which the kept row lists: it moves even when the flows cannot.
+    // The payslip, advance and booked withdrawal name the money, which the kept row lists: they move even when the flows cannot.
     repointMovementReferences(movementId, keptMovementId, dbHandle);
     return out("refused", conflict);
   }

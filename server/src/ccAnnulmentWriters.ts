@@ -40,7 +40,7 @@ import { pairOneToOne } from "./matching/pairing.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { adoptFlow, flowExists } from "./flows/flowAdoption.js";
 import { ensureFlowForKey, flowIdForKey } from "./flows/flowIdentity.js";
-import { compareArrival, flowArrival } from "./flows/flowFirstSeen.js";
+import { compareArrival, flowArrival, setFlowArrival } from "./flows/flowFirstSeen.js";
 import { listPlansForLineMatching, planMatchesOneShotLine, type CardPlanForMatching } from "./cards/purchases.js";
 import { planExpenseKey } from "./ccCrossImportDedupe.js";
 import { isHomeCurrency } from "./displayUnits.js";
@@ -171,12 +171,16 @@ const selFlowHasParts = db.prepare(`SELECT 1 FROM flow_parts WHERE flow_id = ? L
  *  - else, when it was skipped as a duplicate of a statement line, the one statement line of the
  *    listing row's figures (`bucketLineMatchesFeedLine`, the feed-mirror window) takes it.
  * The earlier arrival's assignments win in a fold onto a row on file (ties: the row's). An
- * annulment no single row stands for is left standing with its flow and reported.
+ * annulment no single row stands for is left standing with its flow and reported. An annulment
+ * whose flow is gone (recorded before migration 380 held it) has no arrival to hand over: the new
+ * line it stands for is a purchase on file before, so the stamp this listing wrote on it (order above
+ * `stampsSinceSeq`) goes, and it reads as older than any stamp, never as newly arrived.
  */
 export function settleRelistedAnnulments(
   accountId: number,
   pending: readonly CcRelistedAnnulmentPending[],
-  lastLineIdBefore: number
+  lastLineIdBefore: number,
+  stampsSinceSeq: number
 ): CcRelistedAnnulment[] {
   if (pending.length === 0) return [];
   const window = MATCH_WINDOWS.feed_mirror.daysAfter;
@@ -202,6 +206,11 @@ export function settleRelistedAnnulments(
       if (line.flow_id == null) throw new Error(`relisted annulment ${a.id}: line ${line.id} has no flow`);
       if (flowExists(a.flow_id) && a.flow_id !== line.flow_id) {
         adoptFlow({ survivor: a.flow_id, arriving: line.flow_id }, { prefer: "survivor", key: resolveCcExpensePurchaseKey(line.id), previousKey: a.purchase_key });
+      } else if (!flowExists(a.flow_id)) {
+        const arrival = flowArrival(line.flow_id);
+        if (arrival.kind === "stamped" && arrival.stamp.seq != null && arrival.stamp.seq > stampsSinceSeq) {
+          setFlowArrival(line.flow_id, { kind: "before_stamps" });
+        }
       }
       return report("line", line.id, null);
     }

@@ -45,6 +45,7 @@ import type { GroceryBranchLearningResult } from "../groceryBranchLearning.js";
 import { recordPlantedPaymentLine, type PlantedPaymentMatchResult } from "../ccPlantedPayments.js";
 import type { PlantedSamePurchase } from "../ccPlantedCharges.js";
 import { accountProfileOptional } from "../accountProfile.js";
+import type { RetiredCardLineAdoption } from "../flows/flowAdoption.js";
 import {
   registerCardLineWriteFrame,
   withCardLineSession,
@@ -163,6 +164,7 @@ export function insertLines(
       skipped_cuota_billing: 0,
       skipped_saldo_inicial: 0,
       skipped_planted_same_purchase: [] as PlantedSamePurchase[],
+      retired_flows_taken_back: [] as RetiredCardLineAdoption[],
       inserted_flows: [] as CcImportFlowItem[],
       skipped_flows: [] as SkippedCcImportFlowItem[],
       grocery_branch_learning: { learned: [], ambiguous: [] } as GroceryBranchLearningResult,
@@ -194,7 +196,7 @@ export function insertLines(
     const firstDueNudges = applyWebPasteInstallmentFirstDueNudges(accountId, parsed.lines);
 
     // Per-line arrays stay out of the batch log — counters only.
-    const { inserted_flows, skipped_flows, planted_same_purchase, ...statementCounters } = merged.statements;
+    const { inserted_flows, skipped_flows, planted_same_purchase, retired_flows_taken_back, ...statementCounters } = merged.statements;
     const batch_id = createImportBatch(batchKind, `web-paste|${batchId}`, {
       account_id: accountId,
       lines_parsed: parsed.lines.length,
@@ -202,6 +204,7 @@ export function insertLines(
       skipped_cuota_billing: skipped_cuota_billing.length,
       skipped_saldo_inicial: skipped_saldo_inicial.length,
       skipped_planted_same_purchase: planted_same_purchase.length,
+      retired_flows_taken_back,
       ledger: merged.ledger,
       installment_first_due_nudges: firstDueNudges,
       truncated_merchant_dedupe: merged.bucket.truncated_merchant_dedupe,
@@ -221,6 +224,7 @@ export function insertLines(
       skipped_cuota_billing: skipped_cuota_billing.length,
       skipped_saldo_inicial: skipped_saldo_inicial.length,
       skipped_planted_same_purchase: planted_same_purchase,
+      retired_flows_taken_back,
       overlap_removed: merged.overlap_removed ?? 0,
       installment_first_due_nudges: firstDueNudges,
       truncated_merchant_dedupe: merged.bucket.truncated_merchant_dedupe,

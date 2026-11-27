@@ -42,6 +42,7 @@ const RAW_TABLE_READERS: Record<string, string> = {
   "ccCrossImportDedupe.ts": "raw: import-time fuzzy line lookup and the superseded-line remover",
   "ccTruncatedMerchantDedupe.ts": "raw: pending vs settled bucket lines",
   "flows/cardLineAdoption.ts": "raw: the line recogniser (parser_row_id, identity), adoption by a replacing line, line categories",
+  "flows/flowAdoption.ts": "raw: a new line's document key and card → the flow retired with it (take-back on insert)",
   "ccRecurringPendingLines.ts": "raw: pending listing under another name",
   "ccManualInstallmentStatementReconcile.ts": "raw: manual plan replaced by its statement twin",
   "cardStatementCrossCheck.ts": "raw: JSON vs ledger cross-check",

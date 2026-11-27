@@ -11,6 +11,7 @@ import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { applyLinePlan, cardLineWrite, insertLines } from "./cards/lineWrites.js";
 import { adoptFlow, flowExists, rowFlowId } from "./flows/flowAdoption.js";
+import { flowArrival, maxFirstSeenSeq, setFlowArrival } from "./flows/flowFirstSeen.js";
 import { webPasteLineDedupeKey, type CcListingLine } from "./ccWebPasteParse.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { ccCardRegistry } from "./ccCardRegistry.js";
@@ -91,6 +92,7 @@ export function undoManualAnnulledPurchase(accountId: number, annulId: number): 
 
   cardLineWrite(accountId, `undoing annulled purchase ${annulId}`, () => {
     deleteAnnulledPurchase(annulId);
+    const stampsSinceSeq = maxFirstSeenSeq();
     insertLines(accountId, { lines: Array.from({ length: dup + 1 }, () => ({ ...line })), errors: [] });
     const wanted = row.dedupe_key ?? base;
     const back = db
@@ -108,6 +110,13 @@ export function undoManualAnnulledPurchase(accountId: number, annulId: number): 
     const arriving = rowFlowId("cc_statement_lines", back[0]!.id);
     if (flowExists(row.flow_id) && arriving != null && arriving !== row.flow_id) {
       adoptFlow({ survivor: row.flow_id, arriving }, { prefer: "survivor", key, previousKey: row.purchase_key });
+    } else if (!flowExists(row.flow_id) && arriving != null) {
+      // An annulment whose flow is gone (recorded before migration 380 held it): the purchase was on
+      // file before, so the stamp the re-listing wrote goes (`settleRelistedAnnulments`, the same rule).
+      const arrival = flowArrival(arriving);
+      if (arrival.kind === "stamped" && arrival.stamp.seq != null && arrival.stamp.seq > stampsSinceSeq) {
+        setFlowArrival(arriving, { kind: "before_stamps" });
+      }
     }
   });
 }

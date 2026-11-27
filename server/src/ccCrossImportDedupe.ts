@@ -13,7 +13,14 @@ import { ensureFlowForKey, flowIdForKey, mergeFlowInto } from "./flows/flowIdent
 import { WHOLE_FLOW_PIECE } from "./flows/flowKeyedAssignments.js";
 import { keepEvidenceAsHistory } from "./flows/flowEvidence.js";
 import { insertAppMessage } from "./appMessages.js";
-import { foldCardLineFlowInto, insertStoredCardLine, restateCardLineRow, storedDocumentLine } from "./cards/lineRowWrites.js";
+import {
+  foldCardLineFlowInto,
+  insertStoredCardLine,
+  restateCardLineRow,
+  storedDocumentLine,
+  takeBackRetiredCardLineFlows,
+} from "./cards/lineRowWrites.js";
+import type { RetiredCardLineAdoption } from "./flows/flowAdoption.js";
 import {
   isGenericTransferMerchantKey,
   normalizeCcExpenseMerchantKey,
@@ -141,13 +148,13 @@ export function applyCardLinePlan(accountId: number, plan: CardLinePlan): number
 export function applyCardLinePlanDetailed(
   accountId: number,
   plan: CardLinePlan
-): { deleted: number; inserted: number[]; pieces_dropped: CardLinePiecesDropped[] } {
+): { deleted: number; inserted: number[]; pieces_dropped: CardLinePiecesDropped[]; retired_flows_taken_back: RetiredCardLineAdoption[] } {
   requireCardLineSession(accountId, "a line delete");
   const restates = plan.restate ?? [];
   const inserts = plan.insert ?? [];
   const folds = plan.fold ?? [];
   const ids = [...new Set([...plan.deleteLineIds, ...folds.map((f) => f.fromLineId)])];
-  if (ids.length === 0 && plan.carry.length === 0 && restates.length === 0 && inserts.length === 0) return { deleted: 0, inserted: [], pieces_dropped: [] };
+  if (ids.length === 0 && plan.carry.length === 0 && restates.length === 0 && inserts.length === 0) return { deleted: 0, inserted: [], pieces_dropped: [], retired_flows_taken_back: [] };
   if (ids.length > 0) {
     const owners = db
       .prepare(
@@ -184,6 +191,10 @@ export function applyCardLinePlanDetailed(
     noteCardLineEvidence(accountId, i.line.transaction_date ?? i.line.posting_date);
   }
   for (const id of stamped) recordCardLineFlowFirstSeen(id);
+  // A new arrival that is an earlier incarnation of a line this card deleted takes its retired flow
+  // back (after its stamp: the older arrival stays). An unstamped insert is no new arrival (a
+  // statement's cuota line, a billed annulment, which takes the annulment's flow itself).
+  const retired_flows_taken_back = takeBackRetiredCardLineFlows(stamped);
   // Folds: the flow into the kept line's, then what names the line by id outside the flow.
   const lineCategory = db.prepare(`SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`);
   for (const f of folds) {
@@ -205,7 +216,7 @@ export function applyCardLinePlanDetailed(
   }
   let n = 0;
   for (const id of ids) n += delLines.run(id).changes;
-  return { deleted: n, inserted, pieces_dropped };
+  return { deleted: n, inserted, pieces_dropped, retired_flows_taken_back };
 }
 
 export type CcCrossImportDedupePlan = CardLinePlan & { removed_line_ids: number[] };

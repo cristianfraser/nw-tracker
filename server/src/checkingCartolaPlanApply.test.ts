@@ -253,6 +253,29 @@ describe("cartola plan applied", () => {
     });
   });
 
+  it("a daily row's payslip advance and booked withdrawal move to the row kept for its money", () => {
+    const row = daily("1803-05-20", 90_000, "TRANSF DE VITEST EMPLEADOR");
+    const mail = insertMovement({ accountId: checking, amount: 90_000, currency: "clp", occurredOn: "1803-05-20", note: "vitest mail row" });
+    rolledBack(() => {
+      const payslip = Number(
+        db
+          .prepare(`INSERT INTO payroll_work_earnings (period_month, employer_name, liquido, source_pdf) VALUES ('1803-05', 'Vitest', 90000, 'vitest-15b-payslip.pdf')`)
+          .run().lastInsertRowid
+      );
+      db.prepare(`INSERT INTO payslip_advances (payslip_id, movement_id) VALUES (?, ?)`).run(payslip, row);
+      db.prepare(
+        `INSERT INTO broker_withdrawal_requests (message_id, broker, requested_at, subject, currency, gross_amount, net_amount, destination_account, due_on)
+         VALUES ('<vitest-15b@test>', 'fintual', '1803-05-19T12:00:00Z', 'vitest', 'clp', 90000, 90000, '0000', '1803-05-20')`
+      ).run();
+      db.prepare(`INSERT INTO incoming_wire_bookings (request_message_id, value_date, transfer_movement_id) VALUES ('<vitest-15b@test>', '1803-05-20', ?)`).run(row);
+      expect(foldListedRowIntoConfirmed(row, mail, checking)).toMatchObject({ status: "folded", records_dropped: [] });
+      expect(db.prepare(`SELECT movement_id FROM payslip_advances WHERE payslip_id = ?`).all(payslip)).toEqual([{ movement_id: mail }]);
+      expect(db.prepare(`SELECT transfer_movement_id FROM incoming_wire_bookings WHERE request_message_id = '<vitest-15b@test>'`).get()).toEqual({
+        transfer_movement_id: mail,
+      });
+    });
+  });
+
   it("a daily row a tax settlement names is left as it is, not removed, and reported", () => {
     const row = daily("1803-05-19", -150_000, "PAGO IMPUESTO VITEST");
     const leg = insertMovement({ fromAccountId: checking, toAccountId: other, amount: 150_000, currency: "clp", occurredOn: "1803-05-19" });

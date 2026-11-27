@@ -28,7 +28,13 @@ import { assertStoredCardLineDates, storedLineColumns } from "./statementStorage
 import { ccLineOriginCurrency } from "../ccOriginCurrency.js";
 import { buildExpenseKey } from "../expenseKeys.js";
 import { keepEvidenceAsHistory } from "../flows/flowEvidence.js";
-import { adoptFlow, foldRetiredFlowOfDocumentInto, refreshFlowFromEvidence } from "../flows/flowAdoption.js";
+import {
+  adoptFlow,
+  foldRetiredFlowOfDocumentInto,
+  refreshFlowFromEvidence,
+  takeBackRetiredCardLineFlow,
+  type RetiredCardLineAdoption,
+} from "../flows/flowAdoption.js";
 import { compareArrival, flowArrival } from "../flows/flowFirstSeen.js";
 import { isListingSourceKind } from "../ccStatementSourceKind.js";
 
@@ -76,6 +82,16 @@ const insertSql = `INSERT INTO cc_statement_lines (${STORED.join(", ")}) VALUES 
 /** Inserts a stored document line; returns its id (its flow and evidence: the insert trigger's). */
 export function insertStoredCardLine(row: StoredCardLine): number {
   return Number(db.prepare(insertSql).run(row).lastInsertRowid);
+}
+
+/**
+ * The lines a write just inserted as new arrivals (stamped), each taking back the flow retired with
+ * its document on its card when exactly one is (`takeBackRetiredCardLineFlow`). Both line-insert
+ * paths call it once their stamps are written: the listing merge and the card-line plan. Returns
+ * what was taken back, and what could not be (several candidates, a refusal).
+ */
+export function takeBackRetiredCardLineFlows(lineIds: readonly number[]): RetiredCardLineAdoption[] {
+  return lineIds.map((id) => takeBackRetiredCardLineFlow(id)).filter((r): r is RetiredCardLineAdoption => r != null);
 }
 
 /** A card line's evidence as the insert trigger states it (`flow_cc_statement_lines_ai`, migration 319). */

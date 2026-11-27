@@ -13,7 +13,8 @@ import {
 import { isPlantingBatchKind } from "./ccPlantedPayments.js";
 import { applyAdditionalCardNoCuentaForLine } from "./ccAdditionalCardExpenseMatch.js";
 import { ccLineDedupeKeyExistsOnAccount, patchCcLineOriginCardOnDedupeHit } from "./ccExpenseLineDedupe.js";
-import { insertStoredCardLine, storedDocumentLine } from "./cards/lineRowWrites.js";
+import { insertStoredCardLine, storedDocumentLine, takeBackRetiredCardLineFlows } from "./cards/lineRowWrites.js";
+import type { RetiredCardLineAdoption } from "./flows/flowAdoption.js";
 import {
   canonicalLineDedupeKeys,
   cardStatementFingerprint,
@@ -120,6 +121,11 @@ export type CcStatementsMergeResult = {
   earliestInsertedTxDate: string | null;
   /** Listing lines skipped as a planted charge's later listing (`ccPlantedCharges.ts`). */
   planted_same_purchase: PlantedSamePurchase[];
+  /**
+   * New lines that took back the flow a deleted line of their document left retired (its category,
+   * note, big group, pieces, links and arrival), and the ones that could not (`takeBackRetiredCardLineFlow`).
+   */
+  retired_flows_taken_back: RetiredCardLineAdoption[];
   /** Per-line outcomes for the import panel — strip from `createImportBatch` payloads. */
   inserted_flows: CcImportFlowItem[];
   skipped_flows: SkippedCcImportFlowItem[];
@@ -315,6 +321,7 @@ export function importCcStatementsMerge(
   let earliestInsertedTxDate: string | null = null;
   const inserted_flows: CcImportFlowItem[] = [];
   const skipped_flows: SkippedCcImportFlowItem[] = [];
+  const retired_flows_taken_back: RetiredCardLineAdoption[] = [];
 
   // A planting source registers what it writes; the bank's own listing skips the later-day listing
   // of a purchase a planting source already wrote.
@@ -423,6 +430,7 @@ export function importCcStatementsMerge(
     }
     // When each purchase reached the ledger, stamped in the listing's time order (`listingOrder.ts`).
     for (const lineId of listedOldestFirst(stampOrder, opts?.listingOrder ?? DEFAULT_LISTING_ORDER)) recordCardLineFlowFirstSeen(lineId);
+    retired_flows_taken_back.push(...takeBackRetiredCardLineFlows(stampOrder));
   }
 
   return {
@@ -439,6 +447,7 @@ export function importCcStatementsMerge(
     categoriesRestored: 0,
     earliestInsertedTxDate,
     planted_same_purchase: absorber?.absorbed ?? [],
+    retired_flows_taken_back,
     inserted_flows,
     skipped_flows,
   };
