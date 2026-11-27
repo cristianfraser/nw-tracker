@@ -105,6 +105,7 @@ from statement_values import (  # noqa: E402
 import cc_parse_acceptance as acceptance  # noqa: E402
 from cc_statement_reconcile import (  # noqa: E402
     merge_section_totals_into_meta,
+    usd_period_block_amounts,
     reconcile_statement,
     reconcile_statement_required,
     write_reconciliation_jsonl,
@@ -900,7 +901,11 @@ def extract_meta_international(full: str, source_pdf: str) -> Dict[str, Any]:
         meta["statement_date"] = _date_after_header(full, "FECHA ESTADO DE CUENTA")
     lines = [ln.strip() for ln in full.splitlines() if ln.strip()]
 
+    period_block = usd_period_block_amounts(full, parse_usd_amount)
+
     def grab_usd(label: str) -> Optional[float]:
+        if label.upper() in period_block:
+            return period_block[label.upper()]
         m = re.search(
             rf"{label}[^\dUS$]*US\$\s*([\d.,\-]+)",
             full,

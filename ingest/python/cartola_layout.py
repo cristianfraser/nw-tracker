@@ -12,6 +12,9 @@ RE_AMOUNT = re.compile(r"\d{1,3}(?:\.\d{3})+")
 # Legacy cartolas sometimes show sub-10k CLP without thousand separators (e.g. "900", "566", "850").
 RE_SMALL_TRAILING = re.compile(r"\s(\d{1,4})\s*$")
 RE_SMALL_INLINE = re.compile(r"(?<!de )(\s)(\d{2,4})(?=\s(?!d[ií]as\b))")
+# A one-digit amount (a 1-peso transfer) is only read inline when the day's SALDO follows it and
+# ends the line: a lone digit anywhere else is a page counter, a branch code or noise.
+RE_SINGLE_DIGIT_BEFORE_SALDO = re.compile(r"\s(\d)\s+(\d{1,3}(?:\.\d{3})*)\s*$")
 RE_BRANCH_COLUMN = re.compile(r"^\s*\d{2}/\d{2}\s+401\s")
 RE_NON_MOVEMENT_LINE = re.compile(
     r"dirección ha cambiado|días no hemos recibido|INFORMESE SOBRE|Resumen de Comisiones",
@@ -139,6 +142,14 @@ def amounts_by_column(
                 continue
             side = classify_small_amount_side(line, pos, bounds)
             cargo, abono = assign_small_amount(side, val, cargo, abono)
+
+        sd = RE_SINGLE_DIGIT_BEFORE_SALDO.search(line)
+        if sd is not None:
+            pos = sd.start(1)
+            inline_min = max(80, bounds.cargo_abono_split - 25)
+            if inline_min <= pos < bounds.saldo_min <= sd.start(2):
+                side = classify_small_amount_side(line, pos, bounds)
+                cargo, abono = assign_small_amount(side, int(sd.group(1)), cargo, abono)
 
         sm = RE_SMALL_TRAILING.search(line)
         if sm is not None:

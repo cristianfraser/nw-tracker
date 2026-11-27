@@ -116,6 +116,30 @@ class CartolaLayoutTest(unittest.TestCase):
         self.assertIsNone(cargo)
         self.assertEqual(abono, 8)
 
+    def test_single_digit_amount_followed_by_the_saldo(self) -> None:
+        header = (
+            "FECHA      SUCURSAL                            DESCRIPCION                            "
+            "N° DCTO     CHEQUES Y OTROS    DEPOSITOS Y OTROS            SALDO\n"
+            "                                                                                      "
+            "CARGOS              ABONOS\n"
+        )
+        bounds = mod.detect_checking_column_bounds(header)
+        line = (
+            "23/10 Agustinas 0000000001 Transf. EMPRESA EJEMPLO  1234567"
+            + " " * (bounds.cargo_abono_split + 10 - 59)
+            + "1"
+            + " " * (bounds.saldo_min - bounds.cargo_abono_split - 8)
+            + "123.456"
+        )
+        cargo, abono = mod.amounts_by_column(line, bounds)
+        self.assertIsNone(cargo)
+        self.assertEqual(abono, 1)
+
+    def test_lone_digit_without_a_saldo_after_it_is_not_an_amount(self) -> None:
+        bounds = mod.AmountColumnBounds(cargo_abono_split=115, saldo_min=146)
+        line = " " * 120 + "1 de 2"
+        self.assertEqual(mod.amounts_by_column(line, bounds), (None, None))
+
     def test_saldo_column_amount_reads_saldo_dia_balance(self) -> None:
         bounds = mod.AmountColumnBounds(cargo_abono_split=150, saldo_min=120)
         line = (

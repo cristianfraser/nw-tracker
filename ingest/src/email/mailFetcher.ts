@@ -124,6 +124,12 @@ export type MailSource = {
   kindOf(subject: string): string | null;
   /** Newest first: when a document is sent twice, the later copy is the one kept. */
   newestFirst?: boolean;
+  /**
+   * Report a mail from the sender whose subject maps to no kind but which carries a PDF: the
+   * signal that the sender renamed a document mail. It fails the fetch once per message (recorded
+   * in the ledger under `UNRECOGNISED_PDF_MAIL_KIND`); `hint` says what to change.
+   */
+  reportUnrecognisedPdfMail?: { hint: string };
   /** Bound of `--all` (a full-history backfill), for a source that allows one. */
   allHistoryDays?: number;
   documents(mail: WantedMail): MailDocument[];
@@ -137,6 +143,23 @@ export type MailDocumentResult = {
 };
 
 const ALREADY_FETCHED = "already fetched";
+
+/** Ledger kind of the mails `reportUnrecognisedPdfMail` reported (one failed run per message). */
+export const UNRECOGNISED_PDF_MAIL_KIND = "unrecognised-pdf-mail";
+
+/**
+ * Why a mail the source does not take must be reported, or null: the source opted in, its
+ * subject maps to no kind and it carries a PDF attachment.
+ */
+export function unrecognisedPdfMailReason(
+  source: Pick<MailSource, "kindOf" | "reportUnrecognisedPdfMail">,
+  subject: string,
+  pdfs: AttachmentNode[]
+): string | null {
+  if (!source.reportUnrecognisedPdfMail || source.kindOf(subject) !== null || pdfs.length === 0) return null;
+  const names = pdfs.map((a) => a.filename).join(", ");
+  return `subject «${subject}» names no document kind but the mail carries PDF(s) [${names}] — ${source.reportUnrecognisedPdfMail.hint}; the next fetch then takes it (its attachments are not in the ledger)`;
+}
 
 /** Fetch every document of `source` mailed in the window that the ledger does not hold yet. */
 export async function fetchMailDocuments(
@@ -158,12 +181,25 @@ export async function fetchMailDocuments(
       const uids = await searchMailSince(client, source.query, since);
       // Collect first, download after: imapflow cannot serve a download while a fetch stream is iterated.
       const wanted: WantedMail[] = [];
+      const unrecognised: { key: string; reason: string }[] = [];
       for await (const msg of client.fetch(uids, { envelope: true, bodyStructure: true, uid: true }, { uid: true })) {
         const subject = String(msg.envelope?.subject ?? "").trim();
         const kind = source.kindOf(subject);
         const date = msg.envelope?.date;
-        if (!kind || !date || date < since) continue;
+        if (!date || date < since) continue;
+        if (!kind) {
+          const reason = unrecognisedPdfMailReason(source, subject, pdfAttachmentsFromStructure(msg.bodyStructure));
+          if (reason) unrecognised.push({ key: mailDocumentLedgerKey(date, String(msg.envelope?.messageId ?? `uid-${msg.uid}`)), reason });
+          continue;
+        }
         wanted.push(wantedMail(msg, subject, kind, date));
+      }
+      // Reported once per message: the ledger keeps the report, so it fails one run, not every
+      // night of the window. The recognised mails of the same run are still saved below.
+      for (const u of unrecognised) {
+        if (hasDocument(source.ledger, UNRECOGNISED_PDF_MAIL_KIND, u.key)) continue;
+        result.errors.push({ kind: UNRECOGNISED_PDF_MAIL_KIND, key: u.key, reason: u.reason });
+        if (!dryRun) recordDocument(source.ledger, UNRECOGNISED_PDF_MAIL_KIND, u.key);
       }
       wanted.sort((a, b) => (source.newestFirst ? b.date.getTime() - a.date.getTime() : a.date.getTime() - b.date.getTime()));
       for (const mail of wanted) {

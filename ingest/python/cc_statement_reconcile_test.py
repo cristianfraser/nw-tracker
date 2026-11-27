@@ -214,5 +214,62 @@ class OperacionesShortfallTest(unittest.TestCase):
         self.assertFalse(any(c.code == "operaciones_shortfall" for c in result.checks))
 
 
+
+class UsdTwinsAndPeriodBlockTest(unittest.TestCase):
+    def test_affirmed_twins_count_same_day_same_dollars_repeat_does_not(self) -> None:
+        twin = _row("APP STORE", "9,99", "international_usd", "usd", key="k1")
+        twin["dedupe_key"] = "k1"
+        twin2 = dict(twin, row_id="k2", dedupe_key="k1#dup1")
+        repeat = dict(twin, row_id="k3", dedupe_key="k3")
+        rows = mod._iter_reconcile_rows([twin, twin2, repeat])
+        self.assertEqual([r["row_id"] for r in rows], ["k1", "k2"])
+
+    def test_column_by_column_period_block_pairs_labels_with_values_in_order(self) -> None:
+        text = "\n".join(
+            [
+                "1. INFORMACIÓN DEL PERÍODO",
+                "SALDO ANTERIOR FACTURADO",
+                "ABONO REALIZADO",
+                "TOTAL DE COMPRAS Y CARGOS",
+                "TRASPASO DEUDA NACIONAL",
+                "DEUDA TOTAL",
+                "US$ 500,00",
+                "US$ -500,00",
+                "US$ 42,10",
+                "US$ 0,00",
+                "US$ 42,10",
+            ]
+        )
+        block = mod.usd_period_block_amounts(text, parse_usd)
+        self.assertEqual(block["DEUDA TOTAL"], 42.10)
+        self.assertEqual(block["SALDO ANTERIOR FACTURADO"], 500.0)
+        self.assertEqual(block["ABONO REALIZADO"], -500.0)
+        totals = mod.extract_pdf_section_totals(text, "usd", parse_clp, parse_usd)
+        self.assertEqual(totals["pdf_deuda_total"], 42.10)
+        self.assertEqual(totals["pdf_compras_cargos"], 42.10)
+
+    def test_column_block_with_a_value_missing_pairs_nothing(self) -> None:
+        text = "\n".join(
+            [
+                "SALDO ANTERIOR FACTURADO",
+                "ABONO REALIZADO",
+                "TOTAL DE COMPRAS Y CARGOS",
+                "TRASPASO DEUDA NACIONAL",
+                "DEUDA TOTAL",
+                "US$ 500,00",
+                "US$ -500,00",
+                "US$ 42,10",
+                "US$ 42,10",
+                "2. INFORMACION DE TRANSACCIONES",
+            ]
+        )
+        self.assertEqual(mod.usd_period_block_amounts(text, parse_usd), {})
+
+    def test_row_by_row_period_block_is_left_to_the_label_regexes(self) -> None:
+        text = "SALDO ANTERIOR FACTURADO\nUS$ 500,00\nABONO REALIZADO\nUS$ -500,00\nDEUDA TOTAL\nUS$ 42,10\n"
+        self.assertEqual(mod.usd_period_block_amounts(text, parse_usd), {})
+        totals = mod.extract_pdf_section_totals(text, "usd", parse_clp, parse_usd)
+        self.assertEqual(totals["pdf_deuda_total"], 42.10)
+
 if __name__ == "__main__":
     unittest.main()

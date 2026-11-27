@@ -108,7 +108,10 @@ def _iter_reconcile_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 bucket = f"{txn}|{cc}|{usd:.2f}"
             else:
                 bucket = f"{txn}|{usd:.2f}|{merchant}"
-            if bucket in seen_usd_bucket:
+            # A `#dupN` key is a twin the parser affirmed on this statement (two identical charges
+            # the same day, e.g. several same-price subscriptions): it counts, as the import keeps
+            # it. Only a row without one is a same-day same-US$ repeat of another rendering.
+            if bucket in seen_usd_bucket and "#dup" not in dk:
                 continue
             seen_usd_bucket.add(bucket)
         out.append(row)
@@ -422,6 +425,52 @@ def _parse_usd_ocr_flat_header_amount(
     return parse_usd(raw)
 
 
+USD_PERIOD_LABELS = (
+    "SALDO ANTERIOR FACTURADO",
+    "ABONO REALIZADO",
+    "TOTAL DE COMPRAS Y CARGOS",
+    "TRASPASO DEUDA NACIONAL",
+    "DEUDA TOTAL",
+)
+_RE_USD_VALUE_LINE = re.compile(r"^US\$\s*(-?[\d.,]+)$", re.I)
+
+
+def usd_period_block_amounts(text: str, parse_usd: Callable[[str], Optional[float]]) -> Dict[str, float]:
+    """
+    The international statement's «1. INFORMACIÓN DEL PERÍODO» figures when the plain rendering
+    prints the block column by column: every label on its own line, then every «US$ …» value in
+    the same order (the October 2026 template). A «label … US$» regex reads the first value after
+    DEUDA TOTAL there, which is the SALDO ANTERIOR. Pairs by position only when the run of label
+    lines is followed by exactly as many value lines; else returns {} and the label regexes apply.
+    """
+    lines = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()]
+    is_label = [ln.upper() in USD_PERIOD_LABELS for ln in lines]
+    for i in range(len(lines)):
+        # Only a maximal run: never a tail of a longer run, which would pair shifted values.
+        if not is_label[i] or (i > 0 and is_label[i - 1]):
+            continue
+        j = i
+        while j < len(lines) and is_label[j]:
+            j += 1
+        run = [ln.upper() for ln in lines[i:j]]
+        if len(run) < 2 or len(set(run)) != len(run):
+            continue
+        k = j
+        while k < len(lines) and _RE_USD_VALUE_LINE.match(lines[k]):
+            k += 1
+        if k - j != len(run):
+            continue
+        matches = [_RE_USD_VALUE_LINE.match(v) for v in lines[j:k]]
+        out: Dict[str, float] = {}
+        for label, m in zip(run, matches):
+            v = parse_usd(m.group(1))
+            if v is None:
+                return {}
+            out[label] = v
+        return out
+    return {}
+
+
 def extract_pdf_section_totals(
     full: str,
     currency: str,
@@ -482,6 +531,7 @@ def extract_pdf_section_totals(
                 out["pdf_total_cuotas"] = v
 
     if cur == "usd":
+        block = usd_period_block_amounts(full, parse_usd)
         m = re.search(
             r"SALDO\s+ANTERIOR\s+FACTURADO[^\dUS$]*US\$\s*([\d.,\-]+)",
             full,
@@ -502,6 +552,14 @@ def extract_pdf_section_totals(
         m = re.search(r"DEUDA\s+TOTAL[^\dUS$]*US\$\s*([\d.,\-]+)", full, re.I | re.S)
         if m:
             out["pdf_deuda_total"] = parse_usd(m.group(1))
+        for label, key in (
+            ("SALDO ANTERIOR FACTURADO", "pdf_saldo_anterior"),
+            ("ABONO REALIZADO", "pdf_abono"),
+            ("TOTAL DE COMPRAS Y CARGOS", "pdf_compras_cargos"),
+            ("DEUDA TOTAL", "pdf_deuda_total"),
+        ):
+            if label in block:
+                out[key] = block[label]
         m = re.search(
             r"MONTO\s+TOTAL\s+FACTURADO\s+A\s+PAGAR\s+US\$\s*([\d.,\-]+)",
             full,
@@ -1114,12 +1172,15 @@ def reconcile_statement(
             compras_c = compras_pdf
             traspaso = parsed.get("parsed_traspaso_nacional") or 0.0
             if traspaso == 0:
+                block = usd_period_block_amounts(full, parse_usd)
                 m = re.search(
                     r"TRASPASO\s+DEUDA\s+NACIONAL[^\dUS$]*US\$\s*([\d.,\-]+)",
                     full,
                     re.I | re.S,
                 )
-                if m:
+                if "TRASPASO DEUDA NACIONAL" in block:
+                    traspaso = float(block["TRASPASO DEUDA NACIONAL"])
+                elif m:
                     traspaso = float(parse_usd(m.group(1)) or 0)
             expected_deuda = float(saldo) + float(abono) + float(compras_c) + float(traspaso)
             delta = expected_deuda - float(deuda)

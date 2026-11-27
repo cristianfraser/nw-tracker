@@ -1,28 +1,31 @@
 /**
  * Fetch Santander's monthly PDF documents out of Gmail into `cfraser/inbox/`.
  *
- * The bank mails both documents every month — «Estado de Cuenta Tarjeta de Crédito» (the credit
- * card facturación) and «Cartola Mensual de Cuentas.» (the cuenta corriente cartola) — and both
- * arrive as PDF attachments. Taking them from mail rather than the web session is strictly better:
- * the statement download endpoint has never once succeeded (Codigo 16 on every attempt), the
- * cartola download costs an extra authenticated navigation on a bank that is sensitive to traffic,
- * and mail needs no session, no 2FA and no window server.
+ * The bank mails every monthly document as a PDF attachment from `mensajeria@santander.cl`: the
+ * card facturación as two same-day mails («Tarjetas Crédito Nacional Personas» = pesos,
+ * «Tarjetas Crédito Internacional Personas» = dollars) and the cartolas («Cuenta Corriente
+ * Persona», «Cuentamática Persona»). Until October 2026 the titles were «Estado de Cuenta Tarjeta
+ * de Crédito» and «Cartola Mensual de Cuentas.»; both generations are recognised. Mail needs no
+ * bank session, no 2FA and no window server (the statement download endpoint never succeeds).
  *
- * Attachments are saved under the bank's OWN filenames, which is the whole point — the inbox
- * organizer already recognises Santander's email attachment naming (`1_<seq>_<account>_<date>_CC.pdf`
- * for a cuenta corriente cartola, `_LC` for línea de crédito) and classifies credit-card statements
- * by peeking at the PDF text. So this step's entire contract is "put the file in the inbox"; every
- * downstream stage is unchanged.
+ * Attachments are saved under the bank's own filenames and nothing is interpreted here: the
+ * inbox organizer decrypts each PDF and classifies it from its text (card statement or cartola,
+ * which account), because the current names (`TC_NAC-<n>_<m>.pdf`, `LCA_CTA_CTE_CRONO-<n>_<m>.pdf`,
+ * `C_MATICA_ONDEM-<n>_<m>.pdf`, …) carry neither account nor date.
  *
- * Once a month, not once a night: each attachment is gated in the document ledger under its own
- * bank-given FILENAME (`80_16448_<account>_20260723.pdf`), which carries the bank's sequence number
- * and the document date and is therefore a stable per-document identity. Keying on the month
- * instead would be wrong in a way that loses data silently: the credit-card facturación arrives as
- * TWO same-day mails — the CLP statement and the USD one — so the first would mark the month done
- * and its sibling would never be downloaded. Because each month brings fresh sequence numbers, the
- * filename key gives the intended once-a-month rhythm for free: due when the mail lands, retried
- * daily until it does, never fetched twice.
+ * Ledger key, one per attachment: an old self-describing name (`80_<seq>_<account>_<YYYYMMDD>.pdf`,
+ * `1_<seq>_<account>_<date>_CC.pdf`) is its own key; any other name is keyed by its mail
+ * (`<mail date>-<message id>`) plus the name, since nothing promises the bank's two numbers never
+ * repeat. Never by month: the facturación's two same-day mails would share it and the second would
+ * never be fetched. Due when the mail lands, retried daily until it does, fetched once per mail (a
+ * resent mail is fetched again and the organizer files the copy under `inbox/duplicates/`).
+ *
+ * A bank name already in the inbox with other bytes is saved beside it as
+ * `<mail date>_<message id hash>_<name>` (`disambiguatedInboxName`), never recorded unwritten. A
+ * mail from the sender with a PDF under a subject no kind takes fails the fetch once
+ * (`reportUnrecognisedPdfMail`): the sign of the next rename.
  */
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ensureDir, resolveCfraserDir, resolveInboxDir } from "../paths.js";
@@ -48,12 +51,26 @@ export function isSantanderCcPaymentReceiptSubject(subject: string): boolean {
   return s.includes("comprobante pago") && s.includes("deuda facturada");
 }
 
+/** Titles since October 2026, accent-free and lower-cased, trailing dots dropped. */
+const CC_STATEMENT_TITLE = /^tarjetas? (?:de )?credito (?:nacional|internacional) personas?$/;
+const CARTOLA_TITLE = /^(?:cuenta corriente|cuentamatica) personas?$/;
+
 /** The document kind a Santander subject announces, or null. */
 export function santanderMailKind(subject: string): string | null {
-  const s = normalizeMailSubject(subject);
+  const s = normalizeMailSubject(subject).replace(/[\s.]+$/, "");
   if (s.includes("estado de cuenta") && s.includes("tarjeta")) return CC_STATEMENT;
   if (s.includes("cartola mensual")) return CARTOLA;
+  if (CC_STATEMENT_TITLE.test(s)) return CC_STATEMENT;
+  if (CARTOLA_TITLE.test(s)) return CARTOLA;
   return isSantanderCcPaymentReceiptSubject(subject) ? CC_PAYMENT_RECEIPT : null;
+}
+
+/** `80_<seq>_<account>_<YYYYMMDD>.pdf`, `1_<seq>_<account>_<date>_CC.pdf`: names that identify their document. */
+const SELF_DESCRIBING_ATTACHMENT = /^\d+_\d+_\d+_\d{8}(?:_[a-z]{2})?\.pdf$/i;
+
+/** The document-ledger key of one saved attachment (see the header). */
+export function santanderAttachmentLedgerKey(mailKey: string, savedName: string): string {
+  return SELF_DESCRIBING_ATTACHMENT.test(savedName) ? savedName : `${mailKey}/${savedName}`;
 }
 
 export function receiptsStagingDir(): string {
@@ -75,22 +92,40 @@ function receiptDocument(mail: WantedMail): MailDocument {
   };
 }
 
-/** Each PDF attachment into the inbox under the bank's own filename, which is also its ledger key. */
-function attachmentDocuments(mail: WantedMail): MailDocument[] {
+/**
+ * The inbox name for an attachment whose bank name is taken by different bytes:
+ * `<mail date>_<message id hash>_<bank name>`. Underscores, not a space after the date, so the
+ * organizer never mistakes it for an organized name; it classifies the file by its text.
+ */
+export function disambiguatedInboxName(mail: Pick<WantedMail, "date" | "messageId">, name: string): string {
+  const slug = createHash("sha1").update(mail.messageId).digest("hex").slice(0, 8);
+  return `${mail.date.toISOString().slice(0, 10)}_${slug}_${name}`;
+}
+
+/** Each PDF attachment into the inbox under the bank's own filename. */
+export function attachmentDocuments(mail: WantedMail): MailDocument[] {
   const period = mailPeriodKey(mail.date);
   if (mail.pdfs.length === 0) return [{ key: mail.mailKey, skip: "no pdf attachment" }];
   return mail.pdfs.map((a, index) => {
     const name = safeAttachmentName(a.filename, `santander-${mail.kind}-${period}-${index + 1}.pdf`);
     return {
-      key: name,
+      key: santanderAttachmentLedgerKey(mail.mailKey, name),
       file: name,
       async write(read) {
-        const target = path.join(ensureDir(resolveInboxDir()), name);
-        // A file still sitting in the inbox has not been imported yet — same bytes, and
-        // overwriting it would only race the importer that may already be reading it.
-        if (fs.existsSync(target)) return { already: `${name} already in inbox` };
-        fs.writeFileSync(target, (await read.part(a.part)).bytes);
-        return { written: true };
+        const inbox = ensureDir(resolveInboxDir());
+        const bytes = (await read.part(a.part)).bytes;
+        // A file still sitting in the inbox has not been imported yet. The same bytes are this
+        // document (overwriting would only race the importer); other bytes under the same name are
+        // another document the bank named alike, saved beside it — never recorded unwritten.
+        for (const candidate of [name, disambiguatedInboxName(mail, name)]) {
+          const target = path.join(inbox, candidate);
+          if (!fs.existsSync(target)) {
+            fs.writeFileSync(target, bytes);
+            return { written: true };
+          }
+          if (fs.readFileSync(target).equals(bytes)) return { already: `${candidate} already in inbox` };
+        }
+        return { error: `${name}: two different documents already sit in the inbox under this name and ${disambiguatedInboxName(mail, name)}` };
       },
     };
   });
@@ -101,7 +136,10 @@ export const SANTANDER_DOCS_SOURCE: MailSource = {
   ledger: "santander",
   query: { from: SANTANDER_MAIL_SENDER },
   kindOf: santanderMailKind,
-  // When the bank sends the same document twice in a day the later copy is kept; the ledger skips its twin.
+  // Newest first: when the bank resends a document, the later mail is fetched first and the
+  // earlier copy lands beside it (same bytes → skipped; else the organizer files it as a duplicate).
   newestFirst: true,
+  // The bank renamed its monthly mails in October 2026 without warning: a PDF under a new title fails the fetch once.
+  reportUnrecognisedPdfMail: { hint: "teach santanderMailKind (ingest/src/email/santanderDocs.ts) this subject" },
   documents: (mail) => (mail.kind === CC_PAYMENT_RECEIPT ? [receiptDocument(mail)] : attachmentDocuments(mail)),
 };
