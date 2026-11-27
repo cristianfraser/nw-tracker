@@ -978,7 +978,6 @@ export interface MortgageGroupLoanDto {
   paid_loan: number;
   /** Paid ÷ original (loan currency). */
   paid_share: number;
-  prepaid_loan: number;
   /** The next cuota (the loan page's first payments row): its minimum in the loan currency, and its payment-currency minimum in the unit at today's rate. */
   next: { date: string; min_loan: number; max_loan: number | null; min: number } | null;
   /** The monthly rate of the last regular cuota, compounded to a year; null before the first cuota. */

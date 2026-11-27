@@ -118,7 +118,6 @@ function loanDto(accountId: number, name: string, glance: MortgageGlance, unit: 
     original_loan: balance.original_loan,
     paid_loan: balance.paid_loan,
     paid_share: balance.paid_share,
-    prepaid_loan: balance.prepaid_loan,
     next:
       next == null
         ? null
