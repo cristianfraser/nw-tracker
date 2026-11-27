@@ -40,6 +40,9 @@ Two facts about the plumbing make the last row costly:
 | 1 | Cupo-gap removal of a restated line (`cardUnbilledMovementsApply.ts`, `planCupoGap`) | A receipt's card line the bank listed under its acquirer's name was deleted with `carry: []`; the bank's line was a new flow. This is the 2026-11-26 incident: the purchase jumped to the top of «Últimos movimientos» two and a half hours after it was first seen. It is the only path a listing with no stated close (BCI) takes. | Verified by replaying the listing on a snapshot copy; fixed (`carryOnto`), test added |
 | 2 | Feed mirror restatement (`planOpenBucketMirror`) | Same defect on listings that state a close (Santander). | Fixed (carry when exactly one row restates the line), tests added |
 | 12 | Card-to-card payment transfers (`syncCardToCardPaymentTransfers`) | Deleted and written again on every card write or boot whenever a part's line id, plan id, amount or day changed: a new flow stamped now, so the payment re-entered «Últimos movimientos» as new and lost its note or big group. | Fixed: a part re-keyed with the same transfer keeps its movement; a changed transfer folds the old flow into the new one. Tests added |
+| 13 | Mirror conversion by hand (`convertMirrorPairs`) | The transfer was stamped now; neither leg's arrival, note or category was carried. | Fixed: both legs' flows fold into the transfer's (older arrival, earliest event time, assignments); conflicting assignments refuse the conversion. Tests added |
+| 14 | Mirror undo (`undoMirrorConversion`) | Restored legs were stamped now; their retired flows were not taken back. | Fixed: restored legs take back a retired flow of their document, then the transfer's arrival, event time and assignments (inflow-account categories and notes to the inflow leg, the rest to the outflow leg). Test added |
+| 16 | Automatic card-payment conversion (`convertCcPaymentMirrors`) | Arrival was copied; the debit's note, big group or refund mark was not. | Fixed: the debit's flow folds into the transfer's; its undo hands it back. Test extended |
 
 ### Open — card side
 
@@ -59,10 +62,7 @@ Two facts about the plumbing make the last row costly:
 
 | # | Path | Trigger | Lost | Status |
 |---|---|---|---|---|
-| 13 | Mirror conversion by hand (`convertMirrorPairs`) | /panel/mirror-pairs | The transfer is stamped now; neither leg's arrival, note or category is carried (the sibling path `supersedeImportedCheckingRowsForTransfer` does adopt) | Verified |
-| 14 | Mirror undo (`undoMirrorConversion`) | Undo | Restored legs are stamped now; their retired flows are not taken back | Reported |
 | 15 | Cartola removes a daily row a transfer leg or a mail row already lists | Monthly cartola | The daily row's category, note, income classification are not folded into the kept row | Reported |
-| 16 | Automatic card-payment conversion (`convertCcPaymentMirrors`) | Nightly | Arrival is copied; the debit's note, big group or refund mark is not | Reported (risk) |
 | 17 | Fuller cartola replaces a month (`replaced_cartola_row`) | A movement printed differently that the content match misses | New flow, old assignments retired | Reported (risk) |
 
 ### Scripts (manual runs)

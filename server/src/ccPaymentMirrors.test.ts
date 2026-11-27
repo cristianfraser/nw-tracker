@@ -7,6 +7,11 @@ import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaym
 import { db } from "./db.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import { undoMirrorConversion } from "./movementMirrorConvert.js";
+import { checkingMovementPurchaseKey } from "./expenseKeys.js";
+import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
+import { loadCcExpensePurchaseBigGroups, setCcExpensePurchaseBigGroup } from "./ccExpenseBigGroups.js";
+
+const BIG_GROUP = "vitest-ccpago-group";
 
 /**
  * Checking↔CC payment mirrors: a checking "Traspaso a T. Crédito" debit pairs with the
@@ -92,10 +97,13 @@ beforeAll(() => {
         .lastInsertRowid
     )
   );
+  db.prepare(`INSERT INTO cc_expense_big_groups (slug, label) VALUES (?, 'vitest ccpago')`).run(BIG_GROUP);
   clearAggregationCache();
 });
 
 afterAll(() => {
+  db.prepare(`DELETE FROM cc_expense_big_groups WHERE slug = ?`).run(BIG_GROUP);
+  if (checkingId != null) db.prepare(`DELETE FROM flow_notes WHERE account_id = ?`).run(checkingId);
   db.prepare(
     `DELETE FROM movement_mirror_merges WHERE out_note LIKE 'vitest|%' OR in_note LIKE 'vitest%'`
   ).run();
@@ -296,6 +304,9 @@ describe("convertCcPaymentMirrors", () => {
     ).run(lineCand.out.movement_id);
     const debitStamp = stampOfMovement(lineCand.out.movement_id);
     expect(debitStamp).toEqual({ at: "2026-01-10T12:00:00.000Z", seq: 1 });
+    // What the user filed on the debit is the payment's.
+    setFlowNote(checkingId, checkingMovementPurchaseKey(lineCand.out.movement_id), "vitest pago note");
+    setCcExpensePurchaseBigGroup({ purchaseKey: checkingMovementPurchaseKey(lineCand.out.movement_id), groupSlug: BIG_GROUP });
     const { converted } = convertCcPaymentMirrors([
       {
         out_movement_id: lineCand.out.movement_id,
@@ -305,6 +316,9 @@ describe("convertCcPaymentMirrors", () => {
     expect(converted).toHaveLength(1);
     // The payment keeps the moment the debit reached the ledger («Últimos movimientos» order).
     expect(stampOfMovement(converted[0]!.transfer_movement_id)).toEqual(debitStamp);
+    const transferKey = checkingMovementPurchaseKey(converted[0]!.transfer_movement_id);
+    expect(getFlowNote(checkingId, transferKey)).toBe("vitest pago note");
+    expect(loadCcExpensePurchaseBigGroups().get(transferKey)).toBe(BIG_GROUP);
     const transfer = db
       .prepare(`SELECT * FROM movements WHERE id = ?`)
       .get(converted[0]!.transfer_movement_id) as {
@@ -366,6 +380,11 @@ describe("convertCcPaymentMirrors", () => {
       note: string;
     };
     cleanupMovementIds.push(restored.restored_out_id);
+    // The restored debit is the payment the app first saw, with what was filed on it.
+    expect(stampOfMovement(restored.restored_out_id)).toEqual(debitStamp);
+    const restoredKey = checkingMovementPurchaseKey(restored.restored_out_id);
+    expect(getFlowNote(checkingId, restoredKey)).toBe("vitest pago note");
+    expect(loadCcExpensePurchaseBigGroups().get(restoredKey)).toBe(BIG_GROUP);
     expect(back.account_id).toBe(checkingId);
     expect(back.amount).toBe(-487331);
     expect(back.currency).toBe("clp");
