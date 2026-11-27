@@ -134,7 +134,7 @@ function BigGroupBlock({
             showBigGroupControls
             emptyLabel={t("expenses.creditCard.bigGroups.emptyGroup")}
             loading={linesLoading}
-            unit={linesQuery.data?.unit}
+            unit={linesQuery.data?.unit ?? null}
           />
         )
       ) : null}

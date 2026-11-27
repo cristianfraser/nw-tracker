@@ -213,25 +213,42 @@ function ItemLabel({ item }: { item: UpcomingPaymentItemDto }) {
  * show; «Show more» opens the rest of the server's horizon. The bills read in their own currency whatever the
  * display unit; in another unit the hover adds each amount in it (in the payload's own `unit`). The
  * panel is always there: dimmed and empty before the server has answered (no bundle and no stored
- * copy), an empty state when nothing is due. `data` is the bundle's block as the page shows it
- * (held across a unit switch, dimmed, in its own unit); `live` is this unit's own fetched block, the
- * only one stored. The stored copy paints only before any bundle is shown.
+ * copy), an empty state when nothing is due, the bundle's error when it failed with nothing to show.
+ * `data` is the bundle's block as the page shows it (held across a unit switch or a remount, dimmed,
+ * in its own unit); `live` is this unit's own fetched block, the only one stored. The stored copy
+ * paints only before anything was drawn for the panel in this session.
  */
 export function UpcomingPaymentsPanel({
   data: shown,
   live,
   loading: shownLoading,
+  error,
 }: {
   data: UpcomingPaymentsDto | null;
   live: UpcomingPaymentsDto | null;
   loading: boolean;
+  /** The bundle's load error (only when it has nothing to show). */
+  error: unknown;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const { displayUnit } = useDisplayPreferences();
-  const { value: data, stored } = usePersistedPayload(UPCOMING_PAYMENTS, [displayUnit], { shown, live });
+  const { value: data, storedUnit } = usePersistedPayload(
+    UPCOMING_PAYMENTS,
+    { surface: "dashboard", unit: displayUnit, scope: [displayUnit] },
+    { shown, live, failed: error != null }
+  );
   const unit = data?.unit ?? displayUnit;
-  const loading = shownLoading && !stored;
+  // A stored copy of this unit paints undimmed (first paint); one held across a switch dims.
+  const loading = storedUnit != null ? storedUnit !== displayUnit : shownLoading;
+  if (error != null) {
+    return (
+      <PageGridTile id="cc-upcoming">
+        <h2>{t("dashboard.ccUpcoming.title")}</h2>
+        <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>
+      </PageGridTile>
+    );
+  }
   const allMonths = data?.months ?? [];
   const months = expanded ? allMonths : allMonths.slice(0, COLLAPSED_MONTHS);
   return (

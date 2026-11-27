@@ -228,6 +228,7 @@ export function ExpensesPage() {
               onClearCategory={() => setSel((s) => ({ ...s, category: null }))}
               onEditManual={setManualLine}
               loading={linesLoading}
+              unit={unit}
             />
             </div>
           </div>

@@ -104,11 +104,14 @@ function CardPaymentRow({
   payment,
   categories,
   bigGroups,
+  unit,
 }: {
   on: string;
   payment: LatestCardPayment;
   categories: readonly CcExpenseCategoryDto[];
   bigGroups: readonly CcExpenseBigGroupDto[];
+  /** The unit the panel's payload was requested in. */
+  unit: string | null;
 }) {
   const { t } = useTranslation();
   const from =
@@ -152,6 +155,7 @@ function CardPaymentRow({
         payment.lines.length > 0 ? (
           <CreditCardExpenseLinesTable
             lines={payment.lines}
+            unit={unit}
             categories={categories}
             bigGroups={bigGroups}
             showBigGroupControls
@@ -177,12 +181,16 @@ export function LatestMovementsTable() {
   const { displayUnit } = useDisplayPreferences();
   // Held across a unit switch, in the unit it was requested in (`query.unit`: the payload has none).
   const query = useHeldLatestMovements(LATEST_MOVEMENTS_LIMIT, displayUnit);
-  // Before anything is shown, the last stored copy of this unit (its rows' values are in it).
-  const { value: data, stored } = usePersistedPayload(LATEST_MOVEMENTS, [displayUnit], {
-    shown: query.data,
-    live: query.live,
-  });
-  const unit = stored ? displayUnit : (query.unit ?? displayUnit);
+  // Before anything was drawn this session, the last stored copy of this unit (its rows' values
+  // are in it; the payload names no unit, so its unit is the one it was stored under).
+  const { value: data, storedUnit } = usePersistedPayload(
+    LATEST_MOVEMENTS,
+    { surface: `latestMovements|${LATEST_MOVEMENTS_LIMIT}`, unit: displayUnit, scope: [displayUnit] },
+    { shown: query.data, live: query.live, failed: query.error != null }
+  );
+  const unit = storedUnit ?? query.unit ?? null;
+  // A stored copy of this unit paints undimmed (first paint); one held across a switch dims.
+  const loading = data == null || (storedUnit != null ? storedUnit !== displayUnit : query.loading);
   const loadError = query.error;
 
   const items: ExpenseListItem[] = (data?.rows ?? []).map((r) => {
@@ -195,7 +203,13 @@ export function LatestMovementsTable() {
       key: r.payment.key,
       arrivalKey: r.arrival_key,
       node: (
-        <CardPaymentRow on={r.on} payment={r.payment} categories={data?.categories ?? []} bigGroups={data?.big_groups ?? []} />
+        <CardPaymentRow
+          on={r.on}
+          payment={r.payment}
+          categories={data?.categories ?? []}
+          bigGroups={data?.big_groups ?? []}
+          unit={unit}
+        />
       ),
     };
   });
@@ -219,7 +233,7 @@ export function LatestMovementsTable() {
             enableCheckingNotes
             hideHeader
             emptyLabel={t("dashboard.latestMovements.empty")}
-            loading={data == null || (query.loading && !stored)}
+            loading={loading}
             unit={unit}
             animateArrivals
           />

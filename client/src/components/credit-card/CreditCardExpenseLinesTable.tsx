@@ -226,21 +226,22 @@ function FixedCategoryPill({
 }
 
 /**
- * The unit the lines on screen were requested in (their `converted` figures): the payload's own
- * `unit`, which during a unit switch is the held payload's, not the picker's. Set by the table's
- * `unit`; a table not given one reads the display unit it requested in.
+ * The unit the lines on screen were requested in (their `converted` figures): the shown payload's
+ * own `unit`, which during a unit switch is the held payload's, not the picker's. Set by every
+ * lines table (`unit`, required) and by {@link ExpenseLinesUnitScope}; there is no fallback.
  */
 const LinesUnitContext = createContext<string | null>(null);
 
-/** Sets the lines' unit for every lines table below (a block of several tables over one payload). */
-export function ExpenseLinesUnitScope({ unit, children }: { unit: string | undefined; children: ReactNode }) {
-  if (unit == null) return <>{children}</>;
+/** Sets the lines' unit for the rows below that are not inside a lines table (a candidates list). */
+export function ExpenseLinesUnitScope({ unit, children }: { unit: string; children: ReactNode }) {
   return <LinesUnitContext.Provider value={unit}>{children}</LinesUnitContext.Provider>;
 }
 
+/** The unit an expense row formats its `converted` figure in; a row drawn outside one fails. */
 function useLinesUnit(): string {
-  const { displayUnit } = useDisplayPreferences();
-  return useContext(LinesUnitContext) ?? displayUnit;
+  const unit = useContext(LinesUnitContext);
+  if (unit == null) throw new Error("an expense row is drawn outside a lines table or ExpenseLinesUnitScope (no unit)");
+  return unit;
 }
 
 /**
@@ -627,26 +628,29 @@ function RefundLinkControl({ line }: { line: FlowCcExpenseLineRow }) {
           ) : candidates.data && candidates.data.candidates.length === 0 ? (
             <p className="muted">{t("expenses.creditCard.lineRow.refund.empty")}</p>
           ) : (
-            <ExpenseLinesUnitScope unit={candidates.data?.unit}>
-            <div role="list" aria-label={t("expenses.creditCard.lineRow.refund.pickAria")} className={styles.refundCandidates}>
-              {(candidates.data?.candidates ?? []).map((c) => (
-                <button
-                  key={c.line_id}
-                  type="button"
-                  role="listitem"
-                  className={cn(styles.refundCandidate, c.merchant_match && styles.refundCandidateMatch)}
-                  disabled={busy}
-                  onClick={() => linkTo(c.line_id)}
-                >
-                  <span className="mono muted">{c.purchase_date}</span>
-                  <span className={styles.refundCandidateName}>{shownNameText(c.name)}</span>
-                  <span className="mono">
-                    <MoneyAmount money={c} />
-                  </span>
-                </button>
-              ))}
-            </div>
-            </ExpenseLinesUnitScope>
+            candidates.data ? (
+              // The candidates' own unit (held across a switch), not the lines table's.
+              <ExpenseLinesUnitScope unit={candidates.data.unit}>
+                <div role="list" aria-label={t("expenses.creditCard.lineRow.refund.pickAria")} className={styles.refundCandidates}>
+                  {candidates.data.candidates.map((c) => (
+                    <button
+                      key={c.line_id}
+                      type="button"
+                      role="listitem"
+                      className={cn(styles.refundCandidate, c.merchant_match && styles.refundCandidateMatch)}
+                      disabled={busy}
+                      onClick={() => linkTo(c.line_id)}
+                    >
+                      <span className="mono muted">{c.purchase_date}</span>
+                      <span className={styles.refundCandidateName}>{shownNameText(c.name)}</span>
+                      <span className="mono">
+                        <MoneyAmount money={c} />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </ExpenseLinesUnitScope>
+            ) : null
           )}
           <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
             {t("expenses.creditCard.lineRow.refund.close")}
@@ -1060,8 +1064,11 @@ export function CreditCardExpenseLinesTable({
    * desktop (`items` only; first data and value-only refetches animate nothing).
    */
   animateArrivals?: boolean;
-  /** The unit the lines were requested in (the shown payload's `unit`); rows below read it. */
-  unit?: string;
+  /**
+   * The unit the lines were requested in (the shown payload's `unit`, never the picker's); rows
+   * below read it. Null only while there are no lines (nothing shown yet).
+   */
+  unit: string | null;
 }) {
   const { t, i18n } = useTranslation();
   const listRef = useRowArrivalAnimation(animateArrivals && items != null);
@@ -1089,18 +1096,19 @@ export function CreditCardExpenseLinesTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n.language: the labels translate at render (no cached t()).
     [categories, i18n.language]
   );
-  const contextUnit = useLinesUnit();
-  const unit = unitProp ?? contextUnit;
+  const unit = unitProp;
+  const rowCount = items != null ? items.length : lines.length;
+  if (rowCount > 0 && unit == null) throw new Error("CreditCardExpenseLinesTable: lines drawn without the unit they were requested in");
   const sorted = useMemo(
     () =>
-      sortLines(lines, sort, unit, (ln) => {
+      // No unit only with no lines (checked above): nothing to compare.
+      sortLines(lines, sort, unit ?? "", (ln) => {
         const slug = lineCategorySlug(ln);
         return slug ? (categoryLabelBySlug.get(slug) ?? slug) : null;
       }, dateOf),
     [categoryLabelBySlug, lines, sort, unit, dateOf]
   );
 
-  const rowCount = items != null ? items.length : lines.length;
   if (rowCount === 0 && !loading) {
     return <p className="muted" style={{ margin: 0 }}>{emptyLabel}</p>;
   }

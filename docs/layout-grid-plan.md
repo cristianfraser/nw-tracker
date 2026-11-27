@@ -199,7 +199,7 @@ Stable tile ids: `title`, `strip`, `net-worth-chart`, `flows-periods`, `flows-ch
 **DashboardFlowsSummary split** (`components/dashboard/DashboardFlowsSummary.tsx`):
 `DashboardFlowsPeriods` (h2 «Flujos» + «/flows» link + the two period cards; no prefs) and
 `DashboardFlowsChart` (title row with `SurfaceControls` + `FlowsOverviewChart`). Both call
-`useFlowsOverview(displayUnit, installmentMode, days)` — the periods half with `days`
+`useHeldFlowsOverview(displayUnit, installmentMode, days)` — the periods half with `days`
 undefined — and share the react-query cache; `SUMMARY_LINES` moves to `flowsSummaryLines.ts`.
 
 **L (content 12 = main 8 + rail 4):**

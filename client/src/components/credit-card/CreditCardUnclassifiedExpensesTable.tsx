@@ -48,12 +48,15 @@ export function CreditCardUnclassifiedExpensesTable({ includePreTax }: { include
       <h3>
         {t("expenses.creditCard.unclassifiedTableTitle")}
         <span
-          className={loadableClass(query.data == null, "muted mono")}
+          className={loadableClass(loading, "muted mono")}
           style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}
         >
           {total}
         </span>
       </h3>
+      {query.error != null ? (
+        <p className="error">{query.error instanceof Error ? query.error.message : t("common.loadFailed")}</p>
+      ) : (
       <PaginatedTable
         page={shownPage}
         pageSize={UNCLASSIFIED_PAGE_SIZE}
@@ -70,12 +73,13 @@ export function CreditCardUnclassifiedExpensesTable({ includePreTax }: { include
             emptyLabel={t("expenses.creditCard.unclassifiedTableEmpty")}
             showCategoryControls
             enableCheckingNotes
-            loading={query.data == null}
-            unit={query.data?.unit}
+            loading={loading}
+            unit={query.data?.unit ?? null}
           />
           <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
         </CreditCardExpenseLinesSelectionProvider>
       </PaginatedTable>
+      )}
     </PageGridTile>
   );
 }

@@ -104,15 +104,18 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
   const { installmentMode } = useCcInstallmentGastosMode();
   // Held across a unit or mode switch (dimmed, in its own unit); only this key's live payload is stored.
   const overview = useHeldFlowsOverview(displayUnit, installmentMode, undefined);
-  const { value: closed, stored } = usePersistedPayload(
+  // Before anything was drawn this session, the copy stored for this unit and mode.
+  const { value: closed, storedUnit } = usePersistedPayload(
     FLOWS_CLOSED,
-    [displayUnit, installmentMode],
-    { shown: overview.data?.closed, live: overview.live?.closed },
+    { surface: "dashboard.flows", unit: displayUnit, scope: [displayUnit, installmentMode] },
+    { shown: overview.data?.closed, live: overview.live?.closed, failed: overview.error != null },
     overview.live?.schema_version
   );
-  // The stored rows carry no unit: a stored copy is scoped per unit, so its unit is the scope's.
-  const unit = stored ? displayUnit : (overview.data?.unit ?? displayUnit);
-  const loading = closed == null || (overview.loading && !stored);
+  // The stored rows carry no unit: a stored copy's unit is the one it was stored under.
+  const unit = storedUnit ?? overview.data?.unit ?? displayUnit;
+  // A stored copy of this unit paints undimmed (first paint); one held across a switch dims.
+  const loading = closed == null || (storedUnit != null ? storedUnit !== displayUnit : overview.loading);
+  const error = overview.error;
 
   const periods = [
     { labelKey: "dashboard.flows.lastMonth", row: closed?.last_month ?? ZERO_ROW },
@@ -124,6 +127,9 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
       <h2>
         <HeadingLink to="/flows">{t("dashboard.flows.title")}</HeadingLink>
       </h2>
+      {error != null ? (
+        <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>
+      ) : (
       <div className={loadableClass(loading, "cards cards--pair", styles.periods)}>
         {periods.map(({ labelKey, row }) => (
           <div key={labelKey} className={`card ${styles.period}`}>
@@ -160,6 +166,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
           </div>
         ))}
       </div>
+      )}
     </PageGridTile>
   );
 }
@@ -213,6 +220,9 @@ export function DashboardFlowsChart({
       smallSpan={alone ? undefined : dashboardTileSmallSpan("flows-chart")}
       className="chart-grid chart-grid--full-line"
     >
+      {overview.error != null ? (
+        <p className="error">{overview.error instanceof Error ? overview.error.message : t("common.loadFailed")}</p>
+      ) : (
       <FlowsOverviewChart
         title={t("flows.overview.chartTitle")}
         controls={
@@ -230,6 +240,7 @@ export function DashboardFlowsChart({
         displayUnit={data?.unit ?? displayUnit}
         loading={loading}
       />
+      )}
     </PageGridTile>
   );
 }

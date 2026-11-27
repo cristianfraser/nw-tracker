@@ -10,6 +10,7 @@ import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
 import { queryKeys, type DisplayUnit } from "../queries/keys";
 import { bundleContent } from "../queries/pageShapeReady";
+import { useStoredFirstPaint } from "../queries/heldUnitPayload";
 import {
   useAccountsByPortfolioGroup,
   useDashboardNavSnapshot,
@@ -90,11 +91,20 @@ export function usePortfolioPageData(opts: {
   );
   // The strip follows the nav context's own decision (`heldUnitPayload.ts`): the context on
   // screen — this unit's, or the one held across a switch, in ITS unit, dimmed — with the stored
-  // snapshot filling fields it leaves out (same unit only). Only while the page shows no context
-  // at all (first paint) the stored snapshot alone paints it, dimmed; a failed context paints
-  // nothing (the page reports `navCtx.error`).
+  // snapshot filling fields it leaves out (same unit only). The stored snapshot alone paints it,
+  // dimmed, only before any context was drawn for this page this session; once painted it is
+  // held (in its unit) until a context is drawn (`useStoredFirstPaint`). A failed context paints
+  // nothing (the page reports `navCtx.error`). A page without a nav context has the snapshot as
+  // its strip's only source: it reads it as is.
   const shownCtx = navCtx.data;
   const failedCtx = navCtx.error != null;
+  const pinnedSnapshot = useStoredFirstPaint(`navStrip|${navNode?.slug ?? ""}`, {
+    shown: shownCtx != null,
+    failed: failedCtx,
+    unit: displayUnit,
+    read: () => (navCtxEnabled ? navSnapshot : undefined),
+  }).value;
+  const firstPaintSnapshot = navCtxEnabled ? pinnedSnapshot : navSnapshot;
   const stripCards = useMemo((): StripCards | undefined => {
     if (!navNode) return undefined;
     if (shownCtx) {
@@ -112,18 +122,18 @@ export function usePortfolioPageData(opts: {
         fromContext: true,
       };
     }
-    if (!navSnapshot || failedCtx) return undefined;
+    if (!firstPaintSnapshot) return undefined;
     return {
       dash: dashPickForNavStrip({
-        accounts: navSnapshot.accounts,
-        liabilities_breakdown: navSnapshot.liabilities_breakdown,
-        dashboard_layout: navSnapshot.dashboard_layout,
-        card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
+        accounts: firstPaintSnapshot.accounts,
+        liabilities_breakdown: firstPaintSnapshot.liabilities_breakdown,
+        dashboard_layout: firstPaintSnapshot.dashboard_layout,
+        card_metrics_by_slug: firstPaintSnapshot.card_metrics_by_slug,
       }),
-      unit: navSnapshot.unit,
+      unit: firstPaintSnapshot.unit,
       fromContext: false,
     };
-  }, [navNode, shownCtx, navSnapshot, failedCtx]);
+  }, [navNode, shownCtx, navSnapshot, firstPaintSnapshot]);
   /** The unit the strip's cards are in: the held cards' own while a switch loads. */
   const stripUnit: DisplayUnit = stripCards?.unit ?? displayUnit;
   /** Dim the strip: zero cards, a held or pending context, or a stored snapshot. */

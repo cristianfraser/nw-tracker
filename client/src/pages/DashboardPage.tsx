@@ -17,6 +17,7 @@ import {
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { bundleContent, dailyPayloadPending } from "../queries/pageShapeReady";
+import { useStoredFirstPaint } from "../queries/heldUnitPayload";
 import {
   nwBucketTotalsFromDashTotals,
   writeDashboardNavSnapshotCache,
@@ -188,22 +189,30 @@ export function DashboardPage() {
     [sidebarNav]
   );
   // The strip's cards follow the bundle's own decision (`heldUnitPayload.ts`): the bundle on
-  // screen — this unit's, or the one held across a switch, in ITS unit. Only while there is no
-  // bundle to show at all (first paint) the stored snapshot paints them.
+  // screen — this unit's, or the one held across a switch or a remount, in ITS unit. Only before
+  // any bundle was drawn this session the stored snapshot paints them, and once painted it is held
+  // (in its unit) until a bundle is drawn (`useStoredFirstPaint`).
+  const firstPaintSnapshot = useStoredFirstPaint("navStrip|net_worth", {
+    shown: content != null,
+    failed: error != null,
+    unit: displayUnit,
+    read: () => navSnapshot,
+  }).value;
   const strip = useMemo((): StripCards | undefined => {
     if (content) return { dash: content.dash, unit: content.dash.unit };
-    if (!navSnapshot) return undefined;
+    const snapshot = firstPaintSnapshot;
+    if (!snapshot) return undefined;
     return {
       dash: dashPickForNavStrip({
-        accounts: navSnapshot.accounts,
-        liabilities_breakdown: navSnapshot.liabilities_breakdown,
-        dashboard_layout: navSnapshot.dashboard_layout,
-        nw_bucket_totals: navSnapshot.nw_bucket_totals,
-        card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
+        accounts: snapshot.accounts,
+        liabilities_breakdown: snapshot.liabilities_breakdown,
+        dashboard_layout: snapshot.dashboard_layout,
+        nw_bucket_totals: snapshot.nw_bucket_totals,
+        card_metrics_by_slug: snapshot.card_metrics_by_slug,
       }),
-      unit: navSnapshot.unit,
+      unit: snapshot.unit,
     };
-  }, [content, navSnapshot]);
+  }, [content, firstPaintSnapshot]);
   const stripCards = netWorthNav ? (strip ?? null) : null;
   // Nothing to show yet (cold cache): a zero strip from the sidebar nav, in its placeholder phase.
   const stripDash = netWorthNav ? (stripCards?.dash ?? placeholderStripDash) : null;
@@ -323,9 +332,9 @@ export function DashboardPage() {
   const brokerageColor = bucketColorBySlug.get("brokerage") ?? allocationBucketColor("brokerage");
 
   const netWorthTableAccounts = useMemo(() => {
-    const rows = content ? content.dash.accounts : (navSnapshot?.accounts ?? navShell?.dashAccounts ?? []);
+    const rows = content ? content.dash.accounts : (firstPaintSnapshot?.accounts ?? navShell?.dashAccounts ?? []);
     return netWorthTableAccountsFromDash(rows);
-  }, [content, navSnapshot?.accounts, navShell?.dashAccounts]);
+  }, [content, firstPaintSnapshot?.accounts, navShell?.dashAccounts]);
 
   const accountsTreeRoot = useMemo(
     () =>
@@ -636,6 +645,7 @@ export function DashboardPage() {
                 data={bundle.data?.upcomingPayments ?? null}
                 live={bundle.live?.upcomingPayments ?? null}
                 loading={contentLoading}
+                error={bundle.error}
               />
             </div>
             <LatestMovementsTable />

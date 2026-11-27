@@ -2,7 +2,6 @@ import { DTO_SCHEMA_VERSIONS } from "nw-tracker-contracts/dto/schemaVersions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PERSISTED_PAYLOAD_VERSIONS,
-  firstPaint,
   hasSchemaVersion,
   persistedPayload,
   persistedPayloadKey,
@@ -10,7 +9,14 @@ import {
   sweepPersistedPayloads,
   writePersistedPayload,
 } from "./persistedPayloadCache";
-import { initialHeldUnitState, settleHeldUnit, stepHeldUnit, type HeldUnitState } from "./heldUnitPayload";
+import {
+  initialHeldUnitState,
+  renderHeldUnit,
+  renderStoredFirstPaint,
+  resetHeldUnitSession,
+  settleHeldUnit,
+  type HeldUnitState,
+} from "./heldUnitPayload";
 
 let storage = new Map<string, string>();
 
@@ -80,66 +86,130 @@ describe("persisted payload cache", () => {
   });
 });
 
-describe("a home panel's first paint", () => {
+
+describe("a home panel's first paint (the session's memory)", () => {
   type Rows = { rows: string[] };
+  const ENTITY = "latestMovements|15";
+
   /**
-   * One panel («Últimos movimientos»): its held query (`stepHeldUnit`, as `useHeldUnitQuery` drives
-   * it) and its stored copies per unit (`firstPaint`, as `usePersistedPayload` picks).
+   * The browser session around one panel («Últimos movimientos»): react-query's cache per unit
+   * (data and fetch time, or a failed fetch), the panel's stored copies per unit, and what the panel
+   * stored. `mount()` draws the panel the way `useHeldUnitQuery` + `usePersistedPayload` do
+   * (`renderHeldUnit`, `renderStoredFirstPaint`); a new mount starts with empty component state.
    */
-  function panel(stored: Record<string, Rows>) {
-    let state: HeldUnitState<Rows> = initialHeldUnitState();
+  function session(storage: Record<string, Rows>) {
+    resetHeldUnitSession();
     const cache: Record<string, { data: Rows; updatedAt: number }> = {};
-    const writes: [string, Rows][] = [];
-    const show = (unit: string) => {
-      const step = stepHeldUnit(state, {
-        candidate: cache[unit],
-        pending: cache[unit] == null,
-        error: null,
-        unit,
-        entity: "latestMovements|15",
-        key: `latestMovements|15|${unit}`,
-        enabled: true,
-        canRefetch: true,
-      });
-      state = step.state;
-      // The panel stores only the requested key's own fetched payload.
-      if (step.view.live) writes.push([unit, step.view.live]);
-      return { ...firstPaint(step.view.data, stored[unit]), loading: step.view.loading, refetchAgainst: step.refetchAgainst };
+    const failed: Record<string, Error> = {};
+    const writes = new Set<string>();
+    const mount = () => {
+      let local: HeldUnitState<Rows> = initialHeldUnitState();
+      const show = (unit: string) => {
+        const step = renderHeldUnit(local, {
+          candidate: cache[unit],
+          pending: cache[unit] == null && failed[unit] == null,
+          error: failed[unit] ?? null,
+          unit,
+          entity: ENTITY,
+          key: `${ENTITY}|${unit}`,
+          enabled: true,
+          canRefetch: true,
+        });
+        local = step.local;
+        const view = step.view;
+        // Only the requested key's own fetched payload is stored.
+        if (view.live) writes.add(`${unit}:${view.live.rows.join("")}`);
+        const stored = renderStoredFirstPaint<Rows>(`latest_movements|${ENTITY}`, {
+          shown: view.data !== undefined,
+          failed: view.error != null,
+          unit,
+          read: () => storage[unit],
+        });
+        const storedUnit = view.data !== undefined ? undefined : stored.unit;
+        return {
+          rows: (view.data ?? stored.value)?.rows.join("") ?? null,
+          unit: storedUnit ?? view.unit ?? null,
+          loading: storedUnit != null ? storedUnit !== unit : view.loading,
+          error: view.error,
+          refetchAgainst: step.refetchAgainst,
+        };
+      };
+      const settle = (unit: string, against: number) => {
+        local = settleHeldUnit(local, `${ENTITY}|${unit}`, against);
+      };
+      return { show, settle };
     };
     const fetched = (unit: string, rows: string[], at: number) => {
       cache[unit] = { data: { rows }, updatedAt: at };
+      delete failed[unit];
     };
-    const settle = (unit: string, against: number) => {
-      state = settleHeldUnit(state, `latestMovements|15|${unit}`, against);
+    const fail = (unit: string) => {
+      failed[unit] = new Error("down");
     };
-    return { show, fetched, settle, writes };
+    return { mount, fetched, fail, writes, cache };
   }
 
-  it("paints the stored copy only before anything is shown, and never steps back to an older copy", () => {
-    const p = panel({ usd: { rows: ["old"] }, clp: { rows: ["old clp"] } });
-    // Reload in usd: the stored copy paints, undimmed, until the server answers.
-    expect(p.show("usd")).toMatchObject({ value: { rows: ["old"] }, stored: true });
-    p.fetched("usd", ["a", "b", "c"], 10);
-    expect(p.show("usd")).toMatchObject({ value: { rows: ["a", "b", "c"] }, stored: false });
-    // Switch to clp: usd's rows stay, dimmed; clp's stored copy never replaces them.
-    expect(p.show("clp")).toMatchObject({ value: { rows: ["a", "b", "c"] }, stored: false, loading: true });
-    p.fetched("clp", ["d", "a", "b", "c"], 20);
-    expect(p.show("clp")).toMatchObject({ value: { rows: ["d", "a", "b", "c"] }, loading: false });
-    // Back to usd: the cached [a b c] predates what is on screen: clp's rows stay, usd refetches.
-    const back = p.show("usd");
-    expect(back).toMatchObject({ value: { rows: ["d", "a", "b", "c"] }, stored: false, loading: true });
-    expect(back.refetchAgainst).toBe(20);
-    p.fetched("usd", ["d", "a", "b", "c"], 30);
-    p.settle("usd", 20);
-    expect(p.show("usd")).toMatchObject({ value: { rows: ["d", "a", "b", "c"] }, loading: false });
-    // Only live payloads of the requested unit were stored, never a held one under another unit.
-    expect(new Set(p.writes.map(([unit, v]) => `${unit}:${v.rows.join("")}`))).toEqual(
-      new Set(["usd:abc", "clp:dabc", "usd:dabc"])
-    );
+  it("a remount holds what the panel drew last, and refetches an older copy of the unit", () => {
+    const s = session({ usd: { rows: ["o"] } });
+    const home = s.mount();
+    s.fetched("usd", ["a", "b", "c"], 10);
+    expect(home.show("usd")).toMatchObject({ rows: "abc", unit: "usd", loading: false });
+    // clp on the home page: usd's rows stay, dimmed, until clp's arrive.
+    expect(home.show("clp")).toMatchObject({ rows: "abc", unit: "usd", loading: true });
+    s.fetched("clp", ["d", "a", "b", "c"], 20);
+    expect(home.show("clp")).toMatchObject({ rows: "dabc", unit: "clp", loading: false });
+    // Another page switches to usd; back home, the panel mounts afresh with usd's older copy cached.
+    const back = s.mount();
+    expect(back.show("usd")).toMatchObject({ rows: "dabc", unit: "clp", loading: true, refetchAgainst: 20 });
+    s.fetched("usd", ["d", "a", "b", "c"], 30);
+    back.settle("usd", 20);
+    expect(back.show("usd")).toMatchObject({ rows: "dabc", unit: "usd", loading: false });
+    // And with the cached copy collected, a remount holds too: the stored copy never stands in.
+    delete s.cache.usd;
+    expect(s.mount().show("usd")).toMatchObject({ rows: "dabc", unit: "usd", loading: true });
   });
 
-  it("shows nothing stored when nothing was stored", () => {
-    expect(firstPaint(undefined, undefined)).toEqual({ value: null, stored: false });
-    expect(firstPaint({ rows: [] }, { rows: ["s"] })).toEqual({ value: { rows: [] }, stored: false });
+  it("a stored copy painted after a reload is held across a quick switch, never swapped for another", () => {
+    const s = session({ clp: { rows: ["d", "a", "b", "c"] }, usd: { rows: ["a", "b", "c"] }, eur: { rows: ["x"] } });
+    const p = s.mount();
+    // Reload in clp: the stored clp copy paints, undimmed.
+    expect(p.show("clp")).toMatchObject({ rows: "dabc", unit: "clp", loading: false });
+    // usd before clp's fetch lands: the clp copy stays, dimmed; usd's older stored copy is not read.
+    expect(p.show("usd")).toMatchObject({ rows: "dabc", unit: "clp", loading: true });
+    // eur, then a remount: still the copy on screen, in its own unit.
+    expect(p.show("eur")).toMatchObject({ rows: "dabc", unit: "clp", loading: true });
+    expect(s.mount().show("eur")).toMatchObject({ rows: "dabc", unit: "clp", loading: true });
+    // A fetched payload replaces it, whatever its unit.
+    s.fetched("eur", ["e", "d", "a", "b", "c"], 5);
+    expect(p.show("eur")).toMatchObject({ rows: "edabc", unit: "eur", loading: false });
+  });
+
+  it("a failed request reports its error, never a stored copy in its place", () => {
+    const s = session({ usd: { rows: ["o"] } });
+    s.fail("usd");
+    expect(s.mount().show("usd")).toMatchObject({ rows: null, loading: false, error: expect.any(Error) });
+    // After the panel drew a payload: a failed unit ends the hold with its error, then a remount
+    // still reads no stored copy.
+    const t = session({ usd: { rows: ["o"] }, clp: { rows: ["p"] } });
+    const p = t.mount();
+    t.fetched("usd", ["a"], 10);
+    p.show("usd");
+    t.fail("clp");
+    expect(p.show("clp")).toMatchObject({ rows: null, error: expect.any(Error) });
+    t.fetched("clp", ["b"], 20);
+    expect(p.show("clp")).toMatchObject({ rows: "b", unit: "clp", error: null });
+  });
+
+  it("holds the payload on screen in its unit through three units; only live data is stored", () => {
+    const s = session({});
+    const p = s.mount();
+    s.fetched("clp", ["a"], 10);
+    expect(p.show("clp")).toMatchObject({ rows: "a", unit: "clp" });
+    expect(p.show("usd")).toMatchObject({ rows: "a", unit: "clp", loading: true });
+    // usd still pending, eur asked: still the clp rows (the payload on screen, not the previous unit).
+    expect(p.show("eur")).toMatchObject({ rows: "a", unit: "clp", loading: true });
+    s.fetched("eur", ["b", "a"], 20);
+    expect(p.show("eur")).toMatchObject({ rows: "ba", unit: "eur", loading: false });
+    expect(s.writes).toEqual(new Set(["clp:a", "eur:ba"]));
   });
 });

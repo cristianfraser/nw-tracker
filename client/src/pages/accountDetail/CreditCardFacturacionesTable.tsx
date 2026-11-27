@@ -18,7 +18,6 @@ import { PaginatedTable, useClientPagination } from "../../components/ui/Paginat
 import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 import { Button } from "@crfrsr/ui";
 import { CreditCardFacturacionModalSections } from "../../components/credit-card/CreditCardFacturacionModalSections";
-import { ExpenseLinesUnitScope } from "../../components/credit-card/CreditCardExpenseLinesTable";
 import {
   buildFacturacionModalBucket,
   emptyFacturacionModalBucket,
@@ -354,13 +353,11 @@ export function CreditCardFacturacionesTable({
         ) : flowsPending ? (
           // The lines are not in yet: an empty dimmed body, never the «no lines» copy.
           <Loadable loading />
-        ) : facturacionLineCount === 0 ? (
+        ) : !flows || facturacionLineCount === 0 ? (
           <p className="muted">{t("accountDetail.creditCard.facturacionModalEmpty")}</p>
         ) : (
           <Loadable loading={flowsHeld}>
-            <ExpenseLinesUnitScope unit={flows?.unit}>
-              <CreditCardFacturacionModalSections bucket={facturacionBucket} categories={categories} />
-            </ExpenseLinesUnitScope>
+            <CreditCardFacturacionModalSections bucket={facturacionBucket} categories={categories} unit={flows.unit} />
           </Loadable>
         )}
       </Modal>

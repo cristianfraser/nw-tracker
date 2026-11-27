@@ -31,7 +31,8 @@ export function CreditCardFacturadoFinancingManager() {
   const del = useDeleteCcFacturadoFinancingLinkMutation();
 
   // The pickers (server-built: financed cards with their facturaciones, the plans), while open;
-  // held across a unit switch (their amounts are the cards' pesos).
+  // held across a unit switch. The amounts they list are the cards' billing pesos (`amount_clp`,
+  // formatted as such), whatever the payload's `unit`.
   const candidatesQuery = useHeldFlowsExpensesFinancingCandidates(displayUnit, open);
   const loading = candidatesQuery.data == null || candidatesQuery.loading;
   const financedAccounts = useMemo(() => candidatesQuery.data?.financed_accounts ?? [], [candidatesQuery.data]);
@@ -177,6 +178,11 @@ export function CreditCardFacturadoFinancingManager() {
         <p className="label-inline" style={{ marginBottom: "0.35rem" }}>
           {t("expenses.creditCard.financing.financingLabel")}
         </p>
+        {candidatesQuery.error != null ? (
+          <p className="error">
+            {candidatesQuery.error instanceof Error ? candidatesQuery.error.message : t("common.loadFailed")}
+          </p>
+        ) : null}
         <ul
           className={loadableClass(loading)}
           style={{ listStyle: "none", padding: 0, margin: "0 0 1rem", maxHeight: "16rem", overflowY: "auto" }}

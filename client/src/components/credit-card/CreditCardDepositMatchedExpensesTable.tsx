@@ -70,6 +70,9 @@ export function CreditCardDepositMatchedExpensesTable({ includePreTax }: { inclu
           {depositMatched.length}
         </span>
       </h3>
+      {query.error != null ? (
+        <p className="error">{query.error instanceof Error ? query.error.message : t("common.loadFailed")}</p>
+      ) : null}
       {paged.length > 1 ? (
         <div
           style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}
@@ -110,7 +113,7 @@ export function CreditCardDepositMatchedExpensesTable({ includePreTax }: { inclu
           showCategoryControls
           enableCheckingNotes
           loading={loading}
-          unit={query.data?.unit}
+          unit={query.data?.unit ?? null}
         />
         <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
       </CreditCardExpenseLinesSelectionProvider>

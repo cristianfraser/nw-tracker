@@ -11,7 +11,8 @@ const CHECK_INTERVAL_MS = 60_000;
  * `staleTime` nothing refetches, and charts would render yesterday's grid against the new
  * day for up to the refetch interval. On day change, invalidate everything: active queries
  * refetch in place (same cache entries — no per-day query keys), inactive ones refetch on
- * next mount, and `keepPreviousData` plus the chart pipeline's pending-bucket carry keep
+ * next mount, and the held surfaces (`heldUnitPayload.ts`, the raw lists' `sameEntityPlaceholder`)
+ * plus the chart pipeline's pending-bucket carry keep
  * the old points on screen while the round trip is in flight. Checks on a coarse interval
  * plus visibility/focus so a machine waking after midnight triggers immediately.
  */

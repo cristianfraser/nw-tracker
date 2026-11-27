@@ -42,8 +42,18 @@ import { entityKeyLength, type DisplayUnit } from "./keys";
  *    (`refetchInterval`) keeps reporting the error until it succeeds, instead of flipping back to
  *    a dimmed empty frame on every try.
  *
- * A copy updated at 0 is a stored first-paint copy (localStorage): it paints a surface that shows
- * nothing yet, is always «older» than anything fetched, and is never `live`.
+ * 4. **Session memory.** What a surface drew is remembered for the session, per entity, outside
+ *    the component ({@link sessionRecord}): a surface that remounts (a page left and come back to,
+ *    a tile hidden and drawn again) holds and compares exactly as if it had stayed mounted. Two
+ *    surfaces drawing the same entity share the record; each still decides on its own request.
+ * 5. **Stored copies are first paint only.** A browser copy (localStorage: the home panels, the
+ *    nav strip) paints a surface only while nothing has been drawn for it in this session
+ *    ({@link useStoredFirstPaint}); once painted it is what the surface shows, held like any
+ *    payload across a switch or a remount, until a fetched payload is shown. After that no stored
+ *    copy is read again for it, and a failed request reports its error, never a stored copy.
+ *
+ * A copy updated at 0 (never fetched: a stored or hand-set copy) is always «older» than anything
+ * fetched, and is never `live`.
  */
 
 /** A payload the surface could show: the requested key's own data and when it was fetched. */
@@ -87,6 +97,42 @@ const SETTLED_KEPT = 8;
 
 export function initialHeldUnitState<T>(): HeldUnitState<T> {
   return { shown: null, settled: new Map(), failed: null };
+}
+
+/**
+ * What the session's surfaces drew, by surface key (`shown|<entity>`, `firstPaint|<surface>`):
+ * the newest {@link SESSION_KEPT}, least recently read dropped first. It holds payloads, so it is
+ * bounded; a dropped record only makes its surface start as on a first visit.
+ */
+const SESSION_KEPT = 64;
+const sessionRecords = new Map<string, unknown>();
+
+/** A surface's session record (read marks it recent). */
+function sessionRecord<R>(key: string): R | undefined {
+  const r = sessionRecords.get(key);
+  if (r === undefined) return undefined;
+  sessionRecords.delete(key);
+  sessionRecords.set(key, r);
+  return r as R;
+}
+
+/**
+ * Sets (or, with undefined, drops) a surface's session record. Written during render, like a
+ * state set during render: idempotent, and read only by later renders.
+ */
+function setSessionRecord(key: string, record: unknown): void {
+  sessionRecords.delete(key);
+  if (record === undefined) return;
+  sessionRecords.set(key, record);
+  for (const old of sessionRecords.keys()) {
+    if (sessionRecords.size <= SESSION_KEPT) break;
+    sessionRecords.delete(old);
+  }
+}
+
+/** Forgets every surface (tests; a session starts empty). */
+export function resetHeldUnitSession(): void {
+  sessionRecords.clear();
 }
 
 const fetchedAtByQuery = new WeakMap<Query, number>();
@@ -247,7 +293,29 @@ export function settleHeldUnit<T>(state: HeldUnitState<T>, key: string, against:
 }
 
 /**
- * {@link stepHeldUnit} as a hook. `candidate.data`'s identity dates its content (react-query's
+ * One render of a mounted surface: {@link stepHeldUnit} over the session record of `entity` (what
+ * any mount of a surface of that entity drew last, kept outside the component) and this mount's
+ * own memory (`local`: its forced refetches and failure). Writes the record back; returns this
+ * mount's next memory (the same object when unchanged).
+ */
+export function renderHeldUnit<T>(
+  local: HeldUnitState<T>,
+  input: HeldUnitInput<T>
+): { view: HeldUnitView<T>; local: HeldUnitState<T>; refetchAgainst: number | null } {
+  const recordKey = `shown|${input.entity}`;
+  const remembered = sessionRecord<ShownRecord<T>>(recordKey) ?? null;
+  const step = stepHeldUnit({ ...local, shown: remembered }, input);
+  if (step.state.shown !== remembered) setSessionRecord(recordKey, step.state.shown ?? undefined);
+  const changed = step.state.settled !== local.settled || step.state.failed !== local.failed;
+  return {
+    view: step.view,
+    local: changed ? { shown: null, settled: step.state.settled, failed: step.state.failed } : local,
+    refetchAgainst: step.refetchAgainst,
+  };
+}
+
+/**
+ * {@link renderHeldUnit} as a hook. `candidate.data`'s identity dates its content (react-query's
  * structural sharing keeps it while equal). `refetch` is run, once per (key, held timestamp),
  * when the requested copy is older; without one an older copy is shown.
  */
@@ -262,8 +330,8 @@ function useHeldUnitValue<T>(opts: {
   refetch?: () => Promise<unknown>;
 }): HeldUnitView<T> {
   const { key, refetch } = opts;
-  const [state, setState] = useState<HeldUnitState<T>>(initialHeldUnitState);
-  const step = stepHeldUnit(state, {
+  const [local, setLocal] = useState<HeldUnitState<T>>(initialHeldUnitState);
+  const step = renderHeldUnit(local, {
     candidate: opts.candidate,
     pending: opts.pending,
     error: opts.error ?? null,
@@ -273,20 +341,72 @@ function useHeldUnitValue<T>(opts: {
     enabled: opts.enabled ?? true,
     canRefetch: refetch != null,
   });
-  // Derived during render (React re-runs this render before committing it): the first frame of
-  // a switch already compares against what was on screen, so a stale copy never flashes.
-  if (step.state !== state) setState(step.state);
+  // Derived during render: the first frame of a switch (or of a remount) already compares
+  // against what was on screen, so a stale copy never flashes.
+  if (step.local !== local) setLocal(step.local);
 
   const against = step.refetchAgainst;
   useEffect(() => {
     if (against == null || !refetch) return;
     // Settled per key: a late settle of an earlier key never overwrites a later key's.
-    void refetch().finally(() => setState((s) => settleHeldUnit(s, key, against)));
+    void refetch().finally(() => setLocal((s) => settleHeldUnit(s, key, against)));
     // Once per (request, held timestamp): a re-render while it runs must not refetch again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, against]);
 
   return step.view;
+}
+
+/** A surface's first-paint record: the stored copy it painted (in the unit it was read for), or
+ * that a fetched payload has been drawn (no stored copy is read again). */
+export type FirstPaintRecord<T> = { drawn: true } | { drawn: false; value: T; unit: DisplayUnit };
+
+/**
+ * One render of a stored first paint: `shown` = the surface draws a payload of its own request
+ * (live or held); `failed` = its request failed with nothing to show; `read` reads the stored copy
+ * of the requested `unit`, only while nothing was drawn. Returns the stored copy to draw (and the
+ * unit it is in), and the record to keep.
+ */
+export function stepStoredFirstPaint<T>(
+  record: FirstPaintRecord<T> | undefined,
+  input: { shown: boolean; failed: boolean; unit: DisplayUnit; read: () => T | undefined }
+): { value: T | undefined; unit: DisplayUnit | undefined; record: FirstPaintRecord<T> | undefined } {
+  if (input.shown) return { value: undefined, unit: undefined, record: record?.drawn ? record : { drawn: true } };
+  // A failed request reports its error; nothing stored stands in for it.
+  if (input.failed) return { value: undefined, unit: undefined, record };
+  if (record) {
+    return record.drawn
+      ? { value: undefined, unit: undefined, record }
+      : { value: record.value, unit: record.unit, record };
+  }
+  const value = input.read();
+  if (value === undefined) return { value: undefined, unit: undefined, record: undefined };
+  return { value, unit: input.unit, record: { drawn: false, value, unit: input.unit } };
+}
+
+/**
+ * A surface's stored first paint ({@link stepStoredFirstPaint}) over its session record
+ * (`surface` names the surface and its entity, e.g. `navStrip|net_worth`): the stored copy of the
+ * requested unit paints only before anything was drawn for the surface in this session; once
+ * painted it is held (its own `unit`) across a switch or a remount until a payload is drawn.
+ */
+export function useStoredFirstPaint<T>(
+  surface: string,
+  input: { shown: boolean; failed: boolean; unit: DisplayUnit; read: () => T | undefined }
+): { value: T | undefined; unit: DisplayUnit | undefined } {
+  return renderStoredFirstPaint(surface, input);
+}
+
+/** One render of {@link useStoredFirstPaint} (no React state: the record is the session's). */
+export function renderStoredFirstPaint<T>(
+  surface: string,
+  input: { shown: boolean; failed: boolean; unit: DisplayUnit; read: () => T | undefined }
+): { value: T | undefined; unit: DisplayUnit | undefined } {
+  const recordKey = `firstPaint|${surface}`;
+  const record = sessionRecord<FirstPaintRecord<T>>(recordKey);
+  const step = stepStoredFirstPaint(record, input);
+  if (step.record !== record) setSessionRecord(recordKey, step.record);
+  return { value: step.value, unit: step.unit };
 }
 
 /** A display-unit query's options (`useQuery` options, with a declared-entity key from `keys.ts`). */
