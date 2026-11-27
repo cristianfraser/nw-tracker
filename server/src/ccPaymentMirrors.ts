@@ -26,7 +26,8 @@
  * A converted pair stays tied to its evidence by the payment's card, date and amount, never by the
  * statement row it was paired with — re-imports replace those rows (`ccPaymentMirrorEvidence.ts`).
  */
-import { foldMirrorLegFlowsIntoTransfer } from "./flows/mirrorLegFlows.js";
+import { cardPaymentDebitConflict, foldMirrorLegFlowsIntoTransfer } from "./flows/mirrorLegFlows.js";
+import { movementFlowId } from "./flows/flowIdentity.js";
 import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
@@ -322,6 +323,9 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   return picked.map((p) => {
     const multiClaim = (evidenceClaims.get(evKey(p.ev)) ?? 0) > 1;
     const isAmbiguous = ambiguous.has(p.out.id) || multiClaim;
+    // What was filed on the debit has to fit a card payment, which its flow becomes.
+    const debitConflict = cardPaymentDebitConflict(movementFlowId(p.out.id));
+    const blockedReason = isAmbiguous ? "ambiguous match (multiple pairs at equal distance)" : debitConflict;
     return {
       out: {
         movement_id: p.out.id,
@@ -333,8 +337,8 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
       },
       evidence: p.ev,
       skew_days: daysBetweenIso(p.ev.pago_iso, p.out.occurred_on),
-      blocked: isAmbiguous,
-      blocked_reason: isAmbiguous ? "ambiguous match (multiple pairs at equal distance)" : null,
+      blocked: blockedReason != null,
+      blocked_reason: blockedReason,
     };
   });
 }

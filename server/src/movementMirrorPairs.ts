@@ -33,7 +33,9 @@ import { PAYROLL_FUNDED_KINDS, TERM_DEPOSIT_KIND } from "./accountProfile.js";
 import { daysBetweenIso } from "nw-tracker-contracts";
 import { MATCH_WINDOWS } from "./matching/windows.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
-import { movementIdOnFlowOfKey } from "./flows/flowIdentity.js";
+import { movementFlowId, movementIdOnFlowOfKey } from "./flows/flowIdentity.js";
+import { mirrorLegFlowsConflict } from "./flows/mirrorLegFlows.js";
+import type { MirrorPairBlockedReason } from "nw-tracker-contracts/dto/mirrors";
 import { cartolaRowPurchaseKey } from "./bankRowFacts.js";
 import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { EXPENSE_KEY_PREFIXES } from "./expenseKeys.js";
@@ -98,6 +100,11 @@ export type MirrorPairCandidate = {
   out_alternatives: MirrorPairAlternative[];
   in_alternatives: MirrorPairAlternative[];
   confidence: "high" | "ambiguous";
+  /**
+   * Set when the legs' flows cannot become one transfer's (`mirrorLegFlowsConflict`): the panel
+   * shows the pair apart and the conversion refuses it until the user removes one of the two.
+   */
+  blocked_reason: MirrorPairBlockedReason | null;
 };
 
 export type RejectedMirrorPair = {
@@ -471,6 +478,11 @@ function alternative(
   };
 }
 
+/** Why two legs cannot be converted as they stand (`mirrorLegFlowsConflict`), else null. */
+function pairBlockedReason(outId: number, inId: number): MirrorPairBlockedReason | null {
+  return mirrorLegFlowsConflict([movementFlowId(outId), movementFlowId(inId)])?.code ?? null;
+}
+
 /**
  * All current mirror-pair candidates, greedily consumed 1:1 (gap asc, amount desc, ids asc).
  * Rejected combinations are skipped during enumeration, so a rejected pair's legs stay free to
@@ -540,6 +552,7 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
       in_alternatives: [],
       confidence: monthStraddle || outAlternatives.length > 0 ? "ambiguous" : "high",
       linked: true,
+      blocked_reason: pairBlockedReason(lp.out.id, lp.in.id),
     });
   }
 
@@ -576,6 +589,7 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
       in_alternatives: inAlternatives,
       confidence: high ? "high" : "ambiguous",
       linked: false,
+      blocked_reason: pairBlockedReason(p.out.id, p.in.id),
     });
   }
   return result;

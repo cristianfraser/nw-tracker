@@ -6,11 +6,20 @@
  * (category, note, big group, pieces, links). An undo hands it back to the restored legs.
  *
  * Conversion: each leg's flow folds into the transfer's (`mergeFlowInto`), and the transfer's flow
- * answers to the transfer's key (`checking-mv:<transfer>`), the key its lines read. Two legs that
- * carry the same kind of assignment on the same portion and piece with different values (two notes,
- * two big groups, two categories, two sets of pieces) are refused: one transfer holds one of each,
- * and neither is the user's obvious choice. Equal values are one assignment. A leg marked as a
- * refund of spending is refused too: like a credit classified as income, it is not a transfer leg.
+ * answers to the transfer's key (`checking-mv:<transfer>`). Two legs that carry the same kind of
+ * assignment with different values are refused ({@link mirrorLegFlowsConflict}, which the candidate
+ * list reads to block the pair): one transfer holds one of each, and neither is the user's obvious
+ * choice. Equal values (the same note, category or big group on both legs) collapse into one row,
+ * which an undo gives back to one leg only. Everything on a leg's flow moves to the transfer, not
+ * just the leg's own assignments: the flow is the leg's alone (a bank movement's flow records only
+ * that movement and, after a cartola restated it, its earlier listing kept as history), so nothing
+ * of another row comes along.
+ *
+ * What a user sees of it: the arrival orders a card payment's row in «Últimos movimientos»
+ * (`latestMovements.ts`, card payment rows); a plain transfer between own accounts has no row there.
+ * No surface lists a transfer's note, category or big group (the expense, income and checking lists
+ * read single-leg bank rows; the flows table and the checking page show the movement's own note):
+ * they are kept on the flow for the undo.
  *
  * Undo: the restored legs have new ids and fresh flows. Each first takes back a flow retired with
  * its own document (`adoptRetiredMovementFlow`: a conversion made before the legs' flows were
@@ -27,28 +36,40 @@ import { copyFlowFirstSeen } from "./flowFirstSeen.js";
 import { copyFlowEventTime } from "./flowEventTimes.js";
 import { adoptRetiredMovementFlow } from "./flowAdoption.js";
 import { FLOW_HOLDING_TABLES } from "./flowTriggerSpecs.js";
+import type { MirrorPairBlockedReason } from "nw-tracker-contracts/dto/mirrors";
 
-/** Key-named assignment tables (one row per flow, portion and piece) and the column that is their value. */
-const KEYED_VALUE_TABLES: readonly { table: string; value: string }[] = [
-  { table: "flow_categories", value: "category_id" },
-  { table: "flow_notes", value: "notes" },
-  { table: "flow_big_groups", value: "group_slug" },
+/** Key-named assignment tables (one row per flow, portion and piece), the column that is their value, the code. */
+const KEYED_VALUE_TABLES: readonly { table: string; value: string; code: MirrorPairBlockedReason }[] = [
+  { table: "flow_categories", value: "category_id", code: "conflicting_category" },
+  { table: "flow_notes", value: "notes", code: "conflicting_note" },
+  { table: "flow_big_groups", value: "group_slug", code: "conflicting_big_group" },
 ];
 
+/** Why legs cannot become one transfer: the code the panel words, and a line for errors and logs. */
+export type MirrorLegConflict = { code: MirrorPairBlockedReason; detail: string };
+
 /**
- * Why two legs' flows cannot become one transfer's flow (null when they can): a refund mark on
- * either, two different values of one key-named assignment, or pieces on both.
+ * Why two legs' flows cannot become one transfer's flow (null when they can): every claim
+ * `mergeFlowInto` would refuse mid-merge or silently drop one of. A refund mark on either leg (the
+ * leg is spending coming back, not a transfer leg; `flow_refunds` is one row per flow); two different
+ * values of one key-named assignment; pieces on both (one set per flow); a bill link on both on one
+ * portion and piece (`idx_flow_links_bill_flow`); a funding link from both legs to one deposit on one
+ * portion and piece (`idx_flow_links_funded_deposit`; the link between the two legs is the pairing and
+ * is deleted before the fold); a financing link of one record on both (`idx_flow_links_financing`);
+ * a facturado payment charge of one record on both (`cc_facturado_payment_charges` primary key). The
+ * last two hang off card flows and never off a bank leg; they are checked so a refusal is the answer,
+ * never a constraint error. Income overrides are deleted before the fold, so they never meet.
  */
-export function mirrorLegFlowsConflict(legFlowIds: readonly number[], dbHandle: Database = db): string | null {
+export function mirrorLegFlowsConflict(legFlowIds: readonly number[], dbHandle: Database = db): MirrorLegConflict | null {
   for (const f of legFlowIds) {
     if (dbHandle.prepare(`SELECT 1 FROM flow_refunds WHERE flow_id = ?`).get(f) != null) {
-      return `flow ${f} is marked as a refund of spending, not a transfer leg`;
+      return { code: "refund_marked", detail: `flow ${f} is marked as a refund of spending, not a transfer leg` };
     }
   }
   if (legFlowIds.length < 2) return null;
   const [a, b] = legFlowIds as [number, number];
   if (a === b) return null;
-  for (const { table, value } of KEYED_VALUE_TABLES) {
+  for (const { table, value, code } of KEYED_VALUE_TABLES) {
     const clash = dbHandle
       .prepare(
         `SELECT x.portion, x.piece_seq FROM ${table} x JOIN ${table} y
@@ -56,10 +77,45 @@ export function mirrorLegFlowsConflict(legFlowIds: readonly number[], dbHandle: 
          WHERE x.flow_id = ? AND x.${value} IS NOT y.${value} LIMIT 1`
       )
       .get(b, a) as { portion: string; piece_seq: number } | undefined;
-    if (clash) return `both legs carry a different ${table} row (${clash.portion}, piece ${clash.piece_seq}); keep one and retry`;
+    if (clash) return { code, detail: `both legs carry a different ${table} row (${clash.portion}, piece ${clash.piece_seq})` };
   }
-  const hasParts = (f: number) => dbHandle.prepare(`SELECT 1 FROM flow_parts WHERE flow_id = ?`).get(f) != null;
-  if (hasParts(a) && hasParts(b)) return `both legs are split into pieces; keep one split and retry`;
+  const both = (sql: string) => dbHandle.prepare(sql).get(a, b) != null;
+  if (both(`SELECT 1 FROM flow_parts x WHERE x.flow_id = ? AND EXISTS (SELECT 1 FROM flow_parts y WHERE y.flow_id = ?)`)) {
+    return { code: "conflicting_pieces", detail: "both legs are split into pieces" };
+  }
+  const linkClash = (kind: string, same: string) =>
+    both(
+      `SELECT 1 FROM flow_links x JOIN flow_links y ON y.kind = x.kind AND y.portion = x.portion AND y.piece_seq = x.piece_seq ${same}
+       WHERE x.kind = '${kind}' AND x.flow_id = ? AND y.flow_id = ?`
+    );
+  if (linkClash("bill", "")) return { code: "conflicting_bill_link", detail: "both legs are linked to a bill" };
+  if (linkClash("funded_deposit", `AND y.counterpart_flow_id = x.counterpart_flow_id AND x.counterpart_flow_id NOT IN (${a}, ${b})`)) {
+    return { code: "conflicting_deposit_link", detail: "both legs fund the same deposit" };
+  }
+  if (linkClash("finances_facturado", "AND y.financing_link_id = x.financing_link_id")) {
+    return { code: "conflicting_financing_link", detail: "both legs finance the same facturado" };
+  }
+  if (
+    both(
+      `SELECT 1 FROM cc_facturado_payment_charges x JOIN cc_facturado_payment_charges y ON y.financing_link_id = x.financing_link_id
+       WHERE x.flow_id = ? AND y.flow_id = ?`
+    )
+  ) {
+    return { code: "conflicting_facturado_charge", detail: "both legs pay the same facturado" };
+  }
+  return null;
+}
+
+/**
+ * Why a checking debit cannot become a `pago_tarjeta` transfer (null when it can): what was filed on
+ * it would mean nothing on a card payment, which is no expense line — a refund mark, a bill link, a
+ * split into pieces.
+ */
+export function cardPaymentDebitConflict(debitFlowId: number, dbHandle: Database = db): string | null {
+  const has = (sql: string) => dbHandle.prepare(sql).get(debitFlowId) != null;
+  if (has(`SELECT 1 FROM flow_refunds WHERE flow_id = ?`)) return "the debit is marked as a refund of spending";
+  if (has(`SELECT 1 FROM flow_links WHERE flow_id = ? AND kind = 'bill'`)) return "the debit is linked to a bill";
+  if (has(`SELECT 1 FROM flow_parts WHERE flow_id = ?`)) return "the debit is split into pieces";
   return null;
 }
 

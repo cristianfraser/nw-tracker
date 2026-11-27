@@ -39,6 +39,7 @@ import { listMirrorPairCandidates, mirrorLegIsMonthPrecision, resolveMirrorPairR
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { type MovementAmountFields } from "./movementAmounts.js";
 import { HOME_CURRENCY, roundToCurrency } from "./displayUnits.js";
+import type { RefusedMirrorPair } from "nw-tracker-contracts/dto/mirrors";
 import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { cartolaRowPurchaseKey } from "./bankRowFacts.js";
 import { movementFlowId } from "./flows/flowIdentity.js";
@@ -55,6 +56,21 @@ export class MirrorConvertStaleError extends Error {
   constructor(pair: MirrorPairRef, reason: string) {
     super(`mirror pair ${pair.out_movement_id}→${pair.in_movement_id}: ${reason}`);
     this.pair = pair;
+  }
+}
+
+/**
+ * Every requested pair was left alone because its legs' assignments conflict
+ * (`mirrorLegFlowsConflict`): nothing to convert, a 409 naming the pairs and why.
+ */
+export class MirrorPairConflictError extends Error {
+  refused: RefusedMirrorPair[];
+  constructor(refused: RefusedMirrorPair[], details: string[]) {
+    super(
+      `mirror pairs not converted, their legs carry conflicting assignments: ` +
+        refused.map((r, i) => `${r.out_movement_id}→${r.in_movement_id} (${details[i]})`).join("; ")
+    );
+    this.refused = refused;
   }
 }
 
@@ -94,13 +110,15 @@ function signedMirrorLegAmount(leg: LegRow, side: "out" | "in"): number {
 }
 
 /**
- * Converts pairs in one all-or-nothing transaction. Every requested pair must be a *current*
- * candidate, or an alternative an ambiguous candidate offers in place of its greedy pick
- * (`resolveMirrorPairRef`) — a stale UI, a double submit, or a leg consumed by another conversion
- * throws MirrorConvertStaleError and nothing is written.
+ * Converts pairs in one transaction. Every requested pair must be a *current* candidate, or an
+ * alternative an ambiguous candidate offers in place of its greedy pick (`resolveMirrorPairRef`) — a
+ * stale UI, a double submit, or a leg consumed by another conversion throws MirrorConvertStaleError
+ * and nothing is written. A pair whose legs carry conflicting assignments (`mirrorLegFlowsConflict`,
+ * the candidate's `blocked_reason`) is left alone and listed in `refused`, and the others convert;
+ * when every requested pair is refused, MirrorPairConflictError says which and why.
  */
-export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: ConvertedMirrorPair[] } {
-  if (pairs.length === 0) return { converted: [] };
+export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: ConvertedMirrorPair[]; refused: RefusedMirrorPair[] } {
+  if (pairs.length === 0) return { converted: [], refused: [] };
   const legStmt = db.prepare(
     `SELECT id, account_id, occurred_on, amount, currency, counter_amount, counter_currency, units_delta, note, flow_kind
      FROM movements WHERE id = ? AND account_id IS NOT NULL`
@@ -124,9 +142,11 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
     `DELETE FROM flow_links WHERE kind = 'funded_deposit' AND ((flow_id = ? AND counterpart_flow_id = ?) OR (flow_id = ? AND counterpart_flow_id = ?))`
   );
 
-  const run = db.transaction((requested: MirrorPairRef[]): ConvertedMirrorPair[] => {
+  const run = db.transaction((requested: MirrorPairRef[]) => {
     const candidates = listMirrorPairCandidates();
     const converted: ConvertedMirrorPair[] = [];
+    const refused: RefusedMirrorPair[] = [];
+    const refusedDetails: string[] = [];
     for (const ref of requested) {
       const cand = resolveMirrorPairRef(candidates, ref);
       if (!cand) throw new MirrorConvertStaleError(ref, "not a current candidate or alternative");
@@ -141,7 +161,11 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       const outFlow = movementFlowId(out.id);
       const inFlow = movementFlowId(inn.id);
       const conflict = mirrorLegFlowsConflict([outFlow, inFlow]);
-      if (conflict) throw new MirrorConvertStaleError(ref, conflict);
+      if (conflict) {
+        refused.push({ out_movement_id: out.id, in_movement_id: inn.id, reason: conflict.code });
+        refusedDetails.push(conflict.detail);
+        continue;
+      }
 
       const note = mirrorMergeHumanNote(out.occurred_on, inn.occurred_on);
       const unitsSource = out.units_delta ?? inn.units_delta;
@@ -204,10 +228,11 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
           out.occurred_on < inn.occurred_on ? out.occurred_on : inn.occurred_on,
       });
     }
-    return converted;
+    if (converted.length === 0 && refused.length > 0) throw new MirrorPairConflictError(refused, refusedDetails);
+    return { converted, refused };
   });
 
-  return { converted: run(pairs) };
+  return run(pairs);
 }
 
 /**

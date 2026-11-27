@@ -47,11 +47,17 @@ export function buildMirrorPairsPanel(
 ): MovementMirrorCandidatesResponse {
   return {
     high: mirrorPairSection(
-      pairs.filter((p) => p.confidence === "high"),
+      pairs.filter((p) => p.confidence === "high" && p.blocked_reason == null),
       legRoute
     ),
     ambiguous: mirrorPairSection(
-      pairs.filter((p) => p.confidence === "ambiguous"),
+      pairs.filter((p) => p.confidence === "ambiguous" && p.blocked_reason == null),
+      legRoute
+    ),
+    // A pair whose legs carry conflicting assignments is shown apart with its reason: it converts
+    // once the user removes one of the two.
+    blocked: mirrorPairSection(
+      pairs.filter((p) => p.blocked_reason != null),
       legRoute
     ),
     // A blocked card payment cannot be converted (its card still waits on evidence), so the panel

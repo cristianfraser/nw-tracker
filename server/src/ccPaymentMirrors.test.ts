@@ -282,6 +282,23 @@ describe("an undated header payment's legs", () => {
   });
 });
 
+describe("a card payment debit carrying a refund mark", () => {
+  it("is blocked with a reason the nightly task reports, and never converted", () => {
+    if (checkingId == null || ccId == null) return;
+    const cand = myCandidates().find((c) => c.evidence.amount_clp === 612443)!;
+    const refundCategory = (db.prepare(`SELECT id FROM cc_expense_categories LIMIT 1`).get() as { id: number }).id;
+    db.prepare(`INSERT INTO flow_refunds (flow_id, category_id) SELECT flow_id, ? FROM movements WHERE id = ?`).run(
+      refundCategory,
+      cand.out.movement_id
+    );
+    const blocked = myCandidates().find((c) => c.out.movement_id === cand.out.movement_id)!;
+    expect(blocked.blocked).toBe(true);
+    expect(blocked.blocked_reason).toBe("the debit is marked as a refund of spending");
+    db.prepare(`DELETE FROM flow_refunds WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`).run(cand.out.movement_id);
+    expect(myCandidates().find((c) => c.out.movement_id === cand.out.movement_id)!.blocked).toBe(false);
+  });
+});
+
 describe("convertCcPaymentMirrors", () => {
   it("converts to a transfer on the card date, flow-neutral, and undo restores the leg", () => {
     if (checkingId == null || ccId == null) return;

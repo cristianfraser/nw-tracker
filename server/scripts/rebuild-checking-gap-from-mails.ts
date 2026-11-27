@@ -314,7 +314,8 @@ const tx = db.transaction(() => {
   const leftover = vistaRows.filter((r) => !usedVista.has(r.id));
   if (leftover.length > 0)
     throw new Error(`vista traspasos with no mail: ${leftover.map((r) => `${r.id} ${r.occurred_on} ${fmt(r.amount)}`).join("; ")}`);
-  const { converted } = convertMirrorPairs(pairs.map(({ out_movement_id, in_movement_id }) => ({ out_movement_id, in_movement_id })));
+  const { converted, refused } = convertMirrorPairs(pairs.map(({ out_movement_id, in_movement_id }) => ({ out_movement_id, in_movement_id })));
+  if (refused.length > 0) throw new Error(`pairs refused: ${refused.map((r) => `${r.out_movement_id}→${r.in_movement_id} (${r.reason})`).join("; ")}`);
   const setDate = db.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`);
   for (const [i, c] of converted.entries()) setDate.run(sentDay(pairs[i]!.mail), c.transfer_movement_id);
   say(`vista↔corriente: ${converted.length} transfers (vista cartola rows paired: ${usedVista.size}), posting rule held on every one`);

@@ -6387,6 +6387,60 @@
       "en": "No ambiguous candidates.",
       "es": "Sin candidatos ambiguos."
     },
+    "blockedTitle": {
+      "en": "To fix first ({{n}})",
+      "es": "Por corregir antes ({{n}})"
+    },
+    "blockedHint": {
+      "en": "Both legs carry something one transfer can hold only once. Remove it from one of them, or reject the pair.",
+      "es": "Ambas patas tienen algo que una sola transferencia puede tener una vez. Quítalo de una de ellas, o rechaza el par."
+    },
+    "blockedReason": {
+      "refund_marked": {
+        "en": "a leg is marked as a refund of spending",
+        "es": "una pata está marcada como reembolso de gasto"
+      },
+      "conflicting_category": {
+        "en": "each leg has a different category",
+        "es": "cada pata tiene otra categoría"
+      },
+      "conflicting_note": {
+        "en": "each leg has a different note",
+        "es": "cada pata tiene otra nota"
+      },
+      "conflicting_big_group": {
+        "en": "each leg is in a different big group",
+        "es": "cada pata está en otro gran grupo"
+      },
+      "conflicting_pieces": {
+        "en": "both legs are split into pieces",
+        "es": "ambas patas están divididas en partes"
+      },
+      "conflicting_bill_link": {
+        "en": "both legs are linked to a bill",
+        "es": "ambas patas están enlazadas a una cuenta"
+      },
+      "conflicting_deposit_link": {
+        "en": "both legs fund the same deposit",
+        "es": "ambas patas financian el mismo depósito"
+      },
+      "conflicting_financing_link": {
+        "en": "both legs finance the same facturado",
+        "es": "ambas patas financian el mismo facturado"
+      },
+      "conflicting_facturado_charge": {
+        "en": "both legs pay the same facturado",
+        "es": "ambas patas pagan el mismo facturado"
+      }
+    },
+    "refusedSome": {
+      "en": "{{n}} pairs were not converted: their legs carry conflicting assignments.",
+      "es": "{{n}} pares no se convirtieron: sus patas tienen asignaciones en conflicto."
+    },
+    "refusedSomeOne": {
+      "en": "1 pair was not converted: its legs carry conflicting assignments.",
+      "es": "1 par no se convirtió: sus patas tienen asignaciones en conflicto."
+    },
     "rejectedTitle": {
       "en": "Rejected ({{n}})",
       "es": "Rechazados ({{n}})"

@@ -222,8 +222,9 @@ export function MirrorPairsPanelPage() {
 
   const convert = useMutation({
     mutationFn: (pairs: MirrorPairRef[]) => api.convertMovementMirrors(pairs),
-    onSuccess: () => {
-      setActionError(null);
+    onSuccess: (result) => {
+      const n = result.refused.length;
+      setActionError(n === 0 ? null : n === 1 ? t("mirrorPairs.refusedSomeOne") : t("mirrorPairs.refusedSome", { n }));
       invalidateAll();
     },
     onError: (e) => setActionError(e instanceof Error ? e.message : String(e)),
@@ -256,6 +257,7 @@ export function MirrorPairsPanelPage() {
 
   const high: MirrorPairSection<MirrorPairCandidate> = data?.high ?? EMPTY_SECTION;
   const ambiguous: MirrorPairSection<MirrorPairCandidate> = data?.ambiguous ?? EMPTY_SECTION;
+  const blocked: MirrorPairSection<MirrorPairCandidate> = data?.blocked ?? EMPTY_SECTION;
   const cc: MirrorPairSection<CcPaymentMirrorCandidateDto> = data?.cc_payments ?? EMPTY_SECTION;
   const rejected = data?.rejected ?? [];
 
@@ -308,7 +310,7 @@ export function MirrorPairsPanelPage() {
     return parts.length === 0 ? null : parts.join(" · ");
   };
 
-  const legRow = (p: MirrorPairCandidate, mode: "high" | "ambiguous"): PairRowItem => {
+  const legRow = (p: MirrorPairCandidate, mode: "high" | "ambiguous" | "blocked"): PairRowItem => {
     const alts = [
       ...p.out_alternatives.map((a) => ({ alt: a, side: "out" as const })),
       ...p.in_alternatives.map((a) => ({ alt: a, side: "in" as const })),
@@ -321,10 +323,20 @@ export function MirrorPairsPanelPage() {
       to: p.gap_days > 0 ? p.in.occurred_on : null,
       amount: legAmountText(p.out),
       units: legUnits(p),
-      flags: pairFlags(p, t),
+      flags: p.blocked_reason ? [t(`mirrorPairs.blockedReason.${p.blocked_reason}`), ...pairFlags(p, t)] : pairFlags(p, t),
       note: legNote(p),
       actions:
-        mode === "ambiguous" ? (
+        mode === "blocked" ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            aria-label={t("mirrorPairs.rejectPair", { pair: name })}
+            onClick={() => reject.mutate([pairRef(p)])}
+          >
+            {t("mirrorPairs.reject")}
+          </Button>
+        ) : mode === "ambiguous" ? (
           <>
             <Button
               size="sm"
@@ -346,7 +358,7 @@ export function MirrorPairsPanelPage() {
           </>
         ) : null,
       alternatives:
-        alts.length === 0
+        alts.length === 0 || mode === "blocked"
           ? null
           : alts.map(({ alt, side }) => (
               <div key={`${side}|${alt.leg.movement_id}`} className={styles.alt}>
@@ -449,6 +461,22 @@ export function MirrorPairsPanelPage() {
           />
         ))
       )}
+
+      {blocked.count > 0 ? (
+        <>
+          <h3>{t("mirrorPairs.blockedTitle", { n: blocked.count })}</h3>
+          <p className="muted">{t("mirrorPairs.blockedHint")}</p>
+          {blocked.routes.map((route) => (
+            <RouteBlock
+              key={`${route.from.account_id}|${route.to.account_id}`}
+              route={route}
+              check={null}
+              actions
+              rows={route.pairs.map((p) => legRow(p, "blocked"))}
+            />
+          ))}
+        </>
+      ) : null}
 
       <h3>{t("mirrorPairs.ccTitle", { n: cc.count })}</h3>
       {cc.count === 0 && !isPending ? (

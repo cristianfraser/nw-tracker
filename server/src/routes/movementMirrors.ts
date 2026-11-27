@@ -4,6 +4,7 @@ import { writeHandler } from "../inputError.js";
 import {
   convertMirrorPairs,
   MirrorConvertStaleError,
+  MirrorPairConflictError,
   rejectMirrorPairs,
   unrejectMirrorPairs,
 } from "../movementMirrorConvert.js";
@@ -34,6 +35,10 @@ export function registerMovementMirrorsRoutes(app: express.Express): void {
     } catch (e) {
       if (e instanceof MirrorConvertStaleError) {
         res.status(409).json({ error: e.message, pair: e.pair });
+        return;
+      }
+      if (e instanceof MirrorPairConflictError) {
+        res.status(409).json({ error: e.message, refused: e.refused });
         return;
       }
       throw e;
