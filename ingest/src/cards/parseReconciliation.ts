@@ -6,10 +6,11 @@ import { resolveCfraserDir } from "../paths.js";
  * The card statement parser's reconciliation (`cc-statements-parse-reconciliation.jsonl`, one
  * JSON object per statement, written by `ingest/python/cc_statement_reconcile.py`): a statement
  * whose parsed lines do not add up to the figures it prints is `withheld` — left out of the
- * parsed CSV, so the import never sees it and its rows on file stay as they are.
+ * parsed CSV, so the import never sees it and its rows on file stay as they are. So is one the
+ * reconcile raised on (`error`: a row with no parser layout, an amount it cannot read).
  */
 type ReconcileCheck = { code: string; ok: boolean; expected: number | null; actual: number | null; delta: number | null };
-type ReconcileEntry = { source_pdf: string; currency: string; withheld?: boolean; checks?: ReconcileCheck[] };
+type ReconcileEntry = { source_pdf: string; currency: string; withheld?: boolean; checks?: ReconcileCheck[]; error?: string };
 
 /** The corpus run's reconciliation file, or the one beside a side run's output CSV. */
 export function parseReconciliationPath(outputCsv?: string): string {
@@ -32,6 +33,13 @@ export function withheldStatementProblems(file: string): string[] {
     if (!line.trim()) continue;
     const entry = JSON.parse(line) as ReconcileEntry;
     if (!entry.withheld) continue;
+    if (entry.error) {
+      out.push(
+        `${entry.source_pdf} (${entry.currency.toUpperCase()}) withheld — its reconcile failed: ${entry.error}. ` +
+          `Its rows on file are untouched; fix the parse (or quarantine the PDF).`
+      );
+      continue;
+    }
     const failed = (entry.checks ?? []).filter((c) => !c.ok);
     const figures = failed
       .map((c) => `${c.code}: printed ${amount(c.expected)}, parsed ${amount(c.actual)}, difference ${amount(c.delta)}`)

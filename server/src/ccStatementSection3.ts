@@ -38,7 +38,9 @@ export type CcStatementLineSection =
  * A peso line's section comes from the section the PDF printed it in, which its parser layout
  * states (`operaciones_layouts`, `section3_layouts`, `mid_period_payment_layouts`); only a layout
  * whose reader does not track the printed section (`merchant_rule_layouts`: the wide and OCR
- * readers, the statement JSON) is placed by the merchant rules. Any other layout throws.
+ * readers, the statement JSON) is placed by the merchant rules. Any other layout throws, and so
+ * does a line with no layout, whatever its currency: every parser row and every stored statement
+ * states one (`cc_statements.layout` is NOT NULL), so a missing one is a parser bug.
  */
 export function classifyCcStatementLine(line: {
   currency: "clp" | "usd"; // convention-ok: section-3 charge rules are the Chilean statements' peso and dollar lists
@@ -46,6 +48,7 @@ export function classifyCcStatementLine(line: {
   parser_layout: string;
   amount: number;
 }): CcStatementLineSection {
+  if (!line.parser_layout) throw new Error(`card statement line «${line.merchant ?? ""}»: no parser layout (every parser row states one)`);
   if (line.currency === "usd") { // convention-ok: section-3 charge rules are the Chilean statements' peso and dollar lists
     if (isGarbledUsdStatementMerchant(line.merchant)) return "skip";
     if (isUsdSection3Merchant(line.merchant, line.amount)) return "cargos_abonos";

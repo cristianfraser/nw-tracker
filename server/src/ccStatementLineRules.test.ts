@@ -10,7 +10,8 @@ type SectionCase = {
   layout: string;
   merchant: string;
   amount: number;
-  section: CcStatementLineSection;
+  /** `error`: both classifiers throw. */
+  section: CcStatementLineSection | "error";
   traspaso_deuda?: boolean;
   note?: string;
 };
@@ -27,14 +28,15 @@ const cases = JSON.parse(fs.readFileSync(casesPath, "utf-8")) as SectionCase[];
 /** The same table is asserted by `ingest/python/cc_statement_line_rules_test.py`. */
 describe("classifyCcStatementLine (shared case table)", () => {
   it.each(cases)("$currency $layout «$merchant» $amount → $section", (c) => {
-    expect(
+    const classify = () =>
       classifyCcStatementLine({
         currency: c.currency,
         merchant: c.merchant,
         parser_layout: c.layout,
         amount: c.amount,
-      })
-    ).toBe(c.section);
+      });
+    if (c.section === "error") expect(classify).toThrow();
+    else expect(classify()).toBe(c.section);
     expect(isCcTraspasoDeudaMerchant(c.merchant)).toBe(c.traspaso_deuda === true);
   });
 });

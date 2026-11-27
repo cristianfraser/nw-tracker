@@ -14,6 +14,7 @@ import { signedNativeDeltaForAccountMovement, type MovementTransferRow } from ".
 import { listTransferNoticeCandidates } from "./transferNoticeMovements.js";
 import { priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { flowArrival } from "./flows/flowFirstSeen.js";
+import { flowHoldsAssignments } from "./flows/mirrorLegFlows.js";
 import { cartolaListingFacts, LISTED_FACTS_COLUMNS_SQL, listedFactsOfEvidence, type ListedFactsEvidence } from "./movementListingFacts.js";
 import { MOVEMENT_DELETE_BLOCKERS, type CheckingCartolaPlanInput, type CheckingFileRow } from "./checkingCartolaPlan.js";
 
@@ -66,6 +67,7 @@ export function loadCheckingCartolaPlanInput(
     listed: listedFactsOfEvidence(r.id, r.kind, r),
     arrival: r.flow_id == null ? { kind: "not_an_arrival" } : flowArrival(r.flow_id, dbHandle),
     ...(namedBy.has(r.id) ? { named_by: namedBy.get(r.id)! } : {}),
+    ...(r.flow_id != null && flowHoldsAssignments(r.flow_id, dbHandle) ? { filed: true } : {}),
   }));
 
   const legs = dbHandle

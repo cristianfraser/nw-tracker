@@ -533,7 +533,8 @@ function canonicalLineToReconcileRow(statement: CardCanonicalStatement, line: Ca
     valor_cuota_mensual_usd: 0,
     nro_cuota_current: inst?.number || null,
     nro_cuota_total: inst?.count || null,
-    parser_layout: line.document.section || "compact",
+    // The parser's layout, as the row states it (none is a parser bug: `classifyCcStatementLine` throws).
+    parser_layout: line.document.section,
     dedupe_key: line.document.dedupe_key,
     row_id: line.document.line_id,
     transaction_date: storedCardLineDate(line.printed_transaction_date, line.transaction_date),
@@ -633,7 +634,8 @@ export function dbLineToReconcileRow(
     valor_cuota_mensual_usd: home ? 0 : cuota,
     nro_cuota_current: line.nro_cuota_current,
     nro_cuota_total: line.nro_cuota_total,
-    parser_layout: stmt.layout || "compact",
+    // A stored statement always has a layout (`cc_statements.layout` NOT NULL).
+    parser_layout: stmt.layout,
     dedupe_key: line.dedupe_key,
     row_id: line.parser_row_id,
     transaction_date: line.transaction_date,

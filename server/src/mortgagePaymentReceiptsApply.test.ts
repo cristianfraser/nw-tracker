@@ -112,6 +112,7 @@ describe("applyMortgagePaymentReceipt", () => {
       pay_by: ddmmyyyy(addDaysIso(CLOSE, 15)),
       card_last4: CARD_LAST4,
       currency: "clp",
+      parser_layout: "compact_de_simple",
       statement_monto_facturado: "432.101",
       transaction_date: ddmmyyyy(PAID_ON),
       merchant,

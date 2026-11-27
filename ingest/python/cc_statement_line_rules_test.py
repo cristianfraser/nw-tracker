@@ -33,6 +33,10 @@ class SharedSectionCasesTest(unittest.TestCase):
         self.assertTrue(cases)
         for c in cases:
             with self.subTest(case=c):
+                if c["section"] == "error":
+                    with self.assertRaises(ValueError):
+                        rules.classify_statement_line(c["currency"], c["merchant"], c["layout"], float(c["amount"]))
+                    continue
                 self.assertEqual(
                     rules.classify_statement_line(
                         c["currency"], c["merchant"], c["layout"], float(c["amount"])

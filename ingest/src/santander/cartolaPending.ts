@@ -13,7 +13,10 @@ import { resolveCfraserDir } from "../paths.js";
  * `import:cuenta-vista-cartolas` rewrite the list from the server's answer
  * (`nextPendingCartolas`): a document answered `refused` or `parse_error` stays (its problems
  * reported again), one imported, confirmed or already on file leaves, and one asked for that no
- * reader found (filed away, deleted) leaves with a notice.
+ * reader found (filed away, deleted) leaves with a notice. A PDF reader that fails as a whole, or a
+ * send that fails, makes every document the run asked for pending (`parse_error` / `not_sent`,
+ * with the reason): a PDF the organizer filed this run has left the inbox and is sent again only
+ * from this list. The file is written through a temp file and a rename.
  */
 
 export type CartolaAccountKey = "checking" | "cuenta-vista";
@@ -22,7 +25,7 @@ export type PendingCartola = {
   document: string;
   /** When it first stayed pending (ISO instant). */
   since: string;
-  /** The server's status for it last time (`refused` | `parse_error`). */
+  /** Why it is pending: the server's status last time (`refused` | `parse_error`), or `not_sent`. */
   status: string;
   problems: string[];
 };
@@ -47,7 +50,9 @@ export function writePendingCartolas(account: CartolaAccountKey, pending: Pendin
   const state = readState(file);
   if (pending.length > 0) state[account] = pending;
   else delete state[account];
-  fs.writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`);
+  fs.renameSync(tmp, file);
 }
 
 /** The document a server file log names: `pdf:<name>`, a cuenta vista slice `pdf:<name>|<month>`. */
@@ -56,7 +61,7 @@ export function documentOfFileLog(label: string): string {
 }
 
 /** A real document name (a reader failure is logged under a bare tag such as `pdf`). */
-function isDocumentName(name: string): boolean {
+export function isDocumentName(name: string): boolean {
   return /\.(pdf|xlsx)$/i.test(name);
 }
 
@@ -70,23 +75,28 @@ export type PendingUpdate = {
 
 const STAYS = new Set(["refused", "parse_error"]);
 
+/** A PDF reader that failed as a whole: the PDFs the run asked it for, and its error. */
+export type ReaderFailure = { documents: readonly string[]; error: string };
+
 /**
  * The pending list after a run: `asked` = whether the run asked for a document (its `--only-…`
  * list, or every document of a format read in full), `files` = the server's answer. A run whose
- * PDF reader failed as a whole drops nothing.
+ * PDF reader failed as a whole drops nothing, and every PDF it asked the reader for
+ * (`readerFailure`) the server did not answer by name stays pending as `parse_error`.
  */
 export function nextPendingCartolas(
   previous: readonly PendingCartola[],
   asked: (document: string) => boolean,
   files: BankAccountStatementsApplyDetails["files"],
-  now: string
+  now: string,
+  readerFailure: ReaderFailure | null = null
 ): PendingUpdate {
   const byDocument = new Map<string, BankAccountStatementsApplyDetails["files"]>();
   for (const f of files) {
     const doc = documentOfFileLog(f.file);
     byDocument.set(doc, [...(byDocument.get(doc) ?? []), f]);
   }
-  const readerFailed = files.some((f) => f.status === "parse_error" && !isDocumentName(documentOfFileLog(f.file)));
+  const readerFailed = readerFailure != null || files.some((f) => f.status === "parse_error" && !isDocumentName(documentOfFileLog(f.file)));
   const prior = new Map(previous.map((p) => [p.document, p]));
   const pending: PendingCartola[] = [];
   const resolved: string[] = [];
@@ -105,10 +115,33 @@ export function nextPendingCartolas(
       resolved.push(doc);
     }
   }
+  const unread = new Set((readerFailure?.documents ?? []).filter((d) => !byDocument.has(d)));
+  for (const doc of unread) {
+    pending.push({ document: doc, since: prior.get(doc)?.since ?? now, status: "parse_error", problems: [readerFailure!.error] });
+  }
   for (const p of previous) {
-    if (byDocument.has(p.document)) continue;
+    if (byDocument.has(p.document) || unread.has(p.document)) continue;
     if (asked(p.document) && !readerFailed) dropped.push(p.document);
     else pending.push(p);
   }
   return { pending, resolved, dropped };
+}
+
+/**
+ * The pending list after a send that failed (nothing was applied): every document of the run
+ * (`entries`: the statements and unreadable documents of the payload, and the PDFs a reader that
+ * failed as a whole was asked for) is pending with its reason; earlier pending documents stay, each
+ * keeping the day it first stayed pending.
+ */
+export function pendingAfterFailedSend(
+  previous: readonly PendingCartola[],
+  entries: readonly { document: string; status: string; problem: string }[],
+  now: string
+): PendingCartola[] {
+  const out = new Map(previous.map((p) => [p.document, p]));
+  for (const e of entries) {
+    if (!isDocumentName(e.document)) continue;
+    out.set(e.document, { document: e.document, since: out.get(e.document)?.since ?? now, status: e.status, problems: [e.problem] });
+  }
+  return [...out.values()];
 }

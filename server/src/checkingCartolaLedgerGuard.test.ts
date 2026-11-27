@@ -448,9 +448,69 @@ describe("the deliberate rebuild of a ledger that absorbed bad data", () => {
     const r = rebuildCheckingLedgerFromCartolas(account, [FEB("1807-02 cartola.pdf")]);
     expect(r.anchor_before).toEqual({ amount_clp: 108_000, occurred_on: "1806-12-31" });
     expect(r.anchor_after).toEqual({ amount_clp: 100_000, occurred_on: "1806-12-31" });
-    expect(r.months).toEqual([{ period_month: "1807-02", replaced: true, inserted: 0, restated: 3, folded: 0, removed: 0, cartola_rows_removed: 3 }]);
+    expect(r.months).toEqual([
+      { period_month: "1807-02", replaced: true, inserted: 0, restated: 3, folded: 0, removed: 0, cartola_rows_removed: 0, cartola_rows_folded: 3, fold_conflicts: [] },
+    ]);
     expect(rows(account).filter((x) => x.occurred_on.startsWith("1807-02")).map((x) => x.id)).toEqual(daily.map((x) => x.id));
     expect(checkingLedgerMonthsOffTheirCartolas(account)).toEqual([]);
+  }));
+
+  const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+  const copies = (account: number) =>
+    db
+      .prepare(
+        `SELECT m.id, m.amount FROM movements m JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id
+         WHERE m.account_id = ? AND e.source_kind = 'cartola' AND e.stated_period = '1807-02' ORDER BY m.id`
+      )
+      .all(account) as { id: number; amount: number }[];
+  const fileNote = (account: number, id: number, text: string) =>
+    db.prepare(`INSERT INTO flow_notes (flow_id, portion, piece_seq, account_id, notes) VALUES (?, 'gastos', -1, ?, ?)`).run(flowOf(id), account, text);
+  const noteOf = (id: number) => (db.prepare(`SELECT notes FROM flow_notes WHERE flow_id = ?`).get(flowOf(id)) as { notes: string } | undefined)?.notes ?? null;
+  const categoryOf = (id: number) => (db.prepare(`SELECT category_id FROM flow_categories WHERE flow_id = ?`).get(flowOf(id)) as { category_id: number } | undefined)?.category_id ?? null;
+
+  it("what the user filed on a copy moves to the row that stays: its category, its note joined with the kept row's", inRollback(() => {
+    const account = incident("rebuild-fold");
+    const daily = rows(account).filter((r) => r.occurred_on.startsWith("1807-02")).slice(0, 3);
+    const copy = copies(account).find((c) => c.amount === -10_000)!;
+    const keptRow = daily.find((d) => d.amount === -10_000)!;
+    const cat = (db.prepare(`SELECT id FROM cc_expense_categories ORDER BY id LIMIT 1`).get() as { id: number }).id;
+    db.prepare(`INSERT INTO flow_categories (flow_id, portion, piece_seq, account_id, category_id) VALUES (?, 'gastos', -1, ?, ?)`).run(flowOf(copy.id), account, cat);
+    fileNote(account, copy.id, "filed on the copy");
+    fileNote(account, keptRow.id, "filed on the daily row");
+    const r = rebuildCheckingLedgerFromCartolas(account, [FEB("1807-02 cartola.pdf")]);
+    expect(r.months[0]!.cartola_rows_folded).toBe(3);
+    expect(r.months[0]!.fold_conflicts).toEqual([{ row_id: keptRow.id, folded: [copy.id], notes_joined: "filed on the daily row\nfiled on the copy", dropped: [] }]);
+    expect(rows(account).filter((x) => x.occurred_on.startsWith("1807-02")).map((x) => x.id)).toEqual(daily.map((x) => x.id));
+    expect(categoryOf(keptRow.id)).toBe(cat);
+    expect(noteOf(keptRow.id)).toBe("filed on the daily row\nfiled on the copy");
+  }));
+
+  it("a copy with filed work and no row of its day and pesos to fold into refuses the rebuild, naming it", inRollback(() => {
+    const account = incident("rebuild-unfoldable");
+    const copy = copies(account).find((c) => c.amount === 7_000)!;
+    fileNote(account, copy.id, "filed on the copy");
+    const before = { rows: rows(account), anchor: anchorOf(account) };
+    // A cartola that no longer lists the 1807-02-12 credit.
+    const without = FEB("1807-02 cartola.pdf", FEB_MOVES().filter((m) => m.amount_clp !== 7_000));
+    expect(() => rebuildCheckingLedgerFromCartolas(account, [without])).toThrow(new RegExp(`cartola row ${copy.id} .*carries what the user filed`));
+    expect({ rows: rows(account), anchor: anchorOf(account) }).toEqual(before);
+  }));
+
+  it("same-file ownership (the cuenta vista): another document's slice of a month on file is left out, its own document replaces it", inRollback(() => {
+    const account = createAccount("rebuild-owner");
+    run(account, [JAN(), FEB()]);
+    const before = rows(account);
+    const other = rebuildCheckingLedgerFromCartolas(account, [FEB("1807-02 other slice.pdf", FEB_MOVES().slice(0, 2))], db, { sameFileOnly: true });
+    expect(other.months).toEqual([
+      { period_month: "1807-02", replaced: false, inserted: 0, restated: 0, folded: 0, removed: 0, cartola_rows_removed: 0, cartola_rows_folded: 0, fold_conflicts: [], owned_by: "1807-02 cartola.xlsx" },
+    ]);
+    expect(rows(account)).toEqual(before);
+    // Without the rule the slice would replace the month and remove the row it does not list.
+    const slice = FEB("1807-02 other slice.pdf", FEB_MOVES().slice(0, 2));
+    expect(rolledBack(() => (rebuildCheckingLedgerFromCartolas(account, [slice]), rows(account).length))).toBe(before.length - 1);
+    const own = rebuildCheckingLedgerFromCartolas(account, [FEB()], db, { sameFileOnly: true });
+    expect(own.months[0]!.replaced).toBe(true);
+    expect(rows(account)).toEqual(before);
   }));
 
   it("a rebuild that leaves a month off its cartola writes nothing", inRollback(() => {
