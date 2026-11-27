@@ -20,11 +20,16 @@
  * contracts that shared different `canonical_row_id` (same card, purchase day, merchant and cuota
  * count; the contract amount is the largest of `amount_clp`, `monto_origen_operacion_clp` and
  * `monto_total_a_pagar_clp`, so a «03 CUOTAS COMERC» summary row lines up with its single cuotas).
+ * It reads the parser's reconciliation file beside the CSV (`<csv stem>.reconciliation.jsonl`; the
+ * corpus CSV's is `cc-statements-parse-reconciliation.jsonl`) and refuses without it: a statement
+ * the parser withheld is absent from the CSV, so its cuotas on file stay and its plans are never
+ * retired as no longer stated.
  *
  * There is no statement wipe: a statement import restates the rows on file (`--full` re-plans every
  * statement); deleting the account's statements and importing them again would give every line a
  * new row and flow.
  */
+import fs from "node:fs";
 import path from "node:path";
 
 import { db } from "../src/db.js";
@@ -84,6 +89,28 @@ function accountLabelForId(accountId: number): string {
   return `${l4} ${row?.name ?? ""}`.trim();
 }
 
+/**
+ * The statements the parser withheld (`withheld: true` in its reconciliation file beside the CSV),
+ * by `source_pdf`. A missing file throws: the rebuild cannot tell a withheld statement from one
+ * that is gone.
+ */
+function withheldStatements(csvPath: string, defaultCsv: string): Set<string> {
+  const file =
+    path.resolve(csvPath) === path.resolve(defaultCsv)
+      ? path.join(path.dirname(defaultCsv), "cc-statements-parse-reconciliation.jsonl")
+      : path.join(path.dirname(csvPath), `${path.basename(csvPath, path.extname(csvPath))}.reconciliation.jsonl`);
+  if (!fs.existsSync(file)) {
+    throw new Error(`--replace-ledger reads the parser's reconciliation file ${file}, which is missing: run parse:cc-pdfs (with its reconcile) first`);
+  }
+  const out = new Set<string>();
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const e = JSON.parse(line) as { source_pdf: string; withheld?: boolean };
+    if (e.withheld) out.add(e.source_pdf);
+  }
+  return out;
+}
+
 function main() {
   const santander = process.argv.includes("--santander");
   const accountIdArg = Number(arg("account-id"));
@@ -98,7 +125,8 @@ function main() {
   if (process.argv.includes("--merge")) {
     console.warn("# --merge is the default since 2026-05; flag is optional.");
   }
-  const csvPath = arg("csv") ?? path.join(resolveCfraserCsvDir(), "cc-statements-parsed-all.csv");
+  const defaultCsv = path.join(resolveCfraserCsvDir(), "cc-statements-parsed-all.csv");
+  const csvPath = arg("csv") ?? defaultCsv;
 
   const records = readCommaCsvRecords(csvPath);
   const statements: CardCanonicalStatement[] = canonicalStatementsFromParsedRecords(records);
@@ -123,6 +151,9 @@ function main() {
     for (const problem of details.problems) console.error(`# FAIL: ${problem}`);
     process.exit(details.problems.length > 0 ? 1 : 0);
   }
+
+  const withheld = withheldStatements(csvPath, defaultCsv);
+  if (withheld.size > 0) console.log(`# ${withheld.size} statement(s) withheld by the parser: their cuotas and plans on file stay — ${[...withheld].join("; ")}`);
 
   const discovery = cardAccountsForStatements(statements, {
     accountId: accountIdFilter,
@@ -179,6 +210,7 @@ function main() {
     if (!dry) {
       const ledger = mergeInstallmentLedgerFromStatements(accountId, accountRecords, {
         replaceLedger: true,
+        withheldDocuments: withheld,
       });
       purchaseUpserts = ledger.purchaseUpserts;
       paymentUpserts = ledger.paymentUpserts;

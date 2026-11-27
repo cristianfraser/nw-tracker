@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { documentOfFileLog, nextPendingCartolas, readPendingCartolas, writePendingCartolas, type PendingCartola } from "./cartolaPending.js";
+import { documentOfFileLog, nextPendingCartolas, pendingAfterFailedSend, readPendingCartolas, writePendingCartolas, type PendingCartola } from "./cartolaPending.js";
 
 const file = (name: string, status: string, problems: string[] = []) => ({ file: name, period_month: "2026-09", status, movements_parsed: 1, movements_imported: 0, error: null, problems });
 const NOW = "2026-11-27T22:00:00.000Z";
@@ -38,6 +38,36 @@ describe("pending cartolas", () => {
     expect(nextPendingCartolas(prev, () => true, [file("pdf", "parse_error")], NOW).pending).toEqual(prev);
   });
 
+  it("a reader that failed as a whole makes every PDF it was asked for pending with its error", () => {
+    const prev: PendingCartola[] = [{ document: "old.pdf", since: "2026-11-01T00:00:00.000Z", status: "refused", problems: ["r"] }];
+    const failure = { documents: ["filed today.pdf", "old.pdf"], error: "parse-checking-cartola-pdfs.py exited 1: boom" };
+    const next = nextPendingCartolas(prev, () => true, [file("pdf", "parse_error"), file("Octubre 2026.xlsx", "imported")], NOW, failure);
+    expect(next.dropped).toEqual([]);
+    expect(next.pending).toEqual([
+      { document: "filed today.pdf", since: NOW, status: "parse_error", problems: [failure.error] },
+      { document: "old.pdf", since: "2026-11-01T00:00:00.000Z", status: "parse_error", problems: [failure.error] },
+    ]);
+  });
+
+  it("a failed send makes every document of the run pending: statements not sent, unreadable ones with their own reason", () => {
+    const prev: PendingCartola[] = [{ document: "a.pdf", since: "2026-11-01T00:00:00.000Z", status: "refused", problems: ["r"] }];
+    const out = pendingAfterFailedSend(
+      prev,
+      [
+        { document: "a.pdf", status: "not_sent", problem: "server down" },
+        { document: "b.xlsx", status: "not_sent", problem: "server down" },
+        { document: "c.pdf", status: "parse_error", problem: "no saldo" },
+        { document: "pdf", status: "parse_error", problem: "reader died" },
+      ],
+      NOW
+    );
+    expect(out).toEqual([
+      { document: "a.pdf", since: "2026-11-01T00:00:00.000Z", status: "not_sent", problems: ["server down"] },
+      { document: "b.xlsx", since: NOW, status: "not_sent", problems: ["server down"] },
+      { document: "c.pdf", since: NOW, status: "parse_error", problems: ["no saldo"] },
+    ]);
+  });
+
   it("is kept per account in one state file", () => {
     const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cartola-pending-")), "state.json");
     writePendingCartolas("checking", [{ document: "a.pdf", since: NOW, status: "refused", problems: [] }], f);
@@ -45,5 +75,6 @@ describe("pending cartolas", () => {
     writePendingCartolas("checking", [], f);
     expect(readPendingCartolas("checking", f)).toEqual([]);
     expect(readPendingCartolas("cuenta-vista", f).map((p) => p.document)).toEqual(["b.pdf"]);
+    expect(fs.readdirSync(path.dirname(f))).toEqual(["state.json"]);
   });
 });

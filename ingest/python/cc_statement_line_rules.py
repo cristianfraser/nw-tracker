@@ -152,14 +152,17 @@ def classify_statement_line(currency: str, merchant: object, layout: str, amount
     """Section of a non-installment line (see the module docstring for the section names). A peso
     line's section is the one its parser layout states it was printed in; only the layouts whose
     reader does not track the printed section (`merchant_rule_layouts`) go by the merchant rules.
-    `classifyCcStatementLine` in `ccStatementSection3.ts`."""
+    `classifyCcStatementLine` in `ccStatementSection3.ts`. A line with no layout raises, whatever
+    its currency: every parser row states one (a missing one is a parser bug)."""
+    lay = str(layout or "")
+    if not lay:
+        raise ValueError(f"card statement line {merchant!r}: no parser layout (every parser row states one)")
     if str(currency or "clp").lower() == "usd":
         if is_garbled_usd_merchant(merchant):
             return "skip"
         if is_usd_section3_merchant(merchant, amount):
             return "cargos_abonos"
         return "operaciones" if amount > 0 else "ignored"
-    lay = str(layout or "")
     payment = is_printed_payment(merchant, amount)
     if lay in MID_PERIOD_PAYMENT_LAYOUTS:
         return "mid_period_payments"

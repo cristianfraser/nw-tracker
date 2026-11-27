@@ -66,47 +66,8 @@ export function prepareCardLineFolds(folds: readonly { fromLineId: number; intoL
   for (const f of folds) byInto.set(f.intoLineId, [...(byInto.get(f.intoLineId) ?? []), f.fromLineId]);
   const out: CardLineFoldConflict[] = [];
   for (const [into, froms] of byInto) {
-    // The order the folds resolve a shared slot in: the earliest arrival, ties to the kept row.
-    const members = [into, ...froms]
-      .map((id, order) => {
-        const flow = rowFlowId("cc_statement_lines", id);
-        return { id, flow, arrival: flow == null ? null : flowArrival(flow), order };
-      })
-      .filter((m): m is typeof m & { flow: number } => m.flow != null);
-    members.sort((a, b) => compareArrival(a.arrival!, b.arrival!) || a.order - b.order);
-    const flows = [...new Set(members.map((m) => m.flow))];
-    if (flows.length < 2) continue;
-    let notesJoined: string | null = null;
-    const dropped: CardLineFoldConflict["dropped"] = [];
-    const slots = (sel: typeof selNotes) => {
-      const bySlot = new Map<string, { flow: number; slot: Slot }[]>();
-      for (const flow of flows) {
-        for (const s of sel.all(flow) as Slot[]) {
-          const k = `${s.portion}|${s.piece_seq}`;
-          bySlot.set(k, [...(bySlot.get(k) ?? []), { flow, slot: s }]);
-        }
-      }
-      return [...bySlot.values()];
-    };
-    for (const held of slots(selNotes)) {
-      const texts = [...new Set(held.map((h) => String(h.slot.v ?? "").trim()).filter((t) => t !== ""))];
-      if (texts.length < 2) continue;
-      const winner = held[0]!;
-      notesJoined = texts.join("\n");
-      updNote.run(notesJoined, winner.flow, winner.slot.portion, winner.slot.piece_seq);
-    }
-    for (const [what, sel] of [
-      ["category", selCategories],
-      ["big_group", selBigGroups],
-    ] as const) {
-      for (const held of slots(sel)) {
-        const kept = String(held[0]!.slot.v);
-        for (const h of held.slice(1)) {
-          const v = String(h.slot.v);
-          if (v !== kept && !dropped.some((d) => d.what === what && d.value === v)) dropped.push({ what, value: v, kept });
-        }
-      }
-    }
+    const joined = joinFoldedFlowAssignments([into, ...froms].map((id) => rowFlowId("cc_statement_lines", id)));
+    const dropped: CardLineFoldConflict["dropped"] = [...(joined?.dropped ?? [])];
     // A per-line category override is the kept line's when it has one (`applyCardLinePlanDetailed`).
     const keptLineCategory = (selLineCategory.get(into) as { v: string } | undefined)?.v;
     if (keptLineCategory != null) {
@@ -115,11 +76,63 @@ export function prepareCardLineFolds(folds: readonly { fromLineId: number; intoL
         if (v != null && v !== keptLineCategory) dropped.push({ what: "line_category", value: v, kept: keptLineCategory });
       }
     }
+    const notesJoined = joined?.notes_joined ?? null;
     if (notesJoined == null && dropped.length === 0) continue;
     const l = selLine.get(into) as { merchant: string | null; transaction_date: string | null; posting_date: string | null; amount: number; currency: string };
     out.push({ line_id: into, folded: froms, merchant: l.merchant, date: statementLineDateIso(l), amount: l.amount, currency: l.currency, notes_joined: notesJoined, dropped });
   }
   return out;
+}
+
+/**
+ * One fold's flows before it runs (`flows`: the kept row's first, then the rows folding into it;
+ * null for a row with none): the notes they hold apart on one portion and piece are joined onto
+ * the slot of the earliest arrival (ties: the earlier in `flows`) — the one the fold's
+ * `mergeFlowInto` keeps —, and a category or big group only that one keeps is named. Null when the
+ * flows are one, or hold nothing apart. Shared by the card-line and the cartola-row folds.
+ */
+export function joinFoldedFlowAssignments(
+  flows: readonly (number | null)[]
+): { notes_joined: string | null; dropped: { what: "category" | "big_group"; value: string; kept: string }[] } | null {
+  // The order the folds resolve a shared slot in: the earliest arrival, ties to the kept row.
+  const members = flows
+    .map((flow, order) => ({ flow, order, arrival: flow == null ? null : flowArrival(flow) }))
+    .filter((m): m is { flow: number; order: number; arrival: NonNullable<typeof m.arrival> } => m.flow != null);
+  members.sort((a, b) => compareArrival(a.arrival, b.arrival) || a.order - b.order);
+  const ordered = [...new Set(members.map((m) => m.flow))];
+  if (ordered.length < 2) return null;
+  let notesJoined: string | null = null;
+  const dropped: { what: "category" | "big_group"; value: string; kept: string }[] = [];
+  const slots = (sel: typeof selNotes) => {
+    const bySlot = new Map<string, { flow: number; slot: Slot }[]>();
+    for (const flow of ordered) {
+      for (const s of sel.all(flow) as Slot[]) {
+        const k = `${s.portion}|${s.piece_seq}`;
+        bySlot.set(k, [...(bySlot.get(k) ?? []), { flow, slot: s }]);
+      }
+    }
+    return [...bySlot.values()];
+  };
+  for (const held of slots(selNotes)) {
+    const texts = [...new Set(held.map((h) => String(h.slot.v ?? "").trim()).filter((t) => t !== ""))];
+    if (texts.length < 2) continue;
+    const winner = held[0]!;
+    notesJoined = texts.join("\n");
+    updNote.run(notesJoined, winner.flow, winner.slot.portion, winner.slot.piece_seq);
+  }
+  for (const [what, sel] of [
+    ["category", selCategories],
+    ["big_group", selBigGroups],
+  ] as const) {
+    for (const held of slots(sel)) {
+      const kept = String(held[0]!.slot.v);
+      for (const h of held.slice(1)) {
+        const v = String(h.slot.v);
+        if (v !== kept && !dropped.some((d) => d.what === what && d.value === v)) dropped.push({ what, value: v, kept });
+      }
+    }
+  }
+  return notesJoined == null && dropped.length === 0 ? null : { notes_joined: notesJoined, dropped };
 }
 
 export function copiesFoldedReport(c: CardLineCopiesFolded): string {

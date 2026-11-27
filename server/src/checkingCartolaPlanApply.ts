@@ -10,7 +10,9 @@
  *  - `confirm`: the transfer leg or mail-written row is claimed and confirmed;
  *  - `insert`: the cartola row is written (`insertBankPesoMovement`, which takes a retired flow of its
  *    document back; several retired flows for one document are left alone and reported);
- *  - `fold`: the row folds into the kept row (`foldMovementInto`);
+ *  - `fold`: the row folds into the kept row (`foldMovementInto`); before the folds, the notes the
+ *    rows hold apart are joined onto the one that stays and a category or big group only one keeps
+ *    is named (`joinFoldedFlowAssignments`, as the card lines do), returned as `fold_conflicts`;
  *  - `remove`: a daily row a transfer leg or a mail row already represents (its flow folds into
  *    that row's first, `foldListedRowIntoConfirmed`; a fold the two flows cannot make is reported),
  *    or a cartola row of a replaced month the new cartola no longer lists; a row a tax settlement or
@@ -35,6 +37,25 @@ import { cartolaListingFacts } from "./movementListingFacts.js";
 import { foldListedRowIntoConfirmed, foldMovementInto, restateMovementFromCartola, type ListedRowFold } from "./checkingCartolaRestate.js";
 import type { RetiredMovementAdoption } from "./flows/flowAdoption.js";
 import type { CheckingCartolaPlan } from "./checkingCartolaPlan.js";
+import { joinFoldedFlowAssignments } from "./cards/foldedCardLines.js";
+import { rowFlowId } from "./flows/flowAdoption.js";
+
+/** A fold whose rows held different assignments: the notes joined on the row that stays, what only it keeps. */
+export type CheckingRowFoldConflict = {
+  /** The row that stays. */
+  row_id: number;
+  folded: number[];
+  notes_joined: string | null;
+  dropped: { what: "category" | "big_group"; value: string; kept: string }[];
+};
+
+export function checkingFoldConflictReport(c: CheckingRowFoldConflict): string {
+  const parts = [
+    ...(c.notes_joined != null ? [`notes joined («${c.notes_joined.replace(/\n/g, " / ")}»)`] : []),
+    ...c.dropped.map((d) => `${d.what.replace(/_/g, " ")} ${d.value} dropped (kept ${d.kept})`),
+  ];
+  return `row(s) ${c.folded.join(", ")} folded into row ${c.row_id} with different assignments: ${parts.join("; ")}`;
+}
 
 export type CheckingCartolaPlanApplyResult = {
   /** Rows the cartola restated (a daily row becoming its cartola row, a replaced month's row). */
@@ -50,6 +71,8 @@ export type CheckingCartolaPlanApplyResult = {
   listed_row_folds: ListedRowFold[];
   /** Rows the plan left as they are because a record names them (`CheckingCartolaPlan.left_alone`). */
   left_alone: CheckingCartolaPlan["left_alone"];
+  /** Folds whose rows held different assignments (notes joined, a category or big group dropped). */
+  fold_conflicts: CheckingRowFoldConflict[];
 };
 
 /** Applies `plan` (planned for `cartola` on `accountId`, see the module doc), in one transaction. */
@@ -67,12 +90,18 @@ export function applyCheckingCartolaPlan(
   assertCheckingCartolaSaldoIdentity(cartola);
   const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
   if (chainErr) throw new Error(`Cartola ${cartola.period_month} (${cartola.source_file}): ${chainErr}`);
-  const out: CheckingCartolaPlanApplyResult = { restated: [], inserted: [], folded: [], removed: [], confirmed: [], flow_adoptions: [], listed_row_folds: [], left_alone: plan.left_alone };
+  const out: CheckingCartolaPlanApplyResult = { restated: [], inserted: [], folded: [], removed: [], confirmed: [], flow_adoptions: [], listed_row_folds: [], left_alone: plan.left_alone, fold_conflicts: [] };
   const kindOf = dbHandle.prepare(`SELECT source_kind FROM flow_evidence WHERE source_table = 'movements' AND source_row_id = ?`);
   dbHandle.transaction(() => {
     let wrote = 0;
     // Folds first: a cartola row on file that folds into an earlier-seen daily row goes before that
-    // row takes its note.
+    // row takes its note. What the rows hold apart is joined (notes) or named (the rest) first.
+    const byInto = new Map<number, number[]>();
+    for (const f of plan.fold) byInto.set(f.into_row_id, [...(byInto.get(f.into_row_id) ?? []), f.row_id]);
+    for (const [into, froms] of byInto) {
+      const joined = joinFoldedFlowAssignments([into, ...froms].map((id) => rowFlowId("movements", id, dbHandle)));
+      if (joined) out.fold_conflicts.push({ row_id: into, folded: froms, ...joined });
+    }
     for (const f of plan.fold) {
       const listed = cartola.movements[f.movement]!;
       const key = checkingCartolaPurchaseKeyOf(accountId, {

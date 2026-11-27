@@ -95,6 +95,25 @@ describe("a ledger rebuild", () => {
     expect(planId("VITEST REBUILD KEEP")).toBeDefined();
   });
 
+  it("a plan stated only by a withheld statement stays, with its cuotas; the rest of the ledger is rebuilt", () => {
+    const keep = importStatements([cuotaRow("keep3", "VITEST REBUILD KEEP3", "06/05/26", 60_000)]);
+    const held = "VITEST REBUILD WITHHELD";
+    importStatements([cuotaRow("withheld", held, "07/05/26", 90_000)]);
+    const heldId = planId(held)!;
+    const cuotas = () => db.prepare(`SELECT COUNT(*) AS n FROM cc_installment_payments WHERE purchase_id = ?`).get(heldId);
+    expect(cuotas()).toEqual({ n: 1 });
+    const result = mergeInstallmentLedgerFromStatements(card, keep, {
+      replaceLedger: true,
+      withheldDocuments: new Set(["vitest-rebuild-withheld-2026-05-22.pdf"]),
+    });
+    expect(planId(held)).toBe(heldId);
+    expect(cuotas()).toEqual({ n: 1 });
+    expect(result.stale_plans_retired_with_assignments).toEqual([]);
+    // Without it, the plan is no longer stated and goes.
+    mergeInstallmentLedgerFromStatements(card, keep, { replaceLedger: true });
+    expect(planId(held)).toBeUndefined();
+  });
+
   const stampFlow = (flow: number, on: string) => {
     db.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(flow);
     db.prepare(`INSERT INTO flow_first_seen (flow_id, first_seen_on, first_seen_at, first_seen_seq) VALUES (?, ?, NULL, NULL)`).run(flow, on);

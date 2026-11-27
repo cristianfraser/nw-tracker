@@ -45,5 +45,7 @@
   { "currency": "usd", "layout": "international_usd", "merchant": "TIENDA EJEMPLO DE 2", "amount": 40, "section": "skip", "note": "a page-counter fragment glued onto a merchant" },
   { "currency": "usd", "layout": "international_usd", "merchant": "DE 2 TIENDA EJEMPLO", "amount": 12, "section": "skip" },
   { "currency": "usd", "layout": "international_usd", "merchant": "MOVIMIENTOS TARJETA XXXX", "amount": 10, "section": "skip" },
-  { "currency": "usd", "layout": "international_usd", "merchant": "COMPRA XXXX-4141", "amount": 10, "section": "skip", "note": "multicard token of the synthetic card registry (ccCardsFixture.json)" }
+  { "currency": "usd", "layout": "international_usd", "merchant": "COMPRA XXXX-4141", "amount": 10, "section": "skip", "note": "multicard token of the synthetic card registry (ccCardsFixture.json)" },
+  { "currency": "clp", "layout": "", "merchant": "TIENDA DEMO", "amount": 4000, "section": "error", "note": "a row with no parser layout is a parser bug: both classifiers throw (stored statements always carry one)" },
+  { "currency": "usd", "layout": "", "merchant": "APP STORE", "amount": 4.99, "section": "error", "note": "whatever its currency" }
 ]

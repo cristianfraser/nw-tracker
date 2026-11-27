@@ -13,16 +13,30 @@
  * `--only-xlsx=` / `--only-pdf=` with an empty list send none of that format; without the flag a
  * full scan sends every document on disk (the explicit cross-check of history).
  *
+ * `--write-payload=<file>`: the readers run and the validated `bank_account.statements` payload is
+ * written to that file as JSON — nothing is sent and the pending list is left as it is (the input
+ * of `server/scripts/rebuild-checking-ledger-from-cartolas.ts --payload=`). Exits non-zero when a
+ * document could not be read (it is in the payload's `unreadable`, which the rebuild ignores).
+ *
  * Exit status: non-zero when a cartola could not be read or imported, or the server refused one
  * (the ledger does not agree with it, or it states a month on file differently): each reason is a
  * step problem, listed in the run's notification. Such a cartola stays pending
  * (`cartolaPending.ts`) and the inbox pipeline sends it again on every run until it imports.
  */
+import fs from "node:fs";
+import path from "node:path";
 import { bankAccountStatementsKind, type BankAccountStatementsApplyDetails } from "nw-tracker-contracts";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
-import { readCheckingCartolas, readCuentaVistaCartolas } from "./cartolas.js";
+import { listCartolaPdfs, readCheckingCartolas, readCuentaVistaCartolas } from "./cartolas.js";
 import { reportStepResult } from "../stepResult.js";
-import { nextPendingCartolas, readPendingCartolas, writePendingCartolas } from "./cartolaPending.js";
+import {
+  isDocumentName,
+  nextPendingCartolas,
+  pendingAfterFailedSend,
+  readPendingCartolas,
+  writePendingCartolas,
+  type ReaderFailure,
+} from "./cartolaPending.js";
 
 const argv = process.argv.slice(2);
 const flag = (name: string) => argv.includes(`--${name}`);
@@ -41,6 +55,11 @@ async function main(): Promise<number> {
     return 2;
   }
   const dryRun = flag("dry-run");
+  const writePayload = argv.find((a) => a.startsWith("--write-payload="))?.slice("--write-payload=".length);
+  if (writePayload === "") {
+    console.error("--write-payload= names a file");
+    return 2;
+  }
   const onlyXlsx = list("only-xlsx");
   const onlyPdf = list("only-pdf");
   const read =
@@ -59,6 +78,13 @@ async function main(): Promise<number> {
     statements: read.statements,
     unreadable: read.unreadable,
   });
+  if (writePayload != null) {
+    const out = path.resolve(writePayload);
+    fs.writeFileSync(out, `${JSON.stringify(payload, null, 2)}\n`);
+    console.log(`wrote ${payload.statements.length} statement(s) to ${out}; nothing sent`);
+    for (const u of payload.unreadable) console.error(`  UNREADABLE ${u.document}: ${u.error}`);
+    return payload.unreadable.length > 0 ? 1 : 0;
+  }
   // The documents this run asked for: a format without its `--only-…` list is read in full (the
   // PDFs not at all with `--xlsx-only`).
   const pdfRead = account === "cuenta-vista" || !flag("xlsx-only");
@@ -66,20 +92,42 @@ async function main(): Promise<number> {
     /\.xlsx$/i.test(doc) ? (account === "checking" && (onlyXlsx == null || onlyXlsx.includes(doc))) : pdfRead && (onlyPdf == null || onlyPdf.includes(doc));
   const previous = readPendingCartolas(account);
   const now = new Date().toISOString();
+  // A PDF reader that failed as a whole comes back as one unreadable entry under a bare tag: the
+  // PDFs it was asked for (the `--only-pdf` list; a full scan: every PDF in the account's folder)
+  // were read by nobody, and stay pending with its error.
+  const wholeFailure = read.unreadable.find((u) => !isDocumentName(u.document));
+  const readerFailure: ReaderFailure | null = wholeFailure ? { documents: onlyPdf ?? listCartolaPdfs(account), error: wholeFailure.error } : null;
   let details: BankAccountStatementsApplyDetails;
   try {
     const result = await ingestClient().send(bankAccountStatementsKind, payload, { channel: "file", ref: `${account}-cartolas` }, { dryRun });
     details = result.details as BankAccountStatementsApplyDetails;
   } catch (err) {
     console.error(`FAILED — ${describeIngestFailure(err)}`);
-    // Nothing was applied: every document of this run waits for the next one.
+    // Nothing was applied: every document of this run waits for the next one, an unreadable one
+    // with its own reason (and named as a step problem: the server never saw it).
+    const why = describeIngestFailure(err);
+    const unreadable = payload.unreadable.filter((u) => isDocumentName(u.document));
     if (!dryRun) {
-      const sent = [...payload.statements.map((s) => s.document), ...payload.unreadable.map((u) => u.document)];
-      const kept = new Map(previous.map((p) => [p.document, p]));
-      for (const doc of sent) if (!kept.has(doc)) kept.set(doc, { document: doc, since: now, status: "not_sent", problems: [describeIngestFailure(err)] });
-      writePendingCartolas(account, [...kept.values()].filter((p) => /\.(pdf|xlsx)$/i.test(p.document)));
+      writePendingCartolas(
+        account,
+        pendingAfterFailedSend(
+          previous,
+          [
+            ...payload.statements.map((s) => ({ document: s.document, status: "not_sent", problem: why })),
+            ...unreadable.map((u) => ({ document: u.document, status: "parse_error", problem: u.error })),
+            ...(readerFailure?.documents ?? []).map((d) => ({ document: d, status: "parse_error", problem: readerFailure!.error })),
+          ],
+          now
+        )
+      );
     }
-    reportStepResult({ problems: [`${account} cartolas not sent: ${describeIngestFailure(err)}`] });
+    reportStepResult({
+      problems: [
+        `${account} cartolas not sent: ${why}`,
+        ...unreadable.map((u) => `${u.document}: ${u.error}`),
+        ...(wholeFailure ? [`${wholeFailure.document}: ${wholeFailure.error}`] : []),
+      ],
+    });
     return 1;
   }
   const problems: string[] = [];
@@ -99,7 +147,7 @@ async function main(): Promise<number> {
   }
   for (const line of details.report) console.log(line);
   if (!dryRun) {
-    const next = nextPendingCartolas(previous, asked, details.files, now);
+    const next = nextPendingCartolas(previous, asked, details.files, now, readerFailure);
     writePendingCartolas(account, next.pending);
     for (const doc of next.resolved) console.log(`  pending cartola ${doc}: imported, no longer pending`);
     const notices = next.dropped.map((doc) => `pending cartola ${doc} was not found on disk: no longer pending`);

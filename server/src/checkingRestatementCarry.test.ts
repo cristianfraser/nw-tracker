@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { BankAccountStatement, BankAccountStatementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
-import { checkingAccountId } from "./checkingCartolaImport.js";
+import { checkingAccountId, rebuildCheckingLedgerFromCartolas } from "./checkingCartolaImport.js";
+import { parsedCartolaFromStatement } from "./bankAccountStatementsApply.js";
 import { snapshotExpenseIdentity } from "./checkingRestatementIdentity.js";
 import { getCcExpenseCategoryBySlug } from "./ccExpenseCategories.js";
 import { putFlowCategory } from "./flows/flowCategories.js";
@@ -75,6 +76,18 @@ describe("a cartola month imported again in other text", () => {
     expect(after.id).toBe(before.id);
     expect(after.categories).toEqual(["food (own)"]);
     expect(details.report.join("\n")).toMatch(/keeps its category as its own: movement \d+ → food/);
+  }));
+
+  it("carries the same way on the ledger rebuild (the repair of a month imported twice)", inRollback(() => {
+    rule(`CENTRO ${TAG} PANADERIA`, "food");
+    applyBankAccountStatements(payload(statement([mv(`${MONTH}-14`, -2_500, `Centro ${TAG} PANADERIA`)])));
+    const before = shown().get(`Centro ${TAG} PANADERIA`)!;
+    expect(before.categories).toEqual(["food (rule)"]);
+    clearAggregationCache();
+    const r = rebuildCheckingLedgerFromCartolas(checkingAccountId(), [parsedCartolaFromStatement(statement([mv(`${MONTH}-14`, -2_500, `${TAG} PANADERIA SUR`)]))]);
+    const after = shown().get(`${TAG} PANADERIA SUR`)!;
+    expect([after.id, after.categories]).toEqual([before.id, ["food (own)"]]);
+    expect(r.months[0]!.restatement_carry?.own_categories.map((o) => o.category)).toEqual(["food"]);
   }));
 
   it("names the new spelling as the catalog named the old one, and the rule follows it", inRollback(() => {

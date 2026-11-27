@@ -810,6 +810,9 @@ class ReconcileResult:
     # Left out of the parsed CSV by the corpus run (`parse-cc-statement-pdfs.py`): the import
     # never sees it, and the inbox pipeline reports it.
     withheld: bool = False
+    # The reconcile itself raised on this statement (`reconcile_statement_or_withhold`): withheld,
+    # this its problem.
+    error: str = ""
 
     def mismatch_summary(self) -> str:
         if self.ok:
@@ -1296,6 +1299,33 @@ def withhold_statements(
     )
 
 
+def reconcile_statement_or_withhold(
+    source_pdf: str,
+    meta: Dict[str, Any],
+    rows: List[Dict[str, Any]],
+    full: str,
+    parse_clp: Callable[[str], Optional[int]],
+    parse_usd: Callable[[str], Optional[float]],
+    layout_text: str = "",
+) -> ReconcileResult:
+    """`reconcile_statement` for one statement of a corpus run: a reconcile that raises on it (a row
+    with no parser layout, an amount it cannot read) withholds that statement, the error as its
+    problem, instead of ending the run for every other statement."""
+    try:
+        return reconcile_statement(source_pdf, meta, rows, full, parse_clp, parse_usd, layout_text=layout_text)
+    except Exception as e:  # noqa: BLE001 — the statement is withheld and the error reported, never swallowed
+        return ReconcileResult(
+            source_pdf=source_pdf,
+            currency=str(meta.get("currency") or "clp").lower(),
+            ok=False,
+            skip_reason="reconcile_error",
+            row_count=len(rows),
+            issue_codes=["reconcile_error"],
+            withheld=True,
+            error=f"{type(e).__name__}: {e}",
+        )
+
+
 def reconcile_result_to_json(obj: ReconcileResult) -> Dict[str, Any]:
     return {
         "source_pdf": obj.source_pdf,
@@ -1309,6 +1339,7 @@ def reconcile_result_to_json(obj: ReconcileResult) -> Dict[str, Any]:
         "checks": [asdict(c) for c in obj.checks],
         "mismatch_summary": obj.mismatch_summary(),
         "withheld": obj.withheld,
+        **({"error": obj.error} if obj.error else {}),
     }
 
 
