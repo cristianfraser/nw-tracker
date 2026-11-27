@@ -42,6 +42,7 @@ const SLUG = `${PREFIX}_g`;
 const TICKER_A = "VTGGA.SN";
 const TICKER_B = "VTGGB.SN";
 const TICKER_C = "VTGGC.SN";
+const TICKER_D = "VTGGD.SN";
 const created = { accounts: [] as number[], movements: [] as number[], groups: [] as number[] };
 
 function leafGroupId(pattern: string): number {
@@ -100,12 +101,13 @@ function findNode(node: NavTreeNodeDto | null, slug: string): NavTreeNodeDto | n
 
 const today = chileCalendarTodayYmd();
 const day = (n: number) => chileCalendarAddDays(today, -n);
-const ids = { stockA: 0, cajaA: 0, stockB: 0, cajaB: 0, stockC: 0, cajaC: 0 };
+const ids = { stockA: 0, cajaA: 0, stockB: 0, cajaB: 0, stockC: 0, cajaC: 0, stockD: 0, cajaD: 0 };
 
 beforeAll(() => {
   declareTestInstrument(TICKER_A, { market_kind: "santiago", quote_currency: "clp", display_symbol: "VTGGA" });
   declareTestInstrument(TICKER_B, { market_kind: "santiago", quote_currency: "clp", display_symbol: "VTGGB" });
   declareTestInstrument(TICKER_C, { market_kind: "santiago", quote_currency: "clp", display_symbol: "VTGGC" });
+  declareTestInstrument(TICKER_D, { market_kind: "santiago", quote_currency: "clp", display_symbol: "VTGGD" });
   const stockLeaf = leafGroupId("brokerage_acciones__%");
   const cashLeaf = leafGroupId("%broker_clp__clp");
   ids.stockA = account("A", stockLeaf, TICKER_A);
@@ -114,6 +116,8 @@ beforeAll(() => {
   ids.cajaB = account("caja B", cashLeaf, null);
   ids.stockC = account("C", stockLeaf, TICKER_C);
   ids.cajaC = account("caja C", cashLeaf, null);
+  ids.stockD = account("D", stockLeaf, TICKER_D);
+  ids.cajaD = account("caja D", cashLeaf, null);
 
   const deposit = `INSERT INTO movements (account_id, amount, currency, occurred_on, flow_kind) VALUES (?, ?, 'clp', ?, ?)`;
   const trade = `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, flow_kind, units_delta)
@@ -129,6 +133,11 @@ beforeAll(() => {
   movement(trade, ids.cajaC, ids.stockC, 100_000, day(30), "stock_buy", 10);
   movement(trade, ids.stockC, ids.cajaC, 110_000, day(15), "stock_sell", 10);
   movement(deposit, ids.cajaC, -110_000, day(14), "withdrawal");
+  // «S4», sold out at a loss: 50.000 into D (5 at 10.000), sold at 9.000, the 45.000 withdrawn.
+  movement(deposit, ids.cajaD, 50_000, day(25), "deposit");
+  movement(trade, ids.cajaD, ids.stockD, 50_000, day(25), "stock_buy", 5);
+  movement(trade, ids.stockD, ids.cajaD, 45_000, day(12), "stock_sell", 5);
+  movement(deposit, ids.cajaD, -45_000, day(11), "withdrawal");
 
   const close = db.prepare(`INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, 'clp')`);
   close.run(TICKER_A, day(40), 4_000);
@@ -137,12 +146,15 @@ beforeAll(() => {
   close.run(TICKER_B, day(5), 5_700);
   close.run(TICKER_C, day(30), 10_000);
   close.run(TICKER_C, day(15), 11_000);
+  close.run(TICKER_D, day(25), 10_000);
+  close.run(TICKER_D, day(12), 9_000);
 
   const acciones = db.prepare(`SELECT id FROM portfolio_groups WHERE slug = 'brokerage_acciones'`).get() as { id: number };
   const g = group(SLUG, "Vitest glance group", 0, acciones.id);
   link(group(`${PREFIX}_s1`, "Vitest S1", 1, g), ids.stockA, ids.cajaA);
   link(group(`${PREFIX}_s2`, "Vitest S2", 0, g), ids.stockB, ids.cajaB);
   link(group(`${PREFIX}_s3`, "Vitest S3", 0, g), ids.stockC, ids.cajaC);
+  link(group(`${PREFIX}_s4`, "Vitest S4", 0, g), ids.stockD, ids.cajaD);
 });
 
 afterAll(() => {
@@ -152,8 +164,8 @@ afterAll(() => {
   }
   for (const id of [...created.groups].reverse()) db.prepare(`DELETE FROM portfolio_groups WHERE id = ?`).run(id);
   for (const id of created.accounts) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
-  db.prepare(`DELETE FROM equity_daily WHERE ticker IN (?, ?, ?)`).run(TICKER_A, TICKER_B, TICKER_C);
-  db.prepare(`DELETE FROM market_symbols WHERE ticker IN (?, ?, ?)`).run(TICKER_A, TICKER_B, TICKER_C);
+  db.prepare(`DELETE FROM equity_daily WHERE ticker IN (?, ?, ?, ?)`).run(TICKER_A, TICKER_B, TICKER_C, TICKER_D);
+  db.prepare(`DELETE FROM market_symbols WHERE ticker IN (?, ?, ?, ?)`).run(TICKER_A, TICKER_B, TICKER_C, TICKER_D);
 });
 
 describe("groupGlancePerfOnGrid / groupGlancePerfSparks", () => {
@@ -205,18 +217,21 @@ describe("investment_glance on nav nodes", () => {
 });
 
 describe("group_glance on the nav-context payload", () => {
-  it("lists the chart plan's children held heaviest first, sold-out last, with their chart line ids", async () => {
+  it("lists the chart plan's children held heaviest first, the sold-out ones folded last, with their chart line ids", async () => {
     const ctx = await buildDashboardNavContext("clp", SLUG);
     const g = ctx.group_glance!;
     expect(g).not.toBeNull();
     expect(ctx.basket_glance).toBeNull();
-    expect(g.rows.map((r) => r.slug)).toEqual([`${PREFIX}_s1`, `${PREFIX}_s2`, `${PREFIX}_s3`]);
+    expect(g.rows.map((r) => r.kind)).toEqual(["group", "group", "liquidated"]);
     expect(g.rows.map((r) => r.held)).toEqual([true, true, false]);
-    expect(g.rows.filter((r) => r.held)).toHaveLength(2);
-    expect(g.rows.filter((r) => !r.held)).toHaveLength(1);
+    const [s1, s2, liquidated] = g.rows;
+    expect([s1!.slug, s2!.slug]).toEqual([`${PREFIX}_s1`, `${PREFIX}_s2`]);
+    // Sold-out ones by the size of their lifetime P/L.
+    expect(liquidated!.members.map((m) => m.slug)).toEqual([`${PREFIX}_s3`, `${PREFIX}_s4`]);
+    const [s3] = liquidated!.members;
     // The grouped block's synthetic line ids (-720 − the bucket's plan index).
-    expect(g.rows.map((r) => r.chart_line_account_id).every((id) => id != null && id <= -720)).toBe(true);
-    const [s1, s2, s3] = g.rows;
+    const lines = [s1!, s2!, ...liquidated!.members].map((r) => r.chart_line_account_id);
+    expect(lines.every((id) => id != null && id <= -720)).toBe(true);
     expect(s1!.value.value).toBeCloseTo(540_000, 6);
     expect(s2!.value.value).toBeCloseTo(285_000, 6);
     expect(s1!.share).toBeCloseTo(540_000 / 825_000, 9);
@@ -229,7 +244,7 @@ describe("group_glance on the nav-context payload", () => {
     expect(s1!.members.map((m) => m.account_id)).toEqual([ids.stockA, ids.cajaA]);
     expect(new Set(s2!.members.map((m) => m.account_id))).toEqual(new Set([ids.stockB, ids.cajaB]));
     expect(new Set(s3!.members.map((m) => m.account_id))).toEqual(new Set([ids.stockC, ids.cajaC]));
-    for (const m of [s1!, s2!, s3!].flatMap((r) => r.members)) {
+    for (const m of [s1!, s2!, ...liquidated!.members].flatMap((r) => r.members)) {
       expect(m).toMatchObject({ kind: "account", chart_line_account_id: null, members: [] });
     }
   });
@@ -257,9 +272,9 @@ describe("group_glance on the nav-context payload", () => {
     const c = g.composition!;
     expect(c).toMatchObject({ as_of: today, is_today: true });
     expect(c.value.value).toBeCloseTo(825_000, 6);
-    // 900.000 in, 110.000 out.
-    expect(c.deposited.value).toBeCloseTo(790_000, 6);
-    expect(c.price.value).toBeCloseTo(35_000, 6);
+    // 950.000 in, 155.000 out.
+    expect(c.deposited.value).toBeCloseTo(795_000, 6);
+    expect(c.price.value).toBeCloseTo(30_000, 6);
     for (const r of [g.total, ...g.rows]) {
       expect(r.spark.length).toBeGreaterThan(0);
       expect(r.spark.length).toBeLessThanOrEqual(60);
@@ -290,14 +305,83 @@ describe("group_glance on the nav-context payload", () => {
       expect(Math.max(...ys)).toBe(1);
     };
     spansItsScale([g.total, ...g.rows], g.perf_zero_y);
-    for (const r of g.rows) {
+    const checkMembers = (r: (typeof g.rows)[number]) => {
       if (r.members.length === 0) {
         expect(r.members_perf_zero_y).toBeNull();
-        continue;
+        return;
       }
       expect(r.members_perf_zero_y).not.toBeNull();
       if (r.members.some((m) => m.perf_spark.length > 1)) spansItsScale(r.members, r.members_perf_zero_y!);
-    }
+      r.members.forEach(checkMembers);
+    };
+    g.rows.forEach(checkMembers);
+  });
+
+  it("folds two or more sold-out rows beside a held one into one liquidated row, at every level", async () => {
+    const g = (await buildDashboardNavContext("clp", SLUG)).group_glance!;
+    const liquidated = g.rows[g.rows.length - 1]!;
+    expect(liquidated).toMatchObject({
+      kind: "liquidated",
+      slug: SLUG,
+      account_id: null,
+      label_i18n_key: "groupPage.accountsTable.liquidated",
+      route_path: "",
+      chart_line_account_id: null,
+      held: false,
+      share: 0,
+      value: { value: 0 },
+    });
+    // The row's money is its rows': S3 made 10.000, S4 lost 5.000; 150.000 in, 155.000 out.
+    expect(liquidated.total_pl!.value).toBeCloseTo(5_000, 6);
+    expect(liquidated.deposits!.value).toBeCloseTo(-5_000, 6);
+    // Its line is the two together: held from S3's purchase through S4's sale.
+    expect(liquidated.spark.length).toBeGreaterThan(1);
+    expect(liquidated.perf_spark.length).toBeGreaterThan(1);
+    // Neither held anything this year's days after the last sale, nor yesterday.
+    expect(liquidated.day_pct).toBeNull();
+    expect(liquidated.total_pct).not.toBeNull();
+    // A folded child group of the page keeps its own members.
+    expect(new Set(liquidated.members[0]!.members.map((m) => m.account_id))).toEqual(new Set([ids.stockC, ids.cajaC]));
+
+    // The same list one level down: the group as a row of its parent's page.
+    const parent = (await buildDashboardNavContext("clp", "brokerage_acciones")).group_glance!;
+    const find = (rows: typeof parent.rows): (typeof parent.rows)[number] | undefined =>
+      rows.find((r) => r.slug === SLUG && r.kind === "group") ??
+      rows.flatMap((r) => (r.kind === "liquidated" ? r.members : [])).find((r) => r.slug === SLUG && r.kind === "group");
+    const asRow = find(parent.rows)!;
+    expect(asRow.members.map((m) => m.kind)).toEqual(["group", "group", "liquidated"]);
+    const nested = asRow.members[2]!;
+    expect(nested.slug).toBe(SLUG);
+    expect(nested.members.map((m) => m.slug)).toEqual([`${PREFIX}_s3`, `${PREFIX}_s4`]);
+    expect(nested.total_pl!.value).toBeCloseTo(5_000, 6);
+    expect(nested.members_perf_zero_y).not.toBeNull();
+    // One level only under a member: the folded rows carry none.
+    expect(nested.members.every((m) => m.members.length === 0)).toBe(true);
+  });
+
+  it("adds up in dollars too", async () => {
+    const g = (await buildDashboardNavContext("usd", SLUG)).group_glance!;
+    const liquidated = g.rows.find((r) => r.kind === "liquidated")!;
+    expect(liquidated.members).toHaveLength(2);
+    const sum = (pick: (r: typeof liquidated) => number) => liquidated.members.reduce((s, m) => s + pick(m), 0);
+    expect(liquidated.total_pl).toMatchObject({ currency: "usd" });
+    expect(liquidated.total_pl!.value).toBeCloseTo(sum((m) => m.total_pl!.value), 9);
+    expect(liquidated.deposits!.value).toBeCloseTo(sum((m) => m.deposits!.value), 9);
+  });
+
+  it("leaves a list alone with one sold-out row, or with nothing held", async () => {
+    // S2's own page: the stock held, its emptied caja the one sold-out row.
+    const s2 = (await buildDashboardNavContext("clp", `${PREFIX}_s2`)).group_glance!;
+    expect(s2.rows.map((r) => [r.kind, r.account_id, r.held])).toEqual([
+      ["account", ids.stockB, true],
+      ["account", ids.cajaB, false],
+    ]);
+    // A sold-out group's own page: both accounts sold, nothing to tell them from.
+    const s3 = (await buildDashboardNavContext("clp", `${PREFIX}_s3`)).group_glance!;
+    expect(s3.rows.map((r) => r.kind)).toEqual(["account", "account"]);
+    // S1 holds both its accounts.
+    const g = (await buildDashboardNavContext("clp", SLUG)).group_glance!;
+    expect(g.rows[0]!.members.every((m) => m.kind === "account")).toBe(true);
   });
 
   it("gives a sold-out group its composition on the last day it held something", async () => {
@@ -330,7 +414,7 @@ describe("group_glance on the nav-context payload", () => {
 
   it("is built for the Inversiones hub and its parents, and null for a basket and for a group that is neither investment nor cash", async () => {
     const acciones = (await buildDashboardNavContext("clp", "brokerage_acciones")).group_glance!;
-    expect(acciones.rows.some((r) => r.slug === SLUG)).toBe(true);
+    expect(acciones.rows.some((r) => r.kind === "group" && r.slug === SLUG)).toBe(true);
     expect((await buildDashboardNavContext("clp", "inversiones")).group_glance).not.toBeNull();
     expect((await buildDashboardNavContext("usd", SLUG)).group_glance!.unit).toBe("usd");
     expect((await buildDashboardNavContext("clp", `${PREFIX}_s1`)).group_glance).toBeNull();

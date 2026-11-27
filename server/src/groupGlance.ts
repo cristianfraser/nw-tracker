@@ -22,6 +22,10 @@
  *   basket's accounts, any other group's own rows by the same rule). A child group's figures are its card's `child` variant,
  *   `value.child` and `row_pct` (the figures of a row in its parent's table); an account's are its
  *   dashboard row's. A child without card metrics or a dashboard row throws;
+ * - liquidated rows: in every row list of an investment glance (the page's rows, a child group's
+ *   members), {@link GROUP_GLANCE_LIQUIDATED_MIN_ROWS} or more sold-out rows beside a held one are
+ *   folded into one `liquidated` row after the held ones, carrying them as its `members`
+ *   (`foldLiquidated`; a never-funded row is not liquidated and stays a row of its own, last);
  * - composition: the basket's rule (`compositionOnLastHeldDay`) over the group's counted member
  *   accounts — on the last day any held something, so a sold-out group keeps its composition;
  * - sparklines: each row's node value (`nodeValueSeriesOnGrid`) over the year ending today, own
@@ -39,6 +43,7 @@ import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import { HOME_CURRENCY, currencySmallestCoin } from "./displayUnits.js";
 import { buildNavChartBucketPlan, navChartBucketNavNodes, shouldAggregateNavCharts } from "./groupChartBuckets.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./linkedCreditCards.js";
+import { chainDailyPct, chainPeriodStartYmd, type ChainPeriod } from "./periodPctDailyChain.js";
 import { groupAccountIds, nettedGroup } from "./navTreeModel.js";
 import type { NavTreeNodeDto } from "./navTreeTypes.js";
 import {
@@ -58,6 +63,9 @@ import type { CurrencyCode } from "./rates.js";
 export const GROUP_GLANCE_SPARK_MAX_POINTS = 60;
 /** The sparkline's window: a year ending today (today included). */
 export const GROUP_GLANCE_SPARK_DAYS = 365;
+
+/** A row list folds its sold-out rows into one «liquidated» row from this many on. */
+export const GROUP_GLANCE_LIQUIDATED_MIN_ROWS = 2;
 
 /** A sparkline coordinate (0..1) to 3 decimals: finer than any drawn pixel, a third of the JSON. */
 const sparkCoord = (v: number) => Math.round(v * 1000) / 1000;
@@ -95,11 +103,18 @@ export type GroupGlanceInputs = {
   cardMetricsBySlug: Readonly<Record<string, NavCardMetricsDto>>;
   /**
    * A row's full-history daily returns (the series its % cells compound: `pg:<slug>` for a group,
-   * `account:<id>` for an account); null for a scope with none. Never asked on a cash glance.
+   * `account:<id>` for an account, one series over `accountIds` — counted accounts, never empty —
+   * for the liquidated rows of the group `parentSlug`); null for a scope with none. Never asked on
+   * a cash glance.
    */
-  dailyPctFor: (scope: { kind: "group"; slug: string } | { kind: "account"; accountId: number }) => readonly DailyPctPoint[] | null;
+  dailyPctFor: (scope: GroupGlanceDailyPctScope) => readonly DailyPctPoint[] | null;
   now?: Date;
 };
+
+export type GroupGlanceDailyPctScope =
+  | { kind: "group"; slug: string }
+  | { kind: "account"; accountId: number }
+  | { kind: "liquidated"; parentSlug: string; accountIds: readonly number[] };
 
 function direction(x: number | null): PositionGlanceDirection {
   if (x == null || !Number.isFinite(x) || x === 0) return "flat";
@@ -324,8 +339,12 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
   const grid = sparkGrid(today);
   // Each row's chained return on the grid, scaled together once every row is built.
   const perfByRow = new Map<GroupGlanceRowDto, (number | null)[]>();
-  type Scope = Parameters<GroupGlanceInputs["dailyPctFor"]>[0];
-  const sparksFor = (accountIds: readonly number[], netsLinkedCards: boolean, scope: Scope) => {
+  /** `points`: the row's daily returns (asked only on an investment glance). */
+  const sparksFor = (
+    accountIds: readonly number[],
+    netsLinkedCards: boolean,
+    points: () => readonly DailyPctPoint[] | null
+  ) => {
     const members: NodeValueMember[] = [...new Set(accountIds)].map((id) => ({
       account_id: id,
       exclude_from_group_totals: requireRow(id).exclude_from_group_totals ?? undefined,
@@ -334,7 +353,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     return {
       spark: groupGlanceSpark(values),
       // A cash glance draws balances only: no return is read.
-      perf: cash ? grid.map(() => null) : groupGlancePerfOnGrid(grid, values, inp.dailyPctFor(scope), eps),
+      perf: cash ? grid.map(() => null) : groupGlancePerfOnGrid(grid, values, points(), eps),
     };
   };
   const withPerf = (row: GroupGlanceRowDto, perf: (number | null)[]): GroupGlanceRowDto => {
@@ -343,16 +362,80 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
   };
   /** The counted accounts a page row stands for (a cash glance checks they cover the page's). */
   const idsByRow = new Map<GroupGlanceRowDto, readonly number[]>();
-  const covering = (row: GroupGlanceRowDto, ids: readonly number[]): GroupGlanceRowDto => {
+  /** The accounts a row's sparklines are drawn over. */
+  const sparkIdsByRow = new Map<GroupGlanceRowDto, readonly number[]>();
+  const covering = (row: GroupGlanceRowDto, ids: readonly number[], sparkIds: readonly number[]): GroupGlanceRowDto => {
     idsByRow.set(row, ids);
+    sparkIdsByRow.set(row, sparkIds);
     return row;
+  };
+
+  /**
+   * A sorted row list with its liquidated rows folded into one `liquidated` row, right after the
+   * held ones: only on an investment glance, from {@link GROUP_GLANCE_LIQUIDATED_MIN_ROWS} such
+   * rows on, and only beside a held row (a list with nothing held is already all of them). A row
+   * is liquidated when it holds nothing today and once held money (aportes or a lifetime P/L on
+   * file: a never-funded account is not, as on the card's `liquidated`). The folded row's figures
+   * are its rows' own: lifetime P/L and aportes their sums, the %s and the performance line one
+   * daily series over their counted accounts (the scope the card's liquidated rows read, so equal
+   * sets share one build). `parentSlug` is the group the list belongs to.
+   */
+  const foldLiquidated = (parentSlug: string, list: GroupGlanceRowDto[]): GroupGlanceRowDto[] => {
+    if (cash) return list;
+    const material = (m: Money | null) => m != null && Math.abs(m.value) > eps;
+    const isLiquidated = (r: GroupGlanceRowDto) => !r.held && (material(r.total_pl) || material(r.deposits));
+    const sold = list.filter(isLiquidated);
+    if (sold.length < GROUP_GLANCE_LIQUIDATED_MIN_ROWS || !list.some((r) => r.held)) return list;
+    const accountIds = [...new Set(sold.flatMap((r) => sparkIdsByRow.get(r) ?? []))]
+      .filter((id) => !requireRow(id).exclude_from_group_totals)
+      .sort((a, b) => a - b);
+    const points =
+      accountIds.length > 0 ? inp.dailyPctFor({ kind: "liquidated", parentSlug, accountIds }) : null;
+    const pct = (period: ChainPeriod) =>
+      points ? finiteOrNull(chainDailyPct(points, chainPeriodStartYmd(period, today), today)) : null;
+    const sumOrNull = (pick: (r: GroupGlanceRowDto) => Money | null): Money | null => {
+      const parts = sold.map(pick).filter((m): m is Money => m != null);
+      return parts.length > 0 ? money(parts.reduce((s, m) => s + m.value, 0)) : null;
+    };
+    const { spark, perf } = sparksFor(accountIds, false, () => points);
+    // Each folded row is worth under half a coin; so is the row, whatever their dust adds up to.
+    const dust = sold.reduce((sum, r) => sum + r.value.value, 0);
+    const row: GroupGlanceRowDto = {
+      kind: "liquidated",
+      slug: parentSlug,
+      account_id: null,
+      label: "",
+      label_i18n_key: "groupPage.accountsTable.liquidated",
+      route_path: "",
+      chart_line_account_id: null,
+      color_rgb: null,
+      value: money(Math.abs(dust) > eps ? dust : 0),
+      share: 0,
+      day_pct: pct("day"),
+      month_pct: pct("month"),
+      year_pct: pct("year"),
+      total_pl: sumOrNull((r) => r.total_pl),
+      total_pct: pct("total"),
+      deposits: sumOrNull((r) => r.deposits),
+      native: [],
+      change: null,
+      held: false,
+      spark,
+      perf_spark: [],
+      members_perf_zero_y: null,
+      members: sold,
+    };
+    perfByRow.set(row, perf);
+    const soldSet = new Set(sold);
+    const rest = list.filter((r) => !soldSet.has(r));
+    return [...rest.filter((r) => r.held), row, ...rest.filter((r) => !r.held)];
   };
 
   const accountRow = (id: number, chartLineAccountId: number | null, color: string | null): GroupGlanceRowDto => {
     const r = requireRow(id);
     const value = accountValue(id);
     const held = Math.abs(value) > eps;
-    const { spark, perf } = sparksFor([id], false, { kind: "account", accountId: id });
+    const { spark, perf } = sparksFor([id], false, () => inp.dailyPctFor({ kind: "account", accountId: id }));
     return covering(withPerf({
       kind: "account",
       slug: null,
@@ -376,7 +459,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       perf_spark: [],
       members_perf_zero_y: null,
       members: [],
-    }, perf), [id]);
+    }, perf), [id], [id]);
   };
 
   /**
@@ -396,16 +479,20 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     const members = !withMembers
       ? []
       : node.basket === true
-        ? sortGroupGlanceRows(
-            [...new Set(node.member_account_ids ?? leafAccountIds(node))]
-              .filter(counted)
-              .map((id) => accountRow(id, null, colorOfAccountIn(node, id)))
+        ? foldLiquidated(
+            node.slug,
+            sortGroupGlanceRows(
+              [...new Set(node.member_account_ids ?? leafAccountIds(node))]
+                .filter(counted)
+                .map((id) => accountRow(id, null, colorOfAccountIn(node, id)))
+            )
           )
         : rowsUnder(node, false);
+    const sparkIds = cash ? ownIds : leafAccountIds(node);
     const { spark, perf } = sparksFor(
-      cash ? ownIds : leafAccountIds(node),
+      sparkIds,
       cash ? false : nodeNetsLinkedCards(node.slug),
-      { kind: "group", slug: node.slug }
+      () => inp.dailyPctFor({ kind: "group", slug: node.slug })
     );
     return covering(withPerf({
       kind: "group",
@@ -430,14 +517,15 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       perf_spark: [],
       members_perf_zero_y: null,
       members,
-    }, perf), ownIds);
+    }, perf), ownIds, sparkIds);
   };
 
   /**
    * A group's rows, as its own page lists them: the grouped chart plan's buckets, or the member
    * accounts when the page draws per-account lines. Accounts no bucket holds keep their own line,
    * so their own row. The page's own rows (`asPage`) name their chart line and carry one level of
-   * members; a child group's rows (its members here) do neither.
+   * members; a child group's rows (its members here) do neither. Sold-out rows are folded
+   * (`foldLiquidated`).
    */
   function rowsUnder(node: NavTreeNodeDto, asPage: boolean): GroupGlanceRowDto[] {
     const children: GroupGlanceRowDto[] = [];
@@ -466,7 +554,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       if (covered.has(id) || !counted(id)) continue;
       children.push(accountRow(id, asPage ? id : null, colorOfAccountIn(node, id)));
     }
-    return sortGroupGlanceRows(children);
+    return foldLiquidated(node.slug, sortGroupGlanceRows(children));
   }
   const rows = rowsUnder(inp.chartNode, true);
   if (cash) {
@@ -593,7 +681,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
   const totalSparks = sparksFor(
     cash ? memberIds : leafAccountIds(inp.chartNode),
     cash ? netsCards : nodeNetsLinkedCards(inp.slug),
-    { kind: "group", slug: inp.slug }
+    () => inp.dailyPctFor({ kind: "group", slug: inp.slug })
   );
   const total: GroupGlanceRowDto = withPerf({
     kind: "group",
@@ -624,7 +712,8 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
   }, totalSparks.perf);
 
   // Performance lines on one scale per level drawn together, so a level's rows compare and a
-  // hidden level never flattens a visible one: the total with the page's rows, each row's members.
+  // hidden level never flattens a visible one: the total with the page's rows, each row's members
+  // (at every depth: a liquidated row's folded rows, their own members).
   const scaleTogether = (level: readonly GroupGlanceRowDto[]): number => {
     const perf = groupGlancePerfSparks(level.map((r) => perfByRow.get(r)!));
     level.forEach((r, i) => {
@@ -633,7 +722,12 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     return perf.zeroY;
   };
   const perfZeroY = scaleTogether([total, ...rows]);
-  for (const r of rows) if (r.members.length > 0) r.members_perf_zero_y = scaleTogether(r.members);
+  const scaleMembers = (r: GroupGlanceRowDto): void => {
+    if (r.members.length === 0) return;
+    r.members_perf_zero_y = scaleTogether(r.members);
+    r.members.forEach(scaleMembers);
+  };
+  rows.forEach(scaleMembers);
 
   return {
     slug: inp.slug,
