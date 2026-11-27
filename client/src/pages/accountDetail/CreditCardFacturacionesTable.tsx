@@ -7,7 +7,7 @@ import { cn } from "../../cn";
 import { Loadable } from "../../components/ui/Loadable";
 import { Modal } from "../../components/ui/Modal";
 import { useModalPeriodNav } from "../../periodModalNav";
-import { useFlowsExpenseLines } from "../../queries/hooks";
+import { useHeldFlowsExpenseLines } from "../../queries/hooks";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import type {
   CcFacturacionDto,
@@ -18,6 +18,7 @@ import { PaginatedTable, useClientPagination } from "../../components/ui/Paginat
 import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 import { Button } from "@crfrsr/ui";
 import { CreditCardFacturacionModalSections } from "../../components/credit-card/CreditCardFacturacionModalSections";
+import { ExpenseLinesUnitScope } from "../../components/credit-card/CreditCardExpenseLinesTable";
 import {
   buildFacturacionModalBucket,
   emptyFacturacionModalBucket,
@@ -165,13 +166,15 @@ export function CreditCardFacturacionesTable({
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CcFacturacionDto | null>(null);
   // The facturación's lines (the server's rule for which lines a facturación lists), while open.
-  const facturacionLines = useFlowsExpenseLines(
+  const facturacionLines = useHeldFlowsExpenseLines(
     displayUnit,
     selected ? { kind: "facturacion", account_id: accountId, billing_month: selected.billing_month } : null,
     modalOpen
   );
   const flows = facturacionLines.data;
   const flowsPending = selected != null && flows == null && !facturacionLines.error;
+  // Held across a unit switch while open (dimmed, in its own unit).
+  const flowsHeld = facturacionLines.loading && flows != null;
   const categories = flows?.categories ?? [];
 
   const proxyByMonth = useMemo(() => {
@@ -346,7 +349,7 @@ export function CreditCardFacturacionesTable({
         }
         subtitle={modalSubtitle}
       >
-        {facturacionLines.error && !flows ? (
+        {facturacionLines.error ? (
           <p className="error">{t("common.loadFailed")}</p>
         ) : flowsPending ? (
           // The lines are not in yet: an empty dimmed body, never the «no lines» copy.
@@ -354,10 +357,11 @@ export function CreditCardFacturacionesTable({
         ) : facturacionLineCount === 0 ? (
           <p className="muted">{t("accountDetail.creditCard.facturacionModalEmpty")}</p>
         ) : (
-          <CreditCardFacturacionModalSections
-            bucket={facturacionBucket}
-            categories={categories}
-          />
+          <Loadable loading={flowsHeld}>
+            <ExpenseLinesUnitScope unit={flows?.unit}>
+              <CreditCardFacturacionModalSections bucket={facturacionBucket} categories={categories} />
+            </ExpenseLinesUnitScope>
+          </Loadable>
         )}
       </Modal>
     </>

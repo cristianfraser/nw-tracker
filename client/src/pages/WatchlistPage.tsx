@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useState } from "react";
-import { queryShowsLoading } from "../queries/pageShapeReady";
 import { formatWhen } from "../storedInstant";
 import { Link } from "react-router-dom";
 import { PageGridTile } from "../components/layout/PageGridTile";
@@ -13,7 +12,7 @@ import {
   useAddWatchlistTicker,
   useDeleteWatchlistRow,
   usePatchWatchlistMarquee,
-  useWatchlist,
+  useHeldWatchlist,
   useWatchlistSymbolSearch,
 } from "../queries/hooks";
 import type { WatchlistRow, WatchlistSymbolSearchResult } from "../types";
@@ -271,9 +270,8 @@ export function WatchlistPage() {
   const { t } = useTranslation();
   // Prices and changes follow the CLP/USD toggle (converted server-side, unit in the query key).
   const { displayUnit } = useDisplayPreferences();
-  const { data, isPending, isPlaceholderData, error } = useWatchlist(displayUnit);
-  // Pending, or the held rows of the other display unit while this unit's load.
-  const loading = queryShowsLoading({ isPending, isPlaceholderData });
+  // Held across a unit switch: the other unit's rows, dimmed, in their own unit, while this unit's load.
+  const { data, loading, error } = useHeldWatchlist(displayUnit);
   if (error) {
     return (
       <main>

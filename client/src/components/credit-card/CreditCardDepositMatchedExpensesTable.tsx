@@ -2,7 +2,7 @@ import { PageGridTile } from "../layout/PageGridTile";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import type { FlowCcExpenseLineRow } from "../../types";
-import { useFlowsExpenseLines } from "../../queries/hooks";
+import { useHeldFlowsExpenseLines } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { Button } from "@crfrsr/ui";
 import { loadableClass } from "../ui/Loadable";
@@ -26,8 +26,9 @@ export function CreditCardDepositMatchedExpensesTable({ includePreTax }: { inclu
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const query = useFlowsExpenseLines(displayUnit, { kind: "deposit_matched", include_pre_tax: includePreTax });
-  const loading = query.data == null;
+  // Held across a unit switch (dimmed, in its own unit).
+  const query = useHeldFlowsExpenseLines(displayUnit, { kind: "deposit_matched", include_pre_tax: includePreTax });
+  const loading = query.data == null || query.loading;
   const categories = query.data?.categories ?? [];
   const lines = query.data?.lines;
 
@@ -109,6 +110,7 @@ export function CreditCardDepositMatchedExpensesTable({ includePreTax }: { inclu
           showCategoryControls
           enableCheckingNotes
           loading={loading}
+          unit={query.data?.unit}
         />
         <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
       </CreditCardExpenseLinesSelectionProvider>

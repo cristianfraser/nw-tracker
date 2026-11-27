@@ -90,6 +90,8 @@ export function IncomeMonthlyChart({
       <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")} style={{ height: 280 }}>
         <AppComposedChart
           data={densePoints}
+          // The shown payload's unit: a held payload turning into the new unit's tweens like data arriving.
+          animationKey={displayUnit}
           tooltip={{
             formatValue: (v) => formatFlowMoney(v, displayUnit),
             formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),

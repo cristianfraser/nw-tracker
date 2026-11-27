@@ -9,7 +9,7 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { loadableClass } from "../components/ui/Loadable";
-import { useIncome } from "../queries/hooks";
+import { useHeldIncome } from "../queries/hooks";
 import { useTranslation } from "../i18n";
 import { rollupIncomeChartPointsByYear } from "../incomeAggregates";
 import {
@@ -39,10 +39,13 @@ export function IncomePage() {
   const tableGranularity = flowTableGranularity(
     tablePrefs.period
   );
-  const { data, error } = useIncome(displayUnit);
+  // Held across a unit switch: dimmed, everything formatted in its own `unit`.
+  const income = useHeldIncome(displayUnit);
+  const { data, error } = income;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
-  // The frame renders with zero totals and no rows until the payload arrives.
-  const loading = !data;
+  // The frame renders with zero totals and no rows until there is a payload to show.
+  const loading = !data || income.loading;
+  const unit = data?.unit ?? displayUnit;
 
   // Month rows, day points and the total are the server's (the overview's own income rule).
   const aggregates = data?.aggregates ?? null;
@@ -89,12 +92,12 @@ export function IncomePage() {
       <p className={loadableClass(loading, "muted")}>
         {t("income.totalLabel")}{" "}
         <span className="mono flow-summary-value">
-          {formatFlowMoney(aggregates?.total ?? 0, displayUnit)}
+          {formatFlowMoney(aggregates?.total ?? 0, unit)}
         </span>
         {timeRange !== "total" ? (
           <span className="muted flow-summary-note">
             · {t("flows.rangeTotalLabel")}{" "}
-            <span className="mono">{formatFlowMoney(rangeTotal, displayUnit)}</span>
+            <span className="mono">{formatFlowMoney(rangeTotal, unit)}</span>
           </span>
         ) : null}
       </p>
@@ -105,7 +108,7 @@ export function IncomePage() {
           title={t("income.chartTitle")}
           points={chartPoints}
           xAxisGranularity={chartGranularity}
-          displayUnit={displayUnit}
+          displayUnit={unit}
           loading={loading}
         />
       </div>
@@ -122,27 +125,27 @@ export function IncomePage() {
         <IncomeMonthList
           data={data}
           granularity={tableGranularity}
-          displayUnit={displayUnit}
+          displayUnit={unit}
           loading={loading}
           onOpenPayslip={(payslipId) => setPayslipFocus((prev) => ({ payslipId, seq: (prev?.seq ?? 0) + 1 }))}
         />
       </PageGridTile>
 
-      <PayrollBreakdownSection breakdown={data?.payroll_breakdown} displayUnit={displayUnit} loading={loading} />
+      <PayrollBreakdownSection breakdown={data?.payroll_breakdown} displayUnit={unit} loading={loading} />
 
       <PageGridTile id="work-earnings">
         <PayslipList
           rows={data?.work_earnings ?? []}
           breakdown={data?.payroll_breakdown}
           checks={data?.payslip_checks ?? []}
-          displayUnit={displayUnit}
+          displayUnit={unit}
           loading={loading}
           focus={payslipFocus}
         />
       </PageGridTile>
 
       <PageGridTile id="side-lists">
-        <IncomeSideLists data={data} displayUnit={displayUnit} loading={loading} />
+        <IncomeSideLists data={data} displayUnit={unit} loading={loading} />
       </PageGridTile>
     </>
   );

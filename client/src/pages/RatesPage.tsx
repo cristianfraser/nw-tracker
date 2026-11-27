@@ -11,8 +11,7 @@ import { formatMarketValue } from "../components/watchlist/heatGrid";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { DASHBOARD_PATH } from "../dashboardPath";
 import { useTranslation } from "../i18n";
-import { useMarketSeries, useRatesGlance, useSyncStatus } from "../queries/hooks";
-import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
+import { useHeldMarketSeries, useHeldRatesGlance, useSyncStatus } from "../queries/hooks";
 import { useSurfaceTab } from "../surfaceDisplayPrefs";
 import type { MarketSeriesPoint, MarketSeriesResponse, RatesGlanceRow, RatesRecentEntry } from "../types";
 
@@ -171,17 +170,17 @@ export function RatesPage() {
   const { displayUnit } = useDisplayPreferences();
   const { tab: view, setTab: setView } = useSurfaceTab<RatesView>("rates.view", RATES_VIEWS);
 
-  const seriesQuery = useMarketSeries(displayUnit);
+  const seriesQuery = useHeldMarketSeries(displayUnit);
   const payload = seriesQuery.data;
   // Dim while there is no payload yet or the previous unit's is held.
-  const seriesPending = queryShowsLoading(seriesQuery);
-  const glanceQuery = useRatesGlance(displayUnit);
+  const seriesPending = seriesQuery.loading;
+  const glanceQuery = useHeldRatesGlance(displayUnit);
   const glance = glanceQuery.data;
-  const glancePending = queryShowsLoading(glanceQuery);
+  const glancePending = glanceQuery.loading;
   const { data: syncStatus } = useSyncStatus();
   // Each payload's error shows in its own section: the charts stay when only the glance fails.
-  const seriesError = queryLoadError(seriesQuery);
-  const glanceError = queryLoadError(glanceQuery);
+  const seriesError = seriesQuery.error;
+  const glanceError = glanceQuery.error;
 
   const currencyRows = useMemo(() => {
     // Before the glance answers, the five series are valueless rows; once it has, it lists them all.

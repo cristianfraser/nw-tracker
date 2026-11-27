@@ -240,12 +240,13 @@ export function useHeldGroupPeriodReturns(portfolioGroup: string, unit: DisplayU
   return useHeldUnitQuery(groupPeriodReturnsOptions(portfolioGroup, unit, enabled), unit);
 }
 
-/** Home «Últimos movimientos»: the newest expense lines and income credits, interleaved. */
-export function useLatestMovements(limit: number, unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.latestMovements(limit, unit),
-    queryFn: () => api.latestMovements(limit, unit),
-  });
+/**
+ * Home «Últimos movimientos»: the newest expense lines and income credits, interleaved; held across
+ * a unit switch (the payload carries no `unit`: the view's `unit` is the one it was requested in).
+ */
+export function useHeldLatestMovements(limit: number, unit: DisplayUnit) {
+  const queryKey = queryKeys.latestMovements(limit, unit);
+  return useHeldUnitQuery({ queryKey, queryFn: () => api.latestMovements(limit, unit) }, unit);
 }
 
 /**
@@ -393,25 +394,36 @@ export function useCurrencies() {
 
 const MARKET_TICKER_MS = 60_000;
 
-/** Marquee snapshot in the display unit (values convert server-side; the key carries the unit). */
-export function useMarketTicker(unit: DisplayUnit) {
-  return useQuery({
+function marketTickerOptions(unit: DisplayUnit) {
+  return {
     queryKey: queryKeys.marketTicker(unit),
     queryFn: () => api.marketTicker(unit),
     staleTime: MARKET_TICKER_MS,
     refetchInterval: MARKET_TICKER_MS,
-    placeholderData: keepPreviousData,
-  });
+  };
 }
 
-export function useWatchlist(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.watchlist(unit),
-    queryFn: () => api.watchlist(unit),
-    staleTime: MARKET_TICKER_MS,
-    refetchInterval: MARKET_TICKER_MS,
-    placeholderData: keepPreviousData,
-  });
+/** Marquee snapshot in the display unit (values convert server-side; the key carries the unit). */
+export function useMarketTicker(unit: DisplayUnit) {
+  return useQuery(marketTickerOptions(unit));
+}
+
+/** {@link useMarketTicker} as the marquee shows it: held across a unit switch, in its own unit. */
+export function useHeldMarketTicker(unit: DisplayUnit) {
+  return useHeldUnitQuery(marketTickerOptions(unit), unit);
+}
+
+/** The watchlist page in the display unit, held across a unit switch, in its own unit. */
+export function useHeldWatchlist(unit: DisplayUnit) {
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.watchlist(unit),
+      queryFn: () => api.watchlist(unit),
+      staleTime: MARKET_TICKER_MS,
+      refetchInterval: MARKET_TICKER_MS,
+    },
+    unit
+  );
 }
 
 /**
@@ -475,21 +487,14 @@ export function useDeleteWatchlistRow() {
   });
 }
 
-export function useMarketSeries(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.marketSeries(unit),
-    queryFn: () => api.marketSeries(unit),
-    placeholderData: keepPreviousData,
-  });
+/** The rates page's series, held across a unit switch, in its own unit. */
+export function useHeldMarketSeries(unit: DisplayUnit) {
+  return useHeldUnitQuery({ queryKey: queryKeys.marketSeries(unit), queryFn: () => api.marketSeries(unit) }, unit);
 }
 
-/** The rates page's glances; reads live rates, so the stamp poll refetches it on a move. */
-export function useRatesGlance(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.ratesGlance(unit),
-    queryFn: () => api.ratesGlance(unit),
-    placeholderData: keepPreviousData,
-  });
+/** The rates page's glances; reads live rates, so the stamp poll refetches it on a move. Held across a unit switch. */
+export function useHeldRatesGlance(unit: DisplayUnit) {
+  return useHeldUnitQuery({ queryKey: queryKeys.ratesGlance(unit), queryFn: () => api.ratesGlance(unit) }, unit);
 }
 
 /** The buy / sell rates waiting for review, by year. */
@@ -657,37 +662,27 @@ export function useMarkMessagesReadMutation() {
   });
 }
 
-/** The income page payload with its aggregates in `unit` (never held across units). */
-export function useIncome(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.income(unit),
-    queryFn: () => api.income(unit),
-  });
+/** The income page payload with its aggregates in `unit`, held across a unit switch, in its own unit. */
+export function useHeldIncome(unit: DisplayUnit) {
+  return useHeldUnitQuery({ queryKey: queryKeys.incomePage(unit), queryFn: () => api.income(unit) }, unit);
 }
 
-/** The /flows/deposits page in `unit` (never held across units). */
-export function useFlowsDeposits(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.flowsDeposits(unit),
-    queryFn: () => api.flowsDeposits(unit),
-  });
+/** The /flows/deposits page in `unit`, held across a unit switch, in its own unit. */
+export function useHeldFlowsDeposits(unit: DisplayUnit) {
+  return useHeldUnitQuery({ queryKey: queryKeys.flowsDepositsPage(unit), queryFn: () => api.flowsDeposits(unit) }, unit);
 }
 
-/** The /flows P/L page in `unit`: held across a Diario window change, never across units. */
-export function useFlowsPl(unit: DisplayUnit, days?: number) {
-  const queryKey = queryKeys.flowsPl(unit, days);
-  return useQuery({
-    queryKey,
-    queryFn: () => api.flowsPl(unit, days),
-    placeholderData: keepPreviousDataSameEntity(queryKey, 2),
-  });
+/** The /flows P/L page in `unit`, held across a unit or Diario window change, in its own unit. */
+export function useHeldFlowsPl(unit: DisplayUnit, days?: number) {
+  return useHeldUnitQuery({ queryKey: queryKeys.flowsPl(unit, days), queryFn: () => api.flowsPl(unit, days) }, unit);
 }
 
-export function useFlowsDepositsReconciliation(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.flowsDepositsReconciliation(unit),
-    queryFn: () => api.flowsDepositsReconciliation(unit),
-  });
+/** The deposits reconciliation page in `unit`, held across a unit switch, in its own unit. */
+export function useHeldFlowsDepositsReconciliation(unit: DisplayUnit) {
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.flowsDepositsReconciliation(unit), queryFn: () => api.flowsDepositsReconciliation(unit) },
+    unit
+  );
 }
 
 export function useRealEstateExpenses() {
@@ -737,99 +732,103 @@ export function useRealEstatePropertyAccounts(enabled: boolean) {
 }
 
 /**
- * One selector's expense lines (a month, a facturación, a list, a big group), each line's
- * `converted` in `unit`. No placeholder: a list never shows another selector's lines while its
- * own load; one already cached shows at once.
+ * One expense-lines list (a facturación, a list, a big group), each line's `converted` in `unit`, as
+ * the list shows it: held across a unit or page change (dimmed, in its own `unit`); a list never
+ * shows another list's rows while it loads, and one already cached shows at once.
  */
-/**
- * One expense-lines list. A list never shows another list's rows while it loads; a paged list
- * (`page`) keeps its previous page, dimmed, while the next page loads (same unit and selector).
- */
-export function useFlowsExpenseLines(
+export function useHeldFlowsExpenseLines(
   unit: DisplayUnit,
   selector: import("../types").FlowsExpenseLinesSelector | null,
   enabled = true,
   page?: { page: number; pageSize: number }
 ) {
-  const queryKey = selector
-    ? queryKeys.flowsExpenseLines(unit, selector, page)
-    : [...queryKeys.flowsExpensesLinesAll(), unit, "none"];
-  return useQuery({
-    queryKey,
-    queryFn: () => api.flowsExpenseLines(unit, selector!, page),
-    enabled: enabled && selector != null,
-    placeholderData: page
-      ? <T,>(previousData: T | undefined, previousQuery: { queryKey: readonly unknown[] } | undefined) =>
-          previousQuery &&
-          previousQuery.queryKey.length === queryKey.length &&
-          previousQuery.queryKey.slice(0, 4).every((k, i) => Object.is(k, queryKey[i]))
-            ? previousData
-            : undefined
-      : undefined,
-  });
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.flowsExpenseLines(unit, selector, page),
+      queryFn: () => api.flowsExpenseLines(unit, selector!, page),
+      enabled: enabled && selector != null,
+    },
+    unit
+  );
 }
 
-/** The Expenses page's catalogs and summaries (categories, big groups, additional cards). */
-export function useFlowsExpensesSummary(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.flowsExpensesSummary(unit),
-    queryFn: () => api.flowsExpensesSummary(unit),
-  });
+/** The Expenses page's catalogs and summaries (categories, big groups, additional cards), held across a unit switch. */
+export function useHeldFlowsExpensesSummary(unit: DisplayUnit) {
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.flowsExpensesSummary(unit), queryFn: () => api.flowsExpensesSummary(unit) },
+    unit
+  );
 }
 
-/** The purchases a card credit may refund, fetched while its picker is open. */
-export function useCardRefundCandidates(unit: DisplayUnit, accountId: number, lineId: number, enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.cardRefundCandidates(unit, accountId, lineId),
-    queryFn: () => api.cardRefundCandidates(unit, accountId, lineId),
-    enabled,
-  });
+/** The purchases a card credit may refund, fetched while its picker is open; held across a unit switch. */
+export function useHeldCardRefundCandidates(unit: DisplayUnit, accountId: number, lineId: number, enabled: boolean) {
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.cardRefundCandidates(unit, accountId, lineId),
+      queryFn: () => api.cardRefundCandidates(unit, accountId, lineId),
+      enabled,
+    },
+    unit
+  );
 }
 
-/** The financing manager's pickers: financed cards with their facturaciones, and the plans. */
-export function useFlowsExpensesFinancingCandidates(unit: DisplayUnit, enabled: boolean) {
-  return useQuery({
-    queryKey: queryKeys.flowsExpensesFinancingCandidates(unit),
-    queryFn: () => api.flowsExpensesFinancingCandidates(unit),
-    enabled,
-  });
+/** The financing manager's pickers: financed cards with their facturaciones, and the plans; held across a unit switch. */
+export function useHeldFlowsExpensesFinancingCandidates(unit: DisplayUnit, enabled: boolean) {
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.flowsExpensesFinancingCandidates(unit),
+      queryFn: () => api.flowsExpensesFinancingCandidates(unit),
+      enabled,
+    },
+    unit
+  );
 }
 
-/** The Expenses page by spending day: chart, day strip, the months' calendar days and matrix cells. */
-export function useFlowsExpensesSpent(params: ExpensesSpentParams, enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.flowsExpensesSpent(params),
-    queryFn: () => api.flowsExpensesSpent(params),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+/**
+ * The Expenses page by spending day: chart, day strip, the months' calendar days and matrix cells.
+ * Held across a unit or any selector change (mode, level, range, groups, pre-tax), in its own unit.
+ */
+export function useHeldFlowsExpensesSpent(params: ExpensesSpentParams, enabled = true) {
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.flowsExpensesSpent(params), queryFn: () => api.flowsExpensesSpent(params), enabled },
+    params.unit
+  );
 }
 
-/** The lines of one month (a day of it, a category) by spending day, grouped by day. */
-export function useFlowsExpensesSpentLines(
+/**
+ * The lines of one month (a day of it, a category) by spending day, grouped by day; held across a
+ * unit, month, day or category change, in its own unit.
+ */
+export function useHeldFlowsExpensesSpentLines(
   params: ExpensesSpentParams,
   sel: { month: string; day: string | null; category: string | null },
   enabled = true
 ) {
-  return useQuery({
-    queryKey: queryKeys.flowsExpensesSpentLines(params, sel.month, sel.day, sel.category),
-    queryFn: () => api.flowsExpensesSpentLines(params, sel),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useHeldUnitQuery(
+    {
+      queryKey: queryKeys.flowsExpensesSpentLines(params, sel.month, sel.day, sel.category),
+      queryFn: () => api.flowsExpensesSpentLines(params, sel),
+      enabled,
+    },
+    params.unit
+  );
 }
 
 /**
  * The flows overview (income, expenses, deposits, P/L, net by month, by day when `days` is given,
- * this month / year). Held across an installment-mode or window change, never across units.
+ * this month / year), as a surface shows it: held across a unit, installment-mode or window change,
+ * in its own unit.
  */
-export function useFlowsOverview(unit: DisplayUnit, installmentMode: "split" | "total", days?: number) {
+export function useHeldFlowsOverview(unit: DisplayUnit, installmentMode: "split" | "total", days?: number) {
   const queryKey = queryKeys.flowsOverview(unit, installmentMode, days);
-  return useQuery({
-    queryKey,
-    queryFn: () => api.flowsOverview(unit, installmentMode, days),
-    ...displayUnitQueryBehaviorFor(queryKey),
-  });
+  return useHeldUnitQuery(
+    {
+      queryKey,
+      queryFn: () => api.flowsOverview(unit, installmentMode, days),
+      ...displayUnitQueryBehaviorFor(queryKey),
+    },
+    unit
+  );
 }
 
 export function useCcFacturadoFinancingLinks() {
@@ -1108,16 +1107,16 @@ export function useMovementMirrorCandidates() {
 }
 
 
-export function useProjections(
+/** The projections in `unit` for these assumptions, held across a unit or assumptions change, in its own unit. */
+export function useHeldProjections(
   unit: DisplayUnit,
   overrides: import("../projectionsOverrides").ProjectionOverrides
 ) {
   const overridesKey = useMemo(() => JSON.stringify(overrides), [overrides]);
-  return useQuery({
-    queryKey: queryKeys.projections(unit, overridesKey),
-    queryFn: () => api.projections(unit, overrides),
-    placeholderData: (prev) => prev,
-  });
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.projections(unit, overridesKey), queryFn: () => api.projections(unit, overrides) },
+    unit
+  );
 }
 
 export function useTaxReturn(taxYear: number | null) {
@@ -1203,10 +1202,10 @@ export function useHeldBenchmarkComparison(
   return useHeldUnitQuery(benchmarkComparisonOptions(scope, benchmark, unit, enabled), unit);
 }
 
-export function useWealthPercentile(unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.wealthPercentile(unit),
-    queryFn: () => api.wealthPercentile(unit),
-    placeholderData: keepPreviousData,
-  });
+/** The wealth percentile page in `unit`, held across a unit switch, in its own unit. */
+export function useHeldWealthPercentile(unit: DisplayUnit) {
+  return useHeldUnitQuery(
+    { queryKey: queryKeys.wealthPercentile(unit), queryFn: () => api.wealthPercentile(unit) },
+    unit
+  );
 }

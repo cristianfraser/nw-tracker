@@ -12,7 +12,7 @@ import type {
 } from "../../types";
 import {
   useDeleteCcExpenseBigGroupMutation,
-  useFlowsExpenseLines,
+  useHeldFlowsExpenseLines,
   useRenameCcExpenseBigGroupMutation,
 } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
@@ -54,12 +54,13 @@ function BigGroupBlock({
   const { displayUnit } = useDisplayPreferences();
 
   // The group's lines, fetched once the block is opened.
-  const linesQuery = useFlowsExpenseLines(
+  const linesQuery = useHeldFlowsExpenseLines(
     displayUnit,
     { kind: "big_group", slug, include_pre_tax: includePreTax },
     open
   );
-  const linesLoading = open && linesQuery.data == null && !linesQuery.error;
+  // Held across a unit switch (dimmed, in its own unit).
+  const linesLoading = open && (linesQuery.data == null ? !linesQuery.error : linesQuery.loading);
 
   // A line moved out of the group (optimistic big-group patch) leaves the list at once.
   const groupLines = useMemo<readonly FlowCcExpenseLineRow[]>(
@@ -123,7 +124,7 @@ function BigGroupBlock({
         </label>
       </div>
       {open ? (
-        linesQuery.error && !linesQuery.data ? (
+        linesQuery.error ? (
           <p className="error">{t("common.loadFailed")}</p>
         ) : (
           <CreditCardExpenseLinesTable
@@ -133,6 +134,7 @@ function BigGroupBlock({
             showBigGroupControls
             emptyLabel={t("expenses.creditCard.bigGroups.emptyGroup")}
             loading={linesLoading}
+            unit={linesQuery.data?.unit}
           />
         )
       ) : null}

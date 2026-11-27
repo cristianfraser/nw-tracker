@@ -91,17 +91,31 @@ export function removePersistedPayload(def: PersistedPayload<unknown>, scope: re
 }
 
 /**
- * What a view shows: the live payload once it is here (and stored for the next visit), the stored
- * one until then. `cached` tells the view it is showing the stored one. `liveSchemaVersion` is the
- * live payload's own `schema_version` when the stored value is a part of it: a part from a payload
- * in another version is shown but not stored.
+ * A surface's first paint from the stored copy: the stored copy stands in only while the surface
+ * shows nothing (`shown` undefined: nothing has been drawn for it in this session). Once anything is
+ * shown — live, or held across a unit switch (`heldUnitPayload.ts`) — that is what the surface
+ * draws, never an older stored copy of the requested unit.
+ */
+export function firstPaint<T>(shown: T | null | undefined, stored: T | null | undefined): { value: T | null; stored: boolean } {
+  if (shown != null) return { value: shown, stored: false };
+  return { value: stored ?? null, stored: stored != null };
+}
+
+/**
+ * A home panel over its stored copy: draws `shown` (the held view's data, or a part of it), and
+ * until there is one, the copy stored under `scope` ({@link firstPaint}); stores `live` (only the
+ * requested key's own fetched payload, never a held one) under `scope` for the next visit.
+ * `stored` tells the panel it is drawing the stored copy: its unit is the scope's (the request's)
+ * and it shows undimmed. `liveSchemaVersion` is the live payload's own `schema_version` when the
+ * stored value is a part of it: a part from a payload in another version is shown but not stored.
  */
 export function usePersistedPayload<T>(
   def: PersistedPayload<T>,
   scope: readonly string[],
-  live: T | null | undefined,
+  view: { shown: T | null | undefined; live: T | null | undefined },
   liveSchemaVersion?: number
-): { value: T | null; cached: boolean } {
+): { value: T | null; stored: boolean } {
+  const { shown, live } = view;
   const key = persistedPayloadKey(def.name, scope);
   const versionOk = liveSchemaVersion === undefined || liveSchemaVersion === PERSISTED_PAYLOAD_VERSIONS[def.name];
   useEffect(() => {
@@ -109,13 +123,14 @@ export function usePersistedPayload<T>(
     // `key` stands for `def` + `scope`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, live, versionOk]);
-  // Read once per key, not on every render while the live payload is pending (each read parses a
-  // new object). Shared across the stored → live switch, so equal parts keep their objects.
-  const pending = live == null;
+  // Read once per key while nothing is shown, not on every render (each read parses a new object).
+  const empty = shown == null;
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands for `def` + `scope`
-  const stored = useMemo(() => (pending ? (readPersistedPayload(def, scope) ?? null) : null), [key, pending]);
-  const value = useStructuralValue(live ?? stored);
-  return { value, cached: pending };
+  const stored = useMemo(() => (empty ? (readPersistedPayload(def, scope) ?? null) : null), [key, empty]);
+  const picked = firstPaint(shown, stored);
+  // Shared across the stored → live switch, so equal parts keep their objects.
+  const value = useStructuralValue(picked.value);
+  return { value, stored: picked.stored };
 }
 
 /** Exact keys no longer read: global prefs that went per-surface, the old fx cache. */

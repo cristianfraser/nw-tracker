@@ -118,6 +118,7 @@ export function ExpensesSpentList({
           defaultSort={NEWEST_FIRST}
           dateOf={dateOf}
           loading={loading && data == null}
+          unit={data?.unit}
         />
       </div>
     </div>

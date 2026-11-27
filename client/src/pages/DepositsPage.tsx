@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useFlowsDeposits } from "../queries/hooks";
+import { useHeldFlowsDeposits } from "../queries/hooks";
 import { PageGridTile } from "../components/layout/PageGridTile";
 import { DepositsByCategoryChart } from "../components/charts/DepositsByCategoryChart";
 import { DepositMonthList } from "../components/flows/DepositMonthList";
@@ -16,7 +16,6 @@ import {
 import { clipMonthsThenRollup, clipPointsToTimeRange } from "../timeRange";
 import { rollupDepositChartPointsByYear } from "../flowsDepositsAggregate";
 import type { DepositFlowCategory } from "../types";
-import { queryLoadError } from "../queries/pageShapeReady";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
 
@@ -35,11 +34,13 @@ export function DepositsPage() {
     />
   );
   const chartGranularity = metricsPeriod;
-  const { data, error: queryError } = useFlowsDeposits(displayUnit);
-  const error = queryLoadError({ data, error: queryError });
+  // Held across a unit switch: dimmed, everything formatted in its own `unit`.
+  const deposits = useHeldFlowsDeposits(displayUnit);
+  const { data, error } = deposits;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
-  // The frame renders with a zero total and empty category tables until the payload arrives.
-  const loading = !data;
+  // The frame renders with a zero total and empty category tables until there is a payload to show.
+  const loading = !data || deposits.loading;
+  const unit = data?.unit ?? displayUnit;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
@@ -82,19 +83,19 @@ export function DepositsPage() {
       <p className={loadableClass(loading, "muted")}>
         {t("deposits.totalLabel")}{" "}
         <span className="mono flow-summary-value">
-          {formatFlowMoney(total, displayUnit)}
+          {formatFlowMoney(total, unit)}
         </span>
         <span className="muted flow-summary-note">
           ({t("deposits.partOther")}{" "}
-          <span className="mono">{formatFlowMoney(postTaxTotal, displayUnit)}</span>
+          <span className="mono">{formatFlowMoney(postTaxTotal, unit)}</span>
           {" · "}
           {t("deposits.partPayrollFunded")}{" "}
-          <span className="mono">{formatFlowMoney(preTaxTotal, displayUnit)}</span>)
+          <span className="mono">{formatFlowMoney(preTaxTotal, unit)}</span>)
         </span>
         {timeRange !== "total" ? (
           <span className="muted flow-summary-note">
             · {t("flows.rangeTotalLabel")}{" "}
-            <span className="mono">{formatFlowMoney(rangeTotal, displayUnit)}</span>
+            <span className="mono">{formatFlowMoney(rangeTotal, unit)}</span>
           </span>
         ) : null}
       </p>
@@ -105,7 +106,7 @@ export function DepositsPage() {
           title={t("deposits.chartTitle")}
           points={chartPoints}
           xAxisGranularity={chartGranularity}
-          displayUnit={displayUnit}
+          displayUnit={unit}
           loading={loading}
         />
       </div>
@@ -120,10 +121,10 @@ export function DepositsPage() {
             <h3>
               {depositFlowCategoryLabel(cat)}
               <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
-                {formatFlowMoney(blockTotal, displayUnit)}
+                {formatFlowMoney(blockTotal, unit)}
               </span>
             </h3>
-            <DepositMonthList block={block} displayUnit={displayUnit} loading={loading} />
+            <DepositMonthList block={block} displayUnit={unit} loading={loading} />
           </PageGridTile>
         );
       })}

@@ -42,6 +42,9 @@ export type HeldUnitView<T> = {
   data: T | undefined;
   /** `data` is not the requested key's own payload (held from before). */
   held: boolean;
+  /** The unit `data` was requested in (undefined with no data): formats a payload that does not
+   * carry its own `unit`. */
+  unit: DisplayUnit | undefined;
   /** Dim the surface: pending with nothing of its own, or a held payload shown. */
   loading: boolean;
   /** The requested key's fetched payload when it is the one shown (never held, never a stored
@@ -107,6 +110,7 @@ export function stepHeldUnit<T>(
   const own = (c: UnitCandidate<T>): HeldUnitView<T> => ({
     data: c.data,
     held: false,
+    unit,
     loading: false,
     live: c.updatedAt > 0 ? c.data : undefined,
     error: null,
@@ -118,7 +122,7 @@ export function stepHeldUnit<T>(
     // Not drawn: nothing to remember for a later hold.
     const view = candidate
       ? own(candidate)
-      : { data: undefined, held: false, loading: input.pending, live: undefined, error: null };
+      : { data: undefined, held: false, unit: undefined, loading: input.pending, live: undefined, error: null };
     return { view, state: withShown(null), refetchAgainst: null };
   }
   const prev = state.shown && state.shown.entity === entity ? state.shown : null;
@@ -131,7 +135,7 @@ export function stepHeldUnit<T>(
       state.settled.get(input.key) !== prev.changedAt;
     if (older) {
       return {
-        view: { data: prev.data, held: true, loading: true, live: undefined, error: null },
+        view: { data: prev.data, held: true, unit: prev.unit, loading: true, live: undefined, error: null },
         state,
         refetchAgainst: prev.changedAt,
       };
@@ -148,14 +152,21 @@ export function stepHeldUnit<T>(
   if (input.pending) {
     const data = prev?.data;
     return {
-      view: { data, held: data !== undefined, loading: true, live: undefined, error: null },
+      view: {
+        data,
+        held: data !== undefined,
+        unit: prev?.unit,
+        loading: true,
+        live: undefined,
+        error: null,
+      },
       state,
       refetchAgainst: null,
     };
   }
   // Settled with nothing of its own (a failed first fetch): the hold ends, the error shows.
   return {
-    view: { data: undefined, held: false, loading: false, live: undefined, error: input.error ?? null },
+    view: { data: undefined, held: false, unit: undefined, loading: false, live: undefined, error: input.error ?? null },
     state: withShown(null),
     refetchAgainst: null,
   };

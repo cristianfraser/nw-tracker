@@ -7,6 +7,7 @@ const ready = (b: Bundle) => b.ready;
 const shown = (p: Partial<HeldUnitView<Bundle>>): HeldUnitView<Bundle> => ({
   data: undefined,
   held: false,
+  unit: undefined,
   loading: false,
   live: undefined,
   error: null,

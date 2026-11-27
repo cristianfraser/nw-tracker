@@ -8,7 +8,7 @@ import { Button } from "@crfrsr/ui";
 import { loadableClass } from "../ui/Loadable";
 import {
   useCcFacturadoFinancingLinks,
-  useFlowsExpensesFinancingCandidates,
+  useHeldFlowsExpensesFinancingCandidates,
   useDeleteCcFacturadoFinancingLinkMutation,
   useUpsertCcFacturadoFinancingLinkMutation,
 } from "../../queries/hooks";
@@ -30,9 +30,10 @@ export function CreditCardFacturadoFinancingManager() {
   const upsert = useUpsertCcFacturadoFinancingLinkMutation();
   const del = useDeleteCcFacturadoFinancingLinkMutation();
 
-  // The pickers (server-built: financed cards with their facturaciones, the plans), while open.
-  const candidatesQuery = useFlowsExpensesFinancingCandidates(displayUnit, open);
-  const loading = candidatesQuery.data == null;
+  // The pickers (server-built: financed cards with their facturaciones, the plans), while open;
+  // held across a unit switch (their amounts are the cards' pesos).
+  const candidatesQuery = useHeldFlowsExpensesFinancingCandidates(displayUnit, open);
+  const loading = candidatesQuery.data == null || candidatesQuery.loading;
   const financedAccounts = useMemo(() => candidatesQuery.data?.financed_accounts ?? [], [candidatesQuery.data]);
 
   const monthsForAccount = useMemo(

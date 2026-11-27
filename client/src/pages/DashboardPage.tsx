@@ -648,7 +648,11 @@ export function DashboardPage() {
             {/* One row whenever both fit, «Próximos pagos» taking what the periods leave (page-grid.css `.dashboard-flows-pair`); stacked in the rail. */}
             <div className="page-tile dashboard-flows-pair">
               <DashboardFlowsPeriods displayUnit={displayUnit} />
-              <UpcomingPaymentsPanel data={bundle.data?.upcomingPayments ?? null} loading={contentLoading} />
+              <UpcomingPaymentsPanel
+                data={bundle.data?.upcomingPayments ?? null}
+                live={bundle.live?.upcomingPayments ?? null}
+                loading={contentLoading}
+              />
             </div>
             <LatestMovementsTable />
           </>

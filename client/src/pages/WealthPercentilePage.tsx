@@ -20,9 +20,8 @@ import {
 import styles from "../components/wealth/WealthPercentile.module.css";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatCurrency, formatGroupedDecimal } from "../format";
-import { useWealthPercentile } from "../queries/hooks";
+import { useHeldWealthPercentile } from "../queries/hooks";
 import type { WealthBenchmarkCountry } from "../types";
-import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 import bandStyles from "./accountDetail/PositionAccountDetailPage.module.css";
 
 /** Benchmarks shown out of the box; the rail's buttons toggle the full list. */
@@ -84,11 +83,8 @@ export function WealthPercentilePage() {
   // null = the viewer has not touched a row yet: the newest year is open.
   const [openYearsChoice, setOpenYearsChoice] = useState<ReadonlySet<number> | null>(null);
   const { displayUnit } = useDisplayPreferences();
-  const wealthQuery = useWealthPercentile(displayUnit);
-  const { data, error: queryError } = wealthQuery;
-  const error = queryLoadError({ data, error: queryError });
   // Dim while nothing has loaded or the previous unit's payload is held (shown in its own unit).
-  const loading = queryShowsLoading(wealthQuery);
+  const { data, error, loading } = useHeldWealthPercentile(displayUnit);
   const amountsUnit = data?.unit ?? displayUnit;
 
   const toggleBenchmark = (country: WealthBenchmarkCountry) => {

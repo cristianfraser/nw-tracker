@@ -1,7 +1,7 @@
 import { Button } from "@crfrsr/ui";
 import { HeadingLink } from "../ui/HeadingLink";
 import { useTranslation } from "../../i18n";
-import { useLatestMovements } from "../../queries/hooks";
+import { useHeldLatestMovements } from "../../queries/hooks";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, LatestCardPayment, LatestIncomeMovement, LatestMovementsResponse } from "../../types";
 import { hasSchemaVersion, persistedPayload, usePersistedPayload } from "../../queries/persistedPayloadCache";
 import { PageGridTile } from "../layout/PageGridTile";
@@ -16,7 +16,6 @@ import { ExpenseOriginIcon } from "../credit-card/ExpenseOriginIcon";
 import { ExpenseVendorLabel } from "../credit-card/ExpenseVendorLabel";
 import { PillPicker } from "../ui/PillPicker";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { queryLoadError } from "../../queries/pageShapeReady";
 
 const LATEST_MOVEMENTS_LIMIT = 15;
 
@@ -176,10 +175,15 @@ function CardPaymentRow({
 export function LatestMovementsTable() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const query = useLatestMovements(LATEST_MOVEMENTS_LIMIT, displayUnit);
-  // Until live data is here, the last stored one (per unit: its rows carry values in the unit).
-  const { value: data } = usePersistedPayload(LATEST_MOVEMENTS, [displayUnit], query.data);
-  const loadError = queryLoadError(query);
+  // Held across a unit switch, in the unit it was requested in (`query.unit`: the payload has none).
+  const query = useHeldLatestMovements(LATEST_MOVEMENTS_LIMIT, displayUnit);
+  // Before anything is shown, the last stored copy of this unit (its rows' values are in it).
+  const { value: data, stored } = usePersistedPayload(LATEST_MOVEMENTS, [displayUnit], {
+    shown: query.data,
+    live: query.live,
+  });
+  const unit = stored ? displayUnit : (query.unit ?? displayUnit);
+  const loadError = query.error;
 
   const items: ExpenseListItem[] = (data?.rows ?? []).map((r) => {
     if (r.kind === "expense") return { kind: "expense", on: r.on, line: r.line, arrivalKey: r.arrival_key };
@@ -215,7 +219,8 @@ export function LatestMovementsTable() {
             enableCheckingNotes
             hideHeader
             emptyLabel={t("dashboard.latestMovements.empty")}
-            loading={data == null}
+            loading={data == null || (query.loading && !stored)}
+            unit={unit}
             animateArrivals
           />
           {/* Not wired yet: a longer list comes later. */}

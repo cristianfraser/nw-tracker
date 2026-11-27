@@ -10,7 +10,7 @@ import { formatFlowMoney } from "../../flowsDisplay";
 import { currencyFormatInfo, minAdaptiveUsdFractionDigits } from "../../format";
 import { rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVERVIEW_TOTALS } from "../../flowsOverviewRows";
 import { useTranslation } from "../../i18n";
-import { useFlowsOverview } from "../../queries/hooks";
+import { useHeldFlowsOverview } from "../../queries/hooks";
 import type { DisplayUnit } from "../../queries/keys";
 import {
   LONG_RANGE_OPTIONS,
@@ -102,16 +102,17 @@ const SUMMARY_LINES: readonly SummaryLine[] = [
 export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUnit }) {
   const { t } = useTranslation();
   const { installmentMode } = useCcInstallmentGastosMode();
-  const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
-  // A held payload of the other unit is never stored; until live data is here, the last stored one.
-  const live = overview.isPlaceholderData ? null : overview.data;
-  const { value: closed } = usePersistedPayload(
+  // Held across a unit or mode switch (dimmed, in its own unit); only this key's live payload is stored.
+  const overview = useHeldFlowsOverview(displayUnit, installmentMode, undefined);
+  const { value: closed, stored } = usePersistedPayload(
     FLOWS_CLOSED,
     [displayUnit, installmentMode],
-    live?.closed,
-    live?.schema_version
+    { shown: overview.data?.closed, live: overview.live?.closed },
+    overview.live?.schema_version
   );
-  const loading = closed == null;
+  // The stored rows carry no unit: a stored copy is scoped per unit, so its unit is the scope's.
+  const unit = stored ? displayUnit : (overview.data?.unit ?? displayUnit);
+  const loading = closed == null || (overview.loading && !stored);
 
   const periods = [
     { labelKey: "dashboard.flows.lastMonth", row: closed?.last_month ?? ZERO_ROW },
@@ -141,15 +142,15 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
                         <DeltaMetricFlow
                           delta={value}
                           animated={false}
-                          unit={displayUnit}
+                          unit={unit}
                           fractionDigits={
-                            currencyFormatInfo(displayUnit).minorDigits > 0
+                            currencyFormatInfo(unit).minorDigits > 0
                               ? minAdaptiveUsdFractionDigits(SUMMARY_LINES.filter((l) => l.delta).map((l) => l.value(row)))
                               : 0
                           }
                         />
                       ) : (
-                        formatFlowMoney(value, displayUnit)
+                        formatFlowMoney(value, unit)
                       )}
                     </dd>
                   </div>
@@ -181,9 +182,10 @@ export function DashboardFlowsChart({
   const granularity = monthYearSurfacePeriod(prefs.period);
   const range = longSurfaceRange(prefs.range, "1y");
   const { installmentMode } = useCcInstallmentGastosMode();
-  const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
+  // Held across a unit or mode switch: drawn dimmed, in the held payload's own unit.
+  const overview = useHeldFlowsOverview(displayUnit, installmentMode, undefined);
   const data = overview.data;
-  const loading = !data || overview.isPlaceholderData;
+  const loading = !data || overview.loading;
 
   // Structurally shared: a refetch that changes only totals or another grain keeps the points.
   const builtChartPoints = useMemo(() => {
@@ -225,7 +227,7 @@ export function DashboardFlowsChart({
         }
         points={chartPoints}
         xAxisGranularity={granularity}
-        displayUnit={displayUnit}
+        displayUnit={data?.unit ?? displayUnit}
         loading={loading}
       />
     </PageGridTile>

@@ -211,22 +211,27 @@ function ItemLabel({ item }: { item: UpcomingPaymentItemDto }) {
  * as the server built it (`upcoming_payments` on the page bundle). A card per month, its total
  * beside its name, its payments below with the date and amount on the right. The first two months
  * show; «Show more» opens the rest of the server's horizon. The bills read in their own currency whatever the
- * display unit; in another unit the hover adds each amount in it (stored per unit). The
- * panel is always there: dimmed and empty before the server has answered (`data` null on a
- * placeholder bundle, no stored copy), an empty state when nothing is due.
+ * display unit; in another unit the hover adds each amount in it (in the payload's own `unit`). The
+ * panel is always there: dimmed and empty before the server has answered (no bundle and no stored
+ * copy), an empty state when nothing is due. `data` is the bundle's block as the page shows it
+ * (held across a unit switch, dimmed, in its own unit); `live` is this unit's own fetched block, the
+ * only one stored. The stored copy paints only before any bundle is shown.
  */
-export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { data: UpcomingPaymentsDto | null; loading: boolean }) {
+export function UpcomingPaymentsPanel({
+  data: shown,
+  live,
+  loading: shownLoading,
+}: {
+  data: UpcomingPaymentsDto | null;
+  live: UpcomingPaymentsDto | null;
+  loading: boolean;
+}) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  // One stored entry per display unit (the hover's converted amounts); until the bundle answers,
-  // the last stored one. A held bundle of another unit is not stored under this one, but its bills
-  // are the same, so it shows (its hover in its own unit) until this unit's arrives.
   const { displayUnit } = useDisplayPreferences();
-  const liveInUnit = live != null && live.unit === displayUnit ? live : null;
-  const { value: stored, cached } = usePersistedPayload(UPCOMING_PAYMENTS, [displayUnit], liveInUnit);
-  const data = stored ?? live;
+  const { value: data, stored } = usePersistedPayload(UPCOMING_PAYMENTS, [displayUnit], { shown, live });
   const unit = data?.unit ?? displayUnit;
-  const loading = liveLoading && !cached;
+  const loading = shownLoading && !stored;
   const allMonths = data?.months ?? [];
   const months = expanded ? allMonths : allMonths.slice(0, COLLAPSED_MONTHS);
   return (

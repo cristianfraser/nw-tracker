@@ -1,8 +1,7 @@
 import { PageGridTile } from "../layout/PageGridTile";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { useFlowsExpenseLines } from "../../queries/hooks";
-import { queryShowsLoading } from "../../queries/pageShapeReady";
+import { useHeldFlowsExpenseLines } from "../../queries/hooks";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { loadableClass } from "../ui/Loadable";
 import { PaginatedTable } from "../ui/PaginatedTable";
@@ -24,13 +23,14 @@ export function CreditCardUnclassifiedExpensesTable({ includePreTax }: { include
   const [page, setPage] = useState(1);
   // A different list (the pre-tax toggle) starts from its first page.
   useEffect(() => setPage(1), [includePreTax]);
-  const query = useFlowsExpenseLines(
+  // Held across a unit or page change (dimmed, in its own unit).
+  const query = useHeldFlowsExpenseLines(
     displayUnit,
     { kind: "uncategorized", include_pre_tax: includePreTax },
     true,
     { page, pageSize: UNCLASSIFIED_PAGE_SIZE }
   );
-  const loading = queryShowsLoading(query);
+  const loading = query.loading;
   const categories = query.data?.categories ?? [];
   const bigGroups = query.data?.big_groups ?? [];
   const total = query.data?.page?.total ?? 0;
@@ -71,6 +71,7 @@ export function CreditCardUnclassifiedExpensesTable({ includePreTax }: { include
             showCategoryControls
             enableCheckingNotes
             loading={query.data == null}
+            unit={query.data?.unit}
           />
           <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
         </CreditCardExpenseLinesSelectionProvider>
