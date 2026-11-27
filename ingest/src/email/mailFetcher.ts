@@ -5,9 +5,10 @@
  *
  * Two shapes:
  * - `fetchMailDocuments(source)`: a source DECLARES which mails it takes (sender or Gmail query,
- *   subject → document kind) and what each mail's documents are (`documents`); this module walks
- *   the window, skips what the document ledger already holds, writes, records and reports. A
- *   document is recorded once it is written or found already on disk, never when it failed.
+ *   subject → document kind, and optionally a kind for any other mail that carries a PDF) and what
+ *   each mail's documents are (`documents`); this module walks the window, skips what the document
+ *   ledger already holds, writes, records and reports. A document is recorded once it is written or
+ *   found already on disk, never when it failed.
  * - `archiveMails`: one sender's mails over a date range staged as text (the decoders read them),
  *   rewritten each time.
  */
@@ -87,7 +88,7 @@ export type WantedMail = {
   messageId: string;
   subject: string;
   date: Date;
-  /** The document kind its subject announces (the ledger kind). */
+  /** The document kind its subject announces, or the source's `pdfMailKind` (the ledger kind). */
   kind: string;
   /** `YYYY-MM-DD-<message id slug>`: the per-mail ledger key. */
   mailKey: string;
@@ -107,12 +108,14 @@ export interface MailReader {
 
 /**
  * One document a mail carries. `skip`: the mail is left alone and NOT recorded (an attachment
- * shape the source does not take); `error`: the same, and the fetch fails.
+ * shape the source does not take); `error`: the same, and the fetch fails; `refuse`: not
+ * downloaded but recorded, so it is reported once — as a notice of the fetch — and skipped after.
  */
 export type MailDocument =
   | { key: string; file: string; write(read: MailReader): Promise<MailWriteOutcome> }
   | { key: string; skip: string }
-  | { key: string; error: string };
+  | { key: string; error: string }
+  | { key: string; refuse: string };
 
 export type MailSource = {
   /** Log and session label («Lider boletas»). */
@@ -125,11 +128,11 @@ export type MailSource = {
   /** Newest first: when a document is sent twice, the later copy is the one kept. */
   newestFirst?: boolean;
   /**
-   * Report a mail from the sender whose subject maps to no kind but which carries a PDF: the
-   * signal that the sender renamed a document mail. It fails the fetch once per message (recorded
-   * in the ledger under `UNRECOGNISED_PDF_MAIL_KIND`); `hint` says what to change.
+   * The kind of a mail whose subject maps to no kind but which carries a PDF attachment: set by a
+   * source whose sender mails only its own documents, so a renamed document mail is fetched anyway
+   * and its PDF classified by what it prints (the inbox organizer holds what is not ours).
    */
-  reportUnrecognisedPdfMail?: { hint: string };
+  pdfMailKind?: string;
   /** Bound of `--all` (a full-history backfill), for a source that allows one. */
   allHistoryDays?: number;
   documents(mail: WantedMail): MailDocument[];
@@ -140,25 +143,18 @@ export type MailDocumentResult = {
   skipped: { kind: string; key: string; reason: string }[];
   /** Non-empty means the run must fail loudly (an unmapped shape, an undecryptable file). */
   errors: { kind: string; key: string; reason: string }[];
+  /** Documents refused this run (recorded, so once each): the fetch step's notices. */
+  notices: string[];
 };
 
 const ALREADY_FETCHED = "already fetched";
 
-/** Ledger kind of the mails `reportUnrecognisedPdfMail` reported (one failed run per message). */
-export const UNRECOGNISED_PDF_MAIL_KIND = "unrecognised-pdf-mail";
-
 /**
- * Why a mail the source does not take must be reported, or null: the source opted in, its
- * subject maps to no kind and it carries a PDF attachment.
+ * The kind a mail is fetched under, or null when the source does not take it: its subject's kind,
+ * else the source's `pdfMailKind` when the mail carries a PDF attachment.
  */
-export function unrecognisedPdfMailReason(
-  source: Pick<MailSource, "kindOf" | "reportUnrecognisedPdfMail">,
-  subject: string,
-  pdfs: AttachmentNode[]
-): string | null {
-  if (!source.reportUnrecognisedPdfMail || source.kindOf(subject) !== null || pdfs.length === 0) return null;
-  const names = pdfs.map((a) => a.filename).join(", ");
-  return `subject «${subject}» names no document kind but the mail carries PDF(s) [${names}] — ${source.reportUnrecognisedPdfMail.hint}; the next fetch then takes it (its attachments are not in the ledger)`;
+export function mailKindOf(source: Pick<MailSource, "kindOf" | "pdfMailKind">, subject: string, pdfs: readonly AttachmentNode[]): string | null {
+  return source.kindOf(subject) ?? (source.pdfMailKind && pdfs.length > 0 ? source.pdfMailKind : null);
 }
 
 /** Fetch every document of `source` mailed in the window that the ledger does not hold yet. */
@@ -171,35 +167,23 @@ export async function fetchMailDocuments(
   const dryRun = opts.dryRun === true;
   logStep(`e-mail — ${source.label} since ${since.toISOString().slice(0, 10)}${dryRun ? " (dry run)" : ""}`);
 
-  const result: MailDocumentResult = { saved: [], skipped: [], errors: [] };
+  const result: MailDocumentResult = { saved: [], skipped: [], errors: [], notices: [] };
   await withImapSession(source.label, async (client) => {
     // A rerun after a dropped connection starts over: what was written is in the ledger by now.
     result.saved.length = 0;
     result.skipped.length = 0;
     result.errors.length = 0;
+    result.notices.length = 0;
     await withAllMail(client, async () => {
       const uids = await searchMailSince(client, source.query, since);
       // Collect first, download after: imapflow cannot serve a download while a fetch stream is iterated.
       const wanted: WantedMail[] = [];
-      const unrecognised: { key: string; reason: string }[] = [];
       for await (const msg of client.fetch(uids, { envelope: true, bodyStructure: true, uid: true }, { uid: true })) {
         const subject = String(msg.envelope?.subject ?? "").trim();
-        const kind = source.kindOf(subject);
+        const kind = mailKindOf(source, subject, pdfAttachmentsFromStructure(msg.bodyStructure));
         const date = msg.envelope?.date;
-        if (!date || date < since) continue;
-        if (!kind) {
-          const reason = unrecognisedPdfMailReason(source, subject, pdfAttachmentsFromStructure(msg.bodyStructure));
-          if (reason) unrecognised.push({ key: mailDocumentLedgerKey(date, String(msg.envelope?.messageId ?? `uid-${msg.uid}`)), reason });
-          continue;
-        }
+        if (!kind || !date || date < since) continue;
         wanted.push(wantedMail(msg, subject, kind, date));
-      }
-      // Reported once per message: the ledger keeps the report, so it fails one run, not every
-      // night of the window. The recognised mails of the same run are still saved below.
-      for (const u of unrecognised) {
-        if (hasDocument(source.ledger, UNRECOGNISED_PDF_MAIL_KIND, u.key)) continue;
-        result.errors.push({ kind: UNRECOGNISED_PDF_MAIL_KIND, key: u.key, reason: u.reason });
-        if (!dryRun) recordDocument(source.ledger, UNRECOGNISED_PDF_MAIL_KIND, u.key);
       }
       wanted.sort((a, b) => (source.newestFirst ? b.date.getTime() - a.date.getTime() : a.date.getTime() - b.date.getTime()));
       for (const mail of wanted) {
@@ -225,6 +209,11 @@ export async function fetchMailDocuments(
             result.skipped.push({ kind, key: doc.key, reason: ALREADY_FETCHED });
             continue;
           }
+          if ("refuse" in doc) {
+            result.notices.push(`${source.label}: not fetched — ${doc.refuse} (mail «${mail.subject}» of ${mail.date.toISOString().slice(0, 10)})`);
+            if (!dryRun) recordDocument(source.ledger, kind, doc.key);
+            continue;
+          }
           if (dryRun) {
             result.saved.push({ kind, key: doc.key, file: doc.file });
             continue;
@@ -248,6 +237,7 @@ export async function fetchMailDocuments(
   for (const s of result.skipped) if (s.reason !== ALREADY_FETCHED) log(`e-mail: ${source.label} ${s.key} skipped (${s.reason})`);
   if (already > 0) log(`e-mail: ${already} ${source.label} document(s) already fetched`);
   for (const e of result.errors) log(`e-mail: ${source.label} ${e.key} ERROR (${e.reason})`);
+  for (const n of result.notices) log(`e-mail: NOTICE ${n}`);
   if (result.saved.length === 0 && result.errors.length === 0) log(`e-mail: nothing new from ${source.label}`);
   return result;
 }

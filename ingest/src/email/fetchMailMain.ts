@@ -44,7 +44,7 @@ fetchMailDocuments(source, {
       `Summary: ${result.saved.length} saved, ${result.skipped.length} skipped` +
         (result.errors.length > 0 ? `, ${result.errors.length} ERROR(S)` : "")
     );
-    if (!argv.includes("--dry-run")) reportStepResult({ staged: result.saved.length });
+    if (!argv.includes("--dry-run")) reportStepResult({ staged: result.saved.length, notices: result.notices });
     process.exitCode = result.errors.length > 0 ? 1 : 0;
   })
   .catch((err: unknown) => {

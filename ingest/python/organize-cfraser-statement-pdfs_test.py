@@ -2,9 +2,13 @@
 """Tests for Santander 80_* PDF organize (decrypt-then-classify, no size heuristics)."""
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -477,6 +481,235 @@ class VistaConfiguredAccountTest(unittest.TestCase):
         root, _pdf, moved, errors = self._run("", "0-070-00-00005-5")
         self.assertEqual((moved, errors), (1, []))
         self.assertTrue((root / "cartolas-cuenta-vista" / "2026-09-30 cartola cuenta vista.pdf").is_file())
+
+def _text_pdf(path: Path, lines: list[str]) -> None:
+    """A one-page PDF whose text layer is `lines` (plain ASCII), for the real pdftotext / qpdf."""
+    content = "BT /F1 11 Tf 40 780 Td 14 TL " + " ".join(f"({ln}) Tj T*" for ln in lines) + " ET"
+    objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+        f"<< /Length {len(content)} >>\nstream\n{content}\nendstream",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = b"%PDF-1.4\n"
+    offsets = []
+    for i, obj in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n{obj}\nendobj\n".encode()
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offsets)
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(out)
+
+
+def _encrypted_pdf(path: Path, lines: list[str], password: str) -> None:
+    plain = path.with_name(f"plain-{path.name}")
+    _text_pdf(plain, lines)
+    subprocess.run(["qpdf", "--encrypt", password, f"{password}-owner", "256", "--", str(plain), str(path)], check=True)
+    plain.unlink()
+
+
+NEWSLETTER = [
+    "Novedades de tu banco",
+    "Conoce los nuevos beneficios de este mes en restaurantes y viajes",
+    "Seguro de vida y salud con descuento para clientes",
+]
+CARD_STATEMENT = [
+    "ESTADO DE CUENTA NACIONAL DE TARJETA DE CREDITO",
+    "NUMERO DE TARJETA XXXX XXXX XXXX 4141",
+    "PERIODO FACTURADO 31/08/2026 30/09/2026",
+    "PAGAR HASTA 15/10/2026",
+]
+
+
+@unittest.skipUnless(shutil.which("pdftotext") and shutil.which("qpdf"), "needs poppler and qpdf")
+class HeldInboxTest(unittest.TestCase):
+    """What is not ours is moved to `inbox/held/` and reported; the run goes on and does not fail."""
+
+    def _run(self, build, *, dry_run: bool = False):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        inbox = root / "inbox"
+        inbox.mkdir()
+        build(root, inbox)
+        manifest_path = root / "manifest.json"
+
+        def layout_text(path):
+            # Cartola fixtures are text files standing in for `pdftotext -layout`; PDFs are read for real.
+            raw = Path(path).read_bytes()
+            if not raw.startswith(b"%PDF"):
+                return raw.decode("utf-8")
+            proc = subprocess.run(["pdftotext", "-layout", str(path), "-"], capture_output=True, text=True)
+            return proc.stdout if proc.returncode == 0 else None
+
+        patches = {
+            "CFRASER": root,
+            "CART_DIR": root / "cartolas-cuenta-corriente",
+            "LINEA_DIR": root / "cartolas-linea-credito",
+            "VISTA_DIR": root / "cartolas-cuenta-vista",
+            "OTHER_ACCOUNTS_DIR": root / "cartolas-otras-cuentas",
+            "CC_DIR": root / "credit-card-statements",
+            "CSV_PATH": root / "none.csv",
+            "resolve_inbox_dir": lambda: inbox,
+            "pdftotext_layout": layout_text,
+            "statement_pdf_passwords_to_try": lambda path, text="": ["synthetic-wrong-1", "synthetic-wrong-2"],
+            "load_repo_dotenv": lambda: None,
+            "_CLAIMED_THIS_RUN": set(),
+            "_UNTRACKED_PARKED": [],
+            "_RUN_ERRORS": [],
+        }
+        saved = {k: getattr(mod, k) for k in patches}
+        for k, v in patches.items():
+            setattr(mod, k, v)
+        argv = ["organize", f"--manifest={manifest_path}", *(["--dry-run"] if dry_run else [])]
+        stderr = io.StringIO()
+        try:
+            # The card pass's repair tries OCR on what has no statement text: not this test's subject.
+            with mock.patch.object(sys, "argv", argv), mock.patch.object(
+                mod, "REPO_ROOT", root
+            ), mock.patch("cc_pdf_qpdf.extract_cc_pdf_ocr_flat", return_value=""), mock.patch(
+                "cc_pdf_qpdf.statement_pdf_passwords_to_try", return_value=["synthetic-wrong-1"]
+            ), mock.patch(
+                "cc_pdf_qpdf.load_repo_dotenv", return_value=None
+            ):
+                with contextlib.redirect_stderr(stderr):
+                    code = mod.main()
+        finally:
+            for k, v in saved.items():
+                setattr(mod, k, v)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.stderr = stderr.getvalue()
+        return root, inbox, code, manifest
+
+    def test_readable_pdf_without_a_bank_word_is_held_as_mailed(self) -> None:
+        mailed: dict[str, bytes] = {}
+
+        def build(root, inbox):
+            _text_pdf(inbox / "DOC_NUEVO-1_2.pdf", NEWSLETTER)
+            mailed["bytes"] = (inbox / "DOC_NUEVO-1_2.pdf").read_bytes()
+
+        _root, inbox, code, manifest = self._run(build)
+        self.assertEqual(code, 0, "held files alone do not fail the run")
+        self.assertFalse((inbox / "DOC_NUEVO-1_2.pdf").exists())
+        self.assertEqual((inbox / "held" / "DOC_NUEVO-1_2.pdf").read_bytes(), mailed["bytes"], "no qpdf rewrite before holding")
+        self.assertEqual(
+            manifest["held"],
+            [{"file": "DOC_NUEVO-1_2.pdf", "held_as": "inbox/held/DOC_NUEVO-1_2.pdf", "reason": "not_a_known_document"}],
+        )
+
+    def test_pdf_no_configured_password_opens_is_held_with_the_password_variables(self) -> None:
+        _root, inbox, code, manifest = self._run(
+            lambda root, inbox: _encrypted_pdf(inbox / "DOC_X-9_9.pdf", CARD_STATEMENT, "synthetic-right")
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue((inbox / "held" / "DOC_X-9_9.pdf").is_file())
+        self.assertEqual([h["reason"] for h in manifest["held"]], ["cannot_decrypt"])
+        self.assertIn("SANTANDER_CC_STATEMENT_PDF_PASSWORD", manifest["held"][0]["hint"])
+
+    def test_a_bank_name_no_password_opens_stays_the_password_error(self) -> None:
+        def build(root, inbox):
+            for name in ("TC_NAC-9_9.pdf", "2026-10-28_ab12cd34_LCA_CTA_CTE_CRONO-1_2.pdf", "2026-11-28 155000000.pdf"):
+                _encrypted_pdf(inbox / name, CARD_STATEMENT, "synthetic-right")
+
+        _root, inbox, code, manifest = self._run(build)
+        self.assertEqual((code, manifest["held"]), (1, []))
+        self.assertEqual(len(list(inbox.glob("*.pdf"))), 3, "left in the inbox")
+        self.assertEqual(self.stderr.count("SANTANDER_CC_STATEMENT_PDF_PASSWORD"), 3)
+
+    # A garbled genuine statement: few letters, one bank word, no statement marker.
+    GARBLED = ["Banco Santander Chile", "Xq zvwk plmrt 0PERAC10NES rr tt", "lkjh asdf qwer zxcv"]
+
+    def test_unrecognised_text_with_a_bank_word_is_held_as_something_to_look_at(self) -> None:
+        mailed: dict[str, bytes] = {}
+
+        def build(root, inbox):
+            _text_pdf(inbox / "DOC_G-1_2.pdf", self.GARBLED)
+            mailed["bytes"] = (inbox / "DOC_G-1_2.pdf").read_bytes()
+
+        _root, inbox, code, manifest = self._run(build)
+        self.assertEqual(code, 0)
+        self.assertEqual((inbox / "held" / "DOC_G-1_2.pdf").read_bytes(), mailed["bytes"])
+        self.assertEqual(
+            manifest["held"],
+            [{"file": "DOC_G-1_2.pdf", "held_as": "inbox/held/DOC_G-1_2.pdf", "reason": "unrecognised_bank_document", "word": "SANTANDER"}],
+        )
+
+    def test_unrecognised_text_with_a_bank_word_under_a_bank_name_is_an_error(self) -> None:
+        _root, inbox, code, manifest = self._run(lambda root, inbox: _text_pdf(inbox / "TC_NAC-5_5.pdf", self.GARBLED))
+        self.assertEqual((code, manifest["held"]), (1, []))
+        self.assertTrue((inbox / "TC_NAC-5_5.pdf").is_file())
+        self.assertIn("looks like a bank document the organizer does not recognise: TC_NAC-5_5.pdf", self.stderr)
+
+    def test_dry_run_moves_nothing_and_lists_what_it_would_hold(self) -> None:
+        def build(root, inbox):
+            _text_pdf(inbox / "DOC_NUEVO-1_2.pdf", NEWSLETTER)
+            _encrypted_pdf(inbox / "DOC_X-9_9.pdf", CARD_STATEMENT, "synthetic-right")
+
+        _root, inbox, code, manifest = self._run(build, dry_run=True)
+        self.assertEqual(code, 0)
+        self.assertTrue((inbox / "DOC_NUEVO-1_2.pdf").is_file())
+        self.assertTrue((inbox / "DOC_X-9_9.pdf").is_file())
+        self.assertFalse((inbox / "held").exists())
+        self.assertEqual(
+            sorted((h["file"], h["reason"]) for h in manifest["held"]),
+            [("DOC_NUEVO-1_2.pdf", "not_a_known_document"), ("DOC_X-9_9.pdf", "cannot_decrypt")],
+        )
+
+    def test_a_name_already_held_keeps_both(self) -> None:
+        def build(root, inbox):
+            _text_pdf(inbox / "held" / "DOC_NUEVO-1_2.pdf", ["an earlier held file with enough letters to read it"])
+            _text_pdf(inbox / "DOC_NUEVO-1_2.pdf", NEWSLETTER)
+
+        _root, inbox, code, manifest = self._run(build)
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(p.name for p in (inbox / "held").iterdir()), ["DOC_NUEVO-1_2 (2).pdf", "DOC_NUEVO-1_2.pdf"])
+        self.assertEqual(manifest["held"][0]["held_as"], "inbox/held/DOC_NUEVO-1_2 (2).pdf")
+
+    def test_statements_and_cartolas_are_filed_beside_a_held_file(self) -> None:
+        def build(root, inbox):
+            _text_pdf(inbox / "TC_NAC-1_2.pdf", CARD_STATEMENT)
+            (inbox / "LCA_CTA_CTE_CRONO-11_444444.pdf").write_text(
+                _cartola_text("CUENTA CORRIENTE ML", "0-000-00-01234-5", "116", "31/08/2026", "30/09/2026"), encoding="utf-8"
+            )
+            _text_pdf(inbox / "DOC_NUEVO-1_2.pdf", NEWSLETTER)
+
+        root, inbox, code, manifest = self._run(build)
+        self.assertEqual(code, 0)
+        self.assertEqual(manifest["credit_card_pdfs"], ["credit-card-statements/4141/clp/2026-09-30 estado de cuenta tarjeta 4141.pdf"])
+        self.assertEqual(manifest["checking_pdfs"], ["cartolas-cuenta-corriente/2026-09-30 cartola cuenta corriente 116.pdf"])
+        self.assertEqual([h["file"] for h in manifest["held"]], ["DOC_NUEVO-1_2.pdf"])
+        self.assertEqual(sorted(p.name for p in inbox.iterdir()), ["held"])
+
+    def test_errors_stay_errors_and_stay_in_the_inbox(self) -> None:
+        def build(root, inbox):
+            _text_pdf(inbox / "SCAN-1_2.pdf", [])  # no text layer: may be a statement
+            (inbox / "LCA_CTA_CTE_CRONO-5_6.pdf").write_text(
+                "CUENTA CORRIENTE ML\n0-000-00-01234-5\nDETALLE DE MOVIMIENTOS\n01/09 Traspaso 12.345 987.654\n", encoding="utf-8"
+            )
+            (inbox / "LCA_CTA_CTE_CRONO-7_8.pdf").write_text(
+                _cartola_text("CUENTA CORRIENTE ML", "0-000-00-05555-1", "7", "31/08/2026", "30/09/2026"), encoding="utf-8"
+            )
+            _text_pdf(inbox / "TC_NAC-3_4.pdf", ["ESTADO DE CUENTA NACIONAL DE TARJETA DE CREDITO", "sin fecha ni tarjeta impresa"])
+            _encrypted_pdf(inbox / "80_1_0350300000000014141_20260723.pdf", CARD_STATEMENT, "synthetic-right")
+
+        _root, inbox, code, manifest = self._run(build)
+        self.assertEqual(code, 1)
+        self.assertEqual(manifest["held"], [])
+        self.assertEqual(
+            sorted(p.name for p in inbox.glob("*.pdf")),
+            [
+                "80_1_0350300000000014141_20260723.pdf",
+                "LCA_CTA_CTE_CRONO-5_6.pdf",
+                "LCA_CTA_CTE_CRONO-7_8.pdf",
+                "SCAN-1_2.pdf",
+                "TC_NAC-3_4.pdf",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

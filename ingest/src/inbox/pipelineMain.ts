@@ -5,8 +5,11 @@
  *
  * 0. A Fintual certificado dropped in the inbox: install + reconcile, report only
  *    (`import:fintual-cert --from-inbox`).
- * 1. qpdf repair on inbox PDFs only
- * 2. Organize inbox PDFs → credit-card / cartola folders (writes the inbox manifest)
+ * 1. Restore false `-CORRUPT` card PDF names
+ * 2. Organize inbox PDFs → credit-card / cartola folders (writes the inbox manifest). The
+ *    organizer decrypts and repairs what it files; a PDF that is not ours (readable but neither a
+ *    statement nor a cartola, or no password opens it) is moved to `inbox/held/` and becomes a
+ *    notice of this step (`StepResult.notices`), never a failure.
  * 3. Organize checking cartola `.xlsx` from the inbox → `excels/cuenta corriente/`
  * 4. Parse credit-card PDFs (per-PDF cache) → merged CSV
  * 5. Send the parsed statements (`card.statement`, canonical)
@@ -33,12 +36,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { IngestTaskName } from "nw-tracker-contracts";
-import { resolveInboxDir, resolveRepoRoot } from "../paths.js";
+import { resolveRepoRoot } from "../paths.js";
 import { loadRootDotenv } from "../rootDotenv.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { reportStepResult } from "../stepResult.js";
 import {
   basenamesFromCfraserOrganizePaths,
   emptyCfraserOrganizeManifest,
+  heldFileNotices,
   loadCfraserOrganizeManifest,
   resolveCfraserOrganizeManifestPath,
 } from "./organizeManifest.js";
@@ -90,7 +95,6 @@ async function main(): Promise<void> {
   const dryRun = hasFlag("dry-run");
   const skipOrganize = hasFlag("skip-organize");
   const skipParse = hasFlag("skip-parse");
-  const skipQpdfRepair = hasFlag("skip-qpdf-repair");
   const skipCcImport = hasFlag("skip-cc-import");
   const skipCheckingPdf = hasFlag("skip-checking-pdf");
   const skipFintualCert = hasFlag("skip-fintual-cert");
@@ -120,30 +124,20 @@ async function main(): Promise<void> {
     if (restoreCode !== 0) process.exit(restoreCode);
   }
 
-  if (!skipQpdfRepair) {
-    const repairCode = runStep("qpdf repair unreadable credit-card PDFs (inbox before organize)", "npm", [
-      "run",
-      "repair:cc-pdfs-qpdf",
-      "-w",
-      "nw-tracker-ingest",
-      "--",
-      `--dir=${resolveInboxDir()}`,
-    ]);
-    if (repairCode !== 0 && !dryRun) {
-      process.exit(repairCode);
-    }
-  } else {
-    console.log("\n=== qpdf repair credit-card PDFs (skipped) ===");
-  }
-
   let organizeManifest = emptyCfraserOrganizeManifest();
   if (!skipOrganize) {
     const manifestPath = resolveCfraserOrganizeManifestPath();
+    // A run that dies before writing its manifest must not leave the last run's lists (or held files) to be read again.
+    fs.rmSync(manifestPath, { force: true });
     const organizeArgs = ["run", "organize:inbox", "-w", "nw-tracker-ingest", "--", `--manifest=${manifestPath}`];
     if (dryRun) organizeArgs.push("--dry-run");
     const code = runStep("Organize PDFs (cfraser/inbox → statements/)", "npm", organizeArgs);
-    if (code !== 0) process.exit(code);
+    // Held files are reported before the exit check: the organizer holds them whatever else failed.
     organizeManifest = loadCfraserOrganizeManifest(manifestPath);
+    const notices = heldFileNotices(organizeManifest.held, { dryRun });
+    for (const notice of notices) console.log(notice);
+    reportStepResult({ notices });
+    if (code !== 0) process.exit(code);
   } else {
     console.log("\n=== Organize PDFs (skipped) ===");
   }

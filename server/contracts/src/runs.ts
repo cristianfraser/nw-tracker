@@ -130,13 +130,28 @@ export const feederAlreadyRanSchema = z
   .object({ error: z.literal("already_ran"), run_id: z.number().int().positive() })
   .strict();
 
+/** Bounds of a step's `problems` / `notices` (the runner folds what is past them). */
+export const INGEST_RUN_STEP_LINE_MAX = 1000;
+export const INGEST_RUN_STEP_PROBLEMS_MAX = 20;
+export const INGEST_RUN_STEP_NOTICES_MAX = 50;
+
+/**
+ * One step of a run. Strict: a server refuses a key it does not know, so a field is added as
+ * optional and left out when empty — an older feeder's report still parses, and a newer feeder's
+ * report without the field still reaches an older server.
+ */
 export const ingestRunStepSchema = z
   .object({
     label: z.string().min(1),
     ok: z.boolean(),
     seconds: z.number().nonnegative(),
     /** Why a step failed, in its own words (the run message lists them under the step). */
-    problems: z.array(z.string().min(1).max(1000)).max(20).optional(),
+    problems: z.array(z.string().min(1).max(INGEST_RUN_STEP_LINE_MAX)).max(INGEST_RUN_STEP_PROBLEMS_MAX).optional(),
+    /**
+     * What the user should see although nothing failed (a file the inbox organizer held), on a
+     * passed or a failed step: listed under the step, and a run with one records a notification.
+     */
+    notices: z.array(z.string().min(1).max(INGEST_RUN_STEP_LINE_MAX)).max(INGEST_RUN_STEP_NOTICES_MAX).optional(),
   })
   .strict();
 

@@ -21,9 +21,14 @@
  * resent mail is fetched again and the organizer files the copy under `inbox/duplicates/`).
  *
  * A bank name already in the inbox with other bytes is saved beside it as
- * `<mail date>_<message id hash>_<name>` (`disambiguatedInboxName`), never recorded unwritten. A
- * mail from the sender with a PDF under a subject no kind takes fails the fetch once
- * (`reportUnrecognisedPdfMail`): the sign of the next rename.
+ * `<mail date>_<message id hash>_<name>` (`disambiguatedInboxName`), never recorded unwritten.
+ *
+ * The subject gates no document: a mail from the sender that carries a PDF is fetched whatever its
+ * subject (`pdfMailKind`). The known subjects keep their ledger kinds; any other is fetched under
+ * `email-pdf` with the same keys, and the organizer files it by its text or holds it in
+ * `inbox/held/` (a notice of the run, never a failure). Only the payment receipts, whose body is
+ * the document, are taken by subject. A generic mail is bounded (`SANTANDER_PDF_MAIL_MAX_*`): over
+ * a bound it is not downloaded, recorded, and reported once as a notice of the fetch.
  */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -37,6 +42,16 @@ export const SANTANDER_MAIL_SENDER = "mensajeria@santander.cl";
 const CC_STATEMENT = "email-cc-statement";
 const CARTOLA = "email-cartola";
 const CC_PAYMENT_RECEIPT = "email-cc-payment-receipt";
+/** A mail with a PDF under a subject no kind names (a renamed document mail, or not a document of ours). */
+export const SANTANDER_PDF_MAIL_KIND = "email-pdf";
+/**
+ * Bounds of a mail taken under `SANTANDER_PDF_MAIL_KIND` only (a known subject has none): more PDFs
+ * than this in one mail, or one larger than this (IMAP's stated part size, encoded octets, read from
+ * the body structure — nothing is downloaded to measure it), is not fetched; it is recorded and
+ * reported once as a notice of the fetch.
+ */
+export const SANTANDER_PDF_MAIL_MAX_ATTACHMENTS = 10;
+export const SANTANDER_PDF_MAIL_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 /**
  * Credit-card payment receipt mails («Pago Deuda Nacional TCR», «Comprobante Pago (abono) de la
@@ -102,14 +117,28 @@ export function disambiguatedInboxName(mail: Pick<WantedMail, "date" | "messageI
   return `${mail.date.toISOString().slice(0, 10)}_${slug}_${name}`;
 }
 
-/** Each PDF attachment into the inbox under the bank's own filename. */
+/** Each PDF attachment into the inbox under the bank's own filename (bounded under the generic kind). */
 export function attachmentDocuments(mail: WantedMail): MailDocument[] {
   const period = mailPeriodKey(mail.date);
   if (mail.pdfs.length === 0) return [{ key: mail.mailKey, skip: "no pdf attachment" }];
-  return mail.pdfs.map((a, index) => {
+  const bounded = mail.kind === SANTANDER_PDF_MAIL_KIND;
+  if (bounded && mail.pdfs.length > SANTANDER_PDF_MAIL_MAX_ATTACHMENTS) {
+    return [
+      {
+        key: mail.mailKey,
+        refuse: `${mail.pdfs.length} PDF attachments, more than the ${SANTANDER_PDF_MAIL_MAX_ATTACHMENTS} a mail under an unknown subject may carry`,
+      },
+    ];
+  }
+  return mail.pdfs.map((a, index): MailDocument => {
     const name = safeAttachmentName(a.filename, `santander-${mail.kind}-${period}-${index + 1}.pdf`);
+    const key = santanderAttachmentLedgerKey(mail.mailKey, name);
+    if (bounded && a.size != null && a.size > SANTANDER_PDF_MAIL_MAX_ATTACHMENT_BYTES) {
+      const mb = (n: number) => Math.round(n / (1024 * 1024));
+      return { key, refuse: `${name} is ${mb(a.size)} MB, over the ${mb(SANTANDER_PDF_MAIL_MAX_ATTACHMENT_BYTES)} MB bound of a mail under an unknown subject` };
+    }
     return {
-      key: santanderAttachmentLedgerKey(mail.mailKey, name),
+      key,
       file: name,
       async write(read) {
         const inbox = ensureDir(resolveInboxDir());
@@ -139,7 +168,7 @@ export const SANTANDER_DOCS_SOURCE: MailSource = {
   // Newest first: when the bank resends a document, the later mail is fetched first and the
   // earlier copy lands beside it (same bytes → skipped; else the organizer files it as a duplicate).
   newestFirst: true,
-  // The bank renamed its monthly mails in October 2026 without warning: a PDF under a new title fails the fetch once.
-  reportUnrecognisedPdfMail: { hint: "teach santanderMailKind (ingest/src/email/santanderDocs.ts) this subject" },
+  // The bank renamed its monthly mails in October 2026 without warning: every PDF it mails is fetched.
+  pdfMailKind: SANTANDER_PDF_MAIL_KIND,
   documents: (mail) => (mail.kind === CC_PAYMENT_RECEIPT ? [receiptDocument(mail)] : attachmentDocuments(mail)),
 };

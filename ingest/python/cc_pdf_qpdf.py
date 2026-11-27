@@ -268,6 +268,30 @@ def pdf_is_encrypted(path: Path) -> bool:
     return "not encrypted" not in out.lower()
 
 
+# qpdf reads the password from stdin (`--password-file=-`, qpdf 10.2+: Homebrew and MacPorts ship
+# 11/12), never from argv, where any process listing would show it.
+QPDF_PASSWORD_FROM_STDIN = "--password-file=-"
+
+
+def run_qpdf_with_password(args: List[str], password: str) -> subprocess.CompletedProcess:
+    """`qpdf --password-file=- <args>` with `password` on its stdin (qpdf reads the first line)."""
+    return subprocess.run(
+        ["qpdf", QPDF_PASSWORD_FROM_STDIN, *args], input=f"{password}\n", capture_output=True, text=True
+    )
+
+
+def qpdf_password_opens(path: Path, password: str) -> Optional[bool]:
+    """
+    Whether `password` opens `path`, writing nothing: False when qpdf refuses the password, None
+    when it fails otherwise. A refused password still exits 0 on `--show-encryption` («Incorrect
+    password supplied» on its output); `--warning-exit-0` keeps a damaged but readable file opened.
+    """
+    proc = run_qpdf_with_password(["--warning-exit-0", "--show-encryption", str(path)], password)
+    if is_qpdf_invalid_password_message(f"{proc.stdout}\n{proc.stderr}"):
+        return False
+    return True if proc.returncode == 0 else None
+
+
 def try_qpdf_decrypt_with_password(path: Path, password: str) -> Tuple[bool, str]:
     """Decrypt with an explicit password (even when --show-encryption is inconclusive)."""
     if not path.is_file():
@@ -281,15 +305,7 @@ def try_qpdf_decrypt_with_password(path: Path, password: str) -> Tuple[bool, str
         tmp_path = Path(tmp.name)
 
     try:
-        cmd = [
-            "qpdf",
-            "--warning-exit-0",
-            f"--password={password}",
-            "--decrypt",
-            str(path),
-            str(tmp_path),
-        ]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = run_qpdf_with_password(["--warning-exit-0", "--decrypt", str(path), str(tmp_path)], password)
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or "").strip().splitlines()
             tail = detail[-1] if detail else f"exit {proc.returncode}"
@@ -329,12 +345,10 @@ def try_qpdf_repair_pdf(
         tmp_path = Path(tmp.name)
 
     try:
-        cmd: List[str] = ["qpdf", "--warning-exit-0"]
         if encrypted:
-            cmd.append(f"--password={password}")
-            cmd.append("--decrypt")
-        cmd.extend([str(path), str(tmp_path)])
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+            proc = run_qpdf_with_password(["--warning-exit-0", "--decrypt", str(path), str(tmp_path)], password)
+        else:
+            proc = subprocess.run(["qpdf", "--warning-exit-0", str(path), str(tmp_path)], capture_output=True, text=True)
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or "").strip().splitlines()
             tail = detail[-1] if detail else f"exit {proc.returncode}"
@@ -463,7 +477,7 @@ def repair_unreadable_pdfs_in_dir(
     for path in sorted(directory.rglob("*.pdf")):
         if "unreadable" in path.parts:
             continue
-        if "duplicates" in path.parts:
+        if "duplicates" in path.parts or "held" in path.parts:
             continue
         if path.stem.endswith("-CORRUPT"):
             continue

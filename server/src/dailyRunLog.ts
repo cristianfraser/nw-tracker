@@ -7,7 +7,11 @@
  * broken fetch can go unnoticed for weeks while the app looks healthy. So every run records an
  * `app_messages` row: `log` when everything passed, `notification` (unread badge in the app) when
  * any step failed — and ALSO for the first clean run after a failure, so the notifications tab
- * (which lists notifications only) shows the outage resolved instead of leaving the failure on top.
+ * (which lists notifications only) shows the outage resolved instead of leaving the failure on top,
+ * and for a nightly run whose steps reported a notice (a file the inbox organizer held): the user
+ * must see it, though nothing failed. A notice never makes a step failed, so it is no outage, names
+ * no failed step and changes no title. (An hourly poll's notices ride on its own notification, or
+ * get one of their own — see `recordHourlyEmailRun`.)
  *
  * It also reports the gap since the last successful run, which catches the failure mode a
  * per-run status cannot: a run that never happened at all (Mac asleep or off at 22:00, agent
@@ -25,6 +29,11 @@ export const DAILY_RUN_FAILED_TITLE = "Daily bank run failed";
 // run for the day and mask a dead one.
 export const HOURLY_EMAIL_RUN_MESSAGE_TITLE = "Hourly e-mail poll";
 export const HOURLY_EMAIL_RUN_FAILED_TITLE = "Hourly e-mail poll failed";
+/**
+ * The notices of an hourly poll whose own row is a log: a third title, so the outage and recovery
+ * walks (which read the two run titles) never see it.
+ */
+export const HOURLY_EMAIL_RUN_NOTICES_TITLE = "Hourly e-mail poll notices";
 
 export type DailyRunStep = {
   label: string;
@@ -33,7 +42,14 @@ export type DailyRunStep = {
   seconds?: number | null;
   /** Why the step failed, as the step reported it (listed under the step in the message). */
   problems?: string[];
+  /** What the user should see although nothing failed (listed under the step; the run is a notification). */
+  notices?: string[];
 };
+
+/** How many notices the steps carry: any makes the run's message a notification. */
+export function runNoticeCount(steps: readonly DailyRunStep[]): number {
+  return steps.reduce((n, s) => n + (s.notices?.length ?? 0), 0);
+}
 
 /** Most recent run of either outcome, from the messages the runner writes. */
 export function lastDailyRunAt(opts?: { successOnly?: boolean }): string | null {
@@ -151,16 +167,19 @@ function formatRunStepLines(steps: readonly DailyRunStep[]): string[] {
     return ["No step completed — the run ended before its first step finished (killed or crashed)."];
   }
   const failed = steps.filter((s) => !s.ok);
+  const notices = runNoticeCount(steps);
+  const noticeTail = notices > 0 ? ` ${notices} notice(s).` : "";
   const lines: string[] = [];
   lines.push(
     failed.length === 0
-      ? `${steps.length} step(s), all ok.`
-      : `${failed.length} of ${steps.length} step(s) FAILED: ${failed.map((s) => s.label).join(", ")}.`
+      ? `${steps.length} step(s), all ok.${noticeTail}`
+      : `${failed.length} of ${steps.length} step(s) FAILED: ${failed.map((s) => s.label).join(", ")}.${noticeTail}`
   );
   for (const s of steps) {
     const secs = s.seconds != null && Number.isFinite(s.seconds) ? ` (${Math.round(s.seconds)}s)` : "";
     lines.push(`${s.ok ? "ok  " : "FAIL"}  ${s.label}${secs}`);
     for (const p of s.problems ?? []) lines.push(`        ${p}`);
+    for (const n of s.notices ?? []) lines.push(`        notice: ${n}`);
   }
   return lines;
 }
@@ -191,7 +210,8 @@ export type RecordDailyRunResult = {
  * Record one run. A failure writes a `notification` so the app shows an unread badge; a clean run
  * writes a `log` alongside the sync/import entries — except the first clean run after a failure,
  * which is a `notification` under the clean title so the tab shows the failure resolved (see
- * `lastRunFailureToRecoverFrom`; every daily failure is badged, so every daily recovery is).
+ * `lastRunFailureToRecoverFrom`; every daily failure is badged, so every daily recovery is), and a
+ * clean run with a notice, a `notification` under the clean title too.
  */
 export function recordDailyRun(
   steps: readonly DailyRunStep[],
@@ -203,7 +223,7 @@ export function recordDailyRun(
     : null;
   const stepsBody = formatDailyRunBody(steps, opts?.nowYmd);
   const body = recovery ? `${stepsBody}\n\n${recoveryLine(recovery)}` : stepsBody;
-  const kind: "log" | "notification" = ok && !recovery?.notified ? "log" : "notification";
+  const kind: "log" | "notification" = ok && !recovery?.notified && runNoticeCount(steps) === 0 ? "log" : "notification";
   const message_id = insertAppMessage(
     kind,
     ok ? DAILY_RUN_MESSAGE_TITLE : DAILY_RUN_FAILED_TITLE,
@@ -215,7 +235,7 @@ export function recordDailyRun(
 
 export type RecordHourlyEmailRunResult = {
   ok: boolean;
-  /** False for a quiet success — nothing fetched, nothing imported, nothing written. */
+  /** False for a quiet success — nothing fetched, nothing imported, nothing written, no notice. */
   recorded: boolean;
   message_id: number | null;
   kind: "log" | "notification" | null;
@@ -225,6 +245,8 @@ export type RecordHourlyEmailRunResult = {
    */
   recovered_from: string | null;
   body: string;
+  /** The separate notification carrying the poll's notices, when its own row is a log. */
+  notice_message_id: number | null;
 };
 
 /** The most recent hourly poll recorded (either title): its id, outcome and day, or null. */
@@ -271,6 +293,12 @@ function hourlyFailureBadges(failedLabels: readonly string[], nowYmd: string): b
  * file keeps the trace. A run with activity records a `log`. Failures always record, with their
  * failed steps (`app_message_failed_steps`); which of them badge is `hourlyFailureBadges`.
  *
+ * Notices never touch the poll's own row beyond listing them: its kind and title are what they
+ * would be without them (a quiet success with a notice is recorded, as a `log` — a quiet success
+ * after a failure is recorded anyway, so this changes no walk), and when that row is a `log` the
+ * notices also get their own `notification` under `HOURLY_EMAIL_RUN_NOTICES_TITLE`. So the user
+ * sees every notice, and the outage and recovery bookkeeping reads exactly what it would have read.
+ *
  * The first success after a failed poll is recorded even when quiet — a poll with nothing to
  * import is the normal shape of the hour that proves the outage is over — as a `notification`
  * when the outage was badged, so the tab pairs each badged failure with one recovery, and as a
@@ -290,8 +318,9 @@ export function recordHourlyEmailRun(
   const lines = formatRunStepLines(steps);
   if (recovery) lines.push("", recoveryLine(recovery));
   const body = lines.join("\n");
-  if (ok && !opts.activity && !recovery) {
-    return { ok, recorded: false, message_id: null, kind: null, recovered_from: null, body };
+  const noticed = runNoticeCount(steps) > 0;
+  if (ok && !opts.activity && !recovery && !noticed) {
+    return { ok, recorded: false, message_id: null, kind: null, recovered_from: null, body, notice_message_id: null };
   }
   const failedLabels = [...new Set(steps.filter((s) => !s.ok).map((s) => s.label))];
   let kind: "log" | "notification" = "log";
@@ -310,5 +339,18 @@ export function recordHourlyEmailRun(
     const insertLabel = db.prepare(`INSERT INTO app_message_failed_steps (message_id, label) VALUES (?, ?)`);
     for (const label of failedLabels) insertLabel.run(message_id, label);
   }
-  return { ok, recorded: true, message_id, kind, recovered_from: recovery?.created_at ?? null, body };
+  const notice_message_id =
+    noticed && kind === "log" ? insertAppMessage("notification", HOURLY_EMAIL_RUN_NOTICES_TITLE, noticeBody(steps), opts.dryRun ?? false) : null;
+  return { ok, recorded: true, message_id, kind, recovered_from: recovery?.created_at ?? null, body, notice_message_id };
+}
+
+/** The notices of a poll, by step, for their own notification. */
+function noticeBody(steps: readonly DailyRunStep[]): string {
+  const lines = [`${runNoticeCount(steps)} notice(s) from the hourly e-mail poll.`];
+  for (const s of steps) {
+    if (!s.notices?.length) continue;
+    lines.push(s.label);
+    for (const n of s.notices) lines.push(`        ${n}`);
+  }
+  return lines.join("\n");
 }

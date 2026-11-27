@@ -61,7 +61,8 @@ export function mailPeriodKey(date: Date): string {
   return `${chile.getFullYear()}-${String(chile.getMonth() + 1).padStart(2, "0")}`;
 }
 
-export type AttachmentNode = { part: string; filename: string };
+/** `size`: the part's size as IMAP's body structure states it (encoded octets), when it does. */
+export type AttachmentNode = { part: string; filename: string; size?: number };
 
 /**
  * Every PDF attachment in a message body structure.
@@ -75,7 +76,7 @@ export function pdfAttachmentsFromStructure(node: MessageStructureObject | undef
   const walk = (n: MessageStructureObject): void => {
     const filename = String(n.dispositionParameters?.filename ?? n.parameters?.name ?? "").trim();
     if (filename.toLowerCase().endsWith(".pdf") && n.part) {
-      found.push({ part: String(n.part), filename });
+      found.push({ part: String(n.part), filename, ...(typeof n.size === "number" ? { size: n.size } : {}) });
     }
     for (const child of n.childNodes ?? []) walk(child);
   };

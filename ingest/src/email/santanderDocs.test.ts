@@ -2,9 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { unrecognisedPdfMailReason, type MailDocument, type MailReader, type WantedMail } from "./mailFetcher.js";
+import { mailKindOf, type MailDocument, type MailReader, type WantedMail } from "./mailFetcher.js";
 import {
   SANTANDER_DOCS_SOURCE,
+  SANTANDER_PDF_MAIL_KIND,
+  SANTANDER_PDF_MAIL_MAX_ATTACHMENT_BYTES,
+  SANTANDER_PDF_MAIL_MAX_ATTACHMENTS,
   attachmentDocuments,
   disambiguatedInboxName,
   santanderAttachmentLedgerKey,
@@ -73,20 +76,65 @@ describe("santander attachment ledger keys", () => {
   });
 });
 
-describe("unrecognised PDF mails from the bank", () => {
+describe("which Santander mails are fetched, and under which ledger kind", () => {
   const pdf = [{ part: "2", filename: "NUEVO_DOC-1_2.pdf" }];
 
-  it("reports a PDF under a subject no kind takes, naming the fix", () => {
-    const reason = unrecognisedPdfMailReason(SANTANDER_DOCS_SOURCE, "Tarjetas Crédito Personas Premium", pdf);
-    expect(reason).toContain("Tarjetas Crédito Personas Premium");
-    expect(reason).toContain("NUEVO_DOC-1_2.pdf");
-    expect(reason).toContain("santanderMailKind");
+  it("fetches a PDF under a subject no kind names, under the generic kind", () => {
+    expect(mailKindOf(SANTANDER_DOCS_SOURCE, "Tarjetas Crédito Personas Premium", pdf)).toBe(SANTANDER_PDF_MAIL_KIND);
+    expect(mailKindOf(SANTANDER_DOCS_SOURCE, "Novedades Santander", pdf)).toBe(SANTANDER_PDF_MAIL_KIND);
   });
 
-  it("leaves alone a recognised subject, a mail without a PDF and a source that did not opt in", () => {
-    expect(unrecognisedPdfMailReason(SANTANDER_DOCS_SOURCE, "Cuenta Corriente Persona", pdf)).toBeNull();
-    expect(unrecognisedPdfMailReason(SANTANDER_DOCS_SOURCE, "Novedades Santander", [])).toBeNull();
-    expect(unrecognisedPdfMailReason({ kindOf: () => null }, "Novedades", pdf)).toBeNull();
+  it("keeps the known subjects' kinds, so nothing recorded under them is fetched again", () => {
+    expect(mailKindOf(SANTANDER_DOCS_SOURCE, "Cuenta Corriente Persona", pdf)).toBe("email-cartola");
+    expect(mailKindOf(SANTANDER_DOCS_SOURCE, "Tarjetas Crédito Nacional Personas", pdf)).toBe("email-cc-statement");
+    expect(mailKindOf(SANTANDER_DOCS_SOURCE, "Estado de Cuenta Tarjeta de Crédito", pdf)).toBe("email-cc-statement");
+  });
+
+  it("takes a payment receipt by its subject alone: its body is the document", () => {
+    expect(mailKindOf(SANTANDER_DOCS_SOURCE, "Pago Deuda Nacional TCR", [])).toBe("email-cc-payment-receipt");
+  });
+
+  it("leaves alone a mail of another subject without a PDF, and a known document subject without one keeps its kind", () => {
+    expect(mailKindOf(SANTANDER_DOCS_SOURCE, "Novedades Santander", [])).toBeNull();
+    expect(mailKindOf(SANTANDER_DOCS_SOURCE, "Cuenta Corriente Persona", [])).toBe("email-cartola");
+    expect(attachmentDocuments({ ...mail("m9", []), kind: "email-cartola" })).toEqual([{ key: "2026-10-28-m9", skip: "no pdf attachment" }]);
+  });
+
+  it("takes nothing by PDF from a source that does not declare a kind for it", () => {
+    expect(mailKindOf({ kindOf: () => null }, "Novedades", pdf)).toBeNull();
+  });
+
+  it("bounds a generic mail: too many PDFs refuses the mail, an oversized PDF refuses that attachment", () => {
+    const generic = (filenames: string[], size?: number) => ({
+      ...mail("m8", filenames),
+      kind: SANTANDER_PDF_MAIL_KIND,
+      pdfs: filenames.map((filename, i) => ({ part: String(i + 2), filename, ...(size != null ? { size } : {}) })),
+    });
+    const many = Array.from({ length: SANTANDER_PDF_MAIL_MAX_ATTACHMENTS + 1 }, (_, i) => `D-${i}.pdf`);
+    const tooMany = attachmentDocuments(generic(many));
+    expect(tooMany).toHaveLength(1);
+    expect(tooMany[0]).toMatchObject({ key: "2026-10-28-m8" });
+    expect("refuse" in tooMany[0]! && tooMany[0].refuse).toContain("11 PDF attachments");
+    expect(attachmentDocuments(generic(many.slice(0, SANTANDER_PDF_MAIL_MAX_ATTACHMENTS))).every((d) => "write" in d)).toBe(true);
+
+    const [big] = attachmentDocuments(generic(["BIG-1_2.pdf"], SANTANDER_PDF_MAIL_MAX_ATTACHMENT_BYTES + 1));
+    expect(big).toMatchObject({ key: "2026-10-28-m8/BIG-1_2.pdf" });
+    expect("refuse" in big!).toBe(true);
+    expect("write" in attachmentDocuments(generic(["OK-1_2.pdf"], SANTANDER_PDF_MAIL_MAX_ATTACHMENT_BYTES))[0]!).toBe(true);
+  });
+
+  it("leaves a known subject's mail unbounded", () => {
+    const many = Array.from({ length: SANTANDER_PDF_MAIL_MAX_ATTACHMENTS + 1 }, (_, i) => `D-${i}.pdf`);
+    const docs = attachmentDocuments({
+      ...mail("m6", many),
+      pdfs: many.map((filename, i) => ({ part: String(i + 2), filename, size: SANTANDER_PDF_MAIL_MAX_ATTACHMENT_BYTES * 2 })),
+    });
+    expect(docs.every((d) => "write" in d)).toBe(true);
+  });
+
+  it("keys a generic mail's attachments like any other mail's", () => {
+    const docs = attachmentDocuments({ ...mail("m7", ["NUEVO_DOC-1_2.pdf"]), kind: SANTANDER_PDF_MAIL_KIND, subject: "Novedades" });
+    expect(docs.map((d) => d.key)).toEqual(["2026-10-28-m7/NUEVO_DOC-1_2.pdf"]);
   });
 });
 

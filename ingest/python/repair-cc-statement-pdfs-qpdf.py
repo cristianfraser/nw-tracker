@@ -6,7 +6,8 @@ Usage (repo root):
   npm run repair:cc-pdfs-qpdf
   python3 ingest/python/repair-cc-statement-pdfs-qpdf.py [--dir=...] [--dry-run]
 
-Also runs automatically before organize in `import:cfraser-inbox` (inbox only; skip with --skip-qpdf-repair).
+The inbox pipeline does not run it: the organizer decrypts inbox PDFs and repairs each card
+statement candidate itself (`ensure_readable_for_parse`), and holds what is not ours.
 """
 from __future__ import annotations
 
@@ -71,7 +72,7 @@ def main() -> int:
         print(f"# repair-cc-pdfs-qpdf: {directory}")
         if args.dry_run:
             for path in sorted(directory.rglob("*.pdf")):
-                if "unreadable" in path.parts:
+                if "unreadable" in path.parts or "duplicates" in path.parts or "held" in path.parts:
                     continue
                 if path.stem.endswith("-CORRUPT"):
                     continue

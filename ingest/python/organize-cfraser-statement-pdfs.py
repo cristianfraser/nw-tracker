@@ -16,9 +16,21 @@ account printed in its header, everything else as a card statement.
 Uses `cc-statements-parsed-all.csv` when present for credit-card statement dates;
 otherwise peeks PDF text (pdftotext) after qpdf decrypt when needed
 (`SANTANDER_CC_STATEMENT_PDF_PASSWORD`, `LIDER_CC_STATEMENT_PDF_PASSWORD`).
-Ambiguous inbox files (unreadable PDF, missing date/card) are left in place and reported as errors (exit 1).
+Ambiguous inbox files (a recognised statement or cartola that fails its own checks, a PDF with no
+text) are left in place and reported as errors (exit 1).
 Confirmed duplicates (readable PDF, classified slot already on disk) move to
 `cfraser/inbox/duplicates/` (ignored on later runs) without failing.
+What is plainly not ours is held, not refused, and moves to `cfraser/inbox/held/` (never scanned
+again; a clash keeps both), listed in the manifest's `held`, which the inbox pipeline reports as
+notices; held files alone do not fail the run:
+- readable text (≥ 40 letters) that is no recognised statement or cartola, classified before any
+  repair, so the mailed bytes are untouched: `not_a_known_document` without a bank word
+  (`BANK_DOCUMENT_TOKENS`), `unrecognised_bank_document` with one (a notice to look at: if it is a
+  statement, the parser must learn its layout).
+- `cannot_decrypt`: encrypted, and every configured password is refused.
+A name that says it is a bank document (`names_a_known_document`: the old self-describing names,
+the bank's current attachment names, the Lider statement's saved name) is never held: its pass
+decides, errors included (a refused password is then the «set <ENV VAR>» error).
 
 From repo root:
   npm run import:cfraser-inbox          # organize + parse + import (recommended)
@@ -36,6 +48,7 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -74,6 +87,8 @@ from cc_pdf_qpdf import (  # noqa: E402
     ensure_readable_for_parse,
     encrypted_password_env_hint,
     is_readable_bci_lider_statement_text,
+    is_qpdf_invalid_password_message,
+    qpdf_password_opens,
     is_readable_cc_statement_text,
     is_readable_santander_cc_statement_text,
     load_repo_dotenv,
@@ -112,10 +127,20 @@ _INBOX_MANIFEST: dict[str, list[str]] = {
     "credit_card_pdfs": [],
 }
 
+# Inbox PDFs moved to `inbox/held/` this run (a dry run lists what it would hold):
+# `{"file": <inbox name>, "held_as": <path under cfraser/>, "reason": HELD_*, "hint"?: <what to do>,
+#   "word"?: <the bank word it prints, for unrecognised_bank_document>}`.
+HELD_SUBDIR = "held"
+HELD_NOT_A_KNOWN_DOCUMENT = "not_a_known_document"
+HELD_UNRECOGNISED_BANK_DOCUMENT = "unrecognised_bank_document"
+HELD_CANNOT_DECRYPT = "cannot_decrypt"
+_INBOX_HELD: list[dict[str, str]] = []
+
 
 def reset_inbox_manifest() -> None:
     for bucket in _INBOX_MANIFEST.values():
         bucket.clear()
+    _INBOX_HELD.clear()
 
 
 def record_inbox_filed(category: str, dest: Path, source: Path) -> None:
@@ -134,7 +159,7 @@ def write_inbox_manifest(path: Path | None) -> None:
     if path is None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_INBOX_MANIFEST, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps({**_INBOX_MANIFEST, "held": _INBOX_HELD}, indent=2) + "\n", encoding="utf-8")
     print(f"inbox manifest: {path.relative_to(REPO_ROOT)}")
 RE_ORGANIZED = re.compile(r"^\d{4}-\d{2}-\d{2} ", re.I)
 # Santander email/download name: 80_<seq>_<account>_YYYYMMDD.pdf
@@ -510,8 +535,31 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tu
             peek_lc_text = ""
         if is_linea_credito_cartola_text(peek_lc_text):
             continue
+        in_inbox = p.parent.resolve() == inbox.resolve()
+        layout_text = pdftotext_layout(p) if in_inbox else None
+        held = unrecognised_held_reason(p, layout_text) if in_inbox else None
+        if held is not None:
+            # Before the repair: an unrecognised readable file leaves as it was mailed (no qpdf rewrite, no OCR).
+            reason, word = held
+            hold_inbox_pdf(
+                p,
+                reason,
+                "readable, with no bank document word in it"
+                if word is None
+                else f"prints «{word}» but is not a statement or cartola the organizer recognises",
+                dry_run=dry_run,
+                word=word,
+            )
+            continue
         prep_err = ensure_cc_pdf_readable(p, dry_run=dry_run)
         if prep_err:
+            # Only a bank-named file gets here with readable text (an unnamed one was held above).
+            token = bank_document_token(layout_text) if in_inbox and has_readable_text(layout_text) else None
+            if token is not None:
+                prep_err = (
+                    f"looks like a bank document the organizer does not recognise: {p.name} "
+                    f"(prints «{token}»; left in the inbox) — {prep_err}"
+                )
             errors.append(prep_err)
             continue
         row = by_pdf.get(p.name)
@@ -636,6 +684,117 @@ def move_inbox_duplicate(p: Path, *, dry_run: bool, reason: str = "") -> Path:
     if not dry_run:
         dup_dir.mkdir(parents=True, exist_ok=True)
         shutil.move(str(p), str(dest))
+    return dest
+
+
+# The bank's current attachment names (`TC_NAC-<n>_<m>.pdf`, `TC_INT-…`, `LCA_CTA_CTE_…`,
+# `C_MATICA_…`), also as the fetcher saves a reused name beside the first
+# (`<mail date>_<8 hex>_<name>`, `disambiguatedInboxName`), and the Lider statement as its fetcher
+# saves it (`<mail date> <bare number>.pdf`, `singlePdfDocument`).
+RE_SANTANDER_MAILED_NAME = re.compile(
+    r"^(?:\d{4}-\d{2}-\d{2}_[0-9a-f]{8}_)?(?:TC_NAC-|TC_INT-|LCA_CTA_CTE_|C_MATICA_)", re.I
+)
+RE_LIDER_STATEMENT_SAVED_NAME = re.compile(r"^\d{4}-\d{2}-\d{2} \d+\.pdf$", re.I)
+
+
+def names_a_known_document(name: str) -> bool:
+    """
+    A name that says the file is a bank document: the old self-describing Santander names (`80_*` /
+    `157_*` card statements, the `1_*_CC|_CM|_LC` cartolas), the bank's current attachment names and
+    the Lider statement's saved name. Such a file is never held: its pass owns it, and its failures
+    stay errors (a refused password is the «set <ENV VAR>» error, a stale `.env` being a config problem).
+    """
+    return bool(
+        RE_SANTANDER_80_DATE.match(name)
+        or RE_SANTANDER_157_DATE.match(name)
+        or is_checking_cartola_inbox_name(name)
+        or is_cuenta_vista_inbox_name(name)
+        or is_linea_credito_cartola_inbox_name(name)
+        or RE_SANTANDER_MAILED_NAME.match(name)
+        or RE_LIDER_STATEMENT_SAVED_NAME.match(name)
+    )
+
+
+# Fewer letters than this is a scan or an empty page: it may still be a statement, so it is an error.
+_MIN_READABLE_LETTERS = 40
+
+# Words a bank document prints (accent- and case-folded, whole words): the issuers, the card
+# statement markers (`SANTANDER_READABLE_MARKERS`, the BCI check) and the cartola headings
+# (`cartola_product`). Unrecognised text with one is held as `unrecognised_bank_document`, a notice
+# worded as something to look at.
+BANK_DOCUMENT_TOKENS: tuple[str, ...] = (
+    "SANTANDER",
+    "BCI",
+    "BANCO DE CREDITO",
+    "LIDER",
+    "ESTADO DE CUENTA",
+    "TARJETA",
+    "MONTO FACTURADO",
+    "MONTO TOTAL FACTURADO",
+    "PERIODO FACTURADO",
+    "CARTOLA",
+    "CUENTA CORRIENTE",
+    "CTA CTE",
+    "CUENTAMATICA",
+    "CUENTA VISTA",
+    "LINEA DE CREDITO",
+)
+RE_BANK_DOCUMENT_TOKEN = re.compile(
+    r"\b(?:" + "|".join(re.escape(t).replace(r"\ ", r"\s+") for t in BANK_DOCUMENT_TOKENS) + r")\b"
+)
+
+
+def _folded_upper(text: str) -> str:
+    folded = unicodedata.normalize("NFD", str(text or ""))
+    return "".join(c for c in folded if unicodedata.category(c) != "Mn").upper()
+
+
+def bank_document_token(text: str) -> str | None:
+    """The first bank token `text` prints, or None."""
+    m = RE_BANK_DOCUMENT_TOKEN.search(_folded_upper(text))
+    return re.sub(r"\s+", " ", m.group(0)) if m else None
+
+
+def has_readable_text(text: str | None) -> bool:
+    return text is not None and len(re.findall(r"[^\W\d_]", text)) >= _MIN_READABLE_LETTERS
+
+
+def unrecognised_held_reason(p: Path, text: str | None) -> tuple[str, str | None] | None:
+    """
+    Why an inbox file is held untouched, before any repair, or None: readable text (`text`, the
+    `pdftotext -layout` read) that is no recognised statement or cartola, under a name that does not
+    say it is a bank document — `not_a_known_document` without a bank word, else
+    `unrecognised_bank_document` with the word it prints. A file `pdftotext` cannot open, a scan and
+    a telling name are never held here (they stay errors).
+    """
+    if names_a_known_document(p.name) or not has_readable_text(text):
+        return None
+    assert text is not None
+    if cartola_product(text) is not None or is_readable_cc_statement_text(text):
+        return None
+    word = bank_document_token(text)
+    return (HELD_NOT_A_KNOWN_DOCUMENT, None) if word is None else (HELD_UNRECOGNISED_BANK_DOCUMENT, word)
+
+
+def hold_inbox_pdf(
+    p: Path, reason: str, detail: str, *, dry_run: bool, hint: str | None = None, word: str | None = None
+) -> Path:
+    """
+    Move an inbox PDF that is not ours to `inbox/held/` (a dry run only lists it), claim it so no
+    later pass reads it, and record it in the manifest's `held`. A name already there keeps both
+    (`<name> (2).pdf`).
+    """
+    held_dir = resolve_inbox_dir() / HELD_SUBDIR
+    dest = unique_dest(held_dir, p.stem)
+    rel = str(dest.relative_to(CFRASER))
+    claim(p)
+    print(f"{'would hold' if dry_run else 'held'} ({reason}): {p.name} -> {rel} — {detail}")
+    if not dry_run:
+        held_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(p), str(dest))
+    _INBOX_HELD.append(
+        {"file": p.name, "held_as": rel, "reason": reason, **({"hint": hint} if hint else {}), **({"word": word} if word else {})}
+    )
     return dest
 
 
@@ -954,24 +1113,44 @@ def decrypt_inbox_pdfs(dry_run: bool) -> int:
     Decrypt, in place, every inbox PDF `pdftotext` cannot open, with the configured statement
     passwords (Santander encrypts cartolas as well as card statements since October 2026).
 
-    Classification and every downstream parser read the decrypted text. A PDF no password opens
-    is left as it is: the card pass then fails on it with the password hint, as before. A dry run
-    decrypts nothing (and so cannot classify an encrypted attachment).
+    Classification and every downstream parser read the decrypted text. A PDF that every configured
+    password is refused by is held (`cannot_decrypt`), unless its name says it is a bank document
+    (`names_a_known_document`: the card pass then fails on it with the password hint, as before); with no password configured,
+    or a qpdf failure other than a refused password, it is left for the card pass to refuse. A dry
+    run decrypts nothing (and so cannot classify an encrypted attachment): it only tries the
+    passwords, to list what it would hold.
     """
     inbox = resolve_inbox_dir()
-    if dry_run or not inbox.is_dir() or not qpdf_available():
+    if not inbox.is_dir() or not qpdf_available():
         return 0
     load_repo_dotenv()
     n = 0
     for p in sorted(inbox.glob("*.pdf")):
         if pdftotext_layout(p) is not None or not pdf_is_encrypted(p):
             continue
-        for pw in statement_pdf_passwords_to_try(p):
-            ok, _msg = try_qpdf_decrypt_with_password(p, pw)
-            if ok:
-                print(f"decrypted: {p.name}")
-                n += 1
+        passwords = statement_pdf_passwords_to_try(p)
+        refused = 0
+        opened = False
+        for pw in passwords:
+            if dry_run:
+                verdict = qpdf_password_opens(p, pw)
+                opened, refused = verdict is True, refused + (verdict is False)
+            else:
+                ok, msg = try_qpdf_decrypt_with_password(p, pw)
+                opened, refused = ok, refused + (not ok and is_qpdf_invalid_password_message(msg))
+                if ok:
+                    print(f"decrypted: {p.name}")
+                    n += 1
+            if opened:
                 break
+        if not opened and passwords and refused == len(passwords) and not names_a_known_document(p.name):
+            hold_inbox_pdf(
+                p,
+                HELD_CANNOT_DECRYPT,
+                f"encrypted, and none of the {len(passwords)} configured statement password(s) opens it",
+                dry_run=dry_run,
+                hint=encrypted_password_env_hint(),
+            )
     return n
 
 
@@ -1127,6 +1306,9 @@ def main() -> int:
     )
     for line in _UNTRACKED_PARKED:
         print(f"untracked-account cartola parked (not imported): {line}")
+    for held in _INBOX_HELD:
+        verb = "would hold" if args.dry_run else "held"
+        print(f"{verb}, not imported ({held['reason']}): {held['file']} -> {held['held_as']}")
     write_inbox_manifest(manifest_path)
     if cc_errors:
         for err in cc_errors:

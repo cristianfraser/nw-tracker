@@ -7,7 +7,7 @@ import { runHourly, type HourlyOptions } from "./hourly.js";
 import { runNightly, type NightlyOptions } from "./nightly.js";
 import { liderVeto, readLiderState, recordLiderFetch } from "./liderState.js";
 import { santanderVeto } from "./runRequest.js";
-import type { StepRunner } from "./steps.js";
+import { runStepRecord, type StepRunner } from "./steps.js";
 
 /**
  * A runner that executes nothing: records each ingest command («script args»), plays the given
@@ -455,5 +455,35 @@ describe("santanderVeto", () => {
       santanderVeto({ last_attempt_at: "2026-09-30T14:40:00.000Z", last_success_at: null, login_latched: false, ...markers }, now)
     ).toBe("last attempt 20 min ago — waiting 35 min");
     expect(santanderVeto({ last_attempt_at: "2026-09-30T14:20:00.000Z", last_success_at: null, login_latched: false, ...markers }, now)).toBeNull();
+  });
+});
+
+describe("runStepRecord", () => {
+  it("keeps a passed step's notices and drops its problems", () => {
+    expect(runStepRecord("inbox pipeline", true, 4, { problems: ["stale"], notices: ["Held, not imported: A.pdf"] })).toEqual({
+      label: "inbox pipeline",
+      ok: true,
+      seconds: 4,
+      notices: ["Held, not imported: A.pdf"],
+    });
+  });
+
+  it("keeps a failed step's problems and notices, and leaves out empty lists", () => {
+    expect(runStepRecord("inbox pipeline", false, 4, { problems: ["x"], notices: ["n"] })).toEqual({
+      label: "inbox pipeline",
+      ok: false,
+      seconds: 4,
+      problems: ["x"],
+      notices: ["n"],
+    });
+    expect(runStepRecord("fetch", true, 1, { notices: [] })).toEqual({ label: "fetch", ok: true, seconds: 1 });
+  });
+
+  it("folds a burst past the bound into one closing line, so the report stays valid and says how many", () => {
+    const notices = Array.from({ length: 60 }, (_, i) => `Held, not imported: DOC-${i}.pdf`);
+    const step = runStepRecord("inbox pipeline", true, 4, { notices });
+    expect(step.notices).toHaveLength(50);
+    expect(step.notices?.[48]).toBe("Held, not imported: DOC-48.pdf");
+    expect(step.notices?.[49]).toBe("… and 11 more notice(s): see the run log");
   });
 });

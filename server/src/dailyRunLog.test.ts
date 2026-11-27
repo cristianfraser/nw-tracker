@@ -6,6 +6,7 @@ import {
   DAILY_RUN_MESSAGE_TITLE,
   HOURLY_EMAIL_RUN_FAILED_TITLE,
   HOURLY_EMAIL_RUN_MESSAGE_TITLE,
+  HOURLY_EMAIL_RUN_NOTICES_TITLE,
   formatDailyRunBody,
   lastDailyRunAt,
   recordDailyRun,
@@ -80,6 +81,35 @@ describe("dailyRunLog", () => {
     expect(body).toContain("FAIL  Fintual e-mail movements (apply) (3s)\n        2026-11-19 buy 50 USD: cannot tell which holding");
   });
 
+  it("records a clean run with a notice as a notification under the clean title, the notices under their step", () => {
+    const held = "Held, not imported: DOC-1_2.pdf — readable, but neither a card statement nor a cartola; kept in cfraser/inbox/held/";
+    const r = recordDailyRun([
+      { label: "fetch Santander", ok: true, seconds: 41 },
+      { label: "inbox pipeline", ok: true, seconds: 12, notices: [held] },
+    ]);
+    expect(r.ok).toBe(true);
+    expect(r.kind).toBe("notification");
+    const row = db.prepare(`SELECT kind, title FROM app_messages WHERE id = ?`).get(r.message_id) as { kind: string; title: string };
+    expect(row).toEqual({ kind: "notification", title: DAILY_RUN_MESSAGE_TITLE });
+    expect(r.body).toContain("2 step(s), all ok. 1 notice(s).");
+    expect(r.body).toContain(`ok    inbox pipeline (12s)\n        notice: ${held}`);
+    // A notice is no failure: the next clean run is a plain log, not a recovery.
+    const next = recordDailyRun([{ label: "inbox pipeline", ok: true, seconds: 3 }]);
+    expect(next.kind).toBe("log");
+    expect(next.recovered_from).toBeNull();
+  });
+
+  it("lists a failed run's notices beside its problems", () => {
+    const r = recordDailyRun([
+      { label: "fetch Santander", ok: false, seconds: 3, problems: ["login rejected"] },
+      { label: "inbox pipeline", ok: true, seconds: 12, notices: ["Held, not imported: A.pdf", "Held, not imported: B.pdf"] },
+    ]);
+    expect(r.kind).toBe("notification");
+    expect(r.body).toMatch(/^1 of 2 step\(s\) FAILED: fetch Santander\. 2 notice\(s\)\./);
+    expect(r.body).toContain("FAIL  fetch Santander (3s)\n        login rejected");
+    expect(r.body).toContain("        notice: Held, not imported: A.pdf\n        notice: Held, not imported: B.pdf");
+  });
+
   it("reports the gap when nightly runs were missed", () => {
     expect(staleDailyRunDays()).toBeNull();
     expect(formatDailyRunBody([{ label: "x", ok: true }])).toContain("First recorded run.");
@@ -141,9 +171,10 @@ describe("dailyRunLog", () => {
  */
 describe("recordHourlyEmailRun", () => {
   afterEach(() => {
-    db.prepare(`DELETE FROM app_messages WHERE title IN (?, ?)`).run(
+    db.prepare(`DELETE FROM app_messages WHERE title IN (?, ?, ?)`).run(
       HOURLY_EMAIL_RUN_MESSAGE_TITLE,
-      HOURLY_EMAIL_RUN_FAILED_TITLE
+      HOURLY_EMAIL_RUN_FAILED_TITLE,
+      HOURLY_EMAIL_RUN_NOTICES_TITLE
     );
   });
 
@@ -158,6 +189,78 @@ describe("recordHourlyEmailRun", () => {
       .prepare(`SELECT COUNT(*) AS c FROM app_messages WHERE title IN (?, ?)`)
       .get(HOURLY_EMAIL_RUN_MESSAGE_TITLE, HOURLY_EMAIL_RUN_FAILED_TITLE) as { c: number };
     expect(count.c).toBe(0);
+  });
+
+  const kindAndTitle = (id: number | null) =>
+    db.prepare(`SELECT kind, title FROM app_messages WHERE id = ?`).get(id) as { kind: string; title: string };
+
+  it("records a quiet poll with a notice as a log, and notifies the notice on its own", () => {
+    const r = recordHourlyEmailRun([{ label: "inbox pipeline", ok: true, seconds: 4, notices: ["Held, not imported: A.pdf"] }], {
+      activity: false,
+    });
+    expect(r.recorded).toBe(true);
+    expect(r.kind).toBe("log");
+    expect(kindAndTitle(r.message_id)).toEqual({ kind: "log", title: HOURLY_EMAIL_RUN_MESSAGE_TITLE });
+    expect(r.body).toContain("        notice: Held, not imported: A.pdf");
+    expect(kindAndTitle(r.notice_message_id)).toEqual({ kind: "notification", title: HOURLY_EMAIL_RUN_NOTICES_TITLE });
+  });
+
+  it("a notice on a failed poll the rule only logs reaches the user and changes nothing after it", () => {
+    recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
+    const withNotice = recordHourlyEmailRun(
+      [
+        { label: "fetch broker e-mail", ok: false },
+        { label: "inbox pipeline", ok: true, notices: ["Held, not imported: A.pdf"] },
+      ],
+      { activity: true }
+    );
+    // The failure keeps the rule's decision: a continuing outage logs…
+    expect(withNotice.kind).toBe("log");
+    expect(kindAndTitle(withNotice.message_id)).toEqual({ kind: "log", title: HOURLY_EMAIL_RUN_FAILED_TITLE });
+    const labels = db.prepare(`SELECT label FROM app_message_failed_steps WHERE message_id = ?`).all(withNotice.message_id);
+    expect(labels).toEqual([{ label: "fetch broker e-mail" }]);
+    // …and the notice is its own notification.
+    const notice = db.prepare(`SELECT kind, body FROM app_messages WHERE id = ?`).get(withNotice.notice_message_id) as {
+      kind: string;
+      body: string;
+    };
+    expect(notice.kind).toBe("notification");
+    expect(notice.body).toContain("inbox pipeline\n        Held, not imported: A.pdf");
+    // The next failure of the same step still only logs, and the recovery is badged (the outage was).
+    expect(recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false }).kind).toBe("log");
+    const recovered = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true }], { activity: false });
+    expect(recovered.kind).toBe("notification");
+    expect(recovered.notice_message_id).toBeNull();
+  });
+
+  it("a notice on an unbadged outage leaves its recovery a log, as without the notice", () => {
+    // An outage whose failures were all logs (recorded before the badge rule): its recovery is a log.
+    const failed = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
+    db.prepare(`UPDATE app_messages SET kind = 'log' WHERE id = ?`).run(failed.message_id);
+    const withNotice = recordHourlyEmailRun(
+      [
+        { label: "fetch broker e-mail", ok: false },
+        { label: "inbox pipeline", ok: true, notices: ["Held, not imported: A.pdf"] },
+      ],
+      { activity: false }
+    );
+    expect(withNotice.kind).toBe("log");
+    const recovered = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true }], { activity: false });
+    expect(recovered.kind).toBe("log");
+    expect(recovered.recovered_from).not.toBeNull();
+  });
+
+  it("a badged failure carries its notices itself", () => {
+    const r = recordHourlyEmailRun(
+      [
+        { label: "fetch broker e-mail", ok: false },
+        { label: "inbox pipeline", ok: true, notices: ["Held, not imported: A.pdf"] },
+      ],
+      { activity: false }
+    );
+    expect(r.kind).toBe("notification");
+    expect(r.notice_message_id).toBeNull();
+    expect(r.body).toContain("notice: Held, not imported: A.pdf");
   });
 
   it("records a log row when the run had activity", () => {

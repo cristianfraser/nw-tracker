@@ -21,14 +21,26 @@ export type StepResult = {
   read_brokers?: string[];
   /** Why the step failed, in its own words: the run message lists them under the step. */
   problems?: string[];
+  /**
+   * What the user should see although the step passed (a file the organizer held): the run
+   * message lists them under the step, and a run with one is recorded as a notification. Never a
+   * failure, and never read by a gate.
+   */
+  notices?: string[];
 };
 
-/** Report this command's result; a no-op outside a run. Several reports merge, later fields winning. */
+/**
+ * Report this command's result; a no-op outside a run. Several reports merge, later fields
+ * winning — except `notices`, which add up (a command's children write to the same file).
+ */
 export function reportStepResult(result: StepResult, env: NodeJS.ProcessEnv = process.env): void {
   const file = env[STEP_RESULT_ENV];
   if (!file) return;
   const current = fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, "utf8") || "{}") as StepResult) : {};
-  fs.writeFileSync(file, JSON.stringify({ ...current, ...result }));
+  const { notices: earlier = [], ...rest } = current;
+  const { notices: added = [], ...fields } = result;
+  const notices = [...earlier, ...added];
+  fs.writeFileSync(file, JSON.stringify({ ...rest, ...fields, ...(notices.length > 0 ? { notices } : {}) }));
 }
 
 /** What the step's command reported; `{}` when it reported nothing. */

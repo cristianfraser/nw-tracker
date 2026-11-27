@@ -2,7 +2,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { IngestRunStep } from "nw-tracker-contracts";
+import {
+  INGEST_RUN_STEP_LINE_MAX,
+  INGEST_RUN_STEP_NOTICES_MAX,
+  INGEST_RUN_STEP_PROBLEMS_MAX,
+  type IngestRunStep,
+} from "nw-tracker-contracts";
 import { readStepResult, STEP_RESULT_ENV, type StepResult } from "../stepResult.js";
 
 /**
@@ -33,6 +38,26 @@ export interface StepRunner {
   /** A line in the run log that is not a step (a skip and its reason). */
   note(message: string): void;
   readonly steps: IngestRunStep[];
+}
+
+/**
+ * A step as the run report carries it (`ingestRunStepSchema`): its problems only when it failed,
+ * its notices whatever its outcome, each list bounded as the schema bounds it — the notices past the
+ * bound folded into one closing line, so a burst stays one message and says how many it left out.
+ * An empty list is left out: a run without notices is a report an older server still accepts.
+ */
+export function runStepRecord(label: string, ok: boolean, seconds: number, result: StepResult): IngestRunStep {
+  const line = (text: string) => text.slice(0, INGEST_RUN_STEP_LINE_MAX);
+  const problems = !ok ? (result.problems ?? []).slice(0, INGEST_RUN_STEP_PROBLEMS_MAX).map(line) : [];
+  const all = result.notices ?? [];
+  const notices =
+    all.length <= INGEST_RUN_STEP_NOTICES_MAX
+      ? all.map(line)
+      : [
+          ...all.slice(0, INGEST_RUN_STEP_NOTICES_MAX - 1).map(line),
+          `… and ${all.length - (INGEST_RUN_STEP_NOTICES_MAX - 1)} more notice(s): see the run log`,
+        ];
+  return { label, ok, seconds, ...(problems.length > 0 ? { problems } : {}), ...(notices.length > 0 ? { notices } : {}) };
 }
 
 /** `[YYYY-MM-DD HH:MM:SS] message` in local time, the run logs' format. */
@@ -74,8 +99,7 @@ export function processStepRunner(opts: { cwd: string; logFd: number; env?: Node
       const ok = code === 0;
       note(ok ? `--- ok: ${label}` : `*** FAILED (${code}): ${label}`);
       const result = readStepResult(resultFile);
-      const problems = !ok && result.problems && result.problems.length > 0 ? result.problems.slice(0, 20) : undefined;
-      steps.push({ label, ok, seconds, ...(problems ? { problems: problems.map((p) => p.slice(0, 1000)) } : {}) });
+      steps.push(runStepRecord(label, ok, seconds, result));
       fs.rmSync(resultFile, { force: true });
       return { ok, code, result };
     },
