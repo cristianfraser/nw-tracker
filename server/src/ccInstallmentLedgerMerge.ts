@@ -246,6 +246,12 @@ export type CcInstallmentLedgerMergeResult = {
   stale_plans_retired_with_assignments: RetiredStalePlan[];
   /** A rebuild's earliest day of a plan removed or restated with another date or amounts (old and new); null otherwise. */
   earliestChangedEvidenceDate: string | null;
+  /**
+   * The plan each loan chain ended on, by the chain's own fingerprint (`loanChainPlanFacts` →
+   * `installmentPurchaseLedgerDedupeKey`): the row an upsert kept may fingerprint differently (a
+   * row on file under the chain's canonical row keeps its merchant, a manual one its total).
+   */
+  chain_plans: { fingerprint: string; plan_id: number }[];
 };
 
 export type RetiredStalePlan = { plan_id: number; merchant: string | null; purchase_date: string; total_amount_clp: number };
@@ -434,6 +440,7 @@ function mergeInstallmentLedgerInSession(
   );
 
   let purchaseUpserts = 0;
+  const chainPlans: { fingerprint: string; plan_id: number }[] = [];
   let earliestNewPurchaseDate: string | null = null;
   let paymentUpserts = 0;
   const touchedPlanIds = new Set<number>();
@@ -565,6 +572,7 @@ function mergeInstallmentLedgerInSession(
         purchaseUpserts++;
       }
       touchedPlanIds.add(pid);
+      chainPlans.push({ fingerprint, plan_id: pid });
       const planIdByTwin = planIdsByLoan.get(loanKey) ?? new Map<number, number>();
       planIdByTwin.set(agg.twin_index, pid);
       planIdsByLoan.set(loanKey, planIdByTwin);
@@ -647,6 +655,7 @@ function mergeInstallmentLedgerInSession(
     pieces_dropped,
     stale_plans_retired_with_assignments: retiredStale,
     earliestChangedEvidenceDate: earliestChangedOn,
+    chain_plans: chainPlans,
   };
 };
 

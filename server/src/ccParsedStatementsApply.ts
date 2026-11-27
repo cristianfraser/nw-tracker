@@ -1,6 +1,7 @@
 import {
   canonicalStatementsFromParsedPayload,
   type CardCanonicalStatement,
+  type CardLineRemovedWithoutPair,
   type CardParsedStatementsApplyDetails,
   type CardParsedStatementsPayload,
 } from "nw-tracker-contracts";
@@ -8,6 +9,7 @@ import type { CcIssuerSlug } from "./ccIssuers.js";
 import { groupInstallmentLoanChains, statementKeysOf } from "./ccInstallmentLedgerMerge.js";
 import { cardAccountsForStatements } from "./cards/documentAccount.js";
 import { replaceStatementLines } from "./cards/lineWrites.js";
+import { removedCardLineReport } from "./cards/removedCardLines.js";
 import { withExpenseLinkSyncDeferred } from "./expenseLinkSync.js";
 import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
 import { buildCcStatementImportAccountLog, logCcStatementImportRun, type CcStatementImportAccountLog } from "./ccStatementImportLog.js";
@@ -127,6 +129,7 @@ function applyStatements(
       lines_skipped_installment_overlap: 0,
       purchase_upserts: 0,
       payment_upserts: 0,
+      removed_without_pair: [] as CardLineRemovedWithoutPair[],
     };
     const filtered = opts.full
       ? { changed: accountStatements, skippedKeys: [] as string[] }
@@ -155,13 +158,14 @@ function applyStatements(
       row.purchase_upserts = merged.ledger.purchaseUpserts;
       row.payment_upserts = merged.ledger.paymentUpserts;
       const kr = merged.keep_rows;
-      if (kr.folded.length + kr.copied + kr.unpaired.length > 0) {
+      if (kr.folded.length + kr.copied + kr.removed_without_pair.length > 0) {
         report.push(
           `# account ${accountId}: ${kr.restated.length} line(s) restated, ${kr.folded.length} folded into a kept line, ` +
-            `${kr.copied} copied a kept twin's category, unpaired ${kr.unpaired.length}`
+            `${kr.copied} copied a kept twin's category, ${kr.removed_without_pair.length} removed without a pair (unpaired ${kr.unpaired.length})`
         );
-        for (const id of kr.unpaired) report.push(`#   unpaired line ${id} (removed, its flow retired with what was on it)`);
       }
+      row.removed_without_pair = kr.removed_without_pair;
+      for (const r of kr.removed_without_pair) report.push(`#   ${removedCardLineReport(r)}`);
       report.push(
         `Account ${accountId}: ${row.purchase_upserts} purchases, ${row.payment_upserts} payments, statements ${merged.statements.statementCount} ` +
           `(${row.lines_inserted} lines inserted, ${row.lines_restated} restated), categories restored ${merged.statements.categoriesRestored}, gap-fill ${merged.ledger.gapFilled}.`

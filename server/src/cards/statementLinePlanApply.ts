@@ -33,7 +33,7 @@
  * row already stating its document line, nothing to insert, fold, remove or settle — writes nothing
  * at all: no row, no change-log entry, no session finish.
  */
-import type { CardCanonicalLine, CardCanonicalStatement } from "nw-tracker-contracts";
+import type { CardCanonicalLine, CardCanonicalStatement, CardLineRemovedWithoutPair } from "nw-tracker-contracts";
 import { db } from "../db.js";
 import { ccStatementSourceKindOf, isListingSourceKind, isStatementSourceKind } from "../ccStatementSourceKind.js";
 import {
@@ -71,7 +71,8 @@ import {
   markAnnulledPurchaseBankCredited,
 } from "../ccAnnulledPurchases.js";
 import { moveOpenBucketLinesToBillingMonth } from "../ccOpenWebPasteRepair.js";
-import { plansCoveringOneShotLine } from "./purchases.js";
+import { installmentPurchaseLedgerDedupeKey, plansCoveringOneShotLine } from "./purchases.js";
+import { describeRemovedCardLine, notifyRemovedCardLinesWithFiled } from "./removedCardLines.js";
 import { carryPlanPrepaymentLines } from "../ccPlanPrepayments.js";
 import { confirmManualPaymentForPlanted, listPlantedPaymentLines } from "../ccPlantedPayments.js";
 import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
@@ -119,6 +120,8 @@ export type StatementLinePlanApplyResult = {
   annulments_credited: number[];
   /** The one-shot lines the plan ledger superseded. */
   overlap_removed: number;
+  /** Lines removed without handing their identity to another row (`removedCardLines.ts`); also a notification when one carried what the user filed. */
+  removed_without_pair: CardLineRemovedWithoutPair[];
   ledger: ReturnType<typeof mergeInstallmentLedgerFromStatements>;
   manual_installment_reconcile: ReturnType<typeof reconcileManualInstallmentPurchasesAfterStatementImport>;
   grocery_branch_learning: ReturnType<typeof learnGroceryBranchesFromCardLines>;
@@ -330,6 +333,10 @@ function applyInSession(
   const coveredByPlan = new Set(plan.remove.filter((r) => r.why === "covered_by_plan").map((r) => r.row.id));
   const removed = plan.remove.filter((r) => r.why !== "superseded_by_plan" && r.why !== "covered_by_plan").map((r) => r.row.id);
   const annulmentLineFolds = new Set(annulmentKeeps.flatMap((k) => k.lineFolds));
+  // What goes with no row to take it over is described while it is still on file.
+  const removedWithoutPair: CardLineRemovedWithoutPair[] = plan.remove
+    .filter((r) => r.why !== "superseded_by_plan" && r.why !== "covered_by_plan" && !annulmentLineFolds.has(r.row.id))
+    .map((r) => describeRemovedCardLine(r.row.id, r.why as CardLineRemovedWithoutPair["reason"], r.ambiguity ?? null));
   const applied = applyCardLinePlanDetailed(accountId, {
     restate,
     insert,
@@ -432,15 +439,30 @@ function applyInSession(
   }
   // The covered lines left: exactly one plan on file covering a line takes its flow (as a superseded
   // line's, `foldLineFlowOntoPlan`); a line two plans cover (twins) is deleted with nothing carried.
+  // A cuota-tagged line the plan named by its facts (a plan the documents bring, the exact match
+  // missed: another merchant, a day or two apart) folds into that plan, now on file.
   const coveredLeft = [...coveredByPlan].filter((id) => afterLedger.has(id));
   if (coveredLeft.length > 0) {
+    const factsOf = new Map(plan.remove.filter((r) => r.why === "covered_by_plan" && r.plan_facts).map((r) => [r.row.id, r.plan_facts!]));
     const foldOntoPlans: { fromLineId: number; planId: number }[] = [];
     for (const id of coveredLeft) {
+      // The plan the ledger merge wrote for the chain the planner named (by the chain's own
+      // fingerprint: the row an upsert kept may read differently), else the one plan whose purchase
+      // the line is, else nothing: the line is reported (the fold keeps identity, not money).
+      const facts = factsOf.get(id);
+      const fp = facts ? installmentPurchaseLedgerDedupeKey(facts) : null;
+      const written = [...new Set(ledger.chain_plans.filter((c) => c.fingerprint === fp).map((c) => c.plan_id))];
+      if (written.length === 1) {
+        foldOntoPlans.push({ fromLineId: id, planId: written[0]! });
+        continue;
+      }
       const plans = plansCoveringOneShotLine(accountId, id);
       if (plans.length === 1) foldOntoPlans.push({ fromLineId: id, planId: plans[0]!.id });
+      else removedWithoutPair.push(describeRemovedCardLine(id, "covered_by_plan", plans.length > 1 || written.length > 1 ? "several_candidates" : null));
     }
     piecesDropped.push(...applyCardLinePlanDetailed(accountId, { deleteLineIds: coveredLeft, carry: [], foldOntoPlans }).pieces_dropped);
   }
+  notifyRemovedCardLinesWithFiled(accountId, removedWithoutPair);
 
   // The bucket lines the statement does not bill: on to the facturación they belong to.
   const moves = new Map<string, number[]>();
@@ -466,6 +488,7 @@ function applyInSession(
     annulments_billed: billed,
     annulments_credited: credited,
     overlap_removed: overlap.removed_line_ids.length,
+    removed_without_pair: removedWithoutPair,
     pieces_dropped: piecesDropped,
     ledger,
     manual_installment_reconcile: manual,
@@ -548,6 +571,8 @@ export type StatementDocumentsImportResult = {
     copied: number;
     /** Vanished lines of a re-import identity group whose counts differ: removed, their flows retired. */
     unpaired: number[];
+    /** Every line removed without handing its identity to another row (the unpaired ones included), with what was filed on it. */
+    removed_without_pair: CardLineRemovedWithoutPair[];
   };
 };
 
@@ -659,7 +684,7 @@ function importResult(
   };
   return {
     statements: statementsResult,
-    ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0, pieces_dropped: [], stale_plans_retired_with_assignments: [], earliestChangedEvidenceDate: null },
+    ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0, pieces_dropped: [], stale_plans_retired_with_assignments: [], earliestChangedEvidenceDate: null, chain_plans: [] },
     overlap_removed: a?.overlap_removed ?? 0,
     pieces_dropped: a?.pieces_dropped ?? [],
     manual_installment_reconcile: a?.manual_installment_reconcile ?? emptyManualReconcile(),
@@ -682,6 +707,7 @@ function importResult(
       annulments_credited: a?.annulments_credited ?? [],
       copied: plan.insert.filter((i) => i.copies_classification_from != null).length,
       unpaired,
+      removed_without_pair: a?.removed_without_pair ?? [],
     },
   };
 }

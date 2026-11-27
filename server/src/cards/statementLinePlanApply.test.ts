@@ -532,4 +532,139 @@ describe("statement-line plan applied", () => {
     expect(r.keep_rows.removed).toContain(gone);
     expect(r.keep_rows.restated).not.toContain(gone);
   });
+
+  describe("identity a pairing could lose, and what is reported when it does", () => {
+    const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+    const noteOn = (lineId: number, text: string) =>
+      db.prepare(`INSERT INTO flow_notes (flow_id, portion, piece_seq, account_id, notes) VALUES (?, 'gastos', -1, ?, ?)`).run(flowOf(lineId), accountId, text);
+    const notesOf = (flowId: number) => (db.prepare(`SELECT notes FROM flow_notes WHERE flow_id = ?`).all(flowId) as { notes: string }[]).map((n) => n.notes);
+    const notifications = () =>
+      db
+        .prepare(`SELECT body FROM app_messages WHERE kind = 'notification' AND title = 'Card lines removed with what was filed on them' AND body LIKE ?`)
+        .all(`%card account ${accountId} %`) as { body: string }[];
+    const reimport = (sts: CardCanonicalStatement[]) => replaceStatementLines(accountId, sts, { replaceStatementKeys: statementKeysOf(sts) });
+
+    afterEach(() => {
+      db.prepare(`DELETE FROM app_messages WHERE title = 'Card lines removed with what was filed on them' AND body LIKE ?`).run(`%card account ${accountId} %`);
+      db.prepare(`DELETE FROM flows WHERE from_account_id = ? OR to_account_id = ?`).run(accountId, accountId);
+    });
+
+    it("a bucket credit the statement prints under another merchant two days later stays its row: flow, note, refund link, arrival", () => {
+      const purchase = bucketLine("2026-06-03", "TIENDA ROPA", 40_000, { stamp: "2026-06-03T12:00:00.000Z" });
+      const credit = bucketLine("2026-06-08", "TIENDA ROPA DEVOL", -12_000, { stamp: "2026-06-08T12:00:00.000Z" });
+      noteOn(credit, "half the shirts back");
+      db.prepare(`INSERT INTO card_refund_links (flow_id, purchase_flow_id) VALUES (?, ?)`).run(flowOf(credit), flowOf(purchase));
+      const r = importPlan([statement([line("2026-06-03", "TIENDA ROPA", 40_000), line("2026-06-10", "NOTA DE CREDITO", -12_000)])]);
+      expect(r.plan.keep.map((k) => [k.row.id, k.why]).sort()).toEqual([[purchase, "same_purchase"], [credit, "another_shape"]].sort());
+      expect(r.result.removed_without_pair).toEqual([]);
+      expect(r.kept).toEqual(r.keptBefore);
+      expect(notesOf(flowOf(credit))).toEqual(["half the shirts back"]);
+      expect(db.prepare(`SELECT purchase_flow_id AS p FROM card_refund_links WHERE flow_id = ?`).get(flowOf(credit))).toEqual({ p: flowOf(purchase) });
+      expect(r.lines.find((l) => l.id === credit)).toMatchObject({ source_pdf: PDF_CLP, merchant: "NOTA DE CREDITO", transaction_date: "10/06/2026", amount: -12_000 });
+    });
+
+    it("a bucket credit two statement credits could restate pairs with neither, and is reported with its note", () => {
+      const credit = bucketLine("2026-06-08", "TIENDA ROPA DEVOL", -12_000);
+      noteOn(credit, "half the shirts back");
+      const r = reimport([statement([line("2026-06-09", "NOTA DE CREDITO", -12_000), line("2026-06-10", "NOTA DE CREDITO", -12_000)])]);
+      expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(credit)).toBeUndefined();
+      expect(r.keep_rows.inserted).toHaveLength(2);
+      expect(r.keep_rows.removed_without_pair).toEqual([
+        { line_id: credit, merchant: "TIENDA ROPA DEVOL", date: "2026-06-08", amount: -12_000, currency: "clp", reason: "not_annullable", ambiguity: "several_candidates", filed: ["note"] },
+      ]);
+      expect(notifications()).toHaveLength(1);
+      expect(notifications()[0]!.body).toContain("«TIENDA ROPA DEVOL» of 2026-06-08 (-12000 clp): note");
+    });
+
+    it("a bucket credit a same-amount credit from another shop could restate pairs with none, and is reported", () => {
+      const credit = bucketLine("2026-06-08", "TIENDA ROPA DEVOL", -12_000);
+      noteOn(credit, "half the shirts back");
+      const r = reimport([statement([line("2026-06-09", "FERRETERIA NORTE", -12_000)])]);
+      expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(credit)).toBeUndefined();
+      expect(r.keep_rows.restated).toEqual([]);
+      expect(r.keep_rows.removed_without_pair).toEqual([
+        { line_id: credit, merchant: "TIENDA ROPA DEVOL", date: "2026-06-08", amount: -12_000, currency: "clp", reason: "not_annullable", ambiguity: null, filed: ["note"] },
+      ]);
+      expect(notifications()).toHaveLength(1);
+    });
+
+    it("a cuota-tagged bucket line the statement bills as a plain purchase loses its tag", () => {
+      const listed = bucketLine("2026-06-03", "MUEBLES SUR", 90_000);
+      db.prepare(`UPDATE cc_statement_lines SET cuota_purchase_kind = 'precio_contado' WHERE id = ?`).run(listed);
+      const r = reimport([statement([line("2026-06-03", "MUEBLES SUR", 90_000)])]);
+      expect(r.keep_rows.restated).toEqual([listed]);
+      expect(db.prepare(`SELECT cuota_purchase_kind AS k FROM cc_statement_lines WHERE id = ?`).get(listed)).toEqual({ k: null });
+    });
+
+    const first = () =>
+      statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kra-id-a" }), line("2026-06-02", "CINE", 6_000, { id: "kra-id-b" })]);
+
+    it("a re-import whose line changed amount (new parser rows) restates that line in place: id, flow, arrival, note", () => {
+      reimport([first()]);
+      const cine = lineIdOfParser("kra-id-b");
+      noteOn(cine, "with the kids");
+      const r = importPlan([statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kra-id-a2" }), line("2026-06-02", "CINE", 6_500, { id: "kra-id-b2" })])]);
+      expect(r.plan.keep.find((k) => k.row.id === cine)?.why).toBe("reimport_changed");
+      expect(r.result.inserted).toEqual([]);
+      expect(r.result.removed_without_pair).toEqual([]);
+      expect(r.kept).toEqual(r.keptBefore);
+      expect(r.lines.find((l) => l.id === cine)).toMatchObject({ merchant: "CINE", amount: 6_500 });
+      expect(notesOf(flowOf(cine))).toEqual(["with the kids"]);
+    });
+
+    it("a re-import whose changed lines leave two candidates of a day and merchant pairs none, and reports both", () => {
+      reimport([statement([line("2026-06-02", "CINE", 6_000, { id: "kra-amb-a" }), line("2026-06-02", "CINE", 7_000, { id: "kra-amb-b" })])]);
+      const [a, b] = [lineIdOfParser("kra-amb-a"), lineIdOfParser("kra-amb-b")];
+      const r = reimport([statement([line("2026-06-02", "CINE", 6_500, { id: "kra-amb-c" }), line("2026-06-02", "CINE", 7_500, { id: "kra-amb-d" })])]);
+      expect(r.keep_rows.inserted).toHaveLength(2);
+      expect(r.keep_rows.removed_without_pair.map((x) => [x.line_id, x.reason, x.ambiguity, x.filed])).toEqual([
+        [a, "replaced_statement_line_gone", "several_candidates", []],
+        [b, "replaced_statement_line_gone", "several_candidates", []],
+      ]);
+      expect(notifications()).toEqual([]);
+    });
+
+    it("a re-import whose fix drops a line and adds another merchant's of that day and amount pairs neither", () => {
+      reimport([first()]);
+      const cine = lineIdOfParser("kra-id-b");
+      noteOn(cine, "with the kids");
+      const r = reimport([statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kra-id-a" }), line("2026-06-02", "TEATRO", 6_000, { id: "kra-id-t" })])]);
+      expect(r.keep_rows.inserted).toHaveLength(1);
+      expect(r.keep_rows.removed_without_pair.map((x) => [x.line_id, x.reason, x.ambiguity, x.filed])).toEqual([
+        [cine, "replaced_statement_line_gone", null, ["note"]],
+      ]);
+    });
+
+    it("what the importer filed (the additional cardholder's tag and note line) is not the user's: no notification", () => {
+      reimport([first()]);
+      const cine = lineIdOfParser("kra-id-b");
+      const additional = (db.prepare(`SELECT id FROM cc_expense_categories WHERE slug = 'additional_card'`).get() as { id: number }).id;
+      db.prepare(`INSERT INTO flow_categories (flow_id, portion, piece_seq, account_id, category_id) VALUES (?, 'gastos', -1, ?, ?)`).run(flowOf(cine), accountId, additional);
+      noteOn(cine, "auto:additional-card|origin:1111|stmt:4949");
+      const r = reimport([statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kra-id-a" })])]);
+      expect(r.keep_rows.removed_without_pair.map((x) => [x.line_id, x.filed])).toEqual([[cine, []]]);
+      expect(notifications()).toEqual([]);
+    });
+
+    it("a re-import that removes a line with a note and no pair returns it and writes one notification", () => {
+      reimport([first()]);
+      const cine = lineIdOfParser("kra-id-b");
+      noteOn(cine, "with the kids");
+      const r = reimport([statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kra-id-a" })])]);
+      expect(r.keep_rows.removed_without_pair).toEqual([
+        { line_id: cine, merchant: "CINE", date: "2026-06-02", amount: 6_000, currency: "clp", reason: "replaced_statement_line_gone", ambiguity: null, filed: ["note"] },
+      ]);
+      expect(notifications()).toHaveLength(1);
+    });
+
+    it("the same removal with nothing filed on the line is returned, with no notification", () => {
+      reimport([first()]);
+      const cine = lineIdOfParser("kra-id-b");
+      const r = reimport([statement([line("2026-06-01", "LIBRERIA", 5_000, { id: "kra-id-a" })])]);
+      expect(r.keep_rows.removed_without_pair).toEqual([
+        { line_id: cine, merchant: "CINE", date: "2026-06-02", amount: 6_000, currency: "clp", reason: "replaced_statement_line_gone", ambiguity: null, filed: [] },
+      ]);
+      expect(notifications()).toEqual([]);
+    });
+  });
 });

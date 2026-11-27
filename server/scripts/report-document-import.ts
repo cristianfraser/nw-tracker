@@ -141,6 +141,7 @@ function readCartola(f: string): import("../src/checkingCartolaParse.js").Parsed
   await import("../src/cards/lineWrites.js");
   await import("../src/expenseAssignmentWrites.js");
   const { importStatementDocuments } = await import("../src/cards/statementLinePlanApply.js");
+  const { removedCardLineReport } = await import("../src/cards/removedCardLines.js");
   const { loadCardStatementLinePlanInput } = await import("../src/cards/statementLinePlanLoad.js");
   const { planCardStatementLines } = await import("../src/cards/statementLinePlan.js");
   const { statementKeysOf } = await import("../src/ccInstallmentLedgerMerge.js");
@@ -176,6 +177,7 @@ function readCartola(f: string): import("../src/checkingCartolaParse.js").Parsed
         for (const [what, ids] of Object.entries({ restated: k.restated, inserted: k.inserted, folded: k.folded, removed: k.removed, annulled: k.annulled, moved: k.moved, unpaired: k.unpaired })) {
           if (ids.length > 0) console.log(`  ${what}: lines ${ids.join(", ")}`);
         }
+        for (const x of k.removed_without_pair) console.log(`  ${removedCardLineReport(x)}`);
         console.log(`session finish (balances, valuations, financing links): ${k.wrote ? "yes" : "no — nothing changed"}`);
       } else {
         // The ingest kind's own apply (`applyBankAccountStatements`): the cuenta vista's month

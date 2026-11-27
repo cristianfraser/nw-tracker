@@ -299,6 +299,51 @@ describe("a bucket line a plan covers that the supersede step did not take", () 
   });
 });
 
+describe("a cuota-tagged bucket line the statement's plan prints under another merchant, two days later", () => {
+  it("hands that plan its flow at the close: arrival, category, note and big group", () => {
+    const listed = `${PREFIX} MP *ELECTRO`;
+    const printed = `${PREFIX} ELECTRO HOGAR`;
+    const line = listedLine(listed, "05/05/2026", 60_000, "t");
+    db.prepare(`UPDATE cc_statement_lines SET cuota_purchase_kind = 'cuota_comercio' WHERE id = ?`).run(line);
+    stamp(line, "2026-05-05");
+    fileOnLine(line, categories[0]!.id, "the fridge", bigGroup);
+
+    const result = closeStatementWithPlan(printed, "07/05/26", 60_000);
+
+    expect(lineExists(line)).toBe(false);
+    expect(result.keep_rows.removed_without_pair).toEqual([]);
+    const id = planId(printed);
+    for (const row of planRows(id)) {
+      expect(row.category_slug).toBe(categories[0]!.slug);
+      expect(row.purchase_notes).toBe("the fridge");
+      expect(row.big_group_slug).toBe(bigGroup);
+      const seen = db.prepare(`SELECT first_seen_on AS d FROM flow_first_seen WHERE flow_id = ?`).get(row.flow_id!) as { d: string } | undefined;
+      expect(seen?.d).toBe("2026-05-05");
+    }
+  });
+
+  it("finds the plan the merge wrote though its canonical row was on file under another name", () => {
+    const printed = `${PREFIX} ELECTRO SUR`;
+    const onFile = `${PREFIX} ELECTRO ANTES`;
+    // The chain's canonical row is on file under another merchant and day: the planner reads the
+    // statement's plan as new, the upsert keeps the row's merchant, so it fingerprints otherwise.
+    db.prepare(
+      `INSERT INTO cc_installment_purchases (account_id, card_group, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, merchant, source)
+       VALUES (?, 'santander', 'vitest-plan-flow-cuota-plan', '2026-04-01', 60000, 6, ?, 'pdf')`
+    ).run(accountId, onFile);
+    const line = listedLine(`${PREFIX} MP *ELECTRO`, "05/05/2026", 60_000, "t2");
+    db.prepare(`UPDATE cc_statement_lines SET cuota_purchase_kind = 'cuota_comercio' WHERE id = ?`).run(line);
+    fileOnLine(line, categories[0]!.id, "the oven", null);
+
+    const result = closeStatementWithPlan(printed, "07/05/26", 60_000);
+
+    expect(lineExists(line)).toBe(false);
+    expect(result.keep_rows.removed_without_pair).toEqual([]);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM cc_installment_purchases WHERE account_id = ?`).get(accountId)).toEqual({ n: 1 });
+    for (const row of planRows(planId(onFile))) expect(row.purchase_notes).toBe("the oven");
+  });
+});
+
 describe("a genuine twin purchase beside a plan's", () => {
   it("a hand-entered plan takes one of two identical lines; the other stays", () => {
     const merchant = `${PREFIX} TWIN SHOP`;

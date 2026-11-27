@@ -98,7 +98,8 @@ async function main(): Promise<number> {
       tally.written += details.written.currencies.length;
       console.log(
         `\nWROTE account ${details.account_id} ${payload.close}: ${details.written.currencies.join("+")} ` +
-          `(${details.written.lines_inserted} lines inserted, ${details.written.lines_restated} restated)`
+          `(${details.written.lines_inserted} lines inserted, ${details.written.lines_restated} restated, ` +
+          `${details.written.removed_without_pair.length} removed without a pair)`
       );
     }
     outcomes.set(group.key, Object.fromEntries(details.statements.map((s) => [s.currency, s.outcome])));

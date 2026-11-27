@@ -7,6 +7,7 @@ import {
   type CardIssuerStatementPayload,
 } from "nw-tracker-contracts";
 import { diffStatementAgainstLedger } from "./cardStatementCrossCheck.js";
+import { removedCardLineReport } from "./cards/removedCardLines.js";
 import { filterUnchangedStatements } from "./ccStatementFingerprint.js";
 import { padCcStatementDate, statementSourceOwnerForClose } from "./ccStatementJsonSource.js";
 import { cardAccountForIssuerNumber } from "./cards/documentAccount.js";
@@ -169,7 +170,12 @@ export function applyCardStatementToAccount(accountId: number, payload: CardIssu
   const toWrite = pending.filter((r) => r.write != null);
   if (toWrite.length > 0) {
     const result = writeSantanderStatements(accountId, toWrite.map((r) => r.write!));
-    written = { currencies: result.currencies, lines_inserted: result.linesInserted, lines_restated: result.linesRestated };
+    written = {
+      currencies: result.currencies,
+      lines_inserted: result.linesInserted,
+      lines_restated: result.linesRestated,
+      removed_without_pair: result.removedWithoutPair,
+    };
     for (const review of toWrite) {
       const post = diffStatementAgainstLedger(accountId, statementDate, review.statement);
       const unexplained = unexplainedDifferences(post);
@@ -180,6 +186,9 @@ export function applyCardStatementToAccount(accountId: number, payload: CardIssu
       review.report.push(
         `  ✓ written (${result.linesInserted} line(s) inserted, ${result.linesRestated} restated in place, across ${result.currencies.join("+")}), post-write verification clean`
       );
+      for (const r of result.removedWithoutPair) {
+        if (r.currency === review.statement.currency) review.report.push(`  ! ${removedCardLineReport(r)}`);
+      }
     }
   }
   return {
