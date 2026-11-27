@@ -73,7 +73,8 @@ export type CcLineMovePlan = {
   gone: CcLineRef[];
 };
 
-function merchantLettersAndDigits(merchant: string | null): string {
+/** A merchant's letters and digits, upper case: the identity's merchant. */
+export function merchantLettersAndDigits(merchant: string | null): string {
   return String(merchant ?? "")
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
@@ -313,6 +314,16 @@ export function fanOutUniformGroupsGiven(
     for (const o of olds) fannedOut.add(o.lineId);
   }
   return { moves, fannedOut };
+}
+
+/** A line's flows: the one its key's rows (category, note, big group) answer to, and its own (pieces, links). */
+export function cardLineFlowIds(lineId: number): { keyed: number | null; own: number | null } {
+  const row = db.prepare(`${CC_LINE_REF_SELECT} WHERE l.id = ?`).get(lineId) as CcLineRefRow | undefined;
+  if (!row) throw new Error(`card line ${lineId}: not on file`);
+  const ref = ccLineRefFromRow(row);
+  const keyed = keyedRowsFlowId(ref);
+  const own = refFlowId(ref);
+  return { keyed: flowExists(keyed) ? keyed : null, own: flowExists(own) ? own : null };
 }
 
 /** What a line's flow carries, comparable across lines (null when it carries nothing). */

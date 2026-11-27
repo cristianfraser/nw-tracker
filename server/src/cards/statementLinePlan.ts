@@ -26,11 +26,13 @@
  *     written;
  *  3. the one-shot lines a plan (on file or the document's) supersedes go;
  *  4. each closed facturación settles its bucket (`planBucketSettlement`): a bucket line the
- *     statement bills (the same purchase, or under another shape: `statementRestatesBucketLine`) is
- *     its line's row; the annulments settle;
+ *     statement bills (the same purchase, or under another shape: `statementRestatesBucketLine`; a
+ *     credit by its signed amount, one to one) is its line's row, a cuota-tagged line goes to the one
+ *     plan the documents bring of its principal near its day; the annulments settle;
  *  5. what a replaced statement gave up pairs with its document lines (`planCcLineMoves`: the same
  *     parser row, then identity; a split re-parse fans out), then a source takeover pairs what is
- *     left of one close by the settle figures and the merchant's rendering.
+ *     left of one close by the settle figures and the merchant's rendering, then a changed line pairs
+ *     as the one line left of its close, day and merchant (or signed amount).
  *
  * Steps 4 and 5 join rows into groups (one charge); of a group's rows the earliest seen is the kept
  * one — the oldest arrival (`compareArrival`: a row with no stamp was on file before the stamps),
@@ -55,6 +57,7 @@ import { planAnnulmentSettlements, type AnnulmentForSettlement } from "../ccAnnu
 import {
   ccLineIdentity,
   fanOutUniformGroupsGiven,
+  merchantLettersAndDigits,
   planCcLineMoves,
   type CcLineMove,
   type CcLineRef,
@@ -184,6 +187,8 @@ export type KeepReason =
   | "reimport_fan_out"
   /** The same close from another source (a JSON close its PDF takes over), paired by the settle figures. */
   | "source_takeover"
+  /** A re-imported statement's line whose amount or merchant changed, the one line left of its day and merchant (or amount). */
+  | "reimport_changed"
   | "annulment_billed";
 
 export type CardPlanKeep = {
@@ -216,7 +221,22 @@ export type RemoveReason =
   | "covered_by_plan"
   | "another_shape";
 
-export type CardPlanRemove = { row: FileRowRef & { kind: "line" }; why: RemoveReason; plan_id?: number };
+export type CardPlanRemove = {
+  row: FileRowRef & { kind: "line" };
+  why: RemoveReason;
+  plan_id?: number;
+  /**
+   * `covered_by_plan` by a plan the documents bring (a cuota-tagged bucket line): the plan's facts,
+   * since its id is only known once the ledger merge writes it.
+   */
+  plan_facts?: Pick<CardPlanForMatching, "purchase_date" | "total_amount_clp" | "cuotas_totales" | "merchant" | "twin_index">;
+  /**
+   * Why a pairing that could have kept the row's flow did not: its re-import identity group has
+   * another count of document lines (`counts_differ`), or a second-chance pairing found several
+   * candidates (`several_candidates`). Absent when nothing was a candidate.
+   */
+  ambiguity?: "counts_differ" | "several_candidates";
+};
 
 export type CardPlanSkip = {
   doc: DocLineRef;
@@ -483,6 +503,11 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
   const credited: CardStatementLinePlan["annulments_credited"] = [];
   const billedAnnulments = new Map<number, number>();
   let openBucketId = -1_000_000;
+  // The plans the documents bring that no line has taken: a cuota-tagged bucket line's second chance.
+  const planIdsBefore = new Set(input.plans_before.map((p) => p.id));
+  const plansTaken = new Set([...superseded].map(([, p]) => p.id));
+  const taggedPlan = new Map<number, CardPlanForMatching>();
+  const severalCandidates = new Set<number>();
   for (const month of input.closed_months) {
     const statementLines: StatementLineForMatching<LiveLine>[] = [];
     for (const sid of month.statement_ids) {
@@ -510,7 +535,14 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       prepaymentRoles,
       cuotaPurchaseKind: (id) => live.get(id)?.cuota_purchase_kind ?? null,
       planCoversOneShot: (merchant, iso, amount) => findPlanAmong(input.plans_after, merchant, iso, amount) != null,
+      documentPlans: input.plans_after.filter((p) => !planIdsBefore.has(p.id) && !plansTaken.has(p.id)),
     });
+    for (const t of settlement.taggedOntoPlan) {
+      const p = input.plans_after.find((x) => x.id === t.planId)!;
+      taggedPlan.set(t.fromLineId, p);
+      plansTaken.add(p.id);
+    }
+    for (const id of settlement.severalCandidates) severalCandidates.add(id);
     for (const s of settlement.settledBy) {
       settledFrom.set(s.fromLineId, { to: s.toLineId, by: s.by });
       // The statement line's flow folds into the bucket line's (`applyCardLinePlan` carry).
@@ -675,9 +707,60 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
       groups.fold(docToken(target.id), lineToken(id));
     }
   }
-  if (takeoverFrom.size > 0) {
-    plan.ambiguous = plan.ambiguous.filter((a) => !a.rows.every((r) => r.kind === "line" && takeoverFrom.has(r.id)));
+  // A re-imported statement whose line changed (a parser fix: another amount, another merchant):
+  // what is left of one close pairs one to one when the choice is unambiguous — the one gone and the
+  // one written line of a day and merchant (letters and digits), then of a day and signed amount.
+  // A key with several lines on either side pairs nothing; its gone lines are reported.
+  const rootsWithRows = new Set(
+    [...input.file_lines.map((l) => lineToken(l.id)), ...input.annulments.map((a) => annulToken(a.id))].map((t) => groups.find(t))
+  );
+  const reimportChanged = new Set<number>();
+  const reimportAmbiguous = new Set<number>();
+  type KeyOf = (close: string, l: PlanLineColumns) => string | null;
+  const dayOf = (l: PlanLineColumns) => linePurchaseIso(l);
+  const byMerchant: KeyOf = (close, l) => {
+    const m = merchantLettersAndDigits(l.merchant);
+    const day = dayOf(l);
+    return m && day ? `${close}|${l.currency}|${day}|${m}` : null;
+  };
+  const byAmount: KeyOf = (close, l) => {
+    const day = dayOf(l);
+    return l.amount != null && day ? `${close}|${l.currency}|${day}|${Math.round(l.amount * 100)}` : null;
+  };
+  for (const keyOf of [byMerchant, byAmount]) {
+    const goneByKey = new Map<string, number[]>();
+    for (const id of gone) {
+      if (takeoverFrom.has(id) || reimportChanged.has(id)) continue;
+      const l = fileById.get(id)!;
+      const k = keyOf(l.statement_close, l);
+      if (k) goneByKey.set(k, [...(goneByKey.get(k) ?? []), id]);
+    }
+    const docsByKey = new Map<string, LiveLine[]>();
+    for (const d of candidates) {
+      if (pairedTo.has(d.id) || rootsWithRows.has(groups.find(docToken(d.id)))) continue;
+      const k = keyOf(closeOfDoc.get(d.doc!.statement_key)!.close, d);
+      if (k) docsByKey.set(k, [...(docsByKey.get(k) ?? []), d]);
+    }
+    for (const [k, ids] of goneByKey) {
+      const docs = docsByKey.get(k) ?? [];
+      if (docs.length === 0) continue;
+      if (ids.length !== 1 || docs.length !== 1) {
+        for (const id of ids) reimportAmbiguous.add(id);
+        continue;
+      }
+      const [id] = ids as [number];
+      const [d] = docs as [LiveLine];
+      pairedTo.add(d.id);
+      reimportChanged.add(id);
+      reimportAmbiguous.delete(id);
+      groups.fold(docToken(d.id), lineToken(id));
+    }
   }
+  for (const id of reimportChanged) reimportAmbiguous.delete(id);
+  if (takeoverFrom.size + reimportChanged.size > 0) {
+    plan.ambiguous = plan.ambiguous.filter((a) => !a.rows.every((r) => r.kind === "line" && (takeoverFrom.has(r.id) || reimportChanged.has(r.id))));
+  }
+  const countsDiffer = new Set(plan.ambiguous.flatMap((a) => (a.docs.length === 0 ? a.rows.filter((r) => r.kind === "line").map((r) => r.id) : [])));
 
   const fileRowOfToken = (t: Token): FileRowRef | null => {
     if (t.startsWith("L")) {
@@ -706,6 +789,7 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     if (settled && settled.to === docVid) return settled.by as KeepReason;
     if (restated.some((r) => r.from === row.id && r.to === docVid)) return "another_shape";
     if (takeoverFrom.has(row.id)) return "source_takeover";
+    if (reimportChanged.has(row.id)) return "reimport_changed";
     const by = adoptedBy.get(row.id);
     if (by === "parser_row_id") return "reimport_parser_row";
     if (by === "fan_out") return "reimport_fan_out";
@@ -807,14 +891,32 @@ export function planCardStatementLines(input: CardStatementLinePlanInput): CardS
     const r = removeWhy.get(id)!;
     const line = fileById.get(id)!;
     let why = r.why;
+    const tagged = taggedPlan.get(id);
     if (why === "settled_by_statement" && !settledFrom.has(id)) {
       why = restated.some((x) => x.from === id)
         ? "another_shape"
-        : findPlanAmong(input.plans_after, line.merchant, linePurchaseIso(line) ?? "", Math.abs(Math.trunc(line.amount ?? 0)))
+        : tagged || findPlanAmong(input.plans_after, line.merchant, linePurchaseIso(line) ?? "", Math.abs(Math.trunc(line.amount ?? 0)))
           ? "covered_by_plan"
           : "not_annullable";
     }
-    plan.remove.push({ row: { kind: "line", id }, why, ...(r.plan_id != null ? { plan_id: r.plan_id } : {}) });
+    const ambiguity = countsDiffer.has(id) ? "counts_differ" : reimportAmbiguous.has(id) || severalCandidates.has(id) ? "several_candidates" : null;
+    plan.remove.push({
+      row: { kind: "line", id },
+      why,
+      ...(r.plan_id != null ? { plan_id: r.plan_id } : {}),
+      ...(why === "covered_by_plan" && tagged
+        ? {
+            plan_facts: {
+              purchase_date: tagged.purchase_date,
+              total_amount_clp: tagged.total_amount_clp,
+              cuotas_totales: tagged.cuotas_totales,
+              merchant: tagged.merchant,
+              twin_index: tagged.twin_index,
+            },
+          }
+        : {}),
+      ...(ambiguity ? { ambiguity } : {}),
+    });
   }
 
   assertExclusiveOutcomes(plan, input, { touched: new Set([...vanished, ...movedLines.keys(), ...keptPrepayment]) });

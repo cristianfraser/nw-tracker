@@ -146,6 +146,28 @@ export type CardCanonicalStatementsPayload = z.infer<typeof cardCanonicalStateme
  */
 export type CardStatementOutcome = "clean" | "written" | "pending" | "empty" | "skipped" | "dirty";
 
+/** What the user had filed on a card line (its flow and its own per-line category). */
+export type CardLineFiledAssignment = "category" | "note" | "big_group" | "pieces" | "links";
+
+/**
+ * A card line a statement import removed without handing its identity (arrival, category, note,
+ * big group, pieces, links) to another row: a re-imported line with no pair, a bucket line the
+ * statement does not carry and that cannot be annulled, a line two plans could take.
+ */
+export type CardLineRemovedWithoutPair = {
+  line_id: number;
+  merchant: string | null;
+  /** The line's purchase day (ISO), else its posting day. */
+  date: string | null;
+  amount: number;
+  currency: string;
+  reason: "replaced_statement_line_gone" | "settled_by_statement" | "not_annullable" | "covered_by_plan" | "another_shape";
+  /** Why no pairing took it: its identity group's counts differ, or several candidates fit. */
+  ambiguity: "counts_differ" | "several_candidates" | null;
+  /** What the user had filed on it, lost with it; empty when nothing. */
+  filed: CardLineFiledAssignment[];
+};
+
 /** `details` of an applied `card.statement`. */
 export type CardStatementApplyDetails = {
   account_id: number;
@@ -165,5 +187,7 @@ export type CardStatementApplyDetails = {
     lines_inserted: number;
     /** Rows on file the statement restated in place (its open-bucket lines, the close's earlier copy). */
     lines_restated: number;
+    /** Lines on file it removed without handing their identity to another row. */
+    removed_without_pair: CardLineRemovedWithoutPair[];
   } | null;
 };

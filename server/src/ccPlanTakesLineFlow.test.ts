@@ -299,6 +299,30 @@ describe("a bucket line a plan covers that the supersede step did not take", () 
   });
 });
 
+describe("a cuota-tagged bucket line the statement's plan prints under another merchant, two days later", () => {
+  it("hands that plan its flow at the close: arrival, category, note and big group", () => {
+    const listed = `${PREFIX} MP *ELECTRO`;
+    const printed = `${PREFIX} ELECTRO HOGAR`;
+    const line = listedLine(listed, "05/05/2026", 60_000, "t");
+    db.prepare(`UPDATE cc_statement_lines SET cuota_purchase_kind = 'cuota_comercio' WHERE id = ?`).run(line);
+    stamp(line, "2026-05-05");
+    fileOnLine(line, categories[0]!.id, "the fridge", bigGroup);
+
+    const result = closeStatementWithPlan(printed, "07/05/26", 60_000);
+
+    expect(lineExists(line)).toBe(false);
+    expect(result.keep_rows.removed_without_pair).toEqual([]);
+    const id = planId(printed);
+    for (const row of planRows(id)) {
+      expect(row.category_slug).toBe(categories[0]!.slug);
+      expect(row.purchase_notes).toBe("the fridge");
+      expect(row.big_group_slug).toBe(bigGroup);
+      const seen = db.prepare(`SELECT first_seen_on AS d FROM flow_first_seen WHERE flow_id = ?`).get(row.flow_id!) as { d: string } | undefined;
+      expect(seen?.d).toBe("2026-05-05");
+    }
+  });
+});
+
 describe("a genuine twin purchase beside a plan's", () => {
   it("a hand-entered plan takes one of two identical lines; the other stays", () => {
     const merchant = `${PREFIX} TWIN SHOP`;

@@ -4,7 +4,10 @@ import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import { plantedPaymentMatchesStatementLine, type PlantedPaymentRow } from "./ccPlantedPayments.js";
 import type { CardCanonicalStatement } from "nw-tracker-contracts";
 import type { CcStatementLineRow, CcStatementRow } from "./ccStatementsDb.js";
-import { dayWithinWindow, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { dayWithinWindow, daysBetweenIso, parseDdMmYyToIso } from "nw-tracker-contracts";
+import { isPaymentLikeCreditMerchant } from "./ccPlantedPayments.js";
+import { purchaseAmountsMatch } from "./matching/installmentAmount.js";
+import { pairOneToOne } from "./matching/pairing.js";
 import { bucketLineAnnullableGiven, statementLineRestatingBucketLine, type StatementChargeLike } from "./ccAnnulmentWriters.js";
 import { listingLineCurrency } from "./ccFeedCuotaPurchases.js";
 import { isHomeCurrency } from "./displayUnits.js";
@@ -66,6 +69,12 @@ export type BucketSettlementInput<L extends BucketSettlementLine = BucketSettlem
   cuotaPurchaseKind: (lineId: number) => string | null;
   /** Whether a plan on file is the peso one-shot line's purchase (`findPlanForOneShotLine`). */
   planCoversOneShot: (merchant: string | null, purchaseIso: string, amountClp: number) => boolean;
+  /**
+   * The plans the import's documents bring that no line has taken yet: a cuota-tagged bucket line
+   * the exact plan match misses (another merchant, a day or two apart) hands its flow to the one
+   * such plan of its principal near its day.
+   */
+  documentPlans: readonly { id: number; purchase_date: string; total_amount_clp: number }[];
 };
 
 /** What the statement does to the bucket ({@link planBucketSettlement}). */
@@ -91,6 +100,10 @@ export type BucketSettlementPlan = {
   restatedBy: { fromLineId: number; toLineId: number }[];
   /** The statement lines no bucket line took, as the annulment matchers read them. */
   matchable: StatementChargeLike[];
+  /** Cuota-tagged bucket lines (removed) whose flow goes to the one document plan of their principal near their day. */
+  taggedOntoPlan: { fromLineId: number; planId: number }[];
+  /** Removed bucket lines a second-chance pairing found several candidates for (paired with none). */
+  severalCandidates: number[];
 };
 
 /**
@@ -107,8 +120,13 @@ export type BucketSettlementPlan = {
  *    means the statement carries it under another shape → that line's row (`restatedBy`). With no
  *    such line the bank voided the purchase and billed nothing for it: it is kept as an ANNULLED
  *    purchase (basis `statement_close`, annulled on the close day; `ccAnnulledPurchases.ts`).
- *    A cuota line, a line tagged as a cuota purchase, a line a plan covers and any credit or
- *    payment are removed (the statement's plan or its own line supersedes them).
+ *    A cuota line, a line a plan covers, a payment and a credit or cuota-tagged line with no
+ *    second-chance pair are removed (the statement's plan or its own line supersedes them). The
+ *    second chance, one to one or not at all (`mutual_unique`): a credit (a refund, a nota, never
+ *    a card payment) is restated by the one unused statement credit of its currency and signed
+ *    amount within four days (`restatedBy`); a cuota-tagged line goes to the one plan the
+ *    documents bring of its principal within four days (`taggedOntoPlan`). Several candidates pair
+ *    nothing and are reported (`severalCandidates`).
  *  - **A previously annulled purchase** (`matchable`, for `planAnnulmentSettlements`) the
  *    statement bills after all → the annulment goes and its flow is the statement line's; one the
  *    statement refunds with a real credit keeps the purchase and drops its synthetic refund.
@@ -209,10 +227,18 @@ export function planBucketSettlement<L extends BucketSettlementLine>(input: Buck
     }));
   const toAnnul: BucketSettlementPlan["toAnnul"] = [];
   const restatedBy: BucketSettlementPlan["restatedBy"] = [];
+  const credits: { line: L; iso: string }[] = [];
+  const tagged: { line: L; iso: string }[] = [];
   for (const { line, purchaseIso, sourceKind } of inCycleUnmatched) {
     remove(line, purchaseIso);
     const isBucket = sourceKind === "listing_open" || sourceKind === "listing_other";
-    if (!isBucket || !bucketLineAnnullableGiven(line, input.cuotaPurchaseKind(line.id))) continue;
+    if (!isBucket) continue;
+    const cuotaKind = input.cuotaPurchaseKind(line.id);
+    if (!bucketLineAnnullableGiven(line, cuotaKind)) {
+      if (bucketCreditGetsSecondChance(line, cuotaKind)) credits.push({ line, iso: purchaseIso });
+      else if (cuotaKind != null && taggedLineGetsSecondChance(line, purchaseIso, input.planCoversOneShot)) tagged.push({ line, iso: purchaseIso });
+      continue;
+    }
     // A cuota plan is a peso contract (`cc_installment_purchases.total_amount_clp`): only a peso line can be one's purchase.
     if (
       isHomeCurrency(line.currency) &&
@@ -232,6 +258,35 @@ export function planBucketSettlement<L extends BucketSettlementLine>(input: Buck
     const annulledOn = closedPeriod!.to;
     toAnnul.push({ id: line.id, iso: purchaseIso, annulledOn: purchaseIso > annulledOn ? purchaseIso : annulledOn });
   }
+
+  // A credit the statement prints under another merchant or a few days off (a refund, a nota): the
+  // one unused statement credit of the same currency and signed amount within the window restates
+  // it, when no other bucket credit fits that line either. Card payments are not credits here (the
+  // planted-payment pairing and the payment evidence keys own them).
+  const window = MATCH_WINDOWS.feed_mirror.daysAfter;
+  const severalCandidates: number[] = [];
+  const creditPairs = pairOneToOne(
+    credits,
+    matchable.filter((s) => s.amount != null && s.amount < 0 && s.iso != null && !isPaymentLikeCreditMerchant(s.merchant)),
+    {
+      strategy: "mutual_unique",
+      accepts: (b, s) =>
+        s.currency === bucketLineCurrency(b.line) &&
+        sameCoin(s.amount!, b.line.amount!, s.currency) &&
+        Math.abs(daysBetweenIso(b.iso, s.iso!)) <= window,
+    }
+  );
+  for (const p of creditPairs.pairs) restatedBy.push({ fromLineId: p.left.line.id, toLineId: p.right.id });
+  severalCandidates.push(...creditPairs.ambiguous.map((a) => a.left.line.id));
+
+  // A cuota-tagged line the exact plan match missed: its flow goes to the one plan the documents
+  // bring of its principal within the window of its day, when no other tagged line fits that plan.
+  const planPairs = pairOneToOne(tagged, input.documentPlans, {
+    strategy: "mutual_unique",
+    accepts: (t, p) => purchaseAmountsMatch(p.total_amount_clp, t.line.amount!) && Math.abs(daysBetweenIso(t.iso, p.purchase_date)) <= window,
+  });
+  const taggedOntoPlan = planPairs.pairs.map((p) => ({ fromLineId: p.left.line.id, planId: p.right.id }));
+  severalCandidates.push(...planPairs.ambiguous.map((a) => a.left.line.id));
   return {
     fullyClosed,
     statementCurrencies,
@@ -245,7 +300,26 @@ export function planBucketSettlement<L extends BucketSettlementLine>(input: Buck
     keptPrepaymentLines,
     restatedBy,
     matchable,
+    taggedOntoPlan,
+    severalCandidates,
   };
+}
+
+/** A non-payment credit on the bucket (a refund, a nota): paired by its signed amount ({@link planBucketSettlement}). */
+function bucketCreditGetsSecondChance(line: BucketSettlementLine, cuotaKind: string | null): boolean {
+  if (line.installment_flag || cuotaKind != null) return false;
+  if (line.amount == null || !(line.amount < 0)) return false;
+  return !isPaymentLikeCreditMerchant(line.merchant);
+}
+
+/** A peso cuota-tagged one-shot purchase no plan on file matches exactly ({@link planBucketSettlement}). */
+function taggedLineGetsSecondChance(
+  line: BucketSettlementLine,
+  iso: string,
+  planCoversOneShot: BucketSettlementInput["planCoversOneShot"]
+): boolean {
+  if (line.installment_flag || !isHomeCurrency(line.currency) || line.amount == null || !(line.amount > 0)) return false;
+  return !planCoversOneShot(line.merchant, iso, Math.abs(Math.trunc(line.amount)));
 }
 
 /** A bucket line's currency: the one it stores. */

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineIngestKind } from "../defineKind.js";
+import type { CardLineRemovedWithoutPair } from "./cardStatement.js";
 
 /**
  * The columns of a card statement parser's output, one row per statement line — the shape the
@@ -116,6 +117,8 @@ export type CardParsedStatementsApplyDetails = {
     lines_skipped_installment_overlap: number;
     purchase_upserts: number;
     payment_upserts: number;
+    /** Lines on file the import removed without handing their identity to another row. */
+    removed_without_pair: CardLineRemovedWithoutPair[];
   }[];
   /** The import's own log, line by line, as the feeder prints it. */
   report: string[];

@@ -29,7 +29,7 @@
  *   - The international RESPUESTA is all nulls (verified on an active card), so USD
  *     statements carry line data only; `facturadoFromStatement` falls back to line sums.
  */
-import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
+import type { CardLineRemovedWithoutPair, CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { padCcStatementDate, santanderJsonSourcePdf } from "./ccStatementJsonSource.js";
 import { statementKeysOf } from "./ccInstallmentLedgerMerge.js";
@@ -360,6 +360,8 @@ export type SantanderStatementWriteResult = {
   linesInserted: number;
   /** Rows on file they restated in place (an open-bucket line, the close's earlier copy). */
   linesRestated: number;
+  /** Lines on file they removed without handing their identity to another row. */
+  removedWithoutPair: CardLineRemovedWithoutPair[];
 };
 
 /** Write one facturación (every currency together, so a traspaso month links atomically). */
@@ -389,6 +391,7 @@ export function writeSantanderStatements(
     currencies: [...new Set(statements.map((st) => requireCardCurrency(st.currency, accountId, "card.statement")))],
     linesInserted: merged.statements.linesInserted,
     linesRestated: merged.statements.linesRestated,
+    removedWithoutPair: merged.keep_rows.removed_without_pair,
   };
 }
 

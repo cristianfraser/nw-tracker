@@ -150,7 +150,7 @@ describe("applyCardStatement", () => {
 
     const written = applyCardStatement(payload());
     expect(written.statements.map((s) => s.outcome)).toEqual(["written", "written"]);
-    expect(written.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 3, lines_restated: 0 });
+    expect(written.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 3, lines_restated: 0, removed_without_pair: [] });
     // The payment folds into the header; the cuota line carries its purchase's total.
     expect(linesOf("clp")).toEqual([
       { merchant: "VITEST MERCADO", amount_clp: 12_000, amount_usd: null },
@@ -253,7 +253,7 @@ describe("applyCardStatement", () => {
       const before = [rowOf(mercado)!, rowOf(cloud)!];
 
       const written = applyCardStatement(payload());
-      expect(written.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 1, lines_restated: 2 });
+      expect(written.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 1, lines_restated: 2, removed_without_pair: [] });
       // Same rows, same flows, same arrival (the unstamped one stays unstamped); the statement's
       // wording and statement now.
       const after = [rowOf(mercado)!, rowOf(cloud)!];
@@ -274,7 +274,7 @@ describe("applyCardStatement", () => {
       expect(changesNow()).toEqual(mark);
     });
 
-    it("a corrected statement writes only what differs: the unchanged lines stay, the changed one is a new line", () => {
+    it("a corrected statement writes only what differs: the unchanged lines stay, the changed one is restated in place", () => {
       applyCardStatement(payload());
       const idOf = (merchant: string) =>
         (db
@@ -286,10 +286,11 @@ describe("applyCardStatement", () => {
       corrected.statements[0]!.lines[0]!.amount = 12_500;
       corrected.statements[0]!.billed_total = 22_500;
       const rewritten = applyCardStatement(corrected);
-      // The statement JSON names a line by its figures: the corrected purchase is another line.
-      expect(rewritten.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 1, lines_restated: 2 });
+      // The statement JSON names a line by its figures; the corrected purchase is the one line of its
+      // day and merchant on both sides, so it is the same row, restated.
+      expect(rewritten.written).toEqual({ currencies: ["clp", "usd"], lines_inserted: 0, lines_restated: 3, removed_without_pair: [] });
       expect([idOf("VITEST MUEBLES"), idOf("VITEST CLOUD")]).toEqual(kept);
-      expect(idOf("VITEST MERCADO")).not.toBe(changedBefore);
+      expect(idOf("VITEST MERCADO")).toBe(changedBefore);
       expect(linesOf("clp")[0]).toEqual({ merchant: "VITEST MERCADO", amount_clp: 12_500, amount_usd: null });
     });
   });

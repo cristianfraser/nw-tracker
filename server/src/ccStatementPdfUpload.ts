@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cardStatementKind, type CardCanonicalStatement } from "nw-tracker-contracts";
+import { cardStatementKind, type CardCanonicalStatement, type CardLineRemovedWithoutPair } from "nw-tracker-contracts";
 import { requestFeederParse } from "./ingestFeeder.js";
 import { resolveCcStatementSlotDir } from "./cfraserPaths.js";
 import { db } from "./db.js";
@@ -35,6 +35,8 @@ export type CcStatementPdfImportResult = {
   skipped_fuzzy_duplicate: number;
   skipped_installment_overlap: number;
   overlap_removed: number;
+  /** Lines on file the import removed without handing their identity to another row. */
+  removed_without_pair: CardLineRemovedWithoutPair[];
   statement_count: number;
   inserted_flows: CcImportFlowItem[];
   skipped_flows: SkippedCcImportFlowItem[];
@@ -226,6 +228,7 @@ export async function importCcStatementPdfsForAccount(
       skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,
       skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,
       overlap_removed: merged.overlap_removed,
+      removed_without_pair: merged.keep_rows.removed_without_pair,
       statement_count: merged.statements.statementCount,
       inserted_flows: merged.statements.inserted_flows,
       skipped_flows: merged.statements.skipped_flows,
