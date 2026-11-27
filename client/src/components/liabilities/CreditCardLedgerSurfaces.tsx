@@ -3,7 +3,7 @@ import { useTranslation } from "../../i18n";
 import { buildCcDailyHistorialRows } from "../../ccDailyHistorial";
 import { windowCcHistorialRows } from "../../chartRangeWindow";
 import { useDailySeries } from "../../queries/hooks";
-import { dailyPayloadPending } from "../../queries/pageShapeReady";
+import { dailyPayloadPending, queryShowsLoading } from "../../queries/pageShapeReady";
 import { monthYearSurfacePeriod, useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { timeRangeToDays } from "../../timeRange";
 import type { AccountCcInstallmentsResponse } from "../../types";
@@ -127,7 +127,7 @@ export function CreditCardHistorialSurface({
           openBillingMonth={ccLedger.open_billing_month}
           dailyRows={dailyRows}
           period={prefs.period}
-          loading={loading || (isDaily && dailyRows == null)}
+          loading={loading || (isDaily && (dailyRows == null || queryShowsLoading(daily)))}
         />
       )}
     </PageGridTile>

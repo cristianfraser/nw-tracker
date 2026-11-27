@@ -301,7 +301,7 @@ type RowActions = {
 function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const del = useDeleteCcStatementLineMutation({ accountId: line.account_id, displayUnit });
+  const del = useDeleteCcStatementLineMutation({ accountId: line.account_id });
   const [confirming, setConfirming] = useState(false);
   const failure = useActionError();
   return (
@@ -344,8 +344,7 @@ function DeleteLineButton({ line }: { line: FlowCcExpenseLineRow }) {
 /** «Anulada por el banco»: the bank dropped this unbilled purchase; the day it did, entered here. */
 function AnnulPurchaseControl({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  const annul = useAnnulCcPurchaseMutation({ accountId: line.account_id, displayUnit });
+  const annul = useAnnulCcPurchaseMutation({ accountId: line.account_id });
   const [day, setDay] = useState(() => chileTodayYmd());
   const failure = useActionError();
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(day);
@@ -383,8 +382,7 @@ function AnnulPurchaseControl({ line }: { line: FlowCcExpenseLineRow }) {
 /** Undo for an annulment the user marked: confirm, then the purchase is listed again. */
 function UndoAnnulmentButton({ line, annulId }: { line: FlowCcExpenseLineRow; annulId: number }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  const undo = useUndoCcAnnulledPurchaseMutation({ accountId: line.account_id, displayUnit });
+  const undo = useUndoCcAnnulledPurchaseMutation({ accountId: line.account_id });
   const [confirming, setConfirming] = useState(false);
   const failure = useActionError();
   return (
@@ -423,8 +421,7 @@ function UndoAnnulmentButton({ line, annulId }: { line: FlowCcExpenseLineRow; an
 /** The installment count, entered right where the row asks for it. */
 function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
-  const make = useMakeStatementLineInstallmentMutation({ accountId: line.account_id, displayUnit });
+  const make = useMakeStatementLineInstallmentMutation({ accountId: line.account_id });
   const [value, setValue] = useState("");
   const failure = useActionError();
   const parsed = parseNumberInput(value);
@@ -463,10 +460,9 @@ function CuotasInline({ line }: { line: FlowCcExpenseLineRow }) {
 /** A manual plan's count, changed in place, and «Quitar cuotas» to turn it back into one charge. */
 function PlanCuotasControls({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
-  const { displayUnit } = useDisplayPreferences();
   const purchaseId = line.installment_purchase_id;
-  const update = useUpdateCcPurchaseCuotasMutation({ accountId: line.account_id, displayUnit });
-  const remove = useDeleteCcPurchaseMutation({ accountId: line.account_id, displayUnit });
+  const update = useUpdateCcPurchaseCuotasMutation({ accountId: line.account_id });
+  const remove = useDeleteCcPurchaseMutation({ accountId: line.account_id });
   const [value, setValue] = useState(line.nro_cuota_total != null ? String(line.nro_cuota_total) : "");
   const [confirming, setConfirming] = useState(false);
   if (purchaseId == null) {

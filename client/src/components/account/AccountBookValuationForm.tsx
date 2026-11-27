@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { formatMoney, parseNumberInputOrThrow } from "../../format";
-import { queryKeys, type DisplayUnit } from "../../queries/keys";
+import { queryKeys } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import { Table } from "../ui/Table";
 import { Button, Field, Input } from "@crfrsr/ui";
@@ -18,10 +18,9 @@ function formatStoredValuation(value: number, currency: string): string {
 
 type Props = {
   accountId: number;
-  displayUnit: DisplayUnit;
 };
 
-export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
+export function AccountBookValuationForm({ accountId }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [asOfDate, setAsOfDate] = useState("");
@@ -37,8 +36,8 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
   const invalidate = async () => {
     await invalidateResources(
       queryClient,
-      resources.accountPage(accountId, displayUnit),
-      resources.dashboardInUnit(displayUnit),
+      resources.accountPage(accountId),
+      resources.dashboardAndNav(),
       resources.accountValuations(accountId),
     );
   };

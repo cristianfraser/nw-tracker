@@ -25,14 +25,14 @@ import type { AccountDetailPageData } from "./useAccountDetailPageData";
  */
 export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }) {
   const { t } = useTranslation();
-  const { summary, displayUnit } = data;
+  const { summary } = data;
   const loading = data.contentLoading;
   const glance = data.deptoGlance;
   const isMortgage = glance ? glance.kind === "mortgage" : isDeptoMortgageCategory(summary.category_slug);
   const { form: addMovementsForm } = useAccountMovementForm(data);
   const [flowsOpen, setFlowsOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const unit = glance?.unit ?? displayUnit;
+  const unit = glance?.unit ?? data.unit;
   // Undefined while the bundle is pending: the bands render their frames and format nothing.
   const loanCurrency = glance?.loan_currency;
   const payCurrency = glance?.payment_currency;
@@ -55,7 +55,7 @@ export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }
       loading={loading}
     >
       {/* Self-gates on the server's import specs (a capability): hidden until they arrive. */}
-      <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
+      <AccountImportSection accountId={summary.account_id} />
 
       {glance === null ? (
         <PageGridTile id="depto-none">
@@ -101,7 +101,7 @@ export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }
               title={t("accountDetail.depto.registerPayment")}
               closeAriaLabel={t("accountDetail.checking.monthModalClose")}
             >
-              <MortgagePaymentForm accountId={summary.account_id} displayUnit={displayUnit} schema={paymentCreate} />
+              <MortgagePaymentForm accountId={summary.account_id} schema={paymentCreate} />
             </Modal>
           ) : null}
         </>

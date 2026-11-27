@@ -1,17 +1,15 @@
 import { useTranslation } from "react-i18next";
 import { AccountBookMovementsForm } from "./AccountBookMovementsForm";
 import { AccountBookValuationForm } from "./AccountBookValuationForm";
-import type { DisplayUnit } from "../../queries/keys";
 import styles from "../../pages/AccountDetailPage.module.css";
 import { cn } from "../../cn";
 import { PageGridTile } from "../layout/PageGridTile";
 
 type Props = {
   accountId: number;
-  displayUnit: DisplayUnit;
 };
 
-export function AccountBookLedgerSection({ accountId, displayUnit }: Props) {
+export function AccountBookLedgerSection({ accountId }: Props) {
   const { t } = useTranslation();
 
   return (
@@ -20,11 +18,9 @@ export function AccountBookLedgerSection({ accountId, displayUnit }: Props) {
       <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.bookLedger.sectionHint")}</p>
       <AccountBookValuationForm
         accountId={accountId}
-        displayUnit={displayUnit}
       />
       <AccountBookMovementsForm
         accountId={accountId}
-        displayUnit={displayUnit}
       />
     </PageGridTile>
   );

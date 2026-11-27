@@ -20,7 +20,7 @@ import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
 import { dailyPayloadPending, queryShowsLoading } from "../queries/pageShapeReady";
-import { useDailySeries, useSidebarNav } from "../queries/hooks";
+import { useHeldDailySeries, useSidebarNav } from "../queries/hooks";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { servedDailyPerfComboPoints } from "../servedDailyPerfCombo";
 import { timeRangeToDays } from "../timeRange";
@@ -154,13 +154,14 @@ export function GroupInfoPage() {
   // answers 404 «no accounts for group»): nothing is requested.
   const groupHasNoAccounts = navMatchNode?.member_account_ids?.length === 0;
   const dailyGroup = groupHasNoAccounts ? "" : portfolioGroup;
-  const dailySeries = useDailySeries(
+  // Each held across a unit or range change (a held daily series is drawn, dimmed, in its unit).
+  const dailySeries = useHeldDailySeries(
     { portfolioGroup: dailyGroup || undefined },
     displayUnit,
     timeRangeToDays(valuationPrefs.range),
     valuationIsDaily && dailyGroup !== ""
   );
-  const perfDailySeries = useDailySeries(
+  const perfDailySeries = useHeldDailySeries(
     { portfolioGroup: dailyGroup || undefined },
     displayUnit,
     timeRangeToDays(perfPrefs.range),
@@ -169,6 +170,8 @@ export function GroupInfoPage() {
   );
   const valuationDailyPending = dailyPayloadPending(valuationIsDaily && !groupHasNoAccounts, dailySeries);
   const perfDailyPending = dailyPayloadPending(perfIsDaily && !groupHasNoAccounts, perfDailySeries);
+  const valuationDailyLoading = valuationIsDaily && !groupHasNoAccounts && dailySeries.loading;
+  const perfDailyLoading = perfIsDaily && !groupHasNoAccounts && perfDailySeries.loading;
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily || valuationDailyPending) return null;
     const daily = dailySeries.data;
@@ -269,6 +272,11 @@ export function GroupInfoPage() {
     navGroupSlug: navMatchNode?.slug,
   });
 
+  // Each chart is formatted in the unit of the payload it draws (a held one keeps its own).
+  const valuationUnit = valuationIsDaily ? (dailySeries.data?.unit ?? ts.unit) : ts.unit;
+  const perfUnit = perfIsDaily ? (perfDailySeries.data?.unit ?? ts.unit) : (groupPerfRaw?.unit ?? ts.unit);
+  const positionsUnit = perfIsDaily ? (perfDailySeries.data?.unit ?? ts.unit) : ts.unit;
+
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -324,7 +332,7 @@ export function GroupInfoPage() {
         valuationChart={
           <GroupValuationChart
             block={(valuationIsDaily ? dailyValuationBlock : charts.valuationBlockForChart) ?? EMPTY_VALUATION_BLOCK}
-            displayUnit={displayUnit}
+            displayUnit={valuationUnit}
             xAxisGranularity={valuationIsDaily ? "day" : valuationPrefs.period === "year" ? "year" : "month"}
             timeRange={valuationPrefs.range}
             controls={
@@ -341,7 +349,7 @@ export function GroupInfoPage() {
             chartCtx={chartCtx}
             groupColorRgb={navMatchNode.color_rgb}
             hideLegend
-            loading={contentLoading || valuationDailyPending}
+            loading={contentLoading || valuationDailyLoading}
           />
         }
         plChart={
@@ -350,7 +358,7 @@ export function GroupInfoPage() {
               title={t("accountDetail.positionGlance.plMonthlyTitle")}
               titleAs="h2"
               points={perfPoints}
-              displayUnit={displayUnit}
+              displayUnit={perfUnit}
               xAxisGranularity={perfGranularity}
               timeRange={perfPrefs.range}
               controls={
@@ -363,7 +371,7 @@ export function GroupInfoPage() {
               }
               barSeries={charts.groupPerfBarSeries}
               groupTotalStroke={charts.groupTotalStroke}
-              loading={contentLoading || perfDailyPending}
+              loading={contentLoading || perfDailyLoading}
             />
           )
         }
@@ -430,7 +438,7 @@ export function GroupInfoPage() {
     const positionsTitle = t(
       cashPage ? "groupPage.cashGlance.balanceByAccount" : "groupPage.investmentGlance.positionsChartTitle"
     );
-    const positionsLoading = contentLoading || perfDailyPending;
+    const positionsLoading = contentLoading || perfDailyLoading;
     return (
       <InvestmentGroupPage
         cash={cashPage}
@@ -448,7 +456,7 @@ export function GroupInfoPage() {
           <GroupValuationChart
             title={cashPage ? t("groupPage.cashGlance.balanceTitle") : undefined}
             block={bandTotalBlock}
-            displayUnit={displayUnit}
+            displayUnit={valuationUnit}
             xAxisGranularity={valuationIsDaily ? "day" : valuationPrefs.period === "year" ? "year" : "month"}
             timeRange={valuationPrefs.range}
             controls={
@@ -465,7 +473,7 @@ export function GroupInfoPage() {
             chartCtx={chartCtx}
             groupColorRgb={navMatchNode?.color_rgb}
             hideLegend
-            loading={contentLoading || valuationDailyPending}
+            loading={contentLoading || valuationDailyLoading}
           />
         }
         valueMap={
@@ -509,7 +517,7 @@ export function GroupInfoPage() {
             <StackedValueAreaChart
               title={positionsTitle}
               block={positionsBlock}
-              displayUnit={displayUnit}
+              displayUnit={positionsUnit}
               xAxisGranularity={perfGranularity}
               timeRange={perfPrefs.range}
               controls={percentToggle}
@@ -525,13 +533,13 @@ export function GroupInfoPage() {
               title={t("accountDetail.positionGlance.plMonthlyTitle")}
               titleAs="h2"
               points={perfPoints}
-              displayUnit={displayUnit}
+              displayUnit={perfUnit}
               xAxisGranularity={perfGranularity}
               timeRange={perfPrefs.range}
               barSeries={charts.groupPerfBarSeries}
               groupTotalStroke={charts.groupTotalStroke}
               hideLegend
-              loading={contentLoading || perfDailyPending}
+              loading={contentLoading || perfDailyLoading}
             />
           )
         }

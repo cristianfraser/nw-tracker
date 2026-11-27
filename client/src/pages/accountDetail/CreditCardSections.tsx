@@ -25,22 +25,19 @@ import { TableMobileCardSection } from "../../components/ui/TableMobileCard";
 import { ColumnTable, type TableColumn } from "../../components/ui/ColumnTable";
 import { useDeleteCcPurchaseMutation } from "../../queries/hooks";
 import styles from "../AccountDetailPage.module.css";
-import type { DisplayUnit } from "../../queries/keys";
 
 function CreditCardInstallmentsSection({
   ledger,
   accountId,
-  displayUnit,
   loading = false,
 }: {
   ledger: AccountCcInstallmentsResponse;
   accountId: number;
-  displayUnit: DisplayUnit;
   /** The ledger is a placeholder or held prior data: the section keeps its frame, dimmed, with no «empty» copy. */
   loading?: boolean;
 }) {
   const { t } = useTranslation();
-  const deletePurchase = useDeleteCcPurchaseMutation({ accountId, displayUnit });
+  const deletePurchase = useDeleteCcPurchaseMutation({ accountId });
   const m = ledger.meta;
   const hasData =
     ledger.has_installment_ledger ||

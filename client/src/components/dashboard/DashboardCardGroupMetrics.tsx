@@ -84,6 +84,7 @@ export function DepositedMetricFlow({
     <AnimatedNumberFlow
       value={value}
       animated={animated}
+      unit={unit}
       mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, unit, "bare")}
       className={cn(styles.amount, "mono")}
       transformTiming={METRIC_TIMING.transformTiming}

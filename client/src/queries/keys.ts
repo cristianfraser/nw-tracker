@@ -1,8 +1,8 @@
 import type { ExpensesSpentParams, FlowsExpenseLinesSelector } from "../types";
 /**
  * A display unit: a lowercase core currency code the server loads (`clp`, `usd`, `eur`, …;
- * `GET /api/currencies`). Data, not a closed union. The unit a page was showing before a switch
- * (the one keep-previous data belongs to) is `previousDisplayUnit` in DisplayPreferencesContext.
+ * `GET /api/currencies`). Data, not a closed union. A payload held across a switch carries its
+ * own `unit` (`heldUnitPayload.ts`).
  */
 export type DisplayUnit = string;
 
@@ -52,6 +52,8 @@ export const queryKeys = {
   /** Without `root`, the prefix of every page's nav-context in that unit (for invalidation). */
   dashboardNav: (unit: DisplayUnit, root?: string) =>
     withEntity((root == null ? ["dashboardNav", unit] : ["dashboardNav", unit, root]) as readonly unknown[], 3),
+  /** Prefix of every unit's nav contexts. */
+  dashboardNavAll: () => ["dashboardNav"] as const,
   dashboardNavSnapshot: (unit: DisplayUnit) =>
     withEntity(["dashboardNavSnapshot", unit] as const, 2),
   dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,

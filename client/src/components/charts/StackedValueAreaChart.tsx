@@ -186,6 +186,8 @@ export function StackedValueAreaChart({
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={rows}
+          // A held payload turning into the new unit's tweens like data arriving.
+          animationKey={displayUnit}
           margin={{ ...RECHARTS_MONEY_CHART_MARGIN, right: END_LABEL_MARGIN }}
           tooltip={{
             formatValue: (v) => formatTooltipValue(v, displayUnit),

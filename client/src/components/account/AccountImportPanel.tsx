@@ -6,7 +6,6 @@ import { useTranslation } from "../../i18n";
 import { useAccountImportMutation } from "../../queries/hooks";
 import styles from "./AccountImportPanel.module.css";
 import { Button, Textarea } from "@crfrsr/ui";
-import type { DisplayUnit } from "../../queries/keys";
 
 type ImportFlowItem = {
   occurred_on: string;
@@ -88,7 +87,6 @@ export type ImportSlot = TextSlot | FileSlot | MultiFileSlot;
 
 type Props = {
   accountId: number;
-  displayUnit: DisplayUnit;
   slots: ImportSlot[];
 };
 
@@ -257,11 +255,10 @@ function ImportResultView({ data }: { data: Record<string, unknown> }) {
 
 export function AccountImportPanel({
   accountId,
-  displayUnit,
   slots,
 }: Props) {
   const { t } = useTranslation();
-  const importMutation = useAccountImportMutation({ accountId, displayUnit });
+  const importMutation = useAccountImportMutation({ accountId });
   const [open, setOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [result, setResult] = useState<Record<string, unknown> | null>(null);

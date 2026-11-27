@@ -21,7 +21,7 @@ type Props = {
 
 export function CreditCardAccountDetailPage({ data }: Props) {
   const { t } = useTranslation();
-  const { summary, ts, ccLedger, displayUnit } = data;
+  const { summary, ts, ccLedger } = data;
 
   // The historial chart and the detalle table each own a per-surface Período control
   // (`cc.<id>.historial` D/M/Y + Rango, `.detalle` M/Y) — the same pair the Pasivos /
@@ -36,7 +36,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
       loading={data.contentLoading}
     >
-      <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
+      <AccountImportSection accountId={summary.account_id} />
 
       <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} loading={data.contentLoading} />
 
@@ -59,7 +59,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
 
       <CreditCardDetailSections
         ledger={ccLedger}
-        displayUnit={displayUnit}
         accountId={summary.account_id}
         loading={data.contentLoading}
       />

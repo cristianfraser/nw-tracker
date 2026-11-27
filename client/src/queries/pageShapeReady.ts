@@ -1,20 +1,19 @@
-/** Dim page body while bundle loads, including display-unit switch with prior-unit placeholder data. */
-export function isBundleContentLoading(opts: {
-  isPending: boolean;
-  isPlaceholderData: boolean;
-  bundleReady: boolean;
-}): boolean {
-  const { isPending, isPlaceholderData, bundleReady } = opts;
-  if (isPlaceholderData && bundleReady) return true;
-  return isPending || !bundleReady;
-}
+import type { HeldUnitPayload } from "./heldUnitPayload";
 
-/** Use fetched bundle for card/chart content; skip stale prior-unit data during unit switch. */
-export function useRealBundleForContent(
-  isPlaceholderData: boolean,
-  bundleReady: boolean
-): boolean {
-  return bundleReady && !isPlaceholderData;
+/**
+ * A page bundle to draw: the payload on screen (the requested unit's or the one held,
+ * {@link HeldUnitPayload}) once it carries what the page reads; `undefined` while there is none —
+ * the page draws its zero placeholder, which is only for a page with nothing to show yet.
+ * `loading` dims while the content is held or missing; `live` is the requested unit's own ready
+ * payload, the only one side effects (stored snapshots and shells) may write.
+ */
+export function bundleContent<T>(
+  payload: HeldUnitPayload<T>,
+  ready: (data: T) => boolean
+): { content: T | undefined; loading: boolean; live: T | undefined } {
+  const content = payload.data !== undefined && ready(payload.data) ? payload.data : undefined;
+  const live = payload.live !== undefined && ready(payload.live) ? payload.live : undefined;
+  return { content, loading: payload.loading || content === undefined, live };
 }
 
 /**
@@ -38,10 +37,11 @@ export function queryLoadError(q: { data: unknown; error: unknown }): unknown {
 }
 
 /**
- * A Diario chart draws only its own daily payload: until it is this unit's (not pending, not a
- * held placeholder) the chart gets no data and shows its pending frame — title row and controls
- * over an empty box — never the monthly block.
+ * A Diario chart draws only daily data: with no daily payload on hand (none of the request's own
+ * and none held) the chart gets no data and shows its pending frame — title row and controls over
+ * an empty box — never the monthly block. A held daily payload (the previous unit's or range's) is
+ * drawn, dimmed, in its own unit.
  */
-export function dailyPayloadPending(isDaily: boolean, q: { isPending: boolean; isPlaceholderData: boolean }): boolean {
-  return isDaily && queryShowsLoading(q);
+export function dailyPayloadPending(isDaily: boolean, shown: { data: unknown }): boolean {
+  return isDaily && shown.data === undefined;
 }

@@ -10,13 +10,11 @@ import {
 } from "../../panelAccounts/stockAccountFormTypes";
 import { type BrokerageFlowKind } from "../../panelAccounts/brokerageFlowKinds";
 import { useAccountsAll } from "../../queries/hooks";
-import type { DisplayUnit } from "../../queries/keys";
 import { invalidateResources, resources } from "../../queries/resources";
 import { Button } from "@crfrsr/ui";
 
 type Props = {
   accountId: number;
-  displayUnit: DisplayUnit;
   /** The kinds this account's form offers (an option contract's differ from a stock's). */
   flowKinds?: readonly BrokerageFlowKind[];
 };
@@ -26,7 +24,7 @@ type Props = {
  * settle against a cash account in any currency: the amount is typed and posted in the currency
  * that account holds (the accounts list's `cash_currency`).
  */
-export function AccountBrokerageMovementsForm({ accountId, displayUnit, flowKinds }: Props) {
+export function AccountBrokerageMovementsForm({ accountId, flowKinds }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: accountsData } = useAccountsAll();
@@ -54,7 +52,7 @@ export function AccountBrokerageMovementsForm({ accountId, displayUnit, flowKind
       setMovements([]);
       setFormError(null);
       setLastSavedCount(count);
-      await invalidateResources(queryClient, resources.accountMovements(accountId, displayUnit));
+      await invalidateResources(queryClient, resources.accountMovements(accountId));
     },
     onError: (err: Error) => {
       setFormError(err.message);

@@ -658,6 +658,8 @@ export function LineChartPanel({
         <div className="line-chart-plot">
         <AppLineChart
           data={plotChartData}
+          // A held payload turning into the new unit's tweens like data arriving.
+          animationKey={displayUnit}
           tailClippedKeys={tailClippedKeys}
           margin={chartMargin}
           tooltip={{

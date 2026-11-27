@@ -2,7 +2,6 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { useEffect, useMemo } from "react";
 import { api } from "../api";
 import {
-  dashPickForNavStrip,
   fetchAccountsByPortfolioGroup,
   fetchDashboardBundle,
   fetchDashboardNavContext,
@@ -19,10 +18,11 @@ import {
 import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor, keepPreviousDataSameEntity } from "./displayUnitQueries";
 import { queryKeys, type AccountFlowsScope, type DisplayUnit } from "./keys";
 import { invalidateResources, resources } from "./resources";
+import { useHeldUnitQuery, type HeldUnitPayload } from "./heldUnitPayload";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
-import type { ExpensesSpentParams, NavTreeNodeDto } from "../types";
+import type { DailySeriesResponse, ExpensesSpentParams, NavTreeNodeDto } from "../types";
 import { setCurrencyRegistry } from "../format";
 
 /** Snapshots read from localStorage (placeholders), as opposed to live server payloads. */
@@ -57,28 +57,59 @@ export function useDashboardOverviewDaily(unit: DisplayUnit, days: number, enabl
   });
 }
 
+type DailySeriesScope = { portfolioGroup?: string; accountId?: number };
+
+function dailySeriesScopeKey(scope: DailySeriesScope): string {
+  return scope.portfolioGroup
+    ? `pg:${scope.portfolioGroup}`
+    : scope.accountId != null
+      ? `account:${scope.accountId}`
+      : "";
+}
+
+function dailySeriesQueryKey(scope: DailySeriesScope, unit: DisplayUnit, days: number, opts?: { perfLevels?: boolean }) {
+  return queryKeys.dailySeries(dailySeriesScopeKey(scope), opts?.perfLevels === true ? "perf" : "base", unit, days);
+}
+
 /** Daily series for one group page or account (day period view: chart + detalle por día). */
 export function useDailySeries(
-  scope: { portfolioGroup?: string; accountId?: number },
+  scope: DailySeriesScope,
   unit: DisplayUnit,
   days: number,
   enabled = true,
   /** Ask for the day-mode P/L levels (`perf_levels`) the P/L combos pick. */
   opts?: { perfLevels?: boolean }
 ) {
-  const scopeKey = scope.portfolioGroup
-    ? `pg:${scope.portfolioGroup}`
-    : scope.accountId != null
-      ? `account:${scope.accountId}`
-      : "";
+  const scopeKey = dailySeriesScopeKey(scope);
   const perfLevels = opts?.perfLevels === true;
-  const key = queryKeys.dailySeries(scopeKey, perfLevels ? "perf" : "base", unit, days);
+  const key = dailySeriesQueryKey(scope, unit, days, opts);
   return useQuery({
     queryKey: key,
     queryFn: () => api.dailySeries(unit, scope, days, { perfLevels }),
     enabled: enabled && scopeKey !== "",
     ...displayUnitQueryBehaviorFor(key),
   });
+}
+
+/**
+ * {@link useDailySeries} as a surface shows it (`heldUnitPayload.ts`): across a unit or range
+ * change the series on screen is held, dimmed, in its own unit, until this request's copy (at
+ * least as new) is in. `error` is the request's own, for {@link queryLoadError}-style gates.
+ */
+export function useHeldDailySeries(
+  scope: DailySeriesScope,
+  unit: DisplayUnit,
+  days: number,
+  enabled = true,
+  opts?: { perfLevels?: boolean }
+): HeldUnitPayload<DailySeriesResponse> & { error: unknown } {
+  const query = useDailySeries(scope, unit, days, enabled, opts);
+  const shown = useHeldUnitQuery(query, {
+    queryKey: dailySeriesQueryKey(scope, unit, days, opts),
+    unit,
+    enabled: enabled && dailySeriesScopeKey(scope) !== "",
+  });
+  return { ...shown, error: query.error };
 }
 
 /**
@@ -96,8 +127,8 @@ export function useDashboardNavContext(unit: DisplayUnit, root: string | null, e
       return ctx;
     },
     enabled: enabled && root != null,
-    // A unit change holds nothing: the pages fall back to the unit's own nav snapshot cache, never
-    // a converted context; another page starts from its own.
+    // A unit change holds nothing here: the pages hold the strip on screen (`useHeldUnitValue`),
+    // never a converted context; another page starts from its own.
     ...displayUnitQueryBehaviorFor(key),
   });
 }
@@ -117,12 +148,14 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
       return snapshot;
     },
     initialData: () => (cachedStrip ? readNavSnapshotCacheForUnit(unit) : undefined),
-    initialDataUpdatedAt: cachedStrip ? Date.now() : undefined,
+    // A stored copy counts as updated at 0: older than anything fetched, so across a unit switch
+    // it never replaces cards already on screen (`heldUnitPayload.ts`), only paints an empty strip.
+    initialDataUpdatedAt: cachedStrip ? 0 : undefined,
     // With a cached strip this query never refetches; freshness relies on the live payloads
     // re-writing the cache: DashboardPage from its page bundle, useDashboardNavContext from nav-context.
     enabled: enabled && !cachedStrip,
     // Keyed on the unit: a unit change holds nothing (a CLP snapshot has no USD fields; the pages
-    // hold the previous unit's strip themselves, see useHeldNavStrip).
+    // hold the strip on screen themselves, `useHeldUnitValue`).
     ...displayUnitQueryBehaviorFor(queryKeys.dashboardNavSnapshot(unit)),
     staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
     gcTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
@@ -140,47 +173,6 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     void queryClient.resetQueries({ queryKey: queryKeys.dashboardNavSnapshot(unit), exact: true });
   }, [staleCachedSnapshot, queryClient, unit]);
   return staleCachedSnapshot ? { ...query, data: undefined } : query;
-}
-
-/** What a nav strip renders while the page holds the previous unit: cards in THAT unit. */
-export type HeldNavStrip = {
-  dash: ReturnType<typeof dashPickForNavStrip>;
-  /** The unit the held cards are in (the previous display unit). */
-  unit: DisplayUnit;
-};
-
-/**
- * The previous unit's nav strip while a unit switch holds the page (`holding`): its live nav
- * context when react-query still has it, else its stored snapshot — shown in ITS unit, dimmed,
- * never converted; null when neither is on hand. Read only: neither query is enabled here, so
- * nothing is fetched for a unit the user left.
- */
-export function useHeldNavStrip(
-  /** The unit the page showed before the switch (`previousDisplayUnit`). */
-  heldUnit: DisplayUnit,
-  holding: boolean,
-  root: string | null
-): HeldNavStrip | null {
-  const other = heldUnit;
-  const { data: navCtx } = useDashboardNavContext(other, root, false);
-  const { data: navSnapshot } = useDashboardNavSnapshot(other, false);
-  return useMemo(() => {
-    if (!holding) return null;
-    if (navCtx) {
-      return { dash: dashPickForNavStrip(navCtx), unit: other };
-    }
-    if (!navSnapshot) return null;
-    return {
-      dash: dashPickForNavStrip({
-        accounts: navSnapshot.accounts,
-        liabilities_breakdown: navSnapshot.liabilities_breakdown,
-        dashboard_layout: navSnapshot.dashboard_layout,
-        nw_bucket_totals: navSnapshot.nw_bucket_totals,
-        card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
-      }),
-      unit: other,
-    };
-  }, [holding, navCtx, navSnapshot, other]);
 }
 
 export function useGroupConsolidatedTables(

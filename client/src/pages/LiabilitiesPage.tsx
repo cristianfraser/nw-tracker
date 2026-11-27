@@ -256,7 +256,7 @@ function ChartsRow({ slug, glance, loading }: { slug: string; glance: Liabilitie
       ? null
       : (dailySeries.data?.reference_coverage ?? null)
     : (bundle.data?.ts?.reference_coverage ?? null);
-  const coverageLoading = daily ? dailyPending : queryShowsLoading(bundle);
+  const coverageLoading = daily ? queryShowsLoading(dailySeries) : queryShowsLoading(bundle);
   return (
     <PageGridTile id="liabilities-charts" className="chart-grid">
       <div className={loadableClass(loading, "chart-grid__col")}>

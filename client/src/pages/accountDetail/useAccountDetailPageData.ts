@@ -5,6 +5,8 @@ import {
   resolveMonthlyPerfClipEndDate,
 } from "../../components/charts/chartData";
 import { useAccountDetailBundle, useDashboardNavSnapshot, useSidebarNav } from "../../queries/hooks";
+import { useHeldUnitQuery } from "../../queries/heldUnitPayload";
+import { queryKeys } from "../../queries/keys";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
@@ -29,8 +31,8 @@ type DetailBundle = NonNullable<ReturnType<typeof useAccountDetailBundle>["data"
 export type AccountDetailPageData = {
   id: string | undefined;
   /**
-   * The bundle is not in yet, or is held prior-unit data being converted: the page keeps its
-   * layout and dims (the category-keyed frames come from the placeholder, see
+   * The bundle is not in yet, or is held from before a unit switch (shown in its own `unit`): the
+   * page keeps its layout and dims (the category-keyed frames come from the placeholder, see
    * `placeholderCategorySlug`).
    */
   contentLoading: boolean;
@@ -53,7 +55,10 @@ export type AccountDetailPageData = {
   monthlyPerf: AccountMonthlyPerformanceResponse | null;
   /** undefined while the bundle loads; null is the server stating the account has no period returns. */
   periodReturns: PeriodReturnsPayload | null | undefined;
+  /** The unit requests are made in (the display-unit picker's): query keys only, never a format. */
   displayUnit: DisplayUnit;
+  /** The unit the bundle on screen is in (a held bundle's own): what its figures format with. */
+  unit: DisplayUnit;
   /** Per-surface controls: valuation chart (Diario+3y) and the two P/L combos (Mensual+3y). */
   valuationPrefs: SurfacePrefsValue;
   perfPrefs: SurfacePrefsValue;
@@ -76,12 +81,15 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const perfIsYearly = perfPrefs.period === "year";
   const perfRange = perfPrefs.range;
 
-  const {
-    data: detail,
-    error: detailError,
-    isPending: detailPending,
-    isPlaceholderData: detailIsPlaceholder,
-  } = useAccountDetailBundle(id, displayUnit, "monthly");
+  const detailQuery = useAccountDetailBundle(id, displayUnit, "monthly");
+  const detailError = detailQuery.error;
+  // The bundle on screen: this unit's, or this account's held across a unit switch (in ITS unit).
+  const shownDetail = useHeldUnitQuery(detailQuery, {
+    queryKey: queryKeys.accountDetail(id ?? "", displayUnit, "monthly"),
+    unit: displayUnit,
+    enabled: Boolean(id),
+  });
+  const detail = shownDetail.data;
   const { data: sidebarNav } = useSidebarNav();
   const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);
 
@@ -120,8 +128,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     detail.mortgageLedger != null &&
     detail.ccLedger != null;
 
-  // `detailIsPlaceholder` = prior-unit data of this same account held while the new unit loads.
-  const contentLoading = detailPending || detailIsPlaceholder || !bundleReady;
+  const contentLoading = shownDetail.loading || !bundleReady;
 
   const summary = detail?.summary ?? placeholder.summary;
   const ts: NonNullable<DetailBundle["ts"]> = detail?.ts ?? placeholder.ts!;
@@ -208,6 +215,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     monthlyPerf,
     periodReturns,
     displayUnit,
+    unit: summary.unit,
     valuationPrefs,
     perfPrefs,
     valuationTailClipEndDate,

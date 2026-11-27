@@ -29,23 +29,22 @@ describe("resources", () => {
 
   it("pins what each account, panel and operations resource invalidates", () => {
     const keysOf = (list: { queryKey: readonly unknown[] }[]) => list.map((i) => i.queryKey);
-    expect(keysOf(resources.accountMovements(42, "usd"))).toEqual([
-      queryKeys.accountDetail("42", "usd", "monthly"),
+    expect(keysOf(resources.accountMovements(42))).toEqual([
+      queryKeys.accountDetailAll("42"),
       queryKeys.accountFlowsAll(),
       queryKeys.mortgageGroupGlanceAll(),
       queryKeys.realEstateGroupGlanceAll(),
       queryKeys.liabilitiesGlanceAll(),
       queryKeys.deptoPrepaymentsAll(),
-      queryKeys.dashboard("usd"),
-      queryKeys.dashboardNav("usd"),
+      queryKeys.dashboardAll(),
+      queryKeys.dashboardNavAll(),
     ]);
-    expect(keysOf(resources.dashboardInUnit("clp"))).toEqual([queryKeys.dashboard("clp"), queryKeys.dashboardNav("clp")]);
+    expect(keysOf(resources.dashboardAndNav())).toEqual([queryKeys.dashboardAll(), queryKeys.dashboardNavAll()]);
     expect(keysOf(resources.panelAccounts())).toEqual([
       queryKeys.accountsAll(),
       queryKeys.panelNetWorthTree(),
       queryKeys.sidebarNav(),
-      queryKeys.dashboard("clp"),
-      queryKeys.dashboard("usd"),
+      queryKeys.dashboardAll(),
     ]);
     expect(keysOf(resources.accountLists())).toEqual([
       queryKeys.sidebarNav(),
@@ -62,6 +61,23 @@ describe("resources", () => {
     expect(keysOf(resources.ingestRuns())).toEqual([queryKeys.ingestRunsStatus()]);
     expect(keysOf(resources.genericUniqueMerchants())).toEqual([queryKeys.genericUniqueMerchants()]);
     expect(keysOf(resources.messagesUnread())).toEqual([queryKeys.messagesUnread()]);
+  });
+
+  it("an account write reaches every unit's copy of its page and of the dashboard", async () => {
+    const qc = new QueryClient();
+    for (const unit of ["clp", "usd", "eur"]) {
+      qc.setQueryData(queryKeys.accountDetail("42", unit, "monthly"), unit);
+      qc.setQueryData(queryKeys.dashboard(unit), unit);
+      qc.setQueryData(queryKeys.dashboardNav(unit, "net_worth"), unit);
+    }
+    qc.setQueryData(queryKeys.accountDetail("43", "usd", "monthly"), "other");
+    await invalidateResources(qc, resources.accountMovements(42));
+    for (const unit of ["clp", "usd", "eur"]) {
+      expect(qc.getQueryState(queryKeys.accountDetail("42", unit, "monthly"))?.isInvalidated).toBe(true);
+      expect(qc.getQueryState(queryKeys.dashboard(unit))?.isInvalidated).toBe(true);
+      expect(qc.getQueryState(queryKeys.dashboardNav(unit, "net_worth"))?.isInvalidated).toBe(true);
+    }
+    expect(qc.getQueryState(queryKeys.accountDetail("43", "usd", "monthly"))?.isInvalidated).toBe(false);
   });
 
   it("«everything» reaches every query, like a bare invalidateQueries()", async () => {

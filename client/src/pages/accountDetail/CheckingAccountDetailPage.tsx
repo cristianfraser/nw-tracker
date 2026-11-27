@@ -24,7 +24,7 @@ type Props = {
  */
 export function CheckingAccountDetailPage({ data }: Props) {
   const { t } = useTranslation();
-  const { summary, displayUnit, checkingGlance: glance, checkingCartolaMonths } = data;
+  const { summary, checkingGlance: glance, checkingCartolaMonths } = data;
   const loading = data.contentLoading;
   const { form: addMovementsForm } = useAccountMovementForm(data);
   const [anchorOpen, setAnchorOpen] = useState(false);
@@ -66,7 +66,7 @@ export function CheckingAccountDetailPage({ data }: Props) {
       ) : null}
 
       {/* Self-gates on the server's import specs (a capability): hidden until they arrive. */}
-      <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
+      <AccountImportSection accountId={summary.account_id} />
 
       <Modal
         open={anchorOpen}
@@ -77,7 +77,6 @@ export function CheckingAccountDetailPage({ data }: Props) {
         {checkingCartolaMonths ? (
           <CheckingLedgerAnchorForm
             accountId={summary.account_id}
-            displayUnit={displayUnit}
             ledgerAnchor={checkingCartolaMonths.ledger_anchor}
             cartolaDerivedAnchor={checkingCartolaMonths.cartola_derived_anchor}
           />
