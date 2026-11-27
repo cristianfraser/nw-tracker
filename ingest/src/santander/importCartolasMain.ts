@@ -27,7 +27,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { bankAccountStatementsKind, type BankAccountStatementsApplyDetails } from "nw-tracker-contracts";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
-import { listCartolaPdfs, readCheckingCartolas, readCuentaVistaCartolas } from "./cartolas.js";
+import { listCartolaPdfs, readCheckingCartolas, readCuentaVistaCartolas, statementsTheContractTakes } from "./cartolas.js";
 import { reportStepResult } from "../stepResult.js";
 import {
   isDocumentName,
@@ -62,7 +62,7 @@ async function main(): Promise<number> {
   }
   const onlyXlsx = list("only-xlsx");
   const onlyPdf = list("only-pdf");
-  const read =
+  const raw =
     account === "checking"
       ? readCheckingCartolas({
           dir: argv.find((a) => a.startsWith("--dir="))?.slice("--dir=".length),
@@ -72,6 +72,9 @@ async function main(): Promise<number> {
           onlyPdf,
         })
       : readCuentaVistaCartolas({ skipPdfParse: flag("skip-pdf-parse"), onlyPdf });
+  // A statement the contract refuses (a cell outside the shared reading) is that document's
+  // problem, never the run's: it goes as unreadable (named, pending) and the others are sent.
+  const read = statementsTheContractTakes(raw);
   const payload = bankAccountStatementsKind.payload.parse({
     account: { issuer: "santander", product: account === "checking" ? "checking" : "demand_deposit" },
     force_reimport: flag("force-reimport"),

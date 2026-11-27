@@ -10,6 +10,7 @@
  * Precedence on a line (`resolveCcExpenseCategory`, `withSpecificCategoryRules`): its own category
  * («Único», a per-line override) > a specific rule > the general rule > «sin categoría».
  */
+import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
 import { vendorRuleKey, vendorRuleKeyCandidates } from "./bankMerchantName.js";
 import { foldVendorName, loadVendorCatalog, type VendorCatalog } from "./vendorCatalog.js";
@@ -94,10 +95,29 @@ export function setExpenseCategoryRule(rawMerchant: string, link: CategoryRuleLi
   if (link) assertLink(link);
   const vendor = link?.kind === "recipient" ? TRANSFER_RULE_VENDOR : vendorRuleKey(rawMerchant, loadVendorCatalog());
   if (!vendor) throw new Error(`no vendor for merchant «${rawMerchant}»`);
+  // The user's change: the rule is theirs from now on (a carried spelling's origin is cleared).
   db.prepare(
     `INSERT INTO expense_category_rules (vendor, link_kind, link_key, category_id) VALUES (?, ?, ?, ?)
-     ON CONFLICT (vendor, link_kind, link_key) DO UPDATE SET category_id = excluded.category_id`
+     ON CONFLICT (vendor, link_kind, link_key) DO UPDATE SET category_id = excluded.category_id, origin = NULL`
   ).run(vendor, link?.kind ?? "", link?.key ?? "", categoryId);
+}
+
+/**
+ * Passes a category rule over to a cartola description's new spelling (`checkingRestatementCarry.ts`):
+ * the rule of `vendor` (+ `link`) with `categoryId`, origin `cartola_spelling`, written only when that
+ * vendor has no such rule. Returns whether it was written (false: a rule is there; the caller compares).
+ */
+export function passCategoryRuleToSpelling(vendor: string, link: CategoryRuleLink | null, categoryId: number, dbHandle: Database = db): boolean {
+  if (link) assertLink(link);
+  if (!vendor) throw new Error("passCategoryRuleToSpelling: no vendor");
+  return (
+    dbHandle
+      .prepare(
+        `INSERT INTO expense_category_rules (vendor, link_kind, link_key, category_id, origin) VALUES (?, ?, ?, ?, 'cartola_spelling')
+         ON CONFLICT (vendor, link_kind, link_key) DO NOTHING`
+      )
+      .run(vendor, link?.kind ?? "", link?.key ?? "", categoryId).changes > 0
+  );
 }
 
 /**

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readCheckingCartolas, readCuentaVistaCartolas } from "./cartolas.js";
+import { readCheckingCartolas, readCuentaVistaCartolas, statementFromParsedCartola, statementsTheContractTakes } from "./cartolas.js";
 
 function entry(file: string, status: "ok" | "error", error: string | null = null) {
   return {
@@ -80,5 +80,31 @@ describe("cartola PDF batch", () => {
     const vista = readCuentaVistaCartolas({ skipPdfParse: false, runParser: () => ({ ok: false, error: "crashed" }) });
     expect(vista.statements).toEqual([]);
     expect(vista.unreadable).toEqual([{ document: "cuenta-vista-pdf", error: "crashed" }]);
+  });
+});
+
+describe("statements the contract takes", () => {
+  const statement = (document: string, description: string) =>
+    statementFromParsedCartola({
+      source_file: document,
+      period_month: "2036-01",
+      period_from: "2035-12-31",
+      period_to: "2036-01-31",
+      saldo_inicial_clp: 1_000,
+      saldo_final_clp: 1_500,
+      movements: [{ occurred_on: "2036-01-10", amount_clp: 500, branch: "Centro", description, document_no: "" }],
+      skipped: [],
+      notes: [],
+    });
+
+  it("sends the statements in the shared reading and names a document with a cell outside it as unreadable", () => {
+    const read = statementsTheContractTakes({
+      statements: [statement("a.pdf", "Abono de prueba"), statement("b.pdf", "Abono  de prueba")],
+      unreadable: [],
+    });
+    expect(read.statements.map((s) => s.document)).toEqual(["a.pdf"]);
+    expect(read.unreadable).toHaveLength(1);
+    expect(read.unreadable[0]!.document).toBe("b.pdf");
+    expect(read.unreadable[0]!.error).toMatch(/^movements\.0\.description «Abono  de prueba»: not in the shared cartola reading/);
   });
 });

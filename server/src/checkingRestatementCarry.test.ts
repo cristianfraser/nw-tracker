@@ -65,7 +65,7 @@ function importAgain(movements: ReturnType<typeof mv>[]) {
 }
 
 describe("a cartola month imported again in other text", () => {
-  it("keeps a rule's category as the row's own when the new text no longer reaches the rule, and reports it", inRollback(() => {
+  it("passes a rule over to the new spelling when the new text no longer reaches it, and reports it", inRollback(() => {
     rule(`${TAG} KIOSKO`, "food");
     applyBankAccountStatements(payload(statement([mv(`${MONTH}-10`, -3_000, `${TAG} KIOSKO`)])));
     const before = shown().get(`${TAG} KIOSKO`)!;
@@ -73,9 +73,33 @@ describe("a cartola month imported again in other text", () => {
     const details = importAgain([mv(`${MONTH}-10`, -3_000, `${TAG} KIOSCO`)]);
     expect(details.files.map((f) => f.status)).toEqual(["imported"]);
     const after = shown().get(`${TAG} KIOSCO`)!;
-    expect(after.id).toBe(before.id);
-    expect(after.categories).toEqual(["food (own)"]);
-    expect(details.report.join("\n")).toMatch(/keeps its category as its own: movement \d+ → food/);
+    expect([after.id, after.categories]).toEqual([before.id, ["food (rule)"]]);
+    expect(db.prepare(`SELECT origin FROM expense_category_rules WHERE vendor = ? AND link_kind = ''`).get(`${TAG} KIOSCO`)).toEqual({ origin: "cartola_spelling" });
+    expect(details.report.join("\n")).toMatch(/rule passed to the new spelling: «VITEST CARRY KIOSCO» → food/);
+  }));
+
+  it("keeps the category as the row's own when the new spelling's vendor has a rule of its own", inRollback(() => {
+    rule(`${TAG} KIOSKO`, "food");
+    rule(`${TAG} KIOSCO`, "fun");
+    applyBankAccountStatements(payload(statement([mv(`${MONTH}-10`, -3_000, `${TAG} KIOSKO`)])));
+    const details = importAgain([mv(`${MONTH}-10`, -3_000, `${TAG} KIOSCO`)]);
+    expect(details.files.map((f) => f.status)).toEqual(["imported"]);
+    expect(shown().get(`${TAG} KIOSCO`)!.categories).toEqual(["food (own)"]);
+    expect(details.report.join("\n")).toMatch(/KEPT AS ITS OWN: movement \d+ → food \(was rule/);
+  }));
+
+  it("does not pass a rule that would move another line's category: the row keeps it as its own", inRollback(() => {
+    rule(`${TAG} KIOSKO`, "food");
+    // Another month's row already reads as the new spelling, with no category.
+    applyBankAccountStatements(payload(statement([mv(`${MONTH}-10`, -3_000, `${TAG} KIOSKO`), mv(`${MONTH}-11`, -1_000, `${TAG} KIOSCO`)])));
+    const details = importAgain([mv(`${MONTH}-10`, -3_000, `${TAG} KIOSCO`), mv(`${MONTH}-11`, -1_000, `${TAG} KIOSCO`)]);
+    expect(details.files.map((f) => f.status)).toEqual(["imported"]);
+    clearAggregationCache();
+    const rows = [...snapshotExpenseIdentity(checkingAccountId(), [MONTH]).rows.values()];
+    expect(rows.map((r) => [r.amount_clp, [...r.lines.values()].map((l) => `${l.slug} (${l.source})`)])).toEqual([
+      [-3_000, ["food (own)"]],
+      [-1_000, ["unclassified (none)"]],
+    ]);
   }));
 
   it("carries the same way on the ledger rebuild (the repair of a month imported twice)", inRollback(() => {
@@ -86,8 +110,8 @@ describe("a cartola month imported again in other text", () => {
     clearAggregationCache();
     const r = rebuildCheckingLedgerFromCartolas(checkingAccountId(), [parsedCartolaFromStatement(statement([mv(`${MONTH}-14`, -2_500, `${TAG} PANADERIA SUR`)]))]);
     const after = shown().get(`${TAG} PANADERIA SUR`)!;
-    expect([after.id, after.categories]).toEqual([before.id, ["food (own)"]]);
-    expect(r.months[0]!.restatement_carry?.own_categories.map((o) => o.category)).toEqual(["food"]);
+    expect([after.id, after.categories]).toEqual([before.id, ["food (rule)"]]);
+    expect(r.months[0]!.restatement_carry?.rules_passed.map((o) => o.category)).toEqual(["food"]);
   }));
 
   it("names the new spelling as the catalog named the old one, and the rule follows it", inRollback(() => {
@@ -104,6 +128,26 @@ describe("a cartola month imported again in other text", () => {
       db.prepare(`SELECT display FROM vendor_catalog WHERE match_kind = 'exact' AND pattern = ? AND source = 'spelling'`).get(`${TAG} TIENDAUNO`)
     ).toEqual({ display: "Tienda Uno Ejemplo" });
     expect(details.report.join("\n")).toMatch(/catalog spelling added: «VITEST CARRY TIENDAUNO» → «Tienda Uno Ejemplo»/);
+  }));
+
+  it("refuses the spelling when another line reads the same text: naming it would rename that line", inRollback(() => {
+    catalogEntry(`${TAG} TIENDA TRES`, "Tienda Tres Ejemplo");
+    applyBankAccountStatements(
+      payload(statement([mv(`${MONTH}-11`, -9_000, `${TAG} TIENDA TRES`), mv(`${MONTH}-15`, -1_000, `${TAG} TIENDATRES`)]))
+    );
+    const details = importAgain([mv(`${MONTH}-11`, -9_000, `${TAG} TIENDATRES`), mv(`${MONTH}-15`, -1_000, `${TAG} TIENDATRES`)]);
+    expect(details.files.map((f) => f.status)).toEqual(["refused"]);
+    expect(details.files[0]!.problems.join("\n")).toMatch(/naming «VITEST CARRY TIENDATRES» «Tienda Tres Ejemplo» would rename 1 other line/);
+  }));
+
+  it("never overwrites a spelling already in the catalog: the row reads it, and the change is reported", inRollback(() => {
+    catalogEntry(`${TAG} TIENDA CUATRO`, "Tienda Cuatro Ejemplo");
+    db.prepare(`INSERT INTO vendor_catalog (match_kind, pattern, display, source) VALUES ('exact', ?, 'Otra Tienda', 'spelling')`).run(`${TAG} TIENDACUATRO`);
+    applyBankAccountStatements(payload(statement([mv(`${MONTH}-16`, -9_000, `${TAG} TIENDA CUATRO`)])));
+    const details = importAgain([mv(`${MONTH}-16`, -9_000, `${TAG} TIENDACUATRO`)]);
+    expect(details.files.map((f) => f.status)).toEqual(["imported"]);
+    expect(db.prepare(`SELECT display FROM vendor_catalog WHERE source = 'spelling' AND pattern = ?`).get(`${TAG} TIENDACUATRO`)).toEqual({ display: "Otra Tienda" });
+    expect(details.report.join("\n")).toMatch(/shown name now: movement \d+ «Tienda Cuatro Ejemplo» → «Otra Tienda»/);
   }));
 
   it("never touches a category the user set on the row", inRollback(() => {

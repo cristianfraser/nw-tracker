@@ -80,7 +80,15 @@ if (cartolas.length === 0) throw new Error("no cartola of the payload is in --mo
 
 console.log(`database: ${file}`);
 console.log(`account: ${accountId} (${account})`);
-const totals = { changed: 0, categories: 0, credits: 0, lost: 0, names: 0, removed: 0, removedCategorized: 0, added: 0, refused: 0 };
+const totals = { changed: 0, categories: 0, credits: 0, lost: 0, names: 0, removed: 0, removedCategorized: 0, added: 0, refused: 0, rulesPassed: 0, keptOwn: 0, spellings: 0 };
+type Carry = import("../src/checkingRestatementHook.js").RestatementCarry;
+function countCarry(c: Carry | null | undefined): void {
+  if (!c) return;
+  for (const line of describeRestatementCarry(c)) console.log(line);
+  totals.rulesPassed += c.rules_passed.length;
+  totals.keptOwn += c.own_categories.length;
+  totals.spellings += c.spellings_added.length;
+}
 type Diff = import("../src/checkingRestatementIdentity.js").RestatementDiff;
 type Log = Parameters<typeof importCartolaList>[3][number];
 
@@ -98,6 +106,7 @@ function printDiff(d: Diff): void {
   totals.changed += d.changed.length;
   totals.categories += d.categories_changed.length;
   totals.credits += d.credits_changed.length;
+  for (const c of d.credits_changed) console.log(`  credit flips (ledger-wide): movement ${c.movement_id} ${c.on} ${c.before ?? "—"} → ${c.after ?? "—"}`);
   totals.lost += d.names_lost.length;
   totals.names += d.names_changed.length;
   totals.removed += d.removed.length;
@@ -109,7 +118,7 @@ function printLog(log: Log | undefined, label: string): void {
   console.log(`\n${label}: ${log?.status ?? "no log"}${log?.error ? ` — ${log.error}` : ""}`);
   for (const p of log?.problems ?? []) console.log(`  problem: ${p}`);
   if (log?.status === "refused" || log?.status === "parse_error") totals.refused++;
-  if (log?.restatement_carry) for (const line of describeRestatementCarry(log.restatement_carry)) console.log(line);
+  countCarry(log?.restatement_carry);
 }
 
 if (flag("rebuild")) {
@@ -126,7 +135,7 @@ if (flag("rebuild")) {
     console.log(`\nrebuild of ${cartolas.length} month(s): anchor ${JSON.stringify(result.r.anchor_before)} → ${JSON.stringify(result.r.anchor_after)}`);
     for (const m of result.r.months) {
       console.log(`  ${m.period_month}: ${m.restated} restated or kept, ${m.inserted} written, ${m.cartola_rows_removed} no longer listed removed`);
-      if (m.restatement_carry) for (const line of describeRestatementCarry(m.restatement_carry)) console.log(line);
+      countCarry(m.restatement_carry);
     }
     printDiff(result.diff);
   } catch (e) {
@@ -151,7 +160,9 @@ if (flag("rebuild")) {
 }
 console.log(
   `\nSUMMARY ${cartolas.length} month(s): rows changed: ${totals.changed}; categories changed: ${totals.categories}; credits reclassified: ${totals.credits}; ` +
-    `rows losing a shown name: ${totals.lost}; shown names changed: ${totals.names}; rows removed: ${totals.removed} (with a category: ${totals.removedCategorized}), added: ${totals.added}; months refused: ${totals.refused}`
+    `rows losing a shown name: ${totals.lost}; shown names changed: ${totals.names}; rules passed to a new spelling: ${totals.rulesPassed}; rows kept as their own: ${totals.keptOwn}; ` +
+    `catalog spellings added: ${totals.spellings}; rows removed: ${totals.removed} (with a category: ${totals.removedCategorized}), added: ${totals.added}; months refused: ${totals.refused}`
 );
-// The repair's gate: nothing the user sees moves (categories, names, credits' classes), no categorized row goes, nothing refused.
-process.exit(totals.categories === 0 && totals.lost === 0 && totals.credits === 0 && totals.removedCategorized === 0 && totals.refused === 0 ? 0 : 1);
+// The repair's gate: nothing the user sees moves (categories, names, credits' classes anywhere in the ledger), no categorized row
+// goes, no row is frozen as its own «Único» (a decision for a person), nothing refused.
+process.exit(totals.categories === 0 && totals.lost === 0 && totals.credits === 0 && totals.removedCategorized === 0 && totals.keptOwn === 0 && totals.refused === 0 ? 0 : 1);

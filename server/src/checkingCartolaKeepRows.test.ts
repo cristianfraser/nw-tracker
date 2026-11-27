@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BankAccountStatement, BankAccountStatementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { applyBankAccountStatements, parsedCartolaFromStatement } from "./bankAccountStatementsApply.js";
-import { checkingAccountId, importCartolaList } from "./checkingCartolaImport.js";
+import { checkingAccountId, importCartolaList, rebuildCheckingLedgerFromCartolas } from "./checkingCartolaImport.js";
 import { importCheckingPartialMovements, partialMovementNote } from "./checkingPartialMovementsImport.js";
 import { insertBankPesoMovement } from "./movementWrites.js";
 import { foldMovementInto } from "./checkingCartolaRestate.js";
@@ -11,6 +11,9 @@ import { READ_AFTER_ROWS } from "./test/listingFetch.js";
 import { rolledBack } from "./ingestReceiver.js";
 import { clearAggregationCache } from "./cacheRegistry.js";
 import { agreeingCartolaBalances } from "./test/cartolaFixtureBalances.js";
+import { putFlowCategory } from "./flows/flowCategories.js";
+import { checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
+import { getCcExpenseCategoryBySlug } from "./ccExpenseCategories.js";
 
 /**
  * A cartola over the daily rows, through the ingest kind's apply (`applyBankAccountStatements`):
@@ -284,6 +287,38 @@ describe("a checking cartola over the daily rows, through the cartola apply", ()
     expect(noteOf(before.find((r) => r.note.includes("Transf. Uno"))!)).toMatch(/KEEPROWS 0111111111 Transf\. Uno\|/);
     expect(noteOf(before.find((r) => r.note.includes("Dos"))!)).toMatch(/KEEPROWS 0222222222 Transf\. Dos\|/);
     expect(noteOf(before.find((r) => r.note.includes("Cuentaejemplo"))!)).toMatch(/KEEPROWS Traspaso a Cuentaejemplo\|doc:7654321/);
+  }));
+
+  it("a forced re-import refuses to remove a row with filed work it can fold nowhere", inRollback(() => {
+    applyBankAccountStatements(payload(statement([mv("1805-04-27", -6_000, "Compra Archivada"), mv("1805-04-28", -2_000, "Compra Otra")])));
+    const [filed] = rowsOfMonth();
+    putFlowCategory(checkingAccountId(), checkingGastosMovementPurchaseKey(filed!.id), getCcExpenseCategoryBySlug("hobbies")!.id, "replace");
+    const before = rowsOfMonth();
+    const r = applyBankAccountStatements(payload(statement([mv("1805-04-28", -2_000, "Compra Otra"), mv("1805-04-29", -6_000, "Compra Movida")]), true));
+    expect(r.files.map((f) => f.status)).toEqual(["refused"]);
+    expect(r.files[0]!.problems.join("\n")).toMatch(new RegExp(`cartola row ${filed!.id} .*carries what the user filed.*no kept row of its day and pesos takes it`));
+    expect(rowsOfMonth()).toEqual(before);
+  }));
+
+  it("a copy left over folds into the kept row of its day and pesos whose text reads as its own", inRollback(() => {
+    const row = (date: string, amount: number, description: string) => ({ date, branch: "Centro", description, document_no: "", amount });
+    applyBankAccountStatements(
+      payload(statement([row("1805-04-27", -5_000, `${TAG} Transf a Uno`), row("1805-04-27", -5_000, `${TAG} Transf a Dos`), row("1805-04-27", -5_000, `Centro ${TAG} Transf a Dos`)]))
+    );
+    const [, dos, copy] = rowsOfMonth();
+    putFlowCategory(checkingAccountId(), checkingGastosMovementPurchaseKey(copy!.id), getCcExpenseCategoryBySlug("hobbies")!.id, "replace");
+    // The repair of a month written twice: the rebuild (the forced import refuses the drifted ledger).
+    const r = rebuildCheckingLedgerFromCartolas(checkingAccountId(), [
+      parsedCartolaFromStatement(statement([row("1805-04-27", -5_000, `${TAG} Transf a Uno`), row("1805-04-27", -5_000, `${TAG} Transf a Dos`)])),
+    ]);
+    expect(r.months[0]!.cartola_rows_folded).toBe(1);
+    const after = rowsOfMonth();
+    expect(after.map((x) => x.id)).not.toContain(copy!.id);
+    const kept = after.find((x) => x.id === dos!.id)!;
+    const category = db
+      .prepare(`SELECT c.slug FROM flow_categories fc JOIN cc_expense_categories c ON c.id = fc.category_id WHERE fc.flow_id = ?`)
+      .get(kept.flow_id) as { slug: string } | undefined;
+    expect(category?.slug).toBe("hobbies");
   }));
 
   it("a replaced month restates N twins of a day and pesos reworded alike in place, in order", inRollback(() => {

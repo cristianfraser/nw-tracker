@@ -14,12 +14,13 @@
  *    stays as it is; only its bank posting / confirmation is recorded);
  *  - `insert`: a cartola movement no row on file is (taking back a retired flow of its document
  *    when exactly one is on file);
- *  - `fold`: a row that is the same movement as a kept row (the earliest seen is kept); in the
- *    rebuild (`rebuild`), also a replaced month's cartola row no movement keeps, into the kept row of
- *    its bank day and signed pesos (what the user filed on it moves, the earlier arrival's
+ *  - `fold`: a row that is the same movement as a kept row (the earliest seen is kept); in a
+ *    replaced month (a forced re-import, a fuller cartola, the rebuild), also a cartola row no
+ *    movement keeps, into the kept row of its bank day and signed pesos — the one whose text reads
+ *    as its own when several could take it (what the user filed on it moves, the earlier arrival's
  *    assignments winning);
- *  - `unfoldable`: (the rebuild) such a row with filed work and no kept row to fold into: the
- *    rebuild is refused naming it;
+ *  - `unfoldable`: such a row with filed work and no kept row to fold into, or several it could be:
+ *    the import is refused naming it;
  *  - `remove`: a daily row a transfer leg or a mail row already represents, or (a replaced month) a
  *    cartola row the new cartola no longer lists;
  *  - `ambiguous`: several retired flows for one document (left alone);
@@ -96,12 +97,6 @@ export type CheckingCartolaPlanInput = {
    * movement keeps are removed, and the kept ones are restated by their movement.
    */
   replace_month?: boolean;
-  /**
-   * The deliberate rebuild (`rebuildCheckingLedgerFromCartolas`): a replaced month's cartola row no
-   * movement keeps folds into the kept row of its bank day and signed pesos instead of being
-   * removed; one with filed work and no such row is `unfoldable`.
-   */
-  rebuild?: boolean;
 };
 
 export type CheckingKeepReason = "document_key" | "already_present" | "same_day_amount" | "daily_listing";
@@ -121,8 +116,11 @@ export type CheckingCartolaPlan = {
    * settlements move to it (`repointMovementReferences`).
    */
   left_alone: { row_id: number; movement: number; why: "listed_by_transfer_leg" | "listed_by_mail" | "replaced_cartola_row" | "folded"; tables: string[] }[];
-  /** The rebuild's replaced cartola rows with filed work and no kept row of their bank day and pesos to fold into. */
-  unfoldable: { row_id: number; bank_day: string; amount_clp: number }[];
+  /**
+   * A replaced month's cartola rows with filed work and no kept row of their bank day and pesos to
+   * fold into (`candidates` empty), or several that read alike to them (the candidates' row ids).
+   */
+  unfoldable: { row_id: number; bank_day: string; amount_clp: number; candidates: number[] }[];
 };
 
 /** Plans one cartola month's import (see the module doc). */
@@ -175,13 +173,23 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
   // re-read now): the description in the shared reading (`cartolaText`: spaces, accent damage),
   // the SUCURSAL cell the old PDF reader left at its start set aside, and the document number
   // wherever it put it — the same characters, in any order (it glued a number to a word).
-  const cellChars = (text: string) => [...text.replace(/\s+/g, "")].sort().join("");
+  // Words, not characters (a number's digits are one word): the description's words and the
+  // document number, which an old reader may have glued to a word or taken off the description's start.
+  const cellWords = (description: string, documentNo: string) => [...description.split(" ").filter(Boolean), ...(documentNo ? [documentNo] : [])].sort().join(" ");
   const olderReading = (mv: CheckingCartolaMovement, listed: CheckingListedFacts) => {
     const description = cartolaText(listed.description);
     const branchFirst = mv.branch ? `${cartolaText(mv.branch)} ` : null;
-    const own = branchFirst != null && description.startsWith(branchFirst) ? description.slice(branchFirst.length) : description;
-    return cellChars(`${own} ${listed.document_no}`) === cellChars(`${mv.description} ${mv.document_no ?? ""}`);
+    let own = branchFirst != null && description.startsWith(branchFirst) ? description.slice(branchFirst.length) : description;
+    const newDoc = String(mv.document_no ?? "").trim();
+    let oldDoc = listed.document_no;
+    // The document number glued to a word of the old description (it printed none apart).
+    if (!oldDoc && newDoc && !own.split(" ").includes(newDoc) && own.includes(newDoc)) {
+      own = own.replace(newDoc, " ").replace(/\s+/g, " ").trim();
+      oldDoc = newDoc;
+    }
+    return cellWords(own, oldDoc) === cellWords(mv.description, newDoc);
   };
+
   // A movement a daily row also lists is left to the daily row (a copy written beside it is the
   // rebuild's to fold into it, with what was filed on the copy).
   const listedDaily = (mv: CheckingCartolaMovement) =>
@@ -352,30 +360,32 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
         restated.add(row.id);
       });
     }
-    // The rebuild: a row left over is the copy of a movement a kept row already records when that
-    // row is of its bank day and signed pesos (one to one, in id order): it folds into it, so what
-    // the user filed on it is not left on a retired flow.
-    const foldTargets = new Map<string, { row_id: number; movement: number }[]>();
-    if (input.rebuild) {
-      for (const k of plan.keep) {
-        if (restated.has(k.row_id)) continue;
-        const m = movementOf.get(k.movement)!;
-        const key = dayAmount(m.occurred_on, m.amount_clp);
-        foldTargets.set(key, [...(foldTargets.get(key) ?? []), { row_id: k.row_id, movement: k.movement }]);
-      }
+    // A row left over is the copy of a movement a kept row already records when that row is of its
+    // bank day and signed pesos: it folds into it, so what the user filed on it is not left on a
+    // retired flow. One to one; among several such kept rows the one whose movement reads as the
+    // copy (its cells in the shared reading, `olderReading`), else, for a copy with nothing filed,
+    // the lowest row id (any is right); a copy with filed work and several candidates is refused.
+    const foldTargets = new Map<string, { row_id: number; movement: CheckingCartolaMovement }[]>();
+    for (const k of plan.keep) {
+      if (restated.has(k.row_id)) continue;
+      const m = movementOf.get(k.movement)!;
+      const key = dayAmount(m.occurred_on, m.amount_clp);
+      foldTargets.set(key, [...(foldTargets.get(key) ?? []), { row_id: k.row_id, movement: m }]);
     }
+    for (const list of foldTargets.values()) list.sort((x, y) => x.row_id - y.row_id);
     for (const r of [...leftOver].sort((a, b) => a.id - b.id)) {
       if (restated.has(r.id)) continue;
-      if (input.rebuild) {
-        const into = foldTargets.get(dayAmount(r.bank_posted_on, r.amount_clp))?.shift();
-        if (into) {
-          plan.fold.push({ row_id: r.id, into_row_id: into.row_id, movement: into.movement, why: "replaced_cartola_row" });
-          continue;
-        }
-        if (r.filed) {
-          plan.unfoldable.push({ row_id: r.id, bank_day: r.bank_posted_on, amount_clp: r.amount_clp });
-          continue;
-        }
+      const candidates = foldTargets.get(dayAmount(r.bank_posted_on, r.amount_clp)) ?? [];
+      const reading = candidates.filter((c) => olderReading(c.movement, r.listed!));
+      const into = candidates.length === 1 ? candidates[0] : reading.length === 1 ? reading[0] : !r.filed ? candidates[0] : undefined;
+      if (into) {
+        candidates.splice(candidates.indexOf(into), 1);
+        plan.fold.push({ row_id: r.id, into_row_id: into.row_id, movement: into.movement.index, why: "replaced_cartola_row" });
+        continue;
+      }
+      if (r.filed) {
+        plan.unfoldable.push({ row_id: r.id, bank_day: r.bank_posted_on, amount_clp: r.amount_clp, candidates: candidates.map((c) => c.row_id) });
+        continue;
       }
       const tables = holders(r.id, false);
       if (tables.length > 0) plan.left_alone.push({ row_id: r.id, movement: -1, why: "replaced_cartola_row", tables });

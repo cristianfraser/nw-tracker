@@ -75,6 +75,7 @@ import { runCardToCardPayments311 } from "./migrationHooks/cardToCardPayments311
 import { runBrokerInstruments361 } from "./migrationHooks/brokerInstruments361.js";
 import { runCartolaMonthConfirmedBy383 } from "./migrationHooks/cartolaMonthConfirmedBy383.js";
 import { runVendorCatalogSpelling384 } from "./migrationHooks/vendorCatalogSpelling384.js";
+import { runCategoryRuleOrigin385 } from "./migrationHooks/categoryRuleOrigin385.js";
 import { runCardRefundLinks365 } from "./migrationHooks/cardRefundLinks365.js";
 import { runCardRefundLinksHold366 } from "./migrationHooks/cardRefundLinksHold366.js";
 import { runCurrencies312 } from "./migrationHooks/currencies312.js";
@@ -453,6 +454,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "380_cc_annulled_purchases_hold_flows.sql": runAnnulledPurchasesHold380,
   "383_cartola_month_confirmed_by.sql": runCartolaMonthConfirmedBy383,
   "384_vendor_catalog_spelling_source.sql": runVendorCatalogSpelling384,
+  "385_category_rule_origin.sql": runCategoryRuleOrigin385,
   "363_vendor_catalog_checking_names.sql": runVendorCatalog363,
 };
 

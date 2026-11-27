@@ -20,12 +20,27 @@ import { db } from "./db.js";
 import { checkingMovementShownName, loadDisplayNameContext } from "./expenseDisplayNames.js";
 import { buildFlowsExpenseLines } from "./flowsExpenses.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
+import { generalRuleCategory, loadExpenseCategoryRules, specificRuleCategory, type CategoryRuleLink } from "./expenseCategoryRules.js";
 
-/** Where a category on an expense line comes from: the line's own («Único», a per-line row), a rule (or the pairing), none. */
-export type CategorySource = "own" | "rule" | "none";
+/**
+ * Where a category on an expense line comes from:
+ *  - `own`: the line's own («Único», a per-line row) — what the user set;
+ *  - `rule`: the general rule its bank text reaches (`expense_category_rules`, keyed on the vendor);
+ *  - `specific_rule`: the rule of its vendor and its link (a receipt's store, an app, a recipient);
+ *  - `derived`: anything else that gave it one — the deposit pairing, a subscription document, an
+ *    additional cardholder's card: structure, though the pairing also reads the bank text;
+ *  - `none`: «sin categoría».
+ */
+export type CategorySource = "own" | "rule" | "specific_rule" | "derived" | "none";
 
-/** A line's category and its source; `purchase_key` is where its own category is filed (not compared). */
-export type LineFiling = { slug: string; source: CategorySource; purchase_key: string };
+/**
+ * A line's category and its source. Not compared: `purchase_key` (where its own category is
+ * filed), `merchant` (its bank text) and `link` (its rule link).
+ */
+export type LineFiling = { slug: string; source: CategorySource; purchase_key: string; merchant: string | null; link: CategoryRuleLink | null };
+
+/** A credit's classification and its day: `income:<kind>`, `filtered:<reason>`, `excluded`, `refund:<slug>`. */
+export type CreditFiling = { class: string; on: string };
 
 /** One cartola row of the month as the pages show it. */
 export type RestatedRowIdentity = {
@@ -47,6 +62,8 @@ export type RestatedRowIdentity = {
 export type ExpenseIdentitySnapshot = {
   /** Every expense line of the ledger, by line key: a restatement must leave the others as they were. */
   lines: Map<string, LineFiling>;
+  /** Every checking credit of the ledger, by movement: the classifiers pair credits across months. */
+  credits: Map<number, CreditFiling>;
   rows: Map<number, RestatedRowIdentity>;
 };
 
@@ -76,14 +93,21 @@ export function filingText(f: LineFiling | undefined): string {
 export function snapshotExpenseIdentity(accountId: number, periodMonths: readonly string[], dbHandle: Database = db): ExpenseIdentitySnapshot {
   const lines = new Map<string, LineFiling>();
   const byMovement = new Map<number, Map<string, LineFiling>>();
+  const rules = loadExpenseCategoryRules();
   for (const l of buildFlowsExpenseLines()) {
     let key = lineKey(l);
     for (let n = 2; lines.has(key); n++) key = `${lineKey(l)}#${n}`;
-    const filing: LineFiling = {
-      purchase_key: l.purchase_key,
-      slug: l.category_slug,
-      source: l.category_unique ? "own" : l.category_slug === UNCLASSIFIED_CC_EXPENSE_SLUG ? "none" : "rule",
-    };
+    const link = l.category_link ? { kind: l.category_link.kind, key: l.category_link.key } : null;
+    const source: CategorySource = l.category_unique
+      ? "own"
+      : l.category_slug === UNCLASSIFIED_CC_EXPENSE_SLUG
+        ? "none"
+        : l.category_specific && link && l.merchant && specificRuleCategory(rules, l.merchant, link) === l.category_slug
+          ? "specific_rule"
+          : l.merchant && generalRuleCategory(rules, l.merchant) === l.category_slug
+            ? "rule"
+            : "derived";
+    const filing: LineFiling = { purchase_key: l.purchase_key, slug: l.category_slug, source, merchant: l.merchant, link };
     lines.set(key, filing);
     if (l.source === "checking" && l.account_id === accountId) {
       const m = byMovement.get(l.statement_line_id) ?? new Map<string, LineFiling>();
@@ -92,11 +116,11 @@ export function snapshotExpenseIdentity(accountId: number, periodMonths: readonl
     }
   }
   const income = buildFlowsCheckingIncomePayload();
-  const credit = new Map<number, string>();
-  for (const l of income.lines) credit.set(l.movement_id, `income:${income.income_kind_by_movement_id[l.movement_id] ?? "unclassified"}`);
-  for (const l of income.filtered_lines) credit.set(l.movement_id, `filtered:${l.filter_reason}`);
-  for (const l of income.excluded_lines) credit.set(l.movement_id, "excluded");
-  for (const l of income.refund_lines) credit.set(l.movement_id, `refund:${l.category_slug}`);
+  const credits = new Map<number, CreditFiling>();
+  for (const l of income.lines) credits.set(l.movement_id, { class: `income:${income.income_kind_by_movement_id[l.movement_id] ?? "unclassified"}`, on: l.received_on });
+  for (const l of income.filtered_lines) credits.set(l.movement_id, { class: `filtered:${l.filter_reason}`, on: l.received_on });
+  for (const l of income.excluded_lines) credits.set(l.movement_id, { class: "excluded", on: l.received_on });
+  for (const l of income.refund_lines) credits.set(l.movement_id, { class: `refund:${l.category_slug}`, on: l.received_on });
 
   const counterparties = transferCounterpartiesByMovementSide();
   const ctx = loadDisplayNameContext([]);
@@ -119,12 +143,12 @@ export function snapshotExpenseIdentity(accountId: number, periodMonths: readonl
       branch: text.branch ?? "",
       document_no: text.document_no ?? "",
       lines: byMovement.get(r.id) ?? new Map(),
-      credit: credit.get(r.id) ?? null,
+      credit: credits.get(r.id)?.class ?? null,
       name: shown.name,
       named: shown.name_detail != null,
     });
   }
-  return { lines, rows };
+  return { lines, credits, rows };
 }
 
 /** A shown name as one line of text, for reports. */
@@ -171,8 +195,8 @@ export type RestatementDiff = {
   categories_changed: { key: string; before: LineFiling | undefined; after: LineFiling | undefined }[];
   /** Lines whose category stayed and only its source moved (a rule's category now the line's own): reported, not a change. */
   sources_moved: { key: string; before: LineFiling; after: LineFiling }[];
-  /** Credits whose classification changed. */
-  credits_changed: number[];
+  /** Credits of the whole ledger whose classification changed (any month), with their day. */
+  credits_changed: { movement_id: number; on: string; before: string | null; after: string | null }[];
   /** Restated rows whose shown name changed and is now the bank's text (a name of their own lost). */
   names_lost: number[];
   /** Restated rows whose shown name changed to another name of their own. */
@@ -196,7 +220,6 @@ export function diffExpenseIdentity(before: ExpenseIdentitySnapshot, after: Expe
       if (lost.length > 0) diff.removed_with_category.push(id);
       continue;
     }
-    if (b.credit !== a.credit) diff.credits_changed.push(id);
     if (rowText(b) === rowText(a)) continue;
     const keys = [...new Set([...b.lines.keys(), ...a.lines.keys()])];
     const nameBefore = shownNameLabel(b.name);
@@ -222,13 +245,31 @@ export function diffExpenseIdentity(before: ExpenseIdentitySnapshot, after: Expe
     }
   }
   for (const id of after.rows.keys()) if (!before.rows.has(id)) diff.added.push(id);
+  // Credits: the classifiers pair a credit with outflows of any month, so a re-read row can move
+  // another month's credit. A credit that left (its row removed or folded) is the row's change.
+  for (const [id, b] of before.credits) {
+    const a = after.credits.get(id);
+    if (a && a.class !== b.class) diff.credits_changed.push({ movement_id: id, on: b.on, before: b.class, after: a.class });
+  }
   // A removed row's lines go with it, a written row's come with it (counted as removed and added,
   // not as category changes).
   const removedLines = new Set(diff.removed.flatMap((id) => [...before.rows.get(id)!.lines.keys()]));
   const addedLines = new Set(diff.added.flatMap((id) => [...after.rows.get(id)!.lines.keys()]));
+  // A row of the month folded away hands its category to the row it folded into (the same bank day
+  // and pesos): that row now showing it is the fold, not a change.
+  const foldedCategories = new Map<string, Set<string>>();
+  for (const id of diff.removed) {
+    const b = before.rows.get(id)!;
+    const k = `${b.bank_day}|${b.amount_clp}`;
+    for (const l of b.lines.values()) if (l.source !== "none") foldedCategories.set(k, (foldedCategories.get(k) ?? new Set()).add(l.slug));
+  }
+  const rowOfKey = (key: string) => (key.startsWith("checking|") ? after.rows.get(Number(key.split("|")[1])) : undefined);
   for (const key of new Set([...before.lines.keys(), ...after.lines.keys()])) {
     if (removedLines.has(key) && !after.lines.has(key)) continue;
     if (addedLines.has(key) && !before.lines.has(key)) continue;
+    const into = rowOfKey(key);
+    const a0 = after.lines.get(key);
+    if (into && a0 && foldedCategories.get(`${into.bank_day}|${into.amount_clp}`)?.has(a0.slug)) continue;
     const b = before.lines.get(key);
     const a = after.lines.get(key);
     if (!sameCategory(b, a)) diff.categories_changed.push({ key, before: b, after: a });

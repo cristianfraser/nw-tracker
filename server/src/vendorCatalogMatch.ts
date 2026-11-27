@@ -28,7 +28,8 @@ export type VendorCatalogKind = "exact" | "prefix" | "branch" | "rut";
 /**
  * `choice`: a branch the user picked on an expense row among the places a cut name could be;
  * `spelling`: a cartola description's new spelling named as its old one was (a month imported
- * again in place, `checkingRestatementCarry.ts`). Neither is touched by the user-file loader.
+ * again in place, `checkingRestatementCarry.ts`), consulted only when no other entry matches.
+ * Neither is touched by the user-file loader.
  */
 export type VendorCatalogSource = "seed" | "user" | "choice" | "spelling";
 
@@ -92,7 +93,7 @@ export type VendorCatalog = {
   lookupRut(rut: string | null): string | null;
 };
 
-const SOURCE_ORDER: Record<VendorCatalogSource, number> = { user: 0, choice: 1, spelling: 1, seed: 2 };
+const SOURCE_ORDER: Record<VendorCatalogSource, number> = { user: 0, choice: 1, seed: 2, spelling: 3 };
 
 /**
  * `exactBrand`: what an exact entry's brand is. `base` (the rule): a display «Brand (branch)» whose
@@ -103,8 +104,11 @@ const SOURCE_ORDER: Record<VendorCatalogSource, number> = { user: 0, choice: 1, 
 export type VendorCatalogOptions = { exactBrand?: "base" | "display" };
 
 export function vendorCatalogFromEntries(entries: readonly VendorCatalogEntry[], opts: VendorCatalogOptions = {}): VendorCatalog {
+  // A carried spelling is consulted only when no other entry matches, exact or prefix: a user's
+  // entry (or a seed) for the text always wins over it.
+  const spellings = new Map(entries.filter((e) => e.source === "spelling").map((e) => [e.pattern, e.display]));
   // User entries first, then the user's branch picks, so both win over a seed entry of the same name.
-  const ordered = [...entries].sort((a, b) => SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source]);
+  const ordered = [...entries].filter((e) => e.source !== "spelling").sort((a, b) => SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source]);
   const exact = new Map<string, string>();
   const rut = new Map<string, string>();
   const prefixes: { pattern: string; display: string; branch: boolean }[] = [];
@@ -146,6 +150,8 @@ export function vendorCatalogFromEntries(entries: readonly VendorCatalogEntry[],
       }
       if (folded.startsWith(p.pattern)) return { display: p.display, brand: p.display, branchChoices: null };
     }
+    const spelled = spellings.get(folded);
+    if (spelled != null) return { display: spelled, brand: exactBrandOf(spelled), branchChoices: null };
     return null;
   };
   return {

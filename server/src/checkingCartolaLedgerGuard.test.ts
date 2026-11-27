@@ -462,7 +462,7 @@ describe("the deliberate rebuild of a ledger that absorbed bad data", () => {
     expect(r.anchor_before).toEqual({ amount_clp: 108_000, occurred_on: "1806-12-31" });
     expect(r.anchor_after).toEqual({ amount_clp: 100_000, occurred_on: "1806-12-31" });
     expect(r.months).toEqual([
-      { period_month: "1807-02", replaced: true, inserted: 0, restated: 3, folded: 0, removed: 0, cartola_rows_removed: 0, cartola_rows_folded: 3, fold_conflicts: [], restatement_carry: null },
+      { period_month: "1807-02", replaced: true, inserted: 0, restated: 3, folded: 0, removed: 0, cartola_rows_removed: 0, cartola_rows_folded: 3, fold_conflicts: [], restatement_carry: expect.objectContaining({ rows_changed: 0, own_categories: [], rules_passed: [] }) },
     ]);
     expect(rows(account).filter((x) => x.occurred_on.startsWith("1807-02")).map((x) => x.id)).toEqual(daily.map((x) => x.id));
     expect(checkingLedgerMonthsOffTheirCartolas(account)).toEqual([]);
