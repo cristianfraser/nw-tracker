@@ -938,7 +938,7 @@ export const api = {
   movementMirrorCandidates: () =>
     j<import("./types").MovementMirrorCandidatesResponse>("/api/movement-mirrors/candidates"),
   convertMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>
-    j<{ converted: { transfer_movement_id: number }[] }>("/api/movement-mirrors/convert", {
+    j<{ converted: { transfer_movement_id: number }[]; refused: import("./types").RefusedMirrorPair[] }>("/api/movement-mirrors/convert", {
       method: "POST",
       body: JSON.stringify({ pairs }),
     }),

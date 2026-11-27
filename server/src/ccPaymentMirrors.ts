@@ -26,8 +26,9 @@
  * A converted pair stays tied to its evidence by the payment's card, date and amount, never by the
  * statement row it was paired with — re-imports replace those rows (`ccPaymentMirrorEvidence.ts`).
  */
-import { copyFlowFirstSeen } from "./flows/flowFirstSeen.js";
-import { copyFlowEventTime } from "./flows/flowEventTimes.js";
+import { cardPaymentDebitConflict, foldMirrorLegFlowsIntoTransfer } from "./flows/mirrorLegFlows.js";
+import { movementFlowId } from "./flows/flowIdentity.js";
+import { checkingMovementPurchaseKey } from "./expenseKeys.js";
 import { HOME_CURRENCY, isHomeCurrency } from "./displayUnits.js";
 import { dayWithinWindow, daysBetweenIso } from "nw-tracker-contracts";
 import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
@@ -322,6 +323,9 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   return picked.map((p) => {
     const multiClaim = (evidenceClaims.get(evKey(p.ev)) ?? 0) > 1;
     const isAmbiguous = ambiguous.has(p.out.id) || multiClaim;
+    // What was filed on the debit has to fit a card payment, which its flow becomes.
+    const debitConflict = cardPaymentDebitConflict(movementFlowId(p.out.id));
+    const blockedReason = isAmbiguous ? "ambiguous match (multiple pairs at equal distance)" : debitConflict;
     return {
       out: {
         movement_id: p.out.id,
@@ -333,8 +337,8 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
       },
       evidence: p.ev,
       skew_days: daysBetweenIso(p.ev.pago_iso, p.out.occurred_on),
-      blocked: isAmbiguous,
-      blocked_reason: isAmbiguous ? "ambiguous match (multiple pairs at equal distance)" : null,
+      blocked: blockedReason != null,
+      blocked_reason: blockedReason,
     };
   });
 }
@@ -420,19 +424,14 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
         // The checking debit's listing, for an undo (`restoreMirrorLegListing`).
         ...Object.values(mirrorLegListingOf(listedFactsOfMovement(cand.out.movement_id, db)))
       );
-      // The payment is the debit, reshaped: it keeps the moment the debit reached the ledger (none
-      // when the debit was on file before the stamps).
-      const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number | null }).flow_id;
-      const debitFlow = flowOf(cand.out.movement_id);
-      const transferFlow = flowOf(transferId);
-      if (debitFlow != null && transferFlow != null) {
-        copyFlowFirstSeen(debitFlow, transferFlow);
-        copyFlowEventTime(debitFlow, transferFlow);
-      }
       // The deleted checking row was the bank's listing: its date is the transfer's posting
       // day on checking, while the transfer itself takes the card's credit date.
       recordBankPosting(transferId, cand.out.account_id, bankPostedOn(cand.out.movement_id, cand.out.account_id));
       delIncomeOverride.run(cand.out.movement_id);
+      // The payment is the debit, reshaped: the debit's flow folds into the transfer's, so the
+      // payment keeps the moment the debit reached the ledger (none when the debit was on file
+      // before the stamps), its event time and what was filed on it (note, big group, category).
+      foldMirrorLegFlowsIntoTransfer(transferId, checkingMovementPurchaseKey(transferId), [cand.out.movement_id]);
       deleteMovements([cand.out.movement_id]);
       converted.push({
         transfer_movement_id: transferId,

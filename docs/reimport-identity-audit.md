@@ -43,6 +43,9 @@ Two facts about the plumbing make the last row costly:
 | 5 | Bucket settlement, `covered_by_plan` | A bucket line a plan covers that the supersede step did not take was deleted with nothing carried. | Fixed: deleted after the ledger merge, folding into the one plan that covers it (two plans: nothing carried). Test added |
 | 10 | Plan matching took every look-alike (`findOneShotLinesOfPlan`, `oneShotLinesSupersededAmong`) | A genuine twin (same shop, day, pesos) already on file beside the plan's purchase was deleted. | Fixed for lines on file: a plan takes one line per exact merchant and pesos, counting the lines it took before (history evidence on its flow); a different rendering still goes. Tests added. A twin listed after the plan exists: still open (10b below) |
 | 12 | Card-to-card payment transfers (`syncCardToCardPaymentTransfers`) | Deleted and written again on every card write or boot whenever a part's line id, plan id, amount or day changed: a new flow stamped now, so the payment re-entered «Últimos movimientos» as new and lost its note or big group. | Fixed: a part re-keyed with the same transfer keeps its movement; a changed transfer folds the old flow into the new one. Tests added |
+| 13 | Mirror conversion by hand (`convertMirrorPairs`) | The transfer was stamped now; neither leg's arrival, note or category was carried. | Fixed: both legs' flows fold into the transfer's (older arrival, earliest event time, assignments); a pair whose legs' assignments conflict is blocked in the list and skipped by a batch. Tests added |
+| 14 | Mirror undo (`undoMirrorConversion`) | Restored legs were stamped now; their retired flows were not taken back. | Fixed: restored legs take back a retired flow of their document, then the transfer's arrival, event time and assignments (inflow-account categories and notes to the inflow leg, the rest to the outflow leg). Test added |
+| 16 | Automatic card-payment conversion (`convertCcPaymentMirrors`) | Arrival was copied; the debit's note, big group or refund mark was not. | Fixed: the debit's flow folds into the transfer's; its undo hands it back. Test extended |
 
 ### Open — card side
 
@@ -60,10 +63,7 @@ Two facts about the plumbing make the last row costly:
 
 | # | Path | Trigger | Lost | Status |
 |---|---|---|---|---|
-| 13 | Mirror conversion by hand (`convertMirrorPairs`) | /panel/mirror-pairs | The transfer is stamped now; neither leg's arrival, note or category is carried (the sibling path `supersedeImportedCheckingRowsForTransfer` does adopt) | Verified |
-| 14 | Mirror undo (`undoMirrorConversion`) | Undo | Restored legs are stamped now; their retired flows are not taken back | Reported |
 | 15 | Cartola removes a daily row a transfer leg or a mail row already lists | Monthly cartola | The daily row's category, note, income classification are not folded into the kept row | Reported |
-| 16 | Automatic card-payment conversion (`convertCcPaymentMirrors`) | Nightly | Arrival is copied; the debit's note, big group or refund mark is not | Reported (risk) |
 | 17 | Fuller cartola replaces a month (`replaced_cartola_row`) | A movement printed differently that the content match misses | New flow, old assignments retired | Reported (risk) |
 
 ### Scripts (manual runs)
@@ -73,6 +73,8 @@ Two facts about the plumbing make the last row costly:
 `repair-cc-installment-duplicate-purchases.ts` deletes sibling plans without folding their flows;
 `remove-cc-duplicate-download-statements.ts` guards only the per-line override, not flow-level
 assignments. All reported, none re-checked.
+`repair-mirror-merge-legs.ts` restores and absorbs legs with raw SQL, bypassing `flows/mirrorLegFlows.ts`:
+an undo by script leaves the legs on fresh flows and retires the transfer's flow with what was on it.
 
 ## Paths that keep identity
 

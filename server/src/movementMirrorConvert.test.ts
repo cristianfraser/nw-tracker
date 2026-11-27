@@ -4,6 +4,7 @@ import { outflowFlowClaimKey } from "./flowsCheckingGastos.js";
 import {
   convertMirrorPairs,
   MirrorConvertStaleError,
+  MirrorPairConflictError,
   rejectMirrorPairs,
   undoMirrorConversion,
   unrejectMirrorPairs,
@@ -19,8 +20,13 @@ import { dailyListingFacts, listedFactsOfMovement, recordBankListingFacts } from
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
 import { planCheckingCartola } from "./checkingCartolaPlan.js";
+import { checkingMovementPurchaseKey } from "./expenseKeys.js";
+import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
+import { flowArrival, setFlowArrival } from "./flows/flowFirstSeen.js";
+import { loadCcExpensePurchaseBigGroups, setCcExpensePurchaseBigGroup } from "./ccExpenseBigGroups.js";
 
 const NOTE = "vitest-mirrorconv";
+const BIG_GROUP = "vitest-mirrorconv-group";
 
 let genericId = 0;
 let generic2Id = 0;
@@ -60,6 +66,13 @@ function movement(id: number) {
 }
 
 function cleanup() {
+  db.prepare(
+    `DELETE FROM expense_entries WHERE expense_account_id IN (SELECT a.id FROM expense_accounts a
+       JOIN expense_groups g ON g.id = a.group_id WHERE g.slug = 'vitest-mirrorconv-place')`
+  ).run();
+  db.prepare(`DELETE FROM expense_groups WHERE slug = 'vitest-mirrorconv-place'`).run();
+  db.prepare(`DELETE FROM cc_expense_big_groups WHERE slug = ?`).run(BIG_GROUP);
+  db.prepare(`DELETE FROM flow_notes WHERE account_id IN (SELECT id FROM accounts WHERE name LIKE 'vitest-mirrorconv-%')`).run();
   db.prepare(`DELETE FROM movement_mirror_pair_rejections WHERE out_movement_id IN (
     SELECT id FROM movements WHERE note LIKE 'vitest-mirrorconv%')`).run();
   db.prepare(`DELETE FROM movements WHERE note LIKE 'vitest-mirrorconv%'`).run();
@@ -90,6 +103,7 @@ beforeAll(() => {
   checkingId = Number(ins.run(cc, "vitest-mirrorconv-checking").lastInsertRowid);
   fundId = Number(ins.run(anyLeaf, "vitest-mirrorconv-fund").lastInsertRowid);
   ahorroId = Number(ins.run(ahorro, "vitest-mirrorconv-ahorro").lastInsertRowid);
+  db.prepare(`INSERT INTO cc_expense_big_groups (slug, label) VALUES (?, 'vitest mirrorconv')`).run(BIG_GROUP);
 });
 
 afterAll(cleanup);
@@ -278,6 +292,82 @@ describe("undoMirrorConversion", () => {
   it("throws on non-mirror-merge rows", () => {
     const plain = insLeg(genericId, -777_771, "2026-04-22");
     expect(() => undoMirrorConversion(plain)).toThrow(/not a transfer row/);
+  });
+});
+
+describe("the legs' flow identity through a conversion and its undo", () => {
+  const flowOf = (id: number) => (db.prepare(`SELECT flow_id FROM movements WHERE id = ?`).get(id) as { flow_id: number }).flow_id;
+  const stamp = (on: string, seq: number) => ({ kind: "stamped" as const, stamp: { on, at: `${on}T12:00:00.000Z`, seq } });
+
+  it("the transfer keeps the older leg's arrival and what was filed on either leg; undo gives each back", () => {
+    const outId = insLeg(genericId, -6_060_601, "2026-05-04");
+    const inId = insLeg(generic2Id, 6_060_601, "2026-05-05");
+    setFlowArrival(flowOf(outId), stamp("2026-05-06", 2));
+    setFlowArrival(flowOf(inId), stamp("2026-05-05", 1));
+    setCcExpensePurchaseBigGroup({ purchaseKey: checkingMovementPurchaseKey(outId), groupSlug: BIG_GROUP });
+    setFlowNote(generic2Id, checkingMovementPurchaseKey(inId), "vitest in-leg note");
+
+    const { converted } = convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
+    const tid = converted[0]!.transfer_movement_id;
+    const tKey = checkingMovementPurchaseKey(tid);
+    expect(flowArrival(flowOf(tid))).toEqual(stamp("2026-05-05", 1));
+    expect(loadCcExpensePurchaseBigGroups().get(tKey)).toBe(BIG_GROUP);
+    expect(getFlowNote(generic2Id, tKey)).toBe("vitest in-leg note");
+
+    // Undo: both legs take the transfer's arrival (not now); the note filed under the inflow
+    // leg's account goes back to it, the big group (no account) to the outflow leg.
+    const undone = undoMirrorConversion(tid);
+    expect(flowArrival(flowOf(undone.restored_out_id))).toEqual(stamp("2026-05-05", 1));
+    expect(flowArrival(flowOf(undone.restored_in_id))).toEqual(stamp("2026-05-05", 1));
+    expect(loadCcExpensePurchaseBigGroups().get(checkingMovementPurchaseKey(undone.restored_out_id))).toBe(BIG_GROUP);
+    expect(getFlowNote(generic2Id, checkingMovementPurchaseKey(undone.restored_in_id))).toBe("vitest in-leg note");
+    expect(getFlowNote(generic2Id, checkingMovementPurchaseKey(undone.restored_out_id))).toBeUndefined();
+  });
+
+  it("a pair whose legs carry different notes is blocked in the list, and a batch converts the others", () => {
+    const outId = insLeg(genericId, -6_060_603, "2026-05-07");
+    const inId = insLeg(generic2Id, 6_060_603, "2026-05-07");
+    setFlowNote(genericId, checkingMovementPurchaseKey(outId), "vitest note a");
+    setFlowNote(generic2Id, checkingMovementPurchaseKey(inId), "vitest note b");
+    const okOut = insLeg(genericId, -6_060_605, "2026-05-08");
+    const okIn = insLeg(generic2Id, 6_060_605, "2026-05-08");
+    const listed = listMirrorPairCandidates();
+    expect(listed.find((p) => p.out.movement_id === outId)?.blocked_reason).toBe("conflicting_note");
+    expect(listed.find((p) => p.out.movement_id === okOut)?.blocked_reason).toBeNull();
+
+    const result = convertMirrorPairs([
+      { out_movement_id: outId, in_movement_id: inId },
+      { out_movement_id: okOut, in_movement_id: okIn },
+    ]);
+    expect(result.refused).toEqual([{ out_movement_id: outId, in_movement_id: inId, reason: "conflicting_note" }]);
+    expect(result.converted.map((c) => c.out_movement_id)).toEqual([okOut]);
+    expect(movement(outId)).toBeDefined();
+    expect(movement(inId)).toBeDefined();
+    // Asked for alone, the conflicting pair is a refusal naming it, not a stale pair.
+    expect(() => convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }])).toThrow(MirrorPairConflictError);
+  });
+
+  it("refuses two legs each linked to a bill (a refusal, not the bill link's unique index)", () => {
+    const groupId = Number(
+      db.prepare(`INSERT INTO expense_groups (slug, label) VALUES ('vitest-mirrorconv-place', 'vitest')`).run().lastInsertRowid
+    );
+    const placeId = Number(
+      db.prepare(`INSERT INTO expense_accounts (group_id, slug, label) VALUES (?, 'vitest-place', 'vitest')`).run(groupId).lastInsertRowid
+    );
+    const bill = () =>
+      Number(
+        db
+          .prepare(`INSERT INTO expense_entries (amount, currency, spent_on, category, expense_account_id) VALUES (6060607, 'clp', '2026-05-31', 'rent', ?)`)
+          .run(placeId).lastInsertRowid
+      );
+    const outId = insLeg(genericId, -6_060_607, "2026-05-11");
+    const inId = insLeg(generic2Id, 6_060_607, "2026-05-11");
+    const link = db.prepare(`INSERT INTO flow_links (flow_id, kind, counterpart_entry_id, link_source) VALUES (?, 'bill', ?, 'manual')`);
+    link.run(flowOf(outId), bill());
+    link.run(flowOf(inId), bill());
+    expect(listMirrorPairCandidates().find((p) => p.out.movement_id === outId)?.blocked_reason).toBe("conflicting_bill_link");
+    expect(() => convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }])).toThrow(MirrorPairConflictError);
+    db.prepare(`DELETE FROM flow_links WHERE flow_id IN (?, ?)`).run(flowOf(outId), flowOf(inId));
   });
 });
 

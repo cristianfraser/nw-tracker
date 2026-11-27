@@ -30,6 +30,7 @@ function pair(outId: number, from: number, to: number, confidence: "high" | "amb
     out_alternatives: [],
     in_alternatives: [],
     confidence,
+    blocked_reason: null,
   };
 }
 
@@ -67,6 +68,13 @@ describe("buildMirrorPairsPanel", () => {
     expect(panel.high.routes.map((r) => r.count)).toEqual([2, 1]);
     expect(panel.ambiguous.count).toBe(1);
     expect(panel.ambiguous.routes[0]!.to.account_name).toBe("acct-2");
+  });
+
+  it("shows a blocked pair apart, never among the convertible ones", () => {
+    const blocked = { ...pair(5, 1, 2, "high"), blocked_reason: "conflicting_note" as const };
+    const panel = buildMirrorPairsPanel([pair(1, 1, 2, "high"), blocked], [], []);
+    expect(panel.high.routes[0]!.pairs.map((p) => p.out.movement_id)).toEqual([1]);
+    expect(panel.blocked.routes[0]!.pairs.map((p) => [p.out.movement_id, p.blocked_reason])).toEqual([[5, "conflicting_note"]]);
   });
 
   it("routes card payments to the card and leaves blocked ones out", () => {

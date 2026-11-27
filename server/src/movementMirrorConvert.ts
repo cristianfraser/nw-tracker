@@ -18,6 +18,10 @@
  * Each deleted leg's date is kept as the transfer's bank posting on that leg's account
  * (`movement_bank_postings`): the cartola files the money under that day, so re-importing the
  * month finds the transfer by it, and the cartola month-end check reads it.
+ *
+ * The transfer is the legs' money, so it keeps their flow identity: the older arrival of the two,
+ * the earliest stated event time and every assignment (`flows/mirrorLegFlows.ts`, which says what
+ * a conflict between the legs refuses and how an undo splits the transfer's flow back).
  */
 import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
 
@@ -35,6 +39,11 @@ import { listMirrorPairCandidates, mirrorLegIsMonthPrecision, resolveMirrorPairR
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { type MovementAmountFields } from "./movementAmounts.js";
 import { HOME_CURRENCY, roundToCurrency } from "./displayUnits.js";
+import type { RefusedMirrorPair } from "nw-tracker-contracts/dto/mirrors";
+import { checkingMovementPurchaseKey } from "./expenseKeys.js";
+import { cartolaRowPurchaseKey } from "./bankRowFacts.js";
+import { movementFlowId } from "./flows/flowIdentity.js";
+import { foldMirrorLegFlowsIntoTransfer, mirrorLegFlowsConflict, restoreMirrorLegFlows } from "./flows/mirrorLegFlows.js";
 
 function mirrorMergeHumanNote(outYmd: string, inYmd: string): string {
   return `Traspaso espejo (retiro ${outYmd} → depósito ${inYmd})`;
@@ -47,6 +56,21 @@ export class MirrorConvertStaleError extends Error {
   constructor(pair: MirrorPairRef, reason: string) {
     super(`mirror pair ${pair.out_movement_id}→${pair.in_movement_id}: ${reason}`);
     this.pair = pair;
+  }
+}
+
+/**
+ * Every requested pair was left alone because its legs' assignments conflict
+ * (`mirrorLegFlowsConflict`): nothing to convert, a 409 naming the pairs and why.
+ */
+export class MirrorPairConflictError extends Error {
+  refused: RefusedMirrorPair[];
+  constructor(refused: RefusedMirrorPair[], details: string[]) {
+    super(
+      `mirror pairs not converted, their legs carry conflicting assignments: ` +
+        refused.map((r, i) => `${r.out_movement_id}→${r.in_movement_id} (${details[i]})`).join("; ")
+    );
+    this.refused = refused;
   }
 }
 
@@ -86,13 +110,15 @@ function signedMirrorLegAmount(leg: LegRow, side: "out" | "in"): number {
 }
 
 /**
- * Converts pairs in one all-or-nothing transaction. Every requested pair must be a *current*
- * candidate, or an alternative an ambiguous candidate offers in place of its greedy pick
- * (`resolveMirrorPairRef`) — a stale UI, a double submit, or a leg consumed by another conversion
- * throws MirrorConvertStaleError and nothing is written.
+ * Converts pairs in one transaction. Every requested pair must be a *current* candidate, or an
+ * alternative an ambiguous candidate offers in place of its greedy pick (`resolveMirrorPairRef`) — a
+ * stale UI, a double submit, or a leg consumed by another conversion throws MirrorConvertStaleError
+ * and nothing is written. A pair whose legs carry conflicting assignments (`mirrorLegFlowsConflict`,
+ * the candidate's `blocked_reason`) is left alone and listed in `refused`, and the others convert;
+ * when every requested pair is refused, MirrorPairConflictError says which and why.
  */
-export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: ConvertedMirrorPair[] } {
-  if (pairs.length === 0) return { converted: [] };
+export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: ConvertedMirrorPair[]; refused: RefusedMirrorPair[] } {
+  if (pairs.length === 0) return { converted: [], refused: [] };
   const legStmt = db.prepare(
     `SELECT id, account_id, occurred_on, amount, currency, counter_amount, counter_currency, units_delta, note, flow_kind
      FROM movements WHERE id = ? AND account_id IS NOT NULL`
@@ -112,10 +138,15 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
   const delIncomeOverride = db.prepare(
     `DELETE FROM flow_income_overrides WHERE flow_id = (SELECT flow_id FROM movements WHERE id = ?)`
   );
+  const delLegLink = db.prepare(
+    `DELETE FROM flow_links WHERE kind = 'funded_deposit' AND ((flow_id = ? AND counterpart_flow_id = ?) OR (flow_id = ? AND counterpart_flow_id = ?))`
+  );
 
-  const run = db.transaction((requested: MirrorPairRef[]): ConvertedMirrorPair[] => {
+  const run = db.transaction((requested: MirrorPairRef[]) => {
     const candidates = listMirrorPairCandidates();
     const converted: ConvertedMirrorPair[] = [];
+    const refused: RefusedMirrorPair[] = [];
+    const refusedDetails: string[] = [];
     for (const ref of requested) {
       const cand = resolveMirrorPairRef(candidates, ref);
       if (!cand) throw new MirrorConvertStaleError(ref, "not a current candidate or alternative");
@@ -127,6 +158,14 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       const innAmount = signedMirrorLegAmount(inn, "in");
       if (out.currency !== inn.currency) throw new MirrorConvertStaleError(ref, `legs in ${out.currency} and ${inn.currency}`);
       const currency = out.currency;
+      const outFlow = movementFlowId(out.id);
+      const inFlow = movementFlowId(inn.id);
+      const conflict = mirrorLegFlowsConflict([outFlow, inFlow]);
+      if (conflict) {
+        refused.push({ out_movement_id: out.id, in_movement_id: inn.id, reason: conflict.code });
+        refusedDetails.push(conflict.detail);
+        continue;
+      }
 
       const note = mirrorMergeHumanNote(out.occurred_on, inn.occurred_on);
       const unitsSource = out.units_delta ?? inn.units_delta;
@@ -174,6 +213,9 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
       recordBankPosting(transferId, inn.account_id, bankPostedOn(inn.id, inn.account_id));
       delIncomeOverride.run(out.id);
       delIncomeOverride.run(inn.id);
+      // A deposit link between the two legs is the pairing itself: the transfer replaces it.
+      delLegLink.run(outFlow, inFlow, inFlow, outFlow);
+      foldMirrorLegFlowsIntoTransfer(transferId, checkingMovementPurchaseKey(transferId), [out.id, inn.id]);
       deleteMovements([out.id, inn.id]);
       converted.push({
         transfer_movement_id: transferId,
@@ -186,10 +228,11 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
           out.occurred_on < inn.occurred_on ? out.occurred_on : inn.occurred_on,
       });
     }
-    return converted;
+    if (converted.length === 0 && refused.length > 0) throw new MirrorPairConflictError(refused, refusedDetails);
+    return { converted, refused };
   });
 
-  return { converted: run(pairs) };
+  return run(pairs);
 }
 
 /**
@@ -230,10 +273,18 @@ function keptListing(merge: Record<string, unknown>, side: "out" | "in"): Mirror
   };
 }
 
+/** The key a restored leg's line reads: its cartola identity, else its movement id. */
+function restoredLegKey(movementId: number, accountId: number): () => string {
+  return () => cartolaRowPurchaseKey(movementId, accountId) ?? checkingMovementPurchaseKey(movementId);
+}
+
 /**
  * Deletes a mirror-merge transfer and re-inserts the two original single-leg rows exactly as
  * they were (dates, amounts, units, notes, the listing facts a bank leg stated — new ids). Rejections/links that referenced the old
- * ids already cascaded at conversion time and do not come back.
+ * ids already cascaded at conversion time and do not come back. The restored legs take the
+ * transfer's flow identity back (`restoreMirrorLegFlows`): its arrival and event time on both, its
+ * assignments on the outflow leg except the category and note rows filed under the inflow leg's
+ * account, which go to the inflow leg.
  */
 export function undoMirrorConversion(transferMovementId: number): {
   restored_out_id: number;
@@ -298,7 +349,13 @@ export function undoMirrorConversion(transferMovementId: number): {
       // The restored leg takes back its bank day (the transfer's posting on that account) and its listing.
       carryStoredBankPosting(transferMovementId, outId, row.from_account_id!);
       restoreMirrorLegListing(outId, keptListing(merge, "out"), db);
+      const flows = restoreMirrorLegFlows(
+        transferMovementId,
+        { movementId: outId, accountId: row.from_account_id!, key: restoredLegKey(outId, row.from_account_id!) },
+        null
+      );
       deleteMovements([transferMovementId]);
+      flows.finish();
       return { restored_out_id: outId, restored_in_id: outId };
     })();
     return restored;
@@ -327,7 +384,13 @@ export function undoMirrorConversion(transferMovementId: number): {
     carryStoredBankPosting(transferMovementId, inId, toId);
     restoreMirrorLegListing(outId, keptListing(merge, "out"), db);
     restoreMirrorLegListing(inId, keptListing(merge, "in"), db);
+    const flows = restoreMirrorLegFlows(
+      transferMovementId,
+      { movementId: outId, accountId: fromId, key: restoredLegKey(outId, fromId) },
+      { movementId: inId, accountId: toId, key: restoredLegKey(inId, toId) }
+    );
     deleteMovements([transferMovementId]);
+    flows.finish();
     return { restored_out_id: outId, restored_in_id: inId };
   });
   return run();

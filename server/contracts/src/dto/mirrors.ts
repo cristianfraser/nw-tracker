@@ -20,6 +20,21 @@ export interface MirrorPairAlternative {
   month_straddle: boolean;
 }
 
+/**
+ * Why a pair cannot be converted as it stands (`mirrorLegFlowsConflict`): a leg is marked as a
+ * refund of spending, or both legs carry a different one of something one transfer holds once.
+ */
+export type MirrorPairBlockedReason =
+  | "refund_marked"
+  | "conflicting_category"
+  | "conflicting_note"
+  | "conflicting_big_group"
+  | "conflicting_pieces"
+  | "conflicting_bill_link"
+  | "conflicting_deposit_link"
+  | "conflicting_financing_link"
+  | "conflicting_facturado_charge";
+
 export interface MirrorPairCandidate {
   out: MirrorLegDto;
   in: MirrorLegDto;
@@ -36,6 +51,8 @@ export interface MirrorPairCandidate {
   out_alternatives: MirrorPairAlternative[];
   in_alternatives: MirrorPairAlternative[];
   confidence: "high" | "ambiguous";
+  /** Set when the pair cannot be converted until the user removes one of the legs' assignments. */
+  blocked_reason: MirrorPairBlockedReason | null;
 }
 
 export interface RejectedMirrorPair {
@@ -95,12 +112,14 @@ export interface MirrorPairSection<P> {
 }
 
 /**
- * /panel/mirror-pairs, built by the server: high-confidence and ambiguous pairs, convertible card
- * payments (blocked ones left out), each grouped by route; rejected pairs as a flat list.
+ * /panel/mirror-pairs, built by the server: high-confidence and ambiguous pairs, the blocked pairs
+ * apart, convertible card payments (blocked ones left out), each grouped by route; rejected pairs
+ * as a flat list.
  */
 export interface MovementMirrorCandidatesResponse {
   high: MirrorPairSection<MirrorPairCandidate>;
   ambiguous: MirrorPairSection<MirrorPairCandidate>;
+  blocked: MirrorPairSection<MirrorPairCandidate>;
   cc_payments: MirrorPairSection<CcPaymentMirrorCandidateDto>;
   rejected: RejectedMirrorPair[];
 }
@@ -108,4 +127,9 @@ export interface MovementMirrorCandidatesResponse {
 export interface MirrorPairRef {
   out_movement_id: number;
   in_movement_id: number;
+}
+
+/** A requested pair the conversion left alone: its legs' assignments conflict. */
+export interface RefusedMirrorPair extends MirrorPairRef {
+  reason: MirrorPairBlockedReason;
 }
