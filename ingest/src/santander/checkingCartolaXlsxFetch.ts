@@ -14,13 +14,17 @@
  * Every file is downloaded outside the inbox, checked (`validateDownloadedCartolaXlsx`) and only
  * then moved into `cfraser/inbox/` under the bank's own name, where the inbox pipeline files it
  * (`organize:checking-cartola-xlsx`) and imports it (`import:checking-cartolas`). A file that fails
- * a check stays where it was downloaded and is named in the step's problem.
+ * a check is kept outside the inbox (`refusedDir`, one copy per month) and named in the step's
+ * problem; what was already reported is judged by `cartolaXlsxState.ts`.
  */
 import fs from "node:fs";
 import path from "node:path";
 import type { Page } from "playwright-core";
-import type { Recorder } from "../capture.js";
-import { downloadTo, waitForNewApiCalls } from "../wait.js";
+import type { ApiCall, Recorder } from "../capture.js";
+import { normalizeAccountNumber } from "nw-tracker-contracts";
+import type { ParsedCheckingCartola } from "./checkingCartolaXlsx.js";
+import type { CartolaXlsxIssueKind, CartolaXlsxMonthResult } from "./cartolaXlsxState.js";
+import { countApiCalls, downloadTo, waitForNewApiCalls } from "../wait.js";
 import { ensureDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { ROUTE, TEXT } from "./routes.js";
@@ -38,24 +42,21 @@ import {
 
 /** How long the cartolas view gets to ask for a month and show its row. */
 const VIEW_WAIT_MS = 20_000;
-
-export type CartolaXlsxFetchOutcome = {
-  /** Months saved, with the file each became. */
-  saved: { month: string; file: string }[];
-  /** A month not published yet and not overdue: the step passes and stops there. */
-  waiting: string | null;
-  /** Why the step fails, one line each. */
-  problems: string[];
-};
+/** How long a month the view is about to ask for gets before the step searches for it. */
+const OWN_CALL_WAIT_MS = 5_000;
 
 export type CartolaXlsxFetchOptions = {
   months: readonly string[];
   account: string;
   todayIso: string;
-  /** Where the bank's file is written before its checks. */
+  /** Where the bank's file is written before its checks (emptied before each download). */
   downloadDir: string;
   /** Where a checked file goes (the inbox; in capture mode the capture's downloads). */
   destDir: string;
+  /** Where a refused file is kept, one per month (null: left where it was downloaded). */
+  refusedDir: string | null;
+  /** Whether this exact issue of the month was reported on an earlier run: then later months go on. */
+  alreadyReported: (month: string, kind: CartolaXlsxIssueKind, reason: string) => boolean;
 };
 
 function isCartolaHistoryCall(call: { endpoint: string; requestBody: unknown }): boolean {
@@ -117,6 +118,13 @@ async function searchMonth(page: Page, recorder: Recorder, month: string): Promi
 
 /** The bank's answer for `month`, searching for it when the view has not asked for it yet. */
 async function monthAnswer(page: Page, recorder: Recorder, month: string, account: string): Promise<CartolaMonthAnswer> {
+  const asksFor = (c: ApiCall): boolean => {
+    const req = cartolaHistoryRequest(c);
+    return req !== null && req.month === month && normalizeAccountNumber(req.account) === normalizeAccountNumber(account);
+  };
+  // The view asks for the current month first and the previous one right after: give the call
+  // for this month a moment before taking the (unconfirmed) search path.
+  if (countApiCalls(recorder.calls, asksFor) === 0) await waitForNewApiCalls(recorder, asksFor, 0, OWN_CALL_WAIT_MS);
   const shown = cartolaMonthAnswer(recorder.calls, month, account);
   if (shown) return shown;
   await searchMonth(page, recorder, month);
@@ -128,13 +136,16 @@ async function monthAnswer(page: Page, recorder: Recorder, month: string, accoun
 /** Click the listed row's «Descargar Excel» for `month`; the file lands in `dir` under the bank's name. */
 async function downloadMonth(page: Page, month: string, dir: string): Promise<string> {
   const label = new RegExp(`\\b${cartolaMonthLabel(month).replace(" ", "\\s+")}\\b`, "i");
-  // The innermost element holding both the month and its Excel link is the row.
+  // The innermost element holding both the month and its Excel link is the row. UNCONFIRMED: right
+  // only while no later row prints the same month label (the 2026-08-05 view listed one row).
   const row = page
     .locator("div, li, tr")
     .filter({ hasText: label })
     .filter({ has: page.getByText(TEXT.downloadExcel) })
     .last();
   await row.waitFor({ state: "visible", timeout: VIEW_WAIT_MS });
+  // One download at a time in the folder: nothing of an earlier night lingers there.
+  for (const name of fs.readdirSync(ensureDir(dir))) fs.rmSync(path.join(dir, name), { force: true, recursive: true });
   return downloadTo(page, dir, async () => {
     await row.getByText(TEXT.downloadExcel).first().click();
   });
@@ -149,47 +160,71 @@ function moveChecked(file: string, destDir: string): string {
   return dest;
 }
 
+/** Keep a refused file as `<month> <bank name>` in `refusedDir`, replacing that month's earlier copy. */
+function keepRefused(file: string, month: string, refusedDir: string | null): string {
+  if (!refusedDir) return file;
+  ensureDir(refusedDir);
+  for (const name of fs.readdirSync(refusedDir)) {
+    if (name.startsWith(`${month} `)) fs.rmSync(path.join(refusedDir, name), { force: true });
+  }
+  const dest = path.join(refusedDir, `${month} ${path.basename(file)}`);
+  fs.renameSync(file, dest);
+  return dest;
+}
+
 /**
- * Download `months` oldest first. Stops at the first month the bank does not list (a later one
- * cannot be listed either) and at the first failure, so the backlog is fetched in order and a
- * gap is never skipped over.
+ * Download `months` oldest first, one result per month tried. A month not published before its
+ * deadline stops the run (a later one cannot be listed either), as does any failure of the step
+ * itself (navigation, the download) and a month not published past its deadline or refused the
+ * first time it is seen; once that exact issue was reported on an earlier run the later months
+ * are tried, so a month the bank never publishes cannot block the rest forever.
  */
 export async function fetchCheckingCartolaXlsx(
   page: Page,
   recorder: Recorder,
   opts: CartolaXlsxFetchOptions,
-): Promise<CartolaXlsxFetchOutcome> {
+): Promise<CartolaXlsxMonthResult[]> {
   logStep(`cuenta corriente — cartola xlsx (${opts.months.join(", ")})`);
-  const outcome: CartolaXlsxFetchOutcome = { saved: [], waiting: null, problems: [] };
+  const results: CartolaXlsxMonthResult[] = [];
   await openCartolasView(page, recorder);
   for (const month of opts.months) {
-    let file: string | null = null;
+    let answer: CartolaMonthAnswer;
+    let file: string;
     try {
-      const answer = await monthAnswer(page, recorder, month, opts.account);
+      answer = await monthAnswer(page, recorder, month, opts.account);
       if (answer.kind === "not_issued") {
         const said = answer.message ? ` («${answer.message}»)` : "";
-        if (unpublishedIsOverdue(month, opts.todayIso)) {
-          outcome.problems.push(`cartola ${month} still not published by the bank${said}, expected by ${publicationDeadline(month)}`);
-        } else {
-          outcome.waiting = month;
+        if (!unpublishedIsOverdue(month, opts.todayIso)) {
           log(`cartola ${month} not published yet${said}; waiting until ${publicationDeadline(month)}`);
+          results.push({ month, kind: "waiting", reason: `not published yet, expected by ${publicationDeadline(month)}` });
+          break;
         }
-        break;
+        const reason = `still not published by the bank${said}, expected by ${publicationDeadline(month)}`;
+        results.push({ month, kind: "not_published", reason, file: null });
+        if (!opts.alreadyReported(month, "not_published", reason)) break;
+        continue;
       }
       file = await downloadMonth(page, month, opts.downloadDir);
-      const cartola = validateDownloadedCartolaXlsx(fs.readFileSync(file), path.basename(file), { month, account: opts.account });
-      const dest = moveChecked(file, opts.destDir);
-      log(`cartola ${month} Nº ${answer.cartolaNumber}: ${cartola.movements.length} movements, ${cartola.period_from} → ${cartola.period_to} → ${dest}`);
-      outcome.saved.push({ month, file: dest });
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
       // A dead browser must reach the run's relaunch logic, not become a quiet problem line.
       if (browserGoneError(page, err)) throw err;
-      const kept = file ? ` (the download is kept at ${file}, outside the inbox)` : "";
-      // The run's step runner saves the page's diagnostics when the step fails.
-      outcome.problems.push(`cartola ${month}: ${reason}${kept}`);
+      results.push({ month, kind: "failed", reason: err instanceof Error ? err.message : String(err) });
       break;
     }
+    let cartola: ParsedCheckingCartola;
+    try {
+      cartola = validateDownloadedCartolaXlsx(fs.readFileSync(file), path.basename(file), { month, account: opts.account });
+    } catch (err) {
+      // The reason without the download's own path, so the same refusal reads alike every night.
+      const reason = (err instanceof Error ? err.message : String(err)).replace(`${path.basename(file)}: `, "");
+      results.push({ month, kind: "refused", reason, file: keepRefused(file, month, opts.refusedDir) });
+      if (!opts.alreadyReported(month, "refused", reason)) break;
+      continue;
+    }
+    const dest = moveChecked(file, opts.destDir);
+    const detail = `${month} Nº ${answer.cartolaNumber} → ${path.basename(dest)}`;
+    log(`cartola ${detail}: ${cartola.movements.length} movements, ${cartola.period_from} → ${cartola.period_to}`);
+    results.push({ month, kind: "saved", file: dest, detail });
   }
-  return outcome;
+  return results;
 }

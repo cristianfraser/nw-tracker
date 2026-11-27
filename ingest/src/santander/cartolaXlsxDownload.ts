@@ -132,6 +132,35 @@ function looksLikeXlsx(bytes: Buffer): boolean {
 }
 
 /**
+ * Why a cartola header is not one month of the configured peso cuenta corriente, or null when it is:
+ * «N° Cuenta» the account (by digits), «Tipo de Cuenta» CUENTA CORRIENTE ML, HASTA printed and
+ * DESDE the close before HASTA's month.
+ */
+export function cartolaHeaderRefusal(header: CartolaXlsxHeader, account: string): string | null {
+  if (!header.account) return "no «N° Cuenta» in the header";
+  if (normalizeAccountNumber(header.account) !== normalizeAccountNumber(account)) {
+    return `cartola of account …${normalizeAccountNumber(header.account).slice(-4)}, not the configured cuenta corriente`;
+  }
+  if (!header.accountType || !/corriente\s+ml\b/i.test(header.accountType)) {
+    return `«Tipo de Cuenta» is ${JSON.stringify(header.accountType)}, not the peso cuenta corriente (CUENTA CORRIENTE ML)`;
+  }
+  if (!header.to) return "no HASTA in the header";
+  if (!header.from) return "no DESDE in the header";
+  const month = header.to.slice(0, 7);
+  if (header.from < `${addCalendarMonths(month, -1)}-01` || header.from > header.to) {
+    return `DESDE ${header.from} is not the close before ${month}`;
+  }
+  return null;
+}
+
+/** The month a workbook is the configured cuenta corriente's cartola of (by its header), or null; a zip XLSX cannot read throws. */
+export function cartolaXlsxHeaderMonth(bytes: Buffer, account: string): string | null {
+  if (!looksLikeXlsx(bytes)) return null;
+  const header = peekCartolaXlsxHeader(XLSX.read(bytes, { type: "buffer", cellDates: false }));
+  return cartolaHeaderRefusal(header, account) === null ? header.to!.slice(0, 7) : null;
+}
+
+/**
  * Throw unless `bytes` (saved as `fileName`) is the peso cuenta corriente's cartola of `month`
  * for `account`; return the reader's reading. Each refusal names what was printed.
  */
@@ -147,25 +176,14 @@ export function validateDownloadedCartolaXlsx(
   if (nameMonth !== expected.month) {
     throw new Error(`${fileName}: the bank's file name names ${nameMonth ?? "no month"}, expected ${expected.month}`);
   }
-  const workbook = XLSX.read(bytes, { type: "buffer", cellDates: false });
-  const { account, accountType, from, to } = peekCartolaXlsxHeader(workbook);
-  if (!account) throw new Error(`${fileName}: no «N° Cuenta» in the header`);
-  if (normalizeAccountNumber(account) !== normalizeAccountNumber(expected.account)) {
-    throw new Error(`${fileName}: cartola of account …${normalizeAccountNumber(account).slice(-4)}, not the configured cuenta corriente`);
-  }
-  if (!accountType || !/corriente\s+ml\b/i.test(accountType)) {
-    throw new Error(`${fileName}: «Tipo de Cuenta» is ${JSON.stringify(accountType)}, not the peso cuenta corriente (CUENTA CORRIENTE ML)`);
-  }
-  if (!to) throw new Error(`${fileName}: no HASTA in the header`);
-  if (to.slice(0, 7) !== expected.month) throw new Error(`${fileName}: HASTA ${to} is not in ${expected.month}`);
-  if (!from) throw new Error(`${fileName}: no DESDE in the header`);
-  if (from < `${addCalendarMonths(expected.month, -1)}-01` || from > to) {
-    throw new Error(`${fileName}: DESDE ${from} is not the close before ${expected.month}`);
-  }
+  const header = peekCartolaXlsxHeader(XLSX.read(bytes, { type: "buffer", cellDates: false }));
+  const refusal = cartolaHeaderRefusal(header, expected.account);
+  if (refusal) throw new Error(`${fileName}: ${refusal}`);
+  if (header.to!.slice(0, 7) !== expected.month) throw new Error(`${fileName}: HASTA ${header.to} is not in ${expected.month}`);
   // The reader itself last: its saldo identity and running balances are the content checks.
   const cartola = parseCheckingCartolaBuffer(bytes, fileName);
-  if (cartola.period_to !== to || cartola.period_month !== expected.month) {
-    throw new Error(`${fileName}: the reader read ${cartola.period_month} (HASTA ${cartola.period_to}), the header prints HASTA ${to}`);
+  if (cartola.period_to !== header.to || cartola.period_month !== expected.month) {
+    throw new Error(`${fileName}: the reader read ${cartola.period_month} (HASTA ${cartola.period_to}), the header prints HASTA ${header.to}`);
   }
   return cartola;
 }

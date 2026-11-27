@@ -4,28 +4,31 @@
  * xlsx is its second reading, which the server cross-checks exactly.
  *
  * «On file» is what ingest can see without the server: an xlsx of the month filed under
- * `cfraser/excels/cuenta corriente/` (where the inbox pipeline's organizer moves it, kept there
- * whether its import succeeded or waits as pending) or still in `cfraser/inbox/`. Months are told
- * by the file names the organizer reads (`periodMonthFromCartolaFileName`).
+ * `cfraser/excels/cuenta corriente/` by the organizer (its own names; kept there whether its import
+ * succeeded or waits as pending), or a workbook in `cfraser/inbox/` whose header is that month's
+ * cartola of the configured cuenta corriente (an inbox name is not trusted).
  *
  * From the 1st of a month the previous month (the last closed one) is due, until its xlsx is on
  * file. Months missing between the newest xlsx on file and the last closed month are a backlog,
- * fetched oldest first, at most `MAX_MONTHS_PER_RUN` a run, so the newest file on disk only moves
- * forward through months that were really downloaded. Older gaps (before the newest file) are
- * never chased. With no xlsx on file at all, only the last closed month is due.
+ * fetched oldest first, at most `MAX_MONTHS_PER_RUN` a run; a month an earlier run reported as not
+ * published or refused (`cartolaXlsxState.ts`) stays in the backlog until its file is on file.
+ * Older gaps (before the newest file) are never chased. With no xlsx on file at all, only the last
+ * closed month is due.
  *
  * A month the bank has not published yet is waited for until the `PUBLICATION_DEADLINE_DAY` of
  * the following month; past it, «not published» is a step problem.
  */
 import fs from "node:fs";
+import path from "node:path";
 import { addCalendarMonths, parseEnvFlag } from "nw-tracker-contracts";
-import { isCheckingCartolaXlsxFileName, periodMonthFromCartolaFileName } from "./checkingCartolaXlsx.js";
+import { canonicalCheckingCartolaXlsxFileName, periodMonthFromCartolaFileName } from "./checkingCartolaXlsx.js";
+import { cartolaXlsxHeaderMonth } from "./cartolaXlsxDownload.js";
 
 /**
  * The step's gate, off unless set: the download was rebuilt from the August 2026 session without
  * a run against today's site, so a deploy changes nothing until a supervised
  * `fetch:santander -- --capture --only=checking-cartola-xlsx` has confirmed it and the variable
- * is set in the ingest service's plist. Read when the run starts (`--capture` and
+ * is set in the ingest service's plist. Read once when the session's run starts (`--capture` and
  * `--only=checking-cartola-xlsx` run the step regardless).
  */
 export const CARTOLA_XLSX_FETCH_ENV = "NW_TRACKER_CARTOLA_XLSX_FETCH";
@@ -55,31 +58,60 @@ export function lastClosedMonth(todayIso: string): string {
   return addCalendarMonths(todayIso.slice(0, 7), -1);
 }
 
-/** The cartola months an xlsx in these folders covers (missing folders read as empty). */
-export function cartolaXlsxMonthsOnFile(dirs: readonly string[]): Set<string> {
+/**
+ * The months filed under the organizer's folder (`cfraser/excels/cuenta corriente/`): only the
+ * organizer's own names count there (`canonicalCheckingCartolaXlsxFileName` of the name is the name).
+ */
+export function filedCartolaXlsxMonths(dir: string): Set<string> {
   const months = new Set<string>();
-  for (const dir of dirs) {
-    if (!fs.existsSync(dir)) continue;
-    for (const name of fs.readdirSync(dir)) {
-      if (!isCheckingCartolaXlsxFileName(name)) continue;
-      const month = periodMonthFromCartolaFileName(name);
-      if (month) months.add(month);
-    }
+  if (!fs.existsSync(dir)) return months;
+  for (const name of fs.readdirSync(dir)) {
+    if (canonicalCheckingCartolaXlsxFileName(name) !== name) continue;
+    const month = periodMonthFromCartolaFileName(name);
+    if (month) months.add(month);
   }
   return months;
 }
 
-/** Which months tonight's session downloads, given the months on file. */
+/**
+ * The months a workbook waiting in the inbox covers. Its name is not trusted: a workbook counts
+ * only when its header is the configured peso cuenta corriente's cartola (`cartolaXlsxHeaderMonth`)
+ * and its name names the same month (the organizer files it by the name).
+ */
+export function inboxCartolaXlsxMonths(dir: string, account: string): Set<string> {
+  const months = new Set<string>();
+  if (!fs.existsSync(dir)) return months;
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.toLowerCase().endsWith(".xlsx")) continue;
+    let month: string | null;
+    try {
+      month = cartolaXlsxHeaderMonth(fs.readFileSync(path.join(dir, name)), account);
+    } catch (err) {
+      throw new Error(`inbox workbook ${name} cannot be read: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (month && periodMonthFromCartolaFileName(name) === month) months.add(month);
+  }
+  return months;
+}
+
+/**
+ * Which months tonight's session downloads, oldest first, at most `maxPerRun`: the months after the
+ * newest one on file through the last closed month, plus the months an earlier run reported and
+ * still waits for (`pending`, from the step's state), so a month the bank never published is
+ * never forgotten once later ones are on file.
+ */
 export function planCartolaXlsxDownloads(
   todayIso: string,
   onFile: ReadonlySet<string>,
+  pending: readonly string[] = [],
   maxPerRun = MAX_MONTHS_PER_RUN,
 ): CartolaXlsxPlan {
   const last = lastClosedMonth(todayIso);
-  if (onFile.has(last)) return { months: [], reason: `the ${last} xlsx is on file` };
-  const newest = [...onFile].filter((m) => m < last).sort().at(-1);
-  const months: string[] = [];
-  for (let m = newest ? addCalendarMonths(newest, 1) : last; m <= last; m = addCalendarMonths(m, 1)) months.push(m);
+  const newest = [...onFile].filter((m) => m <= last).sort().at(-1);
+  const wanted = new Set(pending.filter((m) => m <= last && !onFile.has(m)));
+  for (let m = newest ? addCalendarMonths(newest, 1) : last; m <= last; m = addCalendarMonths(m, 1)) wanted.add(m);
+  const months = [...wanted].sort();
+  if (months.length === 0) return { months: [], reason: `the ${last} xlsx is on file` };
   const tonight = months.slice(0, maxPerRun);
   const backlog = months.length > tonight.length ? ` (${months.length - tonight.length} more on later runs)` : "";
   return { months: tonight, reason: `${months.join(", ")} not on file${backlog}` };

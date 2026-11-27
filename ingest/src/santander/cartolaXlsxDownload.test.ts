@@ -2,41 +2,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import XLSX from "xlsx";
+import { SYNTHETIC_ACCOUNT, syntheticCartolaXlsx } from "./testdata/cartolaXlsxFixture.js";
 import {
+  cartolaXlsxHeaderMonth,
   cartolaMonthAnswer,
   cartolaMonthLabel,
   checkingCartolaAccount,
   validateDownloadedCartolaXlsx,
 } from "./cartolaXlsxDownload.js";
 
-/** Synthetic account and figures; the header layout is the bank's (rows 1–21 of its workbook). */
-const ACCOUNT = "0-000-00-12345-6";
-
-function cartolaBytes(opts: { account?: string; type?: string; desde?: string; hasta?: string } = {}): Buffer {
-  const rows: unknown[][] = [
-    ["Banco Santander", "", "", "", "Cartola de cuenta Corriente - Julio 2026", "", ""],
-    [],
-    [],
-    ["Sr(a)", "TITULAR DE PRUEBA", "", "", "Cartola N°", "7", ""],
-    ["Rut", "11.111.111-1", "", "", "Desde", opts.desde ?? "30/06/2026", ""],
-    ["E-mail", "titular@example.com", "", "", "Hasta", opts.hasta ?? "31/07/2026", ""],
-    [],
-    [],
-    ["INFORMACIÓN CUENTA CORRIENTE", "", "", "", "", "", ""],
-    ["Tipo de Cuenta:", opts.type ?? "CUENTA CORRIENTE ML", "", "", "N° Cuenta:", opts.account ?? ACCOUNT, ""],
-    ["Saldo inicial:", "$100.000", "", "", "Impuestos:", "$0", ""],
-    ["Saldo final:", "$130.000", "", "", "Depósitos:", "$0", ""],
-    [],
-    ["DETALLE DE MOVIMIENTOS", "", "", "", "", "SALDOS DIARIOS", ""],
-    ["FECHA", "SUCURSAL", "DESCRIPCIÓN", "N° DOCUMENTO", "CHEQUES Y OTROS CARGOS", "DEPOSITOS Y OTROS ABONOS", "SALDO"],
-    ["03/07", "Agustinas", "Transf. de Prueba SpA", "123", "", 50000, ""],
-    ["15/07", "Internet", "Pago tarjeta de prueba", "", 20000, "", "$130.000"],
-  ];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Cartola de Cuenta");
-  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
-}
+const ACCOUNT = SYNTHETIC_ACCOUNT;
+const cartolaBytes = syntheticCartolaXlsx;
 
 const NAME = "Cartola de cuenta Corriente - Julio 2026.xlsx";
 const EXPECTED = { month: "2026-07", account: "000000123456" };
@@ -93,6 +69,15 @@ const ISSUED = (account: string) => ({
   OUTPUT: { MATRIZ: [{ NUMEROCARTOLA: " 7", NUMEROCUENTA: account, FECHADESDE: "2026-07-31" }] },
 });
 const NONE = { INFO: { CODERR: "16", DESERR: "No existe el registro buscado." } };
+
+describe("cartolaXlsxHeaderMonth", () => {
+  it("reads the month only from the configured peso cuenta corriente's cartola", () => {
+    expect(cartolaXlsxHeaderMonth(cartolaBytes(), ACCOUNT)).toBe("2026-07");
+    expect(cartolaXlsxHeaderMonth(cartolaBytes({ account: "0-070-00-55555-5" }), ACCOUNT)).toBeNull();
+    expect(cartolaXlsxHeaderMonth(cartolaBytes({ type: "CUENTA VISTA" }), ACCOUNT)).toBeNull();
+    expect(cartolaXlsxHeaderMonth(Buffer.from("<html></html>"), ACCOUNT)).toBeNull();
+  });
+});
 
 describe("cartolaMonthAnswer", () => {
   it("reads the view's answers for the month and account", () => {

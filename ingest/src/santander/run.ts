@@ -24,8 +24,23 @@ import { statementsDueToday } from "./statementSchedule.js";
 import { formatBalancePollResult, requestBalancePoll } from "./balancePoll.js";
 import { reportStepResult } from "../stepResult.js";
 import { chileWallClock } from "./fetchHistory.js";
-import { CARTOLA_XLSX_GATE_SKIP, cartolaXlsxFetchEnabled, cartolaXlsxMonthsOnFile, lastClosedMonth, planCartolaXlsxDownloads } from "./cartolaXlsxSchedule.js";
+import {
+  CARTOLA_XLSX_GATE_SKIP,
+  cartolaXlsxFetchEnabled,
+  filedCartolaXlsxMonths,
+  inboxCartolaXlsxMonths,
+  lastClosedMonth,
+  planCartolaXlsxDownloads,
+} from "./cartolaXlsxSchedule.js";
 import { checkingCartolaAccount } from "./cartolaXlsxDownload.js";
+import {
+  issueAlreadyReported,
+  judgeCartolaXlsxResults,
+  readCartolaXlsxState,
+  statePendingMonths,
+  withoutMonthsOnFile,
+  writeCartolaXlsxState,
+} from "./cartolaXlsxState.js";
 import { checkingCartolaXlsxDir } from "./cartolas.js";
 import { fetchCheckingCartolaXlsx } from "./checkingCartolaXlsxFetch.js";
 
@@ -79,6 +94,15 @@ async function sessionIsLoggedIn(page: Page): Promise<boolean> {
   return isPrivateAppUrl(page.url());
 }
 
+/** The configured cuenta corriente, or why it cannot be read (the cartola xlsx step fails with it). */
+function readCartolaXlsxAccount(): { account: string } | { error: string } {
+  try {
+    return { account: checkingCartolaAccount() };
+  } catch (err) {
+    return { error: `cartola xlsx: ${errorMessage(err)}` };
+  }
+}
+
 function browserIsGone(session: Session, err: unknown): boolean {
   return session.page.isClosed() || BROWSER_GONE_PATTERN.test(errorMessage(err));
 }
@@ -98,6 +122,12 @@ export async function runSantander(opts: RunOptions): Promise<number> {
   const password = readKeychainSecret(config.keychain_service, config.rut);
   assertRunAllowed("santander", opts.minIntervalMinutes, opts.force);
   const stamp = runStampNow();
+  // The cartola xlsx step's gate and the account it checks files against, read once at the start:
+  // with the gate on, a missing or wrong identifiers file fails the step even on a night nothing is due.
+  const cartolaXlsxListed = !opts.movementsOnly && !opts.balancePoll && shouldRunStep(opts.only, "checking-cartola-xlsx");
+  const cartolaXlsxRuns =
+    cartolaXlsxListed && (opts.capture || opts.only.includes("checking-cartola-xlsx") || cartolaXlsxFetchEnabled());
+  const cartolaXlsxAccount = cartolaXlsxRuns ? readCartolaXlsxAccount() : { error: "not read" };
   const recorder = new Recorder(opts.capture, stamp, "santander", SANTANDER_API_HOST_FRAGMENTS);
   const destDir = opts.capture ? ensureDir(path.join(recorder.captureDir ?? "", "downloads")) : resolveInboxDir();
   log(opts.capture ? `CAPTURE run — nothing goes to the inbox (${recorder.captureDir})` : `downloads → ${destDir}`);
@@ -271,33 +301,45 @@ export async function runSantander(opts: RunOptions): Promise<number> {
 
     // The monthly cartola as an xlsx, the second reading of the mailed PDF: only behind its gate
     // (or asked for by hand), and only for a month not on file (`cartolaXlsxSchedule.ts`).
-    const cartolaXlsxAsked = opts.capture || opts.only.includes("checking-cartola-xlsx");
-    if (
-      !opts.movementsOnly &&
-      !opts.balancePoll &&
-      shouldRunStep(opts.only, "checking-cartola-xlsx") &&
-      (cartolaXlsxAsked || cartolaXlsxFetchEnabled())
-    ) {
+    if (cartolaXlsxRuns) {
       await step("checking cartola xlsx", "checking-cartola-xlsx", async (page) => {
+        if ("error" in cartolaXlsxAccount) {
+          reportStepResult({ problems: [cartolaXlsxAccount.error] });
+          throw new Error(cartolaXlsxAccount.error);
+        }
+        const account = cartolaXlsxAccount.account;
         const todayIso = chileWallClock(new Date()).slice(0, 10);
         // Planned inside the step: a relaunch's retry sees the months the first try already filed.
-        const plan = planCartolaXlsxDownloads(todayIso, cartolaXlsxMonthsOnFile([checkingCartolaXlsxDir(), resolveInboxDir()]));
+        const onFile = new Set([...filedCartolaXlsxMonths(checkingCartolaXlsxDir()), ...inboxCartolaXlsxMonths(resolveInboxDir(), account)]);
+        // A capture run reports every issue afresh and never touches the state.
+        const state = opts.capture ? { months: {} } : withoutMonthsOnFile(readCartolaXlsxState(), onFile);
+        const plan = planCartolaXlsxDownloads(todayIso, onFile, statePendingMonths(state));
         // A capture run confirms the page even when nothing is due; its file never reaches the inbox.
         const months = plan.months.length > 0 ? plan.months : opts.capture ? [lastClosedMonth(todayIso)] : [];
+        if (!opts.capture) writeCartolaXlsxState(state);
         if (months.length === 0) return `nothing due — ${plan.reason}`;
-        // Downloaded outside the inbox; only a checked file moves on (a refused one stays here).
-        const downloadDir = opts.capture ? destDir : ensureDir(path.join(resolveCfraserDir(), "santander-cartola-xlsx", stamp));
-        const outcome = await fetchCheckingCartolaXlsx(page, recorder, { months, account: checkingCartolaAccount(), todayIso, downloadDir, destDir });
-        if (!opts.capture && fs.readdirSync(downloadDir).length === 0) fs.rmdirSync(downloadDir);
-        const done = outcome.saved.map((s) => `${s.month} → ${path.basename(s.file)}`);
-        if (outcome.waiting) done.push(`${outcome.waiting} not published yet`);
-        if (outcome.problems.length > 0) {
-          reportStepResult({ problems: outcome.problems });
-          throw new Error([...done, ...outcome.problems].join("; "));
+        const work = path.join(resolveCfraserDir(), "santander-cartola-xlsx");
+        const results = await fetchCheckingCartolaXlsx(page, recorder, {
+          months,
+          account,
+          todayIso,
+          // Downloaded outside the inbox; only a checked file moves on.
+          downloadDir: opts.capture ? destDir : path.join(work, "download"),
+          destDir,
+          refusedDir: opts.capture ? null : path.join(work, "refused"),
+          alreadyReported: (month, kind, reason) => issueAlreadyReported(state, month, kind, reason),
+        });
+        const judged = judgeCartolaXlsxResults(state, results, todayIso);
+        if (!opts.capture) writeCartolaXlsxState(judged.state);
+        // The run message lists the step result's problems and notices; the thrown text only the log.
+        if (judged.problems.length > 0 || judged.notices.length > 0) {
+          reportStepResult({ problems: judged.problems, notices: judged.notices });
         }
-        return done.join(", ");
+        for (const n of judged.notices) log(`notice: ${n}`);
+        if (judged.problems.length > 0) throw new Error([...judged.details, ...judged.problems].join("; "));
+        return judged.details.join(", ");
       });
-    } else if (!opts.movementsOnly && !opts.balancePoll && shouldRunStep(opts.only, "checking-cartola-xlsx")) {
+    } else if (cartolaXlsxListed) {
       results.push({ name: "checking cartola xlsx", ok: true, detail: `skipped — ${CARTOLA_XLSX_GATE_SKIP}` });
     }
 

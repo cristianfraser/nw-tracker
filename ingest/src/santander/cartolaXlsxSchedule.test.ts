@@ -2,9 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { SYNTHETIC_ACCOUNT, syntheticCartolaXlsx } from "./testdata/cartolaXlsxFixture.js";
 import {
   cartolaXlsxFetchEnabled,
-  cartolaXlsxMonthsOnFile,
+  filedCartolaXlsxMonths,
+  inboxCartolaXlsxMonths,
   lastClosedMonth,
   planCartolaXlsxDownloads,
   publicationDeadline,
@@ -12,10 +14,11 @@ import {
 } from "./cartolaXlsxSchedule.js";
 
 const dirs: string[] = [];
-function tempDir(files: string[]): string {
+function tempDir(files: string[] | Record<string, Buffer>): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cartola-xlsx-"));
   dirs.push(dir);
-  for (const f of files) fs.writeFileSync(path.join(dir, f), "");
+  const entries = Array.isArray(files) ? files.map((f) => [f, Buffer.alloc(0)] as const) : Object.entries(files);
+  for (const [f, bytes] of entries) fs.writeFileSync(path.join(dir, f), bytes);
   return dir;
 }
 afterEach(() => {
@@ -36,7 +39,7 @@ describe("cartola xlsx schedule", () => {
     const plan = planCartolaXlsxDownloads("2026-12-03", new Set(["2025-04", "2026-07"]));
     expect(plan.months).toEqual(["2026-08", "2026-09", "2026-10"]);
     expect(plan.reason).toContain("1 more on later runs");
-    expect(planCartolaXlsxDownloads("2026-12-03", new Set(["2026-07"]), 1).months).toEqual(["2026-08"]);
+    expect(planCartolaXlsxDownloads("2026-12-03", new Set(["2026-07"]), [], 1).months).toEqual(["2026-08"]);
   });
 
   it("never chases a gap older than the newest month on file", () => {
@@ -56,15 +59,48 @@ describe("cartola xlsx schedule", () => {
     expect(unpublishedIsOverdue("2026-08", "2026-12-01")).toBe(true);
   });
 
-  it("reads the months on file from the filed and the inbox names", () => {
+  it("keeps a reported month in the backlog after later months are on file", () => {
+    const plan = planCartolaXlsxDownloads("2026-12-03", new Set(["2026-07", "2026-09", "2026-10", "2026-11"]), ["2026-08"]);
+    expect(plan.months).toEqual(["2026-08"]);
+    expect(planCartolaXlsxDownloads("2026-12-03", new Set(["2026-07", "2026-08"]), ["2026-08"]).months).toEqual([
+      "2026-09",
+      "2026-10",
+      "2026-11",
+    ]);
+  });
+
+  it("counts in the organizer's folder only the organizer's own names", () => {
     const filed = tempDir([
       "2026-06-30 Cartola de cuenta Corriente - Junio 2026.xlsx",
       "2026-07-31 Cartola de cuenta Corriente - Julio 2026.xlsx",
+      // Dated names that are not the organizer's: another document, a cuenta vista cartola.
+      "2026-08-31 otro documento.xlsx",
+      "2026-09-30 cartola cuenta vista.xlsx",
       "notes.txt",
     ]);
-    const inbox = tempDir(["Cartola de cuenta Corriente - Agosto 2026.xlsx", "ultimos movimientos-Cuenta Corriente.xlsx"]);
-    const missing = path.join(filed, "absent");
-    expect([...cartolaXlsxMonthsOnFile([filed, inbox, missing])].sort()).toEqual(["2026-06", "2026-07", "2026-08"]);
+    expect([...filedCartolaXlsxMonths(filed)].sort()).toEqual(["2026-06", "2026-07"]);
+    expect(filedCartolaXlsxMonths(path.join(filed, "absent")).size).toBe(0);
+  });
+
+  it("counts an inbox workbook by its header, never by its name", () => {
+    const inbox = tempDir({
+      "Cartola de cuenta Corriente - Julio 2026.xlsx": syntheticCartolaXlsx(),
+      // Named like a checking cartola, but another account's / a cuenta vista's.
+      "Cartola de cuenta Corriente - Agosto 2026.xlsx": syntheticCartolaXlsx({
+        account: "0-070-00-55555-5",
+        desde: "31/07/2026",
+        hasta: "31/08/2026",
+      }),
+      "2026-09-30 Cartola de cuenta Corriente - Septiembre 2026.xlsx": syntheticCartolaXlsx({
+        type: "CUENTA VISTA",
+        desde: "31/08/2026",
+        hasta: "30/09/2026",
+      }),
+      // The right cartola under a name naming another month: the organizer would misfile it.
+      "Cartola de cuenta Corriente - Octubre 2026.xlsx": syntheticCartolaXlsx(),
+      "ultimos movimientos-Cuenta Corriente.xlsx": Buffer.from("<html>not a workbook</html>"),
+    });
+    expect([...inboxCartolaXlsxMonths(inbox, SYNTHETIC_ACCOUNT)]).toEqual(["2026-07"]);
   });
 
   it("keeps the step off unless its gate is set", () => {
