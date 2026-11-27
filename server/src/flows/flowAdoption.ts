@@ -129,7 +129,9 @@ export function adoptRetiredMovementFlow(movementId: number, dbHandle: Database 
  * retired with the same document on the same account (`retired_document_key`) is an earlier
  * incarnation of it holding what the user put on it — it folds into the kept flow (the kept
  * flow's assignments win, the older arrival stays: `mergeFlowInto`). Several are left alone, as an
- * inserted row leaves them (`adoptRetiredMovementFlow`). Returns the flow taken back, if any.
+ * inserted row leaves them (`adoptRetiredMovementFlow`). A flow a standing annulled card purchase
+ * names (`cc_annulled_purchases`) is that purchase, not an earlier incarnation of the row: it is
+ * never taken. Returns the flow taken back, if any.
  */
 export function foldRetiredFlowOfDocumentInto(
   keptFlowId: number,
@@ -142,7 +144,8 @@ export function foldRetiredFlowOfDocumentInto(
   const retired = dbHandle
     .prepare(
       `SELECT id FROM flows WHERE retired_on IS NOT NULL AND retired_source_table = ? AND retired_document_key = ?
-         AND (from_account_id = ? OR to_account_id = ?) AND id <> ?`
+         AND (from_account_id = ? OR to_account_id = ?) AND id <> ?
+         AND NOT EXISTS (SELECT 1 FROM cc_annulled_purchases a WHERE a.flow_id = flows.id)`
     )
     .all(table, documentKey, accountId, accountId, keptFlowId) as { id: number }[];
   if (retired.length !== 1) return null;

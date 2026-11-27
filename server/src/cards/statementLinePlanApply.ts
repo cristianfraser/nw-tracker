@@ -76,7 +76,8 @@ import { carryPlanPrepaymentLines } from "../ccPlanPrepayments.js";
 import { confirmManualPaymentForPlanted, listPlantedPaymentLines } from "../ccPlantedPayments.js";
 import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
 import { adoptFlow, flowExists, rowFlowId } from "../flows/flowAdoption.js";
-import { compareArrival, flowArrival, setFlowArrival } from "../flows/flowFirstSeen.js";
+import { compareArrival, flowArrival, olderArrival, setFlowArrival } from "../flows/flowFirstSeen.js";
+import { flowIdForKey } from "../flows/flowIdentity.js";
 import {
   adoptCardLineMoves,
   CC_LINE_REF_SELECT,
@@ -346,11 +347,16 @@ function applyInSession(
     const a = annulments.get(k.annulmentId);
     if (!a) throw new Error(`keep-rows apply: annulled purchase ${k.annulmentId} is gone`);
     const arriving = rowFlowId("cc_statement_lines", lineId);
-    if (flowExists(a.flow_id) && flowExists(arriving) && a.flow_id !== arriving) {
-      // The billed line was written unstamped so that it arrives as the purchase did: the
-      // annulment's arrival stays (the carry rule would read the new, unstamped flow as older).
-      const arrival = flowArrival(a.flow_id);
-      adoptFlow({ survivor: a.flow_id, arriving }, { prefer: "survivor", key: resolveCcExpensePurchaseKey(lineId), previousKey: a.purchase_key });
+    if (arriving == null) throw new Error(`keep-rows apply: billed line ${lineId} has no flow`);
+    if (flowExists(a.flow_id) && a.flow_id !== arriving) {
+      // The billed line was written unstamped so that it arrives as the purchase did: the result is
+      // the older arrival of every flow the adoption folds in (the annulment's, the flow its key
+      // answered to, the billed key's holder) but the billed line's own, whose missing stamp would
+      // read as older than any (`olderArrival`).
+      const key = resolveCcExpensePurchaseKey(lineId);
+      const folded = [flowIdForKey(a.purchase_key), flowIdForKey(key)].filter((f): f is number => f != null && f !== arriving && f !== a.flow_id);
+      const arrival = folded.reduce((acc, f) => olderArrival(acc, flowArrival(f)), flowArrival(a.flow_id));
+      adoptFlow({ survivor: a.flow_id, arriving }, { prefer: "survivor", key, previousKey: a.purchase_key });
       setFlowArrival(a.flow_id, arrival);
     }
     deleteAnnulledPurchase(a.id);
@@ -365,7 +371,8 @@ function applyInSession(
     const a = annulments.get(f.annulmentId);
     if (!a) throw new Error(`keep-rows apply: annulled purchase ${f.annulmentId} is gone`);
     const survivor = rowFlowId("cc_statement_lines", f.lineId);
-    if (flowExists(a.flow_id) && flowExists(survivor) && a.flow_id !== survivor) {
+    if (survivor == null) throw new Error(`keep-rows apply: line ${f.lineId} has no flow`);
+    if (flowExists(a.flow_id) && a.flow_id !== survivor) {
       // The earlier arrival's assignments win (ties: the line's).
       const prefer = compareArrival(flowArrival(a.flow_id), flowArrival(survivor)) < 0 ? "arriving" : "survivor";
       adoptFlow({ survivor, arriving: a.flow_id }, { prefer });

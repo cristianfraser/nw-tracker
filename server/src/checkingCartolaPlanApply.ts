@@ -13,7 +13,8 @@
  *  - `fold`: the row folds into the kept row (`foldMovementInto`);
  *  - `remove`: a daily row a transfer leg or a mail row already represents (its flow folds into
  *    that row's first, `foldListedRowIntoConfirmed`; a fold the two flows cannot make is reported),
- *    or a cartola row of a replaced month the new cartola no longer lists.
+ *    or a cartola row of a replaced month the new cartola no longer lists; a row a tax settlement or
+ *    payslip names is left as it is instead (`left_alone`, reported).
  *
  * Several daily rows of one movement fold into the earliest seen. The caller (`importCartolaList`)
  * applies a plan only to a month written for the first time or replaced; a restate or record that
@@ -47,6 +48,8 @@ export type CheckingCartolaPlanApplyResult = {
   flow_adoptions: NonNullable<RetiredMovementAdoption>[];
   /** Daily rows removed for a transfer leg or a mail row: folded into it, or refused (their flow went with them). */
   listed_row_folds: ListedRowFold[];
+  /** Rows the plan left as they are because a record names them (`CheckingCartolaPlan.left_alone`). */
+  left_alone: CheckingCartolaPlan["left_alone"];
 };
 
 /** Applies `plan` (planned for `cartola` on `accountId`, see the module doc), in one transaction. */
@@ -60,7 +63,7 @@ export function applyCheckingCartolaPlan(
   assertCheckingCartolaSaldoIdentity(cartola);
   const chainErr = validateCartolaSaldoChain(accountId, cartola, dbHandle);
   if (chainErr) throw new Error(`Cartola ${cartola.period_month} (${cartola.source_file}): ${chainErr}`);
-  const out: CheckingCartolaPlanApplyResult = { restated: [], inserted: [], folded: [], removed: [], confirmed: [], flow_adoptions: [], listed_row_folds: [] };
+  const out: CheckingCartolaPlanApplyResult = { restated: [], inserted: [], folded: [], removed: [], confirmed: [], flow_adoptions: [], listed_row_folds: [], left_alone: plan.left_alone };
   const kindOf = dbHandle.prepare(`SELECT source_kind FROM flow_evidence WHERE source_table = 'movements' AND source_row_id = ?`);
   dbHandle.transaction(() => {
     let wrote = 0;

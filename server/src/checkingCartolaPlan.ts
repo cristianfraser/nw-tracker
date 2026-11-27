@@ -16,7 +16,9 @@
  *  - `fold`: a row that is the same movement as a kept row (the earliest seen is kept);
  *  - `remove`: a daily row a transfer leg or a mail row already represents, or (a replaced month) a
  *    cartola row the new cartola no longer lists;
- *  - `ambiguous`: several retired flows for one document (left alone).
+ *  - `ambiguous`: several retired flows for one document (left alone);
+ *  - `left_alone`: a row the plan would remove or fold away that a tax settlement or a payslip names
+ *    (`named_by`): it stays, reported.
  *
  * The matchers: `pickTransferLegForBankRow`, `pickTransferNoticeMovementForBankRow`,
  * `checkingMovementContentMatches`. Daily rows pair one to one with movements (the Nth identical
@@ -49,7 +51,15 @@ export type CheckingFileRow = {
   /** Its listing's facts (cartola and daily-listing rows; `checkingCartolaPlanLoad.ts`'s adapter). */
   listed: CheckingListedFacts | null;
   arrival: FlowArrival;
+  /**
+   * Records that name the row by id and do not let it be deleted (a tax settlement; a payslip,
+   * which only a fold moves to the kept row): such a row is never removed or folded away.
+   */
+  named_by?: readonly string[];
 };
+
+/** The tables whose rows stop a movement's delete (`ON DELETE RESTRICT`, a payslip's plain reference). */
+export const MOVEMENT_DELETE_BLOCKERS = ["f22_settlements", "us_f1040_settlements", "payroll_work_earnings"] as const;
 
 /** One cartola movement with the identity the import writes it under. */
 export type CheckingCartolaMovement = ParsedCheckingMovement & {
@@ -88,11 +98,19 @@ export type CheckingCartolaPlan = {
   /** `movement` -1: a cartola row of a replaced month no movement of the new cartola keeps. */
   remove: { row_id: number; movement: number; why: "listed_by_transfer_leg" | "listed_by_mail" | "replaced_cartola_row" }[];
   ambiguous: { what: string; movement: number; flow_ids: number[] }[];
+  /**
+   * Rows the plan would remove or fold away that a record names (`named_by`): left as they are and
+   * reported. A daily row a transfer leg or mail row lists is held only by a tax settlement (its
+   * payslip moves to the kept row).
+   */
+  left_alone: { row_id: number; movement: number; why: "listed_by_transfer_leg" | "listed_by_mail" | "replaced_cartola_row" | "folded"; tables: string[] }[];
 };
 
 /** Plans one cartola month's import (see the module doc). */
 export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCartolaPlan {
-  const plan: CheckingCartolaPlan = { keep: [], confirm: [], insert: [], fold: [], remove: [], ambiguous: [] };
+  const plan: CheckingCartolaPlan = { keep: [], confirm: [], insert: [], fold: [], remove: [], ambiguous: [], left_alone: [] };
+  const holders = (rowId: number, payslipMoves: boolean): string[] =>
+    [...(input.rows.find((r) => r.id === rowId)?.named_by ?? [])].filter((t) => !(payslipMoves && t === "payroll_work_earnings"));
   const consumedLegs = new Set<number>();
   const legs = input.transfer_legs.map((l) => ({ ...l }));
   const consumedMail = new Set<number>();
@@ -210,15 +228,21 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
     if (!mv) continue;
     const via = viaLegOrMail.get(mv.index);
     if (via) {
-      plannedRemoved.push({ row_id: daily.id, movement: mv.index, why: via === "transfer_leg" ? "listed_by_transfer_leg" : "listed_by_mail" });
+      const why = via === "transfer_leg" ? "listed_by_transfer_leg" : "listed_by_mail";
+      const tables = holders(daily.id, true);
+      if (tables.length > 0) plan.left_alone.push({ row_id: daily.id, movement: mv.index, why, tables });
+      else plannedRemoved.push({ row_id: daily.id, movement: mv.index, why });
       continue;
     }
     plannedInto.set(mv.index, [...(plannedInto.get(mv.index) ?? []), daily.id]);
   }
 
   // Assemble: per movement, the rows on file that end on its row.
+  // The kept row is the earliest seen, unless a row a record holds must stay (a fold deletes the
+  // others; the earliest arrival's assignments still win, `foldMovementInto`).
+  const held = (id: number) => (holders(id, true).length > 0 ? 0 : 1);
   const earliest = (ids: number[]): number[] =>
-    [...ids].sort((a, b) => compareArrival(rowById.get(a)!.arrival, rowById.get(b)!.arrival) || a - b);
+    [...ids].sort((a, b) => held(a) - held(b) || compareArrival(rowById.get(a)!.arrival, rowById.get(b)!.arrival) || a - b);
   const redateOf = (rowId: number): { occurred_on: string; bank_day: string } | null => {
     const r = rowById.get(rowId);
     return r?.kind === "daily_listing" && r.listed && r.occurred_on !== r.listed.bank_day
@@ -237,7 +261,12 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
     const kept = members[0]!;
     const why = o.kind === "row" && kept === o.id ? o.why : "daily_listing";
     plan.keep.push({ row_id: kept, movement: mv.index, why, redate: redateOf(kept) });
-    for (const d of members.slice(1)) plan.fold.push({ row_id: d, into_row_id: kept, movement: mv.index, why: "daily_listing" });
+    for (const d of members.slice(1)) {
+      // The payslip moves with a fold; a tax settlement does not.
+      const tables = holders(d, true);
+      if (tables.length > 0) plan.left_alone.push({ row_id: d, movement: mv.index, why: "folded", tables });
+      else plan.fold.push({ row_id: d, into_row_id: kept, movement: mv.index, why: "daily_listing" });
+    }
   }
   plan.remove.push(...plannedRemoved);
   if (input.replace_month) {
@@ -266,7 +295,9 @@ export function planCheckingCartola(input: CheckingCartolaPlanInput): CheckingCa
     }
     for (const r of leftOver) {
       if (restated.has(r.id)) continue;
-      plan.remove.push({ row_id: r.id, movement: -1, why: "replaced_cartola_row" });
+      const tables = holders(r.id, false);
+      if (tables.length > 0) plan.left_alone.push({ row_id: r.id, movement: -1, why: "replaced_cartola_row", tables });
+      else plan.remove.push({ row_id: r.id, movement: -1, why: "replaced_cartola_row" });
     }
   }
   return plan;

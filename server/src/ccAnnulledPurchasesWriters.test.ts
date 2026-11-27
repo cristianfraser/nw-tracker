@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
-import { flowArrival, recordCardLineFlowFirstSeen } from "./flows/flowFirstSeen.js";
+import { flowArrival, recordCardLineFlowFirstSeen, recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { applyListing, balanceRow, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import { judgeLatestBankCupoCapture } from "./ccBankCupoCheck.js";
 import { annulledPurchaseOwedEvents, listAnnulledPurchases, annulOpenBucketLines } from "./ccAnnulledPurchases.js";
@@ -14,6 +14,9 @@ import { snapshotTables } from "./test/snapshotTables.js";
 import { applyLinePlan } from "./cards/lineWrites.js";
 import { getFlowCategory } from "./flows/flowCategories.js";
 import { getFlowNote, setFlowNote } from "./flows/flowNotes.js";
+import { foldRetiredFlowOfDocumentInto } from "./flows/flowAdoption.js";
+import { ensureFlowForKey, flowIdForKey } from "./flows/flowIdentity.js";
+import { planExpenseKey } from "./ccCrossImportDedupe.js";
 
 const restoreDerivedCardState = snapshotTables(["valuations", "cc_owed_anchors", "cc_billing_month_metrics"]);
 
@@ -175,6 +178,7 @@ describe("annulled purchases: the writers", () => {
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM flow_categories WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM flows WHERE from_account_id = ? OR to_account_id = ?`).run(accountId, accountId);
     db.prepare(`DELETE FROM import_batches WHERE raw_text LIKE ?`).run(`%"account_id":${accountId},%`);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);
@@ -382,7 +386,7 @@ describe("annulled purchases: the writers", () => {
       )
       .all(accountId) as { id: number; flow_id: number }[];
     expect(back).toHaveLength(1);
-    expect(again.relisted_annulments.map((r) => r.line_id)).toEqual([back[0]!.id]);
+    expect(again.relisted_annulments.map((r) => [r.outcome, r.row_id])).toEqual([["line", back[0]!.id]]);
     expect(back[0]!.flow_id).toBe(flow);
     expect(getFlowNote(accountId, resolveCcExpensePurchaseKey(back[0]!.id))).toBe("vitest: the user's note");
     expect(flowArrival(flow)).toEqual(arrival);
@@ -409,6 +413,89 @@ describe("annulled purchases: the writers", () => {
     expect(result.keep_rows.annulments_billed).toEqual([annulled[0]!.id]);
     expect(flowOfLine(lineId(written))).toBe(flow);
     expect(flowArrival(flow)).toEqual(arrival);
+  });
+
+  it("a purchase re-listed as a cuota plan's purchase hands the plan the annulment's flow", () => {
+    const sept = bucket();
+    const voided = insertLine(sept, "2026-09-10", "VITEST CUOTAS STORE", 90_000);
+    recordCardLineFlowFirstSeen(voided, "2026-09-10");
+    setFlowNote(accountId, resolveCcExpensePurchaseKey(voided), "vitest: bought in cuotas");
+    const flow = flowOfLine(voided);
+    const arrival = flowArrival(flow);
+    feed({ lines: [listingLine("2026-09-03", "VITEST TIENDA", 10_000)] });
+    expect(annulments()).toHaveLength(1);
+    // The bank re-bills it as a cuota purchase: a plan is on file, so its listing row is skipped.
+    const planId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_installment_purchases (account_id, card_group, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, merchant, source)
+           VALUES (?, ?, 'vitest-annul-plan', '2026-09-10', 90000, 3, 'VITEST CUOTAS STORE', 'manual')`
+        )
+        .run(accountId, CARD_GROUP).lastInsertRowid
+    );
+    recordPlanFlowFirstSeen(planId); // a plan written new arrives now
+    vi.setSystemTime(new Date("2026-09-21T15:00:00Z"));
+    const again = feed({
+      lines: [listingLine("2026-09-03", "VITEST TIENDA", 10_000), listingLine("2026-09-10", "VITEST CUOTAS STORE", 90_000)],
+      observedAt: "2026-09-21T12:00:00.000Z",
+    });
+    expect(again.relisted_annulments.map((r) => [r.outcome, r.row_id])).toEqual([["plan", planId]]);
+    expect(annulments()).toEqual([]);
+    const plan = db.prepare(`SELECT purchase_date, total_amount_clp, cuotas_totales, merchant FROM cc_installment_purchases WHERE id = ?`).get(planId) as Parameters<typeof planExpenseKey>[1];
+    const planKey = planExpenseKey(accountId, plan)!;
+    expect(getFlowNote(accountId, planKey)).toBe("vitest: bought in cuotas");
+    expect(flowArrival(flowIdForKey(planKey)!)).toEqual(arrival);
+  });
+
+  it("a re-listing no row stands for leaves the annulment standing", () => {
+    const sept = bucket();
+    insertLine(sept, "2026-09-10", "VITEST TWIN STANDING", 6_000);
+    insertLine(sept, "2026-09-10", "VITEST TWIN STANDING", 6_000, false);
+    feed({ lines: [listingLine("2026-09-03", "VITEST TIENDA", 10_000)] });
+    expect(annulments()).toHaveLength(2);
+    // Both are listed again: two identical rows and two identical annulments cannot be told apart.
+    const again = feed({
+      lines: [
+        listingLine("2026-09-03", "VITEST TIENDA", 10_000),
+        listingLine("2026-09-10", "VITEST TWIN STANDING", 6_000),
+        listingLine("2026-09-10", "VITEST TWIN STANDING", 6_000),
+      ],
+      observedAt: "2026-09-20T12:00:00.000Z",
+    });
+    expect(again.relisted_annulments.map((r) => r.outcome)).toEqual(["left_standing", "left_standing"]);
+    expect(annulments().map((a) => a.flow_id != null)).toEqual([true, true]);
+  });
+
+  it("a standing annulment's flow is no earlier incarnation of another line's document", () => {
+    const sept = bucket();
+    const voided = insertLine(sept, "2026-09-10", "VITEST KEPT VOID", 3_000);
+    const flow = flowOfLine(voided);
+    const { plan } = annulOpenBucketLines(accountId, [voided], { annulledOn: "2026-09-12", basis: "feed_drop", evidence: "vitest" });
+    applyLinePlan(accountId, "vitest annul", plan);
+    const doc = (db.prepare(`SELECT retired_document_key AS k FROM flows WHERE id = ?`).get(flow) as { k: string | null }).k;
+    expect(doc).not.toBeNull();
+    const other = insertLine(sept, "2026-09-11", "VITEST OTHER", 3_000);
+    expect(foldRetiredFlowOfDocumentInto(flowOfLine(other), "cc_statement_lines", accountId, doc)).toBeNull();
+    expect(annulments()[0]!.flow_id).toBe(flow);
+  });
+
+  it("a billed annulment keeps the older arrival of what its billed key folds in", () => {
+    vi.setSystemTime(new Date("2026-09-26T15:00:00Z"));
+    const sept = bucket();
+    const was = insertLine(sept, "2026-09-06", "VITEST HOLDER", 4_500);
+    recordCardLineFlowFirstSeen(was, "2026-09-06");
+    const { plan, annulled } = annulOpenBucketLines(accountId, [was], { annulledOn: "2026-09-12", basis: "feed_drop", evidence: "vitest" });
+    applyLinePlan(accountId, "vitest annul", plan);
+    const stmt = septemberStatement();
+    const written = insertLine(stmt, "2026-09-07", "VITEST HOLDER", 4_500);
+    // The billed key's holder: a flow on file before the stamps (keyed, unstamped).
+    const holder = ensureFlowForKey(resolveCcExpensePurchaseKey(written));
+    db.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(holder);
+    expect(flowArrival(holder).kind).toBe("before_stamps");
+    const { result, lineId } = importStatementOnFile(accountId, [stmt]);
+    expect(result.keep_rows.annulments_billed).toEqual([annulled[0]!.id]);
+    expect(flowOfLine(lineId(written))).toBe(annulled[0]!.flow_id);
+    expect(flowArrival(annulled[0]!.flow_id!)).toEqual({ kind: "before_stamps" });
   });
 
   it("does not let a still-listed twin undo its voided sibling's annulment", () => {

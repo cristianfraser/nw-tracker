@@ -198,7 +198,11 @@ export function foldListedRowIntoConfirmed(movementId: number, keptMovementId: n
   });
   if (row.flow_id === kept.flow_id) return out("folded", null);
   const conflict = listedRowFoldConflict(row.flow_id, kept.flow_id, keptIsTransfer, dbHandle);
-  if (conflict) return out("refused", conflict);
+  if (conflict) {
+    // The payslip names the money, which the kept row lists: it moves even when the flows cannot.
+    repointMovementReferences(movementId, keptMovementId, dbHandle);
+    return out("refused", conflict);
+  }
   const prefer = compareArrival(flowArrival(row.flow_id, dbHandle), flowArrival(kept.flow_id, dbHandle)) < 0 ? "from" : "to";
   mergeFlowInto(row.flow_id, kept.flow_id, prefer, dbHandle);
   keepEvidenceAsHistory(dbHandle, "movements", movementId);

@@ -3,7 +3,7 @@ import type { RetiredMovementAdoption } from "./flows/flowAdoption.js";
 import { deleteAccountMovements, deleteMovements } from "./movementWrites.js";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
-import { planCheckingCartola } from "./checkingCartolaPlan.js";
+import { planCheckingCartola, type CheckingCartolaPlan } from "./checkingCartolaPlan.js";
 import { loadCheckingCartolaPlanInput } from "./checkingCartolaPlanLoad.js";
 import { applyCheckingCartolaPlan } from "./checkingCartolaPlanApply.js";
 import type { ListedRowFold } from "./checkingCartolaRestate.js";
@@ -194,6 +194,8 @@ export type CheckingCartolaImportResult = {
   flow_adoptions: NonNullable<RetiredMovementAdoption>[];
   /** Daily rows removed for a transfer leg or a mail row: folded into that row, or refused (reported). */
   listed_row_folds: ListedRowFold[];
+  /** Rows the cartola would remove or fold away that a tax settlement or payslip names: left as they are. */
+  left_alone: CheckingCartolaPlan["left_alone"];
 };
 
 /**
@@ -237,6 +239,7 @@ export function importCheckingCartola(
     skipped_flows,
     flow_adoptions: applied.flow_adoptions,
     listed_row_folds: applied.listed_row_folds,
+    left_alone: applied.left_alone,
   };
 }
 
@@ -442,6 +445,12 @@ export function importCartolaList(
         console.log(
           `  cartola ${cartola.period_month}: REMOVED WITHOUT FOLDING (what was filed on them is not on the kept row): ` +
             refused.map((f) => `daily row ${f.row_id} → ${f.kept_row_id} (${f.reason})`).join("; ")
+        );
+      }
+      if (r.left_alone.length > 0) {
+        console.log(
+          `  cartola ${cartola.period_month}: LEFT AS THEY ARE (a record names them; the month lists their money elsewhere): ` +
+            r.left_alone.map((x) => `row ${x.row_id} (${x.why}; ${x.tables.join(", ")})`).join("; ")
         );
       }
       const dropped = r.listed_row_folds.filter((f) => f.records_dropped.length > 0);
