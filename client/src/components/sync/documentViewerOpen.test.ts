@@ -4,11 +4,8 @@ import { documentClickOpensViewer, type DocumentLinkClick } from "./documentView
 const plain: DocumentLinkClick = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
 
 describe("documentClickOpensViewer", () => {
-  it("opens the viewer on a plain click, except a PDF on the narrow layout", () => {
-    expect(documentClickOpensViewer("pdf", false, plain)).toBe(true);
-    expect(documentClickOpensViewer("sheet", false, plain)).toBe(true);
-    expect(documentClickOpensViewer("sheet", true, plain)).toBe(true);
-    expect(documentClickOpensViewer("pdf", true, plain)).toBe(false);
+  it("opens the viewer on a plain click", () => {
+    expect(documentClickOpensViewer(plain)).toBe(true);
   });
 
   it("leaves a modified or non-primary click to the browser", () => {
@@ -19,8 +16,7 @@ describe("documentClickOpensViewer", () => {
       { ...plain, altKey: true },
       { ...plain, button: 1 },
     ]) {
-      expect(documentClickOpensViewer("pdf", false, click)).toBe(false);
-      expect(documentClickOpensViewer("sheet", true, click)).toBe(false);
+      expect(documentClickOpensViewer(click)).toBe(false);
     }
   });
 });

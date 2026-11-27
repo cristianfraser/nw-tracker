@@ -34,13 +34,15 @@ export function registerClientDistStatic(app: express.Express): void {
   );
   app.use(express.static(distDir, { index: false }));
   // SPA fallback: any other non-API GET navigates to the client router. Missing /assets
-  // files (stale HTML referencing an old hash) must 404, never return index.html.
+  // files (stale HTML referencing an old hash) and missing /pdfjs data files (fonts, decoders an
+  // older tab's pdf.js asks for) must 404, never return index.html.
   app.use((req, res, next) => {
     if (
       (req.method !== "GET" && req.method !== "HEAD") ||
       req.path === "/api" ||
       req.path.startsWith("/api/") ||
-      req.path.startsWith("/assets/")
+      req.path.startsWith("/assets/") ||
+      req.path.startsWith("/pdfjs/")
     ) {
       next();
       return;

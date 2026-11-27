@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { resolveVersionInfo } from "../scripts/version-info.mjs";
+import { pdfjsAssets } from "./scripts/vite-pdfjs-assets.mjs";
 
 // Cloudflare Web Analytics token, substituted into %VITE_CF_ANALYTICS_TOKEN% in
 // index.html. Default to "" so Vite doesn't warn about an undefined var on every
@@ -19,7 +20,8 @@ const apiProxy = {
 };
 
 export default defineConfig({
-  plugins: [react()],
+  // pdfjsAssets: pdf.js's fonts and decoders for the document viewer (scripts/vite-pdfjs-assets.mjs).
+  plugins: [react(), pdfjsAssets()],
   // Bake the client version into the bundle (dev-server start / build time). The
   // server reports its own version at /api/health — see scripts/version-info.mjs.
   define: { __NW_CLIENT_VERSION__: JSON.stringify(resolveVersionInfo()) },

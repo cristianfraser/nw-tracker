@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { apiHref } from "../../api";
 import { formatMonthShortLabel } from "../../formatDateLabel";
 import { useTranslation } from "../../i18n";
-import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 import type {
   ImportSyncDocumentAccount,
   ImportSyncDocumentCell,
@@ -19,7 +18,7 @@ import {
   type AvailableDocumentsColumn,
 } from "./availableDocumentsColumns";
 import { DocumentViewerModal, type DocumentViewerTarget } from "./DocumentViewerModal";
-import { documentClickOpensViewer, plainClickOpensViewer } from "./documentViewerOpen";
+import { documentClickOpensViewer } from "./documentViewerOpen";
 import styles from "./AvailableDocumentsTable.module.css";
 
 type T = (key: string, opts?: Record<string, string | number>) => string;
@@ -88,7 +87,6 @@ function CoverageCell({
   cell,
   month,
   className,
-  narrowViewport,
   onOpen,
   t,
 }: {
@@ -96,7 +94,6 @@ function CoverageCell({
   cell: ImportSyncDocumentCell;
   month: string;
   className?: string;
-  narrowViewport: boolean;
   onOpen: OpenDocument;
   t: T;
 }) {
@@ -116,9 +113,9 @@ function CoverageCell({
           className={styles.cellLink}
           title={`${doc.file_name}\n${label}`}
           aria-label={label}
-          aria-haspopup={plainClickOpensViewer(doc.preview_kind, narrowViewport) ? "dialog" : undefined}
+          aria-haspopup="dialog"
           onClick={(e) => {
-            if (!documentClickOpensViewer(doc.preview_kind, narrowViewport, e)) return;
+            if (!documentClickOpensViewer(e)) return;
             e.preventDefault();
             onOpen({ columnName: name, month, document: doc });
           }}
@@ -187,14 +184,12 @@ function YearMatrix({
   year,
   data,
   columns,
-  narrowViewport,
   onOpen,
   t,
 }: {
   year: ImportSyncDocumentYear;
   data: ImportSyncDocumentCoverageResponse;
   columns: AvailableDocumentsColumn[];
-  narrowViewport: boolean;
   onOpen: OpenDocument;
   t: T;
 }) {
@@ -212,7 +207,6 @@ function YearMatrix({
               cell={cells[monthIdx]![accountIndex]!}
               month={ym}
               className={className}
-              narrowViewport={narrowViewport}
               onOpen={onOpen}
               t={t}
             />
@@ -246,9 +240,6 @@ export function AvailableDocumentsTable({
   loading?: boolean;
 }) {
   const { t } = useTranslation();
-  // A PDF on the narrow layout opens in a tab: the width is a proxy for browsers that do not show
-  // a PDF in an iframe (mobile ones).
-  const narrowViewport = useIsNarrowViewport();
   // One viewer for the whole matrix, open on the clicked cell's document.
   const [viewing, setViewing] = useState<DocumentViewerTarget | null>(null);
   const accounts = data?.accounts ?? [];
@@ -300,7 +291,6 @@ export function AvailableDocumentsTable({
                       ? year.columns[col.accountIndex] != null
                       : year.columns[col.usdIndex] != null || year.columns[col.clpIndex] != null
                   )}
-                  narrowViewport={narrowViewport}
                   onOpen={setViewing}
                   t={t}
                 />

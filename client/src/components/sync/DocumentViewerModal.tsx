@@ -8,6 +8,7 @@ import { queryLoadError, queryShowsLoading } from "../../queries/pageShapeReady"
 import type { ImportSyncDocumentRef, ImportSyncSheetPreviewResponse } from "../../types";
 import { Loadable } from "../ui/Loadable";
 import { Modal } from "../ui/Modal";
+import { PdfPreview } from "./PdfPreview";
 import styles from "./DocumentViewerModal.module.css";
 
 /** The cell a viewer shows: its column's name, its month and the server's links to the file. */
@@ -107,8 +108,8 @@ function SheetPreview({ sheetHref }: { sheetHref: string }) {
 }
 
 /**
- * A month's source document in a tall dialog: a PDF in the browser's own viewer, a workbook as a
- * table of its cells. Download (and, for a PDF, a new tab) stay at hand below. Mounted only
+ * A month's source document in a tall dialog: a PDF drawn by pdf.js, a workbook as a table of its
+ * cells. Download (and, for a PDF, a new tab) stay at hand below. Mounted only
  * while open, so neither the frame nor the sheet request outlives it.
  */
 export function DocumentViewerModal({ target, onClose }: { target: DocumentViewerTarget; onClose: () => void }) {
@@ -142,7 +143,7 @@ export function DocumentViewerModal({ target, onClose }: { target: DocumentViewe
       }
     >
       {doc.preview_kind === "pdf" ? (
-        <iframe className={styles.frame} src={apiHref(doc.view_href)} title={t("importSync.viewer.pdfFrameTitle", { file: doc.file_name })} />
+        <PdfPreview key={doc.view_href} url={apiHref(doc.view_href)} />
       ) : (
         <SheetPreview sheetHref={doc.sheet_href} />
       )}

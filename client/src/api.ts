@@ -10,7 +10,7 @@ import { attachLiveInputs, LIVE_INPUTS_HEADER, parseLiveInputs, type LiveQuoteMo
 const base = () => import.meta.env.VITE_API_URL ?? "";
 
 /**
- * A server-built `/api/…` link (an `<a href>`, an `<iframe src>`) resolved against the same API
+ * A server-built `/api/…` link (an `<a href>`, a URL pdf.js reads) resolved against the same API
  * base every request uses, so it reaches the server in dev (Vite proxy) and production alike.
  */
 export function apiHref(path: string): string {

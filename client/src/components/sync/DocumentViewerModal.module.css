@@ -1,5 +1,5 @@
 /* The import-sync document viewer (DocumentViewerModal.tsx): a wide, tall dialog whose body is
-   the document — a PDF frame or a workbook's table, which scrolls inside the body. The class is
+   the document — the PDF's pages or a workbook's table, which scroll inside the body. The class is
    doubled on the rules that override Modal.module.css, so they win whatever the stylesheet order. */
 .dialog.dialog {
   width: min(1100px, 95vw);
@@ -23,14 +23,6 @@
   max-height: none;
   padding: 0;
   overflow: hidden;
-}
-
-.frame {
-  flex: 1;
-  width: 100%;
-  min-height: 0;
-  border: 0;
-  background: var(--surface2);
 }
 
 .sheetFrame {
