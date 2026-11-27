@@ -902,6 +902,7 @@ export function deptoProjection(args: {
   return {
     monthly_rate: rate,
     usual,
+    usual_payment_loan: usualPaymentLoan,
     minimum,
     saving: {
       interest_loan: savingLoan,

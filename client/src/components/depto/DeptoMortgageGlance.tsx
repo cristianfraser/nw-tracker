@@ -126,11 +126,9 @@ export function DeptoProjection({
       <div className={styles.payoff}>
         <div>
           <div className={styles.q}>
-            {usual.amortization_loan != null
-              ? t("accountDetail.depto.usualPace", {
-                  amount: formatMoney({ value: usual.amortization_loan, currency: loanCurrency }, { precision: "full" }),
-                })
-              : null}
+            {t("accountDetail.depto.usualPace", {
+              amount: formatMoney({ value: projection.usual_payment_loan, currency: loanCurrency }),
+            })}
           </div>
           <div className={cn("mono", styles.payoffKey, styles.acc)}>{usual.end_date}</div>
           <div className={cn("mono", styles.q)}>

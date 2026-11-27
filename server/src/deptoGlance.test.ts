@@ -324,6 +324,7 @@ describe("the property and mortgage pages on one ledger", () => {
 
     const proj = g.mortgage.projection!;
     expect(proj.usual.amortization_loan).toBeCloseTo(10, 3);
+    expect(proj.usual_payment_loan).toBe(proj.terms.find((t) => t.highlighted)!.payment_loan);
     expect(proj.usual.cuotas).toBe(276);
     expect(proj.minimum.cuotas).toBe(360 - 4);
     expect(proj.saving.interest_loan).toBeCloseTo(proj.minimum.interest_loan - proj.usual.interest_loan, 9);

@@ -935,6 +935,8 @@ export interface DeptoProjectionDto {
   monthly_rate: number;
   /** The usual pace: median amortization (scheduled + extra) of the last five regular cuotas. */
   usual: DeptoPayoffPathDto;
+  /** The usual pace's next cuota in full (loan currency): its amortization, interest on today's balance, insurance. */
+  usual_payment_loan: number;
   /** The minimum: an annuity ending at the loan's full term (the minimum scenario's, 30 years). */
   minimum: DeptoPayoffPathDto;
   saving: { interest_loan: number; interest: number; years_earlier: number };
