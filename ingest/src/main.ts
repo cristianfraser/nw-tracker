@@ -32,7 +32,8 @@ Options:
   --balance-poll     Santander: send the login's balances to the server and read only the
                      movements of the products that disagree with the app (the hourly poll).
   --only=a,b         Run only these steps, so a re-test costs no extra requests.
-                     santander: card-movements, checking-movements, checking-usd-movements, card-statements
+                     santander: card-movements, checking-movements, checking-usd-movements,
+                                checking-cartola-xlsx, card-statements
                      racional:  movements, positions
                      afp-uno:   capture (supervised: --capture, no --background);
                                 the nightly read is npm run fetch:afp-uno

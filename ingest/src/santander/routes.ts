@@ -62,8 +62,16 @@ export const SELECTOR = {
 /** Text triggers, matched case-insensitively so accents/casing changes don't break the run. */
 export const TEXT = {
   downloadCheckingMovements: /descargar\s+últimos\s+movimientos/i,
+  /** The movements view's link to its CARTOLAS view (2026-08-05; the view's own tab is `cartolasTab`). */
   goToCartolas: /ir\s+a\s+cartolas/i,
+  /** The account views' CARTOLAS tab (beside MI CUENTA and MOVIMIENTOS, 2026-08-05 screenshot). */
+  cartolasTab: /^\s*cartolas\s*$/i,
+  /** A listed cartola's Excel link (beside «Descargar PDF»). */
   downloadExcel: /descargar\s+excel/i,
+  /** The cartolas view's month search (seen 2026-08-05, never opened by the session). */
+  searchByDate: /buscar\s+por\s+fecha/i,
+  /** UNCONFIRMED: the month search's confirm button. */
+  searchConfirm: /^\s*(buscar|consultar|aceptar)\s*$/i,
   viewStatement: /ver\s+estado\s+de\s+cuenta/i,
   payBy: /pagar\s+hasta:?\s*(\d{2})\/(\d{2})\/(\d{4})/i,
   /** Currency tabs above the movements table — USD only loads once "Dólares" is clicked. */
