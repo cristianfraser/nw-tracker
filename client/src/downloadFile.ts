@@ -1,7 +1,8 @@
+import { apiHref } from "./api";
+
 /** Binary download through fetch ; errors surface as JSON `error`. */
 export async function downloadFile(path: string): Promise<void> {
-  const base = import.meta.env.VITE_API_URL ?? "";
-  const res = await fetch(`${base}${path}`);
+  const res = await fetch(apiHref(path));
   if (!res.ok) {
     const text = await res.text();
     let message = text || res.statusText;

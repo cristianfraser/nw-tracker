@@ -21,6 +21,8 @@ export type ModalProps = {
   /** Pinned below the scrollable body (e.g. bulk actions). */
   footer?: ReactNode;
   className?: string;
+  /** Layered on the scrollable body (e.g. a document viewer that fills a tall dialog). */
+  bodyClassName?: string;
   closeAriaLabel?: string;
   /** Prev/next period chevrons flanking the title (period-detail modals). */
   titleNav?: ModalTitleNav;
@@ -35,6 +37,7 @@ export function Modal({
   children,
   footer,
   className,
+  bodyClassName,
   closeAriaLabel = "Close",
   titleNav,
 }: ModalProps) {
@@ -145,7 +148,7 @@ export function Modal({
           ×
         </Button>
       </header>
-      <div className={styles.body}>{children}</div>
+      <div className={cn(styles.body, bodyClassName)}>{children}</div>
       {footer ? <footer className={styles.footer}>{footer}</footer> : null}
     </dialog>
   );

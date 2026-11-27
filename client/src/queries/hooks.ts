@@ -551,6 +551,14 @@ export function useImportSyncDocumentCoverage() {
   });
 }
 
+/** A workbook's sheets, for the document viewer (mounted only while it shows one). */
+export function useImportSyncSheetPreview(sheetHref: string) {
+  return useQuery({
+    queryKey: queryKeys.importSyncSheetPreview(sheetHref),
+    queryFn: () => api.importSyncSheetPreview(sheetHref),
+  });
+}
+
 export function useGenericUniqueMerchants() {
   return useQuery({
     queryKey: queryKeys.genericUniqueMerchants(),

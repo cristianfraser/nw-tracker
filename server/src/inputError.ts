@@ -1,7 +1,10 @@
 import type express from "express";
 
-/** What a request got wrong: its content (400), the row it names (404), the state that row is in (409). */
-export type InputErrorStatus = 400 | 404 | 409;
+/**
+ * What a request got wrong: its content (400), the row it names (404), the state that row is in
+ * (409), the size of what it asks for (413).
+ */
+export type InputErrorStatus = 400 | 404 | 409 | 413;
 
 /**
  * A request the user can fix (a bad date, an unknown category, a line that is not a bucket line):

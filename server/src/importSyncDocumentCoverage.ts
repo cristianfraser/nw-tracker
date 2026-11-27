@@ -1,20 +1,18 @@
 import { ymCompare, monthKeyFromYmd } from "./calendarMonth.js";
-import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { assertCcStatementsHavePeriodTo } from "./ccStatementMetadata.js";
-import { db } from "./db.js";
 import {
   assertAllCcStatementPdfsResolvable,
   buildImportSyncDocumentMonths,
-  buildImportSyncDocumentPathsByMonth,
-  ccCreditCardAccountHasUsdStatements,
   hasImportSyncDocumentForMonth,
 } from "./importSyncDocumentFilePath.js";
 import { importSyncCartolaSinMovimientosForMonth } from "./importSyncCartolaSinMovimientos.js";
-import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
+import { listImportSyncDocumentAccounts } from "./importSyncDocumentAccounts.js";
+import { importSyncDocumentPathsByMonth, importSyncDocumentRef } from "./importSyncDocumentFile.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
 
 import type { ImportSyncDocumentAccount } from "./importSyncDocumentTypes.js";
+import type { ImportSyncDocumentRef } from "nw-tracker-contracts/dto/sync";
 
 export type {
   CcStatementCoverageCurrency,
@@ -39,7 +37,8 @@ export type ImportSyncDocumentCellState =
 
 export type ImportSyncDocumentCell = {
   imported: boolean;
-  file_path: string | null;
+  /** The month's source file on disk, as the page opens it (`importSyncDocumentRef`). */
+  document: ImportSyncDocumentRef | null;
   /** Cartola for this month has no imported movements (○ marker). */
   file_sin_movimientos?: boolean;
   state: ImportSyncDocumentCellState;
@@ -75,12 +74,19 @@ export type ImportSyncDocumentCoveragePayload = {
   years: ImportSyncDocumentYear[];
 };
 
-function cellState(c: { imported: boolean; file_path: string | null; file_sin_movimientos: boolean }): Exclude<ImportSyncDocumentCellState, "before_first" | "not_due"> {
+/** A month's cell before the coverage marks the months before the first document and the one in progress. */
+export type RawImportSyncDocumentCell = {
+  imported: boolean;
+  document: ImportSyncDocumentRef | null;
+  file_sin_movimientos: boolean;
+};
+
+function cellState(c: RawImportSyncDocumentCell): Exclude<ImportSyncDocumentCellState, "before_first" | "not_due"> {
   if (c.imported) {
     if (c.file_sin_movimientos) return "no_movements";
-    return c.file_path ? "imported" : "imported_no_file";
+    return c.document ? "imported" : "imported_no_file";
   }
-  return c.file_path ? "file_not_imported" : "missing";
+  return c.document ? "file_not_imported" : "missing";
 }
 
 /**
@@ -90,14 +96,14 @@ function cellState(c: { imported: boolean; file_path: string | null; file_sin_mo
 export function buildImportSyncDocumentYears(
   months: string[],
   columnCount: number,
-  rawCells: { imported: boolean; file_path: string | null; file_sin_movimientos: boolean }[][],
+  rawCells: RawImportSyncDocumentCell[][],
   currentYm: string
 ): { cells: ImportSyncDocumentCell[][]; years: ImportSyncDocumentYear[] } {
   // `months` is newest first: a column's first document is its LAST row holding one.
   const firstRow = Array.from({ length: columnCount }, (_, col) => {
     for (let row = months.length - 1; row >= 0; row -= 1) {
       const c = rawCells[row]![col]!;
-      if (c.imported || c.file_path) return row;
+      if (c.imported || c.document) return row;
     }
     return -1;
   });
@@ -134,57 +140,6 @@ export function buildImportSyncDocumentYears(
   return { cells, years };
 }
 
-function accountLabel(accountId: number): string {
-  const row = db.prepare(`SELECT name FROM accounts WHERE id = ?`).get(accountId) as
-    | { name: string }
-    | undefined;
-  return row?.name?.trim() || `Account ${accountId}`;
-}
-
-function listDocumentAccounts(): ImportSyncDocumentAccount[] {
-  const accounts: ImportSyncDocumentAccount[] = [];
-  const checkingId = cartolaCashAccountIdOptional("cuenta_corriente");
-  if (checkingId != null) {
-    accounts.push({
-      account_id: checkingId,
-      label: accountLabel(checkingId),
-      document_kind: "checking_cartola",
-    });
-  }
-  const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
-  if (vistaId != null) {
-    accounts.push({
-      account_id: vistaId,
-      label: accountLabel(vistaId),
-      document_kind: "cuenta_vista_cartola",
-    });
-  }
-  for (const accountId of listCreditCardMasterAccountIds()) {
-    const label = accountLabel(accountId);
-    if (ccCreditCardAccountHasUsdStatements(accountId)) {
-      accounts.push({
-        account_id: accountId,
-        label,
-        document_kind: "cc_statement",
-        cc_statement_currency: "clp",
-      });
-      accounts.push({
-        account_id: accountId,
-        label,
-        document_kind: "cc_statement",
-        cc_statement_currency: "usd",
-      });
-    } else {
-      accounts.push({
-        account_id: accountId,
-        label,
-        document_kind: "cc_statement",
-      });
-    }
-  }
-  return accounts;
-}
-
 function buildMonthRangeDesc(currentYm: string, earliestYm: string | null): string[] {
   if (!earliestYm || ymCompare(earliestYm, currentYm) > 0) {
     return [currentYm];
@@ -211,12 +166,12 @@ export function buildImportSyncDocumentCoveragePayload(
     assertCcStatementsHavePeriodTo();
     assertAllCcStatementPdfsResolvable();
   }
-  const accounts = listDocumentAccounts();
+  const accounts = listImportSyncDocumentAccounts();
   const currentYm = monthKeyFromYmd(chileCalendarTodayYmd());
 
   let earliestYm: string | null = null;
   const byAccount = accounts.map((acc) => {
-    const filePaths = buildImportSyncDocumentPathsByMonth(acc);
+    const filePaths = importSyncDocumentPathsByMonth(acc);
     const months = buildImportSyncDocumentMonths(acc);
     for (const ym of months) {
       if (earliestYm == null || ymCompare(ym, earliestYm) < 0) {
@@ -229,7 +184,7 @@ export function buildImportSyncDocumentCoveragePayload(
   const monthList = buildMonthRangeDesc(currentYm, earliestYm);
   const rawCells = monthList.map((rowMonth) =>
     accounts.map((acc, accIdx) => {
-      const file_path = byAccount[accIdx]?.filePaths.get(rowMonth) ?? null;
+      const filePath = byAccount[accIdx]?.filePaths.get(rowMonth) ?? null;
       const imported = hasImportSyncDocumentForMonth(acc, rowMonth);
       const file_sin_movimientos =
         acc.document_kind === "checking_cartola" ||
@@ -237,10 +192,11 @@ export function buildImportSyncDocumentCoveragePayload(
           ? importSyncCartolaSinMovimientosForMonth({
               accountId: acc.account_id,
               documentKind: acc.document_kind,
-              filePath: file_path,
+              filePath,
             })
           : false;
-      return { imported, file_path, file_sin_movimientos };
+      const document = filePath == null ? null : importSyncDocumentRef(acc, rowMonth, filePath);
+      return { imported, document, file_sin_movimientos };
     })
   );
 

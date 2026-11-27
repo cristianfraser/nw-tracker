@@ -155,6 +155,17 @@ export function formatGroupedDecimalTrimmed(n: number): string {
   return normalizeIntlNum(numFmt(0, 2).format(n));
 }
 
+/**
+ * Grouped digits with every fraction digit the number has (a spreadsheet cell's raw value:
+ * `1234.5678` → `1.234,5678`), nothing rounded to a currency's digits.
+ */
+export function formatGroupedDecimalExact(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  // `Intl.NumberFormat` takes at most 100 fraction digits; `n + 0` prints -0 as 0.
+  const frac = Math.min(100, plainDecimalString(Math.abs(n)).split(".")[1]?.length ?? 0);
+  return normalizeIntlNum(numFmt(frac, frac).format(n + 0));
+}
+
 /** Grouped digits with a fixed fraction-digit range in the active separator convention. */
 export function formatGroupedDecimal(n: number, minFrac: number, maxFrac = minFrac): string {
   if (!Number.isFinite(n)) return "—";

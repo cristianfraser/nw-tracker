@@ -1967,6 +1967,76 @@
         "es": "{{account}}: archivo de {{month}} en disco, sin importar"
       }
     },
+    "viewer": {
+      "title": {
+        "en": "{{account}} · {{month}}",
+        "es": "{{account}} · {{month}}"
+      },
+      "pdfLoadFailed": {
+        "en": "This PDF could not be shown.",
+        "es": "No se pudo mostrar este PDF."
+      },
+      "pdfMissing": {
+        "en": "This file is no longer on the server.",
+        "es": "Este archivo ya no está en el servidor."
+      },
+      "pdfInvalid": {
+        "en": "This file is not a readable PDF (it may be damaged).",
+        "es": "Este archivo no es un PDF legible (puede estar dañado)."
+      },
+      "pdfPasswordProtected": {
+        "en": "This PDF is password-protected. Use «{{action}}»: the browser's viewer asks for the password.",
+        "es": "Este PDF tiene contraseña. Usa «{{action}}»: el visor del navegador la pide."
+      },
+      "pagesLabel": {
+        "en": "PDF pages",
+        "es": "Páginas del PDF"
+      },
+      "pageCount": {
+        "en": "{{n}} pages",
+        "es": "{{n}} páginas"
+      },
+      "pageCountOne": {
+        "en": "1 page",
+        "es": "1 página"
+      },
+      "zoomLabel": {
+        "en": "Zoom",
+        "es": "Zoom"
+      },
+      "zoomOut": {
+        "en": "Zoom out",
+        "es": "Alejar"
+      },
+      "zoomIn": {
+        "en": "Zoom in",
+        "es": "Acercar"
+      },
+      "fitWidth": {
+        "en": "Fit",
+        "es": "Ajustar"
+      },
+      "fitWidthName": {
+        "en": "Fit to width",
+        "es": "Ajustar al ancho"
+      },
+      "download": {
+        "en": "Download",
+        "es": "Descargar"
+      },
+      "openInTab": {
+        "en": "Open in new tab",
+        "es": "Abrir en pestaña nueva"
+      },
+      "sheetsLabel": {
+        "en": "Sheets",
+        "es": "Hojas"
+      },
+      "sheetEmpty": {
+        "en": "This sheet is empty.",
+        "es": "Esta hoja está vacía."
+      }
+    },
     "sync": {
       "lastSync": {
         "en": "Last sync: {{time}} ({{ago}})",

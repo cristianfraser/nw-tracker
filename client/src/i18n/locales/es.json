@@ -635,6 +635,25 @@
       "notDue": "{{account}}: {{month}} está en curso, su documento aún no corresponde",
       "fileNotImported": "{{account}}: archivo de {{month}} en disco, sin importar"
     },
+    "viewer": {
+      "title": "{{account}} · {{month}}",
+      "pdfLoadFailed": "No se pudo mostrar este PDF.",
+      "pdfMissing": "Este archivo ya no está en el servidor.",
+      "pdfInvalid": "Este archivo no es un PDF legible (puede estar dañado).",
+      "pdfPasswordProtected": "Este PDF tiene contraseña. Usa «{{action}}»: el visor del navegador la pide.",
+      "pagesLabel": "Páginas del PDF",
+      "pageCount": "{{n}} páginas",
+      "pageCountOne": "1 página",
+      "zoomLabel": "Zoom",
+      "zoomOut": "Alejar",
+      "zoomIn": "Acercar",
+      "fitWidth": "Ajustar",
+      "fitWidthName": "Ajustar al ancho",
+      "download": "Descargar",
+      "openInTab": "Abrir en pestaña nueva",
+      "sheetsLabel": "Hojas",
+      "sheetEmpty": "Esta hoja está vacía."
+    },
     "sync": {
       "lastSync": "Último sync: {{time}} ({{ago}})",
       "lastSyncNever": "Último sync: —",

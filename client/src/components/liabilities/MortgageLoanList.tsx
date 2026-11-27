@@ -35,12 +35,6 @@ function LoanRow({ loan, unit, several }: { loan: MortgageGroupLoanDto; unit: st
         <PaidBar paidShare={loan.paid_share} />
         <span className={styles.sub}>
           {t("liabilities.mortgageGroup.paidOf", { share: pct1(loan.paid_share), original: native(loan.original_loan) })}
-          {loan.prepaid_loan > 0 ? (
-            <>
-              {" · "}
-              <span className={depto.amb}>{native(loan.prepaid_loan)}</span> {t("accountDetail.depto.prepaid")}
-            </>
-          ) : null}
         </span>
       </span>
       <span className={cn("mono", styles.r, styles.cNext)}>

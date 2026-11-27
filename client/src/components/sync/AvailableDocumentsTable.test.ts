@@ -2,12 +2,21 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom/server";
-import type { ImportSyncDocumentCell, ImportSyncDocumentCoverageResponse } from "../../types";
+import type { ImportSyncDocumentCell, ImportSyncDocumentCoverageResponse, ImportSyncDocumentRef } from "../../types";
 import { AvailableDocumentsTable } from "./AvailableDocumentsTable";
 
-const cell = (state: ImportSyncDocumentCell["state"], file_path: string | null = null): ImportSyncDocumentCell => ({
+/** A synthetic server-built document ref, as the coverage payload carries it. */
+const doc = (file_name: string): ImportSyncDocumentRef => ({
+  file_name,
+  preview_kind: "pdf",
+  view_href: `/api/import-sync/documents/synthetic/${file_name}/file`,
+  download_href: `/api/import-sync/documents/synthetic/${file_name}/file?download=1`,
+  sheet_href: null,
+});
+
+const cell = (state: ImportSyncDocumentCell["state"], file_name: string | null = null): ImportSyncDocumentCell => ({
   imported: state === "imported" || state === "imported_no_file",
-  file_path,
+  document: file_name ? doc(file_name) : null,
   state,
 });
 
@@ -19,9 +28,9 @@ const coverage: ImportSyncDocumentCoverageResponse = {
     { account_id: 902, label: "Synthetic card", document_kind: "cc_statement" },
   ],
   cells: [
-    [cell("imported", "/synthetic/a-2031-02.pdf"), cell("missing")],
-    [cell("imported_no_file"), cell("imported", "/synthetic/b-2031-01.pdf")],
-    [cell("imported", "/synthetic/a-2030-12.pdf"), cell("before_first")],
+    [cell("imported", "a-2031-02.pdf"), cell("missing")],
+    [cell("imported_no_file"), cell("imported", "b-2031-01.pdf")],
+    [cell("imported", "a-2030-12.pdf"), cell("before_first")],
   ],
   years: [
     { year: 2031, month_indexes: [0, 1], columns: [{ counted: 2, imported: 2 }, { counted: 2, imported: 1 }], columns_counted: 2, columns_complete: 1, incomplete_columns: [1] },
@@ -36,10 +45,10 @@ function render(data: ImportSyncDocumentCoverageResponse | undefined) {
 describe("AvailableDocumentsTable", () => {
   it("shows a line per year naming the incomplete columns, the newest year open on its months", () => {
     const html = render(coverage);
-    // 2031: one of two columns complete, the card short by one; open, with a file link and the missing month.
+    // 2031: one of two columns complete, the card short by one; open, with the server's file link and the missing month.
     expect(html).toContain("Synthetic card 1/2");
     expect(html).not.toContain("Synthetic checking 2/2");
-    expect(html).toContain('href="file:///synthetic/a-2031-02.pdf"');
+    expect(html).toContain('href="/api/import-sync/documents/synthetic/a-2031-02.pdf/file"');
     expect(html).toMatch(/aria-label="Synthetic card: [^"]*2031-02[^"]*"/);
     // 2030 is closed: its month's file is not in the markup.
     expect(html).not.toContain("a-2030-12.pdf");

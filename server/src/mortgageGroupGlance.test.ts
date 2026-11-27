@@ -136,7 +136,6 @@ describe("mortgage group glance", () => {
       expect(loan.balance_loan).toBe(page.header.hero_loan);
       expect(loan.balance).toBe(page.header.hero ?? page.header.hero_loan);
       expect(loan.paid_share).toBe(page.mortgage.balance.paid_share);
-      expect(loan.prepaid_loan).toBe(page.mortgage.balance.prepaid_loan);
       expect(loan.next?.date ?? null).toBe(page.mortgage.payments.next?.date ?? null);
       expect(loan.payoff?.date ?? null).toBe(page.mortgage.projection?.usual.end_date ?? null);
       balance += loan.balance;
