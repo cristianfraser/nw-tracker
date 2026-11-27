@@ -103,11 +103,10 @@ from statement_values import (  # noqa: E402
     repair_jammed_year,
 )
 import cc_parse_acceptance as acceptance  # noqa: E402
-from cc_statement_reconcile import withhold_statements  # noqa: E402
+from cc_statement_reconcile import reconcile_statement_or_withhold, withhold_statements  # noqa: E402
 from cc_statement_reconcile import (  # noqa: E402
     merge_section_totals_into_meta,
     usd_period_block_amounts,
-    reconcile_statement,
     reconcile_statement_required,
     write_reconciliation_jsonl,
 )
@@ -4045,7 +4044,7 @@ def main() -> int:
             full_text = str(ctx.get("full") or "")
             layout_text = str(ctx.get("layout") or "")
             stmt_rows = rows_by_pdf.get(pdf_name, [])
-            result = reconcile_statement(
+            result = reconcile_statement_or_withhold(
                 pdf_name,
                 meta,
                 stmt_rows,
@@ -4055,7 +4054,10 @@ def main() -> int:
                 layout_text=layout_text,
             )
             reconcile_results.append(result)
-            if (
+            if result.skip_reason == "reconcile_error":
+                reconcile_fail_count += 1
+                withheld.add(pdf_name)
+            elif (
                 reconcile_statement_required(pdf_name, full_text)
                 and result.skip_reason
                 not in ("zero_rows", "incomplete_parse", "duplicate_statement")
@@ -4123,6 +4125,8 @@ def main() -> int:
                 issues = ",".join(r.issue_codes) or "unknown"
                 tag = "WITHHELD" if r.source_pdf in withheld else "RECONCILE_FAIL"
                 print(f"# {tag}\t{r.source_pdf}\t{issues}")
+                if r.error:
+                    print(f"#   error: {r.error}")
                 for ch in r.checks:
                     if not ch.ok:
                         print(

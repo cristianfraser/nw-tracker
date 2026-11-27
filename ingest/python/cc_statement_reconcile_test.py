@@ -344,6 +344,16 @@ class WithholdStatementsTest(unittest.TestCase):
         result = mod.ReconcileResult(source_pdf="b.pdf", currency="clp", ok=False, withheld=True)
         self.assertTrue(mod.reconcile_result_to_json(result)["withheld"])
 
+    def test_a_reconcile_that_raises_withholds_only_its_statement_with_the_error(self) -> None:
+        full = "MONTO TOTAL FACTURADO A PAGAR $ 2.217"
+        rows = [_row("TIENDA DEMO", "2217", "", key="a")]
+        result = mod.reconcile_statement_or_withhold("2036-08-24 estado de cuenta tarjeta 4141.pdf", {"currency": "clp"}, rows, full, parse_clp, parse_usd, layout_text=full)
+        self.assertTrue(result.withheld)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.skip_reason, "reconcile_error")
+        self.assertIn("no parser layout", result.error)
+        self.assertIn("no parser layout", mod.reconcile_result_to_json(result)["error"])
+
 
 class RowIdCountTest(unittest.TestCase):
     def test_two_rows_sharing_a_dedupe_key_are_two_lines(self) -> None:

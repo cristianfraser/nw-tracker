@@ -36,6 +36,14 @@ describe("withheld card statements", () => {
     expect(problems[0]).not.toMatch(/operaciones_shortfall/);
   });
 
+  it("a statement the reconcile raised on is named with the error", () => {
+    const file = path.join(root, "r.jsonl");
+    fs.writeFileSync(file, `${JSON.stringify({ source_pdf: "x.pdf", currency: "clp", ok: false, withheld: true, checks: [], error: "ValueError: no parser layout" })}\n`);
+    expect(withheldStatementProblems(file)).toEqual([
+      "x.pdf (CLP) withheld — its reconcile failed: ValueError: no parser layout. Its rows on file are untouched; fix the parse (or quarantine the PDF).",
+    ]);
+  });
+
   it("reads no file as no withheld statement", () => {
     expect(withheldStatementProblems(path.join(root, "missing.jsonl"))).toEqual([]);
   });
