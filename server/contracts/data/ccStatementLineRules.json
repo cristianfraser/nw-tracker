@@ -7,7 +7,19 @@
   "usd_section3_pattern": "IMPUESTOS|INTERESES|TRASPASO|COMISION|ABONO\\s+DE\\s+DIVISAS|SERVICIO|NOTA\\s+DE\\s+CREDITO|INTEREST\\s+CHARGE|LATE\\s+FEE|MEMBERSHIP\\s+FEE|FOREIGN\\s+TRANSACTION\\s+FEE",
   "usd_garbled_merchant_pattern": "\\bDE\\s+\\d+\\b",
   "usd_garbled_merchant_markers": ["MOVIMIENTOS TARJETA"],
+  "printed_payment_prefix_pattern": "^(PAGO|MONTO\\s+CANCELADO|ABONO\\b)",
+  "operaciones_layouts": ["wide_master_mcc_date", "bci_lider_operaciones"],
+  "section3_layouts": ["compact_cargos_charge", "bci_lider_cargos"],
   "mid_period_payment_layouts": ["compact_payment_abono", "ocr_payment"],
-  "section3_charge_layouts": ["compact_cargos_charge"],
-  "bci_section3_layouts": ["bci_lider_cargos"]
+  "merchant_rule_layouts": [
+    "compact",
+    "compact_de_simple",
+    "wide",
+    "wide_master_simple",
+    "wide_master_date_first",
+    "wide_master_date_deferred",
+    "wide_master_amount_continuation",
+    "ocr_compact",
+    "international_usd"
+  ]
 }

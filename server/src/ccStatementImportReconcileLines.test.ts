@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecords.js";
 import { createTempCardMaster, deleteTempCardMaster } from "./test/tempCardMaster.js";
 import { importStatementDocuments } from "./cards/statementLinePlanApply.js";
+import { recordFeedBillingClose } from "./ccBillingCloses.js";
 import {
   assertCcImportReconcilesOrThrow,
   CcStatementImportReconcileError,
@@ -147,6 +148,45 @@ describe("reconcile gate: the parsed lines reproduce the printed figures", () =>
     ]);
   });
 
+  it("does not list a foreign statement with no printed total whose close the card feed states", () => {
+    // Same shape a month later: the feed's SALDO INICIAL for that close holds what its lines bill
+    // (`assertFeedClosesMatchStatements`, run by the same write).
+    const doc = "vitest-lines 2036-08-22 estado de cuenta tarjeta usd 4242.pdf";
+    recordFeedBillingClose(accountId, { close_iso: "2036-08-22", saldo_inicial: { usd: 12.5 }, source_file: "vitest-feed.json" });
+    const records: ParsedRecord[] = [
+      {
+        card_group: "INTL",
+        source_pdf: doc,
+        statement_date: "22/08/2036",
+        period_from: "23/07/2036",
+        period_to: "22/08/2036",
+        transaction_date: "05/08/2036",
+        merchant: "APP STORE DEMO",
+        amount_usd: "12,50",
+        installment_flag: "false",
+        dedupe_key: "vitest-lines-usd-1",
+        row_id: "vitest-lines-usd-r1",
+        currency: "usd",
+        parser_layout: "international_usd",
+      },
+    ];
+    const result = importStatementDocuments(accountId, parsedStatements(records));
+    expect(result.keep_rows.wrote).toBe(true);
+    expect(result.keep_rows.unverified_lines).toEqual([]);
+  });
+
+  it("checks TOTAL OPERACIONES even when the billed total is not positive", () => {
+    // A period whose payments left the card in credit: monto ≤ 0, operaciones still printed.
+    const doc = "vitest-lines 2036-09-22 estado de cuenta tarjeta 4242.pdf";
+    const month = (r: ParsedRecord) => ({ ...r, statement_date: "22/09/2036", period_from: "23/08/2036", period_to: "22/09/2036", transaction_date: r.transaction_date!.replace("/07/", "/09/"), statement_monto_facturado: "0" });
+    const once = santanderRecords(doc, [["TIENDA UNO", 10_000]], { monto: 0, operaciones: 10_000 }).map(month);
+    const results = assertCcImportReconcilesOrThrow(accountId, parsedStatements(once));
+    expect(results[0]!.checks.find((c) => c.code === "operaciones_lines")?.ok).toBe(true);
+    expect(results[0]!.unverified_reason).toBeNull();
+    const twice = santanderRecords(doc, [["TIENDA UNO", 10_000], ["TIENDA DOS", 2_000]], { monto: 0, operaciones: 10_000 }).map(month);
+    expect(() => assertCcImportReconcilesOrThrow(accountId, parsedStatements(twice))).toThrow(/operaciones_lines: printed \$10\.000, parsed lines \$12\.000/);
+  });
+
   it("reconciles a period with a payment, a nota de crédito, a refund and a prepaid plan as before", () => {
     // Printed: TOTAL OPERACIONES 100.000 nets the 2.000 refund; section 3 = nota −5.000 + the
     // prepaid plan's 40.000 + 300 of tax; Monto Total Facturado = 100.000 + 35.300.
@@ -228,6 +268,63 @@ describe("reconcile rows: cuotas and BCI", () => {
 
     const lost = reconcileBillingMonthMovements("2036-07", [once[0]!], header);
     expect(lost.checks.find((c) => c.code === "monto_facturado")?.ok).toBe(false);
+  });
+
+  const header60 = { monto_facturado: 60_000, compras_cargos: null, source_pdf: "vitest-sections.pdf", pdf_total_operaciones: 60_000, monto_pagado_anterior: -500_000 };
+
+  it("a payment worded otherwise in a wide layout is a payment, not a refund netted into operaciones", () => {
+    const rows = [
+      row({ amount_clp: 60_000, row_id: "a" }),
+      row({ merchant: "PAGO EN LINEA", amount_clp: -500_000, parser_layout: "wide_master_date_first", row_id: "p" }),
+    ];
+    const result = reconcileBillingMonthMovements("2036-07", rows, header60);
+    expect(result.parsed_sums.parsed_operaciones_credits).toBe(0);
+    expect(result.ok).toBe(true);
+  });
+
+  it("a purchase whose merchant matches the section-3 pattern stays in operaciones when its layout says so", () => {
+    const rows = [
+      row({ amount_clp: 25_000, row_id: "a" }),
+      row({ merchant: "SERVICIO ADMINISTRACION EDIFICIO DEMO", amount_clp: 35_000, parser_layout: "wide_master_mcc_date", row_id: "b" }),
+    ];
+    const result = reconcileBillingMonthMovements("2036-07", rows, header60);
+    expect(result.parsed_sums.parsed_operaciones).toBe(60_000);
+    expect(result.ok).toBe(true);
+  });
+
+  it("a merchant-named refund printed in section 3 nets into section 3", () => {
+    const rows = [
+      row({ amount_clp: 60_000, row_id: "a" }),
+      row({ merchant: "TIENDA ONLINE DEMO", amount_clp: -12_000, parser_layout: "compact_cargos_charge", row_id: "n" }),
+    ];
+    const result = reconcileBillingMonthMovements("2036-07", rows, { ...header60, monto_facturado: 48_000 });
+    expect(result.parsed_sums.parsed_cargos_abonos).toBe(-12_000);
+    expect(result.parsed_sums.parsed_operaciones_credits).toBe(0);
+    expect(result.ok).toBe(true);
+  });
+
+  it("zero operaciones printed: a section-3-only statement passes, a stray purchase is refused", () => {
+    const header = { monto_facturado: 300, compras_cargos: null, source_pdf: "vitest-zero.pdf", pdf_total_operaciones: 0 };
+    const tax = row({ merchant: "IMPTO. DECRETO LEY 3475", amount_clp: 300, row_id: "t" });
+    expect(reconcileBillingMonthMovements("2036-07", [tax], header).ok).toBe(true);
+    const stray = reconcileBillingMonthMovements("2036-07", [tax, row({ amount_clp: 5_000, row_id: "s" })], header);
+    expect(stray.checks.find((c) => c.code === "operaciones_lines")).toMatchObject({ ok: false, delta: 5_000 });
+  });
+
+  it("a multi-card statement sums the titular's and the additional card's sections into one TOTAL OPERACIONES", () => {
+    const rows = [
+      row({ amount_clp: 40_000, row_id: "t1" }),
+      row({ amount_clp: 20_000, merchant: "TIENDA ADICIONAL", row_id: "a1" }),
+    ];
+    expect(reconcileBillingMonthMovements("2036-07", rows, header60).ok).toBe(true);
+    const missing = reconcileBillingMonthMovements("2036-07", [rows[0]!], header60);
+    expect(missing.checks.find((c) => c.code === "operaciones_lines")?.ok).toBe(false);
+  });
+
+  it("an unknown parser layout throws instead of guessing a section", () => {
+    expect(() =>
+      reconcileBillingMonthMovements("2036-07", [row({ amount_clp: 1_000, parser_layout: "some_new_layout", row_id: "x" })], header60)
+    ).toThrow(/parser layout «some_new_layout» states no section/);
   });
 
   it("reports, never refuses, an OCR'd scan whose lines miss a printed figure", () => {

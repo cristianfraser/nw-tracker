@@ -1,6 +1,7 @@
 import { canonicalCcLineDedupeKeys } from "./ccDedupeKey.js";
 import { ccIssuerBySlug, ccIssuerForParserLayout, type CcIssuer } from "./ccIssuers.js";
 import { billingMonthForCcStatement } from "./cards/statementMonth.js";
+import { feedBillingCloseForMonth } from "./cards/facturacion.js";
 import { ccStatementSourceKindOf, isListingSourceKind } from "./ccStatementSourceKind.js";
 import { merchantsMatchForCrossDedupe } from "./cards/purchases.js";
 import {
@@ -56,8 +57,8 @@ export type CcReconcileRow = {
 export type CcParsedSectionSums = {
   parsed_operaciones: number;
   /**
-   * Peso credits the line rules count nowhere (a refund that is no nota de crédito nor payment):
-   * the bank nets them into «TOTAL OPERACIONES», so the operaciones check adds them back.
+   * Peso credits outside section 3 that are no payment (a refund, `operaciones_credit`): the bank
+   * nets them into «TOTAL OPERACIONES», so the operaciones check adds them back.
    */
   parsed_operaciones_credits: number;
   parsed_cargos_abonos: number;
@@ -199,9 +200,7 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
     if (section === "operaciones") operaciones += row.amount_clp;
     else if (section === "cargos_abonos") cargos_abonos += row.amount_clp;
     else if (section === "mid_period_payments") midPeriodPayments += row.amount_clp;
-    else if (section === "ignored" && row.amount_clp < 0 && !isCcPaymentMerchant(row.merchant)) {
-      operacionesCredits += row.amount_clp;
-    }
+    else if (section === "operaciones_credit") operacionesCredits += row.amount_clp;
   }
 
   return {
@@ -954,6 +953,17 @@ export function assertCcImportReconcilesOrThrow(
         const header = mergeImportReconcileHeader(dbAnchor, csvHeader);
 
         const statementLabel = header?.source_pdf ?? sourcePdf;
+        const statement = stmtPdfIncoming.find((st) => st.currency === headerCurrency);
+        // A foreign statement that prints no total is held to the card feed's SALDO INICIAL for
+        // its close and currency (`assertFeedClosesMatchStatements`, run by the same write over
+        // what its lines bill): that feed close is the check its lines get.
+        const feedClose = feedBillingCloseForMonth(accountId, billingMonth);
+        const statementCloseIso = statement ? (parseDdMmYyToIso(statement.period_to ?? "") ?? parseDdMmYyToIso(statement.close)) : null;
+        const heldToFeedClose =
+          !isHomeCurrency(headerCurrency) &&
+          feedClose != null &&
+          feedClose.close_date === statementCloseIso &&
+          feedClose.saldo_inicial[headerCurrency] != null;
         const noTotals = (): void => {
           results.push({
             billing_month: billingMonth,
@@ -965,7 +975,7 @@ export function assertCcImportReconcilesOrThrow(
             checks: [],
             parsed_sums: { parsed_operaciones: 0, parsed_operaciones_credits: 0, parsed_cargos_abonos: 0, parsed_cuotas: 0, parsed_mid_period_payments: 0, parsed_traspaso_nacional: 0 },
             row_count: 0,
-            unverified_reason: "the statement prints no total",
+            unverified_reason: heldToFeedClose ? null : "the statement prints no total",
           });
         };
         if (!header) {
@@ -975,7 +985,8 @@ export function assertCcImportReconcilesOrThrow(
         if (
           headerCurrency === "clp" && // convention-ok: the parsed-PDF reconcile rules are the Chilean statements' peso and dollar sections
           (header.monto_facturado ?? 0) <= 0 &&
-          (header.compras_cargos ?? 0) <= 0
+          (header.compras_cargos ?? 0) <= 0 &&
+          header.pdf_total_operaciones == null
         ) {
           noTotals();
           continue;
@@ -994,7 +1005,11 @@ export function assertCcImportReconcilesOrThrow(
         const rows = projectedRows.filter(
           (r) => r.currency === headerCurrency && String(r.source_pdf ?? "").trim() === sourcePdf
         );
-        const result = reconcileBillingMonthMovements(billingMonth, rows, header);
+        const reconciled = reconcileBillingMonthMovements(billingMonth, rows, header);
+        const result =
+          heldToFeedClose && !reconciled.checks.some((c) => c.reads_lines && c.enforced)
+            ? { ...reconciled, unverified_reason: null }
+            : reconciled;
         results.push(result);
 
         if (!result.ok && !result.skipped) {

@@ -12,7 +12,6 @@ import cc_cards
 from cc_statement_line_rules import (
     classify_statement_line,
     is_clp_section3_merchant,
-    is_payment_merchant,
     is_traspaso_deuda_merchant,
     is_usd_section3_merchant,
 )
@@ -38,6 +37,15 @@ def _installment_cuota_counts_toward_operaciones(row: Dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         cur = 0
     return cur >= 1
+
+
+def _is_new_plan_row(row: Dict[str, Any]) -> bool:
+    """A 00/N row: a plan bought in the period, printed in section 4 (no cuota billed yet)."""
+    if str(row.get("installment_flag") or "").lower() != "true":
+        return False
+    if str(row.get("currency") or "clp").lower() != "clp":
+        return False
+    return not _installment_cuota_counts_toward_operaciones(row)
 
 
 def _is_installment_contract_summary(merchant: str, layout: str) -> bool:
@@ -86,11 +94,14 @@ def _iter_reconcile_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for row in rows:
         if not _row_counts_for_reconcile(row):
             continue
-        dk = str(row.get("dedupe_key") or row.get("row_id") or "").strip()
-        if dk:
-            if dk in seen_dk:
+        # One parsed row per row id, as the import's reconcile counts them (`reconcileMovementDedupeKey`,
+        # row id first): two rows sharing a dedupe key are two lines here too.
+        rid = str(row.get("row_id") or row.get("dedupe_key") or "").strip()
+        dk = str(row.get("dedupe_key") or "").strip()
+        if rid:
+            if rid in seen_dk:
                 continue
-            seen_dk.add(dk)
+            seen_dk.add(rid)
         currency = str(row.get("currency") or "clp").lower()
         if currency == "usd":
             txn = str(row.get("transaction_date") or row.get("posting_date") or "")
@@ -162,8 +173,8 @@ def sum_parsed_sections(
     cuotas = 0.0
     traspaso_nacional = 0.0
     mid_period_payments = 0.0
-    # Peso credits the line rules count nowhere (a refund that is no nota de crédito nor payment):
-    # the bank nets them into «TOTAL OPERACIONES».
+    # Peso credits outside section 3 that are no payment (`operaciones_credit`, a refund): the
+    # bank nets them into «TOTAL OPERACIONES».
     operaciones_credits = 0.0
 
     for row in _iter_reconcile_rows(rows):
@@ -191,7 +202,7 @@ def sum_parsed_sections(
                 traspaso_nacional += amount
         elif section == "mid_period_payments":
             mid_period_payments += amount
-        elif section == "ignored" and currency == "clp" and amount < 0 and not is_payment_merchant(merchant):
+        elif section == "operaciones_credit":
             operaciones_credits += amount
 
     return {
@@ -796,6 +807,9 @@ class ReconcileResult:
     pdf_totals: Dict[str, Optional[float]] = field(default_factory=dict)
     row_count: int = 0
     issue_codes: List[str] = field(default_factory=list)
+    # Left out of the parsed CSV by the corpus run (`parse-cc-statement-pdfs.py`): the import
+    # never sees it, and the inbox pipeline reports it.
+    withheld: bool = False
 
     def mismatch_summary(self) -> str:
         if self.ok:
@@ -1103,6 +1117,21 @@ def reconcile_statement(
             )
             if not ok:
                 issue_codes.append(code)
+    # Section 4 («compras en cuotas en el período») prints the first cuota of each plan bought in
+    # the period, and its 00/N rows count nowhere else: on a peso statement read from its text the
+    # parsed new plans' cuotas equal that total to the peso per row (a doubled announcement row,
+    # or one read as a one-shot, fails).
+    section4 = pdf_totals.get("pdf_total_cuotas")
+    if currency == "clp" and section4 is not None and not ocr_flat and not is_bci_lider_statement(full):
+        new_plans = [r for r in active_rows if _is_new_plan_row(r)]
+        parsed_section4 = sum(_parse_cuota_from_row(r, parse_clp, parse_usd) for r in new_plans)
+        gap = parsed_section4 - float(section4)
+        ok4 = abs(gap) <= TOL_CLP * max(1, len(new_plans))
+        checks.append(
+            ReconcileCheck(code="section4_cuotas", ok=ok4, expected=float(section4), actual=parsed_section4, delta=gap)
+        )
+        if not ok4:
+            issue_codes.append("section4_cuotas")
     cargos_required = pdf_totals.get("pdf_total_cargos_abonos") is not None
     if is_bci_lider_statement(full):
         # Section-3 PAGO rows ARE emitted since 2026-07 (the walk needs their dates), but the
@@ -1252,6 +1281,21 @@ def reconcile_statement(
     )
 
 
+def withhold_statements(
+    rows: List[Dict[str, Any]], manifest_entries: List[Dict[str, Any]], withheld: "set[str]"
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """The corpus run without the statements that do not reconcile: their rows leave the parsed
+    CSV (the import never sees them, so their rows on file stay as they are) and their cache
+    entries the parse manifest (`accept:cc-parses` never accepts them). An entry names its
+    statement under `statement`."""
+    if not withheld:
+        return rows, manifest_entries
+    return (
+        [r for r in rows if str(r.get("source_pdf") or "") not in withheld],
+        [e for e in manifest_entries if e.get("statement") not in withheld],
+    )
+
+
 def reconcile_result_to_json(obj: ReconcileResult) -> Dict[str, Any]:
     return {
         "source_pdf": obj.source_pdf,
@@ -1264,6 +1308,7 @@ def reconcile_result_to_json(obj: ReconcileResult) -> Dict[str, Any]:
         "pdf_totals": {k: v for k, v in obj.pdf_totals.items()},
         "checks": [asdict(c) for c in obj.checks],
         "mismatch_summary": obj.mismatch_summary(),
+        "withheld": obj.withheld,
     }
 
 

@@ -18,9 +18,15 @@ export const ccStatementLineRulesSchema = z.strictObject({
   usd_section3_pattern: z.string().describe("Case-insensitive regex: a USD section-3 line."),
   usd_garbled_merchant_pattern: z.string().describe("Case-insensitive regex: a USD row made of two merged pdftotext lines."),
   usd_garbled_merchant_markers: strings,
+  printed_payment_prefix_pattern: z
+    .string()
+    .describe("Case-insensitive regex: a payment line opens like this and prints negative (or is an exact payment merchant)."),
+  operaciones_layouts: strings.describe("CLP layouts read from the printed operaciones (section 1): every row sums there, whatever the merchant."),
+  section3_layouts: strings.describe("CLP layouts read from the printed section 3: a payment is a mid-period payment, every other row nets into section 3."),
   mid_period_payment_layouts: strings.describe("CLP layouts whose rows are payments printed as lines."),
-  section3_charge_layouts: strings.describe("CLP layouts whose rows are section-3 charges whatever the merchant."),
-  bci_section3_layouts: strings.describe("BCI section-3 layouts: PAGO rows are payments, every other row nets into section 3."),
+  merchant_rule_layouts: strings.describe(
+    "Layouts whose reader does not track the printed section (rows of several sections share them): the merchant rules place each row. Any other layout is an error."
+  ),
 });
 
 export type CcStatementLineRules = z.infer<typeof ccStatementLineRulesSchema>;

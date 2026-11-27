@@ -34,14 +34,27 @@ export const RE_CLP_SECTION3_SETTLEMENT = new RegExp(RULES.clp_section3_settleme
 export const RE_USD_SECTION3 = new RegExp(RULES.usd_section3_pattern, "i");
 export const RE_USD_GARBLED_MERCHANT = new RegExp(RULES.usd_garbled_merchant_pattern, "i");
 export const USD_GARBLED_MERCHANT_MARKERS: readonly string[] = RULES.usd_garbled_merchant_markers;
+export const RE_PRINTED_PAYMENT_PREFIX = new RegExp(RULES.printed_payment_prefix_pattern, "i");
+export const OPERACIONES_LAYOUTS: ReadonlySet<string> = new Set(RULES.operaciones_layouts);
+export const SECTION3_LAYOUTS: ReadonlySet<string> = new Set(RULES.section3_layouts);
 export const MID_PERIOD_PAYMENT_LAYOUTS: ReadonlySet<string> = new Set(RULES.mid_period_payment_layouts);
-export const SECTION3_CHARGE_LAYOUTS: ReadonlySet<string> = new Set(RULES.section3_charge_layouts);
-export const BCI_SECTION3_LAYOUTS: ReadonlySet<string> = new Set(RULES.bci_section3_layouts);
+export const MERCHANT_RULE_LAYOUTS: ReadonlySet<string> = new Set(RULES.merchant_rule_layouts);
 
 /** CC statement / listing payment merchants (exact literals, after `normalizeMerchantText`). */
 export function isCcPaymentMerchant(merchant: string | null | undefined): boolean {
   const m = normalizeMerchantText(String(merchant ?? ""));
   return m.length > 0 && CC_PAYMENT_MERCHANTS.has(m);
+}
+
+/**
+ * A payment printed on a statement (the parser's `_is_printed_payment`): an exact payment
+ * merchant, or a line opening like one («PAGO EN LINEA», «ABONO …») that prints negative. «PAGO
+ * FACIL», «PAGOS.FLOW.CL (WEB)» … are bills paid WITH the card: they print positive.
+ */
+export function isCcPrintedPayment(merchant: string | null | undefined, amount: number): boolean {
+  const m = normalizeMerchantText(String(merchant ?? ""));
+  if (!RE_PRINTED_PAYMENT_PREFIX.test(m)) return false;
+  return CC_PAYMENT_MERCHANTS.has(m) || amount < 0;
 }
 
 /** «ABONO DE DIVISAS»: the payment of the USD debt (substring — some formats suffix it). */

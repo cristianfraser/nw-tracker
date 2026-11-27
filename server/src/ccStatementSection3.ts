@@ -1,10 +1,11 @@
 import {
-  BCI_SECTION3_LAYOUTS,
+  MERCHANT_RULE_LAYOUTS,
   MID_PERIOD_PAYMENT_LAYOUTS,
+  OPERACIONES_LAYOUTS,
   RE_USD_GARBLED_MERCHANT,
-  SECTION3_CHARGE_LAYOUTS,
+  SECTION3_LAYOUTS,
   USD_GARBLED_MERCHANT_MARKERS,
-  isCcPaymentMerchant,
+  isCcPrintedPayment,
   isClpSection3Merchant,
   isClpSection3SettlementMerchant,
   isUsdSection3Merchant,
@@ -21,16 +22,24 @@ export function isGarbledUsdStatementMerchant(merchant: string | null | undefine
 
 /**
  * Section a non-installment statement line sums into (both reconcilers, see
- * `ccStatementLineRules.ts`): `skip` is a garbled international row, `ignored` a line counted
- * nowhere (a payment or refund outside the payment layouts).
+ * `ccStatementLineRules.ts`): `skip` is a garbled international row, `ignored` a payment counted
+ * nowhere (outside the payment layouts), `operaciones_credit` a peso credit outside section 3 (a
+ * refund), which the bank nets into «TOTAL OPERACIONES».
  */
 export type CcStatementLineSection =
   | "operaciones"
+  | "operaciones_credit"
   | "cargos_abonos"
   | "mid_period_payments"
   | "ignored"
   | "skip";
 
+/**
+ * A peso line's section comes from the section the PDF printed it in, which its parser layout
+ * states (`operaciones_layouts`, `section3_layouts`, `mid_period_payment_layouts`); only a layout
+ * whose reader does not track the printed section (`merchant_rule_layouts`: the wide and OCR
+ * readers, the statement JSON) is placed by the merchant rules. Any other layout throws.
+ */
 export function classifyCcStatementLine(line: {
   currency: "clp" | "usd"; // convention-ok: section-3 charge rules are the Chilean statements' peso and dollar lists
   merchant: string | null;
@@ -43,16 +52,17 @@ export function classifyCcStatementLine(line: {
     return line.amount > 0 ? "operaciones" : "ignored";
   }
   const layout = line.parser_layout;
+  const payment = isCcPrintedPayment(line.merchant, line.amount);
   if (MID_PERIOD_PAYMENT_LAYOUTS.has(layout)) return "mid_period_payments";
-  if (SECTION3_CHARGE_LAYOUTS.has(layout)) return "cargos_abonos";
-  // BCI section-3 rows carry their own parser layout; the merchant patterns are Santander-shaped
-  // and miss BCI's forms — «IMPUESTO DL 3475» (singular) and merchant-named abonos like the
-  // 2026-06 «GLASS LIDER.CL» -3x.xxx nota. The bank nets these into Monto Total Facturado
-  // (2026-06: 2.xxx.xxx − 3x.xxx + 811 = 2.xxx.xxx exactly), so they land in cargos_abonos;
-  // PAGOs never do.
-  if (BCI_SECTION3_LAYOUTS.has(layout)) {
-    return isCcPaymentMerchant(line.merchant) ? "mid_period_payments" : "cargos_abonos";
+  // Section 3 as printed — BCI's rows included, whose forms the Santander merchant patterns miss
+  // («IMPUESTO DL 3475», a merchant-named nota): the bank nets them into Monto Total Facturado;
+  // its PAGO rows are payments.
+  if (SECTION3_LAYOUTS.has(layout)) return payment ? "mid_period_payments" : "cargos_abonos";
+  if (OPERACIONES_LAYOUTS.has(layout)) return payment ? "ignored" : "operaciones";
+  if (!MERCHANT_RULE_LAYOUTS.has(layout)) {
+    throw new Error(`card statement line «${line.merchant ?? ""}»: parser layout «${layout}» states no section (ccStatementLineRules.json)`);
   }
+  if (payment) return "ignored";
   if (isClpSection3Merchant(line.merchant) || isClpSection3SettlementMerchant(line.merchant)) return "cargos_abonos";
-  return line.amount > 0 ? "operaciones" : "ignored";
+  return line.amount > 0 ? "operaciones" : "operaciones_credit";
 }

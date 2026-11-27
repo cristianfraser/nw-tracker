@@ -247,7 +247,7 @@ def report_step_problems(problems: List[str]) -> None:
         return
     path = Path(file)
     current = json.loads(path.read_text(encoding="utf-8") or "{}") if path.is_file() else {}
-    path.write_text(json.dumps({**current, "problems": problems}), encoding="utf-8")
+    path.write_text(json.dumps({**current, "problems": [*current.get("problems", []), *problems]}), encoding="utf-8")
 
 
 def main(argv: List[str]) -> int:
