@@ -3,8 +3,7 @@ import { Link, Navigate, useLocation } from "react-router-dom";
 import { cn } from "../cn";
 import { useTranslation } from "../i18n";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { useRealEstateGroupGlance, useSidebarNav } from "../queries/hooks";
-import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
+import { useHeldRealEstateGroupGlance, useSidebarNav } from "../queries/hooks";
 import { findBestNavNodeForPathname } from "../portfolioNavFromApi";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { DASHBOARD_PATH } from "../dashboardPath";
@@ -38,10 +37,11 @@ export function RealEstateGroupPage() {
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav(); // convention-ok: nav refetch gates «not found» only, no dim
   const navSettled = !navPending && !navFetching;
   const node = useMemo(() => findBestNavNodeForPathname(sidebarNav?.main, pathname), [sidebarNav, pathname]);
-  const query = useRealEstateGroupGlance(node?.slug, displayUnit);
+  // Held across a unit switch (`heldUnitPayload.ts`): formatted in the shown payload's own unit.
+  const query = useHeldRealEstateGroupGlance(node?.slug, displayUnit);
   const glance = query.data;
-  const loading = queryShowsLoading(query);
-  const error = queryLoadError(query);
+  const loading = query.loading;
+  const error = query.error;
 
   if (!node && navSettled) return <Navigate to={DASHBOARD_PATH} replace />;
   const title = node ? resolveNavTreeLabel(node) : "";

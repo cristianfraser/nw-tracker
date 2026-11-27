@@ -24,7 +24,7 @@ import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShel
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
 import type { DailySeriesResponse, ExpensesSpentParams, NavTreeNodeDto } from "../types";
 import { setCurrencyRegistry } from "../format";
-import type { DashboardBundle, PortfolioGroupBundle } from "./fetchers";
+import type { DashboardBundle, DashboardNavContext, PortfolioGroupBundle } from "./fetchers";
 
 /** Snapshots read from localStorage (placeholders), as opposed to live server payloads. */
 const navSnapshotsFromLocalCache = new WeakSet<object>();
@@ -133,25 +133,32 @@ export function useHeldDailySeries(
   return useHeldUnitQuery(dailySeriesOptions(scope, unit, days, enabled, opts), unit);
 }
 
-/**
- * One page's nav strip (`root` = the page's nav node slug; null = not known yet, nothing fetched).
- * Its figures are merged into the stored snapshot, so a reload of that page paints today's cards,
- * not the ones another page saw on its last visit.
- */
-export function useDashboardNavContext(unit: DisplayUnit, root: string | null, enabled = true) {
-  const key = queryKeys.dashboardNav(unit, root ?? "");
-  return useQuery({
-    queryKey: key,
+function dashboardNavContextOptions(unit: DisplayUnit, root: string | null, enabled: boolean) {
+  const queryKey = queryKeys.dashboardNav(root ?? "", unit);
+  return {
+    queryKey,
     queryFn: async () => {
       const ctx = await fetchDashboardNavContext(unit, root!);
       mergeNavContextIntoSnapshotCache(unit, ctx);
       return ctx;
     },
     enabled: enabled && root != null,
-    // A unit change holds nothing here: the pages hold the strip on screen (`useHeldUnitValue`),
-    // never a converted context; another page starts from its own.
-    ...displayUnitQueryBehaviorFor(key),
-  });
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
+}
+
+/**
+ * One page's nav context (`root` = the page's nav node slug; null = not known yet, nothing
+ * fetched), held across a unit switch in its own unit. Its figures are merged into the stored
+ * snapshot, so a reload of that page paints today's cards, not the ones another page saw on its
+ * last visit.
+ */
+export function useHeldDashboardNavContext(
+  unit: DisplayUnit,
+  root: string | null,
+  enabled: boolean
+): HeldUnitQuery<DashboardNavContext> {
+  return useHeldUnitQuery(dashboardNavContextOptions(unit, root, enabled), unit);
 }
 
 const DASHBOARD_NAV_SNAPSHOT_STALE_MS = 10 * 60_000;
@@ -173,7 +180,7 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     // it never replaces cards already on screen (`heldUnitPayload.ts`), only paints an empty strip.
     initialDataUpdatedAt: cachedStrip ? 0 : undefined,
     // With a cached strip this query never refetches; freshness relies on the live payloads
-    // re-writing the cache: DashboardPage from its page bundle, useDashboardNavContext from nav-context.
+    // re-writing the cache: DashboardPage from its page bundle, the nav-context fetch.
     enabled: enabled && !cachedStrip,
     // Keyed on the unit: a unit change holds nothing (a CLP snapshot has no USD fields; the pages
     // hold the strip on screen themselves, `useHeldUnitValue`).
@@ -283,15 +290,7 @@ export function useAccountsByPortfolioGroup(
   });
 }
 
-export function usePortfolioGroupBundle(opts: {
-  portfolio_group: string;
-  unit: DisplayUnit;
-  enabled?: boolean;
-}) {
-  return useQuery(portfolioGroupBundleOptions(useQueryClient(), opts));
-}
-
-/** {@link usePortfolioGroupBundle} as a page shows it: held across a unit switch, in its own unit. */
+/** A group page's bundle as the page shows it: held across a unit switch, in its own unit. */
 export function useHeldPortfolioGroupBundle(opts: {
   portfolio_group: string;
   unit: DisplayUnit;
@@ -905,33 +904,49 @@ export function usePortfolioGroupCcLanes(slug: string | undefined, enabled = tru
   });
 }
 
-export function useMortgageGroupGlance(slug: string | undefined, unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.mortgageGroupGlance(slug ?? "", unit),
+function mortgageGroupGlanceOptions(slug: string | undefined, unit: DisplayUnit) {
+  const queryKey = queryKeys.mortgageGroupGlance(slug ?? "", unit);
+  return {
+    queryKey,
     queryFn: () => api.mortgageGroupGlance(slug!, unit),
     enabled: Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.mortgageGroupGlance(slug ?? "", unit)),
-  });
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
 }
 
-/** The real-estate group page (`realEstateGroupGlance.ts`). */
-export function useRealEstateGroupGlance(slug: string | undefined, unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.realEstateGroupGlance(slug ?? "", unit),
+/** The mortgage group page (`mortgageGroupGlance.ts`), held across a unit switch, in its own unit. */
+export function useHeldMortgageGroupGlance(slug: string | undefined, unit: DisplayUnit) {
+  return useHeldUnitQuery(mortgageGroupGlanceOptions(slug, unit), unit);
+}
+
+function realEstateGroupGlanceOptions(slug: string | undefined, unit: DisplayUnit) {
+  const queryKey = queryKeys.realEstateGroupGlance(slug ?? "", unit);
+  return {
+    queryKey,
     queryFn: () => api.realEstateGroupGlance(slug!, unit),
     enabled: Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.realEstateGroupGlance(slug ?? "", unit)),
-  });
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
 }
 
-/** The Liabilities page's head and upcoming payments (`liabilitiesGlance.ts`). */
-export function useLiabilitiesGlance(slug: string | undefined, unit: DisplayUnit) {
-  return useQuery({
-    queryKey: queryKeys.liabilitiesGlance(slug ?? "", unit),
+/** The real-estate group page (`realEstateGroupGlance.ts`), held across a unit switch, in its own unit. */
+export function useHeldRealEstateGroupGlance(slug: string | undefined, unit: DisplayUnit) {
+  return useHeldUnitQuery(realEstateGroupGlanceOptions(slug, unit), unit);
+}
+
+function liabilitiesGlanceOptions(slug: string | undefined, unit: DisplayUnit) {
+  const queryKey = queryKeys.liabilitiesGlance(slug ?? "", unit);
+  return {
+    queryKey,
     queryFn: () => api.liabilitiesGlance(slug!, unit),
     enabled: Boolean(slug),
-    ...displayUnitQueryBehaviorFor(queryKeys.liabilitiesGlance(slug ?? "", unit)),
-  });
+    ...displayUnitQueryBehaviorFor(queryKey),
+  };
+}
+
+/** The Liabilities page's head and upcoming payments (`liabilitiesGlance.ts`), held across a unit switch. */
+export function useHeldLiabilitiesGlance(slug: string | undefined, unit: DisplayUnit) {
+  return useHeldUnitQuery(liabilitiesGlanceOptions(slug, unit), unit);
 }
 
 function accountDetailBundleOptions(id: string | undefined, unit: DisplayUnit, chartGranularity: "monthly" | "daily") {
@@ -1136,18 +1151,10 @@ export function useBenchmarks() {
   });
 }
 
-/**
- * The mortgage payments list's prepaid-vs-invested block for `benchmark` (the bundle carries the
- * default benchmark's; this fetches another one only when picked).
- */
-/** A mortgage payments list's prepaid-vs-invested column: one loan's, or the mortgage group's merged list. */
-export function useDeptoPrepayments(
-  scope: { accountId: number } | { portfolioGroup: string },
-  benchmark: string,
-  unit: DisplayUnit,
-  enabled: boolean
-) {
-  return useQuery({
+type PrepaymentsScope = { accountId: number } | { portfolioGroup: string };
+
+function deptoPrepaymentsOptions(scope: PrepaymentsScope, benchmark: string, unit: DisplayUnit, enabled: boolean) {
+  return {
     queryKey:
       "accountId" in scope
         ? queryKeys.deptoPrepayments(scope.accountId, benchmark, unit)
@@ -1159,24 +1166,41 @@ export function useDeptoPrepayments(
     enabled,
     staleTime: DISPLAY_UNIT_STALE_MS,
     refetchInterval: DISPLAY_UNIT_STALE_MS,
-  });
+  };
 }
 
-/** The Rentabilidad comparison row for an account or a group page. */
-export function useBenchmarkComparison(
-  scope: { accountId: number } | { portfolioGroup: string },
+/**
+ * A mortgage payments list's prepaid-vs-invested column for `benchmark`: one loan's, or the
+ * mortgage group's merged list. Held across a unit switch, in its own unit.
+ */
+export function useHeldDeptoPrepayments(
+  scope: PrepaymentsScope,
   benchmark: string,
   unit: DisplayUnit,
   enabled: boolean
 ) {
+  return useHeldUnitQuery(deptoPrepaymentsOptions(scope, benchmark, unit, enabled), unit);
+}
+
+function benchmarkComparisonOptions(scope: PrepaymentsScope, benchmark: string, unit: DisplayUnit, enabled: boolean) {
   const scopeKey = "accountId" in scope ? `a:${scope.accountId}` : `g:${scope.portfolioGroup}`;
-  return useQuery({
+  return {
     queryKey: queryKeys.benchmarkComparison(scopeKey, benchmark, unit),
     queryFn: () => api.benchmarkComparison(scope, benchmark, unit),
     enabled,
     staleTime: DISPLAY_UNIT_STALE_MS,
     refetchInterval: DISPLAY_UNIT_STALE_MS,
-  });
+  };
+}
+
+/** The Rentabilidad comparison row for an account or a group page, held across a unit switch. */
+export function useHeldBenchmarkComparison(
+  scope: PrepaymentsScope,
+  benchmark: string,
+  unit: DisplayUnit,
+  enabled: boolean
+) {
+  return useHeldUnitQuery(benchmarkComparisonOptions(scope, benchmark, unit, enabled), unit);
 }
 
 export function useWealthPercentile(unit: DisplayUnit) {

@@ -324,7 +324,6 @@ export function GroupInfoBase({
         <PeriodReturnsWithBenchmark
           title={t("periodReturns.title")}
           data={shownPeriodReturns ?? null}
-          displayUnit={shownPeriodReturns?.unit ?? displayUnit}
           scope={{ portfolioGroup: returnsGroupSlug }}
           surfaceId={returnsGroupSlug ? `group.${returnsGroupSlug}.returns` : null}
           loading={shownPeriodReturns === undefined || periodReturnsHeld}

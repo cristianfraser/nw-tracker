@@ -49,10 +49,10 @@ export function entityKeyLength(key: readonly unknown[]): number {
 export const queryKeys = {
   dashboard: (unit: DisplayUnit) =>
     withEntity(["dashboard", unit] as const, 1),
-  /** Without `root`, the prefix of every page's nav-context in that unit (for invalidation). */
-  dashboardNav: (unit: DisplayUnit, root?: string) =>
-    withEntity((root == null ? ["dashboardNav", unit] : ["dashboardNav", unit, root]) as readonly unknown[], 3),
-  /** Prefix of every unit's nav contexts. */
+  /** One page's nav context (`root` = the page's nav node slug): held across a unit switch. */
+  dashboardNav: (root: string, unit: DisplayUnit) =>
+    withEntity(["dashboardNav", root, unit] as const, 2),
+  /** Prefix of every page's nav context, every unit. */
   dashboardNavAll: () => ["dashboardNav"] as const,
   dashboardNavSnapshot: (unit: DisplayUnit) =>
     withEntity(["dashboardNavSnapshot", unit] as const, 2),
@@ -207,14 +207,14 @@ export const queryKeys = {
   wealthPercentile: (unit: DisplayUnit) => ["wealth-percentile", unit] as const,
   benchmarks: () => ["benchmarks"] as const,
   deptoPrepayments: (accountId: number, benchmark: string, unit: DisplayUnit) =>
-    ["deptoPrepayments", accountId, benchmark, unit] as const,
+    withEntity(["deptoPrepayments", accountId, benchmark, unit] as const, 3),
   /** Every mortgage's prepaid-vs-invested blocks (a payment is written from either depto page). */
   /** Under the `deptoPrepayments` prefix, so a payment written on a loan page reaches it. */
   mortgageGroupPrepayments: (group: string, benchmark: string, unit: DisplayUnit) =>
-    ["deptoPrepayments", "group", group, benchmark, unit] as const,
+    withEntity(["deptoPrepayments", "group", group, benchmark, unit] as const, 4),
   deptoPrepaymentsAll: () => ["deptoPrepayments"] as const,
   benchmarkComparison: (scope: string, benchmark: string, unit: DisplayUnit) =>
-    ["benchmarkComparison", scope, benchmark, unit] as const,
+    withEntity(["benchmarkComparison", scope, benchmark, unit] as const, 3),
   taxReturn: (taxYear: number | null) => ["tax-return", taxYear] as const,
   taxReturnAll: () => ["tax-return"] as const,
   taxResidency: () => ["tax-residency"] as const,

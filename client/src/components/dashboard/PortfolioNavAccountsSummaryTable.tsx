@@ -288,6 +288,7 @@ export function PortfolioNavAccountsSummaryTable({
             )}
             animated={isAnimated(variant)}
             fractionDigits={cardDeltaFractionDigits(metricsByPeriod, unit)}
+            unit={unit}
             className="accounts-summary-delta"
           />
         </span>

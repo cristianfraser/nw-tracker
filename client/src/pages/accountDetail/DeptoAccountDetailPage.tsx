@@ -86,7 +86,6 @@ export function DeptoAccountDetailPage({ data }: { data: AccountDetailPageData }
                 <DeptoPaymentsList
                   scope={{ accountId: summary.account_id }}
                   payments={{ ...mortgage.payments, next: mortgage.payments.next ? [mortgage.payments.next] : [] }}
-                  unit={unit}
                   loanCurrency={loanCurrency}
                   payCurrency={payCurrency}
                   onRegisterPayment={paymentCreate ? () => setPaymentOpen(true) : null}

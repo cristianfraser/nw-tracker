@@ -61,6 +61,7 @@ export function CardValueDayPl({
       <DeltaMetricFlow
         delta={roundedMetricDelta(metricsByPeriod.day, unit, "period")}
         animated={animated}
+        unit={unit}
         fractionDigits={cardDeltaFractionDigits(metricsByPeriod, unit)}
       />
     </span>
@@ -125,6 +126,7 @@ function MetricsRow({
           delta={delta}
           animated={animated}
           fractionDigits={deltaFractionDigits}
+          unit={unit}
         />
       </span>
     </div>

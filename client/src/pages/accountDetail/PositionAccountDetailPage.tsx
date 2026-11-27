@@ -133,7 +133,6 @@ export function PositionAccountDetailPage({
             <PeriodReturnsWithBenchmark
               title={t("periodReturns.title")}
               data={periodReturns ?? null}
-              displayUnit={periodReturns?.unit ?? data.unit}
               scope={{ accountId: summary.account_id }}
               surfaceId={`account.${summary.account_id}.returns`}
               loading={loading}

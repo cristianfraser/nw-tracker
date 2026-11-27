@@ -19,13 +19,13 @@ import {
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
-import { dailyPayloadPending, queryShowsLoading } from "../queries/pageShapeReady";
+import { dailyPayloadPending } from "../queries/pageShapeReady";
 import { useHeldDailySeries, useSidebarNav } from "../queries/hooks";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { servedDailyPerfComboPoints } from "../servedDailyPerfCombo";
 import { timeRangeToDays } from "../timeRange";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
-import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
+import { ValueMapPanel, valueMapView } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useMarkUsagePageNotFound } from "../usagePageTiming";
 import { usePortfolioPageData } from "./usePortfolioPageData";
@@ -89,7 +89,10 @@ export function GroupInfoPage() {
     shellKeepsFirstChartDate: true,
   });
   const error = page.bundleError;
-  const { data: navCtx } = page.navCtxQuery;
+  // The nav context as the page shows it: this unit's, or the one held across a switch (its own
+  // unit). The glance blocks and the value map read it; they dim while it is not this unit's.
+  const navCtx = page.navCtx.data;
+  const navCtxLoading = page.navCtx.loading;
   const {
     contentLoading,
     stripUnit,
@@ -102,20 +105,10 @@ export function GroupInfoPage() {
   // The value map replaces the composition chart when this page's node has something to tile
   // (sub-groups or its own accounts); only the real nav-context payload carries it (a cached
   // snapshot's values are placeholders).
-  const valueMapRoot = useMemo(
-    () => valueMapRootForPage(navCtx?.value_map, portfolioGroup),
-    [navCtx?.value_map, portfolioGroup]
+  const valueMap = useMemo(
+    () => valueMapView(navCtx?.value_map, navCtx?.value_map_color_bounds, portfolioGroup, navCtx?.unit ?? displayUnit),
+    [navCtx, portfolioGroup, displayUnit]
   );
-  // The map is shown whatever is loading, holding the last data it drew (old unit).
-  const heldValueMap = useHeldValueMap(
-    portfolioGroup,
-    valueMapRoot,
-    navCtx?.value_map_color_bounds,
-    displayUnit
-  );
-  // The map comes from nav-context, not the bundle: dim while that payload is not this unit's yet.
-  const valueMapLoading = queryShowsLoading(page.navCtxQuery);
-
 
   const tableAccounts = useMemo(
     () => accounts,
@@ -323,7 +316,7 @@ export function GroupInfoPage() {
         title={title}
         groupSlug={portfolioGroup}
         glance={navCtx?.basket_glance ?? undefined}
-        glanceLoading={valueMapLoading || navCtx?.basket_glance == null}
+        glanceLoading={navCtxLoading || navCtx?.basket_glance == null}
         pendingMembers={navMatchNode.member_account_ids?.length ?? 0}
         loading={contentLoading}
         portfolio={portfolio}
@@ -400,7 +393,7 @@ export function GroupInfoPage() {
       pointsCount: perfPoints.length,
     });
     const glance = navCtx?.group_glance ?? undefined;
-    const glanceLoading = valueMapLoading || navCtx?.group_glance == null;
+    const glanceLoading = navCtxLoading || navCtx?.group_glance == null;
     const bandBlock = (valuationIsDaily ? dailyValuationBlock : charts.valuationBlockForChart) ?? EMPTY_VALUATION_BLOCK;
     // The band draws the group's own total and its aportes only (the children are the pair's).
     const bandTotalBlock: TimeseriesBlock = {
@@ -480,10 +473,10 @@ export function GroupInfoPage() {
           <ValueMapPanel
             title=""
             surfaceId={`group.${portfolioGroup}.map`}
-            root={heldValueMap.root}
-            bounds={heldValueMap.bounds}
-            unit={heldValueMap.unit}
-            loading={valueMapLoading}
+            root={valueMap.root}
+            bounds={valueMap.bounds}
+            unit={valueMap.unit}
+            loading={navCtxLoading}
           />
         }
         pairControls={

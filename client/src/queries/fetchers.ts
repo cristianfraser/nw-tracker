@@ -42,6 +42,8 @@ export type PortfolioGroupBundle = {
 export type DashboardNavContext = {
   /** Set on a fetched context (the strip helpers also take shapes built from the bundle). */
   schema_version?: DashboardNavContextResponse["schema_version"];
+  /** The display unit of every money field (a context held across a switch keeps its own). */
+  unit: DashboardNavContextResponse["unit"];
   accounts: DashboardResponse["accounts"];
   liabilities_breakdown: DashboardResponse["liabilities_breakdown"];
   dashboard_layout?: DashboardResponse["dashboard_layout"];
@@ -65,6 +67,7 @@ export async function fetchDashboardNavContext(unit: DisplayUnit, root: string):
   const nav = await api.dashboardNavContext(unit, root);
   return {
     schema_version: nav.schema_version,
+    unit: nav.unit,
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,
@@ -82,7 +85,7 @@ export async function fetchDashboardNavContext(unit: DisplayUnit, root: string):
  * the account rows); nothing is summed here.
  */
 export function dashPickForNavStrip(
-  ctx: Omit<DashboardNavContext, "liabilities_breakdown" | "nw_bucket_totals"> & {
+  ctx: Omit<DashboardNavContext, "unit" | "liabilities_breakdown" | "nw_bucket_totals"> & {
     nw_bucket_totals?: DashboardNavContext["nw_bucket_totals"];
     liabilities_breakdown?: DashboardResponse["liabilities_breakdown"];
   }

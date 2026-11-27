@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { keepPreviousDataSameEntity } from "./displayUnitQueries";
+import { entityKeyLength, queryKeys } from "./keys";
 
 const prevQuery = (queryKey: readonly unknown[]) => ({ queryKey });
 
@@ -22,5 +23,18 @@ describe("keepPreviousDataSameEntity", () => {
     const hold = keepPreviousDataSameEntity(["dashboard", "clp"], 1);
     expect(hold({ v: 1 }, undefined)).toBeUndefined();
     expect(hold(undefined, prevQuery(["dashboard", "usd"]))).toBeUndefined();
+  });
+
+  it("holds a page's nav context and a comparison across units, never across pages or benchmarks", () => {
+    const sameEntity = (key: readonly unknown[], prev: readonly unknown[]) =>
+      keepPreviousDataSameEntity(key, entityKeyLength(key))({ v: 1 }, prevQuery(prev)) !== undefined;
+    expect(sameEntity(queryKeys.dashboardNav("brokerage", "usd"), queryKeys.dashboardNav("brokerage", "clp"))).toBe(true);
+    expect(sameEntity(queryKeys.dashboardNav("brokerage", "usd"), queryKeys.dashboardNav("retirement", "usd"))).toBe(false);
+    const cmp = queryKeys.benchmarkComparison("g:brokerage", "mortgage", "usd");
+    expect(sameEntity(cmp, queryKeys.benchmarkComparison("g:brokerage", "mortgage", "clp"))).toBe(true);
+    expect(sameEntity(cmp, queryKeys.benchmarkComparison("g:brokerage", "ipsa", "clp"))).toBe(false);
+    const prepay = queryKeys.mortgageGroupPrepayments("liabilities_mortgage", "ipsa", "usd");
+    expect(sameEntity(prepay, queryKeys.mortgageGroupPrepayments("liabilities_mortgage", "ipsa", "eur"))).toBe(true);
+    expect(sameEntity(prepay, queryKeys.mortgageGroupPrepayments("liabilities_mortgage", "spx", "usd"))).toBe(false);
   });
 });

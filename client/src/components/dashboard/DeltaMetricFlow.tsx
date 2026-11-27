@@ -2,6 +2,7 @@ import { cn } from "../../cn";
 import { plainNumberFlowParts, plainPercentNumberFlowParts } from "../../format";
 import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import styles from "./CardGroupMetrics.module.css";
+import type { DisplayUnit } from "../../queries/keys";
 
 const METRIC_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
 const METRIC_TIMING = {
@@ -14,8 +15,15 @@ type Props = {
   animated?: boolean;
   className?: string;
   fractionDigits?: number;
-  deltaFormat?: "absolute" | "percent";
-};
+} & (
+  | {
+      deltaFormat?: "absolute";
+      /** The unit of the payload the delta comes from (a held payload keeps its own), not the
+       * display unit: the number flow rolls, never flashes, when it changes. */
+      unit: DisplayUnit;
+    }
+  | { deltaFormat: "percent"; unit?: undefined }
+);
 
 export function DeltaMetricFlow({
   delta,
@@ -23,6 +31,7 @@ export function DeltaMetricFlow({
   className = "",
   fractionDigits = 0,
   deltaFormat = "absolute",
+  unit,
 }: Props) {
   if (delta == null) {
     return (
@@ -45,6 +54,7 @@ export function DeltaMetricFlow({
       <AnimatedNumberFlow
         value={delta}
         animated={animated}
+        unit={unit}
         mapDisplayValue={(n) =>
           deltaFormat === "percent"
             ? plainPercentNumberFlowParts(n, fractionDigits)

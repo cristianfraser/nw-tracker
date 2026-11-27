@@ -52,7 +52,7 @@ import {
   useSurfacePercentMode,
   useSurfacePrefs,
 } from "../surfaceDisplayPrefs";
-import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
+import { ValueMapPanel, valueMapView } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { DashboardFlowsChart, DashboardFlowsPeriods } from "../components/dashboard/DashboardFlowsSummary";
 import { PageGridTile } from "../components/layout/PageGridTile";
@@ -248,16 +248,9 @@ export function DashboardPage() {
   const overviewDaily = useHeldDashboardOverviewDaily(displayUnit, overviewDays, overviewIsDaily);
   const overviewDailyData = overviewDaily.data;
   // The value map replaces the composition chart; only a real bundle (live or held) carries it.
-  const valueMapRoot = useMemo(
-    () => (content ? valueMapRootForPage(content.dash.value_map, "net_worth") : null),
-    [content]
-  );
-  // While nothing is drawn yet the map keeps the last data it drew (in that data's unit).
-  const heldValueMap = useHeldValueMap(
-    "net_worth",
-    valueMapRoot,
-    content?.dash.value_map_color_bounds,
-    dash.unit
+  const valueMap = useMemo(
+    () => valueMapView(content?.dash.value_map, content?.dash.value_map_color_bounds, "net_worth", dash.unit),
+    [content, dash.unit]
   );
   // Net worth always has group children: the selected view is shown whatever is loading.
   const valueMapShown = compositionView.view === "map";
@@ -593,9 +586,9 @@ export function DashboardPage() {
           surfaceId="home.map"
           view={compositionView.view}
           onViewChange={compositionView.setView}
-          root={heldValueMap.root}
-          bounds={heldValueMap.bounds}
-          unit={heldValueMap.unit}
+          root={valueMap.root}
+          bounds={valueMap.bounds}
+          unit={valueMap.unit}
           loading={contentLoading}
         />
       ) : (

@@ -68,14 +68,14 @@ describe("resources", () => {
     for (const unit of ["clp", "usd", "eur"]) {
       qc.setQueryData(queryKeys.accountDetail("42", unit, "monthly"), unit);
       qc.setQueryData(queryKeys.dashboard(unit), unit);
-      qc.setQueryData(queryKeys.dashboardNav(unit, "net_worth"), unit);
+      qc.setQueryData(queryKeys.dashboardNav("net_worth", unit), unit);
     }
     qc.setQueryData(queryKeys.accountDetail("43", "usd", "monthly"), "other");
     await invalidateResources(qc, resources.accountMovements(42));
     for (const unit of ["clp", "usd", "eur"]) {
       expect(qc.getQueryState(queryKeys.accountDetail("42", unit, "monthly"))?.isInvalidated).toBe(true);
       expect(qc.getQueryState(queryKeys.dashboard(unit))?.isInvalidated).toBe(true);
-      expect(qc.getQueryState(queryKeys.dashboardNav(unit, "net_worth"))?.isInvalidated).toBe(true);
+      expect(qc.getQueryState(queryKeys.dashboardNav("net_worth", unit))?.isInvalidated).toBe(true);
     }
     expect(qc.getQueryState(queryKeys.accountDetail("43", "usd", "monthly"))?.isInvalidated).toBe(false);
   });

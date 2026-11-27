@@ -3,7 +3,8 @@ import { BenchmarkSelectOptions, benchmarkOptionLabel } from "../../benchmarkLab
 import { cn } from "../../cn";
 import { formatMoney, formatPct } from "../../format";
 import { useTranslation } from "../../i18n";
-import { useBenchmarkComparison, useBenchmarks } from "../../queries/hooks";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { useBenchmarks, useHeldBenchmarkComparison } from "../../queries/hooks";
 import { useSurfaceBenchmark } from "../../surfaceDisplayPrefs";
 import type {
   BenchmarkComparisonCell,
@@ -55,6 +56,8 @@ type BenchmarkComparisonProps = {
   onSelect: (slug: string) => void;
   /** Null while loading, or while it is in another unit than the list. */
   data: BenchmarkComparisonPayload | null;
+  /** `data` is held from before (a unit switch): its figures dim. */
+  loading: boolean;
 };
 
 type ListRow = {
@@ -198,8 +201,12 @@ function PeriodReturnsFullList({
   const selected = comparison.options.find((o) => o.slug === comparison.selected);
   const benchLabel = selected ? benchmarkOptionLabel(t, selected) : "";
   const benchPending = comparison.data == null;
-  const benchDim = cn(benchPending && !loading && styles.pending);
+  const benchDim = cn((benchPending || comparison.loading) && !loading && styles.pending);
+  // Each figure in its own payload's unit (the comparison is shown only beside a list in its unit).
   const money = (n: number | null | undefined) => (n != null ? formatMoney({ value: n, currency: displayUnit }) : null);
+  const benchUnit = comparison.data?.unit;
+  const benchMoney = (n: number | null | undefined) =>
+    n != null && benchUnit != null ? formatMoney({ value: n, currency: benchUnit }) : null;
   const pctText = (n: number | null | undefined) => (n != null ? formatPct(n * 100) : null);
   // Own figures are blank only on a pending row (no cell); the benchmark's while the comparison loads.
   const own = (cell: PeriodReturnCell | null, s: string | null) => (cell == null ? BLANK : (s ?? DASH));
@@ -260,7 +267,7 @@ function PeriodReturnsFullList({
             const shadowDetail = [
               [t("periodReturns.srReturn"), pctText(b?.benchmark_pct)],
               [t("periodReturns.annualizedTitle"), b?.benchmark_annualized_pct != null ? perYear(b.benchmark_annualized_pct) : null],
-              [t("periodReturns.srPl"), money(b?.shadow_pl)],
+              [t("periodReturns.srPl"), benchMoney(b?.shadow_pl)],
               [t("periodReturns.srIrr"), irrText(b?.shadow_irr_pct, b?.irr_annualized)],
             ]
               .filter((piece): piece is [string, string] => piece[1] != null)
@@ -297,7 +304,7 @@ function PeriodReturnsFullList({
                 </span>
                 <span className={cn("mono", styles.num, styles.muted, styles.wideOnly, benchDim)} title={benchTitle(b)}>
                   <SrLabel>{srBench(t("periodReturns.srPl"))}</SrLabel>
-                  {benchFig(money(b?.shadow_pl))}
+                  {benchFig(benchMoney(b?.shadow_pl))}
                 </span>
                 <span
                   className={cn("mono", styles.num, styles.muted, styles.wideOnly, benchDim)}
@@ -308,7 +315,7 @@ function PeriodReturnsFullList({
                 </span>
                 <span className={cn("mono", styles.num, styles.delta, toneClass(b?.delta_pl), benchDim)}>
                   <SrLabel>{t("periodReturns.srDelta", { benchmark: benchLabel })}</SrLabel>
-                  {benchFig(b?.delta_pl != null ? t("periodReturns.delta", { amount: money(b.delta_pl) }) : null)}
+                  {benchFig(b?.delta_pl != null ? t("periodReturns.delta", { amount: benchMoney(b.delta_pl) }) : null)}
                 </span>
                 <span className={cn("mono", styles.detail, benchDim)}>
                   <span title={t("periodReturns.irrTitle")}>
@@ -362,6 +369,7 @@ function PeriodReturnsCompactList({
   const selected = comparison.options.find((o) => o.slug === comparison.selected);
   const benchLabel = selected ? benchmarkOptionLabel(t, selected) : "";
   const benchPending = comparison.data == null;
+  const benchDim = cn(comparison.loading && !loading && styles.pending);
   return (
     <>
       <ReturnsHeading title={title} titleAs={titleAs} comparison={comparison} />
@@ -384,7 +392,7 @@ function PeriodReturnsCompactList({
                     ? formatMoney({ value: cell.nominal_pl, currency: displayUnit })
                     : DASH}
               </span>
-              <span className={cn("mono", styles.num, styles.compactBench)}>
+              <span className={cn("mono", styles.num, styles.compactBench, benchDim)}>
                 <SrLabel>{t("periodReturns.srBench", { benchmark: benchLabel, figure: t("periodReturns.srReturn") })}</SrLabel>
                 {benchPending ? BLANK : b?.benchmark_pct != null ? formatPct(b.benchmark_pct * 100) : DASH}
               </span>
@@ -401,14 +409,14 @@ function PeriodReturnsCompactList({
  * (`<pageKey>.returns`), default the mortgage. A stored slug the server no longer lists falls
  * back to the default. `data` is null only while the payload loads (callers pass null with
  * `loading`, never as a server-stated absence — that gate stays on the caller); the comparison is
- * not fetched until the payload is in, and its figures stay blank until it lands. Static (no
- * NumberFlow): it refetches wholesale on a unit toggle; figures format at render time.
+ * not fetched until a list is on screen. Both are held across a unit switch, each in its own unit;
+ * the comparison's figures show only beside a list in the same unit (blank otherwise). The request
+ * is in the display unit. Static (no NumberFlow): figures format at render time.
  */
 export function PeriodReturnsWithBenchmark({
   title,
   titleAs = "h2",
   data,
-  displayUnit,
   scope,
   surfaceId,
   loading,
@@ -417,8 +425,8 @@ export function PeriodReturnsWithBenchmark({
   /** The heading, in one row with the benchmark picker. */
   title: ReactNode;
   titleAs?: "h2" | "h3";
+  /** The list on screen (this unit's, or held from before in its own unit). */
   data: PeriodReturnsPayload | null;
-  displayUnit: DisplayUnit;
   scope: { accountId: number } | { portfolioGroup: string };
   /** Null until the page's scope is known (its benchmark choice is not read or stored). */
   surfaceId: string | null;
@@ -427,25 +435,27 @@ export function PeriodReturnsWithBenchmark({
   /** The short list (%, amount and the benchmark's % per period) instead of the full one. */
   compact?: boolean;
 }) {
+  const { displayUnit } = useDisplayPreferences();
   const { benchmark, setBenchmark } = useSurfaceBenchmark(surfaceId, DEFAULT_BENCHMARK);
   const benchmarks = useBenchmarks();
   const options = benchmarks.data?.benchmarks ?? [];
   const selected = options.some((o) => o.slug === benchmark) ? benchmark : DEFAULT_BENCHMARK;
-  const comparison = useBenchmarkComparison(
+  const comparison = useHeldBenchmarkComparison(
     scope,
     selected,
     displayUnit,
-    !loading && data != null && options.some((o) => o.slug === selected)
+    data != null && options.some((o) => o.slug === selected)
   );
   const cmp = comparison.data;
+  // A list pending with nothing to show has no unit yet: no comparison beside it.
+  const listUnit = data?.unit;
+  const shown = cmp != null && cmp.unit === listUnit && cmp.benchmark.slug === selected ? cmp : null;
   const comparisonProps: BenchmarkComparisonProps = {
     options,
     selected,
     onSelect: setBenchmark,
-    data:
-      !loading && cmp != null && cmp.unit === displayUnit && cmp.benchmark.slug === selected
-        ? cmp
-        : null,
+    data: shown,
+    loading: shown != null && comparison.loading,
   };
   const List = compact ? PeriodReturnsCompactList : PeriodReturnsFullList;
   return (
@@ -453,7 +463,7 @@ export function PeriodReturnsWithBenchmark({
       title={title}
       titleAs={titleAs}
       data={data}
-      displayUnit={displayUnit}
+      displayUnit={listUnit ?? displayUnit}
       comparison={comparisonProps}
       loading={loading}
     />
