@@ -161,6 +161,9 @@ function main() {
   let totalGap = 0;
   const importRunAccounts: CcStatementImportAccountLog[] = [];
 
+  // All accounts or none: a refusal on a later card (a stale plan with a prepayment) rolls the
+  // earlier ones back too, so a failed run leaves the ledger as it was.
+  const rebuildAll = () => {
   for (const accountId of accountIds) {
     const accountRecords = discovery.byAccount.get(accountId) ?? [];
     const accountLineCount = accountRecords.reduce((n, st) => n + st.lines.length, 0);
@@ -180,6 +183,12 @@ function main() {
       purchaseUpserts = ledger.purchaseUpserts;
       paymentUpserts = ledger.paymentUpserts;
       gapFilled = ledger.gapFilled;
+      for (const r of ledger.stale_plans_retired_with_assignments) {
+        console.warn(
+          `# account ${accountId}: plan ${r.plan_id} («${r.merchant ?? "?"}», ${r.purchase_date}, ${r.total_amount_clp}) ` +
+            `is no longer in the statements and no plan takes over what was filed on it (its flow is retired)`
+        );
+      }
     } else {
       const chains = groupInstallmentLoanChains(accountRecords);
       purchaseUpserts = chains.size;
@@ -210,6 +219,9 @@ function main() {
     totalPayments += paymentUpserts;
     totalGap += gapFilled;
   }
+  };
+  if (dry) rebuildAll();
+  else db.transaction(rebuildAll)();
 
   if (importRunAccounts.length > 0) {
     logCcStatementImportRun({ dry_run: dry, accounts: importRunAccounts });

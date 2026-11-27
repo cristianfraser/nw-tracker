@@ -8,7 +8,7 @@ import { db } from "./db.js";
 import { dedupeInstallmentPurchaseLedgerRows, installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
 import { statementPeriodMonthFromParsedRow } from "./cards/statementMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { foldSiblingPlanFlow } from "./ccCrossImportDedupe.js";
+import { foldSiblingPlanFlow, handOverPlanRecords } from "./ccCrossImportDedupe.js";
 import { cardLineWrite } from "./cards/lineWrites.js";
 
 type PurchaseRow = {
@@ -97,6 +97,7 @@ export function repairAccountInstallmentDuplicates(accountId: number, apply: boo
           }
         }
         if (apply) {
+          handOverPlanRecords(accountId, kept.id, sib.id);
           foldSiblingPlanFlow(accountId, kept.id, sib.id);
           deletePurchase.run(sib.id);
           stats.purchasesRemoved++;

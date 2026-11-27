@@ -648,7 +648,7 @@ function importResult(
   };
   return {
     statements: statementsResult,
-    ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0, pieces_dropped: [] },
+    ledger: a?.ledger ?? { purchaseUpserts: 0, paymentUpserts: 0, earliestNewPurchaseDate: null, gapFilled: 0, pieces_dropped: [], stale_plans_retired_with_assignments: [], earliestChangedEvidenceDate: null },
     overlap_removed: a?.overlap_removed ?? 0,
     pieces_dropped: a?.pieces_dropped ?? [],
     manual_installment_reconcile: a?.manual_installment_reconcile ?? emptyManualReconcile(),

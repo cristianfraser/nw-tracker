@@ -1,12 +1,14 @@
 import type { ListingOrder } from "nw-tracker-contracts";
 import { ccCardGroupOrDefault } from "./ccIssuers.js";
-import { recordPlanFlowFirstSeen } from "./flows/flowFirstSeen.js";
+import { compareArrival, flowArrival, recordPlanFlowFirstSeen, setFlowArrival } from "./flows/flowFirstSeen.js";
+import { flowHoldsAssignments } from "./flows/mirrorLegFlows.js";
 import { db } from "./db.js";
 import { ccStatementSourceKindOf } from "./ccStatementSourceKind.js";
 import {
   applyCardLinePlan,
   applyCardLinePlanDetailed,
   foldSiblingPlanFlow,
+  handOverPlanRecords,
   planOneShotLinesSupersededByInstallmentPurchases,
   type CardLinePiecesDropped,
 } from "./ccCrossImportDedupe.js";
@@ -237,7 +239,16 @@ export type CcInstallmentLedgerMergeResult = {
   gapFilled: number;
   /** Pieces of one-shot lines this merge's plans replaced, dropped (a plan takes none). */
   pieces_dropped: CardLinePiecesDropped[];
+  /**
+   * A rebuild's stale plans that went with filed work (category, note, big group, pieces, links) and
+   * no plan to take it over: the flow is retired, nothing reads it again.
+   */
+  stale_plans_retired_with_assignments: RetiredStalePlan[];
+  /** A rebuild's earliest day of a plan removed or restated with another date or amounts (old and new); null otherwise. */
+  earliestChangedEvidenceDate: string | null;
 };
+
+export type RetiredStalePlan = { plan_id: number; merchant: string | null; purchase_date: string; total_amount_clp: number };
 
 export type CcInstallmentLedgerMergeOpts = {
   /**
@@ -245,8 +256,9 @@ export type CcInstallmentLedgerMergeOpts = {
    * the payments are re-read, a plan the statements still state stays the row it is (its id, flow,
    * arrival, prepayment and provenance rows), a statement plan with no row is written, and a
    * statement plan no statement states any more goes — refused when something names it by id
-   * (`assertStalePlansUnreferenced`), its flow folded into a same-identity plan's when it is a
-   * duplicate of one.
+   * (a bank prepayment), its flow folded into the plan that replaces it — the same identity, else the
+   * one new plan of the same loan key — and what it cannot hand over is reported. A rebuild never
+   * stamps an arrival.
    */
   replaceLedger?: boolean;
 };
@@ -260,57 +272,99 @@ type StalePlan = {
   twin_index: number;
 };
 
+/** The ISO day a `purchase_date` column value stands for (evidence dates are ISO days). */
+const planDay = (d: string): string => d.slice(0, 10);
+
 /**
- * What names a plan by its id, where deleting the plan would lose it (the FK rows cascade, the
- * card-to-card part is a bare number): its prepayment, the feed's provenance row, a card-to-card
- * payment part. A row of the hand-entered plans never gets here.
+ * What names a stale plan by its id where deleting it would lose the record: a bank prepayment.
+ * (A card-to-card payment part is derived: its sync re-points it after the write. The feed's
+ * provenance row belongs to hand-entered plans, which a rebuild never removes.)
  */
 function planIdReferences(planId: number): string[] {
-  const refs: string[] = [];
-  const has = (sql: string) => db.prepare(sql).get(planId) != null;
-  if (has(`SELECT 1 FROM cc_plan_prepayments WHERE purchase_id = ?`)) refs.push("a bank prepayment (cc_plan_prepayments)");
-  if (has(`SELECT 1 FROM cc_feed_installment_plans WHERE purchase_id = ?`)) refs.push("the feed's provenance (cc_feed_installment_plans)");
-  if (has(`SELECT 1 FROM card_to_card_payments WHERE part_kind = 'plan' AND part_ref = ?`)) refs.push("a card-to-card payment part (card_to_card_payments)");
-  return refs;
+  return db.prepare(`SELECT 1 FROM cc_plan_prepayments WHERE purchase_id = ?`).get(planId) != null
+    ? ["a bank prepayment (cc_plan_prepayments)"]
+    : [];
 }
 
 /**
- * The tail of a ledger rebuild: the statement plans the statements no longer state go. Each is
- * checked first — one something names by id (a prepayment, the feed's provenance, a card-to-card
- * part) has no row to be re-pointed to, so the rebuild refuses, listing them, and writes nothing.
- * A stale plan that repeats a plan the rebuild kept (the same identity) hands it its flow
- * (`foldSiblingPlanFlow`: the older arrival, what was filed on either) before it goes.
+ * The tail of a ledger rebuild: the statement plans the statements no longer state go, each
+ * handing what it can to the plan that replaces it. The replacement is the kept plan of the same
+ * identity (`foldSiblingPlanFlow`, the older arrival kept) or, when the identity changed with the
+ * parse, the one plan written new in this rebuild under the same `dedupe_key` (the loan key the
+ * chains group by) when exactly one stale plan and one new plan share it. A stale plan's prepayment
+ * goes with its flow. A stale plan with no replacement that is named by a prepayment makes the
+ * rebuild refuse, listing it (nothing is written); one with filed work and no replacement is
+ * reported. Returns those, and the earliest purchase day of the plans removed (their stamps).
  */
-function removeStaleStatementPlans(accountId: number, touched: ReadonlySet<number>): void {
+function removeStaleStatementPlans(
+  accountId: number,
+  touched: ReadonlySet<number>,
+  created: ReadonlySet<number>
+): { retired_with_assignments: RetiredStalePlan[]; earliest_removed_on: string | null } {
   const stale = (
     db
       .prepare(
-        `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
+        `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index, dedupe_key, flow_id
          FROM cc_installment_purchases WHERE account_id = ? AND source != 'manual' ORDER BY id`
       )
-      .all(accountId) as StalePlan[]
+      .all(accountId) as (StalePlan & { dedupe_key: string | null; flow_id: number | null })[]
   ).filter((p) => !touched.has(p.id));
-  if (stale.length === 0) return;
-  const referenced = stale.map((p) => ({ p, refs: planIdReferences(p.id) })).filter((x) => x.refs.length > 0);
-  if (referenced.length > 0) {
-    throw new Error(
-      `ledger rebuild refused: ${referenced.length} plan(s) the statements no longer state are named by id — ` +
-        referenced.map((x) => `plan ${x.p.id} («${x.p.merchant ?? "?"}», ${x.p.purchase_date}, ${x.p.total_amount_clp}): ${x.refs.join(", ")}`).join("; ") +
-        `. Nothing was written; remove or re-point those records first.`
-    );
-  }
+  if (stale.length === 0) return { retired_with_assignments: [], earliest_removed_on: null };
+
+  const sel = db.prepare(
+    `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index, dedupe_key
+     FROM cc_installment_purchases WHERE id = ?`
+  );
   const keptByIdentity = new Map<string, number>();
   for (const id of touched) {
-    const row = db
-      .prepare(`SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index FROM cc_installment_purchases WHERE id = ?`)
-      .get(id) as StalePlan | undefined;
+    const row = sel.get(id) as StalePlan | undefined;
     if (row) keptByIdentity.set(installmentPurchaseLedgerDedupeKey(row), row.id);
   }
-  for (const p of stale) {
-    const kept = keptByIdentity.get(installmentPurchaseLedgerDedupeKey(p));
-    if (kept != null) foldSiblingPlanFlow(accountId, kept, p.id);
+  // The loose pairing: one stale plan and one plan written new share a loan key.
+  const createdByKey = new Map<string, number[]>();
+  for (const id of created) {
+    const key = (sel.get(id) as { dedupe_key: string | null } | undefined)?.dedupe_key;
+    if (key) createdByKey.set(key, [...(createdByKey.get(key) ?? []), id]);
+  }
+  const staleByKey = new Map<string, number>();
+  for (const p of stale) if (p.dedupe_key) staleByKey.set(p.dedupe_key, (staleByKey.get(p.dedupe_key) ?? 0) + 1);
+  const replacementOf = (p: (typeof stale)[number]): number | null => {
+    const same = keptByIdentity.get(installmentPurchaseLedgerDedupeKey(p));
+    if (same != null) return same;
+    const candidates = p.dedupe_key ? createdByKey.get(p.dedupe_key) ?? [] : [];
+    return candidates.length === 1 && staleByKey.get(p.dedupe_key!) === 1 ? candidates[0]! : null;
+  };
+
+  const plans = stale.map((p) => ({ p, replacement: replacementOf(p) }));
+  const unreplaced = plans.filter((x) => x.replacement == null);
+  const referenced = unreplaced.map((x) => ({ p: x.p, refs: planIdReferences(x.p.id) })).filter((x) => x.refs.length > 0);
+  if (referenced.length > 0) {
+    throw new Error(
+      `ledger rebuild refused for account ${accountId}: ${referenced.length} plan(s) the statements no longer state carry a record that names them by id — ` +
+        referenced.map((x) => `plan ${x.p.id} («${x.p.merchant ?? "?"}», ${x.p.purchase_date}, ${x.p.total_amount_clp}): ${x.refs.join(", ")}`).join("; ") +
+        `. If the statements are right and the plan is gone, delete its prepayment record ` +
+        `(DELETE FROM cc_plan_prepayments WHERE purchase_id = <plan id>) and run again; if the parse lost the plan, fix the parse first. Nothing was written.`
+    );
+  }
+  const retired: RetiredStalePlan[] = [];
+  let earliest: string | null = null;
+  for (const { p, replacement } of plans) {
+    const day = planDay(p.purchase_date);
+    if (earliest == null || day < earliest) earliest = day;
+    if (replacement != null) {
+      // The replaced plan's arrival stays whatever the fold's rule says of a freshly written one.
+      const arrival = p.flow_id != null ? flowArrival(p.flow_id) : ({ kind: "not_an_arrival" } as const);
+      handOverPlanRecords(accountId, replacement, p.id);
+      foldSiblingPlanFlow(accountId, replacement, p.id);
+      const flow = (db.prepare(`SELECT flow_id FROM cc_installment_purchases WHERE id = ?`).get(replacement) as { flow_id: number }).flow_id;
+      const now = flowArrival(flow);
+      if (arrival.kind === "stamped" && (now.kind !== "stamped" || compareArrival(arrival, now) < 0)) setFlowArrival(flow, arrival);
+    } else if (p.flow_id != null && flowHoldsAssignments(p.flow_id, db)) {
+      retired.push({ plan_id: p.id, merchant: p.merchant, purchase_date: p.purchase_date, total_amount_clp: p.total_amount_clp });
+    }
     db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(p.id);
   }
+  return { retired_with_assignments: retired, earliest_removed_on: earliest };
 }
 
 export function mergeInstallmentLedgerFromStatements(
@@ -383,6 +437,24 @@ function mergeInstallmentLedgerInSession(
   let earliestNewPurchaseDate: string | null = null;
   let paymentUpserts = 0;
   const touchedPlanIds = new Set<number>();
+  const createdPlanIds = new Set<number>();
+  // A rebuild's other changes to what the card owes: days of plans whose date or amounts changed
+  // (old and new) and of plans removed. Their today-stamps are stale like a new plan's.
+  let earliestChangedOn: string | null = null;
+  const noteChangedDay = (d: string | null | undefined) => {
+    if (!d) return;
+    const day = planDay(d);
+    if (earliestChangedOn == null || day < earliestChangedOn) earliestChangedOn = day;
+  };
+  let retiredStale: RetiredStalePlan[] = [];
+  const selPlanFacts = db.prepare(`SELECT purchase_date, total_amount_clp, cuotas_totales FROM cc_installment_purchases WHERE id = ?`);
+  /** A plan on file the rebuild restates: when its date or amounts change, both days are evidence. */
+  const noteChangedRow = (row: { id: number }, date: string, total: number, cuotas: number) => {
+    const old = selPlanFacts.get(row.id) as { purchase_date: string; total_amount_clp: number; cuotas_totales: number };
+    if (old.purchase_date === date && old.total_amount_clp === total && old.cuotas_totales === cuotas) return;
+    noteChangedDay(old.purchase_date);
+    noteChangedDay(date);
+  };
 
   const run = db.transaction(() => {
     if (replaceLedger) {
@@ -433,6 +505,7 @@ function mergeInstallmentLedgerInSession(
       let pid = purchaseIdByFingerprint.get(fingerprint);
       if (pid == null) {
         const onFile = selId.get(accountId, agg.card_group, agg.canonical_row_id) != null;
+        if (replaceLedger && onFile) noteChangedRow(selId.get(accountId, agg.card_group, agg.canonical_row_id) as { id: number }, purchaseDate, maxTotal, maxCuotas);
         insP.run({
           account_id: accountId,
           card_group: agg.card_group,
@@ -460,8 +533,11 @@ function mergeInstallmentLedgerInSession(
         pid = (selId.get(accountId, agg.card_group, agg.canonical_row_id) as { id: number }).id;
         purchaseIdByFingerprint.set(fingerprint, pid);
         // A plan written new is the purchase's arrival (its cuota lines are not: `FlowArrival`).
-        if (!onFile) recordPlanFlowFirstSeen(pid);
+        // A rebuild re-creates what was on file: it stamps nothing.
+        if (!onFile && !replaceLedger) recordPlanFlowFirstSeen(pid);
+        if (!onFile) createdPlanIds.add(pid);
       } else {
+        if (replaceLedger) noteChangedRow({ id: pid }, purchaseDate, maxTotal, maxCuotas);
         db.prepare(
           `UPDATE cc_installment_purchases SET
              purchase_date = @purchase_date,
@@ -546,7 +622,11 @@ function mergeInstallmentLedgerInSession(
       }
     }
     assertTwinPlansStartTogether(accountId, planIdsByLoan);
-    if (replaceLedger) removeStaleStatementPlans(accountId, touchedPlanIds);
+    if (replaceLedger) {
+      const removed = removeStaleStatementPlans(accountId, touchedPlanIds, createdPlanIds);
+      retiredStale = removed.retired_with_assignments;
+      noteChangedDay(removed.earliest_removed_on);
+    }
   });
 
   run();
@@ -557,6 +637,7 @@ function mergeInstallmentLedgerInSession(
   const { pieces_dropped } = applyCardLinePlanDetailed(accountId, planOneShotLinesSupersededByInstallmentPurchases(accountId));
   // The contract consumes cupo on its purchase date: the stamps written after it are stale.
   noteCardLineEvidence(accountId, earliestNewPurchaseDate);
+  noteCardLineEvidence(accountId, earliestChangedOn);
 
   return {
     purchaseUpserts,
@@ -564,6 +645,8 @@ function mergeInstallmentLedgerInSession(
     earliestNewPurchaseDate,
     gapFilled,
     pieces_dropped,
+    stale_plans_retired_with_assignments: retiredStale,
+    earliestChangedEvidenceDate: earliestChangedOn,
   };
 };
 

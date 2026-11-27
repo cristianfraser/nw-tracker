@@ -196,7 +196,7 @@ function runUndo(item: Extract<PlanItem, { action: "undo" }>): Outcome {
   const out = mergeLeg(merge, "out");
   const inn = mergeLeg(merge, "in");
   assertUnreferenced(item.transfer, new Set(["movement_mirror_merges"]), "transfer");
-  for (const id of [out.id, inn.id]) if (getLeg.get(id)) throw new Error(`cannot restore leg ${id}: the id is taken`);
+  for (const id of [out.id, inn.id]) if (getLeg.get(id)) throw new Error(`cannot restore leg ${id} under its original id: movement ${id} now belongs to another row (ids are not AUTOINCREMENT, so one freed by a delete can be reused); nothing was written`);
   undoMirrorConversion(item.transfer, { originalIds: true });
   // The restored legs would come straight back as a candidate; the rejection is the record that
   // this pairing was reviewed and is not a transfer.
@@ -253,7 +253,7 @@ function runSwap(item: Extract<PlanItem, { action: "swap" }>): Outcome {
   const transferUnits = units != null && Number.isFinite(units) && units !== 0 ? Math.abs(units) : null;
   const transferDate = outMonthPrecision && !inMonthPrecision ? inYmd : outYmd;
 
-  if (getLeg.get(wrong.id)) throw new Error(`cannot restore leg ${wrong.id}: the id is taken`);
+  if (getLeg.get(wrong.id)) throw new Error(`cannot restore leg ${wrong.id} under its original id: movement ${wrong.id} now belongs to another row (ids are not AUTOINCREMENT, so one freed by a delete can be reused); nothing was written`);
   const p = item.side;
   // The transfer's own day, note and cuotas first; the leg and flow steps are the app's.
   db.prepare(`UPDATE movements SET occurred_on = ?, note = ?, units_delta = ? WHERE id = ?`).run(

@@ -13,6 +13,7 @@ import { parsedStatements, type ParsedRecord } from "./test/parsedStatementRecor
 import { snapshotTables } from "./test/snapshotTables.js";
 import { createTempCardMaster, deleteTempCardMaster } from "./test/tempCardMaster.js";
 import {
+  assertMovedLinesSurvive,
   copyLinesWithAssignments,
   documentIdentityCounts,
   planCopyLineHandover,
@@ -116,5 +117,18 @@ describe("removing a duplicate-download statement", () => {
     expect(lines).toHaveLength(2);
     expect(note(flowOf(copyB))).toBe("note on B");
     expect(flowArrival(flowOf(copyB))).toEqual({ kind: "stamped", stamp: expect.objectContaining({ on: "2026-05-07" }) });
+  });
+
+  it("fails when a moved line is no longer on the real statement under its flow", () => {
+    const partial = parsedStatements([row("a", "VITEST SHOP ONE", "05/05/26", 11_000)]);
+    replaceStatementLines(card, partial, { replaceStatementKeys: statementKeysOf(partial) });
+    const targetId = statementId(partial[0]!.document);
+    const line = storedStatementLines(targetId)[0]!;
+    const flow = flowOf(line.id);
+    expect(() => assertMovedLinesSurvive(new Map([[line.id, flow]]), targetId)).not.toThrow();
+    // Written again under another flow (what an unpaired line does in the import).
+    expect(() => assertMovedLinesSurvive(new Map([[line.id, flow + 1_000_000]]), targetId)).toThrow(/did not restate moved line/);
+    db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(line.id);
+    expect(() => assertMovedLinesSurvive(new Map([[line.id, flow]]), targetId)).toThrow(/did not restate moved line/);
   });
 });

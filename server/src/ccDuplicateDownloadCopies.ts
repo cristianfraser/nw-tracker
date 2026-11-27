@@ -137,7 +137,36 @@ export function copyHandoverConflict(copy: DuplicateDownloadCopy): string | null
     const conflict = mirrorLegFlowsConflict([a, b]);
     if (conflict) return `line ${f.fromLineId} → ${f.intoLineId}: ${conflict.detail}`;
   }
+  const override = db.prepare(`SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`);
+  for (const f of plan.fold) {
+    const from = override.get(f.fromLineId) as { category_id: number } | undefined;
+    const into = override.get(f.intoLineId) as { category_id: number } | undefined;
+    if (from && into && from.category_id !== into.category_id) {
+      return `line ${f.fromLineId} → ${f.intoLineId}: the lines carry different per-line categories`;
+    }
+  }
   return null;
+}
+
+/**
+ * After the re-import: every line that moved onto the real statement is still there, on its own
+ * flow. The import restates a moved line in place only when its planner pairs it (parser row id,
+ * cuota numbers, identity); a line it does not pair is removed and written again as a new row,
+ * which would lose what this hand-over exists to keep. Throws, naming the lines.
+ */
+export function assertMovedLinesSurvive(moved: ReadonlyMap<number, number | null>, targetStatementId: number): void {
+  const lost: number[] = [];
+  const sel = db.prepare(`SELECT statement_id, flow_id FROM cc_statement_lines WHERE id = ?`);
+  for (const [lineId, flowId] of moved) {
+    const row = sel.get(lineId) as { statement_id: number; flow_id: number | null } | undefined;
+    if (!row || row.statement_id !== targetStatementId || row.flow_id !== flowId) lost.push(lineId);
+  }
+  if (lost.length > 0) {
+    throw new Error(
+      `the re-import did not restate moved line(s) ${lost.join(", ")} of statement ${targetStatementId} in place ` +
+        `(removed or re-written under another flow); nothing was written`
+    );
+  }
 }
 
 /**
@@ -149,6 +178,7 @@ export function copyHandoverConflict(copy: DuplicateDownloadCopy): string | null
 export function removeDuplicateDownloadCopies(accountId: number, copies: readonly DuplicateDownloadCopy[]): StatementDocumentsImportResult {
   return cardLineWrite(accountId, "removing duplicate-download statements", () => {
     const before = ccPaymentPairingIdsWithEvidence(accountId);
+    const moved = new Map<number, { statementId: number; flowId: number | null }>();
     for (const copy of copies) {
       const conflict = copyHandoverConflict(copy);
       if (conflict) throw new Error(`statement ${copy.copyStatementId}: ${conflict}`);
@@ -158,7 +188,11 @@ export function removeDuplicateDownloadCopies(accountId: number, copies: readonl
         storedStatementLines(copy.targetStatementId),
         documentIdentityCounts(copy.targetStatement)
       );
-      for (const id of plan.move) db.prepare(`UPDATE cc_statement_lines SET statement_id = ? WHERE id = ?`).run(copy.targetStatementId, id);
+      for (const id of plan.move) {
+        const flowId = (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(id) as { flow_id: number | null }).flow_id;
+        moved.set(id, { statementId: copy.targetStatementId, flowId });
+        db.prepare(`UPDATE cc_statement_lines SET statement_id = ? WHERE id = ?`).run(copy.targetStatementId, id);
+      }
       applyLinePlan(accountId, "removing duplicate-download statements", { deleteLineIds: [], carry: [], fold: plan.fold });
       db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(copy.copyStatementId);
     }
@@ -166,6 +200,12 @@ export function removeDuplicateDownloadCopies(accountId: number, copies: readonl
       replaceLedger: false,
       replaceStatementKeys: new Set(copies.map((c) => c.targetKey)),
     });
+    for (const copy of copies) {
+      assertMovedLinesSurvive(
+        new Map([...moved].filter(([, m]) => m.statementId === copy.targetStatementId).map(([id, m]) => [id, m.flowId] as const)),
+        copy.targetStatementId
+      );
+    }
     assertCcPaymentEvidenceKept(accountId, before, "removing the duplicate-download statements");
     return merged;
   });

@@ -94,4 +94,105 @@ describe("a ledger rebuild", () => {
     expect(planId(gone)).toBeUndefined();
     expect(planId("VITEST REBUILD KEEP")).toBeDefined();
   });
+
+  const stampFlow = (flow: number, on: string) => {
+    db.prepare(`DELETE FROM flow_first_seen WHERE flow_id = ?`).run(flow);
+    db.prepare(`INSERT INTO flow_first_seen (flow_id, first_seen_on, first_seen_at, first_seen_seq) VALUES (?, ?, NULL, NULL)`).run(flow, on);
+  };
+  const noteOn = (flow: number, text: string) =>
+    db.prepare(`INSERT INTO flow_notes (flow_id, portion, piece_seq, account_id, notes, updated_at) VALUES (?, 'gastos', -1, ?, ?, datetime('now'))`).run(flow, card, text);
+  const noteOf = (flow: number) => (db.prepare(`SELECT notes FROM flow_notes WHERE flow_id = ?`).get(flow) as { notes: string } | undefined)?.notes;
+
+  it("a plan whose total moves a peso keeps its row, flow, note and arrival; both days are evidence", () => {
+    const merchant = "VITEST REBUILD TOTAL";
+    importStatements([cuotaRow("tot", merchant, "05/05/26", 60_000)]);
+    const id = planId(merchant)!;
+    const flow = planFlow(id);
+    stampFlow(flow, "2026-05-06");
+    noteOn(flow, "filed on the plan");
+
+    const changed = parsedStatements([cuotaRow("tot", merchant, "05/05/26", 60_006)]);
+    const result = mergeInstallmentLedgerFromStatements(card, changed, { replaceLedger: true });
+
+    expect(planId(merchant)).toBe(id);
+    expect(planFlow(id)).toBe(flow);
+    expect(noteOf(flow)).toBe("filed on the plan");
+    expect(flowArrival(flow)).toEqual({ kind: "stamped", stamp: expect.objectContaining({ on: "2026-05-06" }) });
+    expect(result.earliestChangedEvidenceDate).toBe("2026-05-05");
+  });
+
+  it("a plan the parse no longer states puts its purchase day into the write's evidence", () => {
+    const keep = importStatements([cuotaRow("keep2", "VITEST REBUILD KEEP2", "06/05/26", 60_000)]);
+    importStatements([cuotaRow("phantom", "VITEST REBUILD PHANTOM", "07/04/26", 90_000)]);
+    const result = mergeInstallmentLedgerFromStatements(card, keep, { replaceLedger: true });
+    expect(planId("VITEST REBUILD PHANTOM")).toBeUndefined();
+    expect(result.earliestChangedEvidenceDate).toBe("2026-04-07");
+    expect(result.stale_plans_retired_with_assignments).toEqual([]);
+  });
+
+  it("a plan whose identity and canonical row both changed hands its flow, note, arrival and prepayment to its replacement, unstamped", () => {
+    const old = cuotaRow("loose", "VITEST REBUILD LOOSE", "05/05/26", 60_000);
+    importStatements([old]);
+    const oldId = planId("VITEST REBUILD LOOSE")!;
+    const oldFlow = planFlow(oldId);
+    stampFlow(oldFlow, "2026-05-06");
+    noteOn(oldFlow, "filed on the old plan");
+    db.prepare(`INSERT INTO cc_plan_prepayments (purchase_id, account_id, paid_on, amount_clp) VALUES (?, ?, '2026-05-20', 60000)`).run(oldId, card);
+
+    // The parser now reads the same purchase with another total and another canonical row id.
+    const reread = { ...cuotaRow("loose", "VITEST REBUILD LOOSE", "05/05/26", 60_006), canonical_row_id: "vitest-rebuild-loose-plan-2" };
+    const statements = parsedStatements([reread]);
+    const result = mergeInstallmentLedgerFromStatements(card, statements, { replaceLedger: true });
+
+    const newId = planId("VITEST REBUILD LOOSE")!;
+    expect(newId).not.toBe(oldId);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM cc_installment_purchases WHERE account_id = ?`).get(card)).toEqual({ n: 1 });
+    const flow = planFlow(newId);
+    expect(noteOf(flow)).toBe("filed on the old plan");
+    expect(flowArrival(flow)).toEqual({ kind: "stamped", stamp: expect.objectContaining({ on: "2026-05-06" }) });
+    expect(db.prepare(`SELECT 1 FROM cc_plan_prepayments WHERE purchase_id = ?`).get(newId)).toBeDefined();
+    expect(result.stale_plans_retired_with_assignments).toEqual([]);
+  });
+
+  it("a stale plan with filed work and no replacement is reported", () => {
+    const keep = importStatements([cuotaRow("k3", "VITEST REBUILD K3", "06/05/26", 60_000)]);
+    importStatements([cuotaRow("g3", "VITEST REBUILD G3", "07/05/26", 90_000)]);
+    noteOn(planFlow(planId("VITEST REBUILD G3")!), "filed");
+    const result = mergeInstallmentLedgerFromStatements(card, keep, { replaceLedger: true });
+    expect(result.stale_plans_retired_with_assignments).toEqual([
+      expect.objectContaining({ merchant: "VITEST REBUILD G3", total_amount_clp: 90_000 }),
+    ]);
+  });
+
+  it("the ordinary merge is unchanged: nothing deleted, restated or stamped; a new plan is stamped and its day noted", () => {
+    const statements = importStatements([cuotaRow("n1", "VITEST REBUILD N1", "05/05/26", 60_000)]);
+    importStatements([cuotaRow("n2", "VITEST REBUILD N2", "06/05/26", 30_000)]);
+    const snapshot = () => ({
+      plans: db
+        .prepare(`SELECT id, flow_id, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, first_due_month, source FROM cc_installment_purchases WHERE account_id = ? ORDER BY id`)
+        .all(card),
+      payments: db
+        .prepare(`SELECT p.purchase_id, p.pay_by_date, p.amount_clp, p.cuota_current FROM cc_installment_payments p JOIN cc_installment_purchases pr ON pr.id = p.purchase_id WHERE pr.account_id = ? ORDER BY p.id`)
+        .all(card),
+      stamps: db
+        .prepare(`SELECT f.flow_id, f.first_seen_on FROM flow_first_seen f JOIN cc_installment_purchases pr ON pr.flow_id = f.flow_id WHERE pr.account_id = ? ORDER BY f.flow_id`)
+        .all(card),
+    });
+    const before = snapshot();
+    // n1's statement alone: n2 is not in the batch, and a plain merge never removes it.
+    const result = mergeInstallmentLedgerFromStatements(card, statements, { replaceLedger: false });
+    expect(snapshot()).toEqual(before);
+    expect(result.earliestNewPurchaseDate).toBeNull();
+    expect(result.earliestChangedEvidenceDate).toBeNull();
+    expect(result.stale_plans_retired_with_assignments).toEqual([]);
+    expect(before.plans).toHaveLength(2);
+    expect(before.stamps).toHaveLength(2);
+
+    const fresh = parsedStatements([cuotaRow("n3", "VITEST REBUILD N3", "08/05/26", 12_000)]);
+    const added = mergeInstallmentLedgerFromStatements(card, fresh, { replaceLedger: false });
+    expect(added.earliestNewPurchaseDate).toBe("2026-05-08");
+    const n3 = planId("VITEST REBUILD N3")!;
+    expect(db.prepare(`SELECT 1 FROM flow_first_seen WHERE flow_id = ?`).get(planFlow(n3))).toBeDefined();
+    expect(planId("VITEST REBUILD N2")).toBeDefined();
+  });
 });

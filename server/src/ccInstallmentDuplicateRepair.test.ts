@@ -53,4 +53,21 @@ describe("consolidating duplicate installment plans", () => {
     expect((db.prepare(`SELECT notes FROM flow_notes WHERE flow_id = ?`).get(flow) as { notes: string } | undefined)?.notes).toBe("filed on the first plan");
     expect(flowArrival(flow)).toEqual({ kind: "stamped", stamp: expect.objectContaining({ on: "2026-04-10" }) });
   });
+
+  it("a removed sibling's prepayment moves to the kept plan; two prepayments refuse and write nothing", () => {
+    const sibling = plan("vitest-dup-c");
+    const kept = plan("vitest-dup-d");
+    db.prepare(`INSERT INTO cc_plan_prepayments (purchase_id, account_id, paid_on, amount_clp) VALUES (?, ?, '2026-05-01', 120000)`).run(sibling, card);
+    repairAccountInstallmentDuplicates(card, true);
+    expect(exists(sibling)).toBe(false);
+    expect(db.prepare(`SELECT 1 FROM cc_plan_prepayments WHERE purchase_id = ?`).get(kept)).toBeDefined();
+
+    const sibling2 = plan("vitest-dup-e");
+    const kept2 = plan("vitest-dup-f");
+    db.prepare(`INSERT INTO cc_plan_prepayments (purchase_id, account_id, paid_on, amount_clp) VALUES (?, ?, '2026-05-01', 120000)`).run(sibling2, card);
+    db.prepare(`DELETE FROM cc_plan_prepayments WHERE purchase_id = ?`).run(kept);
+    db.prepare(`INSERT INTO cc_plan_prepayments (purchase_id, account_id, paid_on, amount_clp) VALUES (?, ?, '2026-05-02', 120000)`).run(kept2, card);
+    expect(() => repairAccountInstallmentDuplicates(card, true)).toThrow(/both carry a cc_plan_prepayments record/);
+    expect(exists(sibling2)).toBe(true);
+  });
 });

@@ -101,7 +101,7 @@ function stampOf(r: StampRow): FirstSeenStamp {
  *   — the card-line import (a statement's cuota line excepted), a plan written new (a statement's,
  *   a feed's, a hand-entered one; a plan converted from a line takes the line's arrival),
  *   `insertMovement`, the manual-expense create — so such a flow was on file before the stamps (or
- *   is a re-creation of one: a ledger wipe's plans, the receipt and gap scripts' estimated lines,
+ *   is a re-creation of one: a ledger rebuild's new plans, the receipt and gap scripts' estimated lines,
  *   income entries, which no runtime path writes): older than any stamp.
  * - `not_an_arrival`: no stamp, and every row it records is a statement's cuota line (its monthly
  *   billing of a plan: never a new movement, so the import stamps none) — or it records no row and

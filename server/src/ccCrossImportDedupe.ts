@@ -369,6 +369,23 @@ export function foldSiblingPlanFlow(accountId: number, keptId: number, siblingId
 
 
 /**
+ * The records that name a plan by its id (a bank prepayment, the feed's provenance row) go with it
+ * when the plan is replaced by another of the same purchase. They move to the kept plan when it has
+ * none; when both have one, the sibling's cannot move and the caller's write throws (nothing is
+ * written), naming both plans.
+ */
+export function handOverPlanRecords(accountId: number, keptId: number, siblingId: number): void {
+  for (const table of ["cc_plan_prepayments", "cc_feed_installment_plans"]) {
+    const sib = db.prepare(`SELECT 1 FROM ${table} WHERE purchase_id = ?`).get(siblingId);
+    if (!sib) continue;
+    if (db.prepare(`SELECT 1 FROM ${table} WHERE purchase_id = ?`).get(keptId)) {
+      throw new Error(`account ${accountId}: plans ${keptId} and ${siblingId} both carry a ${table} record; delete the one that is not the real one first`);
+    }
+    db.prepare(`UPDATE ${table} SET purchase_id = ? WHERE purchase_id = ?`).run(keptId, siblingId);
+  }
+}
+
+/**
  * A plan converted from a line overlays it (`source_line_id`): the line stays on file with its own
  * flow, so deleting the plan leaves it as it was, and the plan's expense starts from what was filed
  * on the line — its «Único» category, note and big group are copied under the plan's key (rows the
