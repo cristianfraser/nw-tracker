@@ -6,7 +6,13 @@ import { Link } from "react-router-dom";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { formatMoney, formatPct } from "../../format";
-import type { GroupGlanceCashDto, GroupGlanceDto, GroupGlanceRowDto, Money } from "../../types";
+import type {
+  GroupGlanceCashDto,
+  GroupGlanceDto,
+  GroupGlancePeriodFigureDto,
+  GroupGlanceRowDto,
+  Money,
+} from "../../types";
 import {
   CompositionGroup,
   GlanceRail,
@@ -300,9 +306,85 @@ function CashGlanceRow({
 }
 
 /**
- * One line of the table: dot + name | sparkline | valor | peso | día | mes | año | total | aportes.
- * A member row is indented by its `depth` under the page's rows. A liquidated row has no page: a
- * click on its name opens it, like its caret.
+ * The «hoy» cell: today's value, and under it the day's P/L and % (a sold-out row: the value only).
+ */
+function TodayCell({ row, sold }: { row: GroupGlanceRowDto; sold: boolean }) {
+  const { t } = useTranslation();
+  const pl = row.period_figures?.day.pl ?? null;
+  const pct = row.day_pct;
+  const showChange = !sold && (pl != null || pct != null);
+  return (
+    <span role="cell" className={cn("mono", styles.num, styles.today)}>
+      <span className={styles.value}>{formatMoney(row.value)}</span>
+      {showChange ? (
+        <span className={cn(styles.todayChange, toneClass(pl?.value ?? pct))}>
+          <span className={styles.figureAmount}>
+            <span className="visually-hidden">{t("groupPage.investmentGlance.figure.dayPl")} </span>
+            {pl ? formatSignedMoney(pl) : "—"}
+          </span>
+          <span>{pct != null ? formatSignedPct(pct) : "—"}</span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * A period cell (mes, año, total): the % on top, the period's P/L under it and, after a thin rule,
+ * the period's net aportes in the neutral tone. The aportes line keeps its place when there are
+ * none, so a row's cells line up. A sold-out row's month and year read «—».
+ */
+function PeriodCell({
+  pct,
+  figure,
+  className,
+  empty = false,
+}: {
+  pct: number | null;
+  figure: GroupGlancePeriodFigureDto | null;
+  className: string | undefined;
+  empty?: boolean;
+}) {
+  const { t } = useTranslation();
+  if (empty) {
+    return (
+      <span role="cell" className={cn("mono", styles.num, styles.period, className)}>
+        <span className={styles.periodPct}>—</span>
+      </span>
+    );
+  }
+  const pl = figure?.pl ?? null;
+  const deposits = figure?.deposits ?? null;
+  const depositsShown = deposits != null && deposits.value !== 0;
+  return (
+    <span role="cell" className={cn("mono", styles.num, styles.period, className)}>
+      <span className={cn(styles.periodPct, toneClass(pct ?? pl?.value))}>{pct != null ? formatSignedPct(pct) : "—"}</span>
+      <span className={cn(styles.figureAmount, toneClass(pl?.value))}>
+        <span className="visually-hidden">{t("groupPage.investmentGlance.figure.pl")} </span>
+        {pl ? formatSignedMoney(pl) : "—"}
+      </span>
+      <span
+        className={cn(styles.periodDeposits, !depositsShown && styles.periodDepositsEmpty)}
+        title={depositsShown ? t("groupPage.investmentGlance.figure.deposits") : undefined}
+        aria-hidden={depositsShown ? undefined : true}
+      >
+        {depositsShown ? (
+          <>
+            <span className="visually-hidden">{t("groupPage.investmentGlance.figure.deposits")} </span>
+            {formatSignedMoney(deposits)}
+          </>
+        ) : (
+          BLANK
+        )}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * One line of the table: dot + name | sparkline | hoy (value, the day's P/L and %) | peso | mes |
+ * año | total — each period its %, P/L and aportes stacked. A member row is indented by its `depth`
+ * under the page's rows. A liquidated row has no page: a click on its name opens it, like its caret.
  */
 function GlanceRow({
   row,
@@ -322,11 +404,13 @@ function GlanceRow({
   const { t } = useTranslation();
   const label = useRowLabel()(row);
   const sold = !row.held && variant !== "total";
+  const figures = row.period_figures;
   return (
     <div
       role="row"
       className={cn(
         styles.row,
+        styles.periodRow,
         variant === "total" && styles.totalRow,
         variant === "member" && styles.memberRow,
         sold && styles.soldRow
@@ -370,9 +454,7 @@ function GlanceRow({
           }
         />
       </span>
-      <span role="cell" className={cn("mono", styles.num, styles.value)}>
-        {formatMoney(row.value)}
-      </span>
+      <TodayCell row={row} sold={sold} />
       <span role="cell" className={styles.shareCell}>
         {sold ? null : (
           <>
@@ -383,25 +465,13 @@ function GlanceRow({
           </>
         )}
       </span>
-      <span role="cell" className={cn("mono", styles.num, styles.day, toneClass(row.day_pct))}>
-        {!sold && row.day_pct != null ? formatSignedPct(row.day_pct) : "—"}
-      </span>
-      <span role="cell" className={cn("mono", styles.num, styles.month, toneClass(row.month_pct))}>
-        {!sold && row.month_pct != null ? formatSignedPct(row.month_pct) : "—"}
-      </span>
-      <span role="cell" className={cn("mono", styles.num, styles.year, toneClass(row.year_pct))}>
-        {!sold && row.year_pct != null ? formatSignedPct(row.year_pct) : "—"}
-      </span>
-      <span
-        role="cell"
-        className={cn("mono", styles.num, styles.total)}
-        title={row.total_pct != null ? formatSignedPct(row.total_pct) : undefined}
-      >
-        <SignedMoney money={row.total_pl} />
-      </span>
-      <span role="cell" className={cn("mono", styles.num, styles.deposits)}>
-        {row.deposits ? formatMoney(row.deposits) : "—"}
-      </span>
+      <PeriodCell pct={row.month_pct} figure={figures?.month ?? null} className={styles.month} empty={sold} />
+      <PeriodCell pct={row.year_pct} figure={figures?.year ?? null} className={styles.year} empty={sold} />
+      <PeriodCell
+        pct={row.total_pct}
+        figure={{ pl: row.total_pl, deposits: row.deposits }}
+        className={styles.total}
+      />
     </div>
   );
 }
@@ -435,15 +505,13 @@ function PendingRow({ label, total = false, cash = false }: { label: string; tot
   return (
     <div role="row" className={cn(styles.row, total && styles.totalRow)}>
       {head}
-      <span role="cell" className={cn(styles.num, styles.value)}>
+      <span role="cell" className={cn(styles.num, styles.today)}>
         {BLANK}
       </span>
       <span role="cell" className={styles.shareCell} />
-      <span role="cell" className={cn(styles.num, styles.day)} />
       <span role="cell" className={cn(styles.num, styles.month)} />
       <span role="cell" className={cn(styles.num, styles.year)} />
       <span role="cell" className={cn(styles.num, styles.total)} />
-      <span role="cell" className={cn(styles.num, styles.deposits)} />
     </div>
   );
 }
@@ -454,8 +522,9 @@ function PendingRow({ label, total = false, cash = false }: { label: string; tot
  * any depth; `openByDefault`, toggles kept per page), sold-out children last and muted — two or
  * more folded by the server into one «Liquidadas (n)» row, closed until opened. The sparkline column
  * draws each row's chained return on one shared scale (default) or its balance, one choice kept for
- * every group page. One row list at every width: a container query keeps
- * name, value, mes and total when narrow (no horizontal scroll). Each dot takes the child's chart
+ * every group page. «hoy» is today's value over the day's P/L and %; mes, año and total stack the
+ * %, the P/L and the period's aportes (lifetime for total). One row list at every width: a
+ * container query keeps name, hoy, mes and total when narrow (no horizontal scroll). Each dot takes the child's chart
  * colour (`colorFor`, the page's group colour maps), so dot, band and bar match.
  *
  * A cash group (`cash`): the same rows without return figures — the line is always the balance,
@@ -635,14 +704,11 @@ export function GroupGlanceTable({
               ))}
             </span>
           </span>
-          <span role="columnheader" className={cn(styles.num, styles.value)}>
-            {t("groupPage.investmentGlance.col.value")}
+          <span role="columnheader" className={cn(styles.num, styles.today)}>
+            {t("groupPage.investmentGlance.col.today")}
           </span>
           <span role="columnheader" className={styles.shareCell}>
             {t("groupPage.investmentGlance.col.share")}
-          </span>
-          <span role="columnheader" className={cn(styles.num, styles.day)}>
-            {t("groupPage.investmentGlance.col.day")}
           </span>
           <span role="columnheader" className={cn(styles.num, styles.month)}>
             {t("groupPage.investmentGlance.col.month")}
@@ -652,9 +718,6 @@ export function GroupGlanceTable({
           </span>
           <span role="columnheader" className={cn(styles.num, styles.total)}>
             {t("groupPage.investmentGlance.col.total")}
-          </span>
-          <span role="columnheader" className={cn(styles.num, styles.deposits)}>
-            {t("groupPage.investmentGlance.col.deposits")}
           </span>
         </div>
         {glance && sparkView ? (

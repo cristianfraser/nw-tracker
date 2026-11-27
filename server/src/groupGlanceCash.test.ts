@@ -160,6 +160,7 @@ describe("a cash group's glance", () => {
         total_pl: null,
         total_pct: null,
         deposits: null,
+        period_figures: null,
         perf_spark: [],
       });
       expect(r.spark.length).toBeGreaterThan(1);

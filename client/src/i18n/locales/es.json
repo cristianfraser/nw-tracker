@@ -1291,11 +1291,15 @@
       "collapse": "Ocultar los miembros de {{name}}",
       "col": {
         "value": "valor",
+        "today": "hoy",
         "share": "peso",
-        "day": "día",
         "month": "mes",
         "year": "año",
-        "total": "total",
+        "total": "total"
+      },
+      "figure": {
+        "dayPl": "P/L de hoy",
+        "pl": "P/L",
         "deposits": "aportes"
       },
       "sparkMode": {

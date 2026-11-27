@@ -33,7 +33,12 @@
  */
 import type { PositionGlanceDirection, PositionGlancePeriodDto } from "nw-tracker-contracts/dto/accounts";
 import type { NavCardMetricsDto } from "nw-tracker-contracts/dto/dashboard";
-import type { GroupGlanceCashDto, GroupGlanceDto, GroupGlanceRowDto } from "nw-tracker-contracts/dto/groups";
+import type {
+  GroupGlanceCashDto,
+  GroupGlanceDto,
+  GroupGlancePeriodFiguresDto,
+  GroupGlanceRowDto,
+} from "nw-tracker-contracts/dto/groups";
 import type { Money } from "nw-tracker-contracts/dto/flows";
 import { accountHistoricalQtyMark } from "./accountMarkClpAtYmd.js";
 import { accountTodayValue } from "./accountTodayValue.js";
@@ -84,7 +89,15 @@ export type GroupGlanceAccountRow = {
   pct_month?: number | null;
   pct_year?: number | null;
   pct_total?: number | null;
+  delta_day?: number | null;
+  delta_month?: number | null;
+  delta_year?: number | null;
+  deposits_day?: number | null;
+  deposits_month?: number | null;
+  deposits_year?: number | null;
 };
+
+const GLANCE_PERIODS = ["day", "month", "year"] as const;
 
 export type GroupGlanceInputs = {
   /** "cash" for a node with `cash_glance`, "investment" for one with `investment_glance`. */
@@ -255,6 +268,19 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     const v = finiteOrNull(x);
     return v == null ? null : money(v);
   };
+  /** A row's day / month / year P/L and aportes from a picker per period (none on a cash glance). */
+  const periodFigures = (
+    pick: (period: (typeof GLANCE_PERIODS)[number]) => { pl: number | null | undefined; deposits: number | null | undefined }
+  ): GroupGlancePeriodFiguresDto | null => {
+    if (cash) return null;
+    const figure = (period: (typeof GLANCE_PERIODS)[number]) => {
+      const f = pick(period);
+      return { pl: moneyOrNull(f.pl), deposits: moneyOrNull(f.deposits) };
+    };
+    return { day: figure("day"), month: figure("month"), year: figure("year") };
+  };
+  const cardPeriodFigures = (variant: NavCardMetricsDto["child"]) =>
+    periodFigures((k) => ({ pl: variant[k].delta_period, deposits: variant[k].deposits_period }));
   const rowById = new Map(inp.rows.map((r) => [r.account_id, r]));
   const requireRow = (id: number): GroupGlanceAccountRow => {
     const r = rowById.get(id);
@@ -417,6 +443,10 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       total_pl: sumOrNull((r) => r.total_pl),
       total_pct: pct("total"),
       deposits: sumOrNull((r) => r.deposits),
+      period_figures: periodFigures((k) => ({
+        pl: sumOrNull((r) => r.period_figures?.[k].pl ?? null)?.value,
+        deposits: sumOrNull((r) => r.period_figures?.[k].deposits ?? null)?.value,
+      })),
       native: [],
       change: null,
       held: false,
@@ -453,6 +483,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       total_pl: cash ? null : moneyOrNull(r.delta_total),
       total_pct: cash ? null : finiteOrNull(r.pct_total),
       deposits: cash ? null : moneyOrNull(r.deposits),
+      period_figures: periodFigures((k) => ({ pl: r[`delta_${k}`], deposits: r[`deposits_${k}`] })),
       ...cashFields([id], value),
       held,
       spark,
@@ -511,6 +542,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       total_pl: c ? moneyOrNull(c.child.month.delta_total) : null,
       total_pct: c ? finiteOrNull(c.row_pct.total.value) : null,
       deposits: c ? moneyOrNull(c.child.month.deposits) : null,
+      period_figures: c ? cardPeriodFigures(c.child) : null,
       ...cashFields(ownIds, value),
       held,
       spark,
@@ -602,6 +634,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
       total_pl: null,
       total_pct: null,
       deposits: null,
+      period_figures: null,
       native: [{ value: -linkedCreditCardClpForCashCardAsOf(today), currency: HOME_CURRENCY }],
       change: changeOf([], value, true),
       held: true,
@@ -700,6 +733,7 @@ export function buildGroupGlance(inp: GroupGlanceInputs): GroupGlanceDto {
     total_pl: cash ? null : moneyOrNull(card.parent.month.delta_total),
     total_pct: cash ? null : finiteOrNull(card.parent_pct.total.value),
     deposits: cash ? null : moneyOrNull(card.parent.month.deposits),
+    period_figures: cardPeriodFigures(card.parent),
     native: cash ? nativeMoney(nativeOf(memberIds)) : [],
     change: cashBlock
       ? { month: cashBlock.change.month.pl!, year: cashBlock.change.year.pl! }
