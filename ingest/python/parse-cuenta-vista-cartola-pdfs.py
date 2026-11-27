@@ -550,8 +550,9 @@ def main() -> int:
             f"  {level} {c.get('source_file')}: {c.get('parse_error') or status}",
             file=sys.stderr,
         )
-    hard_errors = [c for c in cartolas if c.get("parse_status") == "error"]
-    return 1 if hard_errors else 0
+    # A cartola that does not parse fails only itself: its status is in the JSON, which the import
+    # reports as unreadable. A non-zero exit means the run itself did not finish.
+    return 0
 
 
 if __name__ == "__main__":

@@ -10,11 +10,13 @@
  * --xlsx-only, --only-xlsx=a.xlsx,b.xlsx, --dir=<xlsx dir>. To start an account's cartola ledger
  * over, wipe it on the server first (`npm run wipe:cartola-ledger -w nw-tracker-server`).
  *
- * Exit status: non-zero when a cartola could not be read or imported, or the server refused.
+ * Exit status: non-zero when a cartola could not be read or imported, or the server refused. A
+ * cartola that could not be read fails only itself: the others are sent, and it is named in the
+ * payload's `unreadable` list and as a step problem.
  */
 import { bankAccountStatementsKind, type BankAccountStatementsApplyDetails } from "nw-tracker-contracts";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
-import { readCheckingCartolas, readCuentaVistaCartolas } from "./cartolas.js";
+import { readCheckingCartolas, readCuentaVistaCartolas, reportUnreadableCartolas } from "./cartolas.js";
 
 const argv = process.argv.slice(2);
 const flag = (name: string) => argv.includes(`--${name}`);
@@ -42,6 +44,8 @@ async function main(): Promise<number> {
           onlyPdf: list("only-pdf"),
         })
       : readCuentaVistaCartolas({ skipPdfParse: flag("skip-pdf-parse"), onlyPdf: list("only-pdf") });
+  const problems = reportUnreadableCartolas(read);
+  for (const p of problems) console.error(`  UNREADABLE ${p}`);
   const payload = bankAccountStatementsKind.payload.parse({
     account: { issuer: "santander", product: account === "checking" ? "checking" : "demand_deposit" },
     force_reimport: flag("force-reimport"),
@@ -61,7 +65,7 @@ async function main(): Promise<number> {
     console.log(`  ${f.file} ${f.period_month} ${f.status}${f.movements_imported ? ` (${f.movements_imported} movement(s))` : ""}${f.error ? ` — ${f.error}` : ""}`);
   }
   for (const line of details.report) console.log(line);
-  return details.files.some((f) => f.status === "parse_error") ? 1 : 0;
+  return problems.length > 0 || details.files.some((f) => f.status === "parse_error") ? 1 : 0;
 }
 
 process.exitCode = await main();
