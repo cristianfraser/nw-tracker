@@ -8,7 +8,7 @@ import { db } from "./db.js";
 import { isHomeCurrency, roundToCurrency } from "./displayUnits.js";
 import { ccOwedByCurrency, foreignOwedIn } from "./ccOwedByCurrency.js";
 import type { CcOpenBucketLine } from "./ccFeedCuotaPurchases.js";
-import { classifyUnlistedLines, planFeedMirror } from "./ccFeedMirror.js";
+import { classifyUnlistedLines, pairBucketWithFeed } from "./ccFeedMirror.js";
 import type { CcListingLine } from "./ccWebPasteParse.js";
 import { chileDayOf, coin, type Currency } from "./ccAnnulmentWriters.js";
 
@@ -77,7 +77,9 @@ export function cupoGapReference(
  * agreed (see {@link cupoGapReference}) and exactly one charge the listing does not list has that
  * amount, that charge is what the bank dropped: `toAnnul` (a restated pending authorization — the
  * bank re-listed it under another name or amount — is `toRemove` instead, as the mirror treats
- * it). Zero or several candidates, or a gap no single line explains, change nothing and are reported.
+ * it, and `carryOnto` is the line of the one listed row that restates it, which takes over its
+ * flow: a receipt's line the bank lists under its acquirer's name stays the purchase the app first
+ * saw). Zero or several candidates, or a gap no single line explains, change nothing and are reported.
  */
 export function planCupoGap(
   accountId: number,
@@ -90,7 +92,13 @@ export function planCupoGap(
     feedCloseIso: string | null;
     feedLines: readonly CcListingLine[];
   }
-): { report: CcCupoGapReport; toAnnul: CcOpenBucketLine | null; toRemove: CcOpenBucketLine | null } {
+): {
+  report: CcCupoGapReport;
+  toAnnul: CcOpenBucketLine | null;
+  toRemove: CcOpenBucketLine | null;
+  /** The listed row's own line that `toRemove` became, when exactly one row restates it. */
+  carryOnto: CcOpenBucketLine | null;
+} {
   const { currency } = opts;
   const owed = ccOwedByCurrency(accountId, chileDayOf(opts.observedAt));
   const appOwed = isHomeCurrency(currency) ? owed.clp.total : foreignOwedIn(owed, currency).total;
@@ -106,7 +114,7 @@ export function planCupoGap(
     candidates: 0,
     outcome: "no_gap",
   };
-  const none = { report, toAnnul: null, toRemove: null };
+  const none = { report, toAnnul: null, toRemove: null, carryOnto: null };
   if (opts.feedCloseIso != null && owed.close_iso !== opts.feedCloseIso) return { ...none, report: { ...report, outcome: "close_mismatch" } };
   if (owed.close_iso == null) return { ...none, report: { ...report, outcome: "no_close" } };
   const ref = cupoGapReference(accountId, currency, opts.observedAt);
@@ -115,7 +123,11 @@ export function planCupoGap(
   Object.assign(report, { residual_ref: ref.residual, reference: ref.kind, delta });
   if (delta <= 0) return none;
 
-  const unlisted = planFeedMirror(accountId, { windowStartIso: owed.close_iso, currencies: new Set([currency]), feedLines: opts.feedLines });
+  const { unlisted, listedAs } = pairBucketWithFeed(accountId, {
+    windowStartIso: owed.close_iso,
+    currencies: new Set([currency]),
+    feedLines: opts.feedLines,
+  });
   const matching = unlisted.filter((l) => {
     const amt = l.amount;
     return amt != null && coin(amt, currency) === coin(delta, currency);
@@ -124,7 +136,10 @@ export function planCupoGap(
   if (matching.length === 0) return { ...none, report: { ...report, outcome: "no_candidate" } };
   if (matching.length > 1) return { ...none, report: { ...report, outcome: "ambiguous" } };
   const only = matching[0]!;
-  const kind = classifyUnlistedLines([only], opts.feedLines)[0]!.kind;
-  if (kind === "dropped") return { report: { ...report, outcome: "annulled" }, toAnnul: only, toRemove: null };
-  return { report: { ...report, outcome: "restatement_removed" }, toAnnul: null, toRemove: only };
+  const classified = classifyUnlistedLines([only], opts.feedLines)[0]!;
+  if (classified.kind === "dropped") {
+    return { report: { ...report, outcome: "annulled" }, toAnnul: only, toRemove: null, carryOnto: null };
+  }
+  const carryOnto = (classified.listedAs && listedAs.get(classified.listedAs)) ?? null;
+  return { report: { ...report, outcome: "restatement_removed" }, toAnnul: null, toRemove: only, carryOnto };
 }

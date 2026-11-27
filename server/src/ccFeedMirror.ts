@@ -124,6 +124,17 @@ export function planFeedMirror(
   accountId: number,
   opts: { windowStartIso: string; currencies: ReadonlySet<string>; feedLines: readonly CcListingLine[] }
 ): CcOpenBucketLine[] {
+  return pairBucketWithFeed(accountId, opts).unlisted;
+}
+
+/**
+ * The mirrored window's bucket lines against the listing (read-only): the lines no row accounts
+ * for, and for each row that accounts for one, that line (`listedAs`: the row's own line on file).
+ */
+export function pairBucketWithFeed(
+  accountId: number,
+  opts: { windowStartIso: string; currencies: ReadonlySet<string>; feedLines: readonly CcListingLine[] }
+): { unlisted: CcOpenBucketLine[]; listedAs: Map<CcListingLine, CcOpenBucketLine> } {
   const candidates = listOpenBucketLines(accountId).filter((line) => {
     if (line.installment_flag) return false;
     if (!opts.currencies.has(listingLineCurrency(line))) return false;
@@ -136,15 +147,17 @@ export function planFeedMirror(
   // pass pairs the first fitting row (the feed's own order — not the nearest, kept as it was).
   let unlisted = [...candidates];
   let freeFeed = [...feed];
+  const listedAs = new Map<CcListingLine, CcOpenBucketLine>();
   for (const maxDayGap of [0, MATCH_WINDOWS.feed_mirror.daysAfter]) {
     const pass = pairOneToOne(unlisted, freeFeed, {
       strategy: "first",
       accepts: (line, f) => bucketLineMatchesFeedLine(line, f, maxDayGap),
     });
+    for (const pair of pass.pairs) listedAs.set(pair.right, pair.left);
     unlisted = pass.unpaired;
     freeFeed = pass.unclaimed;
   }
-  return unlisted;
+  return { unlisted, listedAs };
 }
 
 /**
@@ -161,13 +174,20 @@ export function planFeedMirror(
  *  - `credit`: not a charge (a pasted credit or payment) — there is no purchase to keep, deleted;
  *  - `dropped`: none of those — the bank voided the purchase.
  * Restatements change no history (the line they replace is deleted); dropped lines are annulled.
+ *
+ * `listedAs` names the listed row a restated line became, when the listing leaves no doubt: the
+ * one free row of its amount in the window. That row's own line on file then takes over the
+ * deleted line's flow (`planOpenBucketMirror`), so what the app knew of the purchase — when it
+ * first arrived, its category, note, big group — stays with it. Two candidate rows name none (the
+ * line is deleted as before), and a re-settlement never carries: the other amount may be another
+ * purchase at the same shop, and pieces filed on the old amount would not fit the new one.
  */
 export type UnlistedLineKind = "re_settlement" | "restatement" | "credit" | "dropped";
 
 export function classifyUnlistedLines(
   unlisted: readonly CcOpenBucketLine[],
   feedLines: readonly CcListingLine[]
-): { line: CcOpenBucketLine; kind: UnlistedLineKind }[] {
+): { line: CcOpenBucketLine; kind: UnlistedLineKind; listedAs?: CcListingLine }[] {
   const window = MATCH_WINDOWS.feed_mirror.daysAfter;
   const taken = new Set<number>();
   return unlisted.map((line) => {
@@ -186,13 +206,16 @@ export function classifyUnlistedLines(
     if (nearIdx.some((i) => !sameAmount(feedLines[i]!) && merchantsSame(line.merchant, feedLines[i]!.merchant))) {
       return { line, kind: "re_settlement" as const };
     }
-    const hit = nearIdx.find((i) => {
+    const restating = nearIdx.filter((i) => {
       const f = feedLines[i]!;
       return !taken.has(i) && sameAmount(f) && !(f.transaction_date === iso && merchantsSame(line.merchant, f.merchant));
     });
+    const hit = restating[0];
     if (hit != null) {
       taken.add(hit);
-      return { line, kind: "restatement" as const };
+      return restating.length === 1
+        ? { line, kind: "restatement" as const, listedAs: feedLines[hit]! }
+        : { line, kind: "restatement" as const };
     }
     return { line, kind: "dropped" as const };
   });
@@ -227,9 +250,15 @@ export function assertMirrorWithinLimit(accountId: number, windowStartIso: strin
 }
 
 /**
- * The lines the bank dropped from its listing (read-only planner): restatements to delete as
- * before (`plan`), the rest to annul (`toAnnul`; the caller writes the annulments and applies the
+ * The lines the bank dropped from its listing (read-only planner): restatements to delete
+ * (`plan`), the rest to annul (`toAnnul`; the caller writes the annulments and applies the
  * deletions in one card-line write). More than {@link MIRROR_MAX_DELETIONS} lines in all throws.
+ *
+ * A deleted line the listing restates under exactly one other row is carried onto that row's
+ * line (`plan.carry` → `adoptReplacingCardLines`), each row's line taking one deleted line at
+ * most: a boleta's line («EXPRESS LYON») the bank listed under its acquirer's name («SUPERMERCADO
+ * PLAZA LYON LTDA.») used to be deleted beside a brand-new line, so the purchase read as arriving
+ * again when the bank listed it (2026-11-26) and anything filed on the first line was lost.
  */
 export function planOpenBucketMirror(
   accountId: number,
@@ -240,10 +269,22 @@ export function planOpenBucketMirror(
   }
 ): { result: CcFeedMirrorResult; plan: CardLinePlan; toAnnul: CcOpenBucketLine[] } {
   const currencies = new Set(Object.keys(opts.proof));
-  const unlisted = planFeedMirror(accountId, { windowStartIso: opts.windowStartIso, currencies, feedLines: opts.feedLines });
+  const { unlisted, listedAs } = pairBucketWithFeed(accountId, {
+    windowStartIso: opts.windowStartIso,
+    currencies,
+    feedLines: opts.feedLines,
+  });
   assertMirrorWithinLimit(accountId, opts.windowStartIso, unlisted);
   const classified = classifyUnlistedLines(unlisted, opts.feedLines);
   const restated = classified.filter((c) => c.kind !== "dropped").map((c) => c.line);
+  const carry: { fromLineId: number; toLineId: number }[] = [];
+  const carriedOnto = new Set<number>();
+  for (const c of classified) {
+    const onto = c.listedAs ? listedAs.get(c.listedAs) : undefined;
+    if (!onto || carriedOnto.has(onto.id)) continue;
+    carriedOnto.add(onto.id);
+    carry.push({ fromLineId: c.line.id, toLineId: onto.id });
+  }
   const toAnnul = classified.filter((c) => c.kind === "dropped").map((c) => c.line);
   const result: CcFeedMirrorResult = {
     window_start: opts.windowStartIso,
@@ -252,5 +293,5 @@ export function planOpenBucketMirror(
     removed: restated.map(mirrorRemovedRow),
     annulled: [],
   };
-  return { result, plan: { deleteLineIds: restated.map((l) => l.id), carry: [] }, toAnnul };
+  return { result, plan: { deleteLineIds: restated.map((l) => l.id), carry }, toAnnul };
 }

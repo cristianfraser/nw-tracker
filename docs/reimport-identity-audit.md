@@ -1,0 +1,114 @@
+# Re-import identity audit (2026-11-26)
+
+What happens to a purchase's identity when the same purchase reaches the app a second time: a
+listing then its statement, a receipt then the bank's row, a pending row then the settled one, a
+daily bank row then the cartola, a re-import after a parser fix.
+
+Identity is the row's **flow**: its arrival stamp (`flow_first_seen`, which orders «Últimos
+movimientos» and decides the "new row" animation), category («Único»), note, big group, pieces and
+links. A path is correct when one flow survives. It is a defect when a row is deleted and another
+row stands for the same purchase with a new flow.
+
+Method: four read-only code audits by area (card listings, card statements and plans, checking and
+transfers, the shared flow plumbing), then spot checks. **Verified** = I read the deciding lines
+myself or reproduced it; **reported** = an audit agent's reading, not yet re-checked.
+
+## How a row can be replaced
+
+| Mechanism | Flow | Arrival | Assignments |
+|---|---|---|---|
+| Restate in place (`restateCardLineRow`, `restateMovementFromCartola`) | kept | kept | kept |
+| Carry (`CardLinePlan.carry` → `adoptReplacingCardLines`) | old flow moves to the new row | older kept | kept |
+| Fold (`fold` → `foldCardLineFlowInto`, `mergeFlowInto`) | merged | older kept | earlier arrival's win |
+| Arrival only (`arrivalsOntoPlans`, `copyFlowFirstSeen`) | new | kept | **lost** |
+| Delete and insert | new | **lost** | **lost** |
+
+Two facts about the plumbing make the last row costly:
+
+- A flow with nothing filed on it and no stable key is **deleted** with its row, stamp included; a
+  flow that holds something is **retired** and nothing reads it again unless a path names it.
+- Only bank movements take a retired flow back on insert (`adoptRetiredMovementFlow`, by document
+  key, called from `insertBankPesoMovement`). Card lines, cuota plans and manual expenses have no
+  such step: every card path must name the old row itself.
+
+## Defects
+
+### Fixed in this change
+
+| # | Path | What happened | Status |
+|---|---|---|---|
+| 1 | Cupo-gap removal of a restated line (`cardUnbilledMovementsApply.ts`, `planCupoGap`) | A receipt's card line the bank listed under its acquirer's name was deleted with `carry: []`; the bank's line was a new flow. This is the 2026-11-26 incident: the purchase jumped to the top of «Últimos movimientos» two and a half hours after it was first seen. It is the only path a listing with no stated close (BCI) takes. | Verified by replaying the listing on a snapshot copy; fixed (`carryOnto`), test added |
+| 2 | Feed mirror restatement (`planOpenBucketMirror`) | Same defect on listings that state a close (Santander). | Fixed (carry when exactly one row restates the line), tests added |
+
+### Open — card side
+
+| # | Path | Trigger | Lost | Status |
+|---|---|---|---|---|
+| 3 | One-shot line replaced by its cuota plan (`planOneShotLinesSupersededByInstallmentPurchases`, `planOneShotLinesForInstallmentPurchase`, `ccCrossImportDedupe.ts`) | Every statement import, listing merge, feed-created plan, hand-entered plan | Arrival is kept; the line's «Único» category, note, big group and pieces are not (the supersede path copies only the per-line override; plan creation copies nothing) | Verified |
+| 4 | Bucket settlement, unmatched in-cycle line that cannot be annulled (a credit, a payment, a cuota-tagged line) | Statement close, when the statement prints it under another merchant or day | Everything; the statement's line is stamped new | Reported |
+| 5 | Bucket settlement, `covered_by_plan` | A plan covers the line but the supersede step did not take it | Arrival and assignments | Reported (narrow) |
+| 6 | Statement re-import, vanished line with no pair (`gone`) | A parser fix that changes a line's amount or merchant | Arrival, note, big group, flow category; not reported anywhere | Reported |
+| 7 | Statement re-import, identity group with differing counts (`unpaired`) | A re-parse that splits or merges lines | Everything on the old lines; reported only in the `import:cc-parsed` text and `report-document-import.ts`, dropped from the statement JSON write and the PDF upload results | Reported |
+| 8 | Re-listed annulment (`removeRelistedAnnulments`) | A listing shows an annulled purchase again a day later or under another rendering | The annulment is deleted and the line imports with a new key | Reported (risk) |
+| 9 | Annulment of a line with nothing filed on it | Bank voids a purchase, then bills it after all | The flow is deleted, so the billed line has no arrival to take | Reported (risk) |
+| 10 | Plan matching deletes every look-alike (`findOneShotLinesOfPlan`) | A real twin purchase beside the plan's purchase | The twin is deleted | Reported (risk) |
+| 11 | Ledger rebuild (`import:cc-parsed --replace-ledger`) | Manual run | Plans get new ids and flows; anything keyed by plan id detaches | Reported (risk) |
+
+### Open — checking and transfers
+
+| # | Path | Trigger | Lost | Status |
+|---|---|---|---|---|
+| 12 | Card-to-card payment transfers (`syncCardToCardPaymentTransfers`) | Every card write and every boot, whenever a part's line id, plan id, amount or day changed | Delete then `insertMovement`: new flow, stamped now. The transfer re-enters «Últimos movimientos» as new and loses its note or big group | Verified |
+| 13 | Mirror conversion by hand (`convertMirrorPairs`) | /panel/mirror-pairs | The transfer is stamped now; neither leg's arrival, note or category is carried (the sibling path `supersedeImportedCheckingRowsForTransfer` does adopt) | Verified |
+| 14 | Mirror undo (`undoMirrorConversion`) | Undo | Restored legs are stamped now; their retired flows are not taken back | Reported |
+| 15 | Cartola removes a daily row a transfer leg or a mail row already lists | Monthly cartola | The daily row's category, note, income classification are not folded into the kept row | Reported |
+| 16 | Automatic card-payment conversion (`convertCcPaymentMirrors`) | Nightly | Arrival is copied; the debit's note, big group or refund mark is not | Reported (risk) |
+| 17 | Fuller cartola replaces a month (`replaced_cartola_row`) | A movement printed differently that the content match misses | New flow, old assignments retired | Reported (risk) |
+
+### Scripts (manual runs)
+
+`backfill-cc-duplicate-expense-lines.ts` deletes duplicates without folding into the kept twin;
+`list-missing-cc-statement-pdfs.ts --prune` deletes lines outside the write funnel;
+`repair-cc-installment-duplicate-purchases.ts` deletes sibling plans without folding their flows;
+`remove-cc-duplicate-download-statements.ts` guards only the per-line override, not flow-level
+assignments. All reported, none re-checked.
+
+## Paths that keep identity
+
+Listing merge (never deletes; every skip writes nothing, and a skipped duplicate never updates the
+line on file beyond the origin card), truncated and pending merchant dedupe (carry), planted
+payments replaced by the bank's line (carry), recurring pending lines (carry), bucket moves
+(in-place update), statement restate, folds and source takeover, the JSON close a PDF takes over,
+annulments (flow kept on the annulment), grocery and lender receipts (insert only; they skip when
+the bank's line is already on file), the daily checking listing (skips, or restates in place), the
+cartola restate and fold, mail-written and synthesized rows later confirmed by the bank, the
+Fintual promotion in place, ledger anchors and AFC true-ups, and the broker imports (insert only).
+
+## «Últimos movimientos»: what can move a row besides its stamp
+
+- A stated time appearing later for one row of a day (a receipt paired at read time, a payment
+  receipt, a mail) reorders it against rows that only have an estimate.
+- An ingest run still open counts for three hours; a write made by hand during it joins the run's
+  batch and leaves it when the run finishes.
+- The grocery-receipt pairing is computed over the rows the list currently reaches, so which line
+  takes a receipt's time can depend on what else is in the list.
+
+**Not pursued:** on 2026-11-26 one row was reported above a same-day neighbour for a while, between two
+states the database snapshots explain. None of the inputs above changed for those two rows in the
+snapshots, and the observation may have been a misreading.
+
+## Test coverage
+
+Stamp preservation is tested for the statement line re-import and the cartola restate. No test
+covered the mirror or the cupo gap before this change. Nothing tests: plan-supersedes-line
+assignments, the card-to-card sync's re-creation, mirror conversion and undo, bucket settlement of
+a credit, or the ordering inputs listed above.
+
+## Suggested order of work
+
+1. **12** — it fires without any user action, on every card write.
+2. **3** — the most common way filed work is lost: every purchase paid in cuotas goes through it.
+3. **13–15** — fold or adopt before deleting, as the sibling paths already do.
+4. **4–7** — settlement and re-import leftovers; make 6 and 7 visible in every import result first.
+5. A general step for card lines like the one movements have (take a retired flow back by key on
+   insert) would close the remaining gaps in one place rather than path by path.

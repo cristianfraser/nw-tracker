@@ -9,6 +9,7 @@ import type { CardListingLine } from "nw-tracker-contracts";
 import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
 import { applyListing, balanceRow, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import { feedMirrorCurrencies } from "./ccFeedMirror.js";
+import { flowArrival, recordCardLineFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { ccInstallmentsDbApiPayload, ccLedgerMonthEndIso } from "./ccInstallmentLedgerDb.js";
 import {
   buildBillingDetailByMonth,
@@ -462,6 +463,55 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
       )
       .all(accountId);
     expect(uber).toEqual([{ transaction_date: "12/09/2026" }]);
+  });
+
+  it("a purchase the bank lists under another name stays the row the app first saw", () => {
+    const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
+    // Written from the store's receipt under the store's name, the afternoon of the purchase.
+    const fromReceipt = insertBucketLine(sept, "2026-09-10", "EXPRESS VITEST, SANTIAGO", 17_616);
+    recordCardLineFlowFirstSeen(fromReceipt, "2026-09-10");
+    const flowOf = (lineId: number): number =>
+      (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(lineId) as { flow_id: number }).flow_id;
+    const flow = flowOf(fromReceipt);
+    const arrival = flowArrival(flow);
+    expect(arrival.kind).toBe("stamped");
+
+    // The bank lists it that evening under the acquirer's legal name.
+    const imported = feed([listingLine("2026-09-10", "SUPERMERCADO PLAZA VITEST LTDA.", 17_616)], { usd: false }).accounts[0]!;
+    expect(imported.mirror!.removed.map((r) => r.id)).toEqual([fromReceipt]);
+    const lines = db
+      .prepare(
+        `SELECT l.id, l.merchant, l.flow_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ? AND l.amount = 17616`
+      )
+      .all(accountId) as { id: number; merchant: string; flow_id: number }[];
+    expect(lines.map((l) => l.merchant)).toEqual(["SUPERMERCADO PLAZA VITEST LTDA."]);
+    // The bank's line is the receipt's purchase: same flow, same arrival.
+    expect(lines[0]!.flow_id).toBe(flow);
+    expect(flowArrival(flow)).toEqual(arrival);
+  });
+
+  it("carries nothing when two listed rows could be the restated purchase", () => {
+    const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
+    const fromReceipt = insertBucketLine(sept, "2026-09-10", "EXPRESS VITEST, SANTIAGO", 17_616);
+    recordCardLineFlowFirstSeen(fromReceipt, "2026-09-10");
+    const flow = (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(fromReceipt) as { flow_id: number }).flow_id;
+    const imported = feed(
+      [
+        listingLine("2026-09-12", "SUPERMERCADO PLAZA VITEST LTDA.", 17_616),
+        listingLine("2026-09-10", "SUPERMERCADO PLAZA VITEST LTDA.", 17_616),
+      ],
+      { usd: false }
+    ).accounts[0]!;
+    expect(imported.mirror!.removed.map((r) => r.id)).toEqual([fromReceipt]);
+    const flows = db
+      .prepare(
+        `SELECT l.flow_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ? AND l.amount = 17616`
+      )
+      .all(accountId) as { flow_id: number }[];
+    expect(flows).toHaveLength(2);
+    expect(flows.map((f) => f.flow_id)).not.toContain(flow);
   });
 
   it("proves a currency complete by the bank's cupo identity when its SALDO INICIAL row is missing", () => {

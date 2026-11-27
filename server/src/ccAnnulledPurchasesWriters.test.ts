@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
+import { flowArrival, recordCardLineFlowFirstSeen } from "./flows/flowFirstSeen.js";
 import { applyListing, balanceRow, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import { judgeLatestBankCupoCapture } from "./ccBankCupoCheck.js";
 import { annulledPurchaseOwedEvents, listAnnulledPurchases, annulOpenBucketLines } from "./ccAnnulledPurchases.js";
@@ -294,6 +295,36 @@ describe("annulled purchases: the writers", () => {
     const second = noCloseFeed([listingLine("2026-09-03", "VITEST TIENDA", 10_000)], AUG_CLP + 10_000 + 71_300, "2026-09-20T12:00:00.000Z");
     expect(second.cupo_gap.find((g) => g.currency === "clp")).toMatchObject({ delta: 71_300, candidates: 2, outcome: "ambiguous" });
     expect(lineExists(a) && lineExists(b)).toBe(true);
+    expect(annulments()).toEqual([]);
+  });
+
+  it("a receipt's line the bank lists under another name stays the row the app first saw (cupo gap)", () => {
+    const sept = bucket();
+    insertLine(sept, "2026-09-03", "VITEST TIENDA", 10_000);
+    noCloseFeed([listingLine("2026-09-03", "VITEST TIENDA", 10_000)], AUG_CLP + 10_000, "2026-09-20T01:00:00.000Z");
+    // Written from the store's receipt, before the bank counts the purchase.
+    const fromReceipt = insertLine(sept, "2026-09-19", "EXPRESS VITEST, SANTIAGO", 17_616);
+    recordCardLineFlowFirstSeen(fromReceipt, "2026-09-19");
+    const flow = (db.prepare(`SELECT flow_id FROM cc_statement_lines WHERE id = ?`).get(fromReceipt) as { flow_id: number }).flow_id;
+    const arrival = flowArrival(flow);
+    expect(arrival.kind).toBe("stamped");
+
+    // The bank counts it and lists it under the acquirer's legal name.
+    const second = noCloseFeed(
+      [listingLine("2026-09-03", "VITEST TIENDA", 10_000), listingLine("2026-09-19", "SUPERMERCADO PLAZA VITEST LTDA.", 17_616)],
+      AUG_CLP + 10_000 + 17_616,
+      "2026-09-20T12:00:00.000Z"
+    );
+    expect(second.cupo_gap.find((g) => g.currency === "clp")).toMatchObject({ delta: 17_616, candidates: 1, outcome: "restatement_removed" });
+    expect(lineExists(fromReceipt)).toBe(false);
+    const kept = db
+      .prepare(
+        `SELECT l.merchant, l.flow_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ? AND l.amount = 17616`
+      )
+      .all(accountId) as { merchant: string; flow_id: number }[];
+    expect(kept).toEqual([{ merchant: "SUPERMERCADO PLAZA VITEST LTDA.", flow_id: flow }]);
+    expect(flowArrival(flow)).toEqual(arrival);
     expect(annulments()).toEqual([]);
   });
 

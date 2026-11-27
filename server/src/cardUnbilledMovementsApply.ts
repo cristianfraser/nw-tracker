@@ -366,7 +366,7 @@ function applyCardListing(
     const dropped = annulUnlistedLines(accountId, planned.toAnnul, { fetchedOnIso, basis: "feed_drop", evidence: sourceRef });
     applyLinePlan(accountId, "card feed mirror", {
       deleteLineIds: [...planned.plan.deleteLineIds, ...dropped.plan.deleteLineIds],
-      carry: [],
+      carry: planned.plan.carry,
     });
     planned.result.annulled = dropped.annulled;
     annulled.push(...dropped.annulled);
@@ -394,7 +394,10 @@ function applyCardListing(
         applyLinePlan(accountId, "card feed cupo gap", one.plan);
         annulled.push(...one.annulled);
       } else if (gap.toRemove) {
-        applyLinePlan(accountId, "card feed cupo gap", { deleteLineIds: [gap.toRemove.id], carry: [] });
+        applyLinePlan(accountId, "card feed cupo gap", {
+          deleteLineIds: [gap.toRemove.id],
+          carry: gap.carryOnto ? [{ fromLineId: gap.toRemove.id, toLineId: gap.carryOnto.id }] : [],
+        });
       }
     }
   }
