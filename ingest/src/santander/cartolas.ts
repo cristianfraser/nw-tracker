@@ -79,6 +79,20 @@ export function checkingCartolaXlsxDir(): string {
   return envDir("CFRASER_CHECKING_CARTOLAS_DIR", path.join(resolveCfraserDir(), "excels", "cuenta corriente"));
 }
 
+/** The folder the PDF parser of the account reads (its env override, as the parser reads it). */
+export function cartolaPdfDir(account: "checking" | "cuenta-vista"): string {
+  return account === "checking"
+    ? envDir("CFRASER_CHECKING_CARTOLA_PDFS_DIR", path.join(resolveCfraserDir(), "cartolas-cuenta-corriente"))
+    : envDir("CFRASER_CUENTA_VISTA_PDFS_DIR", path.join(resolveCfraserDir(), "cartolas-cuenta-vista"));
+}
+
+/** The PDFs a full scan asks the account's parser for: every `*.pdf` in its folder (basenames). */
+export function listCartolaPdfs(account: "checking" | "cuenta-vista"): string[] {
+  const dir = cartolaPdfDir(account);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => /\.pdf$/i.test(f) && fs.statSync(path.join(dir, f)).isFile()).sort();
+}
+
 /** A parser run: finished (its JSON holds every cartola's status), or the reason it did not. */
 export type ParserRun = { ok: true } | { ok: false; error: string };
 
