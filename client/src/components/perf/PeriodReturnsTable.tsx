@@ -54,7 +54,7 @@ type BenchmarkComparisonProps = {
   options: readonly BenchmarkOption[];
   selected: string;
   onSelect: (slug: string) => void;
-  /** Null while loading, or while it is in another unit than the list. */
+  /** Null while loading. In the list's unit, or (held, just after the list flipped) the last one. */
   data: BenchmarkComparisonPayload | null;
   /** `data` is held from before (a unit switch): its figures dim. */
   loading: boolean;
@@ -202,7 +202,7 @@ function PeriodReturnsFullList({
   const benchLabel = selected ? benchmarkOptionLabel(t, selected) : "";
   const benchPending = comparison.data == null;
   const benchDim = cn((benchPending || comparison.loading) && !loading && styles.pending);
-  // Each figure in its own payload's unit (the comparison is shown only beside a list in its unit).
+  // Each figure in its own payload's unit (a held comparison may briefly be in another than the list).
   const money = (n: number | null | undefined) => (n != null ? formatMoney({ value: n, currency: displayUnit }) : null);
   const benchUnit = comparison.data?.unit;
   const benchMoney = (n: number | null | undefined) =>
@@ -409,9 +409,10 @@ function PeriodReturnsCompactList({
  * (`<pageKey>.returns`), default the mortgage. A stored slug the server no longer lists falls
  * back to the default. `data` is null only while the payload loads (callers pass null with
  * `loading`, never as a server-stated absence — that gate stays on the caller); the comparison is
- * not fetched until a list is on screen. Both are held across a unit switch, each in its own unit;
- * the comparison's figures show only beside a list in the same unit (blank otherwise). The request
- * is in the display unit. Static (no NumberFlow): figures format at render time.
+ * not fetched until a list is on screen. It is requested in the unit of the list on screen (the
+ * display unit's warmed meanwhile) and held across a change of it, each figure in its own
+ * payload's unit; after the list flips, the held comparison stays (dimmed) until the new one is in.
+ * Static (no NumberFlow): figures format at render time.
  */
 export function PeriodReturnsWithBenchmark({
   title,
@@ -440,16 +441,22 @@ export function PeriodReturnsWithBenchmark({
   const benchmarks = useBenchmarks();
   const options = benchmarks.data?.benchmarks ?? [];
   const selected = options.some((o) => o.slug === benchmark) ? benchmark : DEFAULT_BENCHMARK;
+  // A list pending with nothing to show has no unit yet: no comparison is asked for beside it.
+  const listUnit = data?.unit;
+  // Asked for in the list's own unit, so the pair flips together; the display unit's is warmed
+  // while the list still shows another one.
   const comparison = useHeldBenchmarkComparison(
     scope,
     selected,
+    listUnit ?? displayUnit,
     displayUnit,
     data != null && options.some((o) => o.slug === selected)
   );
   const cmp = comparison.data;
-  // A list pending with nothing to show has no unit yet: no comparison beside it.
-  const listUnit = data?.unit;
-  const shown = cmp != null && cmp.unit === listUnit && cmp.benchmark.slug === selected ? cmp : null;
+  // The list's unit's comparison, or — just after the list flipped, while its new unit's is in
+  // flight — the one held from before, dimmed in its own unit: the figures never go blank.
+  const shown =
+    cmp != null && cmp.benchmark.slug === selected && (cmp.unit === listUnit || comparison.held) ? cmp : null;
   const comparisonProps: BenchmarkComparisonProps = {
     options,
     selected,

@@ -88,7 +88,9 @@ export function GroupInfoPage() {
     placeholderFirstMonth: (shellFirstMonth, snapshotFirstMonth) => shellFirstMonth ?? snapshotFirstMonth,
     shellKeepsFirstChartDate: true,
   });
-  const error = page.bundleError;
+  // A failed bundle or nav context (each only when it has nothing to show): the strip, the glance
+  // blocks, the children table, the rail and the value map all read the nav context.
+  const error = page.bundleError ?? page.navCtx.error;
   // The nav context as the page shows it: this unit's, or the one held across a switch (its own
   // unit). The glance blocks and the value map read it; they dim while it is not this unit's.
   const navCtx = page.navCtx.data;

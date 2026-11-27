@@ -1,4 +1,11 @@
-import { hashKey, useQuery, type UseQueryOptions } from "@tanstack/react-query";
+import {
+  hashKey,
+  useQuery,
+  useQueryClient,
+  type Query,
+  type QueryClient,
+  type UseQueryOptions,
+} from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { entityKeyLength, type DisplayUnit } from "./keys";
 
@@ -8,10 +15,14 @@ import { entityKeyLength, type DisplayUnit } from "./keys";
  * 1. **Hold.** While the requested unit's payload is pending, the surface keeps showing what it
  *    last showed — the same entity's payload, in ITS unit (every display-unit DTO carries `unit`),
  *    dimmed. Nothing is converted; a different entity (group A → group B) holds nothing; a surface
- *    that is not drawn (its request disabled) keeps nothing to hold later.
+ *    hidden for a while (its request disabled: Mensual ↔ Diario) keeps what it last drew, and
+ *    holds it, dimmed, when it is drawn again.
  * 2. **Freshness.** A cached copy of the requested unit is shown at once unless it may be missing
  *    a change the payload on screen already shows. Two clocks:
- *    - the target copy's `updatedAt`: when it was last fetched (react-query `dataUpdatedAt`);
+ *    - the target copy's `updatedAt`: when it was last FETCHED ({@link fetchedAt}). Not
+ *      react-query's `dataUpdatedAt`: an in-place patch (`setQueryData` / `setQueriesData`, an
+ *      optimistic write or its rollback) stamps that with the patch time on every copy it
+ *      touches, which would make an old copy of another unit look as new as the one on screen;
  *    - the shown content's `changedAt`: when the payload on screen first arrived with its current
  *      content ({@link contentChangedAt}). Structural sharing keeps a payload's reference while a
  *      refetch returns equal content (`shareKeepingLiveInputs` re-attaches the live inputs to the
@@ -27,7 +38,9 @@ import { entityKeyLength, type DisplayUnit } from "./keys";
  *    refetched cannot be held for freshness: its copy is shown.
  * 3. **Errors.** Once the request is no longer pending and has no data of its own, the hold ends:
  *    the surface shows the request's `error` (never held data). A failed background refetch keeps
- *    the data and reports no error (repo rule `queryLoadError`).
+ *    the data and reports no error (repo rule `queryLoadError`). A retry of that data-less request
+ *    (`refetchInterval`) keeps reporting the error until it succeeds, instead of flipping back to
+ *    a dimmed empty frame on every try.
  *
  * A copy updated at 0 is a stored first-paint copy (localStorage): it paints a surface that shows
  * nothing yet, is always «older» than anything fetched, and is never `live`.
@@ -58,14 +71,47 @@ export type HeldUnitView<T> = {
 /** What a surface showed last. */
 type ShownRecord<T> = { data: T; changedAt: number; unit: DisplayUnit; entity: string };
 
-/** A surface's memory: what it shows, and the forced refetches that settled (key → against). */
+/**
+ * A surface's memory: what it shows, the forced refetches that settled (key → against; the
+ * newest {@link SETTLED_KEPT} keys), and the request whose first fetch failed (its error stays
+ * on screen while it retries).
+ */
 export type HeldUnitState<T> = {
   shown: ShownRecord<T> | null;
   settled: ReadonlyMap<string, number>;
+  failed: { key: string; error: unknown } | null;
 };
 
+/** Settled forced refetches remembered per surface: a forgotten one costs one more refetch. */
+const SETTLED_KEPT = 8;
+
 export function initialHeldUnitState<T>(): HeldUnitState<T> {
-  return { shown: null, settled: new Map() };
+  return { shown: null, settled: new Map(), failed: null };
+}
+
+const fetchedAtByQuery = new WeakMap<Query, number>();
+const trackedClients = new WeakSet<QueryClient>();
+
+/**
+ * Records, per cached query, when its data was last fetched: a fetch's success, never an in-place
+ * patch (`setQueryData` dispatches its success as `manual`). Installed once per client, before
+ * any fetch (`queryClient.ts`); the held hooks install it too (idempotent).
+ */
+export function trackFetchTimes(client: QueryClient): void {
+  if (trackedClients.has(client)) return;
+  trackedClients.add(client);
+  client.getQueryCache().subscribe((event) => {
+    if (event.type === "updated" && event.action.type === "success" && !event.action.manual) {
+      fetchedAtByQuery.set(event.query, event.query.state.dataUpdatedAt);
+    }
+  });
+}
+
+/** When `queryKey`'s cached data was last fetched; 0 for none (a stored first-paint copy, a
+ * copy only ever set by hand). */
+export function fetchedAt(client: QueryClient, queryKey: readonly unknown[]): number {
+  const query = client.getQueryCache().get(hashKey(queryKey));
+  return query ? (fetchedAtByQuery.get(query) ?? 0) : 0;
 }
 
 export type HeldUnitInput<T> = {
@@ -119,11 +165,11 @@ export function stepHeldUnit<T>(
     shown === state.shown ? state : { ...state, shown };
 
   if (!input.enabled) {
-    // Not drawn: nothing to remember for a later hold.
+    // Not drawn: what it last drew stays remembered, to hold when it is drawn again.
     const view = candidate
       ? own(candidate)
       : { data: undefined, held: false, unit: undefined, loading: input.pending, live: undefined, error: null };
-    return { view, state: withShown(null), refetchAgainst: null };
+    return { view, state, refetchAgainst: null };
   }
   const prev = state.shown && state.shown.entity === entity ? state.shown : null;
   if (candidate) {
@@ -143,9 +189,18 @@ export function stepHeldUnit<T>(
     const changedAt = contentChangedAt(candidate.data, candidate.updatedAt);
     const same =
       prev != null && prev.data === candidate.data && prev.unit === unit && prev.changedAt === changedAt;
+    const next = same ? state : withShown({ data: candidate.data, changedAt, unit, entity });
     return {
       view: own(candidate),
-      state: same ? state : withShown({ data: candidate.data, changedAt, unit, entity }),
+      state: next.failed ? { ...next, failed: null } : next,
+      refetchAgainst: null,
+    };
+  }
+  if (input.pending && state.failed?.key === input.key && prev == null) {
+    // A retry of a request whose first fetch failed: the error stays until one succeeds.
+    return {
+      view: { data: undefined, held: false, unit: undefined, loading: false, live: undefined, error: state.failed.error },
+      state,
       refetchAgainst: null,
     };
   }
@@ -165,9 +220,14 @@ export function stepHeldUnit<T>(
     };
   }
   // Settled with nothing of its own (a failed first fetch): the hold ends, the error shows.
+  const error = input.error ?? null;
+  const failed = error != null && (state.failed?.key !== input.key || state.failed.error !== error)
+    ? { key: input.key, error }
+    : state.failed;
+  const ended = withShown(null);
   return {
-    view: { data: undefined, held: false, unit: undefined, loading: false, live: undefined, error: input.error ?? null },
-    state: withShown(null),
+    view: { data: undefined, held: false, unit: undefined, loading: false, live: undefined, error },
+    state: failed === ended.failed ? ended : { ...ended, failed },
     refetchAgainst: null,
   };
 }
@@ -176,18 +236,22 @@ export function stepHeldUnit<T>(
 export function settleHeldUnit<T>(state: HeldUnitState<T>, key: string, against: number): HeldUnitState<T> {
   if (state.settled.get(key) === against) return state;
   const settled = new Map(state.settled);
+  settled.delete(key);
   settled.set(key, against);
+  // The newest keys only (insertion order): a surface's state never grows with its history.
+  for (const old of settled.keys()) {
+    if (settled.size <= SETTLED_KEPT) break;
+    settled.delete(old);
+  }
   return { ...state, settled };
 }
 
 /**
- * {@link stepHeldUnit} as a hook, for a surface whose candidate the page builds (a strip picked
- * from a live payload or a stored snapshot). Keep `candidate.data` referentially stable while its
- * content is (memoize it on the payloads, not on their fetch times): its identity dates the
- * content. `refetch` is run, once per (key, held timestamp), when the requested copy is older;
- * without one an older copy is shown.
+ * {@link stepHeldUnit} as a hook. `candidate.data`'s identity dates its content (react-query's
+ * structural sharing keeps it while equal). `refetch` is run, once per (key, held timestamp),
+ * when the requested copy is older; without one an older copy is shown.
  */
-export function useHeldUnitValue<T>(opts: {
+function useHeldUnitValue<T>(opts: {
   candidate: UnitCandidate<T> | undefined;
   pending: boolean;
   error?: unknown;
@@ -231,9 +295,8 @@ export type UnitQueryOptions<T> = Omit<
   "enabled" | "placeholderData" | "select" | "queryKey"
 > & { queryKey: readonly unknown[]; enabled?: boolean };
 
-/** A held query: the view, plus its live payload's fetch time (0 without one) and a refetch that
- * joins a fetch in flight. */
-export type HeldUnitQuery<T> = HeldUnitView<T> & { updatedAt: number; refetch: () => Promise<unknown> };
+/** A held query: the view, plus a refetch that joins a fetch in flight. */
+export type HeldUnitQuery<T> = HeldUnitView<T> & { refetch: () => Promise<unknown> };
 
 /**
  * A display-unit query as a surface shows it: runs the query from `options` (one place for key,
@@ -243,12 +306,16 @@ export type HeldUnitQuery<T> = HeldUnitView<T> & { updatedAt: number; refetch: (
  */
 export function useHeldUnitQuery<T>(options: UnitQueryOptions<T>, unit: DisplayUnit): HeldUnitQuery<T> {
   const { queryKey } = options;
+  const client = useQueryClient();
+  trackFetchTimes(client);
   const query = useQuery<T, Error, T, readonly unknown[]>({ ...options, placeholderData: undefined });
+  // Read during render: the fetch's success is recorded before its observers re-render.
+  const updatedAt = query.data !== undefined ? fetchedAt(client, queryKey) : 0;
   const own = query.data !== undefined && !query.isPlaceholderData ? query.data : undefined;
   // Joins a fetch already in flight (its data is newer than what is shown) instead of restarting it.
   const refetch = () => query.refetch({ cancelRefetch: false });
   const view = useHeldUnitValue<T>({
-    candidate: own !== undefined ? { data: own, updatedAt: query.dataUpdatedAt } : undefined,
+    candidate: own !== undefined ? { data: own, updatedAt } : undefined,
     pending: query.isPending,
     error: query.error,
     unit,
@@ -257,5 +324,5 @@ export function useHeldUnitQuery<T>(options: UnitQueryOptions<T>, unit: DisplayU
     enabled: options.enabled !== false,
     refetch,
   });
-  return { ...view, updatedAt: view.live !== undefined ? query.dataUpdatedAt : 0, refetch };
+  return { ...view, refetch };
 }

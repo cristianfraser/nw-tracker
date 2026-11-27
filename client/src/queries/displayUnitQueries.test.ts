@@ -1,40 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { keepPreviousDataSameEntity } from "./displayUnitQueries";
+import { hashKey } from "@tanstack/react-query";
+import { sameEntityPlaceholder } from "./displayUnitQueries";
 import { entityKeyLength, queryKeys } from "./keys";
 
 const prevQuery = (queryKey: readonly unknown[]) => ({ queryKey });
 
-describe("keepPreviousDataSameEntity", () => {
-  it("holds the previous payload across a unit / window change of the same entity", () => {
-    const hold = keepPreviousDataSameEntity(["accountDetail", "42", "usd", "monthly"], 2);
-    expect(hold({ v: 1 }, prevQuery(["accountDetail", "42", "clp", "monthly"]))).toEqual({ v: 1 });
-    const daily = keepPreviousDataSameEntity(["dailySeries", "pg:brokerage", "clp", 0], 2);
-    expect(daily({ v: 2 }, prevQuery(["dailySeries", "pg:brokerage", "clp", 90]))).toEqual({ v: 2 });
+describe("sameEntityPlaceholder (the raw list queries)", () => {
+  it("keeps a list's rows across a page or filter change of the same group or account", () => {
+    const next = sameEntityPlaceholder(queryKeys.groupFlows("brokerage", "page=2"));
+    expect(next({ v: 1 }, prevQuery(queryKeys.groupFlows("brokerage", "page=1")))).toEqual({ v: 1 });
+    const panel = sameEntityPlaceholder(queryKeys.accountFlows("42", "panel", "q=x"));
+    expect(panel({ v: 2 }, prevQuery(queryKeys.accountFlows("42", "panel", "")))).toEqual({ v: 2 });
   });
 
-  it("drops the previous payload when the entity part of the key differs", () => {
-    const hold = keepPreviousDataSameEntity(["accountDetail", "43", "clp", "monthly"], 2);
-    expect(hold({ v: 1 }, prevQuery(["accountDetail", "42", "clp", "monthly"]))).toBeUndefined();
-    const group = keepPreviousDataSameEntity(["portfolioGroup", "brokerage", "clp"], 2);
-    expect(group({ v: 1 }, prevQuery(["portfolioGroup", "retirement", "clp"]))).toBeUndefined();
+  it("drops them for another group, account or surface", () => {
+    const group = sameEntityPlaceholder(queryKeys.groupFlows("retirement", "page=1"));
+    expect(group({ v: 1 }, prevQuery(queryKeys.groupFlows("brokerage", "page=1")))).toBeUndefined();
+    const month = sameEntityPlaceholder(queryKeys.accountFlows("42", "cartola_month", ""));
+    expect(month({ v: 1 }, prevQuery(queryKeys.accountFlows("42", "panel", "")))).toBeUndefined();
   });
 
   it("offers nothing without a previous query or payload", () => {
-    const hold = keepPreviousDataSameEntity(["dashboard", "clp"], 1);
+    const hold = sameEntityPlaceholder(queryKeys.groupFlows("brokerage", ""));
     expect(hold({ v: 1 }, undefined)).toBeUndefined();
-    expect(hold(undefined, prevQuery(["dashboard", "usd"]))).toBeUndefined();
+    expect(hold(undefined, prevQuery(queryKeys.groupFlows("brokerage", "page=1")))).toBeUndefined();
+  });
+});
+
+/** The entity part of a key (what a held surface keeps across: never across entities). */
+const entityOf = (key: readonly unknown[]) => hashKey(key.slice(0, entityKeyLength(key)));
+
+describe("display-unit keys: the unit sits after the entity", () => {
+  it("a page's nav context, a comparison and a prepayment block are one entity across units", () => {
+    expect(entityOf(queryKeys.dashboardNav("brokerage", "usd"))).toBe(entityOf(queryKeys.dashboardNav("brokerage", "clp")));
+    expect(entityOf(queryKeys.dashboardNav("brokerage", "usd"))).not.toBe(entityOf(queryKeys.dashboardNav("retirement", "usd")));
+    const cmp = queryKeys.benchmarkComparison("g:brokerage", "mortgage", "usd");
+    expect(entityOf(cmp)).toBe(entityOf(queryKeys.benchmarkComparison("g:brokerage", "mortgage", "clp")));
+    expect(entityOf(cmp)).not.toBe(entityOf(queryKeys.benchmarkComparison("g:brokerage", "ipsa", "usd")));
+    const prepay = queryKeys.mortgageGroupPrepayments("liabilities_mortgage", "ipsa", "usd");
+    expect(entityOf(prepay)).toBe(entityOf(queryKeys.mortgageGroupPrepayments("liabilities_mortgage", "ipsa", "eur")));
+    expect(entityOf(prepay)).not.toBe(entityOf(queryKeys.mortgageGroupPrepayments("liabilities_mortgage", "spx", "usd")));
   });
 
-  it("holds a page's nav context and a comparison across units, never across pages or benchmarks", () => {
-    const sameEntity = (key: readonly unknown[], prev: readonly unknown[]) =>
-      keepPreviousDataSameEntity(key, entityKeyLength(key))({ v: 1 }, prevQuery(prev)) !== undefined;
-    expect(sameEntity(queryKeys.dashboardNav("brokerage", "usd"), queryKeys.dashboardNav("brokerage", "clp"))).toBe(true);
-    expect(sameEntity(queryKeys.dashboardNav("brokerage", "usd"), queryKeys.dashboardNav("retirement", "usd"))).toBe(false);
-    const cmp = queryKeys.benchmarkComparison("g:brokerage", "mortgage", "usd");
-    expect(sameEntity(cmp, queryKeys.benchmarkComparison("g:brokerage", "mortgage", "clp"))).toBe(true);
-    expect(sameEntity(cmp, queryKeys.benchmarkComparison("g:brokerage", "ipsa", "clp"))).toBe(false);
-    const prepay = queryKeys.mortgageGroupPrepayments("liabilities_mortgage", "ipsa", "usd");
-    expect(sameEntity(prepay, queryKeys.mortgageGroupPrepayments("liabilities_mortgage", "ipsa", "eur"))).toBe(true);
-    expect(sameEntity(prepay, queryKeys.mortgageGroupPrepayments("liabilities_mortgage", "spx", "usd"))).toBe(false);
+  it("a bundle is one entity across units and granularities, never across accounts or groups", () => {
+    expect(entityOf(queryKeys.accountDetail("42", "usd", "monthly"))).toBe(entityOf(queryKeys.accountDetail("42", "clp", "daily")));
+    expect(entityOf(queryKeys.accountDetail("42", "usd", "monthly"))).not.toBe(entityOf(queryKeys.accountDetail("43", "usd", "monthly")));
+    expect(entityOf(queryKeys.portfolioGroup("brokerage", "usd"))).not.toBe(entityOf(queryKeys.portfolioGroup("retirement", "usd")));
   });
 });

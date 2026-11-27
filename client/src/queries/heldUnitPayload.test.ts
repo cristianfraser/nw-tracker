@@ -4,16 +4,18 @@ import { shareKeepingLiveInputs } from "../liveInputs";
 import { entityKeyLength, queryKeys } from "./keys";
 import {
   contentChangedAt,
+  fetchedAt,
   initialHeldUnitState,
   settleHeldUnit,
   stepHeldUnit,
+  trackFetchTimes,
   type HeldUnitInput,
   type HeldUnitState,
   type HeldUnitView,
 } from "./heldUnitPayload";
 
 /*
- * The hook (`useHeldUnitValue`) is a thin shell over `stepHeldUnit` / `settleHeldUnit`: it keeps
+ * The hook (`useHeldUnitQuery`'s `useHeldUnitValue`) is a thin shell over `stepHeldUnit` / `settleHeldUnit`: it keeps
  * the state, applies a changed state during render, and runs the requested refetch once per
  * (key, against), settling it per key. The client has no DOM test setup, so these tests drive
  * those two functions the same way over a real QueryClient (the app's structural sharing) and
@@ -23,9 +25,11 @@ import {
 type List = { unit: string; rows: string[] };
 
 function client() {
-  return new QueryClient({
+  const qc = new QueryClient({
     defaultOptions: { queries: { structuralSharing: shareKeepingLiveInputs, retry: false } },
   });
+  trackFetchTimes(qc);
+  return qc;
 }
 
 /** One surface (a group page's bundle) over a QueryObserver, driven like the hook. */
@@ -53,7 +57,7 @@ function surface(qc: QueryClient, fetchList: (unit: string) => Promise<List>, gr
     const key = hashKey(queryKey);
     const own = r.data !== undefined && !r.isPlaceholderData ? r.data : undefined;
     const out = stepHeldUnit(state, {
-      candidate: own !== undefined ? { data: own, updatedAt: r.dataUpdatedAt } : undefined,
+      candidate: own !== undefined ? { data: own, updatedAt: fetchedAt(qc, queryKey) } : undefined,
       pending: r.isPending,
       error: r.error,
       unit: current.unit,
@@ -208,6 +212,34 @@ describe("stepHeldUnit over react-query, real fetch order", () => {
     s.dispose();
   });
 
+  it("an in-place patch of every unit's copy never makes the old one look fresh", async () => {
+    const srv = server({ usd: ["a", "b", "c"], clp: ["a", "b", "c"] });
+    const s = surface(qc, srv.fetch);
+    at(1_000);
+    s.step();
+    await s.settle();
+    srv.rows.usd = ["d", "a", "b", "c"];
+    srv.rows.clp = ["d", "a", "b", "c"];
+    at(2_000);
+    s.show("clp");
+    await s.settle();
+
+    // An optimistic edit patches both copies (same object back for the usd one) at 3 000.
+    at(3_000);
+    qc.setQueriesData<List>({ queryKey: queryKeys.portfolioGroupAll() }, (old) =>
+      old && old.unit === "clp" ? { ...old, rows: [...old.rows] } : old
+    );
+    expect(qc.getQueryState(queryKeys.portfolioGroup("brokerage", "usd"))?.dataUpdatedAt).toBe(3_000);
+    expect(fetchedAt(qc, queryKeys.portfolioGroup("brokerage", "usd"))).toBe(1_000);
+    s.step();
+
+    at(4_000);
+    const back = s.show("usd");
+    expect(back).toMatchObject({ data: { unit: "clp" }, held: true, loading: true });
+    expect((await s.settle()).data).toEqual({ unit: "usd", rows: ["d", "a", "b", "c"] });
+    s.dispose();
+  });
+
   it("clp → usd (pending) → eur (older copy) holds the clp payload, in clp", async () => {
     const srv = server({ eur: ["e"], clp: ["c"] });
     const s = surface(qc, srv.fetch);
@@ -292,12 +324,33 @@ describe("stepHeldUnit", () => {
   const showing = (data: List, t: number): HeldUnitState<List> =>
     stepHeldUnit(initialHeldUnitState<List>(), input({ candidate: { data, updatedAt: t }, unit: data.unit })).state;
 
-  it("a surface not drawn (request disabled) keeps nothing to hold later", () => {
+  it("a surface hidden for a while holds what it last drew when it is drawn again", () => {
     const shown = showing({ unit: "clp", rows: ["d"] }, 10);
     const off = stepHeldUnit(shown, input({ enabled: false, pending: true, unit: "clp", key: "k-clp" }));
-    expect(off.state.shown).toBeNull();
+    expect(off.view.data).toBeUndefined();
     const back = stepHeldUnit(off.state, input({ pending: true }));
-    expect(back.view).toMatchObject({ data: undefined, held: false, loading: true });
+    expect(back.view).toMatchObject({ data: { unit: "clp", rows: ["d"] }, held: true, unit: "clp", loading: true });
+    expect(stepHeldUnit(off.state, input({ pending: true, entity: "other" })).view.data).toBeUndefined();
+  });
+
+  it("a failed first fetch keeps its error while it retries, until one succeeds", () => {
+    const boom = new Error("down");
+    const failed = stepHeldUnit(initialHeldUnitState<List>(), input({ error: boom }));
+    expect(failed.view.error).toBe(boom);
+    const retry = stepHeldUnit(failed.state, input({ pending: true }));
+    expect(retry.view).toMatchObject({ data: undefined, loading: false, error: boom });
+    expect(stepHeldUnit(failed.state, input({ pending: true, key: "k-eur" })).view).toMatchObject({ loading: true, error: null });
+    const ok = stepHeldUnit(retry.state, input({ candidate: { data: { unit: "usd", rows: ["y"] }, updatedAt: 20 } }));
+    expect(ok.state.failed).toBeNull();
+    expect(stepHeldUnit(ok.state, input({ pending: true })).view.error).toBeNull();
+  });
+
+  it("remembers only the newest settled refetches", () => {
+    let state = initialHeldUnitState<List>();
+    for (let i = 0; i < 20; i++) state = settleHeldUnit(state, `k-${i}`, i);
+    expect(state.settled.size).toBe(8);
+    expect(state.settled.get("k-19")).toBe(19);
+    expect(state.settled.has("k-0")).toBe(false);
   });
 
   it("a request that cannot be refetched shows its older copy", () => {

@@ -17,7 +17,6 @@ import {
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { bundleContent, dailyPayloadPending } from "../queries/pageShapeReady";
-import { useHeldUnitValue } from "../queries/heldUnitPayload";
 import {
   nwBucketTotalsFromDashTotals,
   writeDashboardNavSnapshotCache,
@@ -131,11 +130,10 @@ export function DashboardPage() {
 
   const navShell = useMemo(
     () => (netWorthNav ? buildGroupPageShellFromNav(netWorthNav) : null),
-    [netWorthNav, displayUnit]
+    [netWorthNav]
   );
 
-  const navSnapshotQuery = useDashboardNavSnapshot(displayUnit);
-  const navSnapshot = navSnapshotQuery.data;
+  const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);
   const { data: shapeAccounts } = useAccountsByPortfolioGroup(
     NET_WORTH_PORTFOLIO_GROUP,
     displayUnit,
@@ -189,13 +187,11 @@ export function DashboardPage() {
     () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav) : null),
     [sidebarNav]
   );
-  // The strip's cards: this unit's live bundle, else its stored snapshot (updated at 0 when read
-  // from storage, so it paints only a strip that shows nothing yet). Across a unit switch the cards
-  // on screen stay, dimmed and in THEIR unit, until a copy of the new unit at least as new lands;
-  // the bundle's own copy is either live or held (and refetched) by `bundle` above.
-  // Memoized on the payloads only: the cards' identity dates their content (`heldUnitPayload.ts`).
-  const stripCandidateCards = useMemo((): StripCards | undefined => {
-    if (live) return { dash: live.dash, unit: live.dash.unit };
+  // The strip's cards follow the bundle's own decision (`heldUnitPayload.ts`): the bundle on
+  // screen — this unit's, or the one held across a switch, in ITS unit. Only while there is no
+  // bundle to show at all (first paint) the stored snapshot paints them.
+  const strip = useMemo((): StripCards | undefined => {
+    if (content) return { dash: content.dash, unit: content.dash.unit };
     if (!navSnapshot) return undefined;
     return {
       dash: dashPickForNavStrip({
@@ -207,20 +203,8 @@ export function DashboardPage() {
       }),
       unit: navSnapshot.unit,
     };
-  }, [live, navSnapshot]);
-  const strip = useHeldUnitValue({
-    candidate: stripCandidateCards
-      ? { data: stripCandidateCards, updatedAt: live ? bundle.updatedAt : navSnapshotQuery.dataUpdatedAt }
-      : undefined,
-    pending: stripCandidateCards === undefined,
-    unit: displayUnit,
-    entity: NET_WORTH_PORTFOLIO_GROUP,
-    key: displayUnit,
-    // An older snapshot waits for the bundle request in flight (joined, never restarted); when it
-    // settles the bundle's copy (new, or the older one after a failure) is shown, undimmed.
-    refetch: bundle.refetch,
-  });
-  const stripCards = netWorthNav ? (strip.data ?? null) : null;
+  }, [content, navSnapshot]);
+  const stripCards = netWorthNav ? (strip ?? null) : null;
   // Nothing to show yet (cold cache): a zero strip from the sidebar nav, in its placeholder phase.
   const stripDash = netWorthNav ? (stripCards?.dash ?? placeholderStripDash) : null;
   // The cards show real numbers (the bundle, a held bundle or a snapshot, never the zero
