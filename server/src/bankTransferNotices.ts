@@ -32,9 +32,12 @@ import { MATCH_WINDOWS } from "./matching/windows.js";
 import { storeOnce } from "./ingestReceiver.js";
 import { listOverdueTransferNoticeMovements } from "./transferNoticeMovements.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
-import { insertMovement, redateMovementKeepingBankDay } from "./movementWrites.js";
+import { deleteMovements, insertMovement, redateMovementKeepingBankDay } from "./movementWrites.js";
 import { stateMovementDescription } from "./movementListingFacts.js";
-import { recordBankPosting, type OccurredOnBasis } from "./movementBankPostings.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, recordBankPosting, type OccurredOnBasis } from "./movementBankPostings.js";
+import { foldListedRowIntoConfirmed } from "./checkingCartolaRestate.js";
+import { claimTransferLegForBankRow } from "./checkingTransferLegReconcile.js";
+import { confirmTransferNoticeMovementForTransferLeg } from "./transferNoticeMovements.js";
 
 const WINDOW_DAYS = MATCH_WINDOWS.transfer_notice.daysAfter;
 
@@ -379,6 +382,42 @@ export function mailMovementForNotice(
 }
 
 /**
+ * The daily listing's row for one side of a transfer the mail has just written. A transfer between
+ * two own accounts waits for a bank row on EVERY side (`matchTransferNotices`), so while one account
+ * has no daily listing (the cuenta vista: its cartola comes monthly) the mail writes the transfer
+ * even though the other account's listing already shows its side — the nightly imports the listing
+ * before the mail import — and the money would be counted twice. Mirrors what a cartola does to a
+ * daily row a transfer leg lists: the listed row is confirmed on the transfer (its bank day becomes
+ * the leg's posting day), folded into it (its flow's assignments move) and removed.
+ *
+ * Exactly one candidate (single-leg, a daily listing's, of the leg's signed pesos, its bank day
+ * inside the posting window of the mail's day, paired with no notice) or nothing is changed: with
+ * several the cartola's import tells them apart.
+ */
+function foldListedRowIntoMailTransfer(transferId: number, accountId: number, signedPesos: number, mailDay: string): number | null {
+  const rows = (
+    db
+      .prepare(
+        `SELECT m.id, ${BANK_POSTED_ON_SQL} AS bank_day, e.stated_description AS description
+         FROM movements m
+         ${BANK_POSTING_JOIN_SQL}
+         JOIN flow_evidence e ON e.source_table = 'movements' AND e.source_row_id = m.id AND e.source_kind = 'daily_listing'
+         WHERE m.account_id = ? AND m.currency = ? AND ROUND(m.amount) = ?
+           AND NOT EXISTS (SELECT 1 FROM movement_transfer_notices n WHERE n.movement_id = m.id)
+         ORDER BY m.id`
+      )
+      .all(accountId, accountId, HOME_CURRENCY, Math.round(signedPesos)) as { id: number; bank_day: string; description: string | null }[]
+  ).filter((r) => bankDateMatchesTransferDate(r.bank_day, mailDay));
+  if (rows.length !== 1) return null;
+  const row = rows[0]!;
+  claimTransferLegForBankRow(transferId, accountId, row.bank_day);
+  confirmTransferNoticeMovementForTransferLeg(transferId, row.bank_day, "ultimos_xlsx", row.description ?? "");
+  foldListedRowIntoConfirmed(row.id, transferId, accountId);
+  deleteMovements([row.id]);
+  return row.id;
+}
+
+/**
  * Transfers mailed in the last few days whose bank row has not arrived: their movement is written
  * from the mail (`mailMovementForNotice`), dated the day it was sent. Never twice for one mail (the
  * record outlives its movement), never for a notice the matcher found ambiguous, never for an older one.
@@ -433,7 +472,14 @@ function writeMovementsFromMails(
           ];
     stateMovementDescription(movementId, transferNoticeMovementDescription(n).trim(), db);
     insRecord.run(n.message_id, movementId, account, signed, day);
-    out.push({ message_id: n.message_id, movement_id: movementId, account_id: account, date: day, amount: signed });
+    const folded =
+      mv.kind === "transfer"
+        ? [
+            foldListedRowIntoMailTransfer(movementId, mv.from_account_id, -mv.amount, day),
+            foldListedRowIntoMailTransfer(movementId, mv.to_account_id, mv.amount, day),
+          ].filter((id): id is number => id != null)
+        : [];
+    out.push({ message_id: n.message_id, movement_id: movementId, account_id: account, date: day, amount: signed, folded_listing_row_ids: folded });
   }
   return out;
 }

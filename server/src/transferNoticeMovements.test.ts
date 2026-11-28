@@ -9,6 +9,7 @@ import {
   TRANSFER_NOTICE_MOVEMENT_MAX_AGE_DAYS,
 } from "./bankTransferNotices.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
+import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { listCheckingMovements } from "./checkingCartolaLoaders.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
@@ -246,6 +247,54 @@ describe("movements written from transfer mails", () => {
       expect(listOverdueTransferNoticeMovements(chileCalendarAddDays(today, 30)).some((o) => o.movement_id === written!.movement_id)).toBe(false);
     } finally {
       db.prepare(`DELETE FROM transfer_counterparty_accounts WHERE rut = '33.333.333-3'`).run();
+    }
+  });
+
+  /**
+   * 2026-11-27: a vista → corriente wire mailed at 21:35 reached the app after the nightly had
+   * imported the corriente's own listing of it. The vista has no daily listing, so the notice found
+   * a bank row on one side only, waited, and the mail wrote the transfer next to the listed credit:
+   * the corriente counted the money twice.
+   */
+  it("folds the daily row the other account already listed into the transfer the mail writes", () => {
+    const vista = cartolaCashAccountIdOptional("cuenta_vista");
+    if (vista == null) return;
+    const VISTA_NUMBER = "00-999-99999-92";
+    const had = db.prepare(`SELECT number, issuer, currency FROM bank_account_numbers WHERE account_id = ?`).all(vista) as typeof setAside;
+    db.prepare(`DELETE FROM bank_account_numbers WHERE account_id = ?`).run(vista);
+    db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'clp')`).run(vista, VISTA_NUMBER);
+    try {
+      const listing = { occurred_on: today, description: "VITEST TN Traspaso Internet de Cuenta Vista", amount_clp: 123_456, document_no: "" };
+      expect(importCheckingPartialMovements(account, [listing], READ_AFTER_ROWS)).toMatchObject({ inserted: 1 });
+      const listed = db.prepare(`SELECT id FROM movements WHERE account_id = ? AND note LIKE 'import:cartola-partial|%|VITEST TN Traspaso%'`).get(account) as { id: number };
+
+      const own: TransferNotice = {
+        ...outgoing(today, 123_456),
+        kind: "between_own_products",
+        from: { ...outgoing(today, 1).from, account_type: "Cuenta Vista", account_number: VISTA_NUMBER },
+        to: { ...outgoing(today, 1).to, account_type: "Cuenta Corriente", account_number: NUMBER },
+      };
+      const [written] = applyBankTransferNotices({ issuer: "santander", notices: [own] }).synthesized;
+      expect(written).toMatchObject({ amount: -123_456, folded_listing_row_ids: [listed.id] });
+      expect(db.prepare(`SELECT 1 FROM movements WHERE id = ?`).get(listed.id)).toBeUndefined();
+      expect(db.prepare(`SELECT from_account_id, to_account_id, amount FROM movements WHERE id = ?`).get(written!.movement_id)).toEqual({
+        from_account_id: vista,
+        to_account_id: account,
+        amount: 123_456,
+      });
+      // The bank's day is the leg's posting; the transfer counts as listed, so nothing is overdue.
+      expect(db.prepare(`SELECT confirmed_on, confirmed_source FROM transfer_notice_movements WHERE message_id = ?`).get(own.message_id)).toEqual({
+        confirmed_on: today,
+        confirmed_source: "ultimos_xlsx",
+      });
+      expect(listOverdueTransferNoticeMovements(chileCalendarAddDays(today, 30)).some((o) => o.movement_id === written!.movement_id)).toBe(false);
+      // Sent again, and the daily feed listing the money again the next night: neither adds a row.
+      expect(applyBankTransferNotices({ issuer: "santander", notices: [own] }).synthesized).toEqual([]);
+      expect(importCheckingPartialMovements(account, [listing], READ_AFTER_ROWS)).toMatchObject({ inserted: 0, skipped_superseded_by_transfer: 1 });
+    } finally {
+      db.prepare(`DELETE FROM bank_account_numbers WHERE account_id = ?`).run(vista);
+      const restore = db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, ?, ?, ?)`);
+      for (const r of had) restore.run(vista, r.issuer, r.number, r.currency);
     }
   });
 

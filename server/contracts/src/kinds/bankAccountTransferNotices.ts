@@ -87,7 +87,15 @@ export type BankAccountTransferNoticesApplyDetails = {
    * Movements written from a transfer's mail because no bank feed lists them yet: an incoming
    * transfer's credit, a payment to a third party's debit. `amount` is signed for the account.
    */
-  synthesized: { message_id: string; movement_id: number; account_id: number; date: string; amount: number }[];
+  synthesized: {
+    message_id: string;
+    movement_id: number;
+    account_id: number;
+    date: string;
+    amount: number;
+    /** Daily-listing rows the bank had already filed for the same money, folded into the written transfer. */
+    folded_listing_row_ids: number[];
+  }[];
   /** Such movements no bank feed has listed by their deadline: the money never moved as mailed. */
   overdue: { message_id: string; movement_id: number; date: string; amount: number; deadline: string | null }[];
   /**
