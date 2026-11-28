@@ -1,6 +1,6 @@
 /**
  * Undo a wrong in-place promotion: turn a Fintual-goal → checking transfer back into the plain
- * single-leg checking credit it was before `promoteCheckingCreditToTransfer` rewrote it.
+ * single-leg checking credit it was before `promoteBankCreditToTransfer` rewrote it.
  *
  *   npx tsx scripts/unpromote-checking-credit.ts --movement-id=NN --note='<original note>'
  *   npx tsx scripts/unpromote-checking-credit.ts --movement-id=NN --note='…' --apply

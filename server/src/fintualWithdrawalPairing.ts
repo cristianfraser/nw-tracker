@@ -2,11 +2,12 @@ import { BROKER_SETTLEMENT_WINDOW_DAYS } from "./brokerAdapter.js";
 import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
 import { db } from "./db.js";
 import { promoteSingleLegToTransfer } from "./movementWrites.js";
-import { checkingAccountId } from "./checkingCartolaImport.js";
 import { chileCalendarAddDays } from "./chileDate.js";
+import { normalizeAccountNumber } from "nw-tracker-contracts";
 
 /**
- * Pair a Fintual «Pagamos tu retiro» e-mail with the checking credit it produced.
+ * Pair a Fintual «Pagamos tu retiro» e-mail with the bank credit it produced, in the account the
+ * mail names (the corriente or the cuenta vista).
  *
  * The e-mail confirms one side of a wire and the checking importer brings the other; exactly ONE
  * ledger row must ever exist for the event. The e-mail carries an exact amount, an exact date and
@@ -46,8 +47,33 @@ export function fintualGoalAccountId(goalName: string): number | null {
 
 export type CheckingCreditMatch = { id: number; occurred_on: string };
 
+export type RetiroDestination = { account_id: number } | { requires_manual: string };
+
 /**
- * An unpaired checking credit for this amount dated on or after the payment date, within
+ * The account a retiro's pesos landed in: the one account number its mail prints
+ * (`bank_account_numbers`, pesos, compared without punctuation or leading zeros). A mail that
+ * prints none, or a number no account declares, is for a person — never guessed to be the corriente.
+ */
+export function retiroDestinationAccount(destinationAccount: string | null | undefined): RetiroDestination {
+  if (!destinationAccount) {
+    return { requires_manual: "the e-mail names no destination account — link it in /panel/mirror-pairs" };
+  }
+  const wanted = normalizeAccountNumber(destinationAccount);
+  const rows = db
+    .prepare(`SELECT account_id, number FROM bank_account_numbers WHERE currency = 'clp'`)
+    .all() as { account_id: number; number: string }[];
+  const hits = [...new Set(rows.filter((r) => normalizeAccountNumber(r.number) === wanted).map((r) => r.account_id))];
+  if (hits.length === 0) {
+    return { requires_manual: `destination account ${destinationAccount} is not in bank_account_numbers — declare it or link the retiro by hand` };
+  }
+  if (hits.length > 1) {
+    return { requires_manual: `destination account ${destinationAccount} is declared for ${hits.length} accounts` };
+  }
+  return { account_id: hits[0]! };
+}
+
+/**
+ * An unpaired credit on `accountId` for this amount dated on or after the payment date, within
  * {@link WITHDRAWAL_PAIR_WINDOW_DAYS}.
  *
  * Restricted to single-leg rows (`from_account_id`/`to_account_id` null): a row that is already a
@@ -56,7 +82,8 @@ export type CheckingCreditMatch = { id: number; occurred_on: string };
  * e-mail cannot say which one it paid. Credits dated BEFORE the payment day are never
  * candidates: they cannot be this retiro's money.
  */
-export function findUnpairedCheckingCredit(
+export function findUnpairedBankCredit(
+  accountId: number,
   amountClp: number,
   paidOn: string,
   windowDays = WITHDRAWAL_PAIR_WINDOW_DAYS
@@ -72,7 +99,7 @@ export function findUnpairedCheckingCredit(
        ORDER BY occurred_on`
     )
     .all(
-      checkingAccountId(),
+      accountId,
       amountClp,
       paidOn,
       chileCalendarAddDays(paidOn, windowDays)
@@ -83,16 +110,17 @@ export function findUnpairedCheckingCredit(
 }
 
 /**
- * Turn the checking credit into a Fintual → checking transfer, in place.
+ * Turn the bank credit on `toAccountId` into a Fintual → that account transfer, in place.
  *
  * `occurredOn` lets the caller re-date the row to the e-mail's payment date — the day the money
  * really moved — when the credit carries the bank's next-workday posting date (post-14:00 wires).
  * The planner only picks that date when the cartola/xlsx re-import dedupe window still reaches it
  * and no month boundary is crossed; pass null to keep the credit's own date.
  */
-export function promoteCheckingCreditToTransfer(
+export function promoteBankCreditToTransfer(
   movementId: number,
   fromAccountId: number,
+  toAccountId: number,
   note: string,
   unitsDelta: string | null = null,
   occurredOn: string | null = null
@@ -102,10 +130,10 @@ export function promoteCheckingCreditToTransfer(
     | undefined;
   // The bank's day for the credit: its posting row when the daily import already stored it on
   // an earlier day (a post-cutoff row), else its date.
-  const bankDay = before ? bankPostedOn(movementId, checkingAccountId()) : null;
+  const bankDay = before ? bankPostedOn(movementId, toAccountId) : null;
   const promoted = promoteSingleLegToTransfer(movementId, {
     fromAccountId,
-    toAccountId: checkingAccountId(),
+    toAccountId,
     note,
     unitsDelta,
     occurredOn,
@@ -114,6 +142,6 @@ export function promoteCheckingCreditToTransfer(
     throw new Error(`Movement ${movementId} was not an unpaired single-leg row — not promoted`);
   }
   // The credit was the bank's listing: when the mail moves it to the payment day, its bank date
-  // stays as the transfer's posting day on checking (the cartola files it there).
-  recordBankPosting(movementId, checkingAccountId(), bankDay!);
+  // stays as the transfer's posting day on that account (the cartola files it there).
+  recordBankPosting(movementId, toAccountId, bankDay!);
 }

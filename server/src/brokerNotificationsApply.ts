@@ -7,6 +7,7 @@ import { brokerNotificationIsBookable, racionalFetchDecision } from "./brokerNot
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { applyFintualEmailMovementsWithIds, planFintualEmailBatch } from "./fintualEmailImport.js";
 import { listOverdueUnconfirmedSyntheticRetiros } from "./fintualSyntheticRetiros.js";
+import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { applyRacionalEmailMovements, planRacionalEmailMovements } from "./racionalEmailImport.js";
 import { brokerAdapter, brokerPlanRow, type BrokerSlug } from "./brokerAdapter.js";
 import { brokerCleanThrough } from "./brokerReadCoverage.js";
@@ -57,7 +58,7 @@ function applyFintualNotifications(payload: BrokerNotificationsPayload): BrokerN
       .filter((n) => !brokerNotificationIsBookable(n))
       .map((n) => ({ occurred_at: n.occurred_at, kind: n.kind, subject: n.subject })),
     fetch: null,
-    overdue_synthetic_retiros: listOverdueUnconfirmedSyntheticRetiros(chileCalendarTodayYmd()).map((o) => ({
+    overdue_synthetic_retiros: listOverdueUnconfirmedSyntheticRetiros(chileCalendarTodayYmd(), cartolaOnlyAccountIds()).map((o) => ({
       movement_id: o.movement_id,
       paid_on: o.paid_on,
       amount_clp: o.amount_clp,
@@ -66,6 +67,12 @@ function applyFintualNotifications(payload: BrokerNotificationsPayload): BrokerN
     usd_withdrawals: usdWithdrawals,
     event_times_stamped: eventTimesStamped,
   };
+}
+
+/** The accounts with no daily listing: only their monthly cartola confirms a synthesized retiro. */
+function cartolaOnlyAccountIds(): ReadonlySet<number> {
+  const vista = cartolaCashAccountIdOptional("cuenta_vista");
+  return new Set(vista == null ? [] : [vista]);
 }
 
 /** Racional: movements from mail, split notices, and whether the crawl must open. */

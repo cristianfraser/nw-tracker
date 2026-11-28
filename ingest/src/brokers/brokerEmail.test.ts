@@ -347,6 +347,33 @@ describe("brokerEmail", () => {
     });
   });
 
+  it("reads the account a retiro was paid into, and sends it with the notification", () => {
+    // 2026-11-27: the pesos went to the cuenta vista, whose number differs from the corriente's.
+    const snippet = (account: string) =>
+      "Se pagó a tu cuenta de banco. Hola Camila Pagamos tu retiro de $100.000 El viernes 27 de " +
+      `noviembre a las 11:08 pagamos tu retiro desde 🏦 Reserva. Monto $100.000 Destino Cuenta ${account} de ` +
+      "Banco Santander El retiro se hizo desde el Fondo Mutuo Very Conservative Streep Serie A (68,4288 cuotas).";
+    const paid = classifyBrokerEmail({
+      message_id: "<retiro-vista@test>",
+      sender: FINTUAL,
+      subject: "Pagamos tu retiro de 🏦 Reserva",
+      snippet: snippet("9990005005"),
+      date: "2026-11-27T14:08:40Z",
+    });
+    expect(paid).toMatchObject({ kind: "withdrawal_paid", paid_to: "bank", destination_account: "9990005005", units: "68.4288" });
+    expect(toBrokerNotification(paid)).toMatchObject({ kind: "withdrawal_paid", destination_account: "9990005005" });
+    // A mail that prints no number (a retiro to the Fintual balance) states none.
+    const toFintual = classifyBrokerEmail({
+      message_id: "<retiro-balance@test>",
+      sender: FINTUAL,
+      subject: "Pagamos tu retiro de 🏦 Reserva",
+      snippet: "tus $100.000 pesos chilenos quedaron disponibles para invertir en Fintual. equivalente a 68,8876 cuotas .",
+      date: "2026-09-29T14:00:33Z",
+    });
+    expect(toFintual.destination_account).toBeNull();
+    expect(toBrokerNotification(toFintual)).not.toHaveProperty("destination_account");
+  });
+
   it("reads a retiro to the Fintual balance: destination and «equivalente a N cuotas»", () => {
     // The 2026-09-29 template: the pesos stay in Fintual for up to 7 days, and the cuota count
     // is no longer in parentheses.

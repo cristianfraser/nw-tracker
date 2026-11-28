@@ -1,5 +1,5 @@
 import { HOME_CURRENCY, isHomeCurrency } from "nw-tracker-contracts/dto/apiConstants";
-import { addCalendarMonths } from "nw-tracker-contracts";
+import { documentLateOn } from "./documentLateDays.js";
 import { insertAppMessage } from "./appMessages.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { serverConfig } from "./config.js";
@@ -16,10 +16,7 @@ import type { ImportSyncDocumentAccount, ImportSyncDocumentKind } from "./import
  * found nothing, a parser that skipped it), the hole itself is what gets reported.
  */
 
-/** Cartola mails come in the first weeks of the next month; by the 25th one is overdue. */
-export const CARTOLA_LATE_DAY = 25;
-/** The matrix month is the close's month; closes fall late in the month and the mail follows by 2–3 days. */
-export const CARD_STATEMENT_LATE_DAY = 7;
+export { CARTOLA_LATE_DAY, CARD_STATEMENT_LATE_DAY, documentLateOn } from "./documentLateDays.js";
 /** Only months that went late this recently notify: old holes in the history stay quiet. */
 export const LATE_DOCUMENT_RECENT_DAYS = 60;
 
@@ -54,12 +51,6 @@ export function lateDocumentColumnKey(acc: ImportSyncDocumentAccount): LateDocum
     // A card without dollar statements has one column, its peso statements.
     currency: acc.document_kind === "cc_statement" ? (acc.cc_statement_currency ?? HOME_CURRENCY) : HOME_CURRENCY,
   };
-}
-
-/** The day a month's document of this kind is late from (`YYYY-MM-DD`, in the following month). */
-export function documentLateOn(kind: ImportSyncDocumentKind, month: string): string {
-  const day = kind === "cc_statement" ? CARD_STATEMENT_LATE_DAY : CARTOLA_LATE_DAY;
-  return `${addCalendarMonths(month, 1)}-${String(day).padStart(2, "0")}`;
 }
 
 /**

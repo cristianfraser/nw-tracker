@@ -6,6 +6,7 @@ import {
   listOverdueUnconfirmedSyntheticRetiros,
   recordSyntheticRetiroTransfer,
   syntheticRetiroConfirmationDeadlineYmd,
+  syntheticRetiroDeadlineYmd,
 } from "./fintualSyntheticRetiros.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { importCheckingCartola } from "./checkingCartolaImport.js";
@@ -66,7 +67,7 @@ describe("fintualSyntheticRetiros", () => {
     recordSyntheticRetiroTransfer(movementId, messageId, 987001, "2026-08-10");
 
     const overdueOf = (today: string) =>
-      listOverdueUnconfirmedSyntheticRetiros(today).filter((o) => o.movement_id === movementId);
+      listOverdueUnconfirmedSyntheticRetiros(today, new Set()).filter((o) => o.movement_id === movementId);
     // Paid Monday the 10th → deadline Wednesday the 12th: on time through the deadline day.
     expect(overdueOf("2026-08-12")).toHaveLength(0);
     expect(overdueOf("2026-08-13")).toHaveLength(1);
@@ -78,6 +79,25 @@ describe("fintualSyntheticRetiros", () => {
 
     confirmSyntheticRetiroForTransferLeg(movementId, "2026-08-11", "ultimos_xlsx");
     expect(overdueOf("2026-08-13")).toHaveLength(0);
+  });
+
+  it("waits for the monthly cartola when the retiro went to an account with no daily listing", () => {
+    const goal = mkAccount("vitest synth goal V");
+    const vista = mkAccount("vitest synth vista V");
+    if (goal == null || vista == null) return;
+    const movementId = mkTransfer(goal, vista, 987003, "2026-11-27");
+    recordSyntheticRetiroTransfer(movementId, `vitest-vista-${Date.now()}`, 987003, "2026-11-27");
+    const cartolaOnly = new Set([vista]);
+
+    expect(syntheticRetiroDeadlineYmd("2026-11-27", vista, cartolaOnly)).toBe("2026-12-25"); // the November cartola is late from the 25th
+    expect(syntheticRetiroDeadlineYmd("2026-11-27", goal, cartolaOnly)).toBe("2026-12-01"); // a daily-listing account: 2 business days
+    const overdueOf = (today: string) =>
+      listOverdueUnconfirmedSyntheticRetiros(today, cartolaOnly).filter((o) => o.movement_id === movementId);
+    expect(overdueOf("2026-12-25")).toHaveLength(0);
+    expect(overdueOf("2026-12-26")).toHaveLength(1);
+    // Without naming the account as cartola-only the 2-business-day rule would already flag it.
+    expect(listOverdueUnconfirmedSyntheticRetiros("2026-12-02", new Set()).filter((o) => o.movement_id === movementId)).toHaveLength(1);
+    expect(overdueOf("2026-12-02")).toHaveLength(0);
   });
 
   it("keeps the first confirmation stamp", () => {

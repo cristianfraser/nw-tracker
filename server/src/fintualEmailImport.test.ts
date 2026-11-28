@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { brokerNotificationsKind } from "nw-tracker-contracts";
 import { brokerNotification, fintualRetiroPaid } from "./test/brokerNotificationFixtures.js";
@@ -11,6 +11,7 @@ import {
   type FintualPlannedMovement,
 } from "./fintualEmailImport.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
+import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { bankPostedOn } from "./movementBankPostings.js";
 import { brokerPlanRow } from "./brokerAdapter.js";
 
@@ -36,6 +37,37 @@ const REINVEST = brokerNotification({
 describe("fintualEmailImport", () => {
   const created: number[] = [];
   const createdAccounts: number[] = [];
+  const declaredNumbers: string[] = [];
+
+  /** Declares `number` as the peso account number of `accountId` (what a retiro mail's «Destino Cuenta» names). */
+  function declarePesoNumber(accountId: number, number: string): string {
+    const known = db
+      .prepare(`SELECT number FROM bank_account_numbers WHERE account_id = ? AND currency = 'clp'`)
+      .get(accountId) as { number: string } | undefined;
+    if (known) return known.number;
+    db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'clp')`).run(
+      accountId,
+      number
+    );
+    declaredNumbers.push(number);
+    return number;
+  }
+
+  let checkingNumber = "";
+  beforeAll(() => {
+    try {
+      checkingNumber = declarePesoNumber(checkingAccountId(), "9990001001");
+    } catch {
+      checkingNumber = ""; // a database without a cuenta corriente: its retiro tests return early
+    }
+  });
+  afterAll(() => {
+    for (const number of declaredNumbers.splice(0)) db.prepare(`DELETE FROM bank_account_numbers WHERE number = ?`).run(number);
+  });
+
+  /** A retiro mail that prints the corriente's number, like every bank-paid retiro before the vista. */
+  const retiroPaid = (o: Parameters<typeof fintualRetiroPaid>[0]) =>
+    fintualRetiroPaid({ destination_account: checkingNumber || undefined, ...o });
 
   afterEach(() => {
     for (const id of created.splice(0)) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
@@ -166,7 +198,7 @@ describe("fintualEmailImport", () => {
    */
   it("refuses a retiro it cannot fully resolve instead of synthesizing", () => {
     const planned = planFintualEmailBatch([
-      fintualRetiroPaid({ goal: "Reserva", amount_clp: 2000000, units: null, at: "2026-07-08T15:13:19Z" }),
+      retiroPaid({ goal: "Reserva", amount_clp: 2000000, units: null, at: "2026-07-08T15:13:19Z" }),
     ]);
     expect(planned[0]!.requires_manual).not.toBeNull();
     expect(planned[0]!.from_account_id).toBeNull();
@@ -204,7 +236,7 @@ describe("fintualEmailImport", () => {
     const creditId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     created.push(creditId);
 
-    const email = fintualRetiroPaid({
+    const email = retiroPaid({
       goal: "vitest Reserva",
       amount_clp: 1300000,
       units: "900.3208",
@@ -265,7 +297,7 @@ describe("fintualEmailImport", () => {
     created.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
 
     const planned = planFintualEmailBatch([
-      fintualRetiroPaid({ goal: "vitest Reserva3", amount_clp: 500000, units: "350.25", at: "2026-08-31T19:00:00Z" }),
+      retiroPaid({ goal: "vitest Reserva3", amount_clp: 500000, units: "350.25", at: "2026-08-31T19:00:00Z" }),
     ]);
     expect(planned[0]!.requires_manual).toBeNull();
     expect(planned[0]!.occurred_on).toBe("2026-08-31");
@@ -303,7 +335,7 @@ describe("fintualEmailImport", () => {
 
     // A multi-fund goal prints one count per fund — ingest then sends no cuota count at all.
     const planned = planFintualEmailBatch([
-      fintualRetiroPaid({ goal: "vitest Reserva2", amount_clp: 2000000, units: null, at: "2026-08-07T19:56:08Z" }),
+      retiroPaid({ goal: "vitest Reserva2", amount_clp: 2000000, units: null, at: "2026-08-07T19:56:08Z" }),
     ]);
     expect(planned[0]!.requires_manual).toMatch(/cuota/);
     expect(planned[0]!.promote_movement_id).toBeUndefined();
@@ -369,7 +401,7 @@ describe("fintualEmailImport", () => {
     const goalId = mk("vitest Reserva Disp", "import:fintual|cert|key=vitest-reserva-disp");
     const balanceId = mk("vitest Fintual CLP", "import:panel|kind=clp|key=fintual_clp");
 
-    const email = fintualRetiroPaid({
+    const email = retiroPaid({
       goal: "vitest Reserva Disp",
       amount_clp: 100000,
       units: "68.8876",
@@ -424,7 +456,7 @@ describe("fintualEmailImport", () => {
     const goalId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     createdAccounts.push(goalId);
 
-    const email = fintualRetiroPaid({
+    const email = retiroPaid({
       goal: "vitest Reserva Synth",
       amount_clp: 654321,
       units: "452.7789",
@@ -505,7 +537,7 @@ describe("fintualEmailImport", () => {
     }
 
     const planned = planFintualEmailBatch([
-      fintualRetiroPaid({ goal: "vitest Reserva Amb", amount_clp: 444555, units: "300.1", at: "2026-08-07T15:00:00Z" }),
+      retiroPaid({ goal: "vitest Reserva Amb", amount_clp: 444555, units: "300.1", at: "2026-08-07T15:00:00Z" }),
     ]);
     expect(planned[0]!.requires_manual).toMatch(/several unpaired/);
     expect(planned[0]!.synthesized).toBeUndefined();
@@ -531,7 +563,7 @@ describe("fintualEmailImport", () => {
     // Paid Monday the 31st: the bank may post the credit on September 1st — the transfer is
     // still dated the 31st, and the bank row brings its posting day when it lands.
     const planned = planFintualEmailBatch([
-      fintualRetiroPaid({ goal: "vitest Reserva EOM", amount_clp: 123456, units: "80.5", at: "2026-08-31T14:00:00Z" }),
+      retiroPaid({ goal: "vitest Reserva EOM", amount_clp: 123456, units: "80.5", at: "2026-08-31T14:00:00Z" }),
     ]);
     expect(planned[0]!.requires_manual).toBeNull();
     expect(planned[0]!.synthesized).toBe(true);
@@ -570,7 +602,7 @@ describe("fintualEmailImport", () => {
   }
 
   function retiroMail(slug: string, amountClp: number, cuotas: string, at: string, messageId?: string) {
-    return fintualRetiroPaid({
+    return retiroPaid({
       goal: `vitest Reserva ${slug}`,
       amount_clp: amountClp,
       units: cuotas,
@@ -781,6 +813,83 @@ describe("fintualEmailImport", () => {
       create_account: { ticker: "SOXQ", bucket_slug: "brokerage_acciones" },
       units_delta: "7.713961329",
       requires_manual: null,
+    });
+  });
+  /**
+   * 2026-11-27: a retiro paid into the cuenta vista was booked into the corriente because the
+   * planner never read the «Destino Cuenta» number the mail prints.
+   */
+  describe("a retiro lands in the account its mail names", () => {
+    const AT = "2097-11-27T14:08:40Z";
+
+    function seedGoal(slug: string): number | null {
+      const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number } | undefined;
+      if (!group) return null;
+      db.prepare(
+        `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+         VALUES (?, ?, 0, datetime('now'), ?)`
+      ).run(group.id, `vitest Reserva ${slug}`, `import:fintual|cert|key=vitest-reserva-${slug}`);
+      const id = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+      createdAccounts.push(id);
+      return id;
+    }
+
+    function vistaWithNumber(): { vista: number; number: string } | null {
+      const vista = cartolaCashAccountIdOptional("cuenta_vista");
+      if (vista == null || !checkingNumber) return null;
+      return { vista, number: declarePesoNumber(vista, "9990002002") };
+    }
+
+    it("synthesizes the transfer into the cuenta vista when the mail prints its number", () => {
+      const v = vistaWithNumber();
+      const goal = v ? seedGoal("dest-vista") : null;
+      if (!v || goal == null) return;
+      const mail = retiroPaid({ goal: "vitest Reserva dest-vista", amount_clp: 100000, units: "68.4288", at: AT, destination_account: v.number });
+      const [row] = planFintualEmailBatch([mail]);
+      expect(row).toMatchObject({ from_account_id: goal, to_account_id: v.vista, synthesized: true, requires_manual: null });
+
+      expect(applyFintualEmailMovements([row!])).toBe(1);
+      const mov = db
+        .prepare(`SELECT id, from_account_id, to_account_id FROM movements WHERE from_account_id = ? AND occurred_on = '2097-11-27'`)
+        .get(goal) as { id: number; from_account_id: number; to_account_id: number };
+      created.push(mov.id);
+      expect(mov.to_account_id).toBe(v.vista);
+      // The same mail read again is a duplicate of the row it wrote, never a second synthesis.
+      expect(planFintualEmailBatch([mail])[0]!.duplicate_of).toBe(mov.id);
+    });
+
+    it("promotes the credit on the named account, not a same-amount credit on the other one", () => {
+      const v = vistaWithNumber();
+      const goal = v ? seedGoal("dest-promote") : null;
+      if (!v || goal == null) return;
+      const credit = (account: number, on: string) => {
+        const id = Number(
+          db
+            .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 100000, 'clp', ?, 'vitest-retiro-dest-credit')`)
+            .run(account, on).lastInsertRowid
+        );
+        created.push(id);
+        return id;
+      };
+      const onVista = credit(v.vista, "2097-11-28");
+      credit(checkingAccountId(), "2097-11-28");
+      const mail = retiroPaid({ goal: "vitest Reserva dest-promote", amount_clp: 100000, units: "68.4288", at: AT, destination_account: v.number });
+      const [row] = planFintualEmailBatch([mail]);
+      expect(row).toMatchObject({ promote_movement_id: onVista, to_account_id: v.vista, requires_manual: null });
+
+      expect(applyFintualEmailMovements([row!])).toBe(1);
+      const promoted = db.prepare(`SELECT account_id, from_account_id, to_account_id FROM movements WHERE id = ?`).get(onVista);
+      expect(promoted).toMatchObject({ account_id: null, from_account_id: goal, to_account_id: v.vista });
+    });
+
+    it("leaves a retiro for a person when the mail names no account or one nobody declared", () => {
+      if (!seedGoal("dest-manual")) return;
+      const base = { goal: "vitest Reserva dest-manual", amount_clp: 100000, units: "68.4288", at: AT };
+      const none = planFintualEmailBatch([fintualRetiroPaid(base)]);
+      expect(none[0]!.requires_manual).toMatch(/names no destination account/);
+      expect(none[0]!.synthesized).toBeUndefined();
+      const unknown = planFintualEmailBatch([retiroPaid({ ...base, destination_account: "9990009009" })]);
+      expect(unknown[0]!.requires_manual).toMatch(/not in bank_account_numbers/);
     });
   });
 });

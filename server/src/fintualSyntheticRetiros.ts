@@ -17,6 +17,7 @@
  */
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
+import { documentLateOn } from "./documentLateDays.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 
 export type SyntheticRetiroConfirmSource = "ultimos_xlsx" | "cartola";
@@ -97,19 +98,43 @@ export type OverdueSyntheticRetiro = {
   deadline: string | null;
 };
 
+/**
+ * Last day the bank's own document may confirm a synthesized retiro paid into `toAccountId`. An
+ * account with a daily listing (the corriente) answers within the posting window; an account whose
+ * only document is its monthly cartola (the cuenta vista) is on time until that cartola is late
+ * (`documentLateOn`, the day the late-document check notifies), because nothing earlier can confirm it.
+ */
+export function syntheticRetiroDeadlineYmd(
+  paidOnYmd: string,
+  toAccountId: number,
+  cartolaOnlyAccountIds: ReadonlySet<number>
+): string | null {
+  if (cartolaOnlyAccountIds.has(toAccountId)) return documentLateOn("cuenta_vista_cartola", paidOnYmd.slice(0, 7));
+  return syntheticRetiroConfirmationDeadlineYmd(paidOnYmd);
+}
+
+/**
+ * `cartolaOnlyAccountIds` are the destination accounts that have no daily listing, so only their
+ * monthly cartola can confirm a synthesis (the cuenta vista); the caller names them.
+ */
 export function listOverdueUnconfirmedSyntheticRetiros(
   todayYmd: string,
+  cartolaOnlyAccountIds: ReadonlySet<number>,
   dbHandle: Database = db
 ): OverdueSyntheticRetiro[] {
   const rows = dbHandle
     .prepare(
-      `SELECT movement_id, message_id, amount_clp, paid_on
-       FROM fintual_synthetic_retiro_transfers
-       WHERE confirmed_on IS NULL
-       ORDER BY paid_on, movement_id`
+      `SELECT s.movement_id, s.message_id, s.amount_clp, s.paid_on, m.to_account_id
+       FROM fintual_synthetic_retiro_transfers s
+       JOIN movements m ON m.id = s.movement_id
+       WHERE s.confirmed_on IS NULL
+       ORDER BY s.paid_on, s.movement_id`
     )
-    .all() as Omit<OverdueSyntheticRetiro, "deadline">[];
+    .all() as (Omit<OverdueSyntheticRetiro, "deadline"> & { to_account_id: number })[];
   return rows
-    .map((r) => ({ ...r, deadline: syntheticRetiroConfirmationDeadlineYmd(r.paid_on) }))
+    .map(({ to_account_id, ...r }) => ({
+      ...r,
+      deadline: syntheticRetiroDeadlineYmd(r.paid_on, to_account_id, cartolaOnlyAccountIds),
+    }))
     .filter((r) => r.deadline == null || todayYmd > r.deadline);
 }

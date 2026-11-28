@@ -36,6 +36,8 @@ export function fintualRetiroPaid(o: {
   at: string;
   message_id?: string;
   paid_to?: BrokerNotification["paid_to"];
+  /** The account number the mail prints after «Destino Cuenta» (absent: the mail printed none). */
+  destination_account?: string;
 }): BrokerNotification {
   return brokerNotification({
     kind: "withdrawal_paid",
@@ -46,6 +48,7 @@ export function fintualRetiroPaid(o: {
     currency: "clp",
     units: o.units,
     paid_to: o.paid_to ?? "bank",
+    ...(o.destination_account ? { destination_account: o.destination_account } : {}),
     ...(o.message_id ? { message_id: o.message_id } : {}),
   });
 }

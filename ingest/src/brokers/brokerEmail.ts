@@ -351,6 +351,9 @@ const FINTUAL_MATCHERS: Matcher[] = [
         : /cuenta de banco|Destino Cuenta/i.test(snippet)
           ? ("bank" as const)
           : null;
+      // «Destino Cuenta 9990005005 de Banco Santander»: the account the pesos went to, which is
+      // not always the corriente (the cuenta vista has a number of its own).
+      const destination = /Destino Cuenta\s+(\d+)\b/i.exec(snippet);
       // «Pagamos tu retiro de 🏦 Reserva» → «Reserva»: emoji stripped, whitespace collapsed.
       const goal = (m[1] ?? "")
         .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F]/gu, " ")
@@ -361,6 +364,7 @@ const FINTUAL_MATCHERS: Matcher[] = [
         ...(body ? { amount: parseChileanNumber(body[1]!), currency: "clp" as const } : {}),
         ...(cuotas.length === 1 ? { units: decimalString(cuotas[0]![1]!) } : {}),
         ...(paidTo ? { paid_to: paidTo } : {}),
+        ...(destination ? { destination_account: destination[1]! } : {}),
       };
     },
   },
@@ -679,6 +683,7 @@ export function toBrokerNotification(e: BrokerEmailEvent): BrokerNotification {
     clp_amount: e.clp_amount,
     paid_to: e.paid_to === "fintual" ? "broker_balance" : e.paid_to,
     ...(kind === "withdrawal_requested" ? { destination_account: e.destination_account, due_on: e.due_on } : {}),
+    ...(kind === "withdrawal_paid" && e.destination_account != null ? { destination_account: e.destination_account } : {}),
     ...(kind === "stock_split" ? { units_after: e.units_after } : {}),
   };
 }

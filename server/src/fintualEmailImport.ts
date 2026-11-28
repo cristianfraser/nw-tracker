@@ -33,9 +33,10 @@ import {
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { recordSyntheticRetiroTransfer } from "./fintualSyntheticRetiros.js";
 import {
-  findUnpairedCheckingCredit,
+  findUnpairedBankCredit,
   fintualGoalAccountId,
-  promoteCheckingCreditToTransfer,
+  promoteBankCreditToTransfer,
+  retiroDestinationAccount,
 } from "./fintualWithdrawalPairing.js";
 import type { BrokerNotification } from "nw-tracker-contracts";
 import { brokerNotificationIsBookable, notificationChileYmd } from "./brokerNotifications.js";
@@ -333,11 +334,22 @@ export function planFintualEmailMovement(
       // is UNIQUE on message_id — reaching the insert again would abort the whole batch.
       const synthesized = syntheticRetiroMovementIdForMessageId(event.message_id);
       if (synthesized != null) return { ...base, duplicate_of: synthesized };
+      // Where the pesos landed: the account number a «Pagamos tu retiro» mail prints (the corriente
+      // or the cuenta vista have numbers of their own). «Devolvimos tu saldo» prints none and has
+      // always gone to the corriente.
+      let bankAccountId: number;
+      if (event.kind === "withdrawal_paid") {
+        const destination = retiroDestinationAccount(event.destination_account);
+        if ("requires_manual" in destination) return { ...base, requires_manual: destination.requires_manual };
+        bankAccountId = destination.account_id;
+      } else {
+        bankAccountId = checkingAccountId();
+      }
       // Already reconciled on an earlier run (or by hand): the transfer this e-mail describes is
       // in the ledger, so it is a duplicate rather than something still waiting for its bank leg.
       const existing = findNearbyTransfers.all(
         goalAccountId,
-        checkingAccountId(),
+        bankAccountId,
         base.currency,
         addDaysIso(base.occurred_on, -EMAIL_MATCH_WINDOW_DAYS),
         addDaysIso(base.occurred_on, EMAIL_MATCH_WINDOW_DAYS)
@@ -358,7 +370,7 @@ export function planFintualEmailMovement(
             "the e-mail body does not name a single cuota count — promote it by hand with the retiro's cuotas",
         };
       }
-      const match = findUnpairedCheckingCredit(base.amount, base.occurred_on);
+      const match = findUnpairedBankCredit(bankAccountId, base.amount, base.occurred_on);
       if (match === "ambiguous") {
         return {
           ...base,
@@ -379,7 +391,7 @@ export function planFintualEmailMovement(
         return {
           ...base,
           from_account_id: goalAccountId,
-          to_account_id: checkingAccountId(),
+          to_account_id: bankAccountId,
           units_delta: event.units,
           synthesized: true,
         };
@@ -398,7 +410,7 @@ export function planFintualEmailMovement(
         ...base,
         occurred_on: useDate,
         from_account_id: goalAccountId,
-        to_account_id: checkingAccountId(),
+        to_account_id: bankAccountId,
         units_delta: event.units,
         promote_movement_id: match.id,
       };
@@ -509,9 +521,10 @@ export function applyFintualEmailMovementsWithIds(planned: readonly FintualPlann
       // A withdrawal that found its bank leg rewrites that row instead of inserting: the money is
       // already in the ledger once, and a second row would be the double count this avoids.
       if (p.promote_movement_id != null) {
-        promoteCheckingCreditToTransfer(
+        promoteBankCreditToTransfer(
           p.promote_movement_id,
           p.from_account_id,
+          toAccountId,
           p.note,
           p.units_delta,
           p.occurred_on
