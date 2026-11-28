@@ -67,7 +67,26 @@ function affectedWorkspaces(files) {
   return ws;
 }
 
-const files = changedFiles(stdinText().split("\n").filter(Boolean));
+const pushLines = stdinText().split("\n").filter(Boolean);
+
+// origin/main moves only from the local `main` branch. A branch pushed to `main` from a worktree
+// (`git push origin <branch>:main`) leaves the main checkout's `main` behind, and the next commit
+// there rebases onto work it never saw (2026-11-27: 29 commits). Merge into `main` in the main
+// checkout (`git merge --ff-only <branch>`) and push `main` from there.
+const toMain = pushLines.filter((line) => {
+  const [localRef, , remoteRef] = line.split(/\s+/);
+  return remoteRef === "refs/heads/main" && localRef !== "refs/heads/main";
+});
+if (toMain.length > 0) {
+  console.error(
+    `pre-push: refusing to update origin/main from ${toMain.map((l) => l.split(/\s+/)[0]).join(", ")}.\n` +
+      "Merge the branch into the local `main` in the main checkout (git merge --ff-only <branch>) and push `main` from there,\n" +
+      "so the local `main` never falls behind origin/main."
+  );
+  process.exit(1);
+}
+
+const files = changedFiles(pushLines);
 const workspaces = affectedWorkspaces(files);
 // Same command as each workspace's `typecheck` script (TypeScript 7 through scripts/tsc.mjs).
 const steps = [
